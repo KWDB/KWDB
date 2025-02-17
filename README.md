@@ -51,7 +51,7 @@ KWDB 支持在 Linux 操作系统进行安装部署，下表列出了编译和�
 | build-essential   | any     |                                                              |
 | checkinstall      | any     |                                                              |
 | libssl            | v1.1.1+ | - Ubuntu系统该依赖名为libssl-dev。<br/>- RHEL, CentOS, Kylin, UOS, AnolisOS系统该依赖名为libssl-devel。 |
-| libprotobuf       | v3.6.1+ | - Ubuntu系统该依赖名为libprotobuf-dev。<br/>- RHEL, CentOS, Kylin, UOS, AnolisOS系统该依赖名为libprotobuf-devel。 |
+| libprotobuf       | v3.6.1+ | - Ubuntu系统该依赖名为libprotobuf-dev。**注意**：Ubuntu 18.04 默认的 libprotobuf 版本不满足要求，用户需要提前安装所需版本，推荐 Ubuntu 20.04 或 Ubuntu 22.04 中的默认版本：3.6.1 或 3.12.4，并在编译时通过 `make PROTOBUF_DIR=<protobuf_directory>` 指定高版本路径。<br/>- RHEL, CentOS, Kylin, UOS, AnolisOS 系统，该依赖名为 libprotobuf-devel。 |
 | liblzma           | v5.2.0+ | - Ubuntu系统该依赖名为liblzma-dev。<br>- RHEL, CentOS, Kylin, UOS, AnolisOS系统该依赖名为liblzma-devel。 |
 | libncurses        | v6.2.0+ | - Ubuntu系统该依赖名为libncurses5-dev。<br>- RHEL, CentOS, Kylin, UOS, AnolisOS系统该依赖名为libncurses-devel。 |
 | libatomic         | v7.3.0+ | 仅 GCC 和 G++ 7.3.0 版本需要增加此依赖。                     |
@@ -180,7 +180,8 @@ KWDB 支持在 Linux 操作系统进行安装部署，下表列出了编译和�
 4. 编译和安装项目。
 
    > **提示**：
-      如果编译时出现遗留的 protobuf 自动生成的文件导致报错，可使用`make clean` 清理编译目录。
+   > - 如果编译时出现遗留的 protobuf 自动生成的文件导致报错，可使用`make clean` 清理编译目录。
+   > - 如果需要额外指定 protobuf 的文件路径，请使用 `make PROTOBUF_DIR=<protobuf_directory>`。
 
       ```Bash
       make
