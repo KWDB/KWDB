@@ -936,7 +936,7 @@ func (p *planner) makeNewPlanAndRun(
 		planCtx.planner = localPlanner
 		planCtx.stmtType = recv.stmtType
 		// Create a physical plan and execute it.
-		p.DistSQLPlanner().PlanAndRun(
+		cleanup := p.DistSQLPlanner().PlanAndRun(
 			ctx,
 			evalCtx,
 			planCtx,
@@ -945,6 +945,7 @@ func (p *planner) makeNewPlanAndRun(
 			recv,
 			localPlanner.GetStmt(),
 		)
+		defer cleanup()
 		if planAndRunErr = rw.Err(); planAndRunErr != nil {
 			return
 		}

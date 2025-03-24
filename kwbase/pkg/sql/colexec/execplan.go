@@ -625,6 +625,12 @@ func NewColOperator(
 		if core.ChangeFrontier != nil {
 			return result, errors.Newf("core.ChangeFrontier is not supported")
 		}
+		if core.TsInsertSelect != nil {
+			return result, errors.Newf("core.TsInsertSelect is not supported")
+		}
+		if core.TsInsert != nil {
+			return result, errors.Newf("core.TsInsert is not supported")
+		}
 		log.VEventf(ctx, 1, "planning a wrapped processor because %s", err.Error())
 
 		inputTypes := make([][]types.T, len(spec.Input))

@@ -276,7 +276,7 @@ func populateExplain(
 				if nodeID == thisNodeID && !isDistSQL {
 					fuseOpt = flowinfra.FuseAggressively
 				}
-				_, err := colflow.SupportsVectorized(params.ctx, flowCtx, flow.Processors, fuseOpt, nil /* output */)
+				_, err := colflow.SupportsVectorized(params.ctx, flowCtx, flow.Processors, flow.TsProcessors, fuseOpt, nil /* output */)
 				isVec = isVec && (err == nil)
 				if !isVec {
 					break

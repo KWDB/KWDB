@@ -69,7 +69,10 @@ func (f *stubFactory) ConstructSynchronizer(input exec.Node, degree int64) (exec
 
 // ConstructTSScan is part of the exec.Factory interface.
 func (f *stubFactory) ConstructTSScan(
-	table cat.Table, private *memo.TSScanPrivate, tagFilter, primaryFilter []tree.TypedExpr,
+	table cat.Table,
+	private *memo.TSScanPrivate,
+	tagFilter, primaryFilter []tree.TypedExpr,
+	rowCount float64,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }

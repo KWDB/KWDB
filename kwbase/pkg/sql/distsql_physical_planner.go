@@ -2303,6 +2303,11 @@ func (dsp *DistSQLPlanner) createTSReaders(
 
 	planCtx.pTagAllNotSplit = pTagAllNotSplit
 
+	p.TotalEstimatedScannedRows += n.estimatedRowCount
+	if n.estimatedRowCount > p.MaxEstimatedRowCount {
+		p.MaxEstimatedRowCount = n.estimatedRowCount
+	}
+
 	// construct TSTagReaderSpec
 	// RelInfo is not nil only for multiple model processing
 	if n.RelInfo.RelationalCols != nil {

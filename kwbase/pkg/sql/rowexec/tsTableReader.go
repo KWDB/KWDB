@@ -134,7 +134,7 @@ func NewTSFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfra
 
 // Start is part of the RowSource interface.
 func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
-	ttr.StartInternal(ctx, tsTableReaderProcName)
+	ctx = ttr.StartInternal(ctx, tsTableReaderProcName)
 
 	var tsProcessorSpecs = ttr.tsProcessorSpecs
 	var randomNumber int
@@ -220,7 +220,6 @@ func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 		defer ttr.FlowCtx.Mu.Unlock()
 		ttr.FlowCtx.TsHandleMap[ttr.tsTableReaderID] = ttr.tsHandle
 	}
-	ctx = ttr.StartInternal(ctx, sqlbase.TsTableReaderProcName)
 	return ctx
 }
 

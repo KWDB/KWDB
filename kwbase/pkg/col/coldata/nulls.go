@@ -308,6 +308,16 @@ func (n *Nulls) NullBitmap() []byte {
 	return n.nulls
 }
 
+func (n *Nulls) CopyNullsBitmap(bm []byte, size int) {
+	n.nulls = bm
+	for i := 0; i < len(bm); i++ {
+		if bm[i] != onesMask {
+			n.maybeHasNulls = true
+			return
+		}
+	}
+}
+
 // SetNullBitmap sets the null bitmap. size corresponds to how many elements
 // this bitmap represents. The bits past the end of this size will be set to
 // valid.

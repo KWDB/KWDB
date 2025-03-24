@@ -147,7 +147,10 @@ func (ef *execFactory) ConstructScan(
 
 // ConstructTSScan is part of the exec.Factory interface.
 func (ef *execFactory) ConstructTSScan(
-	table cat.Table, private *memo.TSScanPrivate, tagFilter, primaryFilter []tree.TypedExpr,
+	table cat.Table,
+	private *memo.TSScanPrivate,
+	tagFilter, primaryFilter []tree.TypedExpr,
+	rowCount float64,
 ) (exec.Node, error) {
 	// Create a tsScanNode.
 	tsScan := ef.planner.TSScan()
@@ -193,6 +196,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.orderedType = private.OrderedScanType
 	tsScan.ScanAggArray = private.ScanAggs
 	tsScan.TableMetaID = private.Table
+	tsScan.estimatedRowCount = uint64(rowCount)
 
 	// bind tag filter and primary filter to tsScanNode.
 	bindFilter := func(filters []tree.TypedExpr, primaryTag bool) bool {

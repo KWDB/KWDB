@@ -61,6 +61,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/logtags"
+	"github.com/lib/pq/oid"
 	"github.com/marusama/semaphore"
 	"github.com/opentracing/opentracing-go"
 )
@@ -243,7 +244,7 @@ func (f *vectorizedFlow) Setup(
 	if f.testingKnobs.onSetupFlow != nil {
 		f.testingKnobs.onSetupFlow(creator)
 	}
-	_, err = creator.setupFlow(ctx, f.GetFlowCtx(), spec.Processors, opt)
+	_, err = creator.setupFlow(ctx, f.GetFlowCtx(), spec.Processors, spec.TsProcessors, opt)
 	if err == nil {
 		f.operatorConcurrency = creator.operatorConcurrency
 		f.streamingMemAccounts = append(f.streamingMemAccounts, creator.streamingMemAccounts...)
@@ -271,6 +272,26 @@ func (f *vectorizedFlow) Setup(
 // IsVectorized is part of the flowinfra.Flow interface.
 func (f *vectorizedFlow) IsVectorized() bool {
 	return true
+}
+
+// TsColumnInfoToGo ts data to Go
+type TsColumnInfoToGo struct {
+	len          uint32
+	fixedLen     uint32
+	StorageType  oid.Oid
+	colOffset    uint32
+	bitmapOffset uint32
+}
+
+// TsDataChunkToGo ts struct
+type TsDataChunkToGo struct {
+	columnNum   uint32
+	colum       []TsColumnInfoToGo
+	bitmapSize  uint32
+	rowSize     uint32
+	dataCount   uint32
+	data        []byte
+	isDataOwner bool
 }
 
 // ConcurrentExecution is part of the flowinfra.Flow interface.
@@ -756,6 +777,7 @@ func (s *vectorizedFlowCreator) setupInput(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	input execinfrapb.InputSyncSpec,
+	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 	opt flowinfra.FuseOpt,
 ) (op colexec.Operator, _ []execinfrapb.MetadataSource, _ error) {
 	inputStreamOps := make([]colexec.Operator, 0, len(input.Streams))
@@ -803,6 +825,20 @@ func (s *vectorizedFlowCreator) setupInput(
 				}
 			}
 			inputStreamOps = append(inputStreamOps, op)
+		case execinfrapb.StreamEndpointType_QUEUE:
+			sid := inputStream.StreamID
+			if err := s.checkInboundStreamID(sid); err != nil {
+				return nil, nil, err
+			}
+			if log.V(2) {
+				log.Infof(ctx, "set up inbound stream %d", sid)
+			}
+			tsReader := colexec.NewTsReaderOp(ctx, colexec.NewAllocator(ctx, s.newStreamingMemAccount(flowCtx)),
+				flowCtx, input.ColumnTypes, sid, tsProcessorSpecs)
+			if tsReader == nil {
+				return nil, nil, errors.Errorf("uncreated ts reader")
+			}
+			inputStreamOps = append(inputStreamOps, tsReader)
 		default:
 			return nil, nil, errors.Errorf("unsupported input stream type %s", inputStream.Type)
 		}
@@ -961,6 +997,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	processorSpecs []execinfrapb.ProcessorSpec,
+	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 	opt flowinfra.FuseOpt,
 ) (leaves []execinfra.OpNode, err error) {
 	if vecErr := execerror.CatchVectorizedRuntimeError(func() {
@@ -975,7 +1012,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 				for k := range input.Streams {
 					stream := &input.Streams[k]
 					streamIDToSpecIdx[stream.StreamID] = i
-					if stream.Type != execinfrapb.StreamEndpointType_REMOTE {
+					if stream.Type != execinfrapb.StreamEndpointType_REMOTE && stream.Type != execinfrapb.StreamEndpointType_QUEUE {
 						hasLocalInput = true
 					}
 				}
@@ -1010,7 +1047,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 			for i := range pspec.Input {
 				var input colexec.Operator
 				var metadataSources []execinfrapb.MetadataSource
-				input, metadataSources, err = s.setupInput(ctx, flowCtx, pspec.Input[i], opt)
+				input, metadataSources, err = s.setupInput(ctx, flowCtx, pspec.Input[i], tsProcessorSpecs, opt)
 				if err != nil {
 					return
 				}
@@ -1048,7 +1085,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 			// We created a streaming memory account when calling NewColOperator above,
 			// so there is definitely at least one memory account, and it doesn't
 			// matter which one we grow.
-			if err = s.streamingMemAccounts[0].Grow(ctx, int64(result.InternalMemUsage)); err != nil {
+			if err = s.streamingMemAccounts[len(s.streamingMemAccounts)-1].Grow(ctx, int64(result.InternalMemUsage)); err != nil {
 				err = errors.Wrapf(err, "not enough memory to setup vectorized plan")
 				return
 			}
@@ -1109,7 +1146,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 									return
 								}
 							}
-							if inputStream.Type == execinfrapb.StreamEndpointType_REMOTE {
+							if inputStream.Type == execinfrapb.StreamEndpointType_REMOTE || inputStream.Type == execinfrapb.StreamEndpointType_QUEUE {
 								// Remote streams are not present in streamIDToInputOp. The
 								// Inboxes that consume these streams are created at the same time
 								// as the operator that needs them, so skip the creation check for
@@ -1127,7 +1164,6 @@ func (s *vectorizedFlowCreator) setupFlow(
 				}
 			}
 		}
-
 		if len(s.vectorizedStatsCollectorsQueue) > 0 {
 			execerror.VectorizedInternalPanic("not all vectorized stats collectors have been processed")
 		}
@@ -1267,6 +1303,7 @@ func SupportsVectorized(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	processorSpecs []execinfrapb.ProcessorSpec,
+	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 	fuseOpt flowinfra.FuseOpt,
 	output execinfra.RowReceiver,
 ) (leaves []execinfra.OpNode, err error) {
@@ -1300,7 +1337,7 @@ func SupportsVectorized(
 			mon.Stop(ctx)
 		}
 	}()
-	return creator.setupFlow(ctx, flowCtx, processorSpecs, fuseOpt)
+	return creator.setupFlow(ctx, flowCtx, processorSpecs, tsProcessorSpecs, fuseOpt)
 }
 
 // VectorizeAlwaysException is an object that returns whether or not execution
