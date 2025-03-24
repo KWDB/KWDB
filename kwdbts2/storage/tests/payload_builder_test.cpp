@@ -35,7 +35,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
     system(rm_path.c_str());
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
-    table_ = new TsTable(ctx_, kDbPath, 10086);
+    table_ = new TsTableImpl(ctx_, kDbPath, 10086);
     for (size_t i = 0; i <= HASHPOINT_RANGE; i++) {
       hps_total_.push_back(i);
     }
