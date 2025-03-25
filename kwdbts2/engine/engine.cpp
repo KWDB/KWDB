@@ -730,7 +730,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::DDL_ALTER_COLUMN: {
             DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(incomplete[mtr_id]);
             uint64_t table_id = ddl_log->getObjectID();
-            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
             std::unordered_map<uint64_t, int8_t> range_groups;
             s = table.Init(ctx, range_groups);
             if (s == KStatus::FAIL) {
@@ -758,7 +758,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::CREATE_INDEX: {
             CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(incomplete[mtr_id]);
             uint64_t table_id = index_log->getObjectID();
-            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
             std::unordered_map<uint64_t, int8_t> range_groups;
             s = table.Init(ctx, range_groups);
             if (s == KStatus::FAIL) {
@@ -786,7 +786,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::DROP_INDEX: {
             DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(incomplete[mtr_id]);
             uint64_t table_id = index_log->getObjectID();
-            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
             std::unordered_map<uint64_t, int8_t> range_groups;
             s = table.Init(ctx, range_groups);
             if (s == KStatus::FAIL) {
@@ -847,7 +847,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
       case WALLogType::CREATE_INDEX: {
         CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(wal_log.second);
         uint64_t table_id = index_log->getObjectID();
-        TsTable table = TsTable(ctx, options_.db_path, table_id);
+        TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
         std::unordered_map<uint64_t, int8_t> range_groups;
         s = table.Init(ctx, range_groups);
         if (s == KStatus::FAIL) {
@@ -874,7 +874,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
       case WALLogType::DROP_INDEX: {
         DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(wal_log.second);
         uint64_t table_id = index_log->getObjectID();
-        TsTable table = TsTable(ctx, options_.db_path, table_id);
+        TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
         std::unordered_map<uint64_t, int8_t> range_groups;
         s = table.Init(ctx, range_groups);
         if (s == KStatus::FAIL) {
