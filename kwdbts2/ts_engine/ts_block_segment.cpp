@@ -20,6 +20,11 @@ const char block_data_file_name[] = "block";
 KStatus TsSegmentEntityMetaFile::Open() {
   TSSlice result;
   TsStatus s = file_->Read(0, sizeof(TsEntityMetaFileHeader), &result, reinterpret_cast<char *>(&header_));
+  if (result.len == 0) {
+    // lots of changes are needed here to fix memory issue,
+    // here is just a temporary solution.
+    memset(&header_, 0, sizeof(TsEntityMetaFileHeader));
+  }
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
     header_.magic = TS_SEGMENT_ENTITY_META_MAGIC;
@@ -67,6 +72,11 @@ KStatus TsSegmentEntityMetaFile::GetEntityCurBlockId(uint64_t entity_id, uint64_
 KStatus TsSegmentBlockMetaFile::TsSegmentBlockMetaFile::Open() {
   TSSlice result;
   TsStatus s = file_->Read(0, sizeof(TsBlockFileMetaFileHeader), &result, reinterpret_cast<char *>(&header_));
+  if (result.len == 0) {
+    // lots of changes are needed here to fix memory issue,
+    // here is just a temporary solution.
+    memset(&header_, 0, sizeof(TsBlockFileMetaFileHeader));
+  }
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
     header_.status = TsFileStatus::READY;
