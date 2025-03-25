@@ -594,16 +594,6 @@ class TsTableImpl : public TsTable {
   ~TsTableImpl() override;
 };
 
-class TsTableV2Impl : public TsTable {
- public:
-  TsTableV2Impl() = delete;
-
-  TsTableV2Impl(kwdbContext_p ctx, const std::string &db_path,
-                const KTableKey &table_id);
-
-  ~TsTableV2Impl() override;
-};
-
 // PutAfterProcessInfo records the information that needs to be processed after writing.
 struct PutAfterProcessInfo {
   std::vector<BlockSpan> spans;  // Record the requested space when writing, and roll back when writing fails
