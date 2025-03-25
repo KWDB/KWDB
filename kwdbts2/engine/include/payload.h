@@ -92,6 +92,8 @@ class Payload {
 
   Payload(const std::vector<AttributeInfo>& schema, const std::vector<uint32_t>& valid_cols, TSSlice data);
 
+  Payload(const std::vector<AttributeInfo>& schema, TSSlice data);
+
   ~Payload() {
     if (rec_helper_) delete rec_helper_;
     delete []col_offsets_;
@@ -106,21 +108,25 @@ class Payload {
     return primary_key;
   }
 
-  static uint32_t GetTsVsersionFromPayload(TSSlice* payload) {
+  static uint32_t GetTsVsersionFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<uint32_t*> (payload->data + Payload::ts_version_offset_);
   }
 
-  static uint32_t GetRowCountFromPayload(TSSlice* payload) {
+  static uint32_t GetRowCountFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<int32_t*> (payload->data + Payload::row_num_offset_);
   }
 
-  static uint32_t GetTsVersionFromPayload(TSSlice* payload) {
+  static uint32_t GetTsVersionFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<uint32_t*> (payload->data + ts_version_offset_);
   }
 
   // payload version
   uint32_t GetPayloadVersion() {
     return *reinterpret_cast<uint32_t*> (slice_.data + payload_version_offset_);
+  }
+
+  uint32_t GetDbId() {
+    return *reinterpret_cast<uint32_t*> (slice_.data + db_id_offset_);
   }
 
   int64_t GetTableId() {

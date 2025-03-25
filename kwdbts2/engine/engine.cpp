@@ -34,6 +34,12 @@ extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
 extern std::shared_mutex g_settings_mutex;
 
+KStatus TSEngine::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
+  ctx->ts_engine = this;
+  KStatus ret = DmlExec::ExecQuery(ctx, req, resp);
+  return ret;
+}
+
 namespace kwdbts {
 int32_t EngineOptions::iot_interval  = 864000;
 string EngineOptions::home_;  // NOLINT
@@ -521,12 +527,6 @@ KStatus TSEngineImpl::ApplyBatchRepr(kwdbContext_p ctx, TSSlice* batch) {
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
-  ctx->ts_engine = this;
-  KStatus ret = DmlExec::ExecQuery(ctx, req, resp);
-  return ret;
-}
-
 KStatus TSEngineImpl::LogInit() {
   LogConf cfg = {
     options_.lg_opts.path.c_str(),
@@ -662,11 +662,11 @@ KStatus TSEngineImpl::CreateCheckpointForTable(kwdbts::kwdbContext_p ctx, TSTabl
   if (options_.wal_level == 0) {
     return KStatus::SUCCESS;
   }
-  LOG_DEBUG("creating checkpoint for table %d...", table_id);
+  LOG_DEBUG("creating checkpoint for table %lu...", table_id);
 
   std::shared_ptr<TsTable> table = tables_cache_->Get(table_id);
   if (!table || table->IsDropped()) {
-    LOG_WARN("table %d doesn't exist, %p", table_id, table.get());
+    LOG_WARN("table %lu doesn't exist, %p", table_id, table.get());
     return KStatus::FAIL;
   }
   return table->CreateCheckpoint(ctx);
@@ -1168,7 +1168,7 @@ KStatus TSEngineImpl::TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, ch
   if (mtr_id != 0) {
     if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
-      return s;
+      return KStatus::FAIL;
     }
   }
 
@@ -1200,7 +1200,7 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   if (mtr_id == 0) {
     if (checkpoint(ctx) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)
-      return s;
+      return KStatus::FAIL;
     }
 
     return KStatus::SUCCESS;

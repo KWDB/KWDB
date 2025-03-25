@@ -504,15 +504,16 @@ func (ex *connExecutor) execPreparedirectBind(
 			if err != nil {
 				return err
 			}
-			if !EvalContext.StartSinglenode {
-				//start mode
+
+			if !EvalContext.StartSinglenode || ex.kwengineversion == "2" {
+				// start && single-node KW_ENGINE_VERSION=2 (行存)
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				if err = BuildRowBytesForPrepareTsInsert(ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, EvalContext, table, cfg.NodeInfo.NodeID.Get(), rowTimestamps); err != nil {
 					return err
 				}
 
-			} else {
-				// start-single-node mode
+			} else if ex.kwengineversion == "1" {
+				// single-node KW_ENGINE_VERSION=1 (列存)(默认值为1)
 				priTagValMap := BuildPreparepriTagValMap(bindCmd.Args, di)
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				for _, priTagRowIdx := range priTagValMap {
@@ -521,6 +522,8 @@ func (ex *connExecutor) execPreparedirectBind(
 						return err
 					}
 				}
+			} else {
+				return pgerror.Newf(pgcode.InvalidName, "Error KW_ENGINE_VERSION %s", ex.kwengineversion)
 			}
 
 			numCols := len(ps.Columns)

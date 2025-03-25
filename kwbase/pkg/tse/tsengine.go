@@ -24,7 +24,7 @@
 package tse
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -65,6 +65,9 @@ const (
 	compressInterval = "ts.compress_interval"
 	vacuumInterval   = "ts.vacuum_interval"
 )
+
+// KwEngineVersion indicates which verson storage engine to use
+var KwEngineVersion = envutil.EnvOrDefaultString("KW_ENGINE_VERSION", "1")
 
 // TsPayloadSizeLimit is the max size of per payload.
 var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
@@ -167,6 +170,7 @@ type TsEngine struct {
 	tdb     *C.TSEngine
 	opened  bool
 	openCh  chan struct{}
+	Version string
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -284,6 +288,7 @@ func NewTsEngine(
 		stopper: stopper,
 		cfg:     cfg,
 		openCh:  make(chan struct{}),
+		Version: KwEngineVersion,
 	}
 
 	return r, nil
@@ -342,6 +347,9 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		Trace_on_off_list:         goToTSSlice([]byte(traceLevel)),
 	}
 
+	cEngineVersion := C.CString(r.Version)
+	defer C.free(unsafe.Pointer(cEngineVersion))
+
 	if len(rangeIndex) == 0 {
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
@@ -355,6 +363,7 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				engine_version:    cEngineVersion,
 			},
 			nil,
 			C.uint64_t(0))
@@ -382,6 +391,7 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				engine_version:    cEngineVersion,
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
@@ -614,8 +624,14 @@ func (r *TsEngine) PutData(
 	var affect EntitiesAffect
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
-	status := C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-		&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	var status C.TSStatus
+	if r.Version == "2" {
+		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	} else {
+		status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}

@@ -75,10 +75,12 @@ int TsTableObject::open(const string& table_path, const std::string& db_path, co
 
     cols_info_exclude_dropped_.clear();
     idx_for_valid_cols_.clear();
+    int offset = 0;
     for (int i = 0; i < cols_info_include_dropped_.size(); ++i) {
       if(!cols_info_include_dropped_[i].isFlag(AINFO_DROPPED)) {
         cols_info_exclude_dropped_.emplace_back(cols_info_include_dropped_[i]);
         idx_for_valid_cols_.emplace_back(i);
+        offset += getDataTypeSize(cols_info_include_dropped_[i].type);
       }
     }
 

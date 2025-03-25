@@ -32,6 +32,7 @@ typedef struct {
 // operation. If TSStatus.data == NULL the operation succeeded.
 typedef TSString TSStatus;
 typedef uint64_t TSTableID;
+typedef uint64_t TSEntityID;
 typedef int64_t KTimestamp;
 
 // distribute moudule RangeGroup
@@ -120,6 +121,7 @@ typedef struct {
   uint32_t buffer_pool_size;
   TsLogOptions lg_opts;
   bool is_single_node;
+  const char* engine_version;
 } TSOptions;
 
 typedef enum _EnMqType {

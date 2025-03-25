@@ -1,0 +1,8 @@
+> create ts database test;
+CREATE TS DATABASE
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq');
+INSERT 1
+> insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD', 'qqq1');
+INSERT 1

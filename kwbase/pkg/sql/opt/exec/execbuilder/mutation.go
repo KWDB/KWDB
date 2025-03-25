@@ -1565,29 +1565,40 @@ func BuildPreparePayloadForTsInsert(
 	binary.LittleEndian.PutUint32(payload[offset:], uint32(rowNum))
 	offset += RowNumSize
 
-	if evalCtx.StartSinglenode {
-		if pArgs.DataColNum == 0 {
-			// without data column
-			payload[offset] = byte(2)
-		} else if pArgs.AllTagNum == 0 {
-			// only data column
-			payload[offset] = byte(1)
-		} else {
-			// both tag And data
-			payload[offset] = byte(0)
-		}
-	} else {
-		switch pArgs.RowType {
-		case BothTagAndData:
-			payload[offset] = RowType[BothTagAndData]
-		case OnlyData:
-			payload[offset] = RowType[OnlyData]
-		case OnlyTag:
-			payload[offset] = RowType[OnlyTag]
-		default:
-			payload[offset] = RowType[BothTagAndData]
-		}
+	switch pArgs.RowType {
+	case BothTagAndData:
+		payload[offset] = RowType[BothTagAndData]
+	case OnlyData:
+		payload[offset] = RowType[OnlyData]
+	case OnlyTag:
+		payload[offset] = RowType[OnlyTag]
+	default:
+		payload[offset] = RowType[BothTagAndData]
 	}
+
+	// if evalCtx.StartSinglenode {
+	// 	if pArgs.DataColNum == 0 {
+	// 		// without data column
+	// 		payload[offset] = byte(2)
+	// 	} else if pArgs.AllTagNum == 0 {
+	// 		// only data column
+	// 		payload[offset] = byte(1)
+	// 	} else {
+	// 		// both tag And data
+	// 		payload[offset] = byte(0)
+	// 	}
+	// } else {
+	// 	switch pArgs.RowType {
+	// 	case BothTagAndData:
+	// 		payload[offset] = RowType[BothTagAndData]
+	// 	case OnlyData:
+	// 		payload[offset] = RowType[OnlyData]
+	// 	case OnlyTag:
+	// 		payload[offset] = RowType[OnlyTag]
+	// 	default:
+	// 		payload[offset] = RowType[BothTagAndData]
+	// 	}
+	// }
 	offset++
 
 	// primaryTag len

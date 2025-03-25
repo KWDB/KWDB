@@ -11,6 +11,7 @@
 
 #include "libkwdbts2.h"
 #include "th_kwdb_dynamic_thread_pool.h"
+#include "util/random.h"
 #include "gtest/gtest.h"
 
 std::string kDbPath = "./test_db";  // NOLINT
@@ -49,6 +50,7 @@ class TestDB : public ::testing::Test {
   void OpenDB() {
     TSSlice s_path{kDbPath.data(), kDbPath.size()};
     opts_.lg_opts.Dir = s_path;
+    opts_.engine_version = "1";
     TSStatus s = TSOpen(&ts_db_, s_path, opts_, nullptr, 1);
     ASSERT_EQ(s.data, nullptr);
     free(s.data);

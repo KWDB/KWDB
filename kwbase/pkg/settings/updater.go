@@ -24,7 +24,7 @@
 package settings
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //

@@ -14,6 +14,8 @@
 #include <utility>
 #include "sys_utils.h"
 
+extern int g_engine_version;
+
 namespace kwdbts {
 
 WALFileMgr::WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt)
@@ -98,11 +100,13 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, uint16_t start_fi
     delete[] header_value;
     delete[] eb_value;
   } else {
-    // we should check the header of the existing log file to ensure it's old enough to been overwritten.
-    HeaderBlock old_header = getHeader(start_file_no);
-    if (old_header.getCheckpointNo() == header.getCheckpointNo()) {
-      LOG_ERROR("Failed to init the WAL log file from %s, require checkpoint first", path.c_str())
-      return FAIL;
+    if (g_engine_version == 1) {
+      // we should check the header of the existing log file to ensure it's old enough to been overwritten.
+      HeaderBlock old_header = getHeader(start_file_no);
+      if (old_header.getCheckpointNo() == header.getCheckpointNo()) {
+        LOG_ERROR("Failed to init the WAL log file from %s, require checkpoint first", path.c_str())
+        return FAIL;
+      }
     }
 
     file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);

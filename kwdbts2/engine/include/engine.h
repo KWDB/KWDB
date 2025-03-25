@@ -27,6 +27,7 @@
 #include "cm_kwdb_context.h"
 #include "ts_table.h"
 #include "st_logged_entity_group.h"
+#include "ts_table_schema_manager.h"
 
 using namespace kwdbts; // NOLINT
 const TSStatus kTsSuccess = {NULL, 0};
@@ -107,6 +108,12 @@ struct TSEngine {
    */
   virtual KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                              ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) = 0;
+
+
+  virtual KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+                                 std::shared_ptr<TsTableSchemaManager>& schema) {
+    return KStatus::FAIL;
+  }
 
   /**
   * @brief get meta info of ts table
@@ -345,7 +352,7 @@ struct TSEngine {
  *
  * @return KStatus
  */
-  virtual KStatus Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) = 0;
+  virtual KStatus Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp);
 
   /**
   * @brief Flush wal to disk.
@@ -611,7 +618,6 @@ class TSEngineImpl : public TSEngine {
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
                               const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
 
-  KStatus Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) override;
 
   KStatus FlushBuffer(kwdbContext_p ctx) override;
 
@@ -707,6 +713,9 @@ class TSEngineImpl : public TSEngine {
 
   int IsSingleNode();
 
+  static KStatus parseMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
+                          std::vector<TagInfo>& tag_schema);
+
  private:
   string ts_store_path_;
   EngineOptions options_;
@@ -723,9 +732,6 @@ class TSEngineImpl : public TSEngine {
   WALMgr* wal_sys_{nullptr};
   TSxMgr* tsx_manager_sys_{nullptr};
   std::map<uint64_t, uint64_t> range_indexes_map_{};
-
-  KStatus parseMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
-                          std::vector<TagInfo>& tag_schema);
 
   // insert snapshot object into map snapshots_, and allocate snaphost id for this object.
   uint64_t insertToSnapshots(TsTableEntitiesSnapshot* snapshot);

@@ -108,6 +108,7 @@ set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
         ${KWDBTS_PROJ_DIR}/mmap/include
         ${KWDBTS_PROJ_DIR}/common/include
         ${KWDBTS_PROJ_DIR}/engine/include
+        ${KWDBTS_PROJ_DIR}/ts_engine/include
         ${KWDBTS_PROJ_DIR}/storage/include
         ${KWDBTS_PROJ_DIR}/roachpb
         ${KWDBTS_PROJ_DIR}/latch/include
@@ -117,10 +118,18 @@ set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
 ## Compile to generate an executable file
 aux_source_directory(src/worker WORKER_SRCS)
 
+set(ROCKSDB_INCLUDE ${KWDB_PROJECT_DIR}/kwbase/c-deps/rocksdb/include ${KWDB_PROJECT_DIR}/kwbase/c-deps/rocksdb)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(ROCKSDB_LIB $ENV{GOPATH}/native/rocksdb_assert/librocksdb.a)
+else ()
+  set(ROCKSDB_LIB $ENV{GOPATH}/native/rocksdb/librocksdb.a)
+endif ()
+
 aux_source_directory(src/worker/embed EMBED_SRCS)
 add_executable(kdp_bench src/kdp_bench.cpp ${WORKER_SRCS} ${EMBED_SRCS})
-target_include_directories(kdp_bench PRIVATE ${embed_includes} )
-target_link_libraries(kdp_bench PUBLIC kwdbts2 protobuf common ssl atomic)
+add_dependencies(kdp_bench kwbase)
+target_include_directories(kdp_bench PRIVATE ${embed_includes} ${ROCKSDB_INCLUDE})
+target_link_libraries(kdp_bench PUBLIC kwdbts2 ${ROCKSDB_LIB} protobuf common ssl atomic snappy)
 
 INSTALL(FILES
         ${PROJECT_BINARY_DIR}/kdp_bench

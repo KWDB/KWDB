@@ -263,6 +263,43 @@ int TagTable::InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, in
   return 0;
 }
 
+// insert tag record
+int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id) {
+  // 1. check version
+  auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
+  if (nullptr == tag_version_object) {
+    LOG_ERROR("Tag table version[%u] doesnot exist.", payload.GetTableVersion());
+    return -1;
+  }
+  TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;
+  auto tag_partition_table = m_partition_mgr_->GetPartitionTable(tag_partition_version);
+  if (nullptr == tag_partition_table) {
+    LOG_ERROR("Tag partition table version[%u] doesnot exist.", tag_partition_version);
+    return -1;
+  }
+
+  // 2. insert partition data
+  size_t row_no = 0;
+  if (tag_partition_table->insert(entity_id, sub_group_id, payload.GetHashPoint(),
+                                  payload.GetTags().data, &row_no) < 0) {
+    LOG_ERROR("insert tag partition table[%s/%s] failed. ",
+              tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
+    return -1;
+  }
+  // 3. insert index data
+  TSSlice tmp_slice = payload.GetPrimaryTag();
+  if (m_index_->insert(tmp_slice.data, tmp_slice.len, tag_partition_version, row_no) < 0) {
+    LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
+    return -1;
+  }
+
+  // 4. set undelete mark
+  tag_partition_table->startRead();
+  tag_partition_table->unsetDeleteMark(row_no);
+  tag_partition_table->stopRead();
+  return 0;
+}
+
 // update tag record
 int TagTable::UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
   // 1. delete
@@ -1221,7 +1258,7 @@ int TagTable::initPrevEntityRowData(ErrorInfo& err_info) {
         for (int idx = 0; idx < entity_id_list.size(); idx++) {
           uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id_list[idx].entityId) << 32) | entity_id_list[idx].subGroupId;
           if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t), it.first, row) < 0) {
-            LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", it.first, row);
+            LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %d ", it.first, row);
             src_tag_partition_tbl->stopRead();
             return -1;
           }
@@ -1294,6 +1331,31 @@ int TagTable::loadAllVersions(std::vector<TableVersion>& all_versions, ErrorInfo
   }
   return 0;
 }
+
+KStatus TagTable::GetMeta(uint64_t table_id, uint32_t table_version, roachpb::CreateTsTable* meta) {
+  auto pt = GetTagPartitionTableManager()->GetPartitionTable(table_version);
+  if (pt == nullptr) {
+    return KStatus::FAIL;
+  }
+  auto tag_cols = pt->getSchemaInfo();
+  for (auto tag_col : tag_cols) {
+    auto tag_info = tag_col->attributeInfo();
+    // meta's column pointer.
+    roachpb::KWDBKTSColumn* col = meta->add_k_column();
+    // XXX Notice: tag_info don't has tag column name,
+    if (!ParseTagColumnInfo(tag_info, *col)) {
+      LOG_ERROR("GetColTypeStr[%d] failed during generate tag Schema", tag_info.m_data_type);
+      return KStatus::FAIL;
+    }
+    // Set storage length.
+    if (col->has_storage_len() && col->storage_len() == 0) {
+      col->set_storage_len(tag_info.m_size);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TagTable::Init() { return KStatus::SUCCESS; }
 
 // wal
 void TagTable::sync_with_lsn(kwdbts::TS_LSN lsn) {

@@ -72,7 +72,12 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     if (stat != KStatus::SUCCESS) {
       return KBStatus::NOT_FOUND("st_inst_->GetSchemaInfo failed. tbl:" + std::to_string(w_table));
     }
-    genPayloadData(tag_schema, data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+    if (params_.engine_version == "2") {
+      genRowBasedPayloadData(tag_schema, data_schema, w_table, 1, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+    } else {
+      genPayloadData(tag_schema, data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+    }
+    
     KWDB_DURATION(_row_prepare_time);
   }
 
@@ -212,6 +217,7 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
   }
 
   ResultSet res;
+  res.setColumnNum(scan_cols.size());
   uint32_t count = 0;
   bool is_finished = false;
   do {

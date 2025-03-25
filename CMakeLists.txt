@@ -40,12 +40,12 @@ endif ()
 # gcc version verification
 message(STATUS "GCC version:" ${CMAKE_CXX_COMPILER_VERSION})
 if (CMAKE_COMPILER_IS_GNUCC)
-    if(CMAKE_C_COMPILER_VERSION VERSION_LESS 7.3 OR 
-        CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3)
+    if(CMAKE_C_COMPILER_VERSION VERSION_LESS 7.3 OR
+            CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3)
         message(WARNING "GNU C/C++ compiler version should greater and equal than 7.3")
     endif()
     if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 13.2 OR
-        CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 13.2)
+            CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 13.2)
         message(WARNING "GNU C/C++ compiler version should less and equal than 13.2")
     endif()
 endif()
@@ -110,8 +110,8 @@ endif()
 
 option(WITH_ASAN "enable asan check" OFF)
 if (WITH_ASAN)
-  message(STATUS "WITH_ASAN:ON, enable asan check, release build should not enable the option")
-  set(WITH_ASAN ON)
+    message(STATUS "WITH_ASAN:ON, enable asan check, release build should not enable the option")
+    set(WITH_ASAN ON)
 endif()
 
 if (KMALLOC_DEBUGGER)
@@ -180,28 +180,28 @@ message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
 # option(PROTOBUF_DIR "Compile with external protobuf." OFF)
 
 if ("${PROTOBUF_DIR}" STREQUAL "")
-  # Find the protobuf library installed on your system
-  find_package(Protobuf REQUIRED)
-  if (PROTOBUF_FOUND)
-    message(STATUS "protobuf found")
-    set(PROTOBUF_LIB protobuf)
-    set(PROTOBUF_C protoc)
-  else ()
-    message(FATAL_ERROR "Cannot find Protobuf")
-  endif ()
+    # Find the protobuf library installed on your system
+    find_package(Protobuf REQUIRED)
+    if (PROTOBUF_FOUND)
+        message(STATUS "protobuf found")
+        set(PROTOBUF_LIB protobuf)
+        set(PROTOBUF_C protoc)
+    else ()
+        message(FATAL_ERROR "Cannot find Protobuf")
+    endif ()
 else()
-  if (NOT EXISTS ${PROTOBUF_DIR}/include)
-    message(FATAL_ERROR "Protobuf include directory not found : ${PROTOBUF_DIR}/include")
-  endif()
-  include_directories(${PROTOBUF_DIR}/include)
-  if (NOT EXISTS ${PROTOBUF_DIR}/lib)
-    message(FATAL_ERROR "Protobuf library directory not found : ${PROTOBUF_DIR}/lib")
-  endif()
-  link_directories(${PROTOBUF_DIR}/lib)
-  if (NOT EXISTS ${PROTOBUF_DIR}/bin/protoc)
-    message(FATAL_ERROR "Protobuf compiler not found : ${PROTOBUF_DIR}/bin/protoc")
-  endif()
-  set(PROTOBUF_C ${PROTOBUF_DIR}/bin/protoc)
+    if (NOT EXISTS ${PROTOBUF_DIR}/include)
+        message(FATAL_ERROR "Protobuf include directory not found : ${PROTOBUF_DIR}/include")
+    endif()
+    include_directories(${PROTOBUF_DIR}/include)
+    if (NOT EXISTS ${PROTOBUF_DIR}/lib)
+        message(FATAL_ERROR "Protobuf library directory not found : ${PROTOBUF_DIR}/lib")
+    endif()
+    link_directories(${PROTOBUF_DIR}/lib)
+    if (NOT EXISTS ${PROTOBUF_DIR}/bin/protoc)
+        message(FATAL_ERROR "Protobuf compiler not found : ${PROTOBUF_DIR}/bin/protoc")
+    endif()
+    set(PROTOBUF_C ${PROTOBUF_DIR}/bin/protoc)
 
 endif()
 
@@ -217,23 +217,38 @@ add_subdirectory(common)
 add_subdirectory(kwdbts2)
 
 # compile kwbase
-if (BUILD_KWBASE)
+if (BUILD_KWBASE OR WITH_TESTS)
     set(KWBASE_MAKEFILE "Makefile")
     if(NOT KWBASE_OSS)
         set(KWBASE_MAKEFILE "Makefile_ent")
     endif()
 
-    add_custom_target(
-        kwbase ALL
-        COMMAND make build -f ${KWBASE_MAKEFILE}
-        PROTOBUF_DIR=${PROTOBUF_DIR}
-        OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
-        KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
-        GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
-        COMMENT "====== compile kwbase ======"
-        DEPENDS kwdbts2 common
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_custom_target(
+                kwbase ALL
+                COMMAND make build -f ${KWBASE_MAKEFILE}
+                PROTOBUF_DIR=${PROTOBUF_DIR}
+                OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
+                KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
+                GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
+                ENABLE_ROCKSDB_ASSERTIONS=1
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
+                COMMENT "====== compile kwbase ======"
+                DEPENDS kwdbts2 common
         )
+    else ()
+        add_custom_target(
+                kwbase ALL
+                COMMAND make build -f ${KWBASE_MAKEFILE}
+                PROTOBUF_DIR=${PROTOBUF_DIR}
+                OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
+                KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
+                GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
+                COMMENT "====== compile kwbase ======"
+                DEPENDS kwdbts2 common
+        )
+    endif ()
 endif()
 
 if (WITH_TESTS)

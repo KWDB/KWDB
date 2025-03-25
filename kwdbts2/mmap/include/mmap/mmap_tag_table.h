@@ -26,6 +26,9 @@
 #include "mmap_tag_column_table.h"
 #include "mmap_tag_version_manager.h"
 #include "mmap_tag_column_table_aux.h"
+#include "column_utils.h"
+#include "ts_payload.h"
+
 
 extern uint32_t k_entity_group_id_size;
 extern uint32_t k_per_null_bitmap_size;
@@ -75,7 +78,7 @@ class TagTable {
 
   // insert tag record
   int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
-
+  int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id);
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
 
@@ -124,6 +127,10 @@ class TagTable {
   inline TagTableVersionManager* GetTagTableVersionManager() {return m_version_mgr_;}
 
   inline TagPartitionTableManager* GetTagPartitionTableManager() {return m_partition_mgr_;}
+
+  KStatus GetMeta(uint64_t table_id, uint32_t table_version, roachpb::CreateTsTable* meta);
+
+  KStatus Init();
 
   // wal
   void sync_with_lsn(kwdbts::TS_LSN lsn);

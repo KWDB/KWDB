@@ -23,6 +23,7 @@
 #include "st_config.h"
 #include "sys_utils.h"
 #include "st_tier.h"
+#include "ts_engine.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -33,6 +34,7 @@ DedupRule g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
 std::shared_mutex g_settings_mutex;
 bool g_engine_initialized = false;
 bool g_go_start_service = true;
+int g_engine_version{1};
 TSEngine* g_engine_ = nullptr;
 
 std::atomic<bool> g_is_vacuuming{false};
@@ -113,13 +115,24 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
     return ToTsStatus("unsquashfs is not installed, please install squashfs-tools");
   }
 
-  InitCompressInfo(opts.db_path);
-
   TSEngine* ts_engine;
-  s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
-  if (s == KStatus::FAIL) {
-    return ToTsStatus("OpenTSEngine Internal Error!");
+  if (strcmp(options.engine_version, "2") == 0) {
+    g_engine_version = 2;
+    auto engine = new TSEngineV2Impl(opts);
+    auto s = engine->Init(ctx);
+    if (s != KStatus::SUCCESS) {
+      return ToTsStatus("open TSEngineV2Impl Error!");
+    }
+    LOG_INFO("TSEngineV2Impl created success.");
+    ts_engine = engine;
+  } else {
+    InitCompressInfo(opts.db_path);
+    s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
+    if (s == KStatus::FAIL) {
+      return ToTsStatus("OpenTSEngine Internal Error!");
+    }
   }
+
   *engine = ts_engine;
   g_engine_ = ts_engine;
   g_engine_initialized = true;
@@ -983,30 +996,36 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetTsTable Error!");
   }
-  TSSlice payload;
   for (size_t i = 0; i < payload_num; i++) {
-    s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
-    if (s != KStatus::SUCCESS) {
-      uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
-      if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
-        LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
-        return ToTsStatus("CheckAndAddSchemaVersion Error!");
-      }
-      if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
-        LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
-        return ToTsStatus("ConvertRowTypePayload Error!");
+    TSSlice payload;
+    if (g_engine_version == 1) {
+      s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
+      if (s != KStatus::SUCCESS) {
+        uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
+        if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
+          LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
+          return ToTsStatus("CheckAndAddSchemaVersion Error!");
+        }
+        if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
+          LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
+          return ToTsStatus("ConvertRowTypePayload Error!");
+        }
       }
     }
-    // todo(liangbo01) current interface dedup result no support multi-payload insert.
-    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
-                        inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+    Defer defer([&](){ if (g_engine_version == 1) { free(payload.data); }});
+    if (g_engine_version == 1) {
+      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
+                         inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+    } else {
+      // todo(liangbo01) current interface dedup result no support multi-payload insert.
+      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload_row[i], payload_num, mtr_id,
+                          inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+    }
     if (s != KStatus::SUCCESS) {
-      free(payload.data);
       std::ostringstream ss;
       ss << tmp_range_group_id;
       return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
     }
-    free(payload.data);
   }
   return kTsSuccess;
 }

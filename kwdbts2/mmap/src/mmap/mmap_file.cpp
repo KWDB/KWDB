@@ -183,7 +183,7 @@ int MMapFile::resize(size_t length) {
         return errnumToErrorCode(err_code);
       }
     } else {
-      if (ftruncate(fd, length) < 0) {
+      if ((err_code = ftruncate(fd, length)) < 0) {
         close(fd);
         LogMMapFileError("resize file");
         return errnumToErrorCode(err_code);

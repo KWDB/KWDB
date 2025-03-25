@@ -104,7 +104,6 @@ class TsTableObject {
   string tbl_sub_path_;
 
   vector<AttributeInfo> cols_info_include_dropped_;
-
   vector<AttributeInfo> cols_info_exclude_dropped_;
   // Index for valid columns, and the index number is corresponding to cols_info_include_dropped_
   vector<uint32_t> idx_for_valid_cols_;

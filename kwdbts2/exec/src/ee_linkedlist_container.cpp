@@ -55,8 +55,8 @@ KStatus LinkedListContainer::AddLinkedList(LinkedListPtr linked_list) {
     return KStatus::FAIL;
   }
   // copy data into mmap file
-  memcpy(mmap_file_->memAddr() + current_data_size_, linked_list->row_indice_list_,
-        linked_list->row_count_*LINKED_LIST_ENTRY_SIZE);
+  memcpy(reinterpret_cast<char*>(mmap_file_->memAddr()) + current_data_size_,
+         linked_list->row_indice_list_, linked_list->row_count_ * LINKED_LIST_ENTRY_SIZE);
   // reset the data chunk buffer to mmap file
   linked_list->ResetDataPtr(reinterpret_cast<RowIndice*>(mmap_file_->memAddr()) + current_data_size_);
 
@@ -75,7 +75,7 @@ KStatus LinkedListContainer::InitMmapFile() {
   }
   error_code = mmap_file_->openTemp();
   if (error_code < 0) {
-    LOG_ERROR("failed to create temporary mmap file, error: %s", error_code);
+    LOG_ERROR("failed to create temporary mmap file, error: %d", error_code);
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;

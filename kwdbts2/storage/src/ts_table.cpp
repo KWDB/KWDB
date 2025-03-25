@@ -1436,7 +1436,7 @@ KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& ta
   size_t data_len = 0;
   char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
   if (error != nullptr) {
-    LOG_ERROR(error);
+    LOG_ERROR("%s", error);
     return KStatus::FAIL;
   }
   roachpb::CreateTsTable meta;
@@ -2531,7 +2531,7 @@ KStatus TsTable::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityRe
                                                                 iter, entity_groups_.begin()->second,
                                                                 offset, limit, reverse);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("cannot create offset iterator for entitygroup[%lu], subgroup[%u]");
+    LOG_ERROR("cannot create offset iterator for entitygroup[%lu], subgroup", entity_groups_.begin()->first);
     return s;
   }
 

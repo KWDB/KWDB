@@ -171,6 +171,8 @@ VERBOSE :=
 ## Indicate the base root directory where to install
 DESTDIR :=
 
+NCPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null)
+
 DUPLFLAGS    := -t 100
 # -gcflags=all="-N -l"  go attach need add this param
 GOFLAGS      :=
@@ -236,7 +238,30 @@ ifdef KWDB_BUILD_DIR
 	KWDB_LIB_DIR = $(KWDB_BUILD_DIR)/lib
 endif
 
-LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN
+BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
+
+# In MinGW, cgo flags don't handle Unix-style paths, so convert our base path to
+# a Windows-style path.
+#
+# TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
+# everywhere else.
+ifdef host-is-mingw
+BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
+endif
+
+# User-requested build variants.
+ENABLE_LIBROACH_ASSERTIONS ?=
+ENABLE_ROCKSDB_ASSERTIONS ?=
+
+CRYPTOPP_DIR := $(BUILD_DIR)/cryptopp$(if $(use-msan),_msan)
+LIBUNWIND_DIR := $(BUILD_DIR)/libunwind$(if $(use-msan),_msan)
+JEMALLOC_DIR := $(BUILD_DIR)/jemalloc$(if $(use-msan),_msan)
+ROCKSDB_DIR  := $(BUILD_DIR)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
+SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
+LIBEDIT_DIR  := $(BUILD_DIR)/libedit$(if $(use-msan),_msan)
+LIBROACH_DIR := $(BUILD_DIR)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
+
+LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$(ROCKSDB_DIR),-rpath,$(SNAPPY_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN
 # We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
 # because LDFLAGS has built-in semantics that don't make sense with the Go
 # toolchain.
@@ -455,29 +480,6 @@ LIBROACH_SRC_DIR := $(C_DEPS_DIR)/libroach
 # Derived build variants.
 use-stdmalloc          := $(findstring stdmalloc,$(TAGS))
 use-msan               := $(findstring msan,$(GOFLAGS))
-
-# User-requested build variants.
-ENABLE_LIBROACH_ASSERTIONS ?=
-ENABLE_ROCKSDB_ASSERTIONS ?=
-
-BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
-
-# In MinGW, cgo flags don't handle Unix-style paths, so convert our base path to
-# a Windows-style path.
-#
-# TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
-# everywhere else.
-ifdef host-is-mingw
-BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
-endif
-
-CRYPTOPP_DIR := $(BUILD_DIR)/cryptopp$(if $(use-msan),_msan)
-LIBUNWIND_DIR := $(BUILD_DIR)/libunwind$(if $(use-msan),_msan)
-JEMALLOC_DIR := $(BUILD_DIR)/jemalloc$(if $(use-msan),_msan)
-ROCKSDB_DIR  := $(BUILD_DIR)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
-SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
-LIBEDIT_DIR  := $(BUILD_DIR)/libedit$(if $(use-msan),_msan)
-LIBROACH_DIR := $(BUILD_DIR)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
 
 LIBCRYPTOPP := $(CRYPTOPP_DIR)/libcryptopp.a
 LIBUNWIND   := $(LIBUNWIND_DIR)/src/.libs/libunwind.a
@@ -1470,6 +1472,7 @@ logictest-bins := bin/logictest bin/logictestopt
 # Additional dependencies for binaries that depend on generated code.
 #
 # TODO(benesch): Derive this automatically. This is getting out of hand.
+bin/execgen: $(LIBROCKSDB) $(LIBSNAPPY) $(LIBJEMALLOC)
 bin/workload bin/execgen bin/roachtest $(logictest-bins): $(SQLPARSER_TARGETS) $(PROTOBUF_TARGETS)
 bin/workload bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
 bin/roachtest $(logictest-bins): $(C_LIBS) $(CGO_FLAGS_FILES) $(OPTGEN_TARGETS)
