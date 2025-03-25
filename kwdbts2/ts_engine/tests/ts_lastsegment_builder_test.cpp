@@ -39,8 +39,10 @@ void Tester(int nrow, const std::string &filename) {
     s = schema_mgr->GetTagMeta(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
-    auto file = std::make_unique<TsMMapFile>(filename, false);
-    TsLastSegmentBuilder builder(mgr.get(), std::move(file));
+    TsLastSegmentManager last_segment_mgr("./");
+    std::shared_ptr<TsLastSegment> last_segment;
+    last_segment_mgr.NewLastSegment(last_segment);
+    TsLastSegmentBuilder builder(mgr.get(), last_segment);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};
@@ -67,7 +69,7 @@ void Tester(int nrow, const std::string &filename) {
   int expected_nrows = nrow;
   nrow = 0;
   for (int i = 0; i < nblock; ++i) {
-    TsLastSegmentMetricIndexBlock idx_block;
+    TsLastSegmentBlockIndex idx_block;
     file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice,
                reinterpret_cast<char *>(&idx_block));
     // char buf[32];
@@ -78,10 +80,12 @@ void Tester(int nrow, const std::string &filename) {
 }
 
 TEST(LastSegmentBuilder, WriteAndRead) {
-  Tester(1, "last1");
   std::filesystem::remove_all("schema");
-  std::filesystem::remove("last1");
-  Tester(12345, "last2");
+  std::filesystem::remove("last.ver-0001");
+  Tester(1, "last.ver-0001");
+  std::filesystem::remove_all("schema");
+  std::filesystem::remove("last.ver-0001");
+  Tester(12345, "last.ver-0001");
   // std::filesystem::remove_all("schema");
   // std::filesystem::remove("last2");
 }

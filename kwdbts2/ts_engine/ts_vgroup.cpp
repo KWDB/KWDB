@@ -186,6 +186,10 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
   return KStatus::SUCCESS;
 }
 
+TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
+  return schema_mgr_;
+}
+
 TsVGroupPartition* TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
   auto partition_manager = partitions_[database_id].get();
   if (partition_manager == nullptr) {
@@ -258,10 +262,10 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
 
       auto it = builders.find(partition);
       if (it == builders.end()) {
-        std::unique_ptr<TsFile> last_file;
-        partition->NewLastFile(&last_file);
+        std::shared_ptr<TsLastSegment> last_segment;
+        partition->NewLastSegment(last_segment);
         auto result =
-            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, std::move(last_file)}});
+            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
         it = result.first;
       }
 
@@ -296,7 +300,7 @@ TsVGroupPartition* PartitionManager::Get(int64_t timestamp, bool create_if_not_e
     int64_t start = idx * interval_;
     int64_t end = start + interval_;
     auto root = vgroup_->GetPath();
-    auto partition = std::make_unique<TsVGroupPartition>(root, database_id_, start, end);
+    auto partition = std::make_unique<TsVGroupPartition>(root, database_id_, vgroup_->GetSchemaMgr(), start, end);
     partition->Open();
     auto [it, success] = partitions_.emplace(idx, std::move(partition));
     assert(success);

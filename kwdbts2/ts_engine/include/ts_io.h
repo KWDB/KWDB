@@ -25,13 +25,18 @@
 #include <filesystem>
 #include <string>
 
+#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "rocksdb/status.h"
 #include "ts_slice.h"
 #include "ts_status.h"
-#include "lg_api.h"
 
 namespace kwdbts {
+
+enum TsFileStatus {
+  NOT_READY = 0,
+  READY = 1,
+};
 
 class TsFile {
  protected:
@@ -65,6 +70,8 @@ class TsFile {
   virtual TsStatus Close() = 0;
 
   void MarkDelete() { delete_after_free.store(true); }
+
+  std::string GetFilePath() { return filename_.string(); }
 };
 
 class TsMMapFile final : public TsFile {
