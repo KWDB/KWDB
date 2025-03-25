@@ -81,7 +81,9 @@ KBStatus TSEntityGroupWriteWorkerWithScan::do_work(KTimestamp  new_ts) {
     std::vector<EntityResultIndex> entityIdList;
     ResultSet res;
     uint32_t count;
-    s = entity_group_->GetEntityIdList(ctx, primary_tags, scan_tags, &entityIdList, &res, &count);
+    std::vector<uint64_t/*index_id*/> tags_index_id{};
+    std::vector<void*> tags{};
+    s = entity_group_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entityIdList, &res, &count);
     if (entityIdList.size() != 1) {
       return KBStatus(StatusCode::RError, "search entity failed.");
     }
@@ -146,7 +148,9 @@ KBStatus TSEntityGroupScanWorker::do_work(KTimestamp  new_ts) {
     std::vector<void*> primary_tags;
     primary_tags.push_back(&w_table);
     std::vector<uint32_t> scan_tags;
-    s = entity_group_->GetEntityIdList(ctx, primary_tags, scan_tags, &entityIdList, &res, &count);
+    std::vector<uint64_t/*index_id*/> tags_index_id{};
+    std::vector<void*> tags{};
+    s = entity_group_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entityIdList, &res, &count);
     if (s != KStatus::SUCCESS || entityIdList.size() != 1) {
       sleep(1);
       return KBStatus(StatusCode::NotFound, "GetEntityIdList");
