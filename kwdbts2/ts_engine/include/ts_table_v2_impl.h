@@ -12,17 +12,20 @@
 
 #include <string>
 #include "ts_table.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
 class TsTableV2Impl : public TsTable {
  public:
-  TsTableV2Impl() = delete;
-
+  TsTableV2Impl(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
   TsTableV2Impl(kwdbContext_p ctx, const std::string &db_path,
                 const KTableKey &table_id);
 
   ~TsTableV2Impl() override;
+
+ private:
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_{nullptr};
 };
 
 }  // namespace kwdbts

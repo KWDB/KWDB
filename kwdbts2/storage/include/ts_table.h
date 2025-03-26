@@ -49,7 +49,7 @@ const uint64_t default_entitygroup_id_in_dist_v2 = 1;
 
 class TsTable {
  public:
-  TsTable() = delete;
+  TsTable();
 
   TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id);
 

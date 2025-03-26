@@ -34,6 +34,15 @@ extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
 extern std::shared_mutex g_settings_mutex;
 
+TSEngine::TSEngine() {
+  tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
+}
+
+TSEngine::~TSEngine() {
+  DestoryExecutor();
+  delete tables_cache_;
+}
+
 KStatus TSEngine::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
   ctx->ts_engine = this;
   KStatus ret = DmlExec::ExecQuery(ctx, req, resp);
@@ -82,7 +91,6 @@ TSEngineImpl::TSEngineImpl(kwdbContext_p ctx, const std::string& ts_store_path, 
                            ts_store_path_(ts_store_path), options_(engine_options) {
   LogInit();
   tables_lock_ = new KLatch(LATCH_ID_TSTABLE_CACHE_LOCK);
-  tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
 }
 
 TSEngineImpl::~TSEngineImpl() {
@@ -92,8 +100,6 @@ TSEngineImpl::~TSEngineImpl() {
   delete wal_sys_;
   wal_sys_ = nullptr;
 
-  DestoryExecutor();
-  delete tables_cache_;
   delete tables_lock_;
   KWDBDynamicThreadPool::GetThreadPool().Stop();
   LOG_DESTORY();

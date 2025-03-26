@@ -66,7 +66,7 @@ class TSEngineV2Impl : public TSEngine {
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    ts_table = (dynamic_pointer_cast<TsTable>(schema));
+    ts_table = tables_cache_->Get(table_id);
     return KStatus::SUCCESS;
   }
 
