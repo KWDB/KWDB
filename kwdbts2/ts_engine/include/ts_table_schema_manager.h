@@ -106,6 +106,10 @@ class TsTableSchemaManager {
     return cur_schema_version_;
   }
 
+  TSTableID GetTableId() {
+    return table_id_;
+  }
+
   KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
                             ErrorInfo& err_info, uint32_t cur_version = 0);
 

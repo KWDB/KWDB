@@ -41,7 +41,8 @@ TsEnv TsVGroup::env_;
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const std::filesystem::path& db_path, uint32_t vgroup_id,
                            TsEngineSchemaManager* schema_mgr)
-    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), path_(db_path / GetFileName()), entity_counter_(0) {}
+    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr),
+      mem_segment_mgr_(this), path_(db_path / GetFileName()), entity_counter_(0) {}
 
 TsVGroup::~TsVGroup() {
   if (db_ != nullptr) {

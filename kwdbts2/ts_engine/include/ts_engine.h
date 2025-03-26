@@ -28,6 +28,7 @@
 #include "ts_vgroup.h"
 #include "ts_engine_schema_manager.h"
 #include "engine.h"
+#include "ts_table_v2.h"
 
 namespace kwdbts {
 
@@ -41,6 +42,8 @@ class TSEngineV2Impl : public TSEngine {
   std::vector<std::unique_ptr<TsVGroup>> table_grps_;
   int table_grp_max_num_{0};
   EngineOptions options_;
+  std::unordered_map<TSTableID, std::shared_ptr<TsTableV2>> tables_;
+  std::mutex table_mutex_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -61,12 +64,25 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                      ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override {
     // TODO(liangbo01)  need input change version
-    std::shared_ptr<TsTableSchemaManager> schema;
-    auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
-    if (s != KStatus::SUCCESS) {
-      return s;
+    table_mutex_.lock();
+    auto it = tables_.find(table_id);
+    if (it != tables_.end()) {
+      ts_table = it->second;
+    } else {
+      std::shared_ptr<TsTableSchemaManager> schema;
+      auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
+        return s;
+      }
+      auto table = std::make_shared<TsTableV2>(schema, table_grps_);
+      if (table.get() == nullptr) {
+        LOG_ERROR("make TsTableV2 failed for table[%lu]", table_id);
+        return KStatus::FAIL;
+      }
+      tables_[table_id] = table;
+      ts_table = table;
     }
-    ts_table = (dynamic_pointer_cast<TsTable>(schema));
     return KStatus::SUCCESS;
   }
 
