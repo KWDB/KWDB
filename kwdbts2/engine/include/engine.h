@@ -110,7 +110,7 @@ struct TSEngine {
                              ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) = 0;
 
 
-  virtual KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+  virtual KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                                  std::shared_ptr<TsTableSchemaManager>& schema) {
     return KStatus::FAIL;
   }
