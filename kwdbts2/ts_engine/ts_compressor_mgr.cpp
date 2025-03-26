@@ -95,6 +95,7 @@ TSSlice ColumnCompressorMgr::Encode(TSSlice plain, TSSlice bitmap, uint32_t coun
     case TIMESTAMP64_LSN:
     case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_LSN_NANO:
+    case INT64:
       type = TIMESTAMP64;
     default:
       break;

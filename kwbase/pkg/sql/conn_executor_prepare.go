@@ -506,14 +506,14 @@ func (ex *connExecutor) execPreparedirectBind(
 			}
 
 			if !EvalContext.StartSinglenode || ex.kwengineversion == "2" {
-				// start && single-node KW_ENGINE_VERSION=2 (行存)
+				// start && single-node KW_ENGINE_VERSION=2 (Row-stored)
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				if err = BuildRowBytesForPrepareTsInsert(ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, EvalContext, table, cfg.NodeInfo.NodeID.Get(), rowTimestamps); err != nil {
 					return err
 				}
 
 			} else if ex.kwengineversion == "1" {
-				// single-node KW_ENGINE_VERSION=1 (列存)(默认值为1)
+				// single-node KW_ENGINE_VERSION=1 (Column-stored)(default value is 1)
 				priTagValMap := BuildPreparepriTagValMap(bindCmd.Args, di)
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				for _, priTagRowIdx := range priTagValMap {
