@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <string>
 #include "ts_table.h"
 
 namespace kwdbts {
@@ -24,4 +25,4 @@ class TsTableV2Impl : public TsTable {
   ~TsTableV2Impl() override;
 };
 
-}
+}  // namespace kwdbts

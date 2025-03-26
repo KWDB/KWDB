@@ -18,4 +18,4 @@ TsTableV2Impl::TsTableV2Impl(kwdbContext_p ctx, const std::string &db_path,
 
 TsTableV2Impl::~TsTableV2Impl() = default;
 
-}
+}  //  namespace kwdbts
