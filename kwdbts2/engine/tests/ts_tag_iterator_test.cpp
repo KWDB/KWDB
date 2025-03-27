@@ -150,7 +150,7 @@ TEST_F(TestEngine, tagiterator) {
   std::vector<k_uint32> scan_tags = {1, 2};
   std::vector<k_uint32> hps;
   make_hashpoint(&hps);
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
@@ -234,7 +234,7 @@ TEST_F(TestEngine, updatetag) {
   for (uint32_t i =0; i< HASHPOINT_RANGE; i++) {
     hps.push_back(i);
   }
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
@@ -334,7 +334,7 @@ TEST_F(TestEngine, altertag) {
   std::vector<k_uint32> scan_tags = {1, 2, 3};
   std::vector<k_uint32> hps;
   make_hashpoint(&hps);
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, cur_version), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
