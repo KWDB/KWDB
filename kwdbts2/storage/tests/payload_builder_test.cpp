@@ -278,7 +278,7 @@ TEST_F(TestTsPayloadBuilder, create_2) {
   EXPECT_EQ(s, KStatus::SUCCESS);
   free(payload_slice.data);
 
-  TagIterator* iter;
+  BaseEntityIterator* iter;
   std::vector<uint32_t> scan_tags;
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
@@ -330,7 +330,7 @@ TEST_F(TestTsPayloadBuilder, create_3) {
   EXPECT_EQ(s, KStatus::SUCCESS);
   free(payload_slice.data);
 
-  TagIterator* iter;
+  BaseEntityIterator* iter;
   std::vector<uint32_t> scan_tags;
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
@@ -389,7 +389,7 @@ TEST_F(TestTsPayloadBuilder, create_4) {
   EXPECT_EQ(s, KStatus::SUCCESS);
   free(payload_slice.data);
 
-  TagIterator* iter;
+  BaseEntityIterator* iter;
   std::vector<uint32_t> scan_tags;
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
@@ -450,7 +450,7 @@ TEST_F(TestTsPayloadBuilder, create_5) {
     free(payload_slice.data);
   }
 
-  TagIterator* iter;
+  BaseEntityIterator* iter;
   std::vector<uint32_t> scan_tags;
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
