@@ -2770,7 +2770,7 @@ KStatus TsTable::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultInd
 
 KStatus TsTable::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 const std::vector<uint32_t> hps,
-                                TagIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version) {
   std::vector<EntityGroupTagIterator*> eg_tag_iters;
   EntityGroupTagIterator* eg_tag_iter = nullptr;
 

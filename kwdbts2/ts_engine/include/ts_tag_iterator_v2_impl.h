@@ -10,23 +10,37 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include "kwdb_type.h"
+#include "ts_time_partition.h"
+#include "mmap/mmap_tag_column_table.h"
+#include "mmap/mmap_tag_table.h"
+#include "ts_common.h"
+#include "lg_api.h"
+#include "ts_table.h"
+#include "ee_global.h"
 #include "tag_iterator.h"
 
 namespace kwdbts {
 
 class TagIteratorV2Impl : public BaseEntityIterator {
-  public:
-   explicit TagIterator(std::vector<EntityGroupTagIterator*>& tag_grp_iters) : entitygrp_iters_(tag_grp_iters) {}
-   ~TagIterator() override;
+ public:
+  TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags);
+  TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,const std::vector<k_uint32>& scan_tags,
+                    const std::vector<uint32_t>& hps);
+  virtual ~TagIteratorV2Impl() override;
+
+  KStatus Init() override;
+  KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count) override;
+  KStatus Close() override;
  
-   KStatus Init() override;
-   KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count) override;
-   KStatus Close() override;
- 
-  private:
-   std::vector<EntityGroupTagIterator*> entitygrp_iters_;
-   EntityGroupTagIterator* cur_iterator_ = nullptr;
-   uint32_t cur_idx_{0};
-  };
+ private:
+  std::vector<k_uint32> scan_tags_;
+  std::vector<uint32_t> hps_;
+  std::shared_ptr<TagTable> tag_bt_;
+  std::vector<TagPartitionIterator*> tag_partition_iters_;
+  uint32_t table_version_;
+  TagPartitionIterator* cur_tag_part_iter_ = nullptr;
+  uint32_t cur_tag_part_idx_{0};
+};
 
 }  //  namespace kwdbts
