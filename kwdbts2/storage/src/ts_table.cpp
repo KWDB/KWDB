@@ -1321,6 +1321,12 @@ TsTable::~TsTable() {
   }
 }
 
+TsTableImpl::TsTableImpl(kwdbContext_p ctx, const std::string &db_path,
+                         const KTableKey &table_id)
+    : TsTable(ctx, db_path, table_id) {}
+
+TsTableImpl::~TsTableImpl() = default;
+
 // Check that the directory name is a numeric
 bool IsNumber(struct dirent* dir) {
   for (int i = 0; i < strlen(dir->d_name); ++i) {
