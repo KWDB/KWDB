@@ -70,6 +70,8 @@ class TSEngineV2Impl : public TSEngine {
     return KStatus::SUCCESS;
   }
 
+  std::vector<std::unique_ptr<TsVGroup>>* GetTsVGroups(kwdbContext_p ctx);
+
   KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override {
     // TODO(liangbo01)  need input change version

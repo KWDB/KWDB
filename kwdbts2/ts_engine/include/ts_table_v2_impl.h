@@ -24,6 +24,11 @@ class TsTableV2Impl : public TsTable {
 
   ~TsTableV2Impl() override;
 
+  KStatus GetTagIterator(kwdbContext_p ctx,
+                          std::vector<uint32_t> scan_tags,
+                          const vector<uint32_t> hps,
+                          TagIterator** iter, k_uint32 table_version) override;
+
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_{nullptr};
 };

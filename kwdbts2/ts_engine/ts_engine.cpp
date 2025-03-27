@@ -204,4 +204,8 @@ KStatus TSEngineV2Impl::LogInit() {
   return KStatus::SUCCESS;
 }
 
+std::vector<std::unique_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
+  return &table_grps_;
+}
+
 }  // namespace kwdbts
