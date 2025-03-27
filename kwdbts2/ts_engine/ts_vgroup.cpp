@@ -67,7 +67,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   options.max_write_buffer_number = 10;
   options.max_background_flushes = 4;
   MakeDirectory(path_);
-  wal_manager_ = std::make_unique<WALMgr>(path_.string(), 0, 0, &engine_options_);
+  wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, GetFileName(), &engine_options_);
   auto res = wal_manager_->Init(ctx);
   if (res == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize WAL manager")
