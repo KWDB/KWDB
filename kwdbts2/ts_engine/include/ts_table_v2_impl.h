@@ -11,6 +11,7 @@
 #pragma once
 
 #include <string>
+#include <memory>
 #include "ts_table.h"
 #include "ts_table_schema_manager.h"
 

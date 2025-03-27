@@ -1285,7 +1285,9 @@ MMapRootTableManager* TsTable::OpenMMapRootTableManager(string& db_path, string&
   return tmp_bt_manager;
 }
 
-TsTable::TsTable() {}
+TsTable::TsTable() {
+  is_dropped_.store(false);
+}
 
 TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id)
     : db_path_(db_path), table_id_(table_id) {
