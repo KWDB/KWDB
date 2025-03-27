@@ -18,8 +18,7 @@ TsTableV2Impl::TsTableV2Impl(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaMan
 }
 
 TsTableV2Impl::TsTableV2Impl(kwdbContext_p ctx, const std::string &db_path,
-        const KTableKey &table_id)
-: TsTable(ctx, db_path, table_id) {}
+                             const KTableKey &table_id) : TsTable(ctx, db_path, table_id) {}
 
 TsTableV2Impl::~TsTableV2Impl() = default;
 

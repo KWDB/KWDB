@@ -17,6 +17,7 @@
 #include <utility>
 #include "ts_env.h"
 #include "ts_payload.h"
+#include "ee_global.h"
 #include "ee_executor.h"
 #include "ts_table_v2_impl.h"
 
@@ -26,11 +27,13 @@ const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
   LogInit();
+  tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
   table_grps_.clear();
+  SafeDeletePointer(tables_cache_);
 }
 
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
