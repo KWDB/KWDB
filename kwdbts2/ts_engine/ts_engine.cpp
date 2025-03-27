@@ -125,7 +125,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
   auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
   assert(tbl_grp != nullptr);
   if (new_tag) {
-    if (write_wal) {
+    if (options_.wal_level != WALMode::OFF) {
       KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, *payload);
       if (s == KStatus::FAIL) {
         LOG_ERROR("failed WriteInsertWAL for new tag");
@@ -139,7 +139,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
     }
   }
 
-  if (write_wal) {
+  if (options_.wal_level != WALMode::OFF) {
     KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, p.GetPrimaryTag(), *payload);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("putdata failed. because wal failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
