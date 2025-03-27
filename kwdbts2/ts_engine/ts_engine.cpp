@@ -17,7 +17,9 @@
 #include <utility>
 #include "ts_env.h"
 #include "ts_payload.h"
+#include "ee_global.h"
 #include "ee_executor.h"
+#include "ts_table_v2_impl.h"
 
 namespace kwdbts {
 const int storage_engine_vgroup_max_num = 3;
@@ -25,11 +27,13 @@ const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
   LogInit();
+  tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
   table_grps_.clear();
+  SafeDeletePointer(tables_cache_);
 }
 
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
@@ -89,6 +93,15 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     return s;
   }
   LOG_INFO("Create TsTable %lu success.", table_id);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
+    return s;
+  }
+  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(ctx, table_schema_mgr);
+  tables_cache_->Put(table_id, ts_table);
   return s;
 }
 
