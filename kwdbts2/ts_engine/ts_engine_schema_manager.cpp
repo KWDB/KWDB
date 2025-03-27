@@ -18,6 +18,7 @@
 #include "ts_table_schema_manager.h"
 #include "sys_utils.h"
 
+extern const int storage_engine_vgroup_max_num = 10;
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 
@@ -124,7 +125,7 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
   }
   // TODO(qinlipeng) lock tag
   // [1, 3]
-  std::uniform_int_distribution<int> distrib(1, 3);
+  std::uniform_int_distribution<int> distrib(1, storage_engine_vgroup_max_num);
   *tbl_grp_id = distrib(gen);
   *new_tag = true;
   return KStatus::SUCCESS;
