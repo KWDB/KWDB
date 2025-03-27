@@ -10,6 +10,8 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <memory>
+#include <vector>
 #include "kwdb_type.h"
 #include "ts_time_partition.h"
 #include "mmap/mmap_tag_column_table.h"
@@ -25,14 +27,14 @@ namespace kwdbts {
 class TagIteratorV2Impl : public BaseEntityIterator {
  public:
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags);
-  TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,const std::vector<k_uint32>& scan_tags,
+  TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags,
                     const std::vector<uint32_t>& hps);
-  virtual ~TagIteratorV2Impl() override;
+  ~TagIteratorV2Impl() override;
 
   KStatus Init() override;
   KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count) override;
   KStatus Close() override;
- 
+
  private:
   std::vector<k_uint32> scan_tags_;
   std::vector<uint32_t> hps_;
