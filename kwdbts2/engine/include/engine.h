@@ -56,8 +56,7 @@ inline TSStatus ToTsStatus(std::string s) {
  * @brief TSEngine interface
  */
 struct TSEngine {
-  TSEngine();
-  virtual ~TSEngine();
+  virtual ~TSEngine() {}
 
   /**
    * @brief create ts table
