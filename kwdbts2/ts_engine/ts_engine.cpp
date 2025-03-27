@@ -20,7 +20,7 @@
 #include "ee_executor.h"
 
 namespace kwdbts {
-const int storage_engine_vgroup_max_num = 3;
+const int storage_engine_vgroup_max_num = 10;
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
