@@ -37,7 +37,6 @@ namespace kwdbts {
 class TSEngineV2Impl : public TSEngine {
  private:
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
-  std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::vector<std::unique_ptr<TsVGroup>> table_grps_;
   int table_grp_max_num_{0};
   EngineOptions options_;

@@ -22,7 +22,7 @@
 #include "ts_table_v2_impl.h"
 
 namespace kwdbts {
-const int storage_engine_vgroup_max_num = 3;
+const int storage_engine_vgroup_max_num = 10;
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
@@ -45,18 +45,11 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     return s;
   }
 
-  wal_manager_ = std::make_unique<WALMgr>(options_.db_path, 0, 0, &options_);
-  s = wal_manager_->Init(ctx);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to initialize WAL manager")
-    return s;
-  }
-
   InitExecutor(ctx, options_);
 
   table_grps_.clear();
   for (size_t i = 0; i < storage_engine_vgroup_max_num; i++) {
-    auto tbl_grp = std::make_unique<TsVGroup>(options_.db_path, i + 1, schema_mgr_.get());
+    auto tbl_grp = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
     s = tbl_grp->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -145,11 +138,10 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
   auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
   assert(tbl_grp != nullptr);
   if (new_tag) {
-    if (write_wal) {
-      // no need lock, lock inside.
-      KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *payload);
+    if (options_.wal_level != WALMode::OFF) {
+      KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, *payload);
       if (s == KStatus::FAIL) {
-        LOG_ERROR("failed WriteInsertWAL for new tag.");
+        LOG_ERROR("failed WriteInsertWAL for new tag");
         return s;
       }
     }
@@ -160,22 +152,11 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
     }
   }
 
-  TS_LSN entry_lsn = 0;
-  if (write_wal) {
-    // lock current lsn: Lock the current LSN until the log is written to the cache
-    wal_manager_->Lock();
-    TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
-    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, p.GetPrimaryTag(), *payload, entry_lsn);
-    if (s == KStatus::FAIL) {
-      wal_manager_->Unlock();
+  if (options_.wal_level != WALMode::OFF) {
+    KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, p.GetPrimaryTag(), *payload);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("putdata failed. because wal failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
       return s;
-    }
-    // unlock current lsn
-    wal_manager_->Unlock();
-
-    if (entry_lsn != current_lsn) {
-      LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
-      return KStatus::FAIL;
     }
   }
   s = tbl_grp->PutData(ctx, table_id, entity_id, payload);
