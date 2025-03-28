@@ -223,4 +223,9 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
   return schema_mgr_->AlterTable(ctx, table_id, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
                                  cur_version, new_version, err_msg);
 }
+
+std::vector<std::unique_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
+  return &table_grps_;
+}
+
 }  // namespace kwdbts

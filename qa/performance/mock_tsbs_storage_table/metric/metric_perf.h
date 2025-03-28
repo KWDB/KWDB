@@ -98,7 +98,7 @@ class MetricTablePerformance final {
     for (auto i = 0; i < tag_.size(); ++i) {
       scan_tags.emplace_back(i);
     }
-    TagIterator *iter;
+    BaseEntityIterator *iter;
     auto s = table_->GetTagIterator(ctx, scan_tags, &iter);
     if (s != KStatus::SUCCESS) {
       cerr << "GetTagIterator failed" << endl;

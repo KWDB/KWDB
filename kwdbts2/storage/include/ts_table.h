@@ -38,7 +38,7 @@ namespace kwdbts {
 
 class TsEntityGroup;
 class TsStorageIterator;
-class TagIterator;
+class BaseEntityIterator;
 class MetaIterator;
 class EntityGroupTagIterator;
 class EntityGroupMetaIterator;
@@ -433,15 +433,15 @@ class TsTable {
   /**
    * @brief Create an iterator TsStorageIterator for Tag tables
    * @param[in] scan_tags tag index
-   * @param[out] TagIterator**
+   * @param[out] BaseEntityIterator**
    */
   virtual KStatus GetTagIterator(kwdbContext_p ctx,
                                  std::vector<uint32_t> scan_tags,
                                  const vector<uint32_t> hps,
-                                 TagIterator** iter, k_uint32 table_version);
+                                 BaseEntityIterator** iter, k_uint32 table_version);
 
   KStatus GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
-                                TagIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version) {
     return GetTagIterator(ctx, scan_tags, {}, iter, table_version);
   }
   /**

@@ -11,6 +11,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <memory>
 #include "ts_table.h"
 #include "ts_table_schema_manager.h"
@@ -24,6 +25,11 @@ class TsTableV2Impl : public TsTable {
                 const KTableKey &table_id);
 
   ~TsTableV2Impl() override;
+
+  KStatus GetTagIterator(kwdbContext_p ctx,
+                          std::vector<uint32_t> scan_tags,
+                          const vector<uint32_t> hps,
+                          BaseEntityIterator** iter, k_uint32 table_version) override;
 
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_{nullptr};
