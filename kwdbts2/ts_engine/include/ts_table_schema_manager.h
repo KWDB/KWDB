@@ -104,7 +104,7 @@ class TsTableSchemaManager {
 
   KStatus Init(kwdbContext_p ctx);
 
-  void put(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> schema);
+  void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);
 
   std::shared_ptr<MMapMetricsTable> Get(uint32_t ts_version, bool lock = true);
 

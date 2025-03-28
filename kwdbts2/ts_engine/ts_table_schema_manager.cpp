@@ -35,7 +35,17 @@ int TsTableSchemaManager::getColumnIndex(const AttributeInfo& attr_info) {
 
 KStatus TsTableSchemaManager::alterTableTag(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
                                             uint32_t cur_version, uint32_t new_version, string& msg) {
-
+  ErrorInfo err_info;
+  if (tag_table_->AlterTableTag(alter_type, attr_info, cur_version, new_version, err_info) < 0) {
+    LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
+    msg = err_info.errmsg;
+    return FAIL;
+  }
+  if (UpdateVersion(cur_version, new_version) != SUCCESS) {
+    msg = "Update table version error";
+    return FAIL;
+  }
+  return SUCCESS;
 }
 
 KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
@@ -179,7 +189,7 @@ KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-void TsTableSchemaManager::put(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> schema) {
+void TsTableSchemaManager::put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema) {
   wrLock();
   Defer defer([&]() { unLock(); });
   auto iter = metric_schemas_.find(ts_version);
@@ -565,13 +575,11 @@ KStatus TsTableSchemaManager::UpdateVersion(uint32_t cur_version, uint32_t new_v
     return s;
   }
   ErrorInfo err_info;
-  // TODO(qinlipeng): update
-  // Create a new version of the root table based on the resulting schema
-  // s = CreateTableSchema(schema, new_version, err_info, cur_version);
-  // if (s != SUCCESS) {
-  //   LOG_ERROR("UpdateVersion failed: table id = %u, new_version = %u", table_id_, new_version);
-  //   return s;
-  // }
+  s = AddMetricSchema(schema, cur_version, new_version, err_info);
+  if (s != SUCCESS) {
+    LOG_ERROR("UpdateVersion failed: table id = %lu, new_version = %u", table_id_, new_version);
+    return s;
+  }
   return SUCCESS;
 }
 
@@ -677,7 +685,7 @@ KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::K
   if (col.dropped()) {
     attr_info.setFlag(AINFO_DROPPED);
   }
-  attr_info.col_flag = (ColumnFlag) col.col_type();
+  attr_info.col_flag = static_cast<ColumnFlag>(col.col_type());
   attr_info.version = 1;
 
   return SUCCESS;
