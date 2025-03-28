@@ -601,14 +601,22 @@ func (ex *connExecutor) dispatchExportTSDB(
 			res.SetError(errors.Errorf("DATABASE or TABLE or COLUMN without COMMENTS cannot be used 'WITH COMMENT'"))
 			return nil
 		}
-
-		if expOpts.withPrivileges {
-			// get GRANT ON DATABASE
-			dbSQL, err := getDBPrivileges(ctx, planner, DatabaseName)
+		for _, tableName := range disTableNames {
+			indexs, err := ExportCreateIndexStmtsWithoutTableDesc(ctx, tableName, *planner)
 			if err != nil {
 				res.SetError(err)
 				return nil
 			}
+			for _, index := range indexs {
+				if _, err = writer.GetBufio().WriteString(index + "\n"); err != nil {
+					res.SetError(err)
+					return nil
+				}
+			}
+		}
+		if expOpts.withPrivileges {
+			// get GRANT ON DATABASE
+			dbSQL, err := getDBPrivileges(ctx, planner, DatabaseName)
 			if dbSQL != nil {
 				for _, sql := range dbSQL {
 					if _, err = writer.GetBufio().WriteString(sql + "\n"); err != nil {

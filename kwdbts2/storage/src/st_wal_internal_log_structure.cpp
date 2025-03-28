@@ -436,6 +436,59 @@ uint32_t DDLAlterEntry::getNewVersion() const {
   return new_version_;
 }
 
+CreateIndexEntry::CreateIndexEntry(kwdbts::TS_LSN lsn, kwdbts::WALLogType type, uint64_t x_id, uint64_t object_id,
+                                   uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version,
+                                   std::array<int32_t, 10> col_ids) :
+                                   LogEntry(lsn, type, x_id), object_id_(object_id), index_id_(index_id),
+                                   cur_ts_version_(cur_ts_version), new_ts_version_(new_ts_version),
+                                   col_ids_(col_ids) {}
+
+std::array<int32_t, 10> CreateIndexEntry::getColIDs() const {
+  return col_ids_;
+}
+
+uint32_t CreateIndexEntry::getIndexID() const {
+  return index_id_;
+}
+
+uint32_t CreateIndexEntry::getCurTsVersion() const {
+  return cur_ts_version_;
+}
+
+uint32_t CreateIndexEntry::getNewTsVersion() const {
+  return new_ts_version_;
+}
+
+uint64_t CreateIndexEntry::getObjectID() const {
+  return object_id_;
+}
+
+DropIndexEntry::DropIndexEntry(kwdbts::TS_LSN lsn, kwdbts::WALLogType type, uint64_t x_id, uint64_t object_id,
+                               uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version,
+                               std::array<int32_t, 10> col_ids) :
+                               LogEntry(lsn, type, x_id), object_id_(object_id), index_id_(index_id),
+                               cur_ts_version_(cur_ts_version), new_ts_version_(new_ts_version), col_ids_(col_ids) {}
+
+std::array<int32_t, 10> DropIndexEntry::getColIDs() const {
+  return col_ids_;
+}
+
+uint32_t DropIndexEntry::getIndexID() const {
+  return index_id_;
+}
+
+uint32_t DropIndexEntry::getCurTsVersion() const {
+  return cur_ts_version_;
+}
+
+uint32_t DropIndexEntry::getNewTsVersion() const {
+  return new_ts_version_;
+}
+
+uint64_t DropIndexEntry::getObjectID() const {
+  return object_id_;
+}
+
 void InsertLogTagsEntry::prettyPrint() {
   std::cout << "typ : ";
   // EXPECT_EQ(type_, WALLogType::INSERT);

@@ -580,9 +580,12 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
   thd->SetRowBatch(tag_rowbatch_.get());
 
   std::vector<void*> primary_tags;
+  std::vector<k_uint64> tags_index_id;
+  std::vector<void *> tags;
   do {
     k_int32 sz = spec->primarytags_size();
-    if (sz <= 0) {
+    k_int32 sz_tag = spec->tagindexes_size();
+    if (sz <= 0 && sz_tag <= 0) {
       break;
     }
     size_t malloc_size = 0;
@@ -590,12 +593,21 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
       k_uint32 tag_id = spec->mutable_primarytags(i)->colid();
       malloc_size += table_->fields_[tag_id]->get_storage_length();
     }
-    KStatus ret = GeneratePrimaryTags(spec, table_, malloc_size, sz, &primary_tags);
+    if (sz) {
+      KStatus ret =
+          GeneratePrimaryTags(spec, table_, malloc_size, sz, &primary_tags);
+      if (ret != SUCCESS) {
+        break;
+      }
+    }
+
+    TSTagOpType tp = (TSTagOpType)spec->uniontype();
+    KStatus ret = GenerateTags(spec, table_, &tags_index_id, &tags);
     if (ret != SUCCESS) {
       break;
     }
     ret = ts_table_->GetEntityIdList(
-        ctx, primary_tags, table_->scan_tags_, &tag_rowbatch_->entity_indexs_,
+        ctx, primary_tags, tags_index_id, tags, tp, table_->scan_tags_, &tag_rowbatch_->entity_indexs_,
         &tag_rowbatch_->res_, &tag_rowbatch_->count_, table_->table_version_);
     if (ret != SUCCESS) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
@@ -617,6 +629,9 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
     code = EEIteratorErrCode::EE_OK;
   } while (0);
   for (auto& it : primary_tags) {
+    SafeFreePointer(it);
+  }
+  for (auto &it : tags) {
     SafeFreePointer(it);
   }
   thd->SetRowBatch(old_ptr);
@@ -663,10 +678,13 @@ EEIteratorErrCode StorageHandler::GetTagDataChunkWithPrimaryTags(kwdbContext_p c
     current_thd->SetRowBatch(ptr);
   }};
 
+  std::vector<uint64_t> tags_index_id;
+  std::vector<void*> tags;
+
   do {
     KStatus ret = ts_table_->GetEntityIdList(
-      ctx, primary_tags, table_->scan_tags_, &tag_rowbatch_->entity_indexs_,
-      &tag_rowbatch_->res_, &tag_rowbatch_->count_);
+        ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, table_->scan_tags_, &tag_rowbatch_->entity_indexs_,
+        &tag_rowbatch_->res_, &tag_rowbatch_->count_);
     if (ret != SUCCESS) {
       break;
     }
@@ -748,8 +766,8 @@ KStatus StorageHandler::GeneratePrimaryTags(TSTagReaderSpec *spec, TABLE *table,
         case roachpb::DataType::SMALLINT: {
           k_int32 val = std::stoi(str);
           if (!CHECK_VALID_SMALLINT(val)) {
-            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
-                                  "out of range");
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_WRONG_OBJECT_TYPE,
+              ("integer \"" +std::to_string(val) + "\" out of range for type INT2").c_str());
             return FAIL;
           }
           memcpy(ptr, &val, len);
@@ -757,8 +775,8 @@ KStatus StorageHandler::GeneratePrimaryTags(TSTagReaderSpec *spec, TABLE *table,
         case roachpb::DataType::INT: {
           k_int64 val = std::stoll(str);
           if (!CHECK_VALID_INT(val)) {
-            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
-                                  "out of range");
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_WRONG_OBJECT_TYPE,
+              ("integer \"" +std::to_string(val) + "\" out of range for type INT4").c_str());
             return FAIL;
           }
           memcpy(ptr, &val, sizeof(k_int32));
@@ -830,6 +848,137 @@ KStatus StorageHandler::GeneratePrimaryTags(TSTagReaderSpec *spec, TABLE *table,
       ptr += table->fields_[tag_id]->get_storage_length();
     }
     primary_tags->push_back(buffer);
+  }
+  return SUCCESS;
+}
+
+KStatus StorageHandler::GenerateTags(TSTagReaderSpec *spec, TABLE *table,
+                                     std::vector<k_uint64> *tags_index_id,
+                                     std::vector<void *> *tags) {
+  k_int32 sz_tag = spec->tagindexes_size();
+  for (int i = 0; i < sz_tag; ++i) {
+    char *ptr = nullptr;
+    TSTagReaderSpec_TagIndexInfo tagIndexInfo = spec->tagindexes(i);
+    k_int32 tz = tagIndexInfo.tagvalues_size();
+    size_t malloc_size = 0;
+    for (int tmp = 0; tmp < tz; ++tmp) {
+      k_uint32 tag_id = tagIndexInfo.mutable_tagvalues(tmp)->colid();
+      malloc_size += table->fields_[tag_id]->get_storage_length();
+    }
+    k_int32 ns = tagIndexInfo.mutable_tagvalues(0)->tagvalues_size();
+    for (k_int32 k = 0; k < ns; ++k) {
+      void *buffer = malloc(malloc_size);
+      if (buffer == nullptr) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
+                                      "Insufficient memory");
+        return FAIL;
+      }
+
+      memset(buffer, 0, malloc_size);
+      ptr = static_cast<char *>(buffer);
+      for (k_int32 j = 0; j < tz; ++j) {
+        TSTagReaderSpec_TagValueArray *tagInfo =
+            tagIndexInfo.mutable_tagvalues(j);
+        k_uint32 tag_id = tagInfo->colid();
+        const std::string &str = tagInfo->tagvalues(k);
+        roachpb::DataType d_type = table->fields_[tag_id]->get_storage_type();
+        k_int32 len = table->fields_[tag_id]->get_storage_length();
+        switch (d_type) {
+          case roachpb::DataType::BOOL: {
+            k_bool val = 0;
+            if (str == "true" || str == "TRUE") {
+              val = 1;
+            } else if (str == "false" || str == "FALSE") {
+              val = 0;
+            } else {
+              val = std::stoi(str);
+            }
+            memcpy(ptr, &val, len);
+          } break;
+          case roachpb::DataType::SMALLINT: {
+            k_int32 val = std::stoi(str);
+            if (!CHECK_VALID_SMALLINT(val)) {
+              EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                            "out of range");
+              return FAIL;
+            }
+            memcpy(ptr, &val, len);
+          } break;
+          case roachpb::DataType::INT: {
+            k_int64 val = std::stoll(str);
+            if (!CHECK_VALID_INT(val)) {
+              EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                            "out of range");
+              return FAIL;
+            }
+            memcpy(ptr, &val, sizeof(k_int32));
+          } break;
+          case roachpb::DataType::TIMESTAMP: {
+            k_uint64 val = std::stoll(str);
+            memcpy(ptr, &val, sizeof(KTimestamp));
+          } break;
+          case roachpb::DataType::TIMESTAMPTZ: {
+            k_uint64 val = std::stoll(str);
+            memcpy(ptr, &val, sizeof(KTimestampTz));
+          }
+          case roachpb::DataType::DATE: {
+            k_uint64 val = std::stoll(str);
+            memcpy(ptr, &val, sizeof(k_uint32));
+          }
+          case roachpb::DataType::BIGINT: {
+            k_int64 val = std::stoll(str);
+            memcpy(ptr, &val, sizeof(k_int64));
+          } break;
+          case roachpb::DataType::FLOAT: {
+            k_float32 val = std::stof(str);
+            memcpy(ptr, &val, sizeof(k_float32));
+          } break;
+          case roachpb::DataType::DOUBLE: {
+            k_double64 val = std::stod(str);
+            memcpy(ptr, &val, sizeof(k_double64));
+          } break;
+          case roachpb::DataType::CHAR:
+          case roachpb::DataType::NCHAR:
+          case roachpb::DataType::VARCHAR:
+          case roachpb::DataType::NVARCHAR:
+            memcpy(ptr, str.c_str(), str.length());
+            break;
+          case roachpb::DataType::BINARY:
+          case roachpb::DataType::VARBINARY: {
+            k_uint32 buf_len = str.length() - 1;
+            if (buf_len > 2 * len + 3) {
+              buf_len = 2 * len + 3;
+            }
+            k_int32 n = 2;
+            for (k_uint32 i = 3; i < buf_len; i = i + 2) {
+              if (str[i] >= 'a' && str[i] >= 'f') {
+                ptr[n] = str[i] - 'a' + 10;
+              } else {
+                ptr[n] = str[i] - '0';
+              }
+              if (str[i + 1] >= 'a' && str[i + 1] >= 'f') {
+                ptr[n] = ptr[n] << 4 | (str[i + 1] - 'a' + 10);
+              } else {
+                ptr[n] = ptr[n] << 4 | (str[i + 1] - '0');
+              }
+              n++;
+            }
+            *(static_cast<k_int16 *>(static_cast<void *>(ptr))) = n - 2;
+            break;
+          }
+          default: {
+            free(buffer);
+            LOG_ERROR("unsupported data type:%d", d_type);
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
+                                          "unsupported data type");
+            return FAIL;
+          }
+        }
+        ptr += table->fields_[tag_id]->get_storage_length();
+      }
+      tags->push_back(buffer);
+      tags_index_id->push_back(spec->tagindexids(i));
+    }
   }
   return SUCCESS;
 }

@@ -1840,6 +1840,46 @@ func getPrimaryTag(
 	return ptagFilter
 }
 
+// getTagIndexes get column id of tag index and values of tag index.
+//
+// Parameters:
+// - TagIndexValues: tag index filter array
+// - tsColMap: ts column index and meta  map
+//
+// Returns:
+// - TSTagReaderSpec_TagIndexValueArray array
+func getTagIndexes(
+	TagIndex memo.TagIndexInfo, tsColMap map[sqlbase.ColumnID]tsColIndex,
+) ([]execinfrapb.TSTagReaderSpec_TagIndexInfo, uint32, []uint32) {
+	var TagIndexes []execinfrapb.TSTagReaderSpec_TagIndexInfo
+
+	// Iterate over the slice of maps
+	for _, tagIndexMap := range TagIndex.TagIndexValues {
+		var TagIndex execinfrapb.TSTagReaderSpec_TagIndexInfo
+		if len(tagIndexMap) > 0 {
+			idList := make(UintSlice, 0, len(tagIndexMap))
+			for key := range tagIndexMap {
+				idList = append(idList, key)
+			}
+			sort.Sort(idList) // Sort the keys to maintain a consistent order
+			for _, id := range idList {
+				if val, ok := tagIndexMap[id]; ok {
+					if idx, ok1 := tsColMap[sqlbase.ColumnID(id)]; ok1 {
+						// If column id exists in the tsColMap, use the index and add the tag values
+						TagIndex.TagValues = append(TagIndex.TagValues, execinfrapb.TSTagReaderSpec_TagValueArray{
+							Colid:     uint32(idx.idx),
+							TagValues: val,
+						})
+					}
+				}
+			}
+			TagIndexes = append(TagIndexes, TagIndex)
+		}
+	}
+
+	return TagIndexes, uint32(TagIndex.UnionType), TagIndex.IndexID
+}
+
 // buildPhyPlanForTagReaders construct TSTagReadera and add to Proceccor.
 // tableID is the id of table that needs to be scanned.
 //
@@ -1883,6 +1923,9 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	// primary tag need to be sort.
 	ptagFilter := getPrimaryTag(n.PrimaryTagValues, tsColMap)
 
+	// deal tag index filter values
+	tagIndexes, unionType, IndexIDs := getTagIndexes(n.TagIndex, tsColMap)
+
 	i := 0
 	for nodeID := range *rangeSpans {
 		proc := physicalplan.Processor{
@@ -1897,6 +1940,9 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 						TableVersion: n.Table.GetTSVersion(),
 						RangeSpans:   (*rangeSpans)[nodeID],
 						OnlyTag:      n.HintType.OnlyTag(),
+						TagIndexes:   tagIndexes,
+						UnionType:    unionType,
+						TagIndexIDs:  IndexIDs,
 					},
 				},
 				Output: []execinfrapb.OutputRouterSpec{{
@@ -1980,6 +2026,9 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 	// primary tag need to be sort.
 	ptagFilter := getPrimaryTag(n.PrimaryTagValues, tsColMap)
 
+	// deal tag index filter values
+	tagIndexes, unionType, IndexIDs := getTagIndexes(n.TagIndex, tsColMap)
+
 	// adjust HashColids to colmeta index
 	var colIds = make([]uint32, len(*n.RelInfo.HashColIds))
 	for k, hashColid := range *n.RelInfo.HashColIds {
@@ -2001,6 +2050,9 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 						RelationalCols: *n.RelInfo.RelationalCols,
 						ProbeColids:    *n.RelInfo.ProbeColIds,
 						HashColids:     colIds,
+						TagIndexes:     tagIndexes,
+						UnionType:      unionType,
+						TagIndexIDs:    IndexIDs,
 					},
 				},
 				Output: []execinfrapb.OutputRouterSpec{{
@@ -2725,6 +2777,36 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlterColumn.TxnID = n.txnID
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlterColumn}
 			p.TsOperator = tsAlterColumn.TsOperator
+		case createTagIndex, dropTagIndex, alterTagIndex:
+			var tsAlter = &execinfrapb.TsAlterProSpec{}
+			idx := n.d.CreateOrAlterTagIndex
+			tagIDs := make([]uint32, 0, len(idx.ColumnIDs))
+			for _, id := range idx.ColumnIDs {
+				tagIDs = append(tagIDs, uint32(id))
+			}
+			tsAlter.TagIndexID = uint32(idx.ID)
+			tsAlter.TagIndexColumns = tagIDs
+			switch n.d.Type {
+			case createTagIndex:
+				tsAlter.TsOperator = execinfrapb.OperatorType_TsCreateTagIndex
+			case dropTagIndex:
+				tsAlter.TsOperator = execinfrapb.OperatorType_TsDropTagIndex
+			case alterTagIndex:
+				tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterTagIndex
+			}
+			if n.txnEvent == txnRollback {
+				tsAlter.TsOperator = execinfrapb.OperatorType_TsRollback
+			}
+			if n.txnEvent == txnCommit {
+				tsAlter.TsOperator = execinfrapb.OperatorType_TsCommit
+			}
+
+			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
+			tsAlter.NextTSVersion = uint32(n.d.SNTable.TsTable.GetNextTsVersion())
+			tsAlter.CurrentTSVersion = uint32(n.d.SNTable.TsTable.GetTsVersion())
+			tsAlter.TxnID = n.txnID
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
+			p.TsOperator = tsAlter.TsOperator
 		case alterKwdbAlterPartitionInterval:
 			var tsAlter = &execinfrapb.TsAlterProSpec{}
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterPartitionInterval
@@ -6733,7 +6815,7 @@ func (dsp *DistSQLPlanner) getSpans(
 ) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, bool, error) {
 	var partitions []SpanPartition
 	var err error
-	if len(n.PrimaryTagValues) != 0 {
+	if len(n.PrimaryTagValues) != 0 && len(n.TagIndex.TagIndexValues) == 0 {
 		pTagSize, _, err := execbuilder.ComputeColumnSize(ptCols)
 		if err != nil {
 			return nil, false, err

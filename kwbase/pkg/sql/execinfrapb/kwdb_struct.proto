@@ -141,6 +141,7 @@ enum TSTableReadMode {
   hashTagScan = 4;
   primaryHashTagScan = 5;
   hashRelScan = 6;
+  tagHashIndex = 7;
 }
 
 // TSReaderSpec table reader
@@ -233,6 +234,15 @@ message TSTagReaderSpec {
   repeated uint32 probeColids = 8;
   repeated uint32 hashColids = 9;
   required bool only_tag = 10 [(gogoproto.nullable) = false];
+  // UnionType represents relation of multi tag indexes
+  required uint32 UnionType = 11 [(gogoproto.nullable) = false];
+  repeated uint32 TagIndexIDs = 12;
+  // Tag index values
+  // TagIndexValueArray represents a mapping from a column id to an array of tag values.
+  message TagIndexInfo {
+    repeated TagValueArray TagValues = 1[(gogoproto.nullable) = false];
+  }
+  repeated TagIndexInfo TagIndexes = 13 [(gogoproto.nullable) = false];
 }
 
 enum SketchMethod {

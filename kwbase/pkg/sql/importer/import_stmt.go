@@ -1092,6 +1092,14 @@ func (r *importResumer) prepareTSTableDescsForIngestion(
 					}
 				}
 			}
+			// Add INDEX to the column
+			if table.ColumnIndex != nil {
+				for _, index := range table.ColumnIndex {
+					if err = execIndexOnMeta(ctx, p, index, cleanedDbName); err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 	// Exec Privileges statement

@@ -3016,6 +3016,12 @@ func (c *CustomFuncs) GenerateTagTSScans(
 		// can not optimize when have not tag filter
 		return
 	}
+
+	// Get tag index key and tag index filters
+	if primaryTagFilters == nil {
+		private.TagIndexFilter = memo.GetTagIndexKeyAndFilter(&private, &tagFilters, c.e.mem, len(explicitFilters))
+	}
+
 	private.TagFilter = tagFilters
 	private.PrimaryTagFilter = primaryTagFilters
 
@@ -3024,7 +3030,7 @@ func (c *CustomFuncs) GenerateTagTSScans(
 	// primary tag value and tag filter ----- tag index table
 	// only tag filter --- table table table
 	// not exist primary tag value and tag filter  ----- meta table
-	private.AccessMode = memo.GetAccessMode(primaryTagFilters != nil, tagFilters != nil, TSScanPrivate, c.e.mem)
+	private.AccessMode = memo.GetAccessMode(primaryTagFilters != nil, tagFilters != nil, len(private.TagIndexFilter) > 0, TSScanPrivate, c.e.mem)
 
 	// filter can all push to table reader, so need remover select expr
 	if leaveFilter == nil {

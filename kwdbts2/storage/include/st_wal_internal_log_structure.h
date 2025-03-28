@@ -966,4 +966,112 @@ class DDLAlterEntry : public DDLEntry {
   }
 };
 
+class CreateIndexEntry : public LogEntry {
+ public:
+  CreateIndexEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id, uint32_t index_id,
+                   uint32_t cur_ts_version, uint32_t new_ts_version, std::array<int32_t, 10> col_ids);
+
+  ~CreateIndexEntry() override = default;
+
+  char* encode() override {
+    return construct(type_, x_id_, object_id_, index_id_, cur_ts_version_, new_ts_version_, col_ids_);
+  }
+
+  [[nodiscard]] std::array<int32_t, 10> getColIDs() const;
+
+  [[nodiscard]] uint32_t getIndexID() const;
+
+  [[nodiscard]] uint32_t getCurTsVersion() const;
+
+  [[nodiscard]] uint32_t getNewTsVersion() const;
+
+  [[nodiscard]] uint64_t getObjectID() const;
+
+ public:
+  uint64_t object_id_{};
+  uint32_t index_id_;
+  uint32_t cur_ts_version_;
+  uint32_t new_ts_version_;
+  std::array<int32_t, 10> col_ids_;
+
+  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + sizeof(object_id_) +sizeof(index_id_) +
+          sizeof(cur_ts_version_) + sizeof(new_ts_version_) + sizeof(col_ids_);
+
+  static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id, uint32_t index_id, uint32_t cur_ts_version,
+                         uint32_t new_ts_version, std::array<int32_t, 10> col_ids) {
+    char* log_ptr = KNEW char[fixed_length];
+    int offset = 0;
+
+    memcpy(log_ptr, &type, sizeof(type_));
+    offset += sizeof(type_);
+    memcpy(log_ptr + offset, &x_id, sizeof(x_id_));
+    offset += sizeof(x_id_);
+    memcpy(log_ptr + offset, &object_id, sizeof(object_id_));
+    offset += sizeof(object_id_);
+    memcpy(log_ptr + offset, &index_id, sizeof(index_id_));
+    offset += sizeof(index_id_);
+    memcpy(log_ptr + offset, &cur_ts_version, sizeof(cur_ts_version_));
+    offset += sizeof(cur_ts_version_);
+    memcpy(log_ptr + offset, &new_ts_version, sizeof(new_ts_version_));
+    offset += sizeof(new_ts_version_);
+    memcpy(log_ptr + offset, &col_ids, sizeof(col_ids_));
+
+    return log_ptr;
+  }
+};
+
+class DropIndexEntry : public LogEntry {
+ public:
+  DropIndexEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id, uint32_t index_id,
+                 uint32_t cur_ts_version, uint32_t new_ts_version, std::array<int32_t, 10> col_ids);
+
+  ~DropIndexEntry() override = default;
+
+  char* encode() override {
+    return construct(type_, x_id_, object_id_, index_id_, cur_ts_version_, new_ts_version_, col_ids_);
+  }
+
+  [[nodiscard]] std::array<int32_t, 10> getColIDs() const;
+
+  [[nodiscard]] uint32_t getIndexID() const;
+
+  [[nodiscard]] uint32_t getCurTsVersion() const;
+
+  [[nodiscard]] uint32_t getNewTsVersion() const;
+
+  [[nodiscard]] uint64_t getObjectID() const;
+
+ public:
+  uint64_t object_id_;
+  uint32_t index_id_;
+  uint32_t cur_ts_version_;
+  uint32_t new_ts_version_;
+  std::array<int32_t, 10> col_ids_;
+
+  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + sizeof(object_id_) +sizeof(index_id_) +
+          sizeof(cur_ts_version_) + sizeof(new_ts_version_) + sizeof(col_ids_);
+
+  static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id, uint32_t index_id, uint32_t cur_ts_version,
+                         uint32_t new_ts_version, std::array<int32_t, 10> col_ids) {
+    char* log_ptr = KNEW char[fixed_length];
+    int offset = 0;
+
+    memcpy(log_ptr, &type, sizeof(type_));
+    offset += sizeof(type_);
+    memcpy(log_ptr + offset, &x_id, sizeof(x_id_));
+    offset += sizeof(x_id_);
+    memcpy(log_ptr + offset, &object_id, sizeof(object_id_));
+    offset += sizeof(object_id_);
+    memcpy(log_ptr + offset, &index_id, sizeof(index_id_));
+    offset += sizeof(index_id_);
+    memcpy(log_ptr + offset, &cur_ts_version, sizeof(cur_ts_version_));
+    offset += sizeof(cur_ts_version_);
+    memcpy(log_ptr + offset, &new_ts_version, sizeof(new_ts_version_));
+    offset += sizeof(new_ts_version_);
+    memcpy(log_ptr + offset, &col_ids, sizeof(col_ids_));
+
+    return log_ptr;
+  }
+};
+
 }  // namespace kwdbts

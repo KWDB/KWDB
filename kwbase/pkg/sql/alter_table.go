@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -550,6 +551,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 					return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 						"column %q in the middle of being added, try again later", t.Column)
 				}
+
 				// n.tableDesc.State = sqlbase.TableDescriptor_ALTER
 				n.tableDesc.AddColumnMutation(colToDrop, sqlbase.DescriptorMutation_DROP)
 				mutationID := n.tableDesc.ClusterVersion.NextMutationID
@@ -919,6 +921,9 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 					"column %q in the middle of being dropped", t.Tag)
 			}
+			if err = checkIndexOnTag(n, tagColumn); err != nil {
+				return err
+			}
 
 			if !tagColumn.IsTagCol() {
 				return pgerror.Newf(pgcode.WrongObjectType, "%s is not a tag", tagColumn.Name)
@@ -949,7 +954,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 			if err = checkTSMutationColumnType(n.tableDesc, alteringTag); err != nil {
 				return err
 			}
-
+			if tagColumn.HasDefault() {
+				err := castDefaultFuncExpr(*tagColumn.DefaultExpr, alteringTag, params, newType)
+				if err != nil {
+					return err
+				}
+			}
 			//n.tableDesc.State = sqlbase.TableDescriptor_ALTER
 			n.tableDesc.AddColumnMutation(alteringTag, sqlbase.DescriptorMutation_NONE)
 			mutationID := n.tableDesc.ClusterVersion.NextMutationID
@@ -1208,6 +1218,9 @@ func (n *alterTableNode) startExec(params runParams) error {
 			}
 			if dropped {
 				continue
+			}
+			if err = checkIndexOnTag(n, tagColumn); err != nil {
+				return err
 			}
 			var tagCount int
 			found := false
@@ -1623,6 +1636,12 @@ func applyColumnMutation(
 				if err = checkTSMutationColumnType(tableDesc, alteringCol); err != nil {
 					return false, err
 				}
+				if col.HasDefault() {
+					err := castDefaultFuncExpr(*col.DefaultExpr, alteringCol, params, typ)
+					if err != nil {
+						return false, err
+					}
+				}
 				// TODO(ZXY): Temporary use DescriptorMutation_NONE for alter type mutation
 				tableDesc.AddColumnMutation(alteringCol, sqlbase.DescriptorMutation_NONE)
 				mutationID := tableDesc.ClusterVersion.NextMutationID
@@ -1712,6 +1731,12 @@ func applyColumnMutation(
 				col.Type.SQLString(), typ.SQLString())
 		case schemachange.ColumnConversionTrivial:
 			col.Type = *typ
+			if col.HasDefault() {
+				err := castDefaultFuncExpr(*col.DefaultExpr, col, params, typ)
+				if err != nil {
+					return false, err
+				}
+			}
 		case schemachange.ColumnConversionGeneral:
 			return false, unimplemented.NewWithIssueDetailf(
 				9851,
@@ -1873,6 +1898,26 @@ func applyColumnMutation(
 		col.ComputeExpr = nil
 	}
 	return isOnlyMetaChanged, nil
+}
+
+func castDefaultFuncExpr(
+	originDefault string, col *sqlbase.ColumnDescriptor, params runParams, typ *types.T,
+) error {
+	parsedExpr, err := parser.ParseExpr(originDefault)
+	if err != nil {
+		return err
+	}
+	if tmp, ok := parsedExpr.(*tree.AnnotateTypeExpr); ok {
+		if innerExpr, isFunc := tmp.TypedInnerExpr().(*tree.FuncExpr); isFunc {
+			newDefaultExpr, err := innerExpr.TypeCheck(&params.p.semaCtx, typ)
+			if err != nil {
+				return err
+			}
+			s := tree.Serialize(newDefaultExpr)
+			col.DefaultExpr = &s
+		}
+	}
+	return nil
 }
 
 func labeledRowValues(cols []sqlbase.ColumnDescriptor, values tree.Datums) string {
@@ -2232,4 +2277,27 @@ func prepareAlterType(t *types.T) *types.T {
 	default:
 	}
 	return t
+}
+
+// checkIndexOnTag checks whether the index exists on the tag.
+func checkIndexOnTag(n *alterTableNode, colToDrop *sqlbase.ColumnDescriptor) error {
+	for _, idx := range n.tableDesc.AllNonDropIndexes() {
+
+		// containsThisColumn becomes true if the index is defined
+		// over the column being dropped.
+		containsThisColumn := false
+
+		// Analyze the index.
+		for _, id := range idx.ColumnIDs {
+			if id == colToDrop.ID {
+				containsThisColumn = true
+			}
+		}
+
+		if containsThisColumn {
+			return pgerror.Newf(pgcode.DependentObjectsStillExist,
+				"column %q is referenced by existing index %q", colToDrop.Name, idx.Name)
+		}
+	}
+	return nil
 }

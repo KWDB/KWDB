@@ -123,7 +123,8 @@ struct EntityHeader {
   bool partition_deleted = false;
   bool data_disordered = false;
   bool data_deleted = false;
-  char user_defined[29];  // < reserved for user-defined information.
+  bool is_initialized = false;
+  char user_defined[28];  // < reserved for user-defined information.
 
   ostream& to_string(ostream& os) {
     std::cout << "EntityHeader:"
@@ -433,6 +434,8 @@ class MMapEntityBlockMeta : public MMapFile {
   int64_t& minTimestamp() { return entity_header_->minTimestamp; }
 
   int64_t& maxTimestamp() { return entity_header_->maxTimestamp; }
+
+  bool& isInitialized() { return entity_header_->is_initialized; }
 
   void SetEntityItemOffset(EntityItem* entity_item_offset) {
     entity_item_offset_ = entity_item_offset;

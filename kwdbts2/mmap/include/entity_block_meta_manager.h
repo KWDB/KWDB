@@ -36,6 +36,8 @@ class EntityBlockMetaManager {
 
   inline int64_t& maxTimestamp() { return entity_block_metas_[0]->maxTimestamp(); }
 
+  inline bool& isInitialized() { return entity_block_metas_[0]->isInitialized(); }
+
   inline EntityHeader* getEntityHeader() { return entity_block_metas_[0]->getEntityHeader(); }
 
   BlockItem* GetBlockItem(BLOCK_ID item_id);

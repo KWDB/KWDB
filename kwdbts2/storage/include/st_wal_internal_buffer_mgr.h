@@ -165,6 +165,12 @@ class WALBufferMgr {
   KStatus readDeleteLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
                         TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
 
+  KStatus readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
+                            TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+
+  KStatus readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
+                            TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+
   KStatus readCheckpointLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
                             TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
 

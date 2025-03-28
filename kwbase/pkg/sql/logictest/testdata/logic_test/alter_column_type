@@ -161,3 +161,18 @@ ALTER TABLE t ALTER s TYPE STRING
 
 statement ok
 DROP TABLE t
+
+statement ok
+create table test123(a int,b timestamp default current_timestamp)
+
+statement ok
+insert into test123(a) values(1)
+
+statement ok
+ALTER TABLE test123 ALTER COLUMN b TYPE timestamptz
+
+statement ok
+insert into test123(a) values(2)
+
+statement ok
+drop table test123

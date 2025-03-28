@@ -102,10 +102,6 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   Defer defer([&]() {
     MUTEX_UNLOCK(tables_lock_);
   });
-  if (IsExists(options_.db_path + '/' + std::to_string(table_id))) {
-    LOG_WARN("CreateTsTable failed, TsTable[%lu] is exists", table_id);
-    return FAIL;
-  }
 
   std::shared_ptr<TsTable> table = nullptr;
   UpdateSetting(ctx);
@@ -138,6 +134,23 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
     break;
   }
 
+  if (IsExists(options_.db_path + '/' + std::to_string(table_id))) {
+      LOG_WARN("CreateTsTable TsTable[%lu] is exists, starting to create NTAG index.", table_id);
+      for (int i = 0; i < meta->index_info_size(); i ++) {
+          std::vector<uint32_t> col_ids;
+          for (int idx = 0; idx < meta->index_info(i).col_ids_size(); idx++) {
+              col_ids.push_back(meta->index_info(i).col_ids(idx));
+          }
+          s = table->createNormalTagIndex(ctx, 0, meta->index_info(i).index_id(), meta->ts_table().ts_version(),
+                                          meta->ts_table().ts_version(), col_ids);
+          if (s != KStatus::SUCCESS) {
+              LOG_ERROR("Failed to create ntag hash index, index id:%d.", meta->index_info(i).index_id())
+              return s;
+          }
+      }
+      return FAIL;
+  }
+
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
   s = parseMetaSchema(ctx, meta, metric_schema, tag_schema);
@@ -163,6 +176,21 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
       return s;
     }
   }
+
+  for (int i = 0; i < meta->index_info_size(); i ++) {
+      std::vector<uint32_t> col_ids;
+      for (int idx = 0; idx < meta->index_info(i).col_ids_size(); idx++) {
+          col_ids.push_back(meta->index_info(i).col_ids(idx));
+      }
+      s = table->createNormalTagIndex(ctx, 0, meta->index_info(i).index_id(), meta->ts_table().ts_version(),
+                                      meta->ts_table().ts_version(), col_ids);
+      if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Failed to create ntag hash index, index id:%d.", meta->index_info(i).index_id())
+          return s;
+      }
+  }
+  LOG_INFO("Table %d create NTAG index success.", table_id)
+
 #ifndef KWBASE_OSS
   TsConfigAutonomy::UpdateTableStatisticInfo(ctx, table, true);
 #endif
@@ -698,41 +726,181 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
         if (!incomplete[mtr_id]) {
           break;
         }
-        auto* ddl_log = reinterpret_cast<DDLEntry*>(incomplete[mtr_id]);
-        uint64_t table_id = ddl_log->getObjectID();
-        TsTable table = TsTable(ctx, options_.db_path, table_id);
-        std::unordered_map<uint64_t, int8_t> range_groups;
-        s = table.Init(ctx, range_groups);
-        if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to init table %ld.", table_id)
-#ifdef WITH_TESTS
-          return s;
-#endif
-        }
-        if (table.IsDropped()) {
-          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
-          continue;
-        }
+        switch (incomplete[mtr_id]->getType()) {
+          case WALLogType::DDL_ALTER_COLUMN: {
+            DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(incomplete[mtr_id]);
+            uint64_t table_id = ddl_log->getObjectID();
+            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            std::unordered_map<uint64_t, int8_t> range_groups;
+            s = table.Init(ctx, range_groups);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to init table %ld.", table_id)
+            #ifdef WITH_TESTS
+              return s;
+            #endif
+            }
+            if (table.IsDropped()) {
+              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+              continue;
+            }
 
-        s = table.UndoAlterTable(ctx, incomplete[mtr_id]);
-        if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to recover alter table %ld.", table_id)
-#ifdef WITH_TESTS
-          return s;
-#endif
-        } else {
-          table.TSxClean(ctx);
+            s = table.UndoAlterTable(ctx, incomplete[mtr_id]);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to recover alter table %ld.", table_id)
+            #ifdef WITH_TESTS
+              return s;
+            #endif
+            } else {
+              table.TSxClean(ctx);
+            }
+            break;
+          }
+          case WALLogType::CREATE_INDEX: {
+            CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(incomplete[mtr_id]);
+            uint64_t table_id = index_log->getObjectID();
+            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            std::unordered_map<uint64_t, int8_t> range_groups;
+            s = table.Init(ctx, range_groups);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to init table %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            }
+            if (table.IsDropped()) {
+              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+              continue;
+            }
+
+            s = table.UndoCreateIndex(ctx, incomplete[mtr_id]);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to recover create index %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            } else {
+              table.TSxClean(ctx);
+            }
+            break;
+          }
+          case WALLogType::DROP_INDEX: {
+            DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(incomplete[mtr_id]);
+            uint64_t table_id = index_log->getObjectID();
+            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            std::unordered_map<uint64_t, int8_t> range_groups;
+            s = table.Init(ctx, range_groups);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to init table %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            }
+            if (table.IsDropped()) {
+              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+              continue;
+            }
+
+            s = table.UndoDropIndex(ctx, incomplete[mtr_id]);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to recover drop index %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            } else {
+              table.TSxClean(ctx);
+            }
+            break;
+          }
+          default:
+            LOG_ERROR("The unknown WALLogType type is not processed.")
+            break;
         }
         incomplete.erase(mtr_id);
         tsx_manager_sys_->eraseMtrID(mtr_id);
         break;
       }
       case WALLogType::DDL_ALTER_COLUMN: {
-        auto* ddl_log = reinterpret_cast<DDLEntry*>(wal_log);
+        DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(wal_log);
+        incomplete[mtr_id] = ddl_log;
+        break;
+      }
+      case WALLogType::CREATE_INDEX: {
+        CreateIndexEntry* ddl_log = reinterpret_cast<CreateIndexEntry*>(wal_log);
+        incomplete[mtr_id] = ddl_log;
+        break;
+      }
+      case WALLogType::DROP_INDEX: {
+        DropIndexEntry* ddl_log = reinterpret_cast<DropIndexEntry*>(wal_log);
         incomplete[mtr_id] = ddl_log;
         break;
       }
       default:
+        LOG_ERROR("The unknown WALLogType type is not processed.")
+        break;
+    }
+  }
+
+
+  // recover incomplete wal logs.
+  for (auto wal_log : incomplete) {
+    switch (wal_log.second->getType()) {
+      case WALLogType::CREATE_INDEX: {
+        CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(wal_log.second);
+        uint64_t table_id = index_log->getObjectID();
+        TsTable table = TsTable(ctx, options_.db_path, table_id);
+        std::unordered_map<uint64_t, int8_t> range_groups;
+        s = table.Init(ctx, range_groups);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to init table %ld.", table_id)
+          #ifdef WITH_TESTS
+          return s;
+          #endif
+        }
+        if (table.IsDropped()) {
+          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+          continue;
+        }
+        s = table.UndoCreateIndex(ctx, index_log);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to recover create index %ld.", table_id)
+          #ifdef WITH_TESTS
+          return s;
+          #endif
+        } else {
+          table.TSxClean(ctx);
+        }
+        break;
+      }
+      case WALLogType::DROP_INDEX: {
+        DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(wal_log.second);
+        uint64_t table_id = index_log->getObjectID();
+        TsTable table = TsTable(ctx, options_.db_path, table_id);
+        std::unordered_map<uint64_t, int8_t> range_groups;
+        s = table.Init(ctx, range_groups);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to init table %ld.", table_id)
+          #ifdef WITH_TESTS
+          return s;
+          #endif
+        }
+        if (table.IsDropped()) {
+          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+          continue;
+        }
+
+        s = table.UndoDropIndex(ctx, index_log);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to recover drop index %ld.", table_id)
+          #ifdef WITH_TESTS
+          return s;
+          #endif
+        } else {
+          table.TSxClean(ctx);
+        }
+        break;
+      }
+      default:
+        LOG_ERROR("The unknown WALLogType type is not processed.")
         break;
     }
   }
@@ -1061,10 +1229,31 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
 
   std::reverse(logs.begin(), logs.end());
   for (auto log : logs) {
-    if (log->getXID() == mtr_id && log->getType() == WALLogType::DDL_ALTER_COLUMN && s != FAIL) {
-      s = table->UndoAlterTable(ctx, log);
-      if (s == KStatus::SUCCESS) {
-        table->TSxClean(ctx);
+    if (log->getXID() == mtr_id &&  s != FAIL) {
+      switch (log->getType()) {
+        case WALLogType::DDL_ALTER_COLUMN: {
+          s = table->UndoAlterTable(ctx, log);
+          if (s == KStatus::SUCCESS) {
+            table->TSxClean(ctx);
+          }
+          break;
+        }
+        case WALLogType::CREATE_INDEX: {
+          s = table->UndoCreateIndex(ctx, log);
+          if (s == KStatus::SUCCESS) {
+            table->TSxClean(ctx);
+          }
+          break;
+        }
+        case WALLogType::DROP_INDEX: {
+          s = table->UndoDropIndex(ctx, log);
+          if (s == KStatus::SUCCESS) {
+            table->TSxClean(ctx);
+          }
+          break;
+        }
+        default:
+          break;
       }
     }
     delete log;
@@ -1326,6 +1515,67 @@ KStatus TSEngineImpl::GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uin
   }
   *version = table->GetMetricsTableMgr()->GetCurrentTableVersion();
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                                           const char* transaction_id, const uint32_t cur_version,
+                                           const uint32_t new_version,
+                                           const std::vector<uint32_t/* tag column id*/> &index_schema) {
+    LOG_INFO("TSEngine CreateNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+              table_id, index_id, cur_version, new_version)
+    std::shared_ptr<TsTable> table;
+    KStatus s = GetTsTable(ctx, table_id, table);
+    if (s == KStatus::FAIL) {
+        return s;
+    }
+
+    // Get transaction id.
+    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+    // Write create index DDL into WAL, which type is Create_Normal_TagIndex.
+    s = wal_sys_->WriteCreateIndexWAL(ctx, x_id, table_id, index_id, cur_version, new_version, index_schema);
+    if (s == KStatus::FAIL) {
+      return s;
+    }
+    // create index
+    return table->CreateNormalTagIndex(ctx, x_id, index_id, cur_version, new_version, index_schema);
+}
+
+KStatus TSEngineImpl::DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                                         const char* transaction_id,  const uint32_t cur_version,
+                                         const uint32_t new_version) {
+    LOG_INFO("TSEngine DropNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+             table_id, index_id, cur_version, new_version)
+    std::shared_ptr<TsTable> table;
+    KStatus s = GetTsTable(ctx, table_id, table);
+    if (s == KStatus::FAIL) {
+        LOG_ERROR("drop normal tag index, failed to get ts table.")
+        return s;
+    }
+
+    // Get transaction id.
+    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+    std::vector<uint32_t> tags = table->GetNTagIndexInfo(cur_version, index_id);
+    if (tags.empty()) {
+      LOG_ERROR("drop normal tag index, ntag info is empty.")
+      return FAIL;
+    }
+
+    // Write create index DDL into WAL, which type is Create_Normal_TagIndex.
+    s = wal_sys_->WriteDropIndexWAL(ctx, x_id, table_id, index_id, cur_version, new_version, tags);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Drop normal tag index write wal failed.")
+      return s;
+    }
+
+    return table->DropNormalTagIndex(ctx, x_id, cur_version, new_version, index_id);
+}
+
+KStatus TSEngineImpl::AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                                          const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
+                                          const std::vector<uint32_t/* tag column id*/> &new_index_schema) {
+  return SUCCESS;
 }
 
 KStatus TSEngineImpl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {

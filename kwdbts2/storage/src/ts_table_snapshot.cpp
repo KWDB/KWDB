@@ -239,6 +239,7 @@ KStatus TsSnapshotProductor::NextData(kwdbContext_p ctx, TSSlice* data) {
     // first data, we wiil send schema info to desc node. as default rule.
     LOG_DEBUG("sending table schema to desc. size[%lu]", data->len);
     type = TsSnapshotDataType::STORAGE_SCHEMA;
+    // need include normal tag index.
     s = getSchemaInfo(ctx, using_storage_schema_version_, &payload_data);
     status_ = TsSnapshotStatus::SENDING_METRIC;
     break;
@@ -503,6 +504,7 @@ KStatus TsSnapshotConsumer::WriteData(kwdbContext_p ctx, TSSlice data) {
   cur_sn_ = cur_data.sn;
   switch (cur_data.type) {
   case TsSnapshotDataType::STORAGE_SCHEMA :
+    // need include normal tag index.
     LOG_DEBUG("snapshot[%s] Writeschema, data size [%lu]", Print().c_str(), data.len);
     return updateTableSchema(ctx, cur_data.data_part);
     break;
@@ -529,6 +531,23 @@ KStatus TsSnapshotConsumer::updateTableSchema(kwdbContext_p ctx, TSSlice schema)
     LOG_ERROR("snapshot[%s] failed during upper version.", Print().c_str());
     return s;
   }
+
+    LOG_INFO("updateTableSchema TsTable[%lu], starting to create NTAG index.", snapshot_info_.table->GetTableId());
+    for (int i = 0; i < meta.index_info_size(); i ++) {
+        std::vector<uint32_t> col_ids;
+        for (int idx = 0; idx < meta.index_info(i).col_ids_size(); idx++) {
+            col_ids.push_back(meta.index_info(i).col_ids(idx));
+        }
+        s = snapshot_info_.table->createNormalTagIndex(ctx, 0, meta.index_info(i).index_id(), meta.ts_table().ts_version(),
+                                        meta.ts_table().ts_version(), col_ids);
+        if (s != KStatus::SUCCESS) {
+            LOG_ERROR("Failed to create ntag hash index, index id:%d.", meta.index_info(i).index_id())
+            return s;
+        }
+    }
+    LOG_INFO("updateTableSchema TsTable[%lu] end.", snapshot_info_.table->GetTableId());
+
+
   LOG_DEBUG("updateTableSchema succes..");
   return KStatus::SUCCESS;
 }

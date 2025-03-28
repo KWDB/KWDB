@@ -173,8 +173,13 @@ var VectorizeTestingBatchSize = settings.RegisterValidatedIntSetting(
 // Setup is part of the flowinfra.Flow interface.
 func (f *vectorizedFlow) Setup(
 	ctx context.Context, spec *execinfrapb.FlowSpec, opt flowinfra.FuseOpt,
-) (context.Context, error) {
-	var err error
+) (newCtx context.Context, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = errors.Errorf("%v", p)
+			newCtx = ctx
+		}
+	}()
 	ctx, err = f.FlowBase.Setup(ctx, spec, opt)
 	if err != nil {
 		return ctx, err

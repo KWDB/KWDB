@@ -24,6 +24,7 @@ typedef k_double64 (*_double_fn)(Field **, k_int32);
 typedef float (*_float_val_fn)(float);
 typedef double (*_double_val_fn)(double);
 typedef double (*_double_val_fn_2)(double, double);
+typedef k_int64 (*_int_val_fn)(k_int64);
 typedef k_int64 (*_int_val_fn_2)(k_int64, k_int64);
 
 typedef std::pair<roachpb::DataType, k_uint32> (*_func_field_type_fn)(roachpb::DataType, k_uint32);

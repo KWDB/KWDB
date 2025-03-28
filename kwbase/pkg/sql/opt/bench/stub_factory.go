@@ -71,7 +71,7 @@ func (f *stubFactory) ConstructSynchronizer(input exec.Node, degree int64) (exec
 func (f *stubFactory) ConstructTSScan(
 	table cat.Table,
 	private *memo.TSScanPrivate,
-	tagFilter, primaryFilter []tree.TypedExpr,
+	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 	rowCount float64,
 ) (exec.Node, error) {
 	return struct{}{}, nil

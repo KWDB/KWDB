@@ -141,6 +141,14 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         status = readDeleteLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
         break;
       }
+      case WALLogType::CREATE_INDEX: {
+        status = readCreateIndexLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
+        break;
+      }
+      case WALLogType::DROP_INDEX: {
+        status = readDropIndexLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
+        break;
+      }
       case WALLogType::CHECKPOINT: {
         status = readCheckpointLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
         break;
@@ -1001,6 +1009,100 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       res = nullptr;
       break;
     }
+  }
+  return SUCCESS;
+}
+
+KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
+                           TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+  char* res;
+  KStatus  status;
+  uint64_t x_id;
+  uint64_t object_id;
+  uint32_t index_id;
+  uint32_t cur_ts_version;
+  uint32_t new_ts_version;
+  std::array<int32_t, 10> col_ids{};
+
+  status = readBytes(current_offset, read_queue, CreateIndexEntry::fixed_length, res);
+  if (status == FAIL) {
+    delete[] res;
+    res = nullptr;
+    LOG_ERROR("Failed to parse the WAL log.")
+    return FAIL;
+  }
+  int construct_offset = 0;
+
+  // uint64_t = (x_id_)
+  memcpy(&x_id, res + construct_offset, sizeof(uint64_t));
+  construct_offset += sizeof(uint64_t);
+  memcpy(&object_id, res + construct_offset, sizeof(CreateIndexEntry::object_id_));
+  construct_offset += sizeof(CreateIndexEntry::object_id_);
+  memcpy(&index_id, res + construct_offset, sizeof(CreateIndexEntry::index_id_));
+  construct_offset += sizeof(CreateIndexEntry::index_id_);
+  memcpy(&cur_ts_version, res + construct_offset, sizeof(CreateIndexEntry::cur_ts_version_));
+  construct_offset += sizeof(CreateIndexEntry::cur_ts_version_);
+  memcpy(&new_ts_version, res + construct_offset, sizeof(CreateIndexEntry::new_ts_version_));
+  construct_offset += sizeof(CreateIndexEntry::new_ts_version_);
+  memcpy(&col_ids, res + construct_offset, sizeof(CreateIndexEntry::col_ids_));
+  delete[] res;
+  res = nullptr;
+
+  if (txn_id == 0 || txn_id == x_id) {
+    auto* index_entry = KNEW CreateIndexEntry(current_lsn, WALLogType::CREATE_INDEX, x_id, object_id, index_id,
+                                              cur_ts_version, new_ts_version, col_ids);
+    if (index_entry == nullptr) {
+      LOG_ERROR("Failed to construct entry.")
+      return FAIL;
+    }
+    log_entries.push_back(index_entry);
+  }
+  return SUCCESS;
+}
+
+KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
+                         TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+  char* res;
+  KStatus  status;
+  uint64_t x_id;
+  uint64_t object_id;
+  uint32_t index_id;
+  uint32_t cur_ts_version;
+  uint32_t new_ts_version;
+  std::array<int32_t, 10> col_ids{};
+
+  status = readBytes(current_offset, read_queue, DropIndexEntry::fixed_length, res);
+  if (status == FAIL) {
+    delete[] res;
+    res = nullptr;
+    LOG_ERROR("Failed to parse the WAL log.")
+    return FAIL;
+  }
+  int construct_offset = 0;
+
+  // uint64_t = sizeof(x_id_)
+  memcpy(&x_id, res + construct_offset, sizeof(uint64_t));
+  construct_offset += sizeof(uint64_t);
+  memcpy(&object_id, res + construct_offset, sizeof(DropIndexEntry::object_id_));
+  construct_offset += sizeof(DropIndexEntry::object_id_);
+  memcpy(&index_id, res + construct_offset, sizeof(DropIndexEntry::index_id_));
+  construct_offset += sizeof(DropIndexEntry::index_id_);
+  memcpy(&cur_ts_version, res + construct_offset, sizeof(DropIndexEntry::cur_ts_version_));
+  construct_offset += sizeof(DropIndexEntry::cur_ts_version_);
+  memcpy(&new_ts_version, res + construct_offset, sizeof(DropIndexEntry::new_ts_version_));
+  construct_offset += sizeof(DropIndexEntry::new_ts_version_);
+  memcpy(&col_ids, res + construct_offset, sizeof(DropIndexEntry::col_ids_));
+  delete[] res;
+  res = nullptr;
+
+  if (txn_id == 0 || txn_id == x_id) {
+    auto* index_entry = KNEW DropIndexEntry(current_lsn, WALLogType::DROP_INDEX, x_id, object_id, index_id,
+                                            cur_ts_version, new_ts_version, col_ids);
+    if (index_entry == nullptr) {
+      LOG_ERROR("Failed to construct entry.")
+      return FAIL;
+    }
+    log_entries.push_back(index_entry);
   }
   return SUCCESS;
 }

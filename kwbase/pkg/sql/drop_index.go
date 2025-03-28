@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
+	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -39,6 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
 
@@ -63,9 +65,15 @@ func (p *planner) DropIndex(ctx context.Context, n *tree.DropIndex) (planNode, e
 			// Error or table did not exist.
 			return nil, err
 		}
+
 		if tableDesc == nil {
 			// IfExists specified and table did not exist.
 			continue
+		}
+
+		// drop multiple tag indexes at once is not supported
+		if tableDesc.IsTSTable() && len(n.IndexList) > 1 {
+			return nil, pgerror.New(pgcode.FeatureNotSupported, "drop multiple tag indexes at once is not supported")
 		}
 
 		if err := p.CheckPrivilege(ctx, tableDesc, privilege.CREATE); err != nil {
@@ -434,66 +442,119 @@ func (p *planner) dropIndexByName(
 	// Overwriting tableDesc.Index may mess up with the idx object we collected above. Make a copy.
 	idxCopy := *idx
 	idx = &idxCopy
-
-	found := false
-	for i, idxEntry := range tableDesc.Indexes {
-		if idxEntry.ID == idx.ID {
-			// Unsplit all manually split ranges in the index so they can be
-			// automatically merged by the merge queue.
-			span := tableDesc.IndexSpan(idxEntry.ID)
-			ranges, err := ScanMetaKVs(ctx, p.txn, span)
-			if err != nil {
-				return err
-			}
-			for _, r := range ranges {
-				var desc roachpb.RangeDescriptor
-				if err := r.ValueProto(&desc); err != nil {
+	if !tableDesc.IsTSTable() {
+		found := false
+		for i, idxEntry := range tableDesc.Indexes {
+			if idxEntry.ID == idx.ID {
+				// Unsplit all manually split ranges in the index so they can be
+				// automatically merged by the merge queue.
+				span := tableDesc.IndexSpan(idxEntry.ID)
+				ranges, err := ScanMetaKVs(ctx, p.txn, span)
+				if err != nil {
 					return err
 				}
-				// We have to explicitly check that the range descriptor's start key
-				// lies within the span of the index since ScanMetaKVs returns all
-				// intersecting spans.
-				if (desc.GetStickyBit() != hlc.Timestamp{}) && span.Key.Compare(desc.StartKey.AsRawKey()) <= 0 {
-					// Swallow "key is not the start of a range" errors because it would
-					// mean that the sticky bit was removed and merged concurrently. DROP
-					// INDEX should not fail because of this.
-					if err := p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
+				for _, r := range ranges {
+					var desc roachpb.RangeDescriptor
+					if err := r.ValueProto(&desc); err != nil {
 						return err
 					}
+					// We have to explicitly check that the range descriptor's start key
+					// lies within the span of the index since ScanMetaKVs returns all
+					// intersecting spans.
+					if (desc.GetStickyBit() != hlc.Timestamp{}) && span.Key.Compare(desc.StartKey.AsRawKey()) <= 0 {
+						// Swallow "key is not the start of a range" errors because it would
+						// mean that the sticky bit was removed and merged concurrently. DROP
+						// INDEX should not fail because of this.
+						if err := p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
+							return err
+						}
+					}
 				}
-			}
 
-			// the idx we picked up with FindIndexByID at the top may not
-			// contain the same field any more due to other schema changes
-			// intervening since the initial lookup. So we send the recent
-			// copy idxEntry for drop instead.
-			if err := tableDesc.AddIndexMutation(&idxEntry, sqlbase.DescriptorMutation_DROP); err != nil {
-				return err
+				// the idx we picked up with FindIndexByID at the top may not
+				// contain the same field any more due to other schema changes
+				// intervening since the initial lookup. So we send the recent
+				// copy idxEntry for drop instead.
+				if err := tableDesc.AddIndexMutation(&idxEntry, sqlbase.DescriptorMutation_DROP); err != nil {
+					return err
+				}
+				tableDesc.Indexes = append(tableDesc.Indexes[:i], tableDesc.Indexes[i+1:]...)
+				found = true
+				break
 			}
-			tableDesc.Indexes = append(tableDesc.Indexes[:i], tableDesc.Indexes[i+1:]...)
-			found = true
-			break
 		}
-	}
-	if !found {
-		return fmt.Errorf("index %q in the middle of being added, try again later", idxName)
-	}
+		if !found {
+			return fmt.Errorf("index %q in the middle of being added, try again later", idxName)
+		}
 
-	if err := p.removeIndexComment(ctx, tableDesc.ID, idx.ID); err != nil {
-		return err
+		if err := p.removeIndexComment(ctx, tableDesc.ID, idx.ID); err != nil {
+			return err
+		}
+	} else {
+		found := false
+		for i, idxEntry := range tableDesc.Indexes {
+			if idxEntry.ID == idx.ID {
+				if err := tableDesc.AddIndexMutation(idx, sqlbase.DescriptorMutation_DROP); err != nil {
+					return err
+				}
+				tableDesc.Indexes = append(tableDesc.Indexes[:i], tableDesc.Indexes[i+1:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("index %q in the middle of being added, try again later", idxName)
+		}
 	}
 
 	if err := tableDesc.Validate(ctx, p.txn); err != nil {
 		return err
 	}
 	mutationID := tableDesc.ClusterVersion.NextMutationID
-	if err := p.writeSchemaChange(ctx, tableDesc, mutationID, jobDesc); err != nil {
-		return err
+
+	if tableDesc.IsTSTable() {
+		// creates and exec drop tag index job
+		syncDetail := jobspb.SyncMetaCacheDetails{
+			Type:                  dropTagIndex,
+			SNTable:               tableDesc.TableDescriptor,
+			CreateOrAlterTagIndex: *idx,
+			MutationID:            mutationID,
+		}
+		jobID, err := p.createTSSchemaChangeJob(ctx, syncDetail, p.stmt.SQL)
+		if err != nil {
+			return err
+		}
+		if mutationID != sqlbase.InvalidMutationID {
+			tableDesc.MutationJobs = append(tableDesc.MutationJobs, sqlbase.TableDescriptor_MutationJob{
+				MutationID: mutationID, JobID: jobID})
+		}
+		if err = p.writeTableDesc(ctx, tableDesc); err != nil {
+			return err
+		}
+		// Actively commit a transaction, and read/write system table operations
+		// need to be performed before this.
+		if err = p.txn.Commit(ctx); err != nil {
+			return err
+		}
+
+		// After the transaction commits successfully, execute the Job and wait for it to complete.
+		if err = p.ExecCfg().JobRegistry.Run(
+			ctx,
+			p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+			[]int64{jobID},
+		); err != nil {
+			return err
+		}
+		log.Infof(ctx, "drop tag index %s 1st txn finished, id: %d", string(idxName), idx.ID)
+	} else {
+		if err := p.writeSchemaChange(ctx, tableDesc, mutationID, jobDesc); err != nil {
+			return err
+		}
+		p.SendClientNotice(ctx,
+			errors.WithHint(
+				pgerror.Noticef("the data for dropped indexes is reclaimed asynchronously"),
+				"The reclamation delay can be customized in the zone configuration for the table."))
 	}
-	p.SendClientNotice(ctx,
-		errors.WithHint(
-			pgerror.Noticef("the data for dropped indexes is reclaimed asynchronously"),
-			"The reclamation delay can be customized in the zone configuration for the table."))
 
 	p.SetAuditTarget(uint32(idx.ID), idx.Name, droppedViews)
 	return nil

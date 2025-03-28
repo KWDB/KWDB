@@ -287,6 +287,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 			for i, fil := range n.PrimaryTagFilterArray {
 				v.expr(name, fmt.Sprintf("ptag filter[%d]", i), -1, fil)
 			}
+			for i, fil := range n.TagIndexFilterArray {
+				v.expr(name, fmt.Sprintf("tag index filter[%d]", i), -1, fil)
+			}
 		}
 
 	case *filterNode:

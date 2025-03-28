@@ -229,7 +229,9 @@ TEST_F(TestTsBLockItemMaxNoCore, mulitiInsert) {
   delete[] payload.data;
   primary_tags.push_back(&primary_key);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
 

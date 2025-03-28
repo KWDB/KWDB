@@ -3619,7 +3619,7 @@ func (d *DArray) Compare(ctx *EvalContext, other Datum) int {
 	}
 	// fix(ZDP-45903), when n is large and called multiple times, it is possible that ctx has already been canceled.
 	// First, check ctx.
-	if n > 1024 {
+	if n >= 10000 {
 		if err := ctx.Ctx().Err(); err != nil {
 			panic(err)
 		}

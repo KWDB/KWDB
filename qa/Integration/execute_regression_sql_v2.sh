@@ -185,9 +185,8 @@ function execute_regression_sql_distribute_v2() {
           fi
           rm -fr $out_file
           storedir=$QA_DIR/../install/deploy
-          open_source=false
 
-          $QA_DIR/util/distribute_exec_v2.sh $topology $test_file $out_file $storedir $QA_DIR/Integration/$dir/master/${sql_file}.sh $open_source
+          $QA_DIR/util/distribute_exec_v2.sh $topology $test_file $out_file $storedir $QA_DIR/Integration/$dir/master/${sql_file}.sh
           ut_end_time=$(date +%s)
           duration=$((ut_end_time-ut_start_time))
           if [ ! -e $master_file ]; then
@@ -231,124 +230,6 @@ function execute_regression_sql_distribute_v2() {
             return 1
           fi
           if [ "$res" = "FAIL" ]; then
-            return 1
-          fi
-        done
-
-
-
-    done
-
-  done
-  test_end_time=$(date +%s)
-  echo -e "${INFO}$0 PASSED $passed_cnt/${#test_results[@]} ($((test_end_time-test_start_time)))s${NC}" | tee -a $SUMMARY_FILE
-  ( IFS=$'\n'; echo -e "${test_results[*]}" ) | tee -a $SUMMARY_FILE
-  if [ $passed_cnt = ${#test_results[@]} ]; then
-    echo -e "${SUCC}All sql tests passed${NC}"
-  else
-    echo -e "${FAIL}Test failed, please check the diff files!${NC}" | tee -a $SUMMARY_FILE
-    return 1
-  fi
-}
-
-function execute_regression_sql_distribute_open_source_v2() {
-  local sqldirs=("cluster_v2_open_source")
-
-  test_start_time=$(date +%s)
-  test_results=()
-  passed_cnt=0
-
-  for topology in ${@};do
-    echo_info "Test topology: ${topology}"
-
-
-
-    for dir in ${sqldirs[@]};
-    do
-      # echo "---------- Begin execute $dir sqls ----------"
-      mkdir -p $QA_DIR/TEST_integration/$dir/
-      for sql_file_path in `cd $QA_DIR && find Integration/$dir -type f -name *.sql | sort`
-        do
-          echo '==============================='
-          echo $sql_file_path
-          echo $SQL_FILTER
-          echo $dir
-          echo '==============================='
-
-          ut_start_time=$(date +%s)
-          sql_file=$(basename $sql_file_path)
-          if [[ $sql_file != $SQL_FILTER && $sql_file != "aa_init_replication_service.sql" ]];then
-            continue
-          fi
-          pkill -9 kwbase
-          sleep 10s
-          rm -rf $QA_DIR/../install/deploy/
-
-          ls -al $QA_DIR/../install/
-
-          $QA_DIR/util/setup_basic_v2.sh ${topology}
-          if [ $? = 1 ]; then
-            echo_err "setup ${topology} failed"
-            return 1
-          fi
-
-          # tar -zxvf $QA_DIR/Integration/$dir/tsdb1.tar.gz -C  $QA_DIR/../install/deploy/extern/
-
-          echo_info "execute ${topology} $sql_file_path"
-          # use ksql exec sql file and write all output to utname.log
-          test_file=$QA_DIR/Integration/$dir/$sql_file
-          out_file=$QA_DIR/TEST_integration/$dir/${sql_file}_${topology}.out
-          master_file=$QA_DIR/Integration/$dir/master/${sql_file}_${topology}.master
-          diff_file=$QA_DIR/Integration/$dir/master/${sql_file}_${topology}.diff
-          rm -f diff_file
-          if [[ $OVERWRITE_MASTER == "yes" ]]; then
-            out_file=$master_file
-          fi
-          rm -fr $out_file
-          storedir=$QA_DIR/../install/deploy
-          open_source=true
-
-          $QA_DIR/util/distribute_exec_v2.sh $topology $test_file $out_file $storedir $QA_DIR/Integration/$dir/master/${sql_file}.sh $open_source
-          ut_end_time=$(date +%s)
-          duration=$((ut_end_time-ut_start_time))
-          if [ ! -e $master_file ]; then
-            echo "" >> $master_file
-          fi
-          $QA_DIR/util/master_compare_v2.sh $master_file $out_file $diff_file
-
-          current_time=$(date +"%Y-%m-%d-%H-%M-%S")
-
-          if [ 0 -ne $? ] || [ -s $diff_file ]; then
-            res='FAIL'
-            mkdir -p $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}
-            echo_err "$(date)---------- finish ${topology} $sql_file_path FAILED"
-            echo_err "$sql_file failed"
-            test_results+=("${FAIL}${sql_file}_${topology} \t\t FAILED ($duration)s${NC}")
-            echo "Difference between $master_file and $out_file" >> $SUMMARY_FILE
-            cat $diff_file >> $SUMMARY_FILE
-            cat $out_file > $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}_$folder.out
-            cat $diff_file > $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}_$folder.diff
-            # cat $diff_file
-            return 1
-          else
-            res='SUCC'
-            mkdir -p $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}
-            echo_succ "finish ${topology} $sql_file_path SUCCEED"
-            test_results+=("${SUCC}${sql_file}_${topology} \t\t PASSED ($duration)s${NC}")
-            passed_cnt=$((passed_cnt+1))
-            cat $out_file > $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}_$folder.out
-            cat $diff_file > $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}_$folder.diff
-
-            rm -f $diff_file
-          fi
-
-          for folder in `ls $storedir`; do
-          	tar -cvzPf $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}_$folder.logs.tar.gz -C $storedir/$folder logs
-          done
-
-          $QA_DIR/util/stop_basic_v2.sh ${topology}
-          if [ $? = 1 ]; then
-            echo_err "shutdown ${topology} failed"
             return 1
           fi
         done

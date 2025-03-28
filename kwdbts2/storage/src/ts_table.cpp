@@ -232,10 +232,13 @@ KStatus TsEntityGroup::GetAllPartitions(kwdbContext_p ctx, std::unordered_map<Su
                                         std::vector<timestamp64>>* subgrp_partitions) {
   std::vector<void*> primary_tags;
   std::vector<uint32_t> scantags;
+  std::vector<uint64_t> tags_index_id;
+  std::vector<void*> tags;
   std::vector<EntityResultIndex> entity_list;
   ResultSet res;
   uint32_t count;
-  KStatus s = GetEntityIdList(ctx, primary_tags, scantags, &entity_list , &res, &count);
+  KStatus s = GetEntityIdList(ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scantags, &entity_list ,
+                              &res, &count);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetAllPartitionDirs failed at GetEntityIdList.");
     return s;
@@ -519,7 +522,7 @@ KStatus TsEntityGroup::DeleteData(kwdbContext_p ctx, const string& primary_tag, 
   // Get subgroup id and entity id based on the primary tag.
   if (false == new_tag_bt_->hasPrimaryKey(const_cast<char*>(primary_tag.c_str()),
                                         primary_tag.size(), entity_id, subgroup_id)) {
-    LOG_WARN("entity not exists, primary_tag: %s", primary_tag.c_str());
+    LOG_INFO("primary_tag[%s] does not exist, no need to delete", primary_tag.c_str());
     return KStatus::SUCCESS;
   }
   timestamp64 min_ts = INT64_MAX, max_ts = INT64_MIN;
@@ -614,6 +617,11 @@ KStatus TsEntityGroup::DeleteEntities(kwdbContext_p ctx, const std::vector<std::
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   *count = 0;
   for (const auto& p_tags : primary_tags) {
+    uint32_t sub_group_id, entity_id;
+    if (!new_tag_bt_->hasPrimaryKey(p_tags.data(), p_tags.size(), entity_id, sub_group_id)) {
+      LOG_INFO("primary key[%s] dose not exist, no need to delete", p_tags.c_str())
+      continue;
+    }
     uint64_t num = 0;
     KStatus status = DeleteEntity(ctx, p_tags, &num, mtr_id);
     if (status == KStatus::FAIL) {
@@ -670,6 +678,9 @@ KStatus TsEntityGroup::DeleteRangeEntities(kwdbContext_p ctx, const HashIdSpan& 
 }
 
 KStatus TsEntityGroup::GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+                                       const std::vector<uint64_t/*index_id*/> &tags_index_id,
+                                       const std::vector<void*> tags,
+                                       TSTagOpType op_type,
                                        const std::vector<uint32_t>& scan_tags,
                                        std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                                        uint32_t table_version) {
@@ -681,7 +692,8 @@ KStatus TsEntityGroup::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
     LOG_ERROR("getTagTable error ");
     return KStatus::FAIL;
   }
-  if (new_tag_bt_->GetEntityIdList(primary_tags, scan_tags, entity_id_list, res, count, table_version) < 0) {
+  if (new_tag_bt_->GetEntityIdList(primary_tags, tags_index_id, tags, op_type, scan_tags, entity_id_list, res, count,
+                                   table_version) < 0) {
     LOG_ERROR("GetEntityIdList error ");
     status = KStatus::FAIL;
   }
@@ -1513,6 +1525,15 @@ KStatus TsTable::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* m
     if (col->has_storage_len() && col->storage_len() == 0) {
       col->set_storage_len(tag_info.m_size);
     }
+  }
+
+  auto tag_infos = GetAllNTagIndexs();
+  for (auto tag_info : tag_infos) {
+      roachpb::NTagIndexInfo* idx_info = meta->add_index_info();
+      idx_info->set_index_id(tag_info.first);
+      for (auto col_id : tag_info.second) {
+        idx_info->add_col_ids(col_id);
+      }
   }
 
   Return(KStatus::SUCCESS);
@@ -2699,6 +2720,9 @@ KStatus TsTable::DeleteExpiredData(kwdbContext_p ctx, int64_t end_ts) {
 }
 
 KStatus TsTable::GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+                                 const std::vector<uint64_t/*index_id*/> &tags_index_id,
+                                 const std::vector<void*> tags,
+                                 TSTagOpType op_type,
                                  const std::vector<uint32_t>& scan_tags,
                                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                                  uint32_t table_version) {
@@ -2717,7 +2741,8 @@ KStatus TsTable::GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& pr
     //   // not leader
     //   continue;
     // }
-    tbl_range.second->GetEntityIdList(ctx, primary_tags, scan_tags, entity_id_list, res, count, table_version);
+    tbl_range.second->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, op_type, scan_tags, entity_id_list, res,
+                                      count, table_version);
   }
   return KStatus::SUCCESS;
 }
@@ -2990,6 +3015,56 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   return s;
 }
 
+KStatus TsTable::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
+  KStatus s;
+  auto index_log = reinterpret_cast<CreateIndexEntry*>(log);
+  RW_LATCH_S_LOCK(entity_groups_mtx_);
+  Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+  for (const auto& entity_group : entity_groups_) {
+    s = entity_group.second->UndoCreateHashIndex(index_log->getIndexID(), index_log->getCurTsVersion(),
+                                                 index_log->getNewTsVersion());
+    if (s == KStatus::FAIL) {
+      return s;
+    }
+  }
+  if (entity_bt_manager_->RollBack(index_log->getCurTsVersion(), index_log->getNewTsVersion()) < 0) {
+    LOG_ERROR("undo create index failed: rollback metric table[%lu] version failed, new version[%u]", table_id_,
+              index_log->getNewTsVersion());
+    return KStatus::FAIL;
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTable::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
+  KStatus s;
+  auto index_log = reinterpret_cast<DropIndexEntry*>(log);
+  std::vector<uint32_t> tags;
+  for (auto col_id : index_log->getColIDs()) {
+    if (col_id < 0) {
+      break;
+    }
+    tags.emplace_back(col_id);
+  }
+  RW_LATCH_S_LOCK(entity_groups_mtx_);
+  Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+  for (const auto& entity_group : entity_groups_) {
+    s = entity_group.second->UndoDropHashIndex(tags, index_log->getIndexID(), index_log->getCurTsVersion(),
+                                               index_log->getNewTsVersion());
+    if (s == KStatus::FAIL) {
+      return s;
+    }
+  }
+  if (entity_bt_manager_->RollBack(index_log->getCurTsVersion(), index_log->getNewTsVersion()) < 0) {
+    LOG_ERROR("undo drop index failed: rollback metric table[%lu] version failed, new version[%u]", table_id_,
+              index_log->getNewTsVersion());
+    return KStatus::FAIL;
+  }
+
+  return KStatus::SUCCESS;
+}
+
+
 KStatus TsTable::UndoAlterTable(kwdbContext_p ctx, LogEntry* log) {
   auto alter_log = reinterpret_cast<DDLAlterEntry*>(log);
   auto alter_type = alter_log->getAlterType();
@@ -3246,6 +3321,181 @@ KStatus TsTable::GetDataRowNum(kwdbContext_p ctx, const KwTsSpan& ts_span, uint6
 
 uint32_t TsTable::GetCurrentTableVersion() {
   return entity_bt_manager_->GetCurrentTableVersion();
+}
+
+KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                      const uint32_t cur_version, const uint32_t new_version,
+                                      const std::vector<uint32_t/* tag column id*/>& tags) {
+  LOG_INFO("CreateNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  RW_LATCH_S_LOCK(entity_groups_mtx_);
+  Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+  for (auto& entity_group : entity_groups_) {
+    if (!entity_group.second->CreateNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
+      LOG_ERROR("Failed to create normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+      return FAIL;
+    }
+  }
+  auto s = entity_bt_manager_->UpdateVersion(cur_version, new_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Update table version error");
+    return s;
+  }
+  LOG_INFO("CreateNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  return SUCCESS;
+}
+
+KStatus TsTable::createNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                      const uint32_t cur_version, const uint32_t new_version,
+                                      const std::vector<uint32_t/* tag column id*/>& tags) {
+    LOG_INFO("snapshot create Normal Tag Index start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+    RW_LATCH_S_LOCK(entity_groups_mtx_);
+    Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+    for (auto& entity_group : entity_groups_) {
+        if (!entity_group.second->createNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
+            LOG_ERROR("Failed to create normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+            return FAIL;
+        }
+    }
+    LOG_INFO("CreateNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+    return SUCCESS;
+}
+
+std::vector<uint32_t> TsTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
+  RW_LATCH_S_LOCK(entity_groups_mtx_);
+  Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+  for (auto& entity_group : entity_groups_) {
+    std::vector<uint32_t> ret = entity_group.second->GetNTagIndexInfo(ts_version, index_id);
+    return ret;
+  }
+  return std::vector<uint32_t>();
+}
+
+std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndexs() {
+  RW_LATCH_S_LOCK(entity_groups_mtx_);
+  Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+  for (auto& entity_group : entity_groups_) {
+    auto ret = entity_group.second->GetAllNTagIndexs(GetCurrentTableVersion());
+    return ret;
+  }
+  return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
+}
+
+KStatus TsTable::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
+                                    const uint32_t new_version, const uint64_t index_id) {
+  LOG_INFO("DropNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+  RW_LATCH_S_LOCK(entity_groups_mtx_);
+  Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+  for (auto& entity_group : entity_groups_) {
+    if (!entity_group.second->DropNormalTagIndex(ctx, transaction_id, cur_version, new_version, index_id)) {
+        LOG_ERROR("Failed to drop normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+        return FAIL;
+    }
+  }
+  auto s = entity_bt_manager_->UpdateVersion(cur_version, new_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Update table version error");
+    return s;
+  }
+  LOG_INFO("DropNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  return SUCCESS;
+}
+
+
+
+KStatus TsTable::AlterNormalTagIndex(kwdbContext_p ctx, const uint64_t index_id, const uint64_t transaction_id,
+                                     const uint32_t old_version, const uint32_t new_version,
+                                     const vector<uint32_t> &new_index_schema) {
+    return SUCCESS;
+}
+
+KStatus TsEntityGroup::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                            const uint32_t cur_version, const uint32_t new_version,
+                                            const std::vector<uint32_t/* tag column id*/>& tags) {
+  RW_LATCH_S_LOCK(drop_mutex_);
+  ErrorInfo errorInfo;
+  if (getTagTable(errorInfo) != KStatus::SUCCESS) {
+      LOG_ERROR("The target TS table is not available.");
+      return KStatus::FAIL;
+  }
+  Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); releaseTagTable(); }};
+  errorInfo.errcode = new_tag_bt_->CreateHashIndex(O_CREAT, tags, index_id, cur_version, new_version, errorInfo);
+  if (errorInfo.errcode < 0) {
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsEntityGroup::createNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                            const uint32_t cur_version, const uint32_t new_version,
+                                            const std::vector<uint32_t/* tag column id*/>& tags) {
+    RW_LATCH_S_LOCK(drop_mutex_);
+    ErrorInfo errorInfo;
+    if (getTagTable(errorInfo) != KStatus::SUCCESS) {
+        LOG_ERROR("The target TS table is not available.");
+        return KStatus::FAIL;
+    }
+    Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); releaseTagTable(); }};
+    errorInfo.errcode = new_tag_bt_->createHashIndex(new_version, errorInfo, tags, index_id);
+    if (errorInfo.errcode < 0) {
+        return FAIL;
+    }
+    return SUCCESS;
+}
+
+std::vector<uint32_t> TsEntityGroup::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
+  RW_LATCH_S_LOCK(drop_mutex_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
+  std::vector<uint32_t> ret{};
+  ret = new_tag_bt_->GetNTagIndexInfo(ts_version, index_id);
+  return ret;
+}
+
+std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsEntityGroup::GetAllNTagIndexs(uint32_t ts_version) {
+  RW_LATCH_S_LOCK(drop_mutex_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
+  std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret{};
+  ret = new_tag_bt_->GetAllNTagIndexs(ts_version);
+  return ret;
+}
+
+KStatus TsEntityGroup::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
+                                          const uint32_t new_version, const uint64_t index_id) {
+  LOG_INFO("DropNormalTagIndex index_id:%d, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  RW_LATCH_S_LOCK(drop_mutex_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
+  ErrorInfo errorInfo;
+  errorInfo.errcode = new_tag_bt_->DropHashIndex(index_id, cur_version, new_version, errorInfo);
+  if (errorInfo.errcode < 0) {
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsEntityGroup::UndoCreateHashIndex(uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version) {
+    // drop hash index
+    ErrorInfo err_info;
+    int res = new_tag_bt_->UndoCreateHashIndex(index_id, cur_ts_version, new_ts_version, err_info);
+    if (res < 0) {
+        return KStatus::FAIL;
+    }
+    return KStatus::SUCCESS;
+}
+
+KStatus TsEntityGroup::UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_ts_version,
+                                         uint32_t new_ts_version) {
+    // drop and create hash index
+    ErrorInfo err_info;
+    int res = new_tag_bt_->UndoDropHashIndex(tags, index_id, cur_ts_version, new_ts_version, err_info);
+    if (res < 0) {
+        return KStatus::FAIL;
+    }
+    return KStatus::SUCCESS;
 }
 
 KStatus TsEntityGroup::getTagTable(ErrorInfo& err_info) {

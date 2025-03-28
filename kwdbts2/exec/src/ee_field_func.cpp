@@ -33,6 +33,7 @@ namespace kwdbts {
 void FieldFuncOp::CalcStorageType() {
   k_bool is_all_timestamp = KTRUE;
   sql_type_ = roachpb::DataType::TIMESTAMP;
+  storage_type_ = roachpb::DataType::TIMESTAMP;
   for (k_int32 i = 0; i < arg_count_; ++i) {
     auto arg_storage_type = args_[i]->get_storage_type();
     if (roachpb::DataType::FLOAT == arg_storage_type ||

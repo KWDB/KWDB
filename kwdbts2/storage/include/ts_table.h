@@ -408,9 +408,13 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus
-  GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags, const std::vector<uint32_t>& scan_tags,
-                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res,
-                  uint32_t* count, uint32_t table_version = 1);
+  GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+                  const std::vector<uint64_t/*index_id*/> &tags_index_id,
+                  const std::vector<void*> tags,
+                  TSTagOpType op_type,
+                  const std::vector<uint32_t>& scan_tags,
+                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
+                  uint32_t table_version = 1);
 
   /**
  * @brief get entity row
@@ -455,7 +459,30 @@ class TsTable {
   virtual KStatus AlterTableCol(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
                                 uint32_t cur_version, uint32_t new_version, string& msg);
 
+  virtual KStatus CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                       const uint32_t cur_version, const uint32_t new_version,
+                                       const std::vector<uint32_t/* tag column id*/>&);
+
+  virtual KStatus createNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                       const uint32_t cur_version, const uint32_t new_version,
+                                       const std::vector<uint32_t/* tag column id*/>&);
+
+  virtual std::vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
+
+  virtual std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs();
+
+  virtual KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
+                                     const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id);
+
+  virtual KStatus AlterNormalTagIndex(kwdbContext_p ctx, const uint64_t index_id, const uint64_t transaction_id,
+                                      const uint32_t old_version, const uint32_t new_version,
+                                      const std::vector<uint32_t/* tag column id*/> &new_index_schema);
+
   KStatus AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* meta, MMapMetricsTable ** version_schema);
+
+  virtual KStatus UndoCreateIndex(kwdbContext_p ctx, LogEntry* log);
+
+  virtual KStatus UndoDropIndex(kwdbContext_p ctx, LogEntry* log);
 
   virtual KStatus UndoAlterTable(kwdbContext_p ctx, LogEntry* log);
 
@@ -758,7 +785,11 @@ class TsEntityGroup {
    * @return KStatus
    */
   virtual KStatus
-  GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags, const std::vector<uint32_t>& scan_tags,
+  GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+                  const std::vector<uint64_t/*index_id*/> &tags_index_id,
+                  const std::vector<void*> tags,
+                  TSTagOpType op_type,
+                  const std::vector<uint32_t>& scan_tags,
                   std::vector<EntityResultIndex>* entity_id_list,
                   ResultSet* res, uint32_t* count, uint32_t table_version = 1);
 
@@ -886,6 +917,26 @@ class TsEntityGroup {
 
   virtual KStatus UndoAlterTableTag(kwdbContext_p ctx, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
+  virtual std::vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
+
+  virtual std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t ts_version);
+
+  virtual KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint32_t cur_version,
+                                     const uint32_t new_version, const uint64_t index_id);
+
+  virtual KStatus CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                       const uint32_t cur_version, const uint32_t new_version,
+                                       const std::vector<uint32_t/* tag column id*/>&);
+
+  virtual KStatus createNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                       const uint32_t cur_version, const uint32_t new_version,
+                                       const std::vector<uint32_t/* tag column id*/>&);
+
+  virtual KStatus UndoCreateHashIndex(uint32_t index_id, uint32_t cur_version, uint32_t new_version);
+
+  virtual KStatus UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_version,
+                                    uint32_t new_version);
+
   /**
    * @brief Convert roachpb::KWDBKTSColumn to attribute info.
    * @param col[in] roachpb::KWDBKTSColumn column
@@ -952,6 +1003,7 @@ class TsEntityGroup {
   }
 
   int AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version) {
+    LOG_INFO("AddTagSchemaVersion , new_version:%d", new_version)
     RW_LATCH_S_LOCK(drop_mutex_);
     Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
     ErrorInfo err_info;

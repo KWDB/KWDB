@@ -309,6 +309,14 @@ func checkAndGetDetailsInTable(
 				continue
 			}
 		}
+		if colIndex, ok := stmts[i].AST.(*tree.CreateIndex); ok {
+			n, hasTable := isTableCreated(colIndex.Table.TableName, tableDetails)
+			if !hasTable {
+				return "", nil, false, nil, false, errors.New("The table containing this column for index has not been created")
+			}
+			tableDetails[n].ColumnIndex = append(tableDetails[n].ColumnIndex, stmts[i].SQL)
+			continue
+		}
 		// Check and obtain comments in the SQL file if WITH Privileges
 		if withPrivileges {
 			// Check if there is a GRANT statement
@@ -342,6 +350,17 @@ func execCommentOnMeta(
 	p.ExecCfg().InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: dbName})
 	defer p.ExecCfg().InternalExecutor.SetSessionData(new(sessiondata.SessionData))
 	_, err := p.ExecCfg().InternalExecutor.Exec(ctx, "comment on", nil, comment)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// execIndexOnMeta exec create index sql use InternalExecutor.
+func execIndexOnMeta(ctx context.Context, p sql.PlanHookState, index string, dbName string) error {
+	p.ExecCfg().InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: dbName})
+	defer p.ExecCfg().InternalExecutor.SetSessionData(new(sessiondata.SessionData))
+	_, err := p.ExecCfg().InternalExecutor.Exec(ctx, "create index", nil, index)
 	if err != nil {
 		return err
 	}

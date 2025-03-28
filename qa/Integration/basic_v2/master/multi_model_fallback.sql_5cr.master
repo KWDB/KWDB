@@ -148,33 +148,33 @@ FROM pipec_r.station_info si,
 GROUP BY si.station_name
 HAVING COUNT(t.measure_value) > 0
 ORDER BY si.station_name;
-                tree               |    field    |            description
------------------------------------+-------------+------------------------------------
-                                   | distributed | true
-                                   | vectorized  | false
-  sort                             |             |
-   │                               | order       | +station_name
-   └── filter                      |             |
-        │                          | filter      | count > 0
-        └── group                  |             |
-             │                     | aggregate 0 | station_name
-             │                     | aggregate 1 | count(measure_value)
-             │                     | aggregate 2 | avg(measure_value)
-             │                     | group by    | station_name
-             └── cross-join        |             |
-                  │                | type        | cross
-                  ├── cross-join   |             |
-                  │    │           | type        | cross
-                  │    ├── scan    |             |
-                  │    │           | table       | station_info@primary
-                  │    │           | spans       | FULL SCAN
-                  │    └── scan    |             |
-                  │                | table       | workarea_info@workarea_name_index
-                  │                | spans       | FULL SCAN
-                  └── synchronizer |             |
-                       └── ts scan |             |
-                                   | ts-table    | t_point
-                                   | access mode | metaTable
+                  tree                  |    field    |            description
+----------------------------------------+-------------+------------------------------------
+                                        | distributed | true
+                                        | vectorized  | false
+  sort                                  |             |
+   │                                    | order       | +station_name
+   └── filter                           |             |
+        │                               | filter      | count > 0
+        └── group                       |             |
+             │                          | aggregate 0 | station_name
+             │                          | aggregate 1 | count(measure_value)
+             │                          | aggregate 2 | avg(measure_value)
+             │                          | group by    | station_name
+             └── cross-join             |             |
+                  │                     | type        | cross
+                  ├── cross-join        |             |
+                  │    │                | type        | cross
+                  │    ├── synchronizer |             |
+                  │    │    └── ts scan |             |
+                  │    │                | ts-table    | t_point
+                  │    │                | access mode | metaTable
+                  │    └── scan         |             |
+                  │                     | table       | workarea_info@workarea_name_index
+                  │                     | spans       | FULL SCAN
+                  └── scan              |             |
+                                        | table       | station_info@primary
+                                        | spans       | FULL SCAN
 (25 rows)
 > explain SELECT si.station_name,
        STDDEV(t.measure_value)

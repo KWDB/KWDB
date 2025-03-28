@@ -32,7 +32,6 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
@@ -310,14 +309,6 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 			// value would apply to the zone and setting that value explicitly.
 			// Instead we add the fields to a list that we use at a later time
 			// to copy values over.
-			if base.OpenSource {
-				switch *name {
-				case "num_replicas", "range_min_bytes", "range_max_bytes":
-					if params.p.ExecCfg().StartMode == StartMultiReplica {
-						return errors.Errorf("zone config: %s feature needs enterprise license to enable.", *name)
-					}
-				}
-			}
 			if (*name == "constraints" || *name == "lease_preferences") && n.zoneSpecifier.Partition == "" {
 				return pgerror.Newf(pgcode.FeatureNotSupported, "set zone config constraints and lease_preferences is not supported")
 			}

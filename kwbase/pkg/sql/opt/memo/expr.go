@@ -758,5 +758,20 @@ func ExprIsNeverNull(e opt.ScalarExpr, notNullCols opt.ColSet) bool {
 	}
 }
 
+const (
+	// Intersection represents intersection of multiple tag indexes
+	Intersection = 0
+	// Combine represents union of multiple tag indexes
+	Combine = 1
+)
+
 // PTagValues primary tag values
 type PTagValues map[uint32][]string
+
+// TagIndexInfo tag index values
+type TagIndexInfo struct {
+	UnionType int
+	IndexID   []uint32
+	// TagIndexValues tag index key values
+	TagIndexValues []map[uint32][]string
+}

@@ -45,6 +45,11 @@ typedef struct {
   int32_t len;
 } RangeGroups;
 
+typedef struct {
+    uint32_t* index_column;
+    int32_t len;
+} IndexColumns;
+
 // timestamp span
 typedef struct {
   int64_t begin;
@@ -211,6 +216,13 @@ TSStatus TSUpdateRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroups ra
 TSStatus TSCreateRangeGroup(TSEngine* engine, TSTableID table_id, TSSlice schema, RangeGroups range_groups);
 
 TSStatus TSDropTsTable(TSEngine* engine, TSTableID tableId);
+
+TSStatus TSCreateNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id,
+                                char* transaction_id, uint32_t cur_version, uint32_t new_version,
+                                IndexColumns index_columns);
+
+TSStatus TSDropNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
+                              uint32_t cur_version, uint32_t new_version);
 
 /**
  * @brief Compress the segment whose maximum timestamp in the time series table is less than ts

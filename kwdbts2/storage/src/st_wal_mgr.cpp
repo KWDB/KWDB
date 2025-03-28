@@ -294,6 +294,48 @@ KStatus WALMgr::WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string
   return status;
 }
 
+KStatus WALMgr::WriteCreateIndexWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t object_id, uint32_t index_id,
+                                    uint32_t cur_ts_version, uint32_t new_ts_version, std::vector<uint32_t> col_ids) {
+  std::array<int32_t , 10> tags{};
+  for (int i = 0; i < 10; i++) {
+    if (i < col_ids.size()) {
+      tags[i] = (int32_t)col_ids[i];
+    } else {
+      tags[i] = -1;
+    }
+  }
+  auto wal_log = CreateIndexEntry::construct(WALLogType::CREATE_INDEX, x_id, object_id, index_id, cur_ts_version,
+                                             new_ts_version, tags);
+  if (wal_log == nullptr) {
+    LOG_ERROR("Failed to construct WAL, insufficient memory")
+    return KStatus::FAIL;
+  }
+  KStatus status = WriteWAL(ctx, wal_log, CreateIndexEntry::fixed_length);
+  delete[] wal_log;
+  return status;
+}
+
+KStatus WALMgr::WriteDropIndexWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t object_id, uint32_t index_id,
+                                  uint32_t cur_ts_version, uint32_t new_ts_version, std::vector<uint32_t> col_ids) {
+  std::array<int32_t , 10> tags{};
+  for (int i = 0; i < 10; i++) {
+    if (i < col_ids.size()) {
+      tags[i] = (int32_t)col_ids[i];
+    } else {
+      tags[i] = -1;
+    }
+  }
+  auto wal_log = DropIndexEntry::construct(WALLogType::DROP_INDEX, x_id, object_id, index_id, cur_ts_version,
+                                           new_ts_version, tags);
+  if (wal_log == nullptr) {
+    LOG_ERROR("Failed to construct WAL, insufficient memory")
+    return KStatus::FAIL;
+  }
+  KStatus status = WriteWAL(ctx, wal_log, DropIndexEntry::fixed_length);
+  delete[] wal_log;
+  return status;
+}
+
 KStatus WALMgr::WriteCheckpointWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t tag_offset,
                                    uint32_t range_size, CheckpointPartition* time_partitions, TS_LSN& entry_lsn) {
   auto* wal_log = CheckpointEntry::construct(WALLogType::CHECKPOINT, x_id, meta_.current_checkpoint_no, tag_offset,

@@ -142,6 +142,16 @@ func checkAndGetDetailsInDatabase(
 					continue
 				}
 			}
+			// Check column index and set them in detail.
+			colIndex, ok := stmts[i].AST.(*tree.CreateIndex)
+			if ok {
+				n, hasTable := isTableCreated(colIndex.Table.TableName, tableDetails)
+				if !hasTable {
+					return false, "", nil, nil, "", nil, errors.New("The table containing this column for index has not been created")
+				}
+				tableDetails[n].ColumnIndex = append(tableDetails[n].ColumnIndex, stmts[i].SQL)
+				continue
+			}
 			if withPrivileges {
 				// Check if there is a GRANT statement
 				_, ok := stmts[i].AST.(*tree.Grant)

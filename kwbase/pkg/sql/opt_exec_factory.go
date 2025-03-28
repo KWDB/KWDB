@@ -149,7 +149,7 @@ func (ef *execFactory) ConstructScan(
 func (ef *execFactory) ConstructTSScan(
 	table cat.Table,
 	private *memo.TSScanPrivate,
-	tagFilter, primaryFilter []tree.TypedExpr,
+	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 	rowCount float64,
 ) (exec.Node, error) {
 	// Create a tsScanNode.
@@ -169,11 +169,22 @@ func (ef *execFactory) ConstructTSScan(
 
 	// Construct the resultCols which the column need to be scanned.
 	tsScan.PrimaryTagValues = make(map[uint32][]string, 0)
+	tsScan.TagIndex.TagIndexValues = make([]map[uint32][]string, len(private.TagIndex.TagIndexValues))
+	tsScan.TagIndex.UnionType = private.TagIndex.UnionType
+	tsScan.TagIndex.IndexID = private.TagIndex.IndexID
+	for j := range private.TagIndex.TagIndexValues {
+		tsScan.TagIndex.TagIndexValues[j] = make(map[uint32][]string, 0)
+	}
 	for i := 0; i < table.DeletableColumnCount(); i++ {
 		colID := private.Table.ColumnID(count)
 		col := table.Column(i)
 		if v, ok := private.PrimaryTagValues[uint32(private.Table.ColumnID(i))]; ok {
 			tsScan.PrimaryTagValues[uint32(table.Column(i).ColID())] = v
+		}
+		for j := range private.TagIndex.TagIndexValues {
+			if v, ok := private.TagIndex.TagIndexValues[j][uint32(private.Table.ColumnID(i))]; ok {
+				tsScan.TagIndex.TagIndexValues[j][uint32(table.Column(i).ColID())] = v
+			}
 		}
 		if private.Cols.Contains(colID) {
 			resultCols = append(
@@ -199,7 +210,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.estimatedRowCount = uint64(rowCount)
 
 	// bind tag filter and primary filter to tsScanNode.
-	bindFilter := func(filters []tree.TypedExpr, primaryTag bool) bool {
+	bindFilter := func(filters []tree.TypedExpr, primaryTag bool, tagIndex bool) bool {
 		for _, fil := range filters {
 			expr := tsScan.filterVars.Rebind(fil, true /* alsoReset */, false /* normalizeToNonNil */)
 			if expr == nil {
@@ -208,17 +219,23 @@ func (ef *execFactory) ConstructTSScan(
 			}
 			if primaryTag {
 				tsScan.PrimaryTagFilterArray = append(tsScan.PrimaryTagFilterArray, expr)
+			} else if tagIndex {
+				tsScan.TagIndexFilterArray = append(tsScan.TagIndexFilterArray, expr)
 			} else {
 				tsScan.TagFilterArray = append(tsScan.TagFilterArray, expr)
 			}
 		}
 		return true
 	}
-	if !bindFilter(tagFilter, false) {
+	if !bindFilter(tagFilter, false, false) {
 		return tsScan, nil
 	}
 
-	if !bindFilter(primaryFilter, true) {
+	if !bindFilter(primaryFilter, true, false) {
+		return tsScan, nil
+	}
+
+	if !bindFilter(tagIndexFilter, false, true) {
 		return tsScan, nil
 	}
 

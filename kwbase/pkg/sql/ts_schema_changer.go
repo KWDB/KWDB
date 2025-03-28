@@ -72,6 +72,9 @@ const (
 	compressTable
 	vacuum
 	alterVacuumInterval
+	createTagIndex
+	dropTagIndex
+	alterTagIndex
 )
 
 // tsSchemaChangeResumer implements the jobs.Resumer interface for syncMetaCache
@@ -170,7 +173,7 @@ func (sw *TSSchemaChangeWorker) exec(ctx context.Context) error {
 			// including the schema change not having the first mutation in line.
 			log.Warningf(ctx, "error while running ts schema change, retrying: %v", syncErr)
 		case strings.Contains(syncErr.Error(), "failed to connect to n"):
-			return syncErr
+			done = true
 		default:
 			// All other errors lead to a failed job.
 			done = true
@@ -310,7 +313,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 		//		syncErr,
 		//	)
 		case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType,
-			alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType:
+			alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
 			updateErr = sw.handleMutationForTSTable(ctx, d, syncErr)
 		case alterKwdbAlterPartitionInterval:
 			updateErr = p.handleAlterPartitionInterval(
@@ -743,8 +746,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 	//	}
 	//	newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
 	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType,
-		alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType:
-
+		alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, column/tag name: %s, jobID: %d",
 			opType, d.SNTable.Name, d.SNTable.ID, d.AlterTag.Name, sw.job.ID())
 
@@ -976,7 +978,7 @@ func (sw *TSSchemaChangeWorker) sendTsTxn(
 ) error {
 	switch d.Type {
 	case alterKwdbAddTag, alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbDropTag,
-		alterKwdbAlterTagType, alterKwdbAlterColumnType:
+		alterKwdbAlterTagType, alterKwdbAlterColumnType, createTagIndex, dropTagIndex:
 		nodeList := sw.healthyNodes
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		tsTxn := tsTxn{txnID: txnID, txnEvent: event}
@@ -1055,6 +1057,10 @@ func getDDLOpType(op int32) string {
 		return "autonomy"
 	case vacuum:
 		return "vacuum"
+	case createTagIndex:
+		return "create tag index"
+	case dropTagIndex:
+		return "drop tag index"
 	}
 	return ""
 }
@@ -1093,7 +1099,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 	var eventFn func(txn *kv.Txn) error
 	isSucceeded := syncErr == nil
 	switch d.Type {
-	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAddTag, alterKwdbDropTag:
+	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAddTag, alterKwdbDropTag, createTagIndex:
 		updateFn = func(tableDesc *sqlbase.MutableTableDescriptor) error {
 			i := 0
 			for _, mutation := range tableDesc.Mutations {
@@ -1107,8 +1113,10 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 						return err
 					}
 				} else if mutation.Direction == sqlbase.DescriptorMutation_ADD {
-					// If adding columns fails, roll back ColumnFamilyDescriptor.
-					tableDesc.RemoveColumnFromFamily(mutation.GetColumn().ID)
+					if !(d.Type == createTagIndex || d.Type == dropTagIndex) {
+						// If adding columns fails, roll back ColumnFamilyDescriptor.
+						tableDesc.RemoveColumnFromFamily(mutation.GetColumn().ID)
+					}
 				}
 				// If isSucceeded = true, increase TsVersion and NextTsVersion.
 				// If isSucceeded = false, just increase NextTsVersion.
@@ -1121,6 +1129,9 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 				return errDidntUpdateDescriptor
 			}
 			if d.AlterTag.IsTagCol() && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
+				tableDesc.State = sqlbase.TableDescriptor_PUBLIC
+			}
+			if (d.Type == createTagIndex || d.Type == dropTagIndex) && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
 				tableDesc.State = sqlbase.TableDescriptor_PUBLIC
 			}
 			// Trim the executed mutations from the descriptor.
@@ -1157,6 +1168,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 					// change origin type to new type
 					originCol.Type = mutaCol.Type
 					originCol.TsCol = mutaCol.TsCol
+					originCol.DefaultExpr = mutaCol.DefaultExpr
 				}
 				// If isSucceeded = true, increase TsVersion and NextTsVersion.
 				// If isSucceeded = false, just increase NextTsVersion.
@@ -1182,6 +1194,71 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 			}
 			return nil
 		}
+	case dropTagIndex:
+		if isSucceeded {
+			idx := d.CreateOrAlterTagIndex
+			tableDesc := d.SNTable
+			updateErr := sw.p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				span := tableDesc.IndexSpan(idx.ID)
+				ranges, err := ScanMetaKVs(ctx, txn, span)
+				if err != nil {
+					return err
+				}
+				for _, r := range ranges {
+					var desc roachpb.RangeDescriptor
+					if err := r.ValueProto(&desc); err != nil {
+						return err
+					}
+					// We have to explicitly check that the range descriptor's start key
+					// lies within the span of the index since ScanMetaKVs returns all
+					// intersecting spans.
+					if (desc.GetStickyBit() != hlc.Timestamp{}) && span.Key.Compare(desc.StartKey.AsRawKey()) <= 0 {
+						// Swallow "key is not the start of a range" errors because it would
+						// mean that the sticky bit was removed and merged concurrently. DROP
+						// INDEX should not fail because of this.
+						if err := sw.p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+			if updateErr != nil {
+				return updateErr
+			}
+		}
+		updateFn = func(tableDesc *sqlbase.MutableTableDescriptor) error {
+			i := 0
+			for _, mutation := range tableDesc.Mutations {
+				if mutation.MutationID != sw.mutationID {
+					// Mutations are applied in a FIFO order. Only apply the first set of
+					// mutations if they have the mutation ID we're looking for.
+					break
+				}
+				mutableIdx := mutation.GetIndex()
+				if mutableIdx == nil {
+					return errDidntUpdateDescriptor
+				}
+				i++
+				if !isSucceeded {
+					if err := tableDesc.AddIndex(*mutableIdx, false); err != nil {
+						return err
+					}
+				}
+				tableDesc.MaybeIncrementTSVersion(ctx, isSucceeded)
+			}
+			// Trim the executed mutations from the descriptor.
+			tableDesc.Mutations = tableDesc.Mutations[i:]
+			for i, g := range tableDesc.MutationJobs {
+				if g.MutationID == sw.mutationID {
+					// Trim the executed mutation group from the descriptor.
+					tableDesc.MutationJobs = append(tableDesc.MutationJobs[:i], tableDesc.MutationJobs[i+1:]...)
+					break
+				}
+			}
+
+			return nil
+		}
 	default:
 		return errors.Errorf("unsupported online DDL type")
 	}
@@ -1193,6 +1270,16 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 			eventFn = func(txn *kv.Txn) error {
 				if err := sw.p.removeColumnComment(
 					ctx, txn, sw.tableID, d.AlterTag.ID,
+				); err != nil {
+					return err
+				}
+				return nil
+			}
+		} else if d.Type == dropTagIndex {
+			// remove comment on index
+			eventFn = func(txn *kv.Txn) error {
+				if err := sw.p.removeIndexComment(
+					ctx, sw.tableID, d.CreateOrAlterTagIndex.ID,
 				); err != nil {
 					return err
 				}

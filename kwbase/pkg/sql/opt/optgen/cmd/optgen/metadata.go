@@ -253,11 +253,13 @@ func newMetadata(compiled *lang.CompiledExpr, pkg string) *metadata {
 		"PrimaryTags":       {fullName: "memo.PrimaryTags", passByVal: true},
 		"ScanAggArray":      {fullName: "memo.ScanAggArray", passByVal: true},
 		"PTagValues":        {fullName: "memo.PTagValues", passByVal: true},
+		"TagIndexValues":    {fullName: "memo.TagIndexValues", passByVal: true},
 		"TSHintType":        {fullName: "keys.ScanMethodHintType", passByVal: true},
 		"ColIdxs":           {fullName: "opt.ColIdxs", passByVal: true},
 		"StatisticIndex":    {fullName: "opt.StatisticIndex", passByVal: true},
 		"TSOrderedScanType": {fullName: "opt.OrderedTableType", passByVal: true},
 		"TSGroupOptType":    {fullName: "opt.GroupOptType", passByVal: true},
+		"TagIndexInfo":      {fullName: "memo.TagIndexInfo", passByVal: true},
 	}
 
 	// Add types of generated op and private structs.

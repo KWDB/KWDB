@@ -357,7 +357,8 @@ KStatus LoggedTsEntityGroup::DeleteEntities(kwdbContext_p ctx, const std::vector
     // TODO(liuwei) should lock the current PRIMARY TAG before the DELETE action is DONE.
     uint32_t sub_group_id, entity_id;
     if (!new_tag_bt_->hasPrimaryKey(p_tags.data(), p_tags.size(), entity_id, sub_group_id)) {
-      Return(KStatus::FAIL)
+      LOG_INFO("primary key[%s] dose not exist, no need to delete", p_tags.c_str())
+      continue;
     }
 
     TagTuplePack* tag_pack = new_tag_bt_->GenTagPack(p_tags.data(), p_tags.size());
@@ -589,8 +590,8 @@ KStatus LoggedTsEntityGroup::applyWal(kwdbContext_p ctx, LogEntry* wal_log,
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         auto p_tag_slice = log->getPrimaryTag();
-        auto slice = log->getTags();
-        return redoDeleteTag(ctx, p_tag_slice, log->getLSN(), log->group_id_, log->entity_id_, slice);
+        auto tag_slice = log->getTags();
+        return redoDeleteTag(ctx, p_tag_slice, log->getLSN(), log->group_id_, log->entity_id_, tag_slice);
       }
     }
     case WALLogType::UPDATE: {
@@ -1204,9 +1205,9 @@ KStatus LoggedTsEntityGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_t
 }
 
 KStatus LoggedTsEntityGroup::redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
-                                           uint32_t group_id, uint32_t entity_id, TSSlice& payload) {
+                                           uint32_t group_id, uint32_t entity_id, TSSlice& tags) {
   ErrorInfo err_info;
-  int res = new_tag_bt_->DeleteForRedo(group_id, entity_id, primary_tag);
+  int res = new_tag_bt_->DeleteForRedo(group_id, entity_id, primary_tag, tags);
   if (res) {
     return KStatus::FAIL;
   }

@@ -39,6 +39,8 @@ enum WALLogType : uint8_t {
   PARTITION_TIER_CHANGE = 26,
 //  DDL_ALTER_TAG = 11,
 //  INDEX = 99,
+  CREATE_INDEX = 27,
+  DROP_INDEX = 28,
   DB_SETTING = 100
 };
 

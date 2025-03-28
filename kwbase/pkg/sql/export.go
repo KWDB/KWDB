@@ -724,7 +724,7 @@ func writeTimeSeriesMeta(
 	ctx context.Context,
 	p *planner,
 	file string,
-	tableType tree.TableType,
+	tableDesc *ImmutableTableDescriptor,
 	res RestrictedCommandResult,
 	withComment bool,
 	withPrivileges bool,
@@ -748,7 +748,7 @@ func writeTimeSeriesMeta(
 	defer p.ExtendedEvalContext().ExecCfg.InternalExecutor.SetSessionData(new(sessiondata.SessionData))
 	// Get create_stmt
 	//count := 1
-	switch tableType {
+	switch tableDesc.TableType {
 	// only write itself
 	case tree.TimeseriesTable:
 		selectStmt := fmt.Sprintf("SELECT create_statement FROM  %s.kwdb_internal.create_statements where database_name = '%s' and descriptor_name = '%s'", catalog, catalog, tableName)
@@ -774,6 +774,17 @@ func writeTimeSeriesMeta(
 			// only sql of creating table is exported.
 			if _, err := writer.GetBufio().WriteString(tableCreate[0] + ";" + "\n"); err != nil {
 				return err
+			}
+		}
+		indexs, err := ExportCreateIndexStmtsWithTableDesc(ctx, tableDesc, tableName)
+		if err != nil {
+			return err
+		}
+		if indexs != nil {
+			for _, index := range indexs {
+				if _, err := writer.GetBufio().WriteString(index + "\n"); err != nil {
+					return err
+				}
 			}
 		}
 		if withPrivileges {
@@ -875,4 +886,37 @@ func ContainsUpperCase(s string) bool {
 		}
 	}
 	return false
+}
+
+// ExportCreateIndexStmtsWithTableDesc is to export a common tag index statement.
+func ExportCreateIndexStmtsWithTableDesc(
+	ctx context.Context, tableDesc *ImmutableTableDescriptor, tblName string,
+) ([]string, error) {
+	var createIndexStmts []string
+	for _, idx := range tableDesc.Indexes {
+		idxName := idx.Name
+		colNames := ""
+		for k, v := range idx.ColumnNames {
+			if k == len(idx.ColumnNames)-1 {
+				colNames += v
+				break
+			}
+			colNames = colNames + v + ","
+		}
+		createIdxStmt := fmt.Sprintf("CREATE INDEX %s on %s(%s);", idxName, tblName, colNames)
+		createIndexStmts = append(createIndexStmts, createIdxStmt)
+	}
+	return createIndexStmts, nil
+}
+
+// ExportCreateIndexStmtsWithoutTableDesc is to obtain table information
+// and assemble to create a common tag index statement.
+func ExportCreateIndexStmtsWithoutTableDesc(
+	ctx context.Context, tblName *tree.TableName, p planner,
+) ([]string, error) {
+	tableDesc, err := p.ResolveUncachedTableDescriptor(ctx, tblName, true, ResolveRequireTableDesc)
+	if err != nil {
+		return nil, err
+	}
+	return ExportCreateIndexStmtsWithTableDesc(ctx, tableDesc, tblName.String())
 }

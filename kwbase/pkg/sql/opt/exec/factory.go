@@ -91,7 +91,7 @@ type Factory interface {
 	ConstructTSScan(
 		table cat.Table,
 		private *memo.TSScanPrivate,
-		tagFilter, primaryFilter []tree.TypedExpr,
+		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 		rowCount float64,
 	) (Node, error)
 

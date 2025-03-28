@@ -1076,7 +1076,7 @@ func TsprepareTypeCheck(
 					default:
 						return nil, nil, tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 					}
-				case oid.T_int4, oid.T_int2:
+				case oid.T_int4:
 					switch column.Type.Family() {
 					case types.IntFamily, types.TimestampTZFamily, types.TimestampFamily, types.BoolFamily:
 						switch column.Type.Oid() {
@@ -1138,43 +1138,105 @@ func TsprepareTypeCheck(
 					default:
 						return nil, nil, tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 					}
+				case oid.T_int2:
+					switch column.Type.Family() {
+					case types.IntFamily, types.TimestampTZFamily, types.TimestampFamily, types.BoolFamily:
+						switch column.Type.Oid() {
+						case oid.T_int2:
+							var intValue int16
+							for _, b := range Args[idx] {
+								intValue = (intValue << 8) | int16(b)
+							}
+							if intValue < math.MinInt16 || intValue > math.MaxInt16 {
+								return nil, nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
+									"integer out of range for type %s (column %q)",
+									column.Type.SQLString(), column.Name)
+							}
+							Args[idx] = make([]uint8, len(Args[idx]))
+							binary.LittleEndian.PutUint16(Args[idx], uint16(intValue))
+						case oid.T_int4:
+							if len(Args[idx]) > 4 {
+								var intValue int64
+								for _, b := range Args[idx] {
+									intValue = (intValue << 8) | int64(b)
+								}
+								if intValue < math.MinInt32 || intValue > math.MaxInt32 {
+									return nil, nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
+										"integer out of range for type %s (column %q)",
+										column.Type.SQLString(), column.Name)
+								}
+							}
+							binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
+						case oid.T_int8:
+							binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
+						case oid.T_timestamptz, oid.T_timestamp:
+							tum := binary.BigEndian.Uint64(Args[idx])
+							binary.LittleEndian.PutUint64(Args[idx], tum)
+							if isFirstCols {
+								rowTimestamps = append(rowTimestamps, int64(tum))
+							}
+						case oid.T_bool:
+							num := binary.BigEndian.Uint32(Args[idx])
+							bitIndex := 0
+							bitValue := num & (1 << bitIndex)
+							Args[idx] = make([]byte, 1)
+							if bitValue != 0 {
+								Args[idx][0] = 1
+							} else {
+								Args[idx][0] = 0
+							}
+						default:
+							return nil, nil, tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
+						}
+					case types.StringFamily:
+						num := binary.BigEndian.Uint32(Args[idx])
+						str := strconv.FormatUint(uint64(num), 10)
+						Args[idx] = make([]byte, len(str))
+						copy(Args[idx][0:], str)
+						continue
+					default:
+						return nil, nil, tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
+					}
 				case oid.T_float8:
 					if column.Type.Family() != types.FloatFamily {
 						return nil, nil, tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 					}
+					f64 := math.Float64frombits(binary.BigEndian.Uint64(Args[idx]))
 					switch column.Type.Oid() {
 					case oid.T_float4:
-						f64 := math.Float64frombits(binary.BigEndian.Uint64(Args[idx]))
 						str := strconv.FormatFloat(float64(f64), 'f', -1, 64)
 						f32, err := strconv.ParseFloat(str, 32)
-						if err != nil {
+						if err != nil || (f32 != 0 && (math.Abs(f32) < math.SmallestNonzeroFloat32 || math.Abs(f32) > math.MaxFloat32)) {
 							return nil, nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
 								"float \"%g\" out of range for type float4 (column %s)", f64, column.Name)
 						}
 						Args[idx] = make([]byte, 4)
 						binary.LittleEndian.PutUint32(Args[idx], uint32(int32(math.Float32bits(float32((f32))))))
 					case oid.T_float8:
+						if f64 != 0 && (math.Abs(f64) < math.SmallestNonzeroFloat64 || math.Abs(f64) > math.MaxFloat64) {
+							return nil, nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
+								"float \"%g\" out of range for type float (column %s)", f64, column.Name)
+						}
 						Args[idx] = bigEndianToLittleEndian(Args[idx])
 					}
 				case oid.T_float4:
 					if column.Type.Family() != types.FloatFamily {
 						return nil, nil, tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 					}
+					f32 := math.Float32frombits(binary.BigEndian.Uint32(Args[idx]))
 					switch column.Type.Oid() {
 					case oid.T_float4:
-						f := math.Float32frombits(binary.BigEndian.Uint32(Args[idx]))
-						if f < math.SmallestNonzeroFloat32 || f > math.MaxFloat32 {
+						if f32 != 0 && (math.Abs(float64(f32)) < math.SmallestNonzeroFloat32 || math.Abs(float64(f32)) > math.MaxFloat32) {
 							return nil, nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
-								"float \"%g\" out of range for type float4 (column %s)", f, column.Name)
+								"float \"%g\" out of range for type float4 (column %s)", f32, column.Name)
 						}
-						binary.LittleEndian.PutUint32(Args[idx], uint32(int32(math.Float32bits(float32((f))))))
+						binary.LittleEndian.PutUint32(Args[idx], uint32(int32(math.Float32bits(float32((f32))))))
 					case oid.T_float8:
-						f32 := math.Float32frombits(binary.BigEndian.Uint32(Args[idx]))
 						str := strconv.FormatFloat(float64(f32), 'f', -1, 32)
 						f64, err := strconv.ParseFloat(str, 64)
-						if err != nil {
+						if err != nil || (f64 != 0 && (math.Abs(f64) < math.SmallestNonzeroFloat64 || math.Abs(f64) > math.MaxFloat64)) {
 							return nil, nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
-								"float \"%g\" out of range for type float8 (column %s)", f32, column.Name)
+								"float \"%g\" out of range for type float (column %s)", f32, column.Name)
 						}
 						Args[idx] = make([]byte, 8)
 						binary.LittleEndian.PutUint64(Args[idx], uint64(int64(math.Float64bits(float64(f64)))))

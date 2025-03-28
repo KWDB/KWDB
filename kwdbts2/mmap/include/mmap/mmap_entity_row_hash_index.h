@@ -82,8 +82,8 @@ class MMapEntityRowHashIndex: public MMapFile {
   explicit MMapEntityRowHashIndex(int key_len = sizeof(uint64_t), size_t bkt_instances = 1, size_t per_bkt_count = 1024);
   virtual ~MMapEntityRowHashIndex();
 
-  IndexMetaData& metaData() const
-  { return *(reinterpret_cast<IndexMetaData *>(mem_)); }
+  HashIndexMetaData& metaData() const
+  { return *(reinterpret_cast<HashIndexMetaData *>(mem_)); }
 
   int open(const string &path, const std::string &db_path, const string &tbl_sub_path, int flag,
            ErrorInfo &err_info);

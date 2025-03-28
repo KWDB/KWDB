@@ -162,7 +162,9 @@ class StorageHandler {
   static KStatus GeneratePrimaryTags(TSTagReaderSpec *spec, TABLE *table,
                            size_t malloc_size, kwdbts::k_int32 sz,
                            std::vector<void *> *primary_tags);
-
+  static KStatus GenerateTags(TSTagReaderSpec *spec, TABLE *table,
+                              std::vector<k_uint64> *tags_index_id,
+                              std::vector<void *> *tags);
   void tagFilter(kwdbContext_p ctx, Field* tag_filter);
   // filter tag data inside HashTagScan with relational joining data for multiple model processing
   void tagRelFilter(kwdbContext_p ctx,

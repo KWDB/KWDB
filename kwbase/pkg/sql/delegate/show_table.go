@@ -73,17 +73,17 @@ func (d *delegator) delegateShowCreate(n *tree.ShowCreate) (tree.Statement, erro
 // delegateShowIndexes rewrites ShowIndexes statement to select statement which returns
 // table_name, index_name... from information_schema.statistics and pg_catalog.pg_indexes
 func (d *delegator) delegateShowIndexes(n *tree.ShowIndexes) (tree.Statement, error) {
-	flags := cat.Flags{AvoidDescriptorCaches: true, NoTableStats: true}
-	tn := n.Table.ToTableName()
-	dataSource, _, err := d.catalog.ResolveDataSource(d.ctx, flags, &tn)
-	if err != nil {
-		return nil, err
-	}
-	if ds, ok := dataSource.(cat.Table); ok {
-		if ds.GetTableType() != tree.RelationalTable {
-			return nil, sqlbase.TSUnsupportedError("show indexes")
-		}
-	}
+	//flags := cat.Flags{AvoidDescriptorCaches: true, NoTableStats: true}
+	//tn := n.Table.ToTableName()
+	//dataSource, _, err := d.catalog.ResolveDataSource(d.ctx, flags, &tn)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if ds, ok := dataSource.(cat.Table); ok {
+	//	if ds.GetTableType() != tree.RelationalTable {
+	//		return nil, sqlbase.TSUnsupportedError("show indexes")
+	//	}
+	//}
 
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Indexes)
 	getIndexesQuery := `

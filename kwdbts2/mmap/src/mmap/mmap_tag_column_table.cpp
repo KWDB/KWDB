@@ -251,12 +251,15 @@ MMapTagColumnTable::MMapTagColumnTable() {
   m_tag_table_rw_lock_ = new KRWLatch(RWLATCH_ID_TAG_TABLE_RWLOCK);
   m_ref_cnt_mtx_ = new TagTableCntMutex(LATCH_ID_TAG_REF_COUNT_MUTEX);
   m_ref_cnt_cv_  = new TagTableCondVal(COND_ID_TAG_REF_COUNT_COND);
+  m_ntag_indexes_rw_lock_ = new NTagIndexsRWLatch(RWLATCH_ID_NTAG_INDEXES_RWLATCH);
 }
 MMapTagColumnTable::~MMapTagColumnTable() {
   delete m_tag_table_rw_lock_;
   delete m_tag_table_mutex_;
   delete m_ref_cnt_mtx_;
   delete m_ref_cnt_cv_;
+  delete m_ntag_indexes_rw_lock_;
+  m_ntag_indexes_rw_lock_ = nullptr;
   m_ref_cnt_cv_ = nullptr;
   m_ref_cnt_mtx_ = nullptr;
   m_tag_table_mutex_ = nullptr;
@@ -371,6 +374,12 @@ int MMapTagColumnTable::open_(const string &table_path, const std::string &db_pa
       return error_code;
     }
   }
+
+  // 3. init ntag hash index file
+  if (!(flags & O_CREAT)) {
+    initNTagHashIndex(err_info);
+  }
+
   setObjectReady();
   LOG_DEBUG("open the tag table %s%s successfully", tbl_sub_path.c_str(), m_name_.c_str());
   return 0;
@@ -685,6 +694,13 @@ int MMapTagColumnTable::remove() {
   delete m_ptag_file_;
   m_ptag_file_ = nullptr;
   m_meta_data_ = nullptr;
+
+  NtagIndexRWMutexXLock();
+  for (const auto& n_index : m_ntag_indexes_) {
+    n_index->clear();
+  }
+  NtagIndexRWMutexUnLock();
+
   return err_code;
 }
 
@@ -756,6 +772,86 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
   err_info.errcode = err_code;
   stopWrite();
   return err_code;
+}
+
+int MMapTagColumnTable::linkNTagHashIndex(uint32_t table_id, MMapTagColumnTable *old_part, ErrorInfo& err_info) {
+  if (old_part != nullptr) {
+    old_part->startRead();
+    old_part->NtagIndexRWMutexSLock();
+    auto old_indexs = old_part->getMmapNTagHashIndex();
+    if (!old_indexs.empty()) {
+      for (auto old_index : old_indexs) {
+        string new_index_file_name = std::to_string(table_id) + "_" + to_string(old_index->getIndexID()) + ".tag" + ".ht";
+        string new_index_path = m_db_path_ + m_db_name_ + new_index_file_name;
+        err_info.errcode = symlink(old_index->realFilePath().c_str(), new_index_path.c_str());
+        if (err_info.errcode != 0) {
+          LOG_ERROR("create hash index symlink failed")
+          return err_info.errcode;
+        }
+        auto new_index = new MMapNTagHashIndex(old_index->keySize(), old_index->getIndexID(), old_index->getColIDs());
+        err_info.errcode = new_index->open(new_index_file_name, m_db_path_, m_db_name_,
+                                           MMAP_OPEN, err_info);
+        if (err_info.errcode < 0) {
+          delete new_index;
+          new_index = nullptr;
+          old_part->NtagIndexRWMutexUnLock();
+          old_part->stopRead();
+          err_info.errmsg = "create Hash Index failed.";
+          LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
+                    m_db_name_.c_str(), new_index_file_name.c_str(), err_info.errmsg.c_str())
+          return err_info.errcode;
+        }
+        NtagIndexRWMutexXLock();
+        m_ntag_indexes_.emplace_back(old_index);
+        NtagIndexRWMutexUnLock();
+      }
+    }
+    old_part->NtagIndexRWMutexUnLock();
+    old_part->stopRead();
+  }
+  return 0;
+}
+
+int MMapTagColumnTable::initNTagHashIndex(ErrorInfo& err_info) {
+  DIR *pDir;
+  struct dirent* ptr;
+  string file_path = m_db_path_ + m_db_name_;
+  std::vector<string> ntag_index_files;
+  if (!(pDir = opendir(file_path.c_str()))) {
+    LOG_ERROR("open path [%s] failed.", file_path.c_str());
+    return -1;
+  }
+  while ((ptr = readdir(pDir)) != nullptr) {
+    if (::toString(ptr->d_name).find("_") != string::npos && ::toString(ptr->d_name).find(".ht") != string::npos) {
+      ntag_index_files.emplace_back(::toString(ptr->d_name));
+    }
+  }
+  closedir(pDir);
+
+  // todo for range files ,read metadata.RecordSize , update key_len&RecordSize
+  for (const string& index_file : ntag_index_files) {
+    size_t beg = index_file.find('_');
+    size_t end = index_file.find_first_of('.');
+    int index_id = atoi(index_file.substr(beg + 1, end).c_str());
+
+    MMapNTagHashIndex* index = new MMapNTagHashIndex(0, index_id, std::vector<uint32_t>{});
+    err_info.errcode = index->open(index_file, m_db_path_, m_db_name_, MMAP_OPEN, err_info);
+    if (err_info.errcode < 0) {
+      delete index;
+      index = nullptr;
+      err_info.errmsg = "open Hash Index failed.";
+      LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
+                m_db_name_.c_str(), index_file.c_str(), err_info.errmsg.c_str())
+      return err_info.errcode;
+    }
+    // todo update metadata and key_ley and tag col ids
+    // index->updateKeyLen()
+    index->updateKeyLen();
+    NtagIndexRWMutexXLock();
+    m_ntag_indexes_.emplace_back(index);
+    NtagIndexRWMutexUnLock();
+  }
+  return 0;
 }
 
 int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint,
@@ -864,6 +960,26 @@ int MMapTagColumnTable::push_back(size_t r, const char* data) {
   return 0;
 }
 
+uint32_t MMapTagColumnTable::getTagColOff(int col_id) {
+  for (auto & tagInfo : m_tag_info_include_dropped_) {
+    if (col_id == tagInfo.m_id) {
+      return m_meta_data_->m_bitmap_size + tagInfo.m_offset;
+    }
+  }
+  LOG_ERROR("Can't found TagColOff,Col ID [%d]", col_id)
+  return 0;
+}
+
+uint32_t MMapTagColumnTable::getTagColSize(int col_id) {
+  for (auto & tagInfo : m_tag_info_include_dropped_) {
+    if (col_id == tagInfo.m_id) {
+      return tagInfo.m_size;
+    }
+  }
+  LOG_ERROR("Can't found TagColSize,Col ID [%d]", col_id)
+  return 0;
+}
+
 void MMapTagColumnTable::getEntityIdGroupId(TagTableRowID row, uint32_t& entity_id, uint32_t& group_id) {
   startRead();
   char* rec_ptr = entityIdStoreAddr(row);
@@ -913,20 +1029,20 @@ void MMapTagColumnTable::getHashedEntityIdByRownum(size_t row, uint32_t hps,
   return ;
 }
 
-int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_t>& src_scan_tags,
+int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_t>& src_scan_tags_idx,
                         const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res) {
   if (res == nullptr) {
     return 0;
   }
   ErrorInfo err_info;
-  res->setColumnNum(src_scan_tags.size());
-  for (int idx = 0; idx < src_scan_tags.size(); idx++) {
-    if (src_scan_tags[idx] == INVALID_COL_IDX) {
+  res->setColumnNum(src_scan_tags_idx.size());
+  for (int idx = 0; idx < src_scan_tags_idx.size(); idx++) {
+    if (src_scan_tags_idx[idx] == INVALID_COL_IDX) {
       Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
       res->push_back(idx, batch);
       continue;
     }
-    uint32_t col_idx = src_scan_tags[idx];
+    uint32_t col_idx = src_scan_tags_idx[idx];
     Batch* batch = this->GetTagBatchRecord(row, row + 1, col_idx,
                                     result_scan_tag_infos[col_idx], err_info);
     if (err_info.errcode < 0) {
@@ -939,6 +1055,42 @@ int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_
       continue;
     }
     res->push_back(idx, batch);
+  }
+  return 0;
+}
+
+int MMapTagColumnTable::getColumnsFromAll(const std::vector<uint32_t>& src_scan_tags,
+                      const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res,
+                      std::vector<TagTableRowID>* result_tag_rows) {
+  if (res == nullptr) {
+    return 0;
+  }
+  ErrorInfo err_info;
+  res->setColumnNum(src_scan_tags.size());
+  for (size_t row_num = 1; row_num <= m_meta_data_->m_row_count; row_num++) {
+    if (isValidRow(row_num)) {
+      for (size_t idx = 0; idx < src_scan_tags.size(); idx++) {
+        if (src_scan_tags[idx] == INVALID_COL_IDX) {
+          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+          res->push_back(idx, batch);
+          continue;
+        }
+        uint32_t col_idx = src_scan_tags[idx];
+        Batch* batch = this->GetTagBatchRecord(row_num, row_num + 1, col_idx,
+                                               result_scan_tag_infos[idx], err_info);
+        if (err_info.errcode < 0) {
+          delete batch;
+          LOG_ERROR("GetTagBatchRecord failed. error: %s ", err_info.errmsg.c_str());
+          return err_info.errcode;
+        }
+        if (UNLIKELY(batch == nullptr)) {
+          LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+          continue;
+        }
+        res->push_back(idx, batch);
+      }
+      result_tag_rows->emplace_back(row_num);
+    }
   }
   return 0;
 }

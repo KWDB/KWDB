@@ -590,10 +590,6 @@ func runStart(cmd *cobra.Command, args []string, disableReplication bool) error 
 			}
 		}
 
-		if !disableReplication && !waitForInit && base.OpenSource {
-			log.Shout(ctx, log.Severity_ERROR, "Cluster expansion feature needs an enterprise license to enable.")
-			panic("Cluster expansion feature needs an enterprise license to enable.")
-		}
 		if waitForInit {
 			log.Shout(ctx, log.Severity_INFO,
 				"initial startup completed.\n"+

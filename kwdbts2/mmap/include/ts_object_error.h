@@ -44,6 +44,7 @@ using namespace std;
 #define KWERSRCBUSY      -25  // resource is busy
 #define KWEDROPPEDOBJ    -26  // object is dropped
 #define KWEFREESPCLIMIT  -27  // free space alert
+#define KWEUNINIT        -28  // object is uninitialized
 
 #define ERROR_LEN_LIMIT 128
 

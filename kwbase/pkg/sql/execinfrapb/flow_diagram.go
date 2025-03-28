@@ -314,6 +314,18 @@ func (tr *TSTagReaderSpec) summary() (string, []string) {
 	for _, val := range tr.PrimaryTags {
 		res = append(res, fmt.Sprintf("ptag [%v]: %v", val.Colid, val.TagValues))
 	}
+	if len(tr.TagIndexIDs) > 0 {
+		res = append(res, fmt.Sprintf("UnionType: %v", tr.UnionType))
+		for _, val := range tr.TagIndexIDs {
+			res = append(res, fmt.Sprintf("TagIndexIDs  %v", val))
+		}
+		for _, tagIndexes := range tr.TagIndexes {
+			for _, val := range tagIndexes.TagValues {
+				res = append(res, fmt.Sprintf("TagIndex [%v]: %v", val.Colid, val.TagValues))
+			}
+		}
+	}
+
 	return "TagReader", res
 }
 

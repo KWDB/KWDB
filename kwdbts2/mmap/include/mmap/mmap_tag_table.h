@@ -16,6 +16,7 @@
 #include "big_table.h"
 #include "mmap_object.h"
 #include "mmap_hash_index.h"
+#include "mmap_ntag_hash_index.h"
 #include "ts_common.h"
 #include "lg_api.h"
 #include "payload.h"
@@ -30,6 +31,7 @@ extern uint32_t k_entity_group_id_size;
 extern uint32_t k_per_null_bitmap_size;
 
 using TagHashIndex = MMapHashIndex;
+using NTagHashINdex = MMapNTagHashIndex;
 using TableVersion = uint32_t;
 using TagPartitionTable = MMapTagColumnTable;
 
@@ -77,10 +79,25 @@ class TagTable {
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
 
-  // query tag by ptag
-  int GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint32_t> &scan_tags,
-                              std::vector<kwdbts::EntityResultIndex>* entity_id_list,
-                              kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version = 0);
+  /**
+  * @brief Query tag through the index of the primary tag and normal tag.
+  * @param primary_tags key value of the primary tag, which is queried by the index of the ptag.
+  * @param tags_index_id normal tag Indicates the id of the index to be queried.
+  * @param tags normal tag key value to be queried.
+  * @param op_type Operators are used for multiple common tag index queries or (ptag or ntag) index queries.
+  * @param scan_tags tag columns to be queried.
+  * @param entity_id_list EntityResultIndex.
+  * @param res tag column data.
+  * @param count the number of rows queried.
+  * @param table_version version number of the table.
+  * @note Support ptag and ntag index query:When primary_tag is not empty, support ptag index query;
+  * When tags_index_id is not empty, ntag index query is supported; Support only ptag and ntag index or operation query.
+  */
+  int GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint64_t/*index_id*/> &tags_index_id,
+                      const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
+                      std::vector<kwdbts::EntityResultIndex>* entity_id_list,
+                      kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version = 0);
+
   // query tag by entityid
   int GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
              const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count, uint32_t table_version);
@@ -99,6 +116,10 @@ class TagTable {
 
   int AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info,
                     uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
+
+  std::vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
+
+  std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t ts_version);
 
   inline TagTableVersionManager* GetTagTableVersionManager() {return m_version_mgr_;}
 
@@ -121,16 +142,61 @@ class TagTable {
 		    const TSSlice& primary_tag, const TSSlice& tag_pack);
 
   int DeleteForRedo(uint32_t group_id, uint32_t entity_id,
-		    const TSSlice& primary_tag);
+		    const TSSlice& primary_tag, TSSlice& tags);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, const TSSlice& primary_tag,
                     const TSSlice& old_tag);
 
-  int AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info);
+  int UndoCreateHashIndex(uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version, ErrorInfo& err_info);
+
+  int UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_ts_version,
+                        uint32_t new_ts_version, ErrorInfo& err_info);
+
+  enum class HashIndex : int { Create = 1, Drop = 2, None = 0 };
+
+  int AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
+                             const std::vector<uint32_t> &tags = {}, uint32_t index_id = 0,
+                             HashIndex idx_flag = HashIndex::None);
+
+  int createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,
+                      uint32_t index_id);
+
+  int dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t index_id);
+
+  int CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint32_t index_id, const uint32_t cur_version,
+                      const uint32_t new_version, ErrorInfo& err_info);
+
+  int DropHashIndex(uint32_t index_id,  const uint32_t cur_version, const uint32_t new_version, ErrorInfo& err_info);
+
  private:
 
   int initHashIndex(int flags, ErrorInfo& err_info);
+
+  int UpdateHashIndex(uint32_t index_id, const std::vector<uint32_t> &tags, uint32_t ts_version, ErrorInfo& err_info);
+
+  // Get the column value of the tag using RowID.
+  int getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
+                                 std::vector<kwdbts::EntityResultIndex>* entity_id_list,
+                                 kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
+                                 TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition);
+
+  // Query RowID using primary tag indexes.
+  int getRowIDByPTag(const std::vector<void*>& primary_tags,
+                     std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &ptag_value);
+
+  // Query RowID using normal tag indexes.
+  int getRowIDByNTag(const std::vector<uint64_t> &tags_index_id, std::vector<void*> tags,
+                     TSTagOpType op_type, TagPartitionTable* tag_part_table,
+                     std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result_val);
+
+  // Get the intersection of results.
+  int getIntersectionValue(uint32_t value_size, std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> value[],
+                           std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result);
+
+  // Computes a union of result sets.
+  int getUnionValue(uint32_t value_size, std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> value[],
+                    std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result);
 
   int initPrevEntityRowData(ErrorInfo& err_info);
 
@@ -138,6 +204,7 @@ class TagTable {
 
   int loadAllVersions(std::vector<TableVersion>& all_versions, ErrorInfo& err_info);
 
+  static const uint32_t max_rows_per_res = 200000;
 };
 
 class TagPartitionTableManager {
@@ -175,7 +242,7 @@ public:
   int Init(ErrorInfo& err_info);
 
   int CreateTagPartitionTable(const std::vector<TagInfo>& schema, uint32_t ts_version,
-                          ErrorInfo& err_info);
+                          ErrorInfo& err_info, uint32_t old_part_file_version = 0);
 
   int OpenTagPartitionTable(TableVersion table_version, ErrorInfo& err_info);
                           

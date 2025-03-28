@@ -109,7 +109,8 @@ EEIteratorErrCode TagScanOperator::Start(kwdbContext_p ctx) {
   k_uint32 access_mode = table_->GetAccessMode();
   switch (access_mode) {
     case TSTableReadMode::tagIndex:
-    case TSTableReadMode::tagIndexTable: {
+    case TSTableReadMode::tagIndexTable:
+    case TSTableReadMode::tagHashIndex: {
       break;
     }
     case TSTableReadMode::tableTableMeta:
@@ -139,7 +140,8 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx) {
     tag_rowbatch_ = std::make_shared<TagRowBatch>();
     tag_rowbatch_->Init(table_);
     handler_->SetTagRowBatch(tag_rowbatch_);
-    if (access_mode < TSTableReadMode::tableTableMeta) {
+    if ((access_mode < TSTableReadMode::tableTableMeta) ||
+        (access_mode == TSTableReadMode::tagHashIndex)) {
       if (!tag_index_once_) {
         break;
       }
@@ -173,7 +175,8 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) 
     tag_rowbatch_ = std::make_shared<TagRowBatch>();
     tag_rowbatch_->Init(table_);
     handler_->SetTagRowBatch(tag_rowbatch_);
-    if (access_mode < TSTableReadMode::tableTableMeta) {
+    if ((access_mode < TSTableReadMode::tableTableMeta) ||
+        (access_mode == TSTableReadMode::tagHashIndex)) {
       if (!tag_index_once_) {
         break;
       }

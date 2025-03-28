@@ -1,6 +1,7 @@
 --- Time-Series
 set cluster setting ts.sql.query_opt_mode = 1100;
 set cluster setting sql.stats.tag_automatic_collection.enabled = false;
+set cluster setting sql.stats.automatic_collection.enabled = false;
 CREATE TS DATABASE runba;
 
 CREATE TABLE runba.firegases00001 (
@@ -2268,3 +2269,4 @@ DROP DATABASE runba;
 delete from system.table_statistics where name = '_stats_';
 set cluster setting ts.sql.query_opt_mode = 1110;
 set cluster setting sql.stats.tag_automatic_collection.enabled = true;
+set cluster setting sql.stats.automatic_collection.enabled = true;

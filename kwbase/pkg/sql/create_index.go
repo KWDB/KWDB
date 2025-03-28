@@ -26,8 +26,10 @@ package sql
 
 import (
 	"context"
+	"fmt"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
+	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -36,12 +38,15 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/lib/pq/oid"
 )
 
 type createIndexNode struct {
-	n         *tree.CreateIndex
-	tableDesc *sqlbase.MutableTableDescriptor
+	n                  *tree.CreateIndex
+	tableDesc          *sqlbase.MutableTableDescriptor
+	isOrdinaryTagIndex bool
 }
 
 // CreateIndex creates an index.
@@ -80,15 +85,44 @@ func (p *planner) CreateIndex(ctx context.Context, n *tree.CreateIndex) (planNod
 		return nil, errors.Errorf("Can not create index on replicated table %s . ", tableDesc.Name)
 	}
 
+	var isTagIndex bool
 	if tableDesc.IsTSTable() {
-		return nil, sqlbase.TSUnsupportedError("create index")
+		if err := tsTableUnsupportedFeatureOfIndex(n); err != nil {
+			return nil, err
+		}
+		isTagIndex = true
 	}
 
 	if err := p.CheckPrivilege(ctx, tableDesc, privilege.CREATE); err != nil {
 		return nil, err
 	}
 
-	return &createIndexNode{tableDesc: tableDesc, n: n}, nil
+	return &createIndexNode{tableDesc: tableDesc, n: n, isOrdinaryTagIndex: isTagIndex}, nil
+}
+
+func tsTableUnsupportedFeatureOfIndex(n *tree.CreateIndex) error {
+	if n.Unique {
+		return sqlbase.TSUnsupportedError("create unique index")
+	}
+	if n.Inverted {
+		return sqlbase.TSUnsupportedError("create index of inverted")
+	}
+	if n.Sharded != nil {
+		return sqlbase.TSUnsupportedError("create hash sharded index")
+	}
+	if len(n.Storing) > 0 {
+		return sqlbase.TSUnsupportedError("create index with extra columns")
+	}
+	if n.Interleave != nil {
+		return sqlbase.TSUnsupportedError("create interleave index")
+	}
+	if n.PartitionBy != nil {
+		return sqlbase.TSUnsupportedError("create index of partitioning")
+	}
+	if n.Concurrently {
+		return sqlbase.TSUnsupportedError("concurrently create index")
+	}
+	return nil
 }
 
 // setupFamilyAndConstraintForShard adds a newly-created shard column into its appropriate
@@ -154,11 +188,11 @@ func (p *planner) setupFamilyAndConstraintForShard(
 // is hash sharded. Note that `tableDesc` will be modified when this method is called for
 // a hash sharded index.
 func MakeIndexDescriptor(
-	params runParams, n *tree.CreateIndex, tableDesc *sqlbase.MutableTableDescriptor,
+	params runParams, n *tree.CreateIndex, tableDesc *sqlbase.MutableTableDescriptor, isTgaIndex bool,
 ) (*sqlbase.IndexDescriptor, error) {
 	// Ensure that the columns we want to index exist before trying to create the
 	// index.
-	if err := validateIndexColumnsExist(tableDesc, n.Columns); err != nil {
+	if err := validateIndexColumnsExist(tableDesc, n.Columns, isTgaIndex); err != nil {
 		return nil, err
 	}
 	indexDesc := sqlbase.IndexDescriptor{
@@ -229,15 +263,28 @@ func MakeIndexDescriptor(
 // validateIndexColumnsExists validates that the columns for an index exist
 // in the table and are not being dropped prior to attempting to add the index.
 func validateIndexColumnsExist(
-	desc *sqlbase.MutableTableDescriptor, columns tree.IndexElemList,
+	desc *sqlbase.MutableTableDescriptor, columns tree.IndexElemList, isTgaIndex bool,
 ) error {
+	if isTgaIndex && len(columns) > 4 {
+		return pgerror.Newf(pgcode.FeatureNotSupported, "cannot create index with more than 4 tags in the table")
+	}
+
 	for _, column := range columns {
-		_, dropping, err := desc.FindColumnByName(column.Column)
+		col, dropping, err := desc.FindColumnByName(column.Column)
 		if err != nil {
 			return err
 		}
 		if dropping {
 			return sqlbase.NewUndefinedColumnError(string(column.Column))
+		}
+		if isTgaIndex {
+			if !col.IsOrdinaryTagCol() {
+				return sqlbase.TSUnsupportedError(fmt.Sprintf("creating index on column or primary tag \"%s\"", col.Name))
+			}
+
+			if col.Type.InternalType.Oid == oid.T_varbytea || col.Type.InternalType.Oid == oid.T_varchar {
+				return sqlbase.TSUnsupportedError(fmt.Sprintf("creating index on tag \"%s\" with type varchar/varbytes", col.Name))
+			}
 		}
 	}
 	return nil
@@ -366,7 +413,7 @@ func (n *createIndexNode) startExec(params runParams) error {
 		return pgerror.New(pgcode.FeatureNotSupported, "interleaved indexes cannot be partitioned")
 	}
 
-	indexDesc, err := MakeIndexDescriptor(params, n.n, n.tableDesc)
+	indexDesc, err := MakeIndexDescriptor(params, n.n, n.tableDesc, n.isOrdinaryTagIndex)
 	if err != nil {
 		return err
 	}
@@ -414,16 +461,54 @@ func (n *createIndexNode) startExec(params runParams) error {
 	}
 
 	mutationID := n.tableDesc.ClusterVersion.NextMutationID
-	if err := params.p.writeSchemaChange(
-		params.ctx, n.tableDesc, mutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
-	); err != nil {
-		return err
+
+	// creates and exec create tag index job
+	if n.isOrdinaryTagIndex {
+		syncDetail := jobspb.SyncMetaCacheDetails{
+			Type:                  createTagIndex,
+			SNTable:               n.tableDesc.TableDescriptor,
+			CreateOrAlterTagIndex: *indexDesc,
+			MutationID:            mutationID,
+		}
+		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+		if err != nil {
+			return err
+		}
+		if mutationID != sqlbase.InvalidMutationID {
+			n.tableDesc.MutationJobs = append(n.tableDesc.MutationJobs, sqlbase.TableDescriptor_MutationJob{
+				MutationID: mutationID, JobID: jobID})
+		}
+		if err = params.p.writeTableDesc(params.ctx, n.tableDesc); err != nil {
+			return err
+		}
+		// Actively commit a transaction, and read/write system table operations
+		// need to be performed before this.
+		if err = params.p.txn.Commit(params.ctx); err != nil {
+			return err
+		}
+
+		// After the transaction commits successfully, execute the Job and wait for it to complete.
+		if err = params.p.ExecCfg().JobRegistry.Run(
+			params.ctx,
+			params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+			[]int64{jobID},
+		); err != nil {
+			return err
+		}
+		log.Infof(params.ctx, "create tag index %s 1st txn finished, id: %d", n.n.Name.String(), indexDesc.ID)
+	} else {
+		if err := params.p.writeSchemaChange(
+			params.ctx, n.tableDesc, mutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
+		); err != nil {
+			return err
+		}
 	}
 
 	// Record index creation in the event log. This is an auditable log
 	// event and is recorded in the same transaction as the table descriptor
 	// update.
 	params.p.SetAuditTarget(uint32(index.ID), index.Name, nil)
+
 	return nil
 }
 

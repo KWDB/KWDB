@@ -156,6 +156,31 @@ class WALMgr {
                             uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack);
 
   /**
+   * Construct the log entry for the CREATE INDEX operation.
+   * @param ctx
+   * @param x_id Mini-transaction ID, default value is 0.
+   * @param index_id index ID.
+   * @param cur_ts_version  current version id.
+   * @param new_ts_version  new version id.
+   * @param col_ids the cols index contains.
+   * @return
+   */
+  KStatus WriteCreateIndexWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t object_id, uint32_t index_id,
+                              uint32_t cur_ts_version, uint32_t new_ts_version, std::vector<uint32_t> col_ids);
+
+  /**
+ * Construct the log entry for the DROP INDEX operation.
+ * @param ctx
+   * @param x_id Mini-transaction ID, default value is 0.
+   * @param index_id index ID.
+   * @param cur_ts_version  current version id.
+   * @param new_ts_version  new version id.
+   * @param col_ids the cols index contains.
+ * @return
+ */
+  KStatus WriteDropIndexWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t object_id, uint32_t index_id,
+                          uint32_t cur_ts_version, uint32_t new_ts_version, std::vector<uint32_t> col_ids);
+  /**
    * Construct the log entry for the CREATE operation.
    * @param ctx
    * @param x_id Mini-transaction ID, default value is 0.

@@ -177,10 +177,10 @@ inline KStatus stringToDouble(Field *field, k_double64 &output) {
       output);
 }
 
-inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length,
+inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length, k_int64 type_scale,
                                    k_int8 time_zone) {
   k_int64 timestamp = field->ValInt();
-  time_t time = static_cast<time_t>(timestamp / 1000) + time_zone * 3600;
+  time_t time = static_cast<time_t>(timestamp / type_scale) + time_zone * 3600;
   struct tm local_time;
   memset(&local_time, 0, sizeof(local_time));
   gmtime_r(&time, &local_time);
@@ -188,15 +188,20 @@ inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length,
   char buffer[30] = {0};
   std::strftime(buffer, 30, "%04Y-%m-%d %H:%M:%S", &local_time);
 
-  int milli_second = timestamp % 1000;
+  int seconds_after_decimal = timestamp % type_scale;
   KString milli_second_str = ".";
-  if (milli_second == 0) {
+  if (seconds_after_decimal == 0) {
     milli_second_str = "";
   } else {
-    while (milli_second % 10 == 0) {
-      milli_second /= 10;
+    type_scale /= 10;
+    while (type_scale > seconds_after_decimal) {
+      milli_second_str += '0';
+      type_scale /=10;
     }
-    milli_second_str += to_string(milli_second);
+    while (seconds_after_decimal % 10 == 0) {
+      seconds_after_decimal /= 10;
+    }
+    milli_second_str += to_string(seconds_after_decimal);
   }
   KString time_zone_str = "";
   if (time_zone < 10) {
@@ -211,8 +216,8 @@ inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length,
   return SUCCESS;
 }
 
-inline KStatus timestampToString(Field *field, char *output, k_uint32 length) {
-  return timestamptzToString(field, output, length, 0);
+inline KStatus timestampToString(Field *field, char *output, k_uint32 length, k_int64 type_scale) {
+  return timestamptzToString(field, output, length, type_scale, 0);
 }
 
 inline KStatus integerToString(Field *field, char *output, k_uint32 length) {
@@ -490,9 +495,6 @@ FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
   }
 
   switch (field_->get_storage_type()) {
-    case roachpb::DataType::TIMESTAMP:
-      func_ = timestampToString;
-      break;
     case roachpb::DataType::SMALLINT:
     case roachpb::DataType::INT:
     case roachpb::DataType::BIGINT:
@@ -560,6 +562,20 @@ FieldTypeCastTimestamptz2String::FieldTypeCastTimestamptz2String(
   // storage_len_ = field_length > 0 ? ++field_length : 256;
   time_zone_ = time_zone;
 
+  switch (field->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+      type_scale_ = 1000;
+      break;
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+      type_scale_ = 1000000;
+      break;
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+      type_scale_ = 1000000000;
+      break;
+  }
   if (output_type.find("VARCHAR") != std::string::npos) {
     if (output_type.find("NVARCHAR") != std::string::npos) {
       storage_type_ = roachpb::DataType::NVARCHAR;
@@ -595,7 +611,7 @@ String FieldTypeCastTimestamptz2String::ValStr() {
   } else {
     char in_v[storage_len_] = {0};
 
-    auto err = timestamptzToString(field_, in_v, storage_len_, time_zone_);
+    auto err = timestamptzToString(field_, in_v, storage_len_, type_scale_, time_zone_);
     if (err != SUCCESS) {
       return String("");
     }

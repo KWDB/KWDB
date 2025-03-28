@@ -535,6 +535,8 @@ message SyncMetaCacheDetails {
   sqlbase.ColumnDescriptor original_Column = 12 [(gogoproto.nullable) = false,(gogoproto.customname) = "OriginColumn"];
   // MutationID is currently used for online ADD COLUMN/DROP COLUMN/ALTER TYPE of TS table.
   uint32 mutation_id = 13 [(gogoproto.customname) = "MutationID", (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase.MutationID"];
+  // CreateOrAlterTagIndex is currently used for create/alter tag index of TS table.
+  sqlbase.IndexDescriptor create_or_alter_tag_index = 14 [(gogoproto.nullable) = false,(gogoproto.customname) = "CreateOrAlterTagIndex"];
 }
 
 message SetTag {

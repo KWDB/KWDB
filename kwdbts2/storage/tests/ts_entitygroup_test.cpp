@@ -189,7 +189,9 @@ TEST_F(TestTsEntityGroup, create) {
   std::vector<EntityResultIndex> entity_id_list;
   ResultSet res{(k_uint32) scan_tags.size()};
   uint32_t count;
-  KStatus s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  KStatus s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id_list.size(), 0);
 
@@ -211,7 +213,7 @@ TEST_F(TestTsEntityGroup, create) {
 
   primary_tags.push_back(&primary_key);
   res.clear();
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id_list.size(), 1);
   EXPECT_EQ(KTimestamp(entity_id_list[0].mem), primary_key);
@@ -298,7 +300,9 @@ TEST_F(TestTsEntityGroup, InsertSometimes) {
   free(payload.data);
   primary_tags.push_back(&primary_key);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   EXPECT_EQ(entity_id_list.size(), 1);
@@ -341,7 +345,9 @@ TEST_F(TestTsEntityGroup, InsertCrossPartitionSometimes) {
   free(payload.data);
   primary_tags.push_back(&primary_key);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   EXPECT_EQ(entity_id_list.size(), 1);
@@ -396,7 +402,9 @@ TEST_F(TestTsEntityGroup, mulitiInsert) {
   free(payload.data);
   primary_tags.push_back(&primary_key);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   EXPECT_EQ(entity_id_list.size(), 1);
@@ -451,7 +459,9 @@ TEST_F(TestTsEntityGroup, mulitiInsertCrossPartition) {
   free(payload.data);
   primary_tags.push_back(&primary_key);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   EXPECT_EQ(entity_id_list.size(), 1);
@@ -536,7 +546,9 @@ TEST_F(TestTsEntityGroup, mulitiInsertMultiEntity) {
   KTimestamp primary_key1 = primary_key + 1;
   primary_tags.push_back(&primary_key1);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2);
   EXPECT_EQ(entity_id_list.size(), 2);
@@ -594,7 +606,9 @@ TEST_F(TestTsEntityGroup, InsertAndDel) {
   free(payload.data);
   primary_tags.push_back(&primary_key);
   scan_tags.push_back(0);
-  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  s = entity_group_leader_->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &entity_id_list, &res, &count, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   EXPECT_EQ(entity_id_list.size(), 1);

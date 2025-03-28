@@ -96,6 +96,7 @@ class FieldTypeCastTimestamptz2String : public FieldTypeCast {
 
   Field *field_to_copy() { return new FieldTypeCastTimestamptz2String(*this); }
   k_int8 time_zone_;
+  k_int64 type_scale_{1};
 };
 class FieldTypeCastTimestampTz : public FieldTypeCast {
  public:

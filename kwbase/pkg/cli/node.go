@@ -33,7 +33,6 @@ import (
 	"strconv"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
@@ -386,9 +385,6 @@ func runDecommissionNodeImpl(
 	wait nodeDecommissionWaitType,
 	nodeIDs []roachpb.NodeID,
 ) error {
-	if base.OpenSource {
-		return errors.Errorf("node decommissioning feature needs an enterprise license to enable.")
-	}
 	if wait == nodeDecommissionWaitLive {
 		fmt.Fprintln(stderr, "\n--wait=live is deprecated and is treated as --wait=all")
 	}

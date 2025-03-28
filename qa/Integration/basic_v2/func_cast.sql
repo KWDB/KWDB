@@ -91,4 +91,25 @@ select vc::timestamp, vc::timestamptz, i8::timestamp, i8::timestamptz from ts_db
 set time zone 8;
 select vc::timestamp, vc::timestamptz, i8::timestamp, i8::timestamptz from ts_db.t2;
 
+create table ts_db.t3 (
+    kt timestamp not null,
+    ktz timestamptz,
+    ktu timestamp(6),
+    ktzu timestamptz(6),
+    ktn timestamp(9),
+    ktzn timestamptz(9))
+    tags (t1 int2 not null) primary tags(t1);
+insert into ts_db.t3 values ('2022-01-06 11:22:33.456+08:00', '2022-01-06 11:22:33.456+08:00','2022-01-06 11:22:33.456789+08:00', '2022-01-06 11:22:33.456789+08:00','2022-01-06 11:22:33.456789012+08:00', '2022-01-06 11:22:33.456789012+08:00',1 );
+insert into ts_db.t3 values ('2022-01-06 11:22:33.006+08:00', '2022-01-06 11:22:33.006+08:00','2022-01-06 11:22:33.0007+08:00', '2022-01-06 11:22:33.0007+08:00','2022-01-06 11:22:33.000009+08:00', '2022-01-06 11:22:33.000009+08:00',2 );
+
+select kt::char, ktz::char, kt::nchar, ktz::nchar,kt::char(10), ktz::char(10), kt::nchar(10), ktz::nchar(10), kt::varchar, ktz::varchar,kt::nvarchar, ktz::nvarchar from ts_db.t3 order by t1;
+select ktu::char, ktzu::char, ktu::nchar, ktzu::nchar,ktu::char(10), ktzu::char(10), ktu::nchar(10), ktzu::nchar(10), ktu::varchar, ktzu::varchar,ktu::nvarchar, ktzu::nvarchar from ts_db.t3 order by t1;
+select ktn::char, ktzn::char, ktn::nchar, ktzn::nchar,ktn::char(10), ktzn::char(10), ktn::nchar(10), ktzn::nchar(10), kt::varchar, ktzn::varchar,ktn::nvarchar, ktzn::nvarchar from ts_db.t3 order by t1;
+
+set time zone 8;
+select kt::char, ktz::char, kt::nchar, ktz::nchar,kt::char(10), ktz::char(10), kt::nchar(10), ktz::nchar(10), kt::varchar, ktz::varchar,kt::nvarchar, ktz::nvarchar from ts_db.t3 order by t1;
+select ktu::char, ktzu::char, ktu::nchar, ktzu::nchar,ktu::char(10), ktzu::char(10), ktu::nchar(10), ktzu::nchar(10), ktu::varchar, ktzu::varchar,ktu::nvarchar, ktzu::nvarchar from ts_db.t3 order by t1;
+select ktn::char, ktzn::char, ktn::nchar, ktzn::nchar,ktn::char(10), ktzn::char(10), ktn::nchar(10), ktzn::nchar(10), kt::varchar, ktzn::varchar,ktn::nvarchar, ktzn::nvarchar from ts_db.t3 order by t1;
+
+
 drop database ts_db cascade;

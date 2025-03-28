@@ -27,7 +27,10 @@ k_double64 doubleMathFunc1(Field **args, _double_val_fn valFn) {
 k_double64 doubleMathFunc2(Field **args, _double_val_fn_2 valFn) {
   return valFn(args[0]->ValReal(), args[1]->ValReal());
 }
-k_double64 intMathFunc2(Field **args, _int_val_fn_2 valFn) {
+k_int64 intMathFunc1(Field **args, _int_val_fn valFn) {
+  return valFn(args[0]->ValInt());
+}
+k_int64 intMathFunc2(Field **args, _int_val_fn_2 valFn) {
   return valFn(args[0]->ValInt(), args[1]->ValInt());
 }
 
@@ -247,7 +250,20 @@ k_int64 modFunc(Field **args, k_int32 arg_count) {
 k_double64 modDoubleFunc(Field **args, k_int32 arg_count) {
   return doubleMathFunc2(args, doubleMod);
 }
-k_double64 absFunc(Field **args, k_int32 arg_count) {
+k_int64 absIntFunc(Field **args, k_int32 arg_count) {
+  if (args[0]->get_storage_type() == roachpb::DataType::BIGINT) {
+    k_int64 val = args[0]->ValInt();
+    if (val == std::numeric_limits<int64_t>::min()) {
+      EEPgErrorInfo::SetPgErrorInfo(
+          ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+          "abs(): abs of min integer value (-9223372036854775808) not defined");
+      return 0;
+    }
+    return abs(val);
+  }
+  return intMathFunc1(args, abs);
+}
+k_double64 absDoubleFunc(Field **args, k_int32 arg_count) {
   return doubleMathFunc1(args, abs);
 }
 k_double64 ceilFunc(Field **args, k_int32 arg_count) {
@@ -386,8 +402,8 @@ const FieldMathFuncion mathFuncBuiltins1[] = {
     {
         .name = "abs",
         .func_type = FieldFunc::Functype::ABS_FUNC,
-        .int_func = nullptr,
-        .double_func = absFunc,
+        .int_func = absIntFunc,
+        .double_func = absDoubleFunc,
     },
     {
         .name = "ceil",

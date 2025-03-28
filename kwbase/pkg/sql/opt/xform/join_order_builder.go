@@ -1850,6 +1850,10 @@ func (s bitSet) len() int {
 // allRelationalTbl = 7-4 = 3 = t1 join t2, need to construct plan of 1 join 2 and add it to plan of JoinOrderBuilder.
 // last construct 3 join 4 and add it to plan of JoinOrderBuilder.
 func (jb *JoinOrderBuilder) handleCrossJoinInOutsideIn() {
+	// outside-in only use in start-single-node, do nothing in distributeMode.
+	if jb.c.e.evalCtx.StartDistributeMode {
+		return
+	}
 	allVertexes := jb.allVertexes()
 
 	// check if multi mode, if not, do nothing.
@@ -1864,6 +1868,32 @@ func (jb *JoinOrderBuilder) handleCrossJoinInOutsideIn() {
 
 	// join already exist for all relationship tables, do nothing
 	if jb.plans[allRelationalTbl] != nil {
+		return
+	}
+
+	// do not add the path if there are both exist innerEdges and nonInnerEdges.
+	// e.g :     filter e1=t2.b
+	//             |
+	// 			semi-join
+	//			 /  \
+	//		  ts    join   on on e1 = t1.a
+	//              /   \
+	//			   t1   t2  on t1.c=t2.d
+	// it wil can not find the t2.b after semi-join, do not handle this case.
+	existInnerEdges, existNonInnerEdges := false, false
+	for i, ok := jb.innerEdges.Next(0); ok; i, ok = jb.innerEdges.Next(i + 1) {
+		e := &jb.edges[i]
+		if e.checkInnerJoin(tstbl, allRelationalTbl) {
+			existInnerEdges = true
+		}
+	}
+	for i, ok := jb.nonInnerEdges.Next(0); ok; i, ok = jb.nonInnerEdges.Next(i + 1) {
+		e := &jb.edges[i]
+		if e.checkNonInnerJoin(tstbl, allRelationalTbl) {
+			existNonInnerEdges = true
+		}
+	}
+	if existInnerEdges && existNonInnerEdges {
 		return
 	}
 

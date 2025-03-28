@@ -42,6 +42,8 @@ type tsAlterTable struct {
 	columnMeta       []byte
 	oriColumnMeta    []byte
 	tableID          uint64
+	idxID            uint32
+	tagColumns       []uint32
 	txnID            []byte
 	currentTSVersion uint32
 	newTSVersion     uint32
@@ -73,6 +75,8 @@ func newTsAlterColumn(
 		tableID:           tst.TsTableID,
 		columnMeta:        tst.Column,
 		oriColumnMeta:     tst.OriginalCol,
+		idxID:             tst.TagIndexID,
+		tagColumns:        tst.TagIndexColumns,
 		txnID:             tst.TxnID,
 		currentTSVersion:  tst.CurrentTSVersion,
 		newTSVersion:      tst.NextTSVersion,
@@ -107,6 +111,30 @@ func (tct *tsAlterTable) Start(ctx context.Context) context.Context {
 	ctx = tct.StartInternal(ctx, tsAlterColumnProcName)
 	tct.nodeID = int32(tct.FlowCtx.NodeID)
 	switch tct.tsOperator {
+	case execinfrapb.OperatorType_TsCreateTagIndex:
+		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+			tct.alterTsColumnSuccess = false
+			tct.err = err
+			return ctx
+		}
+		if err := tct.FlowCtx.Cfg.TsEngine.CreateNormalTagIndex(tct.tableID, uint64(tct.idxID), tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.tagColumns); err != nil {
+			tct.alterTsColumnSuccess = false
+			tct.err = err
+			return ctx
+		}
+		tct.alterTsColumnSuccess = true
+	case execinfrapb.OperatorType_TsDropTagIndex:
+		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+			tct.alterTsColumnSuccess = false
+			tct.err = err
+			return ctx
+		}
+		if err := tct.FlowCtx.Cfg.TsEngine.DropNormalTagIndex(tct.tableID, uint64(tct.idxID), tct.currentTSVersion, tct.newTSVersion, tct.txnID); err != nil {
+			tct.alterTsColumnSuccess = false
+			tct.err = err
+			return ctx
+		}
+		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsAddColumn:
 		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false

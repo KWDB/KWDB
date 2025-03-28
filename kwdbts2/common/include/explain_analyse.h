@@ -57,6 +57,7 @@ struct OperatorFetcher {
 
 class TsFetcherCollection {
  public:
+  ~TsFetcherCollection() {fetchers_map_.clear();}
   void emplace(int32_t processor_id, OperatorFetcher *fetcher) {
     auto it = fetchers_map_.find(processor_id);
     if (it != fetchers_map_.end()) {
@@ -88,7 +89,6 @@ class TsFetcherCollection {
       }
     }
 
-    fetchers_map_.clear();
     return KStatus::SUCCESS;
   }
 

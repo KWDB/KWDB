@@ -1079,6 +1079,12 @@ inline timestamp64 convertTsToPTime(timestamp64 ts, DATATYPE ts_type) {
   return ret;
 }
 
+enum TSTagOpType {
+    opAnd = 0,
+    opOr = 1,
+    opUnKnow = 2,
+};
+
 inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
   if (ts == INT64_MAX || ts == INT64_MIN) {
     return ts;

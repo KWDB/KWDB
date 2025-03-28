@@ -719,6 +719,20 @@ func (h *hasher) HashPTagValues(val PTagValues) {
 	}
 }
 
+func (h *hasher) HashTagIndexInfo(tagInfo TagIndexInfo) {
+	h.HashInt(tagInfo.UnionType)
+	for _, val := range tagInfo.TagIndexValues {
+		if val != nil {
+			for k, vs := range val {
+				h.HashInt(int(k))
+				for _, v := range vs {
+					h.HashString(v)
+				}
+			}
+		}
+	}
+}
+
 func (h *hasher) HashTSHintType(val keys.ScanMethodHintType) {
 	h.HashInt(int(val))
 }
@@ -1177,6 +1191,36 @@ func (h *hasher) IsPTagValuesEqual(l, r PTagValues) bool {
 		for j, val := range v {
 			if val != r[k][j] {
 				return false
+			}
+		}
+	}
+	return true
+}
+
+func (h *hasher) IsTagIndexInfoEqual(l, r TagIndexInfo) bool {
+	if l.UnionType != r.UnionType {
+		return false
+	}
+
+	if len(l.TagIndexValues) != len(r.TagIndexValues) {
+		return false
+	}
+
+	for i, lmap := range l.TagIndexValues {
+		rmap := r.TagIndexValues[i]
+		if len(lmap) != len(rmap) {
+			return false
+		}
+
+		for k, lv := range lmap {
+			rv, ok := rmap[k]
+			if !ok || len(lv) != len(rv) {
+				return false
+			}
+			for j, val := range lv {
+				if val != rv[j] {
+					return false
+				}
 			}
 		}
 	}

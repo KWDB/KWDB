@@ -253,3 +253,1065 @@ INSERT 2
 (0 rows)
 > use defaultdb;drop database if exists test_select_first cascade;
 DROP DATABASE
+> create ts database tsdb;
+CREATE TS DATABASE
+> use tsdb;
+SET
+> create table table1(ts timestamp not null, a int, b int ) tags (ptag1 int not null, ptag2 int not null, t1 int, t2 int) primary tags (ptag1);
+CREATE TABLE
+> create table table2(ts timestamp not null, a int, b int ) tags (ptag1 int not null, ptag2 int not null, t1 int, t2 int) primary tags (ptag1,ptag2);
+CREATE TABLE
+> create index index1 on table1(t1);
+CREATE INDEX
+> create index index2 on table2(t1,t2);
+CREATE INDEX
+> explain select a from table1 where t1 = 100;
+        tree        |        field        | description
+--------------------+---------------------+---------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | a                   | a
+        └── ts scan |                     |
+                    | ts-table            | table1
+                    | access mode         | tagHashIndex
+                    | tag index filter[0] | t1 = 100
+(10 rows)
+> explain select a,b,t1,t2 from table1 where t1 = 100;
+      tree     |        field        | description
+---------------+---------------------+---------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table1
+               | access mode         | tagHashIndex
+               | tag index filter[0] | t1 = 100
+(7 rows)
+> explain select a,b,t1,t2 from table1 where t1 in (100,200,300);
+      tree     |        field        |      description
+---------------+---------------------+------------------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table1
+               | access mode         | tagHashIndex
+               | tag index filter[0] | t1 IN (100, 200, 300)
+(7 rows)
+> explain select a,b,t1,t2 from table1 where t1 = 100 and a>100 and b = 1;
+      tree     |        field        |      description
+---------------+---------------------+------------------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table1
+               | access mode         | tagHashIndex
+               | filter              | (b = 1) AND (a > 100)
+               | tag index filter[0] | t1 = 100
+(8 rows)
+> explain select a,b,ptag1 from table1 where t1 = 100 and a > 10;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | a                   | a
+        │           | b                   | b
+        │           | ptag1               | ptag1
+        └── ts scan |                     |
+                    | ts-table            | table1
+                    | access mode         | tagIndexTable
+                    | filter              | a > 10
+                    | tag index filter[0] | t1 = 100
+(13 rows)
+> explain select a,b from table1 where t1 = 100 and ptag1 > 10;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | a                   | a
+        │           | b                   | b
+        └── ts scan |                     |
+                    | ts-table            | table1
+                    | access mode         | tagIndexTable
+                    | tag filter[0]       | ptag1 > 10
+                    | tag index filter[0] | t1 = 100
+(12 rows)
+> explain select a,b from table1 where t1 = 100 and ptag1 = 10;
+        tree        |     field      |  description
+--------------------+----------------+----------------
+                    | distributed    | true
+                    | vectorized     | false
+  synchronizer      |                |
+   └── render       |                |
+        │           | engine type    | time series
+        │           | a              | a
+        │           | b              | b
+        └── ts scan |                |
+                    | ts-table       | table1
+                    | access mode    | tagIndexTable
+                    | tag filter[0]  | t1 = 100
+                    | ptag filter[0] | ptag1 = 10
+(12 rows)
+> explain select a,b from table1 where t1 = 100 and ptag1 = 10 and a > 10 and b < 10;
+        tree        |     field      |      description
+--------------------+----------------+------------------------
+                    | distributed    | true
+                    | vectorized     | false
+  synchronizer      |                |
+   └── render       |                |
+        │           | engine type    | time series
+        │           | a              | a
+        │           | b              | b
+        └── ts scan |                |
+                    | ts-table       | table1
+                    | access mode    | tagIndexTable
+                    | filter         | (a > 10) AND (b < 10)
+                    | tag filter[0]  | t1 = 100
+                    | ptag filter[0] | ptag1 = 10
+(13 rows)
+> explain select a from table2 where t1 = 100 and t2 = 200;
+        tree        |        field        | description
+--------------------+---------------------+---------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | a                   | a
+        └── ts scan |                     |
+                    | ts-table            | table2
+                    | access mode         | tagHashIndex
+                    | tag index filter[0] | t1 = 100
+                    | tag index filter[1] | t2 = 200
+(11 rows)
+> explain select a,b,t1,t2 from table2 where t1 = 100 and t2 = 200;
+      tree     |        field        | description
+---------------+---------------------+---------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table2
+               | access mode         | tagHashIndex
+               | tag index filter[0] | t1 = 100
+               | tag index filter[1] | t2 = 200
+(8 rows)
+> explain select a,b,t1,t2 from table2 where t1 in (100,200,300) and t2 in (500,600,700);
+      tree     |     field     |      description
+---------------+---------------+------------------------
+               | distributed   | true
+               | vectorized    | false
+  synchronizer |               |
+   └── ts scan |               |
+               | ts-table      | table2
+               | access mode   | tableTableMeta
+               | tag filter[0] | t1 IN (100, 200, 300)
+               | tag filter[1] | t2 IN (500, 600, 700)
+(8 rows)
+> explain select a,b,t1,t2 from table2 where t1 = 100 and t2 = 100 and a>100 and b = 1;
+      tree     |        field        |      description
+---------------+---------------------+------------------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table2
+               | access mode         | tagHashIndex
+               | filter              | (b = 1) AND (a > 100)
+               | tag index filter[0] | t1 = 100
+               | tag index filter[1] | t2 = 100
+(9 rows)
+> explain select a,b,ptag1 from table2 where t1 = 100 and t2 = 300 and a > 10;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | a                   | a
+        │           | b                   | b
+        │           | ptag1               | ptag1
+        └── ts scan |                     |
+                    | ts-table            | table2
+                    | access mode         | tagIndexTable
+                    | filter              | a > 10
+                    | tag index filter[0] | t1 = 100
+                    | tag index filter[1] | t2 = 300
+(14 rows)
+> explain select a,b from table2 where t1 = 100 and t2 =600 and ptag1 > 10;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | a                   | a
+        │           | b                   | b
+        └── ts scan |                     |
+                    | ts-table            | table2
+                    | access mode         | tagIndexTable
+                    | tag filter[0]       | ptag1 > 10
+                    | tag index filter[0] | t1 = 100
+                    | tag index filter[1] | t2 = 600
+(13 rows)
+> explain select a,b from table2 where t1 = 100 and t2 = 200 and ptag1 = 10 and ptag2 = 200;
+        tree        |     field      |  description
+--------------------+----------------+----------------
+                    | distributed    | true
+                    | vectorized     | false
+  synchronizer      |                |
+   └── render       |                |
+        │           | engine type    | time series
+        │           | a              | a
+        │           | b              | b
+        └── ts scan |                |
+                    | ts-table       | table2
+                    | access mode    | tagIndexTable
+                    | tag filter[0]  | t1 = 100
+                    | tag filter[1]  | t2 = 200
+                    | ptag filter[0] | ptag1 = 10
+                    | ptag filter[1] | ptag2 = 200
+(14 rows)
+> explain select a,b from table2 where t1 = 100 and ptag1 = 10 and a > 10 and b < 10 and t2 = 200 and ptag2 = 200;
+        tree        |     field      |      description
+--------------------+----------------+------------------------
+                    | distributed    | true
+                    | vectorized     | false
+  synchronizer      |                |
+   └── render       |                |
+        │           | engine type    | time series
+        │           | a              | a
+        │           | b              | b
+        └── ts scan |                |
+                    | ts-table       | table2
+                    | access mode    | tagIndexTable
+                    | filter         | (a > 10) AND (b < 10)
+                    | tag filter[0]  | t1 = 100
+                    | tag filter[1]  | t2 = 200
+                    | ptag filter[0] | ptag1 = 10
+                    | ptag filter[1] | ptag2 = 200
+(15 rows)
+> create table t2(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null) primary tags(ptag1);
+CREATE TABLE
+> create index index1 on t2(tag1);
+CREATE INDEX
+> create index index2 on t2(tag2);
+CREATE INDEX
+> create index index3 on t2(tag3);
+CREATE INDEX
+> create index index4 on t2(tag4,tag5);
+CREATE INDEX
+> create index index5 on t2(tag1,tag2,tag3);
+CREATE INDEX
+> explain select c1,tag1 from t2 where tag1 = 100;
+      tree     |        field        | description
+---------------+---------------------+---------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | t2
+               | access mode         | tagHashIndex
+               | tag index filter[0] | tag1 = 100
+(7 rows)
+> explain select c1,tag1 from t2 where tag1 in (100,200,300);
+      tree     |        field        |       description
+---------------+---------------------+--------------------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | t2
+               | access mode         | tagHashIndex
+               | tag index filter[0] | tag1 IN (100, 200, 300)
+(7 rows)
+> explain select c1,tag1,ptag1 from t2 where tag1 = 100;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  render            |                     |
+   │                | engine type         | time series
+   │                | c1                  | c1
+   │                | tag1                | tag1
+   │                | ptag1               | ptag1
+   └── synchronizer |                     |
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | tag index filter[0] | tag1 = 100
+(12 rows)
+> explain select c1,tag1,ptag1 from t2 where tag1 in (100,200,300);
+        tree        |        field        |       description
+--------------------+---------------------+--------------------------
+                    | distributed         | true
+                    | vectorized          | false
+  render            |                     |
+   │                | engine type         | time series
+   │                | c1                  | c1
+   │                | tag1                | tag1
+   │                | ptag1               | ptag1
+   └── synchronizer |                     |
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | tag index filter[0] | tag1 IN (100, 200, 300)
+(12 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 and c1 = 1;
+      tree     |        field        | description
+---------------+---------------------+---------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | t2
+               | access mode         | tagHashIndex
+               | filter              | c1 = 1
+               | tag index filter[0] | tag1 = 100
+(8 rows)
+> explain select c1,tag1 from t2 where tag1 > 100 and tag4 = 400 and tag5 = 500 and c1 = 1;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | filter              | c1 = 1
+                    | tag filter[0]       | tag1 > 100
+                    | tag index filter[0] | tag4 = 400
+                    | tag index filter[1] | tag5 = 500
+(14 rows)
+> explain select c1,tag1,ptag1 from t2 where tag1 > 100 and tag4 = 400 and tag5 = 500 and c1 > 1;
+           tree          |        field        |  description
+-------------------------+---------------------+----------------
+                         | distributed         | true
+                         | vectorized          | false
+  render                 |                     |
+   │                     | engine type         | time series
+   │                     | c1                  | c1
+   │                     | tag1                | tag1
+   │                     | ptag1               | ptag1
+   └── synchronizer      |                     |
+        └── render       |                     |
+             │           | engine type         | time series
+             │           | c1                  | c1
+             │           | ptag1               | ptag1
+             │           | tag1                | tag1
+             └── ts scan |                     |
+                         | ts-table            | t2
+                         | access mode         | tagIndexTable
+                         | filter              | c1 > 1
+                         | tag filter[0]       | tag1 > 100
+                         | tag index filter[0] | tag4 = 400
+                         | tag index filter[1] | tag5 = 500
+(20 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and c1 > 1;
+        tree        |        field        | description
+--------------------+---------------------+---------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagHashIndex
+                    | filter              | c1 > 1
+                    | tag index filter[0] | tag4 = 400
+                    | tag index filter[1] | tag5 = 500
+                    | tag index filter[2] | tag1 = 100
+                    | tag index filter[3] | tag2 = 200
+(15 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 in (500,600) and c1 = 1;
+        tree        |        field        |    description
+--------------------+---------------------+---------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | filter              | c1 = 1
+                    | tag filter[0]       | tag4 = 400
+                    | tag filter[1]       | tag5 IN (500, 600)
+                    | tag index filter[0] | tag1 = 100
+                    | tag index filter[1] | tag2 = 200
+(15 rows)
+> explain select c1,tag1 from t2 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 = 300 and c1 = 1;
+        tree        |        field        |     description
+--------------------+---------------------+----------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | filter              | c1 = 1
+                    | tag filter[0]       | tag1 IN (100, 1000)
+                    | tag filter[1]       | tag2 IN (200, 2000)
+                    | tag index filter[0] | tag3 = 300
+(14 rows)
+> explain select c1,tag1 from t2 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 in (300,600) and c1 = 1;
+        tree        |     field     |     description
+--------------------+---------------+----------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | filter        | c1 = 1
+                    | tag filter[0] | tag1 IN (100, 1000)
+                    | tag filter[1] | tag2 IN (200, 2000)
+                    | tag filter[2] | tag3 IN (300, 600)
+(14 rows)
+> explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and c1 > 1;
+           tree          |        field        |  description
+-------------------------+---------------------+----------------
+                         | distributed         | true
+                         | vectorized          | false
+  render                 |                     |
+   │                     | engine type         | time series
+   │                     | c1                  | c1
+   │                     | tag1                | tag1
+   │                     | ptag1               | ptag1
+   └── synchronizer      |                     |
+        └── render       |                     |
+             │           | engine type         | time series
+             │           | c1                  | c1
+             │           | ptag1               | ptag1
+             │           | tag1                | tag1
+             └── ts scan |                     |
+                         | ts-table            | t2
+                         | access mode         | tagIndexTable
+                         | filter              | c1 > 1
+                         | tag index filter[0] | tag4 = 400
+                         | tag index filter[1] | tag5 = 500
+                         | tag index filter[2] | tag1 = 100
+                         | tag index filter[3] | tag2 = 200
+(21 rows)
+> explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and ptag1 = 1000 and c1 > 1;
+           tree          |     field      |  description
+-------------------------+----------------+----------------
+                         | distributed    | true
+                         | vectorized     | false
+  render                 |                |
+   │                     | engine type    | time series
+   │                     | c1             | c1
+   │                     | tag1           | tag1
+   │                     | ptag1          | ptag1
+   └── synchronizer      |                |
+        └── render       |                |
+             │           | engine type    | time series
+             │           | c1             | c1
+             │           | ptag1          | ptag1
+             │           | tag1           | tag1
+             └── ts scan |                |
+                         | ts-table       | t2
+                         | access mode    | tagIndexTable
+                         | filter         | c1 > 1
+                         | tag filter[0]  | tag1 = 100
+                         | tag filter[1]  | tag2 = 200
+                         | tag filter[2]  | tag4 = 400
+                         | tag filter[3]  | tag5 = 500
+                         | ptag filter[0] | ptag1 = 1000
+(22 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 and ptag1 > 100 and c1 > 1;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | filter              | c1 > 1
+                    | tag filter[0]       | ptag1 > 100
+                    | tag index filter[0] | tag1 = 100
+(13 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 and ptag1 = 100 and c1 > 1;
+        tree        |     field      |  description
+--------------------+----------------+----------------
+                    | distributed    | true
+                    | vectorized     | false
+  synchronizer      |                |
+   └── render       |                |
+        │           | engine type    | time series
+        │           | c1             | c1
+        │           | tag1           | tag1
+        └── ts scan |                |
+                    | ts-table       | t2
+                    | access mode    | tagIndexTable
+                    | filter         | c1 > 1
+                    | tag filter[0]  | tag1 = 100
+                    | ptag filter[0] | ptag1 = 100
+(13 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or c1 > 1;
+      tree     |    field    |       description
+---------------+-------------+---------------------------
+               | distributed | true
+               | vectorized  | false
+  synchronizer |             |
+   └── ts scan |             |
+               | ts-table    | t2
+               | access mode | tableTableMeta
+               | filter      | (c1 > 1) OR (tag1 = 100)
+(7 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100;
+        tree        |        field        |         description
+--------------------+---------------------+-------------------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagHashIndex
+                    | tag index filter[0] | (tag1 = 100) OR (tag2 = 100)
+(11 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag4 = 400 or tag5 = 500;
+        tree        |     field     |                           description
+--------------------+---------------+-------------------------------------------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | (((tag1 = 100) OR (tag2 = 100)) OR (tag4 = 400)) OR (tag5 = 500)
+(11 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag4 = 400 or tag5 = 500 or ptag1 = 600;
+        tree        |     field     |                                     description
+--------------------+---------------+--------------------------------------------------------------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | ((((tag1 = 100) OR (tag2 = 100)) OR (tag4 = 400)) OR (tag5 = 500)) OR (ptag1 = 600)
+(11 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or ptag1 = 600;
+        tree        |        field        |                   description
+--------------------+---------------------+--------------------------------------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | tag index filter[0] | ((tag1 = 100) OR (tag2 = 100)) OR (ptag1 = 600)
+(11 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or ptag1 = 600 or ptag1 = 800;
+        tree        |        field        |                            description
+--------------------+---------------------+---------------------------------------------------------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagIndexTable
+                    | tag index filter[0] | (((tag1 = 100) OR (tag2 = 100)) OR (ptag1 = 600)) OR (ptag1 = 800)
+(11 rows)
+> explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or tag3 = '300');
+        tree        |     field     |         description
+--------------------+---------------+-------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | (tag1 = 100) OR (tag2 = 100)
+                    | tag filter[1] | (tag1 = 200) OR (tag3 = 300)
+(12 rows)
+> explain select c1,tag1 from t2 where (tag1 = 100 or ptag1 = 100) and (tag2 = 200 or ptag1 = 300);
+        tree        |     field     |          description
+--------------------+---------------+--------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | (ptag1 = 100) OR (tag1 = 100)
+                    | tag filter[1] | (ptag1 = 300) OR (tag2 = 200)
+(12 rows)
+> explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and tag1 = 200;
+        tree        |        field        | description
+--------------------+---------------------+---------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagHashIndex
+                    | tag index filter[0] | tag1 = 200
+                    | tag index filter[1] | tag2 = 100
+(12 rows)
+> explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and c1 > 100;
+        tree        |     field     |         description
+--------------------+---------------+-------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | filter        | c1 > 100
+                    | tag filter[0] | (tag1 = 100) OR (tag2 = 100)
+(12 rows)
+> explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or c1 > 100);
+        tree        |     field     |         description
+--------------------+---------------+-------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | filter        | (c1 > 100) OR (tag1 = 200)
+                    | tag filter[0] | (tag1 = 100) OR (tag2 = 100)
+(12 rows)
+> explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or ptag1 = 300);
+        tree        |     field     |          description
+--------------------+---------------+--------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | (tag1 = 100) OR (tag2 = 100)
+                    | tag filter[1] | (ptag1 = 300) OR (tag1 = 200)
+(12 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag1 = 200 or tag2 = 200;
+        tree        |        field        |                           description
+--------------------+---------------------+-------------------------------------------------------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagHashIndex
+                    | tag index filter[0] | (((tag1 = 100) OR (tag2 = 100)) OR (tag1 = 200)) OR (tag2 = 200)
+(11 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag1 in (200,300) or tag2 = 200;
+        tree        |        field        |                               description
+--------------------+---------------------+---------------------------------------------------------------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t2
+                    | access mode         | tagHashIndex
+                    | tag index filter[0] | (((tag1 = 100) OR (tag2 = 100)) OR (tag1 IN (200, 300))) OR (tag2 = 200)
+(11 rows)
+> explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag1 in (200,300) or tag2 = 200 or tag4 = 500 or tag5 = 600;
+        tree        |     field     |                                                 description
+--------------------+---------------+---------------------------------------------------------------------------------------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t2
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | (((((tag1 = 100) OR (tag2 = 100)) OR (tag1 IN (200, 300))) OR (tag2 = 200)) OR (tag4 = 500)) OR (tag5 = 600)
+(11 rows)
+> create table t3(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null) primary tags(ptag1);
+CREATE TABLE
+> create index index1_t2 on t3(tag1,tag2,tag3);
+CREATE INDEX
+> create index index2_t2 on t3(tag3);
+CREATE INDEX
+> explain select c1,tag1 from t3 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 = '300' and c1 = 1;
+        tree        |        field        |     description
+--------------------+---------------------+----------------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t3
+                    | access mode         | tagIndexTable
+                    | filter              | c1 = 1
+                    | tag filter[0]       | tag1 IN (100, 1000)
+                    | tag filter[1]       | tag2 IN (200, 2000)
+                    | tag index filter[0] | tag3 = 300
+(14 rows)
+> explain select c1,tag1 from t3 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 in ('300','600') and c1 = 1;
+        tree        |     field     |     description
+--------------------+---------------+----------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t3
+                    | access mode   | tableTableMeta
+                    | filter        | c1 = 1
+                    | tag filter[0] | tag1 IN (100, 1000)
+                    | tag filter[1] | tag2 IN (200, 2000)
+                    | tag filter[2] | tag3 IN (300, 600)
+(14 rows)
+> create table t5(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, ptag5 int not null) primary tags(ptag1,ptag5);
+CREATE TABLE
+> create index index1 on t5(tag1);
+CREATE INDEX
+> create index index2 on t5(tag2);
+CREATE INDEX
+> create index index3 on t5(tag3);
+CREATE INDEX
+> explain select c1,tag1 from t5 where tag1 = 100 or tag2 = 100 or ptag1 = 600;
+        tree        |     field     |                   description
+--------------------+---------------+--------------------------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t5
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | ((tag1 = 100) OR (tag2 = 100)) OR (ptag1 = 600)
+(11 rows)
+> explain select c1,tag1 from t5 where tag1 = 100 or tag2 = 100 or ptag1 = 600 or ptag5 = 800;
+        tree        |     field     |                            description
+--------------------+---------------+---------------------------------------------------------------------
+                    | distributed   | true
+                    | vectorized    | false
+  synchronizer      |               |
+   └── render       |               |
+        │           | engine type   | time series
+        │           | c1            | c1
+        │           | tag1          | tag1
+        └── ts scan |               |
+                    | ts-table      | t5
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | (((tag1 = 100) OR (tag2 = 100)) OR (ptag1 = 600)) OR (ptag5 = 800)
+(11 rows)
+> create table t6(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null, tag6 int not null) primary tags(ptag1);
+CREATE TABLE
+> create index index1 on t6(tag1,tag2,tag3);
+CREATE INDEX
+> create index index2 on t6(tag2,tag3,tag4);
+CREATE INDEX
+> create index index3 on t6(tag4,tag5);
+CREATE INDEX
+> create index index5 on t6(tag5,tag6);
+CREATE INDEX
+> explain select c1,tag1 from t6 where tag1 = 100 and tag2 = 100 and tag3 = 300 and tag4 = 500;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t6
+                    | access mode         | tagIndexTable
+                    | tag filter[0]       | tag4 = 500
+                    | tag index filter[0] | tag1 = 100
+                    | tag index filter[1] | tag2 = 100
+                    | tag index filter[2] | tag3 = 300
+(14 rows)
+> explain select c1,tag1 from t6 where tag4 = 500 and tag5 = 500 and tag6 = 600;
+        tree        |        field        |  description
+--------------------+---------------------+----------------
+                    | distributed         | true
+                    | vectorized          | false
+  synchronizer      |                     |
+   └── render       |                     |
+        │           | engine type         | time series
+        │           | c1                  | c1
+        │           | tag1                | tag1
+        └── ts scan |                     |
+                    | ts-table            | t6
+                    | access mode         | tagIndexTable
+                    | tag filter[0]       | tag6 = 600
+                    | tag index filter[0] | tag4 = 500
+                    | tag index filter[1] | tag5 = 500
+(13 rows)
+> explain select t2.c1,t2.tag1 from t2,t3,t5 where t2.tag1 = 100 and t3.tag3 = 300 and t5.tag1 = 500;
+             tree             |        field        | description
+------------------------------+---------------------+---------------
+                              | distributed         | true
+                              | vectorized          | false
+  render                      |                     |
+   │                          | c1                  | c1
+   │                          | tag1                | tag1
+   └── cross-join             |                     |
+        │                     | type                | cross
+        ├── cross-join        |                     |
+        │    │                | type                | cross
+        │    ├── synchronizer |                     |
+        │    │    └── ts scan |                     |
+        │    │                | ts-table            | t3
+        │    │                | access mode         | tagHashIndex
+        │    │                | tag index filter[0] | tag3 = 300
+        │    └── synchronizer |                     |
+        │         └── ts scan |                     |
+        │                     | ts-table            | t5
+        │                     | access mode         | tagHashIndex
+        │                     | tag index filter[0] | tag1 = 500
+        └── synchronizer      |                     |
+             └── ts scan      |                     |
+                              | ts-table            | t2
+                              | access mode         | tagHashIndex
+                              | tag index filter[0] | tag1 = 100
+(24 rows)
+> explain select t2.c1,t2.tag1 from t2,t3,t6 where t2.ptag1 = 100 and t3.ptag1 = 300 and t6.ptag1 = 500;
+             tree             |     field      |  description
+------------------------------+----------------+----------------
+                              | distributed    | true
+                              | vectorized     | false
+  render                      |                |
+   │                          | c1             | c1
+   │                          | tag1           | tag1
+   └── cross-join             |                |
+        │                     | type           | cross
+        ├── cross-join        |                |
+        │    │                | type           | cross
+        │    ├── synchronizer |                |
+        │    │    └── ts scan |                |
+        │    │                | ts-table       | t3
+        │    │                | access mode    | tagIndex
+        │    │                | ptag filter[0] | ptag1 = 300
+        │    └── synchronizer |                |
+        │         └── ts scan |                |
+        │                     | ts-table       | t6
+        │                     | access mode    | tagIndex
+        │                     | ptag filter[0] | ptag1 = 500
+        └── synchronizer      |                |
+             └── ts scan      |                |
+                              | ts-table       | t2
+                              | access mode    | tagIndexTable
+                              | ptag filter[0] | ptag1 = 100
+(24 rows)
+> explain select t2.c1,t2.tag1 from t2,t3,t5 where t2.tag1 = 100 and t2.tag2 = 200 and t2.tag3 = 300 and t3.tag3 = '300' and (t5.tag1 = 500 or t5.tag2 = 600);
+             tree             |        field        |         description
+------------------------------+---------------------+-------------------------------
+                              | distributed         | true
+                              | vectorized          | false
+  render                      |                     |
+   │                          | c1                  | c1
+   │                          | tag1                | tag1
+   └── cross-join             |                     |
+        │                     | type                | cross
+        ├── cross-join        |                     |
+        │    │                | type                | cross
+        │    ├── synchronizer |                     |
+        │    │    └── ts scan |                     |
+        │    │                | ts-table            | t5
+        │    │                | access mode         | tagHashIndex
+        │    │                | tag index filter[0] | (tag1 = 500) OR (tag2 = 600)
+        │    └── synchronizer |                     |
+        │         └── ts scan |                     |
+        │                     | ts-table            | t3
+        │                     | access mode         | tagHashIndex
+        │                     | tag index filter[0] | tag3 = 300
+        └── synchronizer      |                     |
+             └── ts scan      |                     |
+                              | ts-table            | t2
+                              | access mode         | tagHashIndex
+                              | tag index filter[0] | tag1 = 100
+                              | tag index filter[1] | tag2 = 200
+                              | tag index filter[2] | tag3 = 300
+(26 rows)
+> CREATE TABLE ts_t1(
+ k_timestamp timestamptz NOT NULL,
+ e1 int2 ) ATTRIBUTES (
+code1 int NOT NULL,
+code2 int NOT NULL,
+t_int2_1 int2,
+t_int4_1 int,
+t_int8_1 int8,
+t_float4_1 float4,
+t_float8_1 float8,
+t_bool_1 bool,
+t_charn_1 char(1023),
+t_ncharn_1 nchar(254),
+t_char_1 char,
+t_nchar_1 nchar,
+t_varcharn_1 varchar(256),
+t_varchar_1 varchar,
+t_varbytesn_1 varbytes(256),
+t_varbytes_1 varbytes) primary tags(
+code1,
+code2) activetime 10s;
+CREATE TABLE
+> ALTER TABLE ts_t1 ADD TAG code3 INT2;
+ALTER TABLE
+> ALTER TABLE ts_t1 ADD TAG code5 INT2;
+ALTER TABLE
+> ALTER TABLE ts_t1 DROP TAG code5;
+ALTER TABLE
+> ALTER TABLE ts_t1 ADD TAG code5 INT2;
+ALTER TABLE
+> CREATE INDEX index_5 ON ts_t1(t_int8_1,code3,code5);
+CREATE INDEX
+> explain select * from ts_t1 where t_int8_1=8 and code3=3 and code5=5;
+      tree     |        field        |  description
+---------------+---------------------+----------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | ts_t1
+               | access mode         | tagIndexTable
+               | tag index filter[0] | t_int8_1 = 8
+               | tag index filter[1] | code3 = 3
+               | tag index filter[2] | code5 = 5
+(9 rows)
+> create table table3(ts timestamp not null, a int, b int ) tags (ptag1 int not null, ptag2 int not null, t1 bool, t2 int) primary tags (ptag1);
+CREATE TABLE
+> insert into table3 values('2000-1-1',1,1,1,1,true,1);
+INSERT 1
+> create index index1 on table3(t1);
+CREATE INDEX
+> explain select * from table3 where t1 in (true);
+      tree     |        field        |  description
+---------------+---------------------+----------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table3
+               | access mode         | tagIndexTable
+               | tag index filter[0] | t1 IN (true,)
+(7 rows)
+> explain select * from table3 where t1 in (false);
+      tree     |        field        |  description
+---------------+---------------------+-----------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table3
+               | access mode         | tagIndexTable
+               | tag index filter[0] | t1 IN (false,)
+(7 rows)
+> explain select * from table3 where t1 in (true,false);
+      tree     |        field        |     description
+---------------+---------------------+----------------------
+               | distributed         | true
+               | vectorized          | false
+  synchronizer |                     |
+   └── ts scan |                     |
+               | ts-table            | table3
+               | access mode         | tagIndexTable
+               | tag index filter[0] | t1 IN (false, true)
+(7 rows)
+> select * from table3 where t1 in (true);
+             ts             | a | b | ptag1 | ptag2 |  t1  | t2
+----------------------------+---+---+-------+-------+------+-----
+  2000-01-01 00:00:00+00:00 | 1 | 1 |     1 |     1 | true |  1
+(1 row)
+> drop database tsdb cascade;
+DROP DATABASE

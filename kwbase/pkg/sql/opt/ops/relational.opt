@@ -1027,6 +1027,12 @@ define TSScanPrivate {
     # PrimaryTagValues primary tag col and value map
     PrimaryTagValues PTagValues
 
+    # TagIndexFilter tag index col filter exprs
+    TagIndexFilter Exprs
+
+    # TagIndex tag col and value map
+    TagIndex TagIndexInfo
+
     # HintType select hint type for control plan
     HintType TSHintType
 

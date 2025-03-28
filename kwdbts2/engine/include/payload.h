@@ -161,6 +161,10 @@ class Payload {
     return TSSlice{slice_.data + primary_offset_, static_cast<size_t>(primary_len_)};
   }
 
+  TSSlice GetNormalTag(int32_t offset, int32_t len) {
+    return TSSlice{slice_.data + tag_offset_ + offset, static_cast<size_t>(len)};
+  }
+
   bool HasTagValue() {
     return *reinterpret_cast<bool*> (slice_.data + header_size_ - 1);
   }

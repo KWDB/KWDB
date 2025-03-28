@@ -13,12 +13,15 @@ package memo
 
 import (
 	"hash/fnv"
+	"sort"
 	"strconv"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"github.com/lib/pq/oid"
@@ -432,17 +435,18 @@ func CheckPrimaryTagCanUse(primaryTagCount int, value *PTagValues) bool {
 // sel is the SelectExpr.
 // m record the table cache.
 func GetAccessMode(
-	hasPrimaryFilter bool, hasTagFilter bool, private *TSScanPrivate, m *Memo,
+	hasPrimaryFilter bool, hasTagFilter bool, hasTagIndex bool, private *TSScanPrivate, m *Memo,
 ) (accessMode int) {
 	if private.AccessMode != -1 {
 		return private.AccessMode
 	}
-	var hasNormalTags, outputHasTag bool
+	var hasNormalTags, outputHasTag, outputHasPTag bool
 	hasPrimaryTags := hasPrimaryFilter
 
 	private.Cols.ForEach(func(colID opt.ColumnID) {
 		colMeta := m.Metadata().ColumnMeta(colID)
 		outputHasTag = outputHasTag || colMeta.IsNormalTag()
+		outputHasPTag = outputHasPTag || colMeta.IsPrimaryTag()
 	})
 	if hasTagFilter || outputHasTag {
 		hasNormalTags = true
@@ -452,6 +456,12 @@ func GetAccessMode(
 			accessMode = int(execinfrapb.TSTableReadMode_tagIndex)
 		} else {
 			accessMode = int(execinfrapb.TSTableReadMode_tagIndexTable)
+		}
+	} else if hasTagIndex {
+		if outputHasPTag || hasTagFilter {
+			accessMode = int(execinfrapb.TSTableReadMode_tagIndexTable)
+		} else {
+			accessMode = int(execinfrapb.TSTableReadMode_tagHashIndex)
 		}
 	} else if hasNormalTags {
 		accessMode = int(execinfrapb.TSTableReadMode_tableTableMeta)
@@ -702,4 +712,427 @@ func CheckAggCanParallel(expr opt.Expr) (bool, bool) {
 		return ok, true
 	}
 	return false, false
+}
+
+// GetTagIndexKeyAndFilter get tag index key and tag index filters by metadata.
+func GetTagIndexKeyAndFilter(
+	private *TSScanPrivate, tagFilters *[]opt.Expr, m *Memo, filterCount int,
+) []opt.Expr {
+	tabID := private.Table
+	table := m.Metadata().TableMeta(tabID).Table
+
+	// Early return if there's no index to use
+	if table.IndexCount() == 1 {
+		return nil
+	}
+
+	tagColMap, primaryTagColMap := buildTagColumnMaps(table, tabID)
+
+	// GET tag index info from metadata
+	var tagIndexColumnIDs [][]uint32
+	mapTagIndexIDs := make([]map[sqlbase.IndexID][]uint32, table.IndexCount())
+	for i := 1; i < table.IndexCount(); i++ {
+		var metaIDs []uint32
+		tagIndex := table.Index(i)
+		for i := 0; i < tagIndex.ColumnCount()-1; i++ {
+			index := tagIndex.Column(i).Ordinal
+			metaIDs = append(metaIDs, uint32(tabID.ColumnID(index)))
+		}
+		mapTagIndexIDs[i] = make(map[sqlbase.IndexID][]uint32)
+		tagIndexColumnIDs = append(tagIndexColumnIDs, metaIDs)
+		mapTagIndexIDs[i][sqlbase.IndexID(table.Index(i).ID())] = metaIDs
+	}
+
+	tagValues := make(map[uint32][]string)
+	tagEqFilters, tagOrFilter, filterMap := populateFilters(tagFilters, &tagValues, tagColMap, primaryTagColMap, filterCount)
+
+	// Attempt to use tag index
+	tagIndexFilters, tagIndexValues, canUseTagIndex := CheckAndGetTagIndex(tagIndexColumnIDs, tagValues, tagEqFilters, filterMap)
+	if canUseTagIndex {
+		if len(tagIndexFilters) == 1 && tagIndexFilters[0].Op() == opt.InOp {
+			private.TagIndex.UnionType = Combine
+		} else {
+			private.TagIndex.UnionType = Intersection
+		}
+		private.TagIndex.TagIndexValues = tagIndexValues
+		private.TagIndex.IndexID = make([]uint32, len(tagIndexValues))
+		for i, mapTagColumnIDs := range tagIndexValues {
+			var TagColumnIDs []uint32
+			for k := range mapTagColumnIDs {
+				TagColumnIDs = append(TagColumnIDs, k)
+			}
+
+			for _, indexMap := range mapTagIndexIDs {
+				for indexID, colIDs := range indexMap {
+					if equalColumns(TagColumnIDs, colIDs) {
+						private.TagIndex.IndexID[i] = uint32(indexID)
+						break
+					}
+				}
+			}
+		}
+	} else {
+		primaryTagValues, tagIndexValues, canUseTagIndexByOrFilter := CheckAndGetTagIndexFromOrExpr(tagIndexColumnIDs, tagValues, primaryTagColMap)
+		if canUseTagIndexByOrFilter {
+			private.PrimaryTagValues = primaryTagValues
+			private.TagIndex.UnionType = Combine
+			private.TagIndex.TagIndexValues = tagIndexValues
+			private.TagIndex.IndexID = make([]uint32, len(tagIndexValues))
+			for i, mapTagColumnIDs := range tagIndexValues {
+				var TagColumnIDs []uint32
+				for k := range mapTagColumnIDs {
+					TagColumnIDs = append(TagColumnIDs, k)
+				}
+
+				for _, indexMap := range mapTagIndexIDs {
+					for indexID, colIDs := range indexMap {
+						if equalColumns(TagColumnIDs, colIDs) {
+							private.TagIndex.IndexID[i] = uint32(indexID)
+							break
+						}
+					}
+				}
+			}
+			tagIndexFilters = tagOrFilter
+		}
+	}
+
+	used := make(map[opt.Expr]struct{})
+	for _, filter := range tagIndexFilters {
+		used[filter] = struct{}{}
+	}
+	var newFilters []opt.Expr
+	for _, filter := range *tagFilters {
+		if _, exists := used[filter]; !exists {
+			newFilters = append(newFilters, filter)
+		}
+	}
+
+	*tagFilters = newFilters
+
+	return tagIndexFilters
+}
+
+// buildTagColumnMaps used to build tag and primary tag colMap.
+func buildTagColumnMaps(table cat.Table, tabID opt.TableID) (TagColMap, TagColMap) {
+	tagColMap := make(TagColMap, 1)
+	primaryTagColMap := make(TagColMap, 1)
+	for i := 0; i < table.ColumnCount(); i++ {
+		if table.Column(i).IsOrdinaryTagCol() {
+			tagColMap[tabID.ColumnID(i)] = struct{}{}
+		}
+
+		if table.Column(i).IsPrimaryTagCol() {
+			primaryTagColMap[tabID.ColumnID(i)] = struct{}{}
+		}
+	}
+	return tagColMap, primaryTagColMap
+}
+
+// populateFilters used to get all equal and or filter.
+func populateFilters(
+	filters *[]opt.Expr,
+	tagValues *map[uint32][]string,
+	tagColMap, primaryTagColMap TagColMap,
+	filterCount int,
+) ([]opt.Expr, []opt.Expr, map[int]uint32) {
+	var tagEqFilters, tagOrFilter []opt.Expr
+	filterMap := make(map[int]uint32) // Initialize filterMap
+	for _, filter := range *filters {
+		tempTagValues := make(map[uint32][]string)
+		valid, isSingleOr := GetTagValues(filter, primaryTagColMap, tagColMap, &tempTagValues, len(*filters), filterCount)
+		if !valid {
+			continue
+		}
+		if isSingleOr {
+			tagOrFilter = append(tagOrFilter, filter)
+		} else {
+			tagEqFilters = append(tagEqFilters, filter)
+		}
+		for k, val := range tempTagValues {
+			(*tagValues)[k] = val
+			filterMap[len(tagEqFilters)-1] = k // Map index of tagEqFilters to column ID
+		}
+	}
+	return tagEqFilters, tagOrFilter, filterMap
+}
+
+// GetTagValues get tag index key
+//
+// params:
+// - src: memo expr struct
+// - tagCol: tag col map, key is column id[logical] value is empty
+// - tagIndexValues: tag value map, key is column id[logical] value is string
+//
+// returns:
+// - get tag flag
+func GetTagValues(
+	src opt.Expr,
+	primaryTagColMap, tagCol TagColMap,
+	val *map[uint32][]string,
+	tagFiltersCount, filtersCount int,
+) (bool, bool) {
+	switch source := src.(type) {
+	case *EqExpr:
+		if col, ok := source.Left.(*VariableExpr); ok {
+			switch right := source.Right.(type) {
+			case *ConstExpr:
+				if _, hasTagIndex := tagCol[col.Col]; !hasTagIndex {
+					if _, find := primaryTagColMap[col.Col]; !find {
+						return false, false
+					}
+				}
+				(*val)[uint32(col.Col)] = append((*val)[uint32(col.Col)], constValueToString(right))
+				return true, false
+			case *FalseExpr:
+				if _, hasTagIndex := tagCol[col.Col]; !hasTagIndex {
+					if _, find := primaryTagColMap[col.Col]; !find {
+						return false, false
+					}
+				}
+				(*val)[uint32(col.Col)] = append((*val)[uint32(col.Col)], tree.DBoolFalse.String())
+				return true, false
+			case *TrueExpr:
+				if _, hasTagIndex := tagCol[col.Col]; !hasTagIndex {
+					if _, find := primaryTagColMap[col.Col]; !find {
+						return false, false
+					}
+				}
+				(*val)[uint32(col.Col)] = append((*val)[uint32(col.Col)], tree.DBoolTrue.String())
+				return true, false
+			}
+			return false, false
+		}
+	case *InExpr:
+		// Only process inExpr if there is exactly one filter
+		if tagFiltersCount == 1 {
+			if col, ok := source.Left.(*VariableExpr); ok {
+				if _, hasTagIndex := tagCol[col.Col]; !hasTagIndex {
+					if _, find := primaryTagColMap[col.Col]; !find {
+						return false, false
+					}
+				}
+
+				if tuple, isTupleExpr := source.Right.(*TupleExpr); isTupleExpr {
+					var values []string
+					for i := 0; i < len(tuple.Elems); i++ {
+						switch e := tuple.Elems[i].(type) {
+						case *ConstExpr:
+							values = append(values, constValueToString(e))
+						case *TrueExpr:
+							values = append(values, tree.DBoolTrue.String())
+						case *FalseExpr:
+							values = append(values, tree.DBoolFalse.String())
+						default:
+							return false, false
+						}
+					}
+					if val != nil {
+						(*val)[uint32(col.Col)] = append((*val)[uint32(col.Col)], values...)
+					}
+					return true, false
+				}
+			}
+		}
+	case *OrExpr:
+		// Only process OrExpr if there is exactly one filter
+		if filtersCount == 1 {
+			leftValid, _ := GetTagValues(source.Left, primaryTagColMap, tagCol, val, tagFiltersCount, filtersCount)
+			rightValid, _ := GetTagValues(source.Right, primaryTagColMap, tagCol, val, tagFiltersCount, filtersCount)
+			return leftValid && rightValid, true
+		}
+		return false, false
+	}
+
+	return false, false
+}
+
+// CheckAndGetTagIndex evaluates the applicability of tag indexes based on the provided conditions.
+// The function aims to find the best set of indices that cover the maximum possible scope of the given filters.
+//
+// Parameters:
+// - tagIndexIDs: index set.
+// - tagValues: mapping of column and values for each tag filter.
+// - tagEqFilters: all tag equivalent filters.
+// - filterMap: mapping of (index positions in tagEqFilters) and tag IDs.
+//
+// Returns:
+// - selected tag filters.
+// - whether any index can be effectively utilized based on the input conditions.
+func CheckAndGetTagIndex(
+	tagIndexIDs [][]uint32,
+	tagValues map[uint32][]string,
+	tagEqFilters []opt.Expr,
+	filterMap map[int]uint32,
+) ([]opt.Expr, []map[uint32][]string, bool) {
+	if len(tagValues) == 0 || len(tagIndexIDs) == 0 || len(tagEqFilters) == 0 {
+		return nil, nil, false
+	}
+
+	colIDs := make(map[uint32]bool)
+	for k := range tagValues {
+		colIDs[k] = true
+	}
+
+	// Select all indexes that cover at least one filter condition.
+	// eg:
+	// - index: [1,2,3],[1],[2],[3]
+	// - tagEqFilters: 1 = 'a' and 2 = 'b' and 3 = 'c'
+	// - selectedIndices: [{1,2,3},{1},{2},{3}]
+	selectedIndices := make([][]uint32, 0)
+	for _, indexIDs := range tagIndexIDs {
+		allMatched := true
+		count := 0
+		first := true
+		for _, id := range indexIDs {
+			if !colIDs[id] {
+				allMatched = false
+				break
+			}
+			if first {
+				count = len(tagValues[id])
+				first = false
+			} else {
+				// All tag index value count is not equal can not use index
+				if count != len(tagValues[id]) {
+					allMatched = false
+					break
+				}
+			}
+		}
+		if allMatched {
+			selectedIndices = append(selectedIndices, indexIDs)
+		}
+	}
+
+	// Find the index that covers the most query filter by the greedy method.
+	finalIndices := selectOptimalIndices(selectedIndices)
+
+	// Builds a filter expression that uses the selected index
+	newTagIndexFilters := make([]opt.Expr, 0)
+	tagIndexValues := make([]map[uint32][]string, len(finalIndices))
+	for i, idx := range finalIndices {
+		tagIndexValues[i] = make(map[uint32][]string, 0)
+		for _, id := range idx {
+			for j, filter := range tagEqFilters {
+				colID := filterMap[j]
+				if colID == id {
+					newTagIndexFilters = append(newTagIndexFilters, filter)
+					tagIndexValues[i][colID] = tagValues[colID]
+				}
+			}
+		}
+	}
+
+	return newTagIndexFilters, tagIndexValues, len(newTagIndexFilters) > 0
+}
+
+// selectOptimalIndices selects the optimal indices from a list of candidate indices
+// eg:
+// - indices: [{1,2,3},{1},{4,5,6},{5,6}]
+// - return: [{1,2,3},{4,5,6}]
+func selectOptimalIndices(indices [][]uint32) [][]uint32 {
+	if len(indices) == 0 {
+		return nil
+	}
+
+	// Sort indices based on the sum of unique coverages they provide
+	// Indices that cover more unique columns are prioritized
+	sort.SliceStable(indices, func(i, j int) bool {
+		return len(indices[i]) > len(indices[j])
+	})
+
+	// Select indices that cover the most unique column IDs
+	selectedIndices := make([][]uint32, 0)
+	usedCols := make(map[uint32]bool)
+	for _, index := range indices {
+		if addsUniqueCoverage(index, usedCols) {
+			selectedIndices = append(selectedIndices, index)
+			// Mark these columns as used
+			for _, id := range index {
+				usedCols[id] = true
+			}
+		}
+	}
+
+	return selectedIndices
+}
+
+// addsUniqueCoverage checks if the index adds any unique column ID that has not been covered yet
+func addsUniqueCoverage(index []uint32, usedCols map[uint32]bool) bool {
+	for _, id := range index {
+		if usedCols[id] {
+			return false
+		}
+	}
+	return true
+}
+
+// CheckAndGetTagIndexFromOrExpr evaluates the applicability of tag indexes based on the or condition.
+func CheckAndGetTagIndexFromOrExpr(
+	tagIndexIDs [][]uint32, tagValues map[uint32][]string, primaryColMap TagColMap,
+) (map[uint32][]string, []map[uint32][]string, bool) {
+	if len(tagValues) == 0 || len(tagIndexIDs) == 0 {
+		return nil, nil, false
+	}
+
+	primaryTagValues := make(map[uint32][]string)
+	tagIndexValues := make([]map[uint32][]string, 0)
+	// Determine if primaryColMap contains exactly one entry and capture that ID
+	var singlePrimaryColID uint32
+	if len(primaryColMap) == 1 {
+		for colID := range primaryColMap {
+			singlePrimaryColID = uint32(colID)
+		}
+	}
+
+	for colID, val := range tagValues {
+		isSingleIndexed := false
+		for _, index := range tagIndexIDs {
+			// Check if index is a single column index and matches the column id
+			if len(index) == 1 && index[0] == colID {
+				isSingleIndexed = true
+				tagIndexValue := make(map[uint32][]string)
+				tagIndexValue[colID] = tagValues[colID]
+				tagIndexValues = append(tagIndexValues, tagIndexValue)
+				break
+			}
+		}
+
+		// Additionally, check if the colID matches the single entry in primaryColMap
+		if colID == singlePrimaryColID && len(primaryColMap) == 1 {
+			isSingleIndexed = true
+			primaryTagValues[colID] = append(primaryTagValues[colID], val...)
+		}
+
+		if !isSingleIndexed {
+			// If any column ID does not have a single column index, return false
+			return nil, nil, false
+		}
+	}
+
+	return primaryTagValues, tagIndexValues, true
+}
+
+// equalColumns checks whether two uint32 slices contain the same elements.
+func equalColumns(a, b []uint32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[uint32]int)
+	for _, v := range a {
+		counts[v]++
+	}
+	for _, v := range b {
+		if counts[v] == 0 {
+			return false
+		}
+		counts[v]--
+	}
+	for _, c := range counts {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
 }

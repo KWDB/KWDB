@@ -19,6 +19,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -75,6 +76,11 @@ type tsScanNode struct {
 	// Filter conditions for primary tag columns
 	PrimaryTagFilterArray []tree.TypedExpr
 	PrimaryTagValues      map[uint32][]string
+
+	// TagIndexFilterArray conditions for index tag columns
+	TagIndexFilterArray []tree.TypedExpr
+	// TagIndex for tag hash index
+	TagIndex memo.TagIndexInfo
 
 	// HintType is Hint type of scan table
 	HintType keys.ScanMethodHintType

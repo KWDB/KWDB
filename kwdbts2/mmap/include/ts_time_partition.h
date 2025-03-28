@@ -229,6 +229,8 @@ class TsTimePartition : public TSObject {
 
   timestamp64& maxTimestamp() { return meta_manager_.maxTimestamp(); }
 
+  bool& isInitialized() { return meta_manager_.isInitialized(); }
+
   BLOCK_ID GetMaxBlockID() { return meta_manager_.getEntityHeader()->cur_block_id; }
 
   virtual int reserve(size_t size) { return KWEPERM; }

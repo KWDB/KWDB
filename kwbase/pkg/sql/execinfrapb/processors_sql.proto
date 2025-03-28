@@ -178,6 +178,9 @@ enum OperatorType {
   TsManualCompressTable = 20;
   TsVacuum = 21;
   TsAlterVacuumInterval = 22;
+  TsCreateTagIndex = 23;
+  TsDropTagIndex = 24;
+  TsAlterTagIndex = 25;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert
@@ -270,6 +273,8 @@ message TsAlterProSpec {
   optional uint32 nextTSVersion = 8 [(gogoproto.nullable) = false];
   optional uint32 currentTSVersion = 9 [(gogoproto.nullable) = false];
   optional bytes vacuumInterval = 10;
+  optional uint32 tagIndexID = 11 [(gogoproto.nullable) = false];
+  repeated uint32 tagIndexColumns = 12;
 }
 
 // IndexSkipTableReaderSpec is the specification for a table reader that

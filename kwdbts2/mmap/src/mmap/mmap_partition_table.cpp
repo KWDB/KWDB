@@ -91,6 +91,17 @@ int TsTimePartition::open(const string& path, const std::string& db_path, const 
   }
 
   loadSegments(err_info);
+
+  if (!(flags & O_CREAT) && !isInitialized()) {
+    if (meta_manager_.maxTimestamp() > meta_manager_.minTimestamp()) {
+      // historical version compatibility
+      isInitialized() = true;
+    } else {
+      err_info.setError(KWEUNINIT, "TsTimePartition[" + tbl_sub_path_ + "] is uninitialized");
+      return err_info.errcode;
+    }
+  }
+
   setObjectReady();
 
   return err_info.errcode;

@@ -113,17 +113,24 @@ func (ex *connExecutor) execPrepare(
 		// OID to Datum is not a 1-1 mapping (for example, int4 and int8
 		// both map to TypeInt), so we need to maintain the types sent by
 		// the client.
-		if ps.Insertdirectstmt.InsertFast && ps.TypeHints[i] == nil && i < ps.PrepareInsertDirect.Inscolsnum {
-			if len(parseCmd.PrepareInsertDirect.Dit.Desc) != 0 {
-				colName := string(parseCmd.PrepareInsertDirect.Dit.Desc[i])
-				if Oid, ok := colDescMap[colName]; ok {
-					for j := i; j < len(inferredTypes); j += ps.PrepareInsertDirect.Inscolsnum {
-						inferredTypes[j] = Oid
+		if ps.Insertdirectstmt.InsertFast && ps.TypeHints[i] == nil {
+			if i < ps.PrepareInsertDirect.Inscolsnum {
+				if len(parseCmd.PrepareInsertDirect.Dit.Desc) != 0 {
+					colName := string(parseCmd.PrepareInsertDirect.Dit.Desc[i])
+					if Oid, ok := colDescMap[colName]; ok {
+						for j := i; j < len(inferredTypes); j += ps.PrepareInsertDirect.Inscolsnum {
+							inferredTypes[j] = Oid
+						}
 					}
+				} else {
+					oid := parseCmd.PrepareInsertDirect.Dit.ColsDesc[i%parseCmd.PrepareInsertDirect.Inscolsnum].Type.InternalType.Oid
+					for j := i; j < len(inferredTypes); j += ps.PrepareInsertDirect.Inscolsnum {
+						inferredTypes[j] = oid
+					}
+					continue
 				}
 			} else {
-				inferredTypes[i] = parseCmd.PrepareInsertDirect.Dit.ColsDesc[i%parseCmd.PrepareInsertDirect.Inscolsnum].Type.InternalType.Oid
-				continue
+				break
 			}
 		}
 		if inferredTypes[i] == 0 {

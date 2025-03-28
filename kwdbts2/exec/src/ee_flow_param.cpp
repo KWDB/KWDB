@@ -1168,27 +1168,28 @@ Field *PostResolve::ResolveCast(kwdbContext_p ctx, Field *left,
     field->set_storage_length(sizeof(k_float32));
   } else if (output_type == "FLOAT8") {
     field = KNEW FieldTypeCastReal<k_float64>(left);
-  } else if (output_type.find("CHAR") != std::string::npos) {
+  } else if (output_type.find("CHAR") != std::string::npos ||
+             output_type.find("STRING") != std::string::npos) {
     k_uint32 len = extractNumInBrackets(output_type);
-    if (left->get_storage_type() == roachpb::DataType::TIMESTAMPTZ) {
+    roachpb::DataType left_type = left->get_storage_type();
+    if (left_type == roachpb::DataType::TIMESTAMPTZ ||
+        left_type == roachpb::DataType::TIMESTAMPTZ_MICRO ||
+        left_type == roachpb::DataType::TIMESTAMPTZ_NANO) {
       field = KNEW FieldTypeCastTimestamptz2String(left, len, output_type,
                                                    ctx->timezone);
-    } else {
-      field = KNEW FieldTypeCastString(left, len, output_type);
-    }
-  } else if (output_type.find("STRING") != std::string::npos) {
-    k_uint32 len = extractNumInBrackets(output_type);
-    // field = KNEW FieldTypeCastString(left, len);
-    if (left->get_storage_type() == roachpb::DataType::TIMESTAMPTZ) {
+    } else if (left_type == roachpb::DataType::TIMESTAMP ||
+        left_type == roachpb::DataType::TIMESTAMP_MICRO ||
+        left_type == roachpb::DataType::TIMESTAMP_NANO) {
       field = KNEW FieldTypeCastTimestamptz2String(left, len, output_type,
-                                                   ctx->timezone);
+                                                   0);
     } else {
       field = KNEW FieldTypeCastString(left, len, output_type);
     }
   } else if (output_type.find("TIMESTAMPTZ") != std::string::npos) {
     k_uint32 type_num = extractNumInBrackets(output_type);
     field = KNEW FieldTypeCastTimestampTz(left, type_num, 0);
-  } else if (output_type.find("TIMESTAMP") != std::string::npos || output_type == "DATE") {
+  } else if (output_type.find("TIMESTAMP") != std::string::npos ||
+             output_type == "DATE") {
     k_uint32 type_num = extractNumInBrackets(output_type);
     field = KNEW FieldTypeCastTimestampTz(left, type_num, ctx->timezone);
   } else if (output_type == "BOOL") {

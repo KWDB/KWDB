@@ -1253,6 +1253,38 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
     return kTsSuccess;
 }
 
+TSStatus TSCreateNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
+                                uint32_t cur_version, uint32_t new_version, IndexColumns index_columns) {
+    kwdbContext_t context;
+    kwdbContext_p ctx_p = &context;
+    KStatus s = InitServerKWDBContext(ctx_p);
+    if (s != KStatus::SUCCESS) {
+        return ToTsStatus("InitServerKWDBContext Error!");
+    }
+    std::vector<uint32_t> columns(index_columns.index_column, index_columns.index_column + index_columns.len);
+    s = engine->CreateNormalTagIndex(ctx_p, table_id, index_id, transaction_id, cur_version, new_version, columns);
+    if (s != KStatus::SUCCESS) {
+        return ToTsStatus("CreateNormalTagIndex Error!");
+    }
+    return kTsSuccess;
+}
+
+TSStatus TSDropNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
+                              uint32_t cur_version, uint32_t new_version) {
+    kwdbContext_t context;
+    kwdbContext_p ctx_p = &context;
+    KStatus s = InitServerKWDBContext(ctx_p);
+    if (s != KStatus::SUCCESS) {
+        return ToTsStatus("InitServerKWDBContext Error!");
+    }
+    s = engine->DropNormalTagIndex(ctx_p, table_id, index_id, transaction_id, cur_version, new_version);
+    if (s != KStatus::SUCCESS) {
+        return ToTsStatus("TSDropNormalTagIndex Error!");
+    }
+    return kTsSuccess;
+}
+
+
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;

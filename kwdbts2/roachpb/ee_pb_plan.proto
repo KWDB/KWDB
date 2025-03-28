@@ -195,6 +195,7 @@ enum TSTableReadMode {
   hashTagScan = 4;
   primaryHashTagScan = 5;
   hashRelScan = 6;
+  tagHashIndex = 7;
 }
 // TSReaderSpec table reader
 message TSReaderSpec {
@@ -818,6 +819,7 @@ message TSTagReaderSpec {
     // values
     repeated string tagValues = 2;
   }
+
   repeated TagValueArray primaryTags = 3;
   required TSTableReadMode accessMode = 4;
 
@@ -830,6 +832,16 @@ message TSTagReaderSpec {
   repeated uint32 probeColids = 8;
   repeated uint32 hashColids = 9;
   required bool only_tag = 10;
+  
+  // UnionType represents relation of multi tag indexes
+  required uint32 UnionType = 11;
+  repeated uint32 TagIndexIDs = 12;
+    // Tag index values
+  // TagIndexValueArray represents a mapping from a column id to an array of tag values.
+  message TagIndexInfo {
+    repeated TagValueArray TagValues = 1;
+  }
+  repeated TagIndexInfo TagIndexes = 13;
 }
 
 enum DatumEncoding {

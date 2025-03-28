@@ -2,6 +2,8 @@
 SET CLUSTER SETTING
 > set cluster setting sql.stats.tag_automatic_collection.enabled = false;
 SET CLUSTER SETTING
+> set cluster setting sql.stats.automatic_collection.enabled = false;
+SET CLUSTER SETTING
 > CREATE TS DATABASE runba;
 CREATE TS DATABASE
 > CREATE TABLE runba.firegases00001 (
@@ -2830,4 +2832,6 @@ DELETE 599
 > set cluster setting ts.sql.query_opt_mode = 1110;
 SET CLUSTER SETTING
 > set cluster setting sql.stats.tag_automatic_collection.enabled = true;
+SET CLUSTER SETTING
+> set cluster setting sql.stats.automatic_collection.enabled = true;
 SET CLUSTER SETTING

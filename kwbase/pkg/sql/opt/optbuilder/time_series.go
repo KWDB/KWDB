@@ -78,8 +78,6 @@ func (b *Builder) buildTimeSeriesScan(
 	// construct memo.ScanExpr.
 	outScope.expr = b.factory.ConstructTSScan(&private)
 
-	// need tsTpyCheck in prepare case.
-	b.TSInfo.TSProp = opt.AddTSProperty(b.TSInfo.TSProp, TSPropNeedTSTypeCheck)
 	return outScope
 }
 

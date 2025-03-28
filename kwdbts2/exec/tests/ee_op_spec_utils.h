@@ -36,7 +36,8 @@ class SpecBase {
     initTagReaderSpec(*tag_reader);
     tag_reader->set_accessmode(TSTableReadMode::tableTableMeta);
     tag_reader_core->set_allocated_tagreader(tag_reader);
-
+    tag_reader->set_uniontype(0);
+    
     auto tag_post = KNEW TSPostProcessSpec();
     initTagReaderPostSpec(*tag_post);
     tag_read_processor->set_allocated_post(tag_post);
@@ -546,6 +547,7 @@ class HashTagScanSpec : public SpecBase {
     auto tag_reader = KNEW TSTagReaderSpec();
     initTagReaderSpec(*tag_reader);
     tag_reader->set_accessmode(access_mode_);
+    tag_reader->set_uniontype(0);
     tag_reader_core->set_allocated_tagreader(tag_reader);
 
     auto tag_post = KNEW TSPostProcessSpec();

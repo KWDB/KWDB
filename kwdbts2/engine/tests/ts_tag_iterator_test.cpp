@@ -90,7 +90,10 @@ TEST_F(TestEngine, entityidlist) {
   std::vector<uint32_t> scan_tags = {1,2};
   ResultSet res{(k_uint32) scan_tags.size()};
   uint32_t count;
-  ASSERT_EQ(ts_table->GetEntityIdList(ctx_, primary_tags, scan_tags, &entity_id_list, &res, &count), KStatus::SUCCESS);
+  std::vector<uint64_t/*index_id*/> tags_index_id{};
+  std::vector<void*> tags{};
+  ASSERT_EQ(ts_table->GetEntityIdList(ctx_, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags,
+                                      &entity_id_list, &res, &count, 1), KStatus::SUCCESS);
   ASSERT_EQ(count, primary_tags.size());
   for (int idx = 0; idx < primary_tags.size(); idx++) {
     ASSERT_EQ(entity_id_list[idx].mem != nullptr, true);

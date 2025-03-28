@@ -61,3 +61,211 @@ select first(t3),first(t11),first(t13),first(t14) from test_select_first.tb3 gro
 select first(t6),first(t16),first(t13),first(t14) from test_select_first.tb3 group by t14 having t14 in('\x6573313032335f320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',null);
 
 use defaultdb;drop database if exists test_select_first cascade;
+
+create ts database tsdb;
+use tsdb;
+-- single PTag
+create table table1(ts timestamp not null, a int, b int ) tags (ptag1 int not null, ptag2 int not null, t1 int, t2 int) primary tags (ptag1);
+-- two PTag
+create table table2(ts timestamp not null, a int, b int ) tags (ptag1 int not null, ptag2 int not null, t1 int, t2 int) primary tags (ptag1,ptag2);
+
+create index index1 on table1(t1);
+
+create index index2 on table2(t1,t2);
+
+-- TEST
+-- 一、The use of TAG index in different cases(single Tag)
+-- 1）only the equivalent (IN) filter of the TAG index   =》tagHashIndex
+explain select a from table1 where t1 = 100;
+explain select a,b,t1,t2 from table1 where t1 = 100;
+explain select a,b,t1,t2 from table1 where t1 in (100,200,300);
+
+
+-- 2）equivalent (IN) filter of the TAG index and contains filtering conditions for common data columns  =》tagHashIndex
+explain select a,b,t1,t2 from table1 where t1 = 100 and a>100 and b = 1;
+
+
+-- equivalent (IN) filter of the TAG index, the projection column contains the PTAG =》tagIndexTable
+explain select a,b,ptag1 from table1 where t1 = 100 and a > 10;
+
+
+-- equivalent (IN) filter of the TAG index. The filtering condition includes PTAG non-equivalent query =》tagIndexTable
+explain select a,b from table1 where t1 = 100 and ptag1 > 10;
+
+
+--3）equivalent (IN) filter of the TAG index and PTAG index =》tagIndexTable
+explain select a,b from table1 where t1 = 100 and ptag1 = 10;
+explain select a,b from table1 where t1 = 100 and ptag1 = 10 and a > 10 and b < 10;
+
+
+
+-- 二、The use of TAG index in different cases(two Tag)
+-- 1）only the equivalent (IN) filter of the TAG index   =》tagHashIndex
+explain select a from table2 where t1 = 100 and t2 = 200;
+explain select a,b,t1,t2 from table2 where t1 = 100 and t2 = 200;
+explain select a,b,t1,t2 from table2 where t1 in (100,200,300) and t2 in (500,600,700);
+
+
+-- 2）equivalent (IN) filter of the TAG index and contains filtering conditions for common data columns  =》tagHashIndex
+explain select a,b,t1,t2 from table2 where t1 = 100 and t2 = 100 and a>100 and b = 1;
+
+
+-- equivalent (IN) filter of the TAG index, the projection column contains the PTAG =》tagIndexTable
+explain select a,b,ptag1 from table2 where t1 = 100 and t2 = 300 and a > 10;
+
+
+-- quivalent (IN) filter of the TAG index. The filtering condition includes PTAG non-equivalent query =》tagIndexTable
+explain select a,b from table2 where t1 = 100 and t2 =600 and ptag1 > 10;
+
+
+--3）equivalent (IN) filter of the TAG index and PTAG index =》tagIndexTable
+explain select a,b from table2 where t1 = 100 and t2 = 200 and ptag1 = 10 and ptag2 = 200;
+explain select a,b from table2 where t1 = 100 and ptag1 = 10 and a > 10 and b < 10 and t2 = 200 and ptag2 = 200;
+
+create table t2(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null) primary tags(ptag1);
+
+create index index1 on t2(tag1);
+create index index2 on t2(tag2);
+create index index3 on t2(tag3);
+create index index4 on t2(tag4,tag5);
+create index index5 on t2(tag1,tag2,tag3);
+
+explain select c1,tag1 from t2 where tag1 = 100;
+explain select c1,tag1 from t2 where tag1 in (100,200,300);
+
+explain select c1,tag1,ptag1 from t2 where tag1 = 100;
+explain select c1,tag1,ptag1 from t2 where tag1 in (100,200,300);
+
+explain select c1,tag1 from t2 where tag1 = 100 and c1 = 1;
+
+explain select c1,tag1 from t2 where tag1 > 100 and tag4 = 400 and tag5 = 500 and c1 = 1;
+
+explain select c1,tag1,ptag1 from t2 where tag1 > 100 and tag4 = 400 and tag5 = 500 and c1 > 1;
+
+explain select c1,tag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and c1 > 1;
+
+explain select c1,tag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 in (500,600) and c1 = 1;
+
+explain select c1,tag1 from t2 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 = 300 and c1 = 1;
+
+explain select c1,tag1 from t2 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 in (300,600) and c1 = 1;
+
+explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and c1 > 1;
+
+explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and ptag1 = 1000 and c1 > 1;
+
+explain select c1,tag1 from t2 where tag1 = 100 and ptag1 > 100 and c1 > 1;
+
+explain select c1,tag1 from t2 where tag1 = 100 and ptag1 = 100 and c1 > 1;
+
+explain select c1,tag1 from t2 where tag1 = 100 or c1 > 1;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag4 = 400 or tag5 = 500;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag4 = 400 or tag5 = 500 or ptag1 = 600;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or ptag1 = 600;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or ptag1 = 600 or ptag1 = 800;
+
+explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or tag3 = '300');
+
+explain select c1,tag1 from t2 where (tag1 = 100 or ptag1 = 100) and (tag2 = 200 or ptag1 = 300);
+
+explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and tag1 = 200;
+
+explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and c1 > 100;
+
+explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or c1 > 100);
+
+explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or ptag1 = 300);
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag1 = 200 or tag2 = 200;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag1 in (200,300) or tag2 = 200;
+
+explain select c1,tag1 from t2 where tag1 = 100 or tag2 = 100 or tag1 in (200,300) or tag2 = 200 or tag4 = 500 or tag5 = 600;
+
+create table t3(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null) primary tags(ptag1);
+
+create index index1_t2 on t3(tag1,tag2,tag3);
+create index index2_t2 on t3(tag3);
+
+explain select c1,tag1 from t3 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 = '300' and c1 = 1;
+
+explain select c1,tag1 from t3 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 in ('300','600') and c1 = 1;
+
+create table t5(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, ptag5 int not null) primary tags(ptag1,ptag5);
+
+create index index1 on t5(tag1);
+create index index2 on t5(tag2);
+create index index3 on t5(tag3);
+
+explain select c1,tag1 from t5 where tag1 = 100 or tag2 = 100 or ptag1 = 600;
+
+explain select c1,tag1 from t5 where tag1 = 100 or tag2 = 100 or ptag1 = 600 or ptag5 = 800;
+
+create table t6(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
+(ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null, tag6 int not null) primary tags(ptag1);
+
+create index index1 on t6(tag1,tag2,tag3);
+create index index2 on t6(tag2,tag3,tag4);
+create index index3 on t6(tag4,tag5);
+create index index5 on t6(tag5,tag6);
+
+explain select c1,tag1 from t6 where tag1 = 100 and tag2 = 100 and tag3 = 300 and tag4 = 500;
+
+explain select c1,tag1 from t6 where tag4 = 500 and tag5 = 500 and tag6 = 600;
+
+-- 三、The use of TAG index in different cases(multi table)
+explain select t2.c1,t2.tag1 from t2,t3,t5 where t2.tag1 = 100 and t3.tag3 = 300 and t5.tag1 = 500;
+
+explain select t2.c1,t2.tag1 from t2,t3,t6 where t2.ptag1 = 100 and t3.ptag1 = 300 and t6.ptag1 = 500;
+
+explain select t2.c1,t2.tag1 from t2,t3,t5 where t2.tag1 = 100 and t2.tag2 = 200 and t2.tag3 = 300 and t3.tag3 = '300' and (t5.tag1 = 500 or t5.tag2 = 600);
+
+CREATE TABLE ts_t1(
+ k_timestamp timestamptz NOT NULL,
+ e1 int2 ) ATTRIBUTES (
+code1 int NOT NULL,
+code2 int NOT NULL,
+t_int2_1 int2,
+t_int4_1 int,
+t_int8_1 int8,
+t_float4_1 float4,
+t_float8_1 float8,
+t_bool_1 bool,
+t_charn_1 char(1023),
+t_ncharn_1 nchar(254),
+t_char_1 char,
+t_nchar_1 nchar,
+t_varcharn_1 varchar(256),
+t_varchar_1 varchar,
+t_varbytesn_1 varbytes(256),
+t_varbytes_1 varbytes) primary tags(
+code1,
+code2) activetime 10s;
+
+ALTER TABLE ts_t1 ADD TAG code3 INT2;
+ALTER TABLE ts_t1 ADD TAG code5 INT2;
+
+ALTER TABLE ts_t1 DROP TAG code5;
+ALTER TABLE ts_t1 ADD TAG code5 INT2;
+
+CREATE INDEX index_5 ON ts_t1(t_int8_1,code3,code5);
+explain select * from ts_t1 where t_int8_1=8 and code3=3 and code5=5;
+
+create table table3(ts timestamp not null, a int, b int ) tags (ptag1 int not null, ptag2 int not null, t1 bool, t2 int) primary tags (ptag1);
+insert into table3 values('2000-1-1',1,1,1,1,true,1);
+create index index1 on table3(t1);
+explain select * from table3 where t1 in (true);
+explain select * from table3 where t1 in (false);
+explain select * from table3 where t1 in (true,false);
+select * from table3 where t1 in (true);
+
+drop database tsdb cascade;

@@ -699,6 +699,14 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 		return execPlan{}, nil
 	}
 
+	var tagIndexFilter []tree.TypedExpr
+	if !b.buildArrayTypedExpr(scan.TagIndexFilter, &ctx, &tagIndexFilter) {
+		return execPlan{}, nil
+	}
+
+	if b.mem.CheckFlag(opt.DiffUseOrderScan) && b.mem.CheckFlag(opt.SingleMode) {
+		scan.OrderedScanType = opt.ForceOrderedScan
+	}
 	value, ok := b.mem.MultimodelHelper.TableData.Load(scan.Table)
 	var tableInfo memo.TableInfo
 	if ok {
@@ -724,7 +732,7 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	}
 
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, rowCount)
+	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount)
 	if err != nil {
 		return execPlan{}, err
 	}

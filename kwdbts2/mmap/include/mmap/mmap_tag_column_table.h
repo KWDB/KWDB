@@ -16,6 +16,7 @@
 #include "big_table.h"
 #include "mmap_object.h"
 #include "mmap_hash_index.h"
+#include "mmap_ntag_hash_index.h"
 #include "mmap_entity_row_hash_index.h"
 #include "ts_common.h"
 #include "lg_api.h"
@@ -244,6 +245,7 @@ using TagTableMutex = KLatch;
 using TagTableRWLatch = KRWLatch;
 using TagTableCntMutex = KLatch;
 using TagTableCondVal  = KCond_t;
+using NTagIndexsRWLatch = KRWLatch;
 
 struct hashPointStorage {
   uint32_t hash_point;
@@ -257,6 +259,9 @@ class MMapTagColumnTable: public TSObject {
   std::string m_db_name_;
   std::string m_db_path_;
   std::string m_tbl_sub_path_;
+
+  std::vector<MMapNTagHashIndex*>& getMmapNTagHashIndex() { return m_ntag_indexes_; }
+
  private:
   int m_flags_;
  protected:
@@ -271,6 +276,8 @@ class MMapTagColumnTable: public TSObject {
   TagTableMutex*  m_tag_table_mutex_;
   TagTableRWLatch*  m_tag_table_rw_lock_;
   std::vector<TagInfo>     m_tag_info_include_dropped_;
+  NTagIndexsRWLatch*       m_ntag_indexes_rw_lock_;
+  std::vector<MMapNTagHashIndex*>  m_ntag_indexes_;
   bool enableWal_;
 
   int open_(const string &table_path, const std::string &db_path, const string &tbl_sub_path, int flags,
@@ -406,6 +413,10 @@ class MMapTagColumnTable: public TSObject {
 
   int remove() override;
 
+  int linkNTagHashIndex(uint32_t table_id, MMapTagColumnTable* old_ver_part, ErrorInfo& err_info);
+
+  int initNTagHashIndex(ErrorInfo& err_info);
+
   int insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, const char *rec, size_t* row_id);
 
   inline const size_t recordSize() {return m_meta_data_->m_record_size;}
@@ -430,6 +441,9 @@ class MMapTagColumnTable: public TSObject {
   }
 
   int getColumnsByRownum(size_t row, const std::vector<uint32_t>& src_scan_tags, const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res);
+
+  int getColumnsFromAll(const std::vector<uint32_t>& src_scan_tags, const std::vector<TagInfo>& result_scan_tag_infos,
+                        kwdbts::ResultSet* res, std::vector<TagTableRowID>* result_tag_rows);
 
   TagTableMetaData& metaData() { return *m_meta_data_; }
 
@@ -510,6 +524,12 @@ class MMapTagColumnTable: public TSObject {
 
   void mutexUnlock() override {MUTEX_UNLOCK(m_tag_table_mutex_);}
 
+  void NtagIndexRWMutexXLock() { RW_LATCH_X_LOCK(m_ntag_indexes_rw_lock_);}
+
+  void NtagIndexRWMutexSLock() { RW_LATCH_S_LOCK(m_ntag_indexes_rw_lock_);}
+
+  void NtagIndexRWMutexUnLock() { RW_LATCH_UNLOCK(m_ntag_indexes_rw_lock_);}
+
   int refMutexLock() override{
     return MUTEX_LOCK(m_ref_cnt_mtx_);
   }
@@ -535,4 +555,7 @@ class MMapTagColumnTable: public TSObject {
 
   TagTuplePack* GenTagPack(TagTableRowID row);
 
+  uint32_t getTagColOff(int col_id);
+
+  uint32_t getTagColSize(int col_id);
 };

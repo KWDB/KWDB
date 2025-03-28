@@ -19,7 +19,7 @@ PREPARE
   2022-02-02 03:11:14+00:00 | -444 | -4444 | -4444 | -444 | -4444 | -44444
 (2 rows)
 > execute p(999999999);
-ERROR: integer "999999999" out of range for type INT2 (column p)
+ERROR: integer "999999999" out of range for type INT2
 SQLSTATE: 42809
 > drop database test_select3 cascade;
 DROP DATABASE
@@ -38,7 +38,7 @@ INSERT 5
 > PREPARE p1 as select * from test_select3.t_int2 where tag2=$1 order by ts;
 PREPARE
 > execute p1(9223372036854775806);
-ERROR: integer "9223372036854775806" out of range for type INT4 (column p1)
+ERROR: integer "9223372036854775806" out of range for type INT4
 SQLSTATE: 42809
 > drop database test_select3 cascade;
 DROP DATABASE

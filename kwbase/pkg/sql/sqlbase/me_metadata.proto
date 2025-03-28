@@ -121,6 +121,8 @@ message  DeleteMeMsg {
   optional uint32 ts_version = 8 [(gogoproto.nullable) = false];
   // IsTsTable
   optional bool is_ts_table = 9 [(gogoproto.nullable) = false, (gogoproto.customname) = "IsTSTable"];
+  // index id
+  optional uint32 index_id = 10 [(gogoproto.nullable) = false, (gogoproto.customname) = "IndexID"];
 }
 
 enum KWDBHAStatus {

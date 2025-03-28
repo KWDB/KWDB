@@ -240,10 +240,10 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
   } while (true);
 
   if (ret == EEIteratorErrCode::EE_OK) {
+    collection_.GetAnalyse(ctx);
     Return(KStatus::SUCCESS);
   } else if (ret == EEIteratorErrCode::EE_END_OF_RECORD) {
     *is_last_record = KTRUE;
-    collection_.GetAnalyse(ctx);
     KStatus st = CloseIterator(ctx);
     if (st != KStatus::SUCCESS) {
       LOG_ERROR("Failed to close operator.");

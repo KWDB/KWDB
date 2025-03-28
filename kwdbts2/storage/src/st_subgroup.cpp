@@ -179,7 +179,7 @@ int TsSubEntityGroup::OpenInit(SubGroupID subgroup_id, const std::string& db_pat
       if (strcmp(partition_dir.c_str(), std::to_string(p_ts).c_str()) == 0) {
         // Load the partition table and obtain the minimum and maximum timestamps for the partition
         TsTimePartition* p_table = getPartitionTable(p_ts, p_ts, err_info, false);
-        if (err_info.errcode == KWEDROPPEDOBJ) {
+        if (err_info.errcode == KWEDROPPEDOBJ || err_info.errcode == KWEUNINIT) {
           err_info.clear();
           continue;
         }
@@ -470,7 +470,7 @@ TsTimePartition* TsSubEntityGroup::getPartitionTable(timestamp64 p_time, timesta
   string pt_tbl_sub_path = partitionTblSubPath(p_time);
   mt_table = new TsTimePartition(root_tbl_manager_, entity_block_meta_->GetConfigSubgroupEntities());
   mt_table->open(table_name_ + ".bt", db_path_, pt_tbl_sub_path, MMAP_OPEN_NORECURSIVE, err_info);
-  if (err_info.errcode == KWEDROPPEDOBJ) {
+  if (err_info.errcode == KWEDROPPEDOBJ || err_info.errcode == KWEUNINIT) {
     delete mt_table;
     mt_table = nullptr;
     removePartitionDir(db_path_, pt_tbl_sub_path);
@@ -537,6 +537,7 @@ TsTimePartition* TsSubEntityGroup::createPartitionTable(string& pt_tbl_sub_path,
   // min and max timsstamp precision is second.
   mt_table->minTimestamp() = p_time;
   mt_table->maxTimestamp() = max_ts;
+  mt_table->isInitialized() = true;
   LOG_INFO("Create partition [%s] succeeded", (db_path_ + pt_tbl_sub_path).c_str());
   return mt_table;
 }

@@ -524,6 +524,41 @@ func (r *TsEngine) DropTSColumn(
 	return nil
 }
 
+// CreateNormalTagIndex create index on normal tag of ts table
+func (r *TsEngine) CreateNormalTagIndex(
+	tableID uint64,
+	indexID uint64,
+	curVersion, newVersion uint32,
+	transactionID []byte,
+	indexColumns []uint32,
+) error {
+	numColumn := len(indexColumns)
+	cIndexs := make([]C.uint, numColumn)
+	for i := 0; i < numColumn; i++ {
+		cIndexs[i] = C.uint(indexColumns[i])
+	}
+	cIndexColumns := C.IndexColumns{
+		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
+		len:          C.int32_t(len(cIndexs)),
+	}
+	status := C.TSCreateNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), (*C.char)(unsafe.Pointer(&transactionID[0])), C.uint32_t(curVersion), C.uint32_t(newVersion), cIndexColumns)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not CreateNormalTagIndex")
+	}
+	return nil
+}
+
+// DropNormalTagIndex drop index on normal tag of ts table
+func (r *TsEngine) DropNormalTagIndex(
+	tableID uint64, indexID uint64, curVersion, newVersion uint32, transactionID []byte,
+) error {
+	status := C.TSDropNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), (*C.char)(unsafe.Pointer(&transactionID[0])), C.uint32_t(curVersion), C.uint32_t(newVersion))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not DropNormalTagIndex")
+	}
+	return nil
+}
+
 // AlterPartitionInterval alter partition interval for ts table.
 func (r *TsEngine) AlterPartitionInterval(tableID uint64, partitionInterval uint64) error {
 	r.checkOrWaitForOpen()
