@@ -302,7 +302,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   return SUCCESS;
 }
 
-KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info) {
+KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version,
+                                              uint32_t new_version, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
   if (metric_schemas_.find(new_version) != metric_schemas_.end()) {
