@@ -1077,11 +1077,11 @@ func (s *vectorizedFlowCreator) setupFlow(
 			if flowCtx.Cfg != nil && flowCtx.Cfg.TestingKnobs.EnableVectorizedInvariantsChecker {
 				result.Op = colexec.NewInvariantsChecker(result.Op)
 			}
-			if flowCtx.EvalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto &&
-				!result.IsStreaming {
-				err = errors.Errorf("non-streaming operator encountered when vectorize=auto")
-				return
-			}
+			// if flowCtx.EvalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto &&
+			// 	!result.IsStreaming {
+			// 	err = errors.Errorf("non-streaming operator encountered when vectorize=auto")
+			// 	return
+			// }
 			// We created a streaming memory account when calling NewColOperator above,
 			// so there is definitely at least one memory account, and it doesn't
 			// matter which one we grow.
