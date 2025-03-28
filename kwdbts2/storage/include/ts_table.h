@@ -49,7 +49,7 @@ const uint64_t default_entitygroup_id_in_dist_v2 = 1;
 
 class TsTable {
  public:
-  TsTable() = delete;
+  TsTable();
 
   TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id);
 
@@ -531,7 +531,7 @@ class TsTable {
   string tbl_sub_path_;
 
 //  MMapTagColumnTable* tag_bt_;
-  MMapRootTableManager* entity_bt_manager_;
+  MMapRootTableManager* entity_bt_manager_{nullptr};
 
   std::unordered_map<uint64_t, std::shared_ptr<TsEntityGroup>> entity_groups_{};
 
@@ -569,11 +569,11 @@ class TsTable {
 
  protected:
   using TsTableEntityGrpsRwLatch = KRWLatch;
-  TsTableEntityGrpsRwLatch* entity_groups_mtx_;
+  TsTableEntityGrpsRwLatch* entity_groups_mtx_{nullptr};
 
  private:
   using TsTableSnapshotLatch = KLatch;
-  TsTableSnapshotLatch* snapshot_manage_mtx_;
+  TsTableSnapshotLatch* snapshot_manage_mtx_{nullptr};
 
   void latchLock() {
     MUTEX_LOCK(snapshot_manage_mtx_);

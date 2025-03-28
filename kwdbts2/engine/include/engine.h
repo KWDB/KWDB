@@ -529,6 +529,9 @@ struct TSEngine {
    * @param capacity
    */
   virtual void AlterTableCacheCapacity(int capacity) = 0;
+
+ protected:
+  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };
 
 namespace kwdbts {
@@ -719,7 +722,6 @@ class TSEngineImpl : public TSEngine {
  private:
   string ts_store_path_;
   EngineOptions options_;
-  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
   KLatch* tables_lock_;
 
   // store all snapshot objects of this storage engine.

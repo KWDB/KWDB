@@ -12,9 +12,12 @@
 #include "ts_table_v2_impl.h"
 
 namespace kwdbts {
+TsTableV2Impl::TsTableV2Impl(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr) {
+  table_schema_mgr_ = table_schema_mgr;
+}
+
 TsTableV2Impl::TsTableV2Impl(kwdbContext_p ctx, const std::string &db_path,
-                             const KTableKey &table_id)
-    : TsTable(ctx, db_path, table_id) {}
+                             const KTableKey &table_id) : TsTable(ctx, db_path, table_id) {}
 
 TsTableV2Impl::~TsTableV2Impl() = default;
 

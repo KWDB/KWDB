@@ -39,9 +39,9 @@ namespace kwdbts {
 TsEnv TsVGroup::env_;
 
 // todo(liangbo01) using normal path for mem_segment.
-TsVGroup::TsVGroup(const std::filesystem::path& db_path, uint32_t vgroup_id,
-                           TsEngineSchemaManager* schema_mgr)
-    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), path_(db_path / GetFileName()), entity_counter_(0) {}
+TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr)
+    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), path_(engine_options.db_path + "/" + GetFileName()),
+      entity_counter_(0), engine_options_(engine_options) {}
 
 TsVGroup::~TsVGroup() {
   if (db_ != nullptr) {
@@ -67,31 +67,38 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   options.max_write_buffer_number = 10;
   options.max_background_flushes = 4;
   MakeDirectory(path_);
-  auto s = rocksdb::TsDBImpl::Open(options, path_.string() + "/wal", this, &db_);
-  if (s.ok()) {
-    config_file_ = new MMapFile();
-    string cf_file_path = path_.string() + "/vgroup_config";
-    int flag = MMAP_CREAT_EXCL;
-    bool exist = false;
-    if (IsExists(cf_file_path)) {
-      flag = MMAP_OPEN_NORECURSIVE;
-      exist = true;
-    }
-    int error_code = config_file_->open(cf_file_path, flag);
-    if (error_code < 0) {
-      LOG_ERROR("Open config file failed, error code: %d, path: %s", error_code, cf_file_path.c_str());
-      return KStatus::FAIL;
-    }
-    if (!exist) {
-      config_file_->resize(4096);
-      entity_counter_ = 0;
-    } else {
-      entity_counter_ = KUint32(config_file_->memAddr());
-    }
-
-    return KStatus::SUCCESS;
+  wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, GetFileName(), &engine_options_);
+  auto res = wal_manager_->Init(ctx);
+  if (res == KStatus::FAIL) {
+    LOG_ERROR("Failed to initialize WAL manager")
+    return res;
   }
-  return KStatus::FAIL;
+
+  auto s = rocksdb::TsDBImpl::Open(options, path_.string() + "/mem", this, &db_);
+  if (!s.ok()) {
+    return KStatus::FAIL;
+  }
+  config_file_ = new MMapFile();
+  string cf_file_path = path_.string() + "/vgroup_config";
+  int flag = MMAP_CREAT_EXCL;
+  bool exist = false;
+  if (IsExists(cf_file_path)) {
+    flag = MMAP_OPEN_NORECURSIVE;
+    exist = true;
+  }
+  int error_code = config_file_->open(cf_file_path, flag);
+  if (error_code < 0) {
+    LOG_ERROR("Open config file failed, error code: %d, path: %s", error_code, cf_file_path.c_str());
+    return KStatus::FAIL;
+  }
+  if (!exist) {
+    config_file_->resize(4096);
+    entity_counter_ = 0;
+  } else {
+    entity_counter_ = KUint32(config_file_->memAddr());
+  }
+
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta) {
@@ -152,6 +159,31 @@ uint32_t TsVGroup::AllocateEntityID() {
 uint32_t TsVGroup::GetMaxEntityID() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return entity_counter_;
+}
+
+KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload) {
+  // no need lock, lock inside.
+  return wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, prepared_payload);
+}
+
+KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload) {
+  TS_LSN entry_lsn = 0;
+  // lock current lsn: Lock the current LSN until the log is written to the cache
+  wal_manager_->Lock();
+  TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
+  KStatus s = wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, primary_tag, prepared_payload, entry_lsn);
+  if (s == KStatus::FAIL) {
+    wal_manager_->Unlock();
+    return s;
+  }
+  // unlock current lsn
+  wal_manager_->Unlock();
+
+  if (entry_lsn != current_lsn) {
+    LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
 }
 
 TsVGroupPartition* TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
