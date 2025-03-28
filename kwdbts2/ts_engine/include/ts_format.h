@@ -28,20 +28,20 @@ struct TsInternalKey {
   void Encode(rocksdb::Slice *s, char *buf) const {
     s->data_ = buf;
     s->size_ = size;
-    buf = PutType(buf, htobe64(table_id));
-    buf = PutType(buf, htobe32(version));
-    buf = PutType(buf, htobe64(entity_id));
+    buf = EncodeFixed64(buf, htobe64(table_id));
+    buf = EncodeFixed32(buf, htobe32(version));
+    buf = EncodeFixed64(buf, htobe64(entity_id));
     assert(buf - s->data_ == s->size_);
   }
 
-  void Decode(const rocksdb::Slice& data) {
+  void Decode(const rocksdb::Slice &data) {
     assert(data.size() >= 20);
     rocksdb::Slice tmp = data;
-    table_id = be64toh(DecodeType<decltype(table_id)>(tmp.data()));
+    table_id = be64toh(DecodeFixed64(tmp.data()));
     tmp.remove_prefix(sizeof(table_id));
-    version = be32toh(DecodeType<decltype(version)>(tmp.data()));
+    version = be32toh(DecodeFixed32(tmp.data()));
     tmp.remove_prefix(sizeof(version));
-    entity_id = be64toh(DecodeType<decltype(entity_id)>(tmp.data()));
+    entity_id = be64toh(DecodeFixed64(tmp.data()));
     tmp.remove_prefix(sizeof(entity_id));
   }
 };

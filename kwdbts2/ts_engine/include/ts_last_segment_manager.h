@@ -339,7 +339,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
     bitmap_.Reset(nrow);
   }
   TSSlice GetData() {
-    assert(row_cnt_ == bitmap_.GetNRow());
+    assert(row_cnt_ == bitmap_.GetCount());
     return TSSlice{buffer_.data(), buffer_.size()};
   }
 

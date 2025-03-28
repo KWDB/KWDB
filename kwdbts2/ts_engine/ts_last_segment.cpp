@@ -251,7 +251,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id,
   TSSlice data;
   parser_->GetColValueAddr(metric_data, 0, &data);
 
-  int64_t ts = DecodeFixed<64>(data.data);
+  int64_t ts = DecodeFixed64(data.data);
   info_.max_ts = std::max(info_.max_ts, ts);
   info_.min_ts = std::min(info_.min_ts, ts);
 
@@ -335,15 +335,12 @@ KStatus TsLastSegmentBuilder::InfoHandle::WriteInfo(TsFile* file) {
   std::string buf;
   assert(infos_.size() == offset_.size());
   for (int i = 0; i < infos_.size(); ++i) {
-    PutFixed<64>(&buf, offset_[i]);
-    // PutFixed<64>(&buf, infos_[i].table_id);
-    // PutFixed<32>(&buf, infos_[i].version);
-    PutFixed<32>(&buf, infos_[i].nrow);
-    PutFixed<32>(&buf, infos_[i].col_offset.size());
-    PutFixed<32>(&buf, infos_[i].var_offset);
-    // PutFixed<32>(&buf, infos_[i].ndevice);
+    PutFixed64(&buf, offset_[i]);
+    PutFixed32(&buf, infos_[i].nrow);
+    PutFixed32(&buf, infos_[i].col_offset.size());
+    PutFixed32(&buf, infos_[i].var_offset);
     for (int j = 0; j < infos_[i].col_offset.size(); ++j) {
-      PutFixed<32>(&buf, infos_[i].col_offset[j]);
+      PutFixed32(&buf, infos_[i].col_offset[j]);
     }
   }
   assert(buf.size() == length_);
@@ -369,14 +366,14 @@ KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsFile* file) {
   assert(finished_);
   std::string buf;
   for (const auto idx : indices_) {
-    PutFixed<64>(&buf, idx.offset);
-    PutFixed<64>(&buf, idx.table_id);
-    PutFixed<32>(&buf, idx.table_version);
-    PutFixed<32>(&buf, idx.n_entity);
-    PutFixed<64>(&buf, idx.min_ts);
-    PutFixed<64>(&buf, idx.max_ts);
-    PutFixed<64>(&buf, idx.min_entity_id);
-    PutFixed<64>(&buf, idx.max_entity_id);
+    PutFixed64(&buf, idx.offset);
+    PutFixed64(&buf, idx.table_id);
+    PutFixed32(&buf, idx.table_version);
+    PutFixed32(&buf, idx.n_entity);
+    PutFixed64(&buf, idx.min_ts);
+    PutFixed64(&buf, idx.max_ts);
+    PutFixed64(&buf, idx.min_entity_id);
+    PutFixed64(&buf, idx.max_entity_id);
   }
   auto s = file->Append(buf);
   return s.ok() ? SUCCESS : FAIL;

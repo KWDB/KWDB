@@ -18,6 +18,7 @@
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "lt_rw_latch.h"
+#include "ts_bitmap.h"
 
 #define COMP_OVERFLOW_BYTES 2
 #define BITS_PER_BYTE 8
@@ -172,9 +173,49 @@ class ColumnCompressorMgr {
   void initDeCompressor();
 };
 
-namespace Gorilla {
-bool Compress(TSSlice data, uint64_t count, std::string* out);
-bool Decompress(TSSlice data, uint64_t count, std::string* out);
-}  // namespace Gorilla
+
+// Compression algorithm for timeseries
+enum class TsCmpAlg : uint8_t {
+  kPlain = 0,
+  kGorilla = 1,
+  kSimple8B = 2,
+  // kChimp128 = 3,
+  // kALP = 4,
+  // kELF = 5,
+};
+
+// compression algorithms for general purpose.
+enum class GenCmpAlg : uint8_t {
+  kPlain = 0,
+  kSnappy = 1,
+  // kGzip = 2,
+  // kLzo = 3,
+  // kLz4 = 4,
+  // kXz = 5,
+  // kZstd = 6,
+  // kLzma = 7,
+};
+
+class TsCompressorBase;
+class GenCompressorBase;
+class CompressorManager {
+ private:
+  class TwoLevelCompressor;
+
+  std::unordered_map<DATATYPE, std::unordered_map<TsCmpAlg, TsCompressorBase*>> ts_compressor_;
+  std::unordered_map<GenCmpAlg, GenCompressorBase*> general_compressor_;
+
+  CompressorManager();
+
+ public:
+  static CompressorManager& GetInstance() {
+    static CompressorManager mgr;
+    return mgr;
+  }
+  CompressorManager(const CompressorManager&) = delete;
+  void operator=(const CompressorManager&) = delete;
+
+  TwoLevelCompressor GetCompressor(DATATYPE dtype, TsCmpAlg first, GenCmpAlg second) const;
+};
 
 }  //  namespace kwdbts

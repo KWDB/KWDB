@@ -10,9 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "libkwdbts2.h"
@@ -23,7 +25,7 @@ enum DataFlags : uint8_t { kValid = 0b00, kNull = 0b01, kNone = 0b10 };
 class TsBitmap {
  private:
   constexpr static int nbit_per_row = 2;
-  size_t nrow_;
+  size_t nrows_, nvalid_;
   std::string rep_;
 
   struct Proxy {
@@ -33,44 +35,59 @@ class TsBitmap {
     explicit Proxy(TsBitmap *bitmap, size_t offset)
         : p{bitmap}, charidx(offset / 8), charoff(offset % 8) {}
     void operator=(DataFlags flag) {
-      uint8_t mask = 0b11000000;
-      p->rep_[charidx] &= ~(mask >> charoff);  // unset the exist flag;
-      uint8_t f = flag << (8 - nbit_per_row);
-      p->rep_[charidx] |= (f >> charoff);  // set as the given flag;
+      DataFlags old_flag = *this;
+      p->rep_[charidx] &= ~(0b11 << charoff);  // unset the exist flag;
+      p->rep_[charidx] |= (flag << charoff);   // set as the given flag;
+      p->nvalid_ += (flag == kValid) - (old_flag == kValid);
     }
     operator DataFlags() const {
-      uint8_t mask = 0b11000000;
-      return static_cast<DataFlags>((p->rep_[charidx] & (mask >> charoff)) >>
-                                    (8 - nbit_per_row - charoff));
+      return static_cast<DataFlags>((p->rep_[charidx] >> charoff) & 0b11);
     }
   };
 
  public:
-  TsBitmap() : nrow_(0) {}
+  TsBitmap() : nrows_(0), nvalid_(0) {}
   explicit TsBitmap(int nrows) { Reset(nrows); }
-  explicit TsBitmap(TSSlice rep, int nrows) : nrow_(nrows) {
+  explicit TsBitmap(TSSlice rep, int nrows) : nrows_(nrows) {
     assert(rep.len >= rep_.size());
     rep_.assign(rep.data, rep.len);
+    nvalid_ = 0;
+    for (int i = 0; i < nrows_; ++i) {
+      nvalid_ += ((*this)[i] == kValid);
+    }
   }
 
   void Reset(int nrows) {
-    nrow_ = nrows;
+    nrows_ = nrows;
+    nvalid_ = nrows;
     rep_.clear();
     rep_.resize((nbit_per_row * nrows + 7) / 8);
   }
 
   Proxy operator[](size_t idx) {
-    assert(idx < nrow_);
+    assert(idx < nrows_);
     size_t bitidx = nbit_per_row * idx;
     return Proxy{this, bitidx};
   }
 
+  DataFlags operator[](size_t idx) const {
+    assert(idx < nrows_);
+    size_t bitidx = nbit_per_row * idx;
+    uint32_t charidx = (bitidx / 8);
+    uint8_t charoff = (bitidx % 8);
+    return static_cast<DataFlags>((rep_[charidx] >> charoff) & 0b11);
+  }
+
   void SetAll(DataFlags f) {
-    for (int i = 0; i < nrow_; ++i) {
+    for (int i = 0; i < nrows_; ++i) {
       (*this)[i] = f;
     }
   }
   TSSlice GetData() { return {rep_.data(), rep_.size()}; }
-  size_t GetNRow() const { return nrow_; }
+  size_t GetCount() const { return nrows_; }
+  size_t GetValidCount() const { return nvalid_; };
+  bool IsAllValid() const {
+    return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
+  }
 };
 }  // namespace kwdbts
