@@ -106,13 +106,13 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY) {
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
-    std::shared_ptr<TsTableSchemaManager> schema_manager;
-    KStatus s = GetTsSchemaMgr(ctx, table_id, schema_manager);
+    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+    KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_manager);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     }
     std::shared_ptr<TagTable> tag_table;
-    s = schema_manager->GetTagSchema(ctx, &tag_table);
+    s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -186,6 +186,42 @@ KStatus TSEngineV2Impl::LogInit() {
   // LOG_ERROR("TEST FOR log");
   // TRACE_MM_LEVEL1("TEST FOR TRACE aaaaa\n");
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
+                                  uint32_t cur_version, uint32_t new_version, string &err_msg) {
+  roachpb::KWDBKTSColumn column_meta;
+  if (!column_meta.ParseFromArray(column.data, column.len)) {
+    LOG_ERROR("ParseFromArray Internal Error");
+    err_msg = "Parse protobuf error";
+    return KStatus::FAIL;
+  }
+  return schema_mgr_->AlterTable(ctx, table_id, AlterType::ADD_COLUMN, &column_meta,
+                                 cur_version, new_version, err_msg);
+}
+
+KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
+                                   uint32_t cur_version, uint32_t new_version, string &err_msg) {
+  roachpb::KWDBKTSColumn column_meta;
+  if (!column_meta.ParseFromArray(column.data, column.len)) {
+    LOG_ERROR("ParseFromArray Internal Error");
+    err_msg = "Parse protobuf error";
+    return KStatus::FAIL;
+  }
+  return schema_mgr_->AlterTable(ctx, table_id, AlterType::DROP_COLUMN, &column_meta,
+                                 cur_version, new_version, err_msg);
+}
+
+KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
+                                        TSSlice new_column, TSSlice origin_column, uint32_t cur_version,
+                                        uint32_t new_version, string &err_msg) {
+  roachpb::KWDBKTSColumn new_col_meta;
+  if (!new_col_meta.ParseFromArray(new_column.data, new_column.len)) {
+    LOG_ERROR("ParseFromArray Internal Error");
+    return KStatus::FAIL;
+  }
+  return schema_mgr_->AlterTable(ctx, table_id, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
+                                 cur_version, new_version, err_msg);
 }
 
 std::vector<std::unique_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {

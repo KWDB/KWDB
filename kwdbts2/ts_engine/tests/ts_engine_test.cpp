@@ -62,7 +62,7 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTsSchemaMgr(ctx_, table_id, schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<AttributeInfo> metric_schema;
@@ -89,7 +89,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTsSchemaMgr(ctx_, table_id, schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<AttributeInfo> metric_schema;
   s = schema_mgr->GetMetricMeta(1, metric_schema);
