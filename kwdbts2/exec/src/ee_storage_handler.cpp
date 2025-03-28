@@ -552,12 +552,12 @@ EEIteratorErrCode StorageHandler::NewTagIterator(kwdbContext_p ctx) {
         ret = ts_table_->GetMetaIterator(ctx, &meta, table_->table_version_);
         tag_iterator = meta;
       } else {
-        TagIterator *tag = nullptr;
+        BaseEntityIterator *tag = nullptr;
         ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &tag, table_->table_version_);
         tag_iterator = tag;
       }
   } else {
-    TagIterator *tag = nullptr;
+    BaseEntityIterator *tag = nullptr;
     ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, table_->hash_points_, &tag, table_->table_version_);
     tag_iterator = tag;
   }
