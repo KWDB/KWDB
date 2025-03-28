@@ -16,9 +16,10 @@ namespace kwdbts {
 TsBlockSegmentBlockFile::TsBlockSegmentBlockFile(const string& file_path) : file_path_(file_path) {
   file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
   file_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_BLOCK_FILE_RWLOCK);
+  memset(&header_, 0, sizeof(TsBlockFileHeader));
 }
 
-TsBlockSegmentBlockFile::TsBlockSegmentBlockFile() {}
+TsBlockSegmentBlockFile::~TsBlockSegmentBlockFile() {}
 
 KStatus TsBlockSegmentBlockFile::Open() {
   TSSlice result;

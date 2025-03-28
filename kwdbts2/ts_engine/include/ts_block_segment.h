@@ -105,6 +105,7 @@ class TsBlockSegmentEntityItemFile {
   explicit TsBlockSegmentEntityItemFile(const string& file_path) :
            file_path_(file_path), entity_hash_latch_(ENTITY_ITEM_FILE_LATCH_BUCKET_NUM, RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
+    memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
 
   ~TsBlockSegmentEntityItemFile() {}
@@ -145,6 +146,7 @@ class TsBlockSegmentBlockItemFile {
   explicit TsBlockSegmentBlockItemFile(const string& file_path) : file_path_(file_path) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
     block_item_mtx_ = new KRWLatch(RWLATCH_ID_MMAP_BLOCK_META_RWLOCK);
+    memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
   ~TsBlockSegmentBlockItemFile() {

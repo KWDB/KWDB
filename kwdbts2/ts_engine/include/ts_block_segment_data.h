@@ -37,7 +37,7 @@ class TsBlockSegmentBlockFile {
  public:
   explicit TsBlockSegmentBlockFile(const string& file_path);
 
-  TsBlockSegmentBlockFile();
+  ~TsBlockSegmentBlockFile();
 
   KStatus Open();
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
