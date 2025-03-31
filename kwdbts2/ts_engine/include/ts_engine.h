@@ -37,7 +37,6 @@ namespace kwdbts {
 class TSEngineV2Impl : public TSEngine {
  private:
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
-  std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::vector<std::unique_ptr<TsVGroup>> table_grps_;
   int table_grp_max_num_{0};
   EngineOptions options_;
@@ -66,11 +65,12 @@ class TSEngineV2Impl : public TSEngine {
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    ts_table = (dynamic_pointer_cast<TsTable>(schema));
+    ts_table = tables_cache_->Get(table_id);
     return KStatus::SUCCESS;
   }
 
-  KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+  std::vector<std::unique_ptr<TsVGroup>>* GetTsVGroups();
+  KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override {
     // TODO(liangbo01)  need input change version
     auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
@@ -189,22 +189,16 @@ class TSEngineV2Impl : public TSEngine {
   KStatus LogInit();
 
   KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                    TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override {
-    return KStatus::SUCCESS;
-  }
+                    TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus DropColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                     TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override {
-    return KStatus::SUCCESS;
-  }
+                     TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                          TSSlice new_column, TSSlice origin_column,
-                          uint32_t cur_version, uint32_t new_version, string& err_msg) override {
+                          TSSlice new_column, TSSlice origin_column, uint32_t cur_version,
+                          uint32_t new_version, string& err_msg) override;
+
+  KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override {
     return KStatus::SUCCESS;
   }
 

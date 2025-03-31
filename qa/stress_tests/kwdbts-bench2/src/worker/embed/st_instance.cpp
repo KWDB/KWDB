@@ -34,7 +34,7 @@ KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
  std::vector<TagInfo>* tag_schema, std::vector<AttributeInfo>* data_schema) {
   if (params_.engine_version == "2") {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema;
-    KStatus s = ts_engine_->GetTsSchemaMgr(ctx, table_id, schema);
+    KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
     if (s != KStatus::SUCCESS) {
       return s;
     }

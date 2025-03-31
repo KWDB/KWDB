@@ -34,38 +34,55 @@ class TsVGroupPartition {
   std::filesystem::path path_;
 
   std::unique_ptr<TsBlockSegment> blk_segment_;
-  TsLastSegmentManager last_segments_;
+  TsLastSegmentManager last_segment_mgr_;
   std::unique_ptr<KRWLatch> partition_mtx_;
 
+  TsEngineSchemaManager* schema_mgr_;
+
+  // Flag indicating whether it is running or not
+  bool is_running_{false};
+  // Id of the compact thread
+  KThreadID compact_thread_id_{0};
+  // Conditional variable
+  std::condition_variable cv_;
+  // Mutexes for condition variables
+  std::mutex cv_mutex_;
 
  public:
-  TsVGroupPartition(std::filesystem::path root, int database_id, int64_t start, int64_t end);
+  TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
+                    int64_t start, int64_t end);
 
   ~TsVGroupPartition();
 
   KStatus Open();
   // compact data from last segment to block segment. compact one block data every time.
-  KStatus Compact(TSTableID table_id, TSEntityID entity_id, const std::vector<AttributeInfo>& schema,
-                  uint32_t table_version, uint32_t num, const std::vector<TsBlockColData>& col_datas);
-  KStatus AppendToBlockSegment();
+  KStatus Compact();
 
   KStatus FlushToLastSegment(const std::string& piece);
 
-  KStatus NewLastFile(std::unique_ptr<TsFile>* file) { return last_segments_.NewLastFile(file); }
+  KStatus NewLastSegment(std::shared_ptr<TsLastSegment>& last_segment);
 
   std::filesystem::path GetPath() const;
 
   std::string GetFileName() const;
-  KStatus appendToBlockSegment(uint32_t table_version, TSSlice block_data, TSSlice block_agg,
-                               uint32_t row_num, TSEntityID entity_id);
 
   int64_t StartTs() const { return start_; }
 
   int64_t EndTs() const { return end_; }
 
- private:
-  KStatus appendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
+  TsEngineSchemaManager* GetSchemaMgr() { return schema_mgr_; }
+
+  KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
                                TSSlice block_data, TSSlice block_agg, uint32_t row_num);
+
+ protected:
+  // Thread scheduling executes compact tasks to clean up items that require erasing.
+  void compactRoutine(void* args);
+  // Initialize compact thread.
+  void initCompactThread();
+  // Close compact thread.
+  void closeCompactThread();
 };
+
 
 }  // namespace kwdbts

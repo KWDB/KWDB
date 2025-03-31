@@ -110,7 +110,7 @@ struct TSEngine {
                              ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) = 0;
 
 
-  virtual KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+  virtual KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                                  std::shared_ptr<TsTableSchemaManager>& schema) {
     return KStatus::FAIL;
   }
@@ -529,6 +529,9 @@ struct TSEngine {
    * @param capacity
    */
   virtual void AlterTableCacheCapacity(int capacity) = 0;
+
+ protected:
+  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };
 
 namespace kwdbts {
@@ -719,7 +722,6 @@ class TSEngineImpl : public TSEngine {
  private:
   string ts_store_path_;
   EngineOptions options_;
-  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
   KLatch* tables_lock_;
 
   // store all snapshot objects of this storage engine.

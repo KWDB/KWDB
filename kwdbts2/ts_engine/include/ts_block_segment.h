@@ -23,37 +23,35 @@
 #include "ts_block_segment_data.h"
 #include "ts_hash_latch.h"
 #include "ts_io.h"
+#include "ts_last_segment_manager.h"
 
 
 namespace kwdbts {
 
-/**
- * @brief  BlockItem managing BLock status
- * 
-*/
-struct TsBlockItemInfo {
-  uint64_t block_id;          // block id
+struct TsBlockSegmentBlockItemInfo {
+  uint64_t block_id;          // block item id
   uint64_t entity_id;
-  uint64_t prev_block_id;     // pre BlockItem
-  uint32_t schema_version;
+  uint64_t prev_block_id;     // pre block item id
+  uint32_t table_version;
   uint32_t row_count;
   timestamp64 min_ts_in_block;
   timestamp64 max_ts_in_block;
   uint64_t block_offset;
-  char reserved[136];      // reserved for user-defined information.
+  uint64_t block_len;
+  char reserved[128];      // reserved for user-defined information.
 };
-static_assert(sizeof(TsBlockItemInfo) == 192, "wrong size of TsBlockItemInfo, please check compatibility.");
+static_assert(sizeof(TsBlockSegmentBlockItemInfo) == 192,
+              "wrong size of TsBlockSegmentBlockItemInfo, please check compatibility.");
 
-
-class TsBlockItem {
+class TsBlockSegmentBlockItem {
  private:
-  TsBlockItemInfo info_;
+  TsBlockSegmentBlockItemInfo info_;
 
  public:
-  TsBlockItem() {}
-  ~TsBlockItem() {}
+  TsBlockSegmentBlockItem() {}
+  ~TsBlockSegmentBlockItem() {}
 
-  TsBlockItemInfo& Info() {
+  TsBlockSegmentBlockItemInfo& Info() {
     return info_;
   }
 
@@ -66,41 +64,33 @@ class TsBlockItem {
   }
 };
 
-enum TsFileStatus {
-  NOT_READY = 0,
-  READY = 1,
-};
+static constexpr uint64_t TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
+static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
 
-
-static constexpr uint64_t TS_SEGMENT_ENTITY_META_MAGIC = 0xcb2ffe9321847272;
-static constexpr uint64_t TS_SEGMENT_BLOCK_META_MAGIC = 0xcb2ffe9321847273;
-
-#define ENTITY_ITEM_META_LATCH_BUCKET_NUM 100
+#define ENTITY_ITEM_FILE_LATCH_BUCKET_NUM 100
 
 /**
- * TsSegmentEntityMetaFile used for managing entity_item.meta file.
+ * TsBlockSegmentEntityItemFile used for managing entity_item file.
  * index of block items.
  */
-class TsSegmentEntityMetaFile {
+class TsBlockSegmentEntityItemFile {
  private:
-  struct TsEntityMetaFileHeader {
+  struct TsEntityItemFileHeader {
     uint64_t magic;               // Magic number for block.e file.
     int32_t encoding;             // Encoding scheme.
     int32_t status;               // status flag.
     uint64_t entity_num;          // entity num
     char reserved[104];           // reserved for user-defined meta data information.
   };
-  static_assert(sizeof(TsEntityMetaFileHeader) == 128, "wrong size of TsEntityMetaFileHeader, please check compatibility.");
+  static_assert(sizeof(TsEntityItemFileHeader) == 128, "wrong size of TsBlockFileHeader, please check compatibility.");
 
   struct TsEntityItem {
-    uint64_t entity_id;
-    uint64_t cur_block_id;            // block id that is allocating space for writing.
+    uint64_t entity_id = 0;
+    uint64_t cur_block_id = 0;        // block id that is allocating space for writing.
     int64_t max_ts = INT64_MIN;       // max ts of current entity in this Partition
     int64_t min_ts = INT64_MAX;       // min ts of current entity in this Partition
-    uint64_t row_allocated;           // allocated row num for writing.
     uint64_t row_written;             // row num that has written into file.
-    bool is_initialized;
-    char reserved[79];                // reserved for user-defined information.
+    char reserved[88];                // reserved for user-defined information.
   };
   static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
 
@@ -109,50 +99,57 @@ class TsSegmentEntityMetaFile {
 
   TsHashRWLatch entity_hash_latch_;
 
-  TsEntityMetaFileHeader header_;
+  TsEntityItemFileHeader header_;
 
  public:
-  explicit TsSegmentEntityMetaFile(const string& file_path) :
-           file_path_(file_path), entity_hash_latch_(ENTITY_ITEM_META_LATCH_BUCKET_NUM, RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
+  explicit TsBlockSegmentEntityItemFile(const string& file_path) :
+           file_path_(file_path), entity_hash_latch_(ENTITY_ITEM_FILE_LATCH_BUCKET_NUM, RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
+    memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
 
-  ~TsSegmentEntityMetaFile() {}
+  ~TsBlockSegmentEntityItemFile() {}
 
   KStatus Open();
 
-  // update entityItem, if need update more, we can add paramters.
-  KStatus UpdateEntityItem(uint64_t entity_id, const TsBlockItemInfo& block_item_info);
+  void WrLock(uint64_t entity_id);
 
-  KStatus GetEntityCurBlockId(uint64_t entity_id, uint64_t& cur_block_id);
+  void RdLock(uint64_t entity_id);
+
+  void UnLock(uint64_t entity_id);
+
+  KStatus UpdateEntityItem(uint64_t entity_id, const TsBlockSegmentBlockItemInfo& block_item_info, bool lock = true);
+
+  KStatus GetEntityCurBlockId(uint64_t entity_id, uint64_t& cur_block_id, bool lock = true);
 };
 
-class TsSegmentBlockMetaFile {
+class TsBlockSegmentBlockItemFile {
  private:
   string file_path_;
   std::unique_ptr<TsFile> file_;
 
   KRWLatch* block_item_mtx_{nullptr};
 
-  struct TsBlockFileMetaFileHeader {
+  struct TsBlockItemFileHeader {
     uint64_t magic;               // Magic number for block.e file.
     int32_t encoding;             // Encoding scheme.
     int32_t status;               // status flag.
     uint64_t block_num;
     char user_defined[104];       // reserved for user-defined meta data information.
   };
-  static_assert(sizeof(TsBlockFileMetaFileHeader) == 128,
-                "wrong size of TsBlockFileMetaFileHeader, please check compatibility.");
+  static_assert(sizeof(TsBlockItemFileHeader) == 128,
+                "wrong size of TsBlockItemFileHeader, please check compatibility.");
 
-  TsBlockFileMetaFileHeader header_;
+  TsBlockItemFileHeader header_;
 
  public:
-  explicit TsSegmentBlockMetaFile(const string& file_path) : file_path_(file_path) {
+  explicit TsBlockSegmentBlockItemFile(const string& file_path) : file_path_(file_path) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
     block_item_mtx_ = new KRWLatch(RWLATCH_ID_MMAP_BLOCK_META_RWLOCK);
+    memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
-  ~TsSegmentBlockMetaFile() {
+  ~TsBlockSegmentBlockItemFile() {
     if (block_item_mtx_) {
       delete block_item_mtx_;
       block_item_mtx_ = nullptr;
@@ -167,46 +164,41 @@ class TsSegmentBlockMetaFile {
     RW_LATCH_UNLOCK(block_item_mtx_);
   }
 
-  inline KStatus readFileMeta(TsBlockFileMetaFileHeader& block_meta) {
-    TSSlice result;
-    TsStatus s = file_->Read(0, sizeof(TsBlockFileMetaFileHeader), &result, reinterpret_cast<char *>(&block_meta));
-    return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
-  }
-
-  inline KStatus writeFileMeta(TsBlockFileMetaFileHeader& block_meta) {
-    TsStatus s = file_->Write(0, TSSlice{reinterpret_cast<char *>(&block_meta), sizeof(TsBlockFileMetaFileHeader)});
-    return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
-  }
-
   KStatus Open();
-  KStatus AllocateBlockItem(uint64_t entity_id, TsBlockItemInfo& block_item_info);
-  KStatus GetBlockItem(uint64_t entity_id, uint64_t blk_offset, std::shared_ptr<TsBlockItem>& blk_item);
+
+  KStatus AllocateBlockItem(uint64_t entity_id, TsBlockSegmentBlockItemInfo& block_item_info);
+
+  KStatus GetBlockItem(uint64_t entity_id, uint64_t blk_offset, std::shared_ptr<TsBlockSegmentBlockItem>& blk_item);
+
+ protected:
+  KStatus readFileHeader(TsBlockItemFileHeader& block_meta);
+
+  KStatus writeFileMeta(TsBlockItemFileHeader& block_meta);
 };
 
-class TsBlkSegmentMetaManager {
+class TsBlockSegmentMetaManager {
  private:
   string path_;
-  TsSegmentEntityMetaFile entity_meta_;
-  TsSegmentBlockMetaFile block_meta_;
+  TsBlockSegmentEntityItemFile entity_meta_;
+  TsBlockSegmentBlockItemFile block_meta_;
 
  public:
-  explicit TsBlkSegmentMetaManager(const string& path);
+  explicit TsBlockSegmentMetaManager(const string& path);
 
-  ~TsBlkSegmentMetaManager() {}
+  ~TsBlockSegmentMetaManager() {}
 
   KStatus Open();
 
-  KStatus AppendBlockItem(TsBlockItem* blk_item);
+  KStatus AppendBlockItem(TsBlockSegmentBlockItem* blk_item);
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<std::shared_ptr<TsBlockItem>>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<std::shared_ptr<TsBlockSegmentBlockItem>>* blk_items);
 };
-
 
 class TsBlockSegment {
  private:
   string dir_path_;
-  TsBlkSegmentMetaManager meta_mgr_;
-  TsBlockFile block_file_;
+  TsBlockSegmentMetaManager meta_mgr_;
+  TsBlockSegmentBlockFile block_file_;
 
  public:
   TsBlockSegment() = delete;
@@ -217,11 +209,79 @@ class TsBlockSegment {
 
   KStatus Open();
 
-  KStatus AppendBlockData(TsBlockItem* blk_item, const TSSlice& data, const TSSlice& agg);
+  KStatus AppendBlockData(TsBlockSegmentBlockItem* blk_item, const TSSlice& data, const TSSlice& agg);
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<std::shared_ptr<TsBlockItem>>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<std::shared_ptr<TsBlockSegmentBlockItem>>* blk_items);
 
-  KStatus GetBlockData(TsBlockItem* blk_item, char* buff);
+  KStatus GetBlockData(TsBlockSegmentBlockItem* blk_item, char* buff);
+};
+
+class TsVGroupPartition;
+
+struct TsEntityKey {
+  uint64_t entity_id;
+  uint64_t table_id;
+  uint32_t table_version;
+
+  inline bool operator==(const TsEntityKey& other) const {
+    return entity_id == other.entity_id && table_version == other.table_version;
+  }
+};
+
+struct TsEntityKeyHash {
+  inline std::size_t operator()(const TsEntityKey& k) const {
+    return std::hash<uint64_t>()(k.entity_id) ^ (std::hash<uint32_t>()(k.table_version) << 1);
+  }
+};
+
+struct TsLastSegmentBlockRowInfo {
+  timestamp64 ts;
+  uint64_t seq_no;
+
+  uint32_t last_segment_block_idx;
+  uint32_t row_idx_in_block;
+
+  inline bool operator<(const TsLastSegmentBlockRowInfo& other) const {
+    return ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
+  }
+};
+
+struct TsBlockSegmentBlockInfo {
+  std::vector<uint32_t> col_block_offset;
+};
+
+struct TsBlockSegmentColumnBlock {
+  TsBitmap bitmap;
+  std::string buffer;
+};
+
+class TsBlockSegmentBuilder {
+ private:
+  std::vector<std::shared_ptr<TsLastSegment>>& last_segments_;
+  TsVGroupPartition* partition_;
+
+  std::vector<TsLastSegmentBlock*> blocks_;
+  std::unordered_map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>, TsEntityKeyHash> entity_row_values_;
+
+  size_t max_rows_per_block_;
+
+ public:
+  explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>>& last_segments,
+                                 TsVGroupPartition* partition = nullptr,
+                                 size_t max_rows_per_block = 1000) :
+                                 last_segments_(last_segments),
+                                 partition_(partition),
+                                 max_rows_per_block_(max_rows_per_block) {}
+  ~TsBlockSegmentBuilder() {
+    for (TsLastSegmentBlock* block : blocks_) {
+      if (block) {
+        delete block;
+        block = nullptr;
+      }
+    }
+  }
+
+  KStatus BuildAndFlush(uint32_t thread_num = 1);
 };
 
 }  // namespace kwdbts

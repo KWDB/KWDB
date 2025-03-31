@@ -17,19 +17,23 @@
 #include <utility>
 #include "ts_env.h"
 #include "ts_payload.h"
+#include "ee_global.h"
 #include "ee_executor.h"
+#include "ts_table_v2_impl.h"
 
 namespace kwdbts {
-const int storage_engine_vgroup_max_num = 3;
+const int storage_engine_vgroup_max_num = 10;
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
   LogInit();
+  tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
   table_grps_.clear();
+  SafeDeletePointer(tables_cache_);
 }
 
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
@@ -41,18 +45,11 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     return s;
   }
 
-  wal_manager_ = std::make_unique<WALMgr>(options_.db_path, 0, 0, &options_);
-  s = wal_manager_->Init(ctx);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to initialize WAL manager")
-    return s;
-  }
-
   InitExecutor(ctx, options_);
 
   table_grps_.clear();
   for (size_t i = 0; i < storage_engine_vgroup_max_num; i++) {
-    auto tbl_grp = std::make_unique<TsVGroup>(options_.db_path, i + 1, schema_mgr_.get());
+    auto tbl_grp = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
     s = tbl_grp->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -89,6 +86,15 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     return s;
   }
   LOG_INFO("Create TsTable %lu success.", table_id);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
+    return s;
+  }
+  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(ctx, table_schema_mgr);
+  tables_cache_->Put(table_id, ts_table);
   return s;
 }
 
@@ -100,13 +106,13 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY) {
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
-    std::shared_ptr<TsTableSchemaManager> schema_manager;
-    KStatus s = GetTsSchemaMgr(ctx, table_id, schema_manager);
+    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+    KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_manager);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     }
     std::shared_ptr<TagTable> tag_table;
-    s = schema_manager->GetTagSchema(ctx, &tag_table);
+    s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -132,11 +138,10 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
   auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
   assert(tbl_grp != nullptr);
   if (new_tag) {
-    if (write_wal) {
-      // no need lock, lock inside.
-      KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *payload);
+    if (options_.wal_level != WALMode::OFF) {
+      KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, *payload);
       if (s == KStatus::FAIL) {
-        LOG_ERROR("failed WriteInsertWAL for new tag.");
+        LOG_ERROR("failed WriteInsertWAL for new tag");
         return s;
       }
     }
@@ -147,22 +152,11 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
     }
   }
 
-  TS_LSN entry_lsn = 0;
-  if (write_wal) {
-    // lock current lsn: Lock the current LSN until the log is written to the cache
-    wal_manager_->Lock();
-    TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
-    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, p.GetPrimaryTag(), *payload, entry_lsn);
-    if (s == KStatus::FAIL) {
-      wal_manager_->Unlock();
+  if (options_.wal_level != WALMode::OFF) {
+    KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, p.GetPrimaryTag(), *payload);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("putdata failed. because wal failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
       return s;
-    }
-    // unlock current lsn
-    wal_manager_->Unlock();
-
-    if (entry_lsn != current_lsn) {
-      LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
-      return KStatus::FAIL;
     }
   }
   s = tbl_grp->PutData(ctx, table_id, entity_id, payload);
@@ -192,6 +186,46 @@ KStatus TSEngineV2Impl::LogInit() {
   // LOG_ERROR("TEST FOR log");
   // TRACE_MM_LEVEL1("TEST FOR TRACE aaaaa\n");
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
+                                  uint32_t cur_version, uint32_t new_version, string &err_msg) {
+  roachpb::KWDBKTSColumn column_meta;
+  if (!column_meta.ParseFromArray(column.data, column.len)) {
+    LOG_ERROR("ParseFromArray Internal Error");
+    err_msg = "Parse protobuf error";
+    return KStatus::FAIL;
+  }
+  return schema_mgr_->AlterTable(ctx, table_id, AlterType::ADD_COLUMN, &column_meta,
+                                 cur_version, new_version, err_msg);
+}
+
+KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
+                                   uint32_t cur_version, uint32_t new_version, string &err_msg) {
+  roachpb::KWDBKTSColumn column_meta;
+  if (!column_meta.ParseFromArray(column.data, column.len)) {
+    LOG_ERROR("ParseFromArray Internal Error");
+    err_msg = "Parse protobuf error";
+    return KStatus::FAIL;
+  }
+  return schema_mgr_->AlterTable(ctx, table_id, AlterType::DROP_COLUMN, &column_meta,
+                                 cur_version, new_version, err_msg);
+}
+
+KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
+                                        TSSlice new_column, TSSlice origin_column, uint32_t cur_version,
+                                        uint32_t new_version, string &err_msg) {
+  roachpb::KWDBKTSColumn new_col_meta;
+  if (!new_col_meta.ParseFromArray(new_column.data, new_column.len)) {
+    LOG_ERROR("ParseFromArray Internal Error");
+    return KStatus::FAIL;
+  }
+  return schema_mgr_->AlterTable(ctx, table_id, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
+                                 cur_version, new_version, err_msg);
+}
+
+std::vector<std::unique_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
+  return &table_grps_;
 }
 
 }  // namespace kwdbts

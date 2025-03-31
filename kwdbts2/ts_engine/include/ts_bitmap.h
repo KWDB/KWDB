@@ -83,8 +83,22 @@ class TsBitmap {
       (*this)[i] = f;
     }
   }
-  TSSlice GetData() { return {rep_.data(), rep_.size()}; }
-  size_t GetCount() const { return nrows_; }
+
+  void SetData(TSSlice rep) {
+    rep_.assign(rep.data, rep.len);
+  }
+
+  TSSlice GetData() {
+    return {rep_.data(), rep_.size()};
+  }
+
+  size_t GetCount() const {
+    return nrows_;
+  }
+
+  static size_t GetBitmapLen(size_t nrows) {
+    return (nbit_per_row * nrows + 7) / 8;
+  }
   size_t GetValidCount() const { return nvalid_; };
   bool IsAllValid() const {
     return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });

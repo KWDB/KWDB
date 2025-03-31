@@ -29,6 +29,7 @@
 #include "rocksdb/types.h"
 #include "ts_bitmap.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_env.h"
 #include "ts_io.h"
 #include "ts_payload.h"
 #include "ts_table_schema_manager.h"
@@ -157,9 +158,100 @@ struct TsLastSegmentFooter {
 };
 static_assert(sizeof(TsLastSegmentFooter) == 64);
 
+struct TsLastSegmentBlockIndex {
+  uint64_t offset;
+  uint64_t table_id;
+  uint32_t table_version, n_entity;
+  int64_t min_ts, max_ts;
+  uint64_t min_entity_id, max_entity_id;
+};
+
+struct TsLastSegmentBlockInfo {
+  uint64_t block_offset;
+  uint32_t nrow;
+  uint32_t ncol;
+  uint32_t var_offset;
+  uint32_t var_len;
+  std::vector<uint32_t> col_offset;
+};
+const size_t LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE = sizeof(uint64_t) + 4 * sizeof(uint32_t);
+
+struct TsLastSegmentColumnBlock {
+  TsBitmap bitmap;
+  std::string buffer;
+};
+
+struct TsLastSegmentBlock {
+  std::vector<TsLastSegmentColumnBlock> column_blocks;  // entity id, seq number and metric columns
+  std::string var_buffer;
+
+  DataFlags GetBitmap(uint32_t col_idx, uint32_t row_idx) {
+    return column_blocks[col_idx].bitmap[row_idx];
+  }
+
+  uint64_t GetEntityId(uint32_t row_idx) {
+    return *reinterpret_cast<uint64_t*>(&column_blocks[0].buffer[row_idx * sizeof(uint64_t)]);
+  }
+
+  uint32_t GetSeqNo(uint32_t row_idx) {
+    return *reinterpret_cast<uint32_t*>(&column_blocks[1].buffer[row_idx * sizeof(uint32_t)]);
+  }
+
+  timestamp64 GetTimestamp(uint32_t row_idx) {
+    return *reinterpret_cast<timestamp64*>(&column_blocks[2].buffer[row_idx * sizeof(timestamp64)]);
+  }
+
+  TSSlice GetData(uint32_t col_idx, uint32_t row_idx, DATATYPE type, size_t data_len) {
+    TSSlice value;
+    if (type != DATATYPE::VARSTRING && type != DATATYPE::VARBINARY) {
+      value.data = &column_blocks[col_idx].buffer[row_idx * data_len];
+      value.len = data_len;
+    } else {
+      size_t offset = *reinterpret_cast<size_t*>(&column_blocks[col_idx].buffer[row_idx * data_len]);
+      value.len = *reinterpret_cast<uint16_t*>(&var_buffer[offset]);
+      value.data = &var_buffer[offset + sizeof(uint16_t)];
+    }
+    return value;
+  }
+};
+
+class TsLastSegment {
+ private:
+  uint32_t ver_;  // not the schema version;
+
+  std::unique_ptr<TsFile> file_;
+
+ public:
+  TsLastSegment(uint32_t ver, TsFile* file) : ver_(ver), file_(file) {}
+
+  ~TsLastSegment() = default;
+
+  TsStatus Append(const TSSlice& data);
+
+  TsStatus Flush();
+
+  size_t GetFileSize() const;
+
+  TsFile* GetFilePtr();
+
+  uint32_t GetVersion() const;
+
+  KStatus GetFooter(TsLastSegmentFooter* footer);
+
+  KStatus GetAllBlockIndex(TsLastSegmentFooter& footer, std::vector<TsLastSegmentBlockIndex>* block_indexes);
+
+  KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
+
+  KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, size_t col_num, TsLastSegmentBlockInfo* block_info);
+
+  KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
+
+  KStatus GetBlock(TsLastSegmentBlockIndex& block_index, size_t col_num, TsLastSegmentBlock* block);
+};
+
 class TsLastSegmentBuilder {
   static constexpr int kNRowPerBlock = 4 << 10;
-  std::unique_ptr<TsFile> file_;
+  std::shared_ptr<TsLastSegment> last_segment_;
 
   struct BlockInfo;
   class MetricBlockBuilder;  // Helper for build DataBlock
@@ -188,15 +280,15 @@ class TsLastSegmentBuilder {
   KStatus FlushPayloadBuffer();
 
  public:
-  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsFile> file)
-      : file_(std::move(file)),
+  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::shared_ptr<TsLastSegment> last_segment)
+      : last_segment_(last_segment),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
         info_handle_(std::make_unique<InfoHandle>()),
         index_handle_(std::make_unique<IndexHandle>()),
         schema_mgr_(schema_mgr) {}
 
   int Flush() {
-    auto s = file_->Flush();
+    auto s = last_segment_->Flush();
     return s.ok() ? 0 : 1;
   }
 
@@ -215,6 +307,7 @@ struct TsLastSegmentBuilder::BlockInfo {
   uint32_t nrow;
   uint32_t ndevice;
   uint32_t var_offset;
+  uint32_t var_len;
   int64_t min_ts, max_ts;
   uint64_t min_entity_id, max_entity_id;
   std::vector<uint32_t> col_offset;
@@ -223,7 +316,7 @@ struct TsLastSegmentBuilder::BlockInfo {
     this->table_id = table_id;
     this->version = version;
 
-    nrow = ndevice = var_offset = 0;
+    nrow = ndevice = var_offset = var_len = 0;
     max_ts = INT64_MIN;
     min_ts = INT64_MAX;
     min_entity_id = UINT64_MAX;
@@ -246,18 +339,11 @@ class TsLastSegmentBuilder::InfoHandle {
   KStatus WriteInfo(TsFile*);
 };
 
-struct TsLastSegmentMetricIndexBlock {
-  uint64_t offset;
-  uint64_t table_id;
-  uint32_t table_version, n_entity;
-  int64_t min_ts, max_ts;
-  uint64_t min_entity_id, max_entity_id;
-};
 class TsLastSegmentBuilder::IndexHandle {
  private:
   bool finished_;
   uint64_t cursor_ = 0;
-  std::vector<TsLastSegmentMetricIndexBlock> indices_;
+  std::vector<TsLastSegmentBlockIndex> indices_;
 
  public:
   void RecordBlockInfo(size_t info_length, const BlockInfo& info);
@@ -346,54 +432,34 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   TSSlice GetBitmap() { return bitmap_.GetData(); }
 };
 
-class TsLastSegment {
- private:
-  uint32_t ver_;  // not the schema version;
-
-  std::filesystem::path file_name_;
-
- public:
-  TsLastSegment(std::filesystem::path root, uint32_t ver) : ver_(ver) {}
-
-  // no copy;
-  TsLastSegment(const TsLastSegment&) = delete;
-  TsLastSegment& operator=(const TsLastSegment&) = delete;
-
-  // TODO(zhangzirui): make move constructor available
-  TsLastSegment(TsLastSegment&& rhs) = delete;
-  void operator=(TsLastSegment&& rhs) = delete;
-  // {
-  //   this->fd_ = rhs.fd_;
-  //   this->version_ = rhs.version_;
-  //   this->delete_after_free.store(rhs.delete_after_free);
-  //   rhs.delete_after_free.store(false);
-  //   this->file_name_ = rhs.file_name_;
-  // }
-
-  ~TsLastSegment() {}
-};
-
 struct TsLastSegmentSlice {
   TsLastSegment* last_seg_;
   uint32_t offset;
   uint32_t count;
 };
 
+const uint32_t MAX_COMPACT_NUM = 10;
+
 class TsLastSegmentManager {
  private:
   std::filesystem::path dir_path_;
-  std::vector<TsLastSegment> last_segments_;
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
 
   uint32_t ver_ = 0;
+  uint32_t compacted_ver_ = 0;
 
  public:
   explicit TsLastSegmentManager(const string& dir_path) : dir_path_(dir_path) {}
 
   ~TsLastSegmentManager() {}
 
-  // KStatus Flush();
+  KStatus NewLastSegment(std::shared_ptr<TsLastSegment>& last_segment);
 
-  KStatus NewLastFile(std::unique_ptr<TsFile>* file);
+  std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments();
+
+  bool NeedCompact();
+
+  void SetCompactedVer(uint32_t ver);
 };
 
 }  // namespace kwdbts
