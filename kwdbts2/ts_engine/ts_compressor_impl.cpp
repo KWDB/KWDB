@@ -13,6 +13,7 @@
 
 #include <endian.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -223,6 +224,125 @@ bool GorillaIntV2::Decompress(const TSSlice &data, uint64_t count, std::string *
   return true;
 }
 
+static int leading_mapping[] = {0, 8, 12, 16, 18, 20, 22, 24};
+template<class T>
+bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+  assert(data.len == 8 * count);
+  out->clear();
+  if (count == 0 || count == 1) {
+    return false;
+  }
+  using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
+  const utype *ptr = reinterpret_cast<utype *>(data.data);
+  TsBitWriter writer(out);
+
+  writer.WriteBits(64, ptr[0]);
+  utype prev = ptr[0];
+  uint64_t buffer = 0, pos = 0;
+  int prev_lead_idx = 0;
+  for (int i = 1; i < count; ++i) {
+    utype xored = ptr[i] ^ prev;
+    prev = ptr[i];
+    if (xored == 0) {
+      writer.WriteBits(2, 0);
+      continue;
+    }
+    int trail, lead;
+    if constexpr (sizeof(xored) == 8) {
+      trail = __builtin_ctzl(xored);
+      lead = __builtin_clzl(xored);
+    } else {
+      trail = __builtin_ctz(xored);
+      lead = __builtin_clz(xored);
+    }
+    int *p = std::upper_bound(leading_mapping, leading_mapping + 8, lead);
+    p--;
+    int lead_idx = p - leading_mapping;
+    if (trail > 6) {
+      int center_bits = 64 - *p - trail;
+      buffer = (((0b01 << 3) + lead_idx) << 6) + center_bits;
+      writer.WriteBits(11, buffer);
+      writer.WriteBits(center_bits, xored >> trail);
+    } else {
+      if (lead_idx == prev_lead_idx) {
+        buffer = 0b10;
+        writer.WriteBits(2, buffer);
+      } else {
+        buffer = (0b11 << 3) + lead_idx;
+        writer.WriteBits(5, buffer);
+      }
+      writer.WriteBits(64 - *p, xored);
+    }
+    prev_lead_idx = lead_idx;
+  }
+  return true;
+}
+
+template<class T>
+bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+  out->clear();
+  if (count == 0) {
+    return true;
+  }
+  TsBitReader reader(std::string_view{data.data, data.len});
+  uint64_t v;
+  bool ok = reader.ReadBits(64, &v);
+  if (!ok) {
+    return false;
+  }
+  PutFixed64(out, v);
+  using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
+  utype prev = v, prev_lead_idx = 0;
+  for (int i = 1; i < count; ++i) {
+    bool ok = reader.ReadBits(2, &v);
+    if (!ok) {
+      return false;
+    }
+    utype xored = 0;
+    switch (v) {
+      case 0b00:
+        break;
+      case 0b01: {
+        ok = reader.ReadBits(9, &v);
+        if (!ok) return false;
+        int idx = v >> 6;
+        int center_bits = v & 0x3F;
+        ok = reader.ReadBits(center_bits, &v);
+        if (!ok) return false;
+        int trail = 64 - leading_mapping[idx] - center_bits;
+        xored = v << trail;
+        prev_lead_idx = idx;
+        break;
+      }
+      case 0b10: {
+        ok = reader.ReadBits(64 - leading_mapping[prev_lead_idx], &v);
+        xored = v;
+        if(!ok) return false;
+        break;
+      }
+      case 0b11: {
+        uint64_t idx;
+        ok = reader.ReadBits(3, &idx);
+        if (!ok) return false;
+        prev_lead_idx = idx;
+        ok = reader.ReadBits(64 - leading_mapping[idx], &v);
+        xored = v;
+        if (!ok) return false;
+        break;
+      }
+      default:
+        assert(false);
+    }
+    uint64_t current = prev ^ xored;
+    PutFixed64(out, current);
+    prev = current;
+  }
+  return true;
+}
+// export
+template class Chimp<double>;
+template class Chimp<float>;
+
 namespace __simple8b_detail {
 alignas(64) static constexpr uint32_t ITEMWIDTH[16] = {0, 0, 1,  2,  3,  4,  5,  6,
                                                        7, 8, 10, 12, 15, 20, 30, 60};
@@ -377,55 +497,48 @@ bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string
   return __simple8b_detail::Decompress<T>(data, count, out);
 }
 
-class CompressorManager::TwoLevelCompressor {
- private:
-  TsCompressorBase *first_;
-  GenCompressorBase *second_;
-
- public:
-  TwoLevelCompressor(TsCompressorBase *first, GenCompressorBase *second)
-      : first_(first), second_(second) {
-    assert(!(first_ == nullptr && second_ == nullptr));
+bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmap *bitmap,
+                                                     uint32_t count, std::string *out) {
+  out->clear();
+  std::string buf;
+  TSSlice data;
+  bool ok = true;
+  if (first_ == nullptr) {
+    data = raw;
+  } else {
+    ok = first_->Compress(raw, bitmap, count, &buf);
+    data = {buf.data(), buf.size()};
   }
-  bool Compress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count, std::string *out) {
-    std::string buf;
-    TSSlice data;
-    bool ok = true;
-    if (first_ == nullptr) {
-      data = raw;
-    } else {
-      ok = first_->Compress(raw, bitmap, count, &buf);
-      data = {buf.data(), buf.size()};
-    }
-    if (!ok) {
-      return false;
-    }
-    if (second_ == nullptr) {
-      out->swap(buf);
-      return true;
-    }
-    return second_->Compress(data, out);
+  if (!ok) {
+    return false;
   }
-
-  bool Decompress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count, std::string *out) {
-    std::string buf;
-    TSSlice data;
-    bool ok = true;
-    if (second_ == nullptr) {
-      data = raw;
-    } else {
-      ok = second_->Decompress(data, &buf);
-    }
-    if (!ok) {
-      return false;
-    }
-    if (first_ == nullptr) {
-      out->swap(buf);
-      return true;
-    }
-    return first_->Decompress(data, bitmap, count, out);
+  if (second_ == nullptr) {
+    out->swap(buf);
+    return true;
   }
-};
+  return second_->Compress(data, out);
+}
+bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmap *bitmap,
+                                                       uint32_t count, std::string *out) {
+  out->clear();
+  std::string buf;
+  TSSlice data;
+  bool ok = true;
+  if (second_ == nullptr) {
+    data = raw;
+  } else {
+    ok = second_->Decompress(raw, &buf);
+    data = {buf.data(), buf.size()};
+  }
+  if (!ok) {
+    return false;
+  }
+  if (first_ == nullptr) {
+    out->swap(buf);
+    return true;
+  }
+  return first_->Decompress(data, bitmap, count, out);
+}
 
 CompressorManager::CompressorManager() {
   ts_compressor_[DATATYPE::TIMESTAMP][TsCmpAlg::kGorilla] =
@@ -436,12 +549,24 @@ CompressorManager::CompressorManager() {
       &ConcreateTsCompressor<Simple8BInt<int32_t>>::GetInstance();
   ts_compressor_[DATATYPE::INT64][TsCmpAlg::kSimple8B] =
       &ConcreateTsCompressor<Simple8BInt<int64_t>>::GetInstance();
-  ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
+  ts_compressor_[DATATYPE::DOUBLE][TsCmpAlg::kChimp] =
+      &ConcreateTsCompressor<Chimp<double>>::GetInstance();
+  ts_compressor_[DATATYPE::FLOAT][TsCmpAlg::kChimp] =
+      &ConcreateTsCompressor<Chimp<float>>::GetInstance();
+
   general_compressor_[GenCmpAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
+
+  ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
 }
 auto CompressorManager::GetCompressor(DATATYPE dtype, TsCmpAlg first, GenCmpAlg second) const
     -> TwoLevelCompressor {
-  return TwoLevelCompressor{ts_compressor_.at(dtype).at(first), nullptr};
+  const TsCompressorBase *first_comp = nullptr;
+  const GenCompressorBase *second_comp = nullptr;
+  auto it_first = ts_compressor_.at(dtype).find(first);
+  if (it_first != ts_compressor_.at(dtype).end()) first_comp = it_first->second;
+  auto it_second = general_compressor_.find(second);
+  if (it_second != general_compressor_.end()) second_comp = it_second->second;
+  return TwoLevelCompressor{first_comp, second_comp};
 }
 // class Chimp128Compressor : public CompressorBase {};
 

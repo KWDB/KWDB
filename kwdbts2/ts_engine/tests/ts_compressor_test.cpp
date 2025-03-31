@@ -2,10 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <numeric>
 #include <random>
+#include <vector>
 
 #include "libkwdbts2.h"
 #include "ts_compressor_impl.h"
@@ -329,10 +331,65 @@ TEST(Snappy, CompressDecompress) {
   ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
 
   EXPECT_LT(out.size(), s.size());
-  GTEST_LOG_(INFO) << "After compression" << out.size();
 
   std::string origin;
   ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, 0, &origin));
 
   EXPECT_EQ(origin, s);
+}
+
+// Float & Double
+
+TEST(Chimp, CompressDecompress) {
+  const kwdbts::CompressorImpl &comp = kwdbts::Chimp<double>::GetInstance();
+  std::vector<std::vector<double>> c;
+  {
+    std::vector<double> data(8000);
+    for (int i = 0; i < data.size(); ++i) {
+      data[i] = 0.1 * i;
+    }
+    c.push_back(std::move(data));
+  }
+  {
+    std::vector<double> data(1234);
+    for (int i = 0; i < data.size(); ++i) {
+      data[i] = 0.112345676545;
+    }
+    c.push_back(std::move(data));
+  }
+  {
+    // just two number
+    c.push_back({1.345, 1.234345995});
+  }
+  {
+    // tail > 6;
+    std::vector<double> data(3456);
+    uint64_t *p_data = reinterpret_cast<uint64_t *>(data.data());
+    for (int i = 0; i < data.size(); ++i) {
+      p_data[i] = i << 10;
+    }
+    c.push_back(std::move(data));
+  } 
+  {
+    // tail < 6;
+    std::vector<double> data(3456);
+    uint64_t *p_data = reinterpret_cast<uint64_t *>(data.data());
+    for (int i = 0; i < data.size(); ++i) {
+      p_data[i] = i << 3;
+    }
+    c.push_back(std::move(data));
+  }
+
+  for (int i = 0; i < c.size(); ++i) {
+    std::string out, plain;
+    ASSERT_TRUE(comp.Compress(TSSlice{reinterpret_cast<char *>(c[i].data()), c[i].size() * 8},
+                              c[i].size(), &out))
+        << i;
+    ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, c[i].size(), &plain));
+    EXPECT_EQ(plain.size(), c[i].size() * 8);
+    double *raw = reinterpret_cast<double *>(plain.data());
+    for (int j = 0; j < c[i].size(); ++j) {
+      EXPECT_EQ(c[i][j], raw[j]) << i;
+    }
+  }
 }

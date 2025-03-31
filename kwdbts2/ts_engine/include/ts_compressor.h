@@ -179,7 +179,7 @@ enum class TsCmpAlg : uint8_t {
   kPlain = 0,
   kGorilla = 1,
   kSimple8B = 2,
-  // kChimp128 = 3,
+  kChimp = 3,
   // kALP = 4,
   // kELF = 5,
 };
@@ -200,7 +200,20 @@ class TsCompressorBase;
 class GenCompressorBase;
 class CompressorManager {
  private:
-  class TwoLevelCompressor;
+  class TwoLevelCompressor {
+   private:
+    const TsCompressorBase* first_;
+    const GenCompressorBase* second_;
+
+   public:
+    TwoLevelCompressor(const TsCompressorBase* first, const GenCompressorBase* second)
+        : first_(first), second_(second) {
+      assert(!(first_ == nullptr && second_ == nullptr));
+    }
+    bool Compress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
+
+    bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
+  };
 
   std::unordered_map<DATATYPE, std::unordered_map<TsCmpAlg, TsCompressorBase*>> ts_compressor_;
   std::unordered_map<GenCmpAlg, GenCompressorBase*> general_compressor_;

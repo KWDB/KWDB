@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <type_traits>
 
 #include "libkwdbts2.h"
 #include "snappy.h"
@@ -77,6 +78,23 @@ class Simple8BInt : public CompressorImpl {
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
 };
 
+template <class T>
+class Chimp : public CompressorImpl {
+  static_assert(std::is_floating_point_v<T>);
+
+ private:
+  Chimp() = default;
+
+ public:
+  static Chimp &GetInstance() {
+    static Chimp inst;
+    return inst;
+  }
+  static constexpr int stride = 8;
+  bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+};
+
 class SnappyString : public CompressorImpl {
  private:
   SnappyString() = default;
@@ -109,6 +127,7 @@ class ConcreateTsCompressor : public TsCompressorBase {
   }
   bool Compress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
                 std::string *out) const override {
+    out->clear();
     assert(raw.len == count * 8);
     assert(bitmap == nullptr || bitmap->GetCount() == count);
     int stride = Compressor::stride;
@@ -125,17 +144,18 @@ class ConcreateTsCompressor : public TsCompressorBase {
     }
 
     TSSlice input{reinterpret_cast<char *>(valid_data.data()), valid_data.size()};
-    return Compressor::GetInstance().Compress(input, valid_data.size(), out);
+    return Compressor::GetInstance().Compress(input, bitmap->GetValidCount(), out);
   }
 
   bool Decompress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
                   std::string *out) const override {
+    out->clear();
     int stride = Compressor::stride;
     if (stride < 0 || bitmap == nullptr || bitmap->IsAllValid()) {
       return Compressor::GetInstance().Decompress(raw, count, out);
     }
     std::string buf;
-    bool ok = Compressor::GetInstance().Decompress(raw, bitmap->GetCount(), &buf);
+    bool ok = Compressor::GetInstance().Decompress(raw, bitmap->GetValidCount(), &buf);
     if (!ok) {
       return false;
     }
