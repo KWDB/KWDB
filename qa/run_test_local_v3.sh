@@ -68,7 +68,6 @@ while true; do
       mkdir -p $utlog_dir
       ut_start_time=$(date +%s)
       # exec ut and rdirect all output to utname.log
-      echo "wyy: ut is $ut."
       sh -c "cd $QA_DIR && $ut ${topologies}" 2>&1 | tee $utlog_dir/$utname.log
       ut_end_time=$(date +%s)
       duration=$((ut_end_time - ut_start_time))
