@@ -11,6 +11,8 @@
 
 #include "ts_table_v2_impl.h"
 #include "ts_tag_iterator_v2_impl.h"
+#include "ts_engine.h"
+#include "ts_vgroup.h"
 
 namespace kwdbts {
 TsTableV2Impl::TsTableV2Impl(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr) {
@@ -38,6 +40,70 @@ KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> s
     return KStatus::FAIL;
   }
   *iter = tag_iter;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
+                                   std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
+                                   std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
+                                   TsIterator** iter, std::vector<timestamp64> ts_points,
+                                   bool reverse, bool sorted) {
+  auto ts_table_iterator = new TsTableIterator();
+  KStatus s;
+  Defer defer{[&]() {
+    if (s == FAIL) {
+      delete ts_table_iterator;
+      ts_table_iterator = nullptr;
+      *iter = nullptr;
+    }
+  }};
+
+  std::shared_ptr<TagTable> tag_table;
+  s = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  // TODO: call table_schema_mgr_->GetIdxForValidCols to get actual cols.
+  auto& actual_cols = scan_cols;
+  std::vector<k_uint32> ts_scan_cols;
+  for (auto col : scan_cols) {
+    if (col >= actual_cols.size()) {
+      // In the concurrency scenario, after the storage has deleted the column,
+      // kwsql sends query again
+      LOG_ERROR("GetIterator Error : TsTable no column %d", col);
+      return KStatus::FAIL;
+    }
+    ts_scan_cols.emplace_back(actual_cols[col]);
+  }
+
+  DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
+  std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
+  for (auto& entity : entity_ids) {
+    vgroup_ids[entity.subGroupId - 1].push_back(entity.entityId);
+  }
+  std::shared_ptr<TsVGroup> vgroup;
+  TSEngineV2Impl* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
+  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = ts_engine->GetTsVGroups();
+  for (auto& vgroup_iter : vgroup_ids) {
+    if (vgroup_iter.first >= storage_engine_vgroup_max_num) {
+      LOG_ERROR("Invalid vgroup id.", vgroup_iter.first);
+      return s;
+    }
+    vgroup = (*ts_vgroups)[vgroup_iter.first];
+    TsStorageIterator* ts_iter;
+    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], ts_spans, ts_col_type,
+                              scan_cols, ts_scan_cols, scan_agg_types, table_schema_mgr_,
+                              table_version, &ts_iter, vgroup, ts_points, reverse, sorted);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("cannot create iterator for vgroup[%lu].", vgroup_iter.first);
+      return s;
+    }
+    ts_table_iterator->AddEntityIterator(ts_iter);
+  }
+  LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
+              scan_agg_types.size(), ts_table_iterator->GetIterNumber());
+  (*iter) = ts_table_iterator;
   return KStatus::SUCCESS;
 }
 
