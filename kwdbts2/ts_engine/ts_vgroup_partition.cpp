@@ -27,10 +27,9 @@ TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id
       start_(start),
       end_(end),
       path_(root / GetFileName()),
-      blk_segment_(std::make_unique<TsBlockSegment>(path_)),
       last_segment_mgr_(path_) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
-  // is_running_ = true;
+  is_running_ = true;
   initCompactThread();
 }
 
@@ -41,6 +40,7 @@ TsVGroupPartition::~TsVGroupPartition() {
 
 KStatus TsVGroupPartition::Open() {
   std::filesystem::create_directories(path_);
+  blk_segment_ = std::make_unique<TsBlockSegment>(path_);
   return KStatus::SUCCESS;
 }
 
@@ -59,7 +59,7 @@ KStatus TsVGroupPartition::Compact() {
     return s;
   }
   // 3. Set the compacted version.
-  last_segment_mgr_.SetCompactedVer(last_segments.back()->GetVersion());
+  last_segment_mgr_.ClearLastSegments(last_segments.back()->GetVersion());
   return KStatus::SUCCESS;
 }
 
@@ -101,8 +101,8 @@ std::string TsVGroupPartition::GetFileName() const {
 void TsVGroupPartition::compactRoutine(void* args) {
   while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && is_running_) {
     std::unique_lock<std::mutex> lock(cv_mutex_);
-    // Check every 5 minutes if compact is necessary
-    cv_.wait_for(lock, std::chrono::seconds(300), [this] { return !is_running_; });
+    // Check every 10 seconds if compact is necessary
+    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !is_running_; });
     lock.unlock();
     // If the thread pool stops or the system is no longer running, exit the loop
     if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !is_running_) {

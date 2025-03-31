@@ -4,6 +4,8 @@
 #include <string>
 #include <type_traits>
 
+using std::string;
+
 #include "libkwdbts2.h"
 #include "snappy.h"
 #include "ts_bitmap.h"

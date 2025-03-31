@@ -226,11 +226,9 @@ struct TsEntityKey {
   inline bool operator==(const TsEntityKey& other) const {
     return entity_id == other.entity_id && table_version == other.table_version;
   }
-};
 
-struct TsEntityKeyHash {
-  inline std::size_t operator()(const TsEntityKey& k) const {
-    return std::hash<uint64_t>()(k.entity_id) ^ (std::hash<uint32_t>()(k.table_version) << 1);
+  inline bool operator<(const TsEntityKey& other) const {
+    return entity_id != other.entity_id ? entity_id < other.entity_id : table_version < other.table_version;
   }
 };
 
@@ -238,8 +236,9 @@ struct TsLastSegmentBlockRowInfo {
   timestamp64 ts;
   uint64_t seq_no;
 
-  uint32_t last_segment_block_idx;
-  uint32_t row_idx_in_block;
+  uint32_t last_segment_idx;
+  uint32_t block_idx;
+  uint32_t row_idx;
 
   inline bool operator<(const TsLastSegmentBlockRowInfo& other) const {
     return ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
@@ -260,10 +259,17 @@ class TsBlockSegmentBuilder {
   std::vector<std::shared_ptr<TsLastSegment>>& last_segments_;
   TsVGroupPartition* partition_;
 
-  std::vector<TsLastSegmentBlock*> blocks_;
-  std::unordered_map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>, TsEntityKeyHash> entity_row_values_;
+  std::vector<std::vector<std::shared_ptr<TsLastSegmentBlock>>> blocks_;
+  std::map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>> entity_row_values_;
 
   size_t max_rows_per_block_;
+
+  KStatus buildColData(std::vector<TsLastSegmentBlockRowInfo>& row_values,
+                       int col_idx, size_t row_offset, size_t row_count,
+                       bool has_bitmap, DATATYPE d_type, size_t d_size,
+                       string& col_data, TsBitmap& bitmap);
+
+  KStatus compress(std::string col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count, std::string& buffer);
 
  public:
   explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>>& last_segments,
@@ -272,14 +278,7 @@ class TsBlockSegmentBuilder {
                                  last_segments_(last_segments),
                                  partition_(partition),
                                  max_rows_per_block_(max_rows_per_block) {}
-  ~TsBlockSegmentBuilder() {
-    for (TsLastSegmentBlock* block : blocks_) {
-      if (block) {
-        delete block;
-        block = nullptr;
-      }
-    }
-  }
+  ~TsBlockSegmentBuilder() {}
 
   KStatus BuildAndFlush(uint32_t thread_num = 1);
 };

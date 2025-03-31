@@ -91,36 +91,46 @@ KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* bl
   return KStatus::SUCCESS;
 }
 
-KStatus TsLastSegment::GetBlockInfo(TsLastSegmentBlockIndex& block_index, size_t col_num,
-                                    TsLastSegmentBlockInfo* block_info) {
+KStatus TsLastSegment::GetBlockInfo(TsLastSegmentBlockIndex& block_index, TsLastSegmentBlockInfo* block_info) {
   TSSlice result;
-  size_t block_info_size = LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE + col_num * sizeof(uint32_t);
-  char* block_info_data = new char[block_info_size];
-  file_->Read(block_index.offset, block_info_size, &result, block_info_data);
-  if (result.len != block_info_size) {
-    delete[] block_info_data;
-    LOG_ERROR(
-        "last segment[%s] GetBlockInfo failed, read block info failed. "
-        "table id: %lu, table version: %u, block info offset: %lu.",
-        file_->GetFilePath().c_str(), block_index.table_id, block_index.table_version,
-        block_index.offset);
+  // block info header
+  char* block_info_header = new char[LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE];
+  file_->Read(block_index.offset, LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE, &result, block_info_header);
+  if (result.len != LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE) {
+    LOG_ERROR("last segment[%s] GetBlockInfo failed, read header failed. "
+              "table id: %lu, table version: %u, block info offset: %lu.",
+              file_->GetFilePath().c_str(), block_index.table_id,
+              block_index.table_version, block_index.offset);
+    delete[] block_info_header;
     return KStatus::FAIL;
   }
-  // block info header
-  memcpy(reinterpret_cast<char*>(block_info), block_info_data, LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE);
+  memcpy(reinterpret_cast<char *>(block_info), block_info_header, LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE);
+  delete[] block_info_header;
+
   // block info column offset
-  block_info->col_infos.resize(col_num);
-  const char* ptr = block_info_data + LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE;
-  for (size_t col_idx = 0; col_idx < col_num; ++col_idx) {
-    block_info->col_infos[col_idx].data_len = DecodeFixed32(ptr);
+  size_t col_infos_len = block_info->ncol * LAST_SEGMENT_BLOCK_INFO_COL_INFO_SIZE;
+  char* col_infos_data = new char[col_infos_len];
+  file_->Read(block_index.offset + LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE, col_infos_len, &result, col_infos_data);
+  if (result.len != col_infos_len) {
+    LOG_ERROR("last segment[%s] GetBlockInfo failed, read col infos failed. "
+              "table id: %lu, table version: %u, block info offset: %lu.",
+              file_->GetFilePath().c_str(), block_index.table_id,
+              block_index.table_version, block_index.offset);
+    delete[] col_infos_data;
+    return KStatus::FAIL;
+  }
+  block_info->col_infos.resize(block_info->ncol);
+  char* ptr = col_infos_data;
+  for (size_t col_idx = 0; col_idx < block_info->ncol; ++col_idx) {
+    block_info->col_infos[col_idx].offset = DecodeFixed32(ptr);
     ptr += 4;
     block_info->col_infos[col_idx].bitmap_len = DecodeFixed16(ptr);
     ptr += 2;
     block_info->col_infos[col_idx].data_len = DecodeFixed32(ptr);
     ptr += 4;
   }
-  assert(ptr == block_info_data + block_info_size);
-  delete[] block_info_data;
+  assert(ptr == col_infos_data + col_infos_len);
+  delete[] col_infos_data;
   return KStatus::SUCCESS;
 }
 
@@ -347,6 +357,14 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
+  if (has_bitmap_) {
+    //  TODO(zzr) Compress bitmap..
+    bitmap_buffer_.clear();
+    bitmap_buffer_.push_back(0);  // TODO(zzr) which means plain, nocompression
+    auto slice = bitmap_.GetData();
+    bitmap_buffer_.append(slice.data, slice.len);
+  }
+
   const auto& mgr = CompressorManager::GetInstance();
   auto compressor = mgr.GetDefaultCompressor(dtype_);
   TSSlice plain{data_buffer_.data(), data_buffer_.size()};
@@ -365,14 +383,6 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
     tmp.append(data_buffer_);
   }
   data_buffer_.swap(tmp);
-
-  if (has_bitmap_) {
-    //  TODO(zzr) Compress bitmap..
-    data_buffer_.clear();
-    data_buffer_.push_back(0);  // TODO(zzr) which means plain, nocompression
-    auto slice = bitmap_.GetData();
-    data_buffer_.append(slice.data, slice.len);
-  }
 }
 
 auto TsLastSegmentBuilder::MetricBlockBuilder::GetBlockInfo() const -> BlockInfo {
@@ -508,7 +518,7 @@ size_t TsLastSegmentBuilder::InfoHandle::RecordBlock(size_t block_length, const 
   cursor_ += block_length;
 
   infos_.push_back(info);
-  size_t length = LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE + info.col_infos.size() * (4 + 2 + 4);
+  size_t length = LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE + info.col_infos.size() * LAST_SEGMENT_BLOCK_INFO_COL_INFO_SIZE;
 
   length_ += length;
 
@@ -568,34 +578,50 @@ KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsFile* file) {
 
 KStatus TsLastSegmentManager::NewLastSegment(std::shared_ptr<TsLastSegment>& last_segment) {
   char buffer[64];
+  wrLock();
   ver_++;
   std::snprintf(buffer, sizeof(buffer), "last.ver-%04u", ver_);
   auto filename = dir_path_ / buffer;
   last_segment =
       std::make_shared<TsLastSegment>(ver_, new TsMMapFile(filename, false /*read_only*/));
   last_segments_.push_back(last_segment);
+  unLock();
   return KStatus::SUCCESS;
 }
 
 std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetCompactLastSegments() {
   std::vector<std::shared_ptr<TsLastSegment>> result;
+  rdLock();
   if (last_segments_.empty()) {
     return result;
   }
   size_t offset = compacted_ver_ - last_segments_[0]->GetVersion() + 1;
   assert(offset < last_segments_.size());
-  if (ver_ - compacted_ver_ > MAX_COMPACT_NUM) {
+  if (ver_ - compacted_ver_ > MAX_COMPACT_NUM + MAX_FLUSH_NUM) {
     result.assign(last_segments_.begin() + offset,
                   last_segments_.begin() + offset + MAX_COMPACT_NUM);
   }
+  unLock();
   return result;
 }
 
 bool TsLastSegmentManager::NeedCompact() {
   assert(ver_ > compacted_ver_);
-  return ver_ - compacted_ver_ > MAX_COMPACT_NUM;
+  return ver_ - compacted_ver_ > MAX_COMPACT_NUM + MAX_FLUSH_NUM;
 }
 
-void TsLastSegmentManager::SetCompactedVer(uint32_t ver) { compacted_ver_ = ver; }
+void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
+  wrLock();
+  compacted_ver_ = ver;
+  for (auto it = last_segments_.begin(); it != last_segments_.end();) {
+    if ((*it)->GetVersion() <= ver) {
+      (*it)->GetFilePtr()->MarkDelete();
+      it = last_segments_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  unLock();
+}
 
 }  // namespace kwdbts

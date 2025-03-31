@@ -177,6 +177,7 @@ struct TsLastSegmentBlockInfo {
   std::vector<ColInfo> col_infos;
 };
 const size_t LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE = sizeof(uint64_t) + 4 * sizeof(uint32_t);
+const size_t LAST_SEGMENT_BLOCK_INFO_COL_INFO_SIZE = sizeof(uint32_t) + sizeof(uint16_t) + sizeof(uint32_t);
 
 struct TsLastSegmentColumnBlock {
   TsBitmap bitmap;
@@ -246,12 +247,9 @@ class TsLastSegment {
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
-  KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, size_t col_num,
-                       TsLastSegmentBlockInfo* block_info);
+  KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, TsLastSegmentBlockInfo* block_info);
 
   KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
-
-  KStatus GetBlock(TsLastSegmentBlockIndex& block_index, size_t col_num, TsLastSegmentBlock* block);
 };
 
 class TsLastSegmentBuilder {
@@ -448,18 +446,25 @@ struct TsLastSegmentSlice {
   uint32_t count;
 };
 
-const uint32_t MAX_COMPACT_NUM = 10;
+const uint32_t MAX_COMPACT_NUM = 5;
+const uint32_t MAX_FLUSH_NUM = 4;
 
 class TsLastSegmentManager {
  private:
   std::filesystem::path dir_path_;
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
+  KRWLatch rw_latch_;
 
   uint32_t ver_ = 0;
   uint32_t compacted_ver_ = 0;
 
+  int rdLock() {return RW_LATCH_S_LOCK(&rw_latch_);}
+  int wrLock() {return RW_LATCH_X_LOCK(&rw_latch_);}
+  int unLock() {return RW_LATCH_UNLOCK(&rw_latch_);}
+
  public:
-  explicit TsLastSegmentManager(const string& dir_path) : dir_path_(dir_path) {}
+  explicit TsLastSegmentManager(const string& dir_path) :
+                                dir_path_(dir_path), rw_latch_(RWLATCH_ID_LAST_SEGMENT_MANAGER_RWLOCK) {}
 
   ~TsLastSegmentManager() {}
 
@@ -469,7 +474,7 @@ class TsLastSegmentManager {
 
   bool NeedCompact();
 
-  void SetCompactedVer(uint32_t ver);
+  void ClearLastSegments(uint32_t ver);
 };
 
 }  // namespace kwdbts
