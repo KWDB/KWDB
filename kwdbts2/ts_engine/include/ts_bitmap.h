@@ -70,7 +70,21 @@ class TsBitmap {
       (*this)[i] = f;
     }
   }
-  TSSlice GetData() { return {rep_.data(), rep_.size()}; }
-  size_t GetNRow() const { return nrow_; }
+
+  void SetData(TSSlice rep) {
+    rep_.assign(rep.data, rep.len);
+  }
+
+  TSSlice GetData() {
+    return {rep_.data(), rep_.size()};
+  }
+
+  size_t GetNRow() const {
+    return nrow_;
+  }
+
+  static size_t GetBitmapLen(size_t nrows) {
+    return (nbit_per_row * nrows + 7) / 8;
+  }
 };
 }  // namespace kwdbts

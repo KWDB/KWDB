@@ -20,59 +20,57 @@
 
 namespace kwdbts {
 
-TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id, int64_t start, int64_t end)
+TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
+                                     int64_t start, int64_t end)
     : database_id_(database_id),
+      schema_mgr_(schema_mgr),
       start_(start),
       end_(end),
       path_(root / GetFileName()),
       blk_segment_(std::make_unique<TsBlockSegment>(path_)),
-      last_segments_(path_) {
+      last_segment_mgr_(path_) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
+  // is_running_ = true;
+  initCompactThread();
 }
 
-TsVGroupPartition::~TsVGroupPartition() {}
+TsVGroupPartition::~TsVGroupPartition() {
+  is_running_ = false;
+  closeCompactThread();
+}
 
 KStatus TsVGroupPartition::Open() {
-  // todo(liangbo01) load files.
   std::filesystem::create_directories(path_);
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::Compact(TSTableID table_id, TSEntityID entity_id, const std::vector<AttributeInfo>& schema,
-                                   uint32_t table_version, uint32_t num, const std::vector<TsBlockColData>& col_datas) {
-  TsMetricBlockBuilder builder(schema, num);
-  TSSlice block_data = builder.Build(col_datas);
-  if (block_data.len == 0) {
-    LOG_ERROR("building column block failed.");
-    return KStatus::FAIL;
+KStatus TsVGroupPartition::Compact() {
+  // TODO(limeng04): Compact all the last segments in the historical partition.
+  // 1. Get all the last segments that need to be compacted.
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments = last_segment_mgr_.GetCompactLastSegments();
+  if (last_segments.empty()) {
+    return KStatus::SUCCESS;
   }
-  Defer defer{[&]() { free(block_data.data); }};
-  // todo(liangbo01) generate agg block info
-  TSSlice block_agg;
-  block_agg.data = reinterpret_cast<char*>(malloc(1));
-  block_agg.len = 1;
-  if (block_agg.len == 0) {
-    LOG_ERROR("building column agg failed.");
-    return KStatus::FAIL;
-  }
-  Defer defer1{[&]() { free(block_agg.data); }};
-
-  KStatus s = appendToBlockSegment(table_id, entity_id, table_version, block_data, block_agg, num);
+  // 2. Build the column block.
+  TsBlockSegmentBuilder builder(last_segments, this);
+  KStatus s = builder.BuildAndFlush();
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("column block append To Block Segment failed.");
+    LOG_ERROR("partition[%s] compact failed", path_.c_str());
     return s;
   }
+  // 3. Set the compacted version.
+  last_segment_mgr_.SetCompactedVer(last_segments.back()->GetVersion());
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::appendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
+KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
                                                 TSSlice block_data, TSSlice block_agg, uint32_t row_num) {
   // generating new block item info ,and append to block segment.
-  TsBlockItem blk_item;
+  TsBlockSegmentBlockItem blk_item;
   blk_item.Info().entity_id = entity_id;
-  blk_item.Info().schema_version = table_version;
+  blk_item.Info().table_version = table_version;
   blk_item.Info().row_count = row_num;
-  // todo(limeng04): block_item_info.max_ts & min_ts
+  // TODO(limeng04): block_item_info.max_ts & min_ts
 
   KStatus s = blk_segment_->AppendBlockData(&blk_item, block_data, block_agg);
   if (s != KStatus::SUCCESS) {
@@ -88,12 +86,60 @@ KStatus TsVGroupPartition::FlushToLastSegment(const std::string &piece) {
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroupPartition::NewLastSegment(std::shared_ptr<TsLastSegment>& last_segment) {
+  return last_segment_mgr_.NewLastSegment(last_segment);
+}
+
 std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }
 
 std::string TsVGroupPartition::GetFileName() const {
   char buffer[64];
   std::snprintf(buffer, sizeof(buffer), "db%02d-%010ld", database_id_, start_);
   return buffer;
+}
+
+void TsVGroupPartition::compactRoutine(void* args) {
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && is_running_) {
+    std::unique_lock<std::mutex> lock(cv_mutex_);
+    // Check every 5 minutes if compact is necessary
+    cv_.wait_for(lock, std::chrono::seconds(300), [this] { return !is_running_; });
+    lock.unlock();
+    // If the thread pool stops or the system is no longer running, exit the loop
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !is_running_) {
+      break;
+    }
+    // Execute compact tasks
+    if (last_segment_mgr_.NeedCompact()) {
+      this->Compact();
+    }
+  }
+}
+
+void TsVGroupPartition::initCompactThread() {
+  KWDBOperatorInfo kwdb_operator_info;
+  // Set the name and owner of the operation
+  kwdb_operator_info.SetOperatorName("TsVGroupPartition::CompactThread");
+  kwdb_operator_info.SetOperatorOwner("TsVGroupPartition");
+  time_t now;
+  // Record the start time of the operation
+  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
+  // Start asynchronous thread
+  compact_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
+    std::bind(&TsVGroupPartition::compactRoutine, this, std::placeholders::_1), this,
+    &kwdb_operator_info);
+  if (compact_thread_id_ < 1) {
+    // If thread creation fails, record error message
+    LOG_ERROR("TsVGroupPartition compact thread create failed");
+  }
+}
+
+void TsVGroupPartition::closeCompactThread() {
+  if (compact_thread_id_ > 0) {
+    // Wake up potentially dormant compact threads
+    cv_.notify_all();
+    // Waiting for the compact thread to complete
+    KWDBDynamicThreadPool::GetThreadPool().JoinThread(compact_thread_id_, 0);
+  }
 }
 
 }  //  namespace kwdbts
