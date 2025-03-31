@@ -24,8 +24,9 @@ namespace kwdbts {
 TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                                   std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                                                   std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                                                  std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version) {
-  vgroup_= vgroup;
+                                                  std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                                  uint32_t table_version) {
+  vgroup_ = vgroup;
   entity_ids_ = entity_ids;
   ts_spans_ = ts_spans;
   ts_col_type_ = ts_col_type;
@@ -39,7 +40,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 }
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
-  // TODO: initialization
+  // TODO(Yongyan): initialization
   KStatus ret = table_schema_mgr_->GetColumnsIncludeDropped(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {
     return ret;
@@ -48,7 +49,7 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
 }
 
 KStatus TsStorageIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  // TODO: scan next batch
+  // TODO(Yongyan): scan next batch
   return KStatus::FAIL;
 }
 
@@ -138,12 +139,12 @@ TsSortedRowDataIteratorV2Impl::~TsSortedRowDataIteratorV2Impl() {
 }
 
 KStatus TsSortedRowDataIteratorV2Impl::Init(bool is_reversed) {
-  // TODO: initialization
+  // TODO(Yongyan): initialization
   return KStatus::FAIL;
 }
 
 KStatus TsSortedRowDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  // TODO: scan next batch
+  // TODO(Yongyan): scan next batch
   return KStatus::FAIL;
 }
 
@@ -161,12 +162,12 @@ TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
-  // TODO: initialization
+  // TODO(Yongyan): initialization
   return KStatus::FAIL;
 }
 
 KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  // TODO: scan next batch
+  // TODO(Yongyan): scan next batch
   return KStatus::FAIL;
 }
 

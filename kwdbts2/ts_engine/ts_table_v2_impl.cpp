@@ -64,7 +64,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
     return s;
   }
 
-  // TODO: call table_schema_mgr_->GetIdxForValidCols to get actual cols.
+  // TODO(Yongyan): call table_schema_mgr_->GetIdxForValidCols to get actual cols.
   auto& actual_cols = scan_cols;
   std::vector<k_uint32> ts_scan_cols;
   for (auto col : scan_cols) {

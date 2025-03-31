@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "kwdb_type.h"
 #include "rocksdb/status.h"

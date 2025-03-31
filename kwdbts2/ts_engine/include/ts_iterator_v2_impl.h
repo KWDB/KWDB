@@ -10,6 +10,8 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <vector>
+#include <memory>
 #include "ts_common.h"
 #include "iterator.h"
 
