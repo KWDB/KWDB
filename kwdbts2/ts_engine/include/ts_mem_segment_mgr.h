@@ -154,10 +154,10 @@ class TsMemSegmentManager {
     segment_.clear();
   }
 
-  bool FlushOneMemSegment(TsMemSegment* mem_seg);
-
   // WAL CreateCheckPoint call this function to persistent metric datas.
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
+
+  void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id);
 

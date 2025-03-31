@@ -21,10 +21,16 @@ class TsEnvInstance {
  private:
   std::mutex obj_create_mutex_;
   ColumnCompressorMgr* compressor_mgr_{nullptr};
-
+  size_t THREAD_MAX_NUM = 4;
 
  private:
-  TsEnvInstance() = default;
+  TsEnvInstance() {}
+
+  ~TsEnvInstance() {
+    if (compressor_mgr_ != nullptr) {
+      delete compressor_mgr_;
+    }
+  }
 
  public:
   static TsEnvInstance& GetInstance() {
@@ -37,6 +43,10 @@ class TsEnvInstance {
   bool SetCompressorPolicy(ColumnCompressorPolicy policy) {
     return Compressor()->ResetPolicy(policy);
   }
+
+  // KThreadID ApplyJob(std::function<void(void *)> &&job, void *arg, KWDBOperatorInfo *kwdb_operator_info) {
+  //   return kwdbts::KWDBDynamicThreadPool::GetThreadPool().ApplyThread(job, arg, kwdb_operator_info);
+  // }
 
   ColumnCompressorMgr* Compressor() {
     if (compressor_mgr_ != nullptr) {

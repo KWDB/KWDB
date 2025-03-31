@@ -14,89 +14,13 @@
 
 namespace kwdbts {
 
-bool TsMemSegmentManager::FlushOneMemSegment(TsMemSegment* mem_seg) {
-  if (!mem_seg->SetFlushing()) {
-    LOG_ERROR("cannot set status for mem segment.");
-    return false;
-  }
-  std::unordered_map<TsVGroupPartition*, TsLastSegmentBuilder> builders;
-  struct LastRowInfo {
-    TSTableID cur_table_id = 0;
-    uint32_t database_id = 0;
-    uint32_t cur_table_version = 0;
-    std::vector<AttributeInfo> info;
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-  };
-  LastRowInfo last_row_info;
-  bool flush_success = true;
-
-  mem_seg->Traversal([&](TSMemSegRowData* tbl) -> bool {
-    // 1. get table schema manager.
-    if (last_row_info.cur_table_id != tbl->table_id) {
-      auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(tbl->table_id, last_row_info.schema_mgr);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot get table[%lu] schemainfo.", tbl->table_id);
-        flush_success = false;
-        return false;
-      }
-      last_row_info.cur_table_id = tbl->table_id;
-      last_row_info.database_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(tbl->table_id);
-      last_row_info.cur_table_version = 0;
-    }
-    // 2. get table schema info of certain version.
-    if (last_row_info.cur_table_version != tbl->table_version) {
-      last_row_info.info.clear();
-      auto s = last_row_info.schema_mgr->GetColumnsExcludeDropped(last_row_info.info, tbl->table_version);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot get table[%lu] version[%u] schema info.", tbl->table_id, tbl->table_version);
-        flush_success = false;
-        return false;
-      }
-      last_row_info.cur_table_version = tbl->table_version;
-    }
-    // 3. get partition for metric data. 
-    auto partition = vgroup_->GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
-    auto it = builders.find(partition);
-    if (it == builders.end()) {
-      std::unique_ptr<TsFile> last_file;
-      partition->NewLastFile(&last_file);
-      auto result = builders.insert({partition, TsLastSegmentBuilder{vgroup_->GetEngineSchemaMgr(), std::move(last_file)}});
-      it = result.first;
-    }
-    // 4. insert data into segment builder.
-    TsLastSegmentBuilder& builder = it->second;
-    auto s = builder.PutRowData(tbl->table_id, tbl->table_version, tbl->entity_id, tbl->seqno, tbl->row_data);
-    if (s != SUCCESS) {
-      LOG_ERROR("PutRowData failed.");
-      flush_success = false;
-      return false;
-    }
-    return true;
-  });
-  if (!flush_success) {
-    LOG_ERROR("faile flush memsegment to last segment.");
-    return false;
-  }
-
-  for (auto& kv : builders) {
-    auto s = kv.second.Finalize();
-    if (s == FAIL){
-      LOG_ERROR("last segment Finalize failed.");
-      return false;
-    }
-    kv.second.Flush();
-  }
-  mem_seg->SetDeleting();
-  return true;
-}
-
 // WAL CreateCheckPoint call this function to persistent metric datas.
 void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments) {
   segments->reset();
   segment_lock_.lock();
   if (segment_.size() > 0) {
     *segments = segment_.front();
-    segment_.push_front(std::make_shared<TsMemSegment>());
+    segment_.push_back(std::make_shared<TsMemSegment>());
   }
   segment_lock_.unlock();
   if (segments->get() != nullptr && (*segments)->SetImm()) {
@@ -104,6 +28,34 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
   } else {
     LOG_ERROR("can not switch mem segment.");
   }
+}
+
+void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
+  segment_lock_.lock();
+  bool found_seg = false;
+  // remove deleted mem segments.
+  while (segment_.size() > 0) {
+    std::shared_ptr<TsMemSegment>& cur_seg = segment_.front();
+    if (cur_seg == nullptr) {
+      segment_.pop_front();
+    } else if (cur_seg.get() == mem_seg.get()) {
+      found_seg = true;
+      segment_.pop_front();
+    } else {
+      break;
+    }
+  }
+  if (!found_seg) {
+    auto it = segment_.begin();
+    while (it != segment_.end()) {
+      if (it->get() == mem_seg.get()) {
+        it->reset();
+        break;
+      }
+      it++;
+    }
+  }
+  segment_lock_.unlock();
 }
 
 KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {

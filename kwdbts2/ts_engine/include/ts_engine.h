@@ -29,6 +29,7 @@
 #include "ts_engine_schema_manager.h"
 #include "engine.h"
 #include "ts_table_v2.h"
+#include "ts_flush_manager.h"
 
 namespace kwdbts {
 
@@ -44,6 +45,7 @@ class TSEngineV2Impl : public TSEngine {
   EngineOptions options_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableV2>> tables_;
   std::mutex table_mutex_;
+  TsLSNFlushManager flush_mgr_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -64,6 +66,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                      ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override {
     // TODO(liangbo01)  need input change version
+    KStatus s = KStatus::SUCCESS;
     table_mutex_.lock();
     auto it = tables_.find(table_id);
     if (it != tables_.end()) {
@@ -71,19 +74,26 @@ class TSEngineV2Impl : public TSEngine {
     } else {
       std::shared_ptr<TsTableSchemaManager> schema;
       auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
-      if (s != KStatus::SUCCESS) {
+      if (s == KStatus::SUCCESS) {
+        auto table = std::make_shared<TsTableV2>(schema, table_grps_);
+        if (table.get() != nullptr) {
+          tables_[table_id] = table;
+          ts_table = table;
+        } else {
+          LOG_ERROR("make TsTableV2 failed for table[%lu]", table_id);
+          s = KStatus::FAIL;
+        }
+      } else {
         LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
-        return s;
+        s = KStatus::FAIL;
       }
-      auto table = std::make_shared<TsTableV2>(schema, table_grps_);
-      if (table.get() == nullptr) {
-        LOG_ERROR("make TsTableV2 failed for table[%lu]", table_id);
-        return KStatus::FAIL;
-      }
-      tables_[table_id] = table;
-      ts_table = table;
+      
     }
-    return KStatus::SUCCESS;
+    table_mutex_.unlock();
+    if (s == KStatus::SUCCESS) {
+      // todo(liangbo01) if version no exist.
+    }
+    return s;
   }
 
   KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
@@ -254,10 +264,19 @@ class TSEngineV2Impl : public TSEngine {
                               const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
                               const std::vector<uint32_t/* tag column id*/> &new_index_schema) override {return FAIL; }
 
+  KStatus SwitchMemSegments(TS_LSN lsn) {
+    return flush_mgr_.FlashMemSegment(lsn);
+  }
+
+  TS_LSN GetFinishedLSN() {
+    return flush_mgr_.GetFinishedLSN();
+  }
+
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);
 
   KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
+
 };
 
 }  //  namespace kwdbts
