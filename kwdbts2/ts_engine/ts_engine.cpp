@@ -21,13 +21,20 @@
 #include "ee_executor.h"
 #include "ts_table_v2_impl.h"
 
+extern int storage_engine_vgroup_max_num = 10;
 namespace kwdbts {
-const int storage_engine_vgroup_max_num = 10;
+
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
+  char* vgroup_num = getenv("KW_VGROUP_NUM");
+  if (vgroup_num != nullptr) {
+    char *endptr;
+    storage_engine_vgroup_max_num = strtol(vgroup_num, &endptr, 10);
+    assert(*endptr == '\0');
+  }
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
