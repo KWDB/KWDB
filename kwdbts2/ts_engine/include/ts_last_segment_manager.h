@@ -75,7 +75,7 @@ namespace kwdbts {
  * +---------------+---------+-------------+-----------------------+
  * | col_offset[0] | col_offset[1] |  ...  |   col_offset[ncol-1]  |
  * +---------------+-------+-------+-------+-----------------------+
- * |   bitmap[0]   |   bitmap[1]   |  ...  |     bitmap[ncol-1]    | ? 
+ * |   bitmap[0]   |   bitmap[1]   |  ...  |     bitmap[ncol-1]    | ?
  * +---------------+---------------+-------+-----------------------+
  *
  *
@@ -149,10 +149,7 @@ static constexpr uint64_t FOOTER_MAGIC = 0xcb2ffe9321847271;
 struct TsLastSegmentFooter {
   uint64_t block_info_idx_offset, n_data_block;
   uint64_t meta_block_idx_offset, n_meta_block;
-  uint8_t padding[16] = {0, 0, 0, 0,
-                          0, 0, 0, 0,
-                          0, 0, 0, 0,
-                          0, 0, 0, 0};
+  uint8_t padding[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   uint64_t file_version;
   const uint64_t magic_number = FOOTER_MAGIC;
 };
@@ -172,7 +169,12 @@ struct TsLastSegmentBlockInfo {
   uint32_t ncol;
   uint32_t var_offset;
   uint32_t var_len;
-  std::vector<uint32_t> col_offset;
+  struct ColInfo {
+    uint32_t offset;
+    uint16_t bitmap_len;
+    uint32_t data_len;
+  };
+  std::vector<ColInfo> col_infos;
 };
 const size_t LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE = sizeof(uint64_t) + 4 * sizeof(uint32_t);
 
@@ -207,7 +209,8 @@ struct TsLastSegmentBlock {
       value.data = &column_blocks[col_idx].buffer[row_idx * data_len];
       value.len = data_len;
     } else {
-      size_t offset = *reinterpret_cast<size_t*>(&column_blocks[col_idx].buffer[row_idx * data_len]);
+      size_t offset =
+          *reinterpret_cast<size_t*>(&column_blocks[col_idx].buffer[row_idx * data_len]);
       value.len = *reinterpret_cast<uint16_t*>(&var_buffer[offset]);
       value.data = &var_buffer[offset + sizeof(uint16_t)];
     }
@@ -238,11 +241,13 @@ class TsLastSegment {
 
   KStatus GetFooter(TsLastSegmentFooter* footer);
 
-  KStatus GetAllBlockIndex(TsLastSegmentFooter& footer, std::vector<TsLastSegmentBlockIndex>* block_indexes);
+  KStatus GetAllBlockIndex(TsLastSegmentFooter& footer,
+                           std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
-  KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, size_t col_num, TsLastSegmentBlockInfo* block_info);
+  KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, size_t col_num,
+                       TsLastSegmentBlockInfo* block_info);
 
   KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
 
@@ -280,7 +285,8 @@ class TsLastSegmentBuilder {
   KStatus FlushPayloadBuffer();
 
  public:
-  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::shared_ptr<TsLastSegment> last_segment)
+  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr,
+                       std::shared_ptr<TsLastSegment> last_segment)
       : last_segment_(last_segment),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
         info_handle_(std::make_unique<InfoHandle>()),
@@ -302,6 +308,11 @@ class TsLastSegmentBuilder {
 };
 
 struct TsLastSegmentBuilder::BlockInfo {
+  struct ColInfo {
+    uint32_t col_offset;
+    uint16_t bitmap_len;
+    uint32_t data_len;
+  };
   TSTableID table_id;
   uint32_t version;
   uint32_t nrow;
@@ -310,7 +321,7 @@ struct TsLastSegmentBuilder::BlockInfo {
   uint32_t var_len;
   int64_t min_ts, max_ts;
   uint64_t min_entity_id, max_entity_id;
-  std::vector<uint32_t> col_offset;
+  std::vector<ColInfo> col_infos;
   BlockInfo() { Reset(-1, -1); }
   void Reset(TSTableID table_id, uint32_t version) {
     this->table_id = table_id;
@@ -321,7 +332,7 @@ struct TsLastSegmentBuilder::BlockInfo {
     min_ts = INT64_MAX;
     min_entity_id = UINT64_MAX;
     max_entity_id = 0;
-    col_offset.clear();
+    col_infos.clear();
   }
 };
 
@@ -396,8 +407,10 @@ class TsLastSegmentBuilder::MetricBlockBuilder {
 
 class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
  private:
+  bool has_bitmap_;
   TsBitmap bitmap_;
-  std::string buffer_;
+  std::string bitmap_buffer_;
+  std::string data_buffer_;
   DATATYPE dtype_;
 
   uint32_t row_cnt_ = 0;
@@ -408,7 +421,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   ColumnBlockBuilder(const ColumnBlockBuilder&) = delete;
   void operator=(const ColumnBlockBuilder&) = delete;
 
-  explicit ColumnBlockBuilder(DATATYPE dtype) : dtype_(dtype) {
+  explicit ColumnBlockBuilder(DATATYPE dtype, bool has_bitmap) : has_bitmap_(has_bitmap), dtype_(dtype) {
     if (dtype_ == TIMESTAMP64_LSN_MICRO || dtype_ == TIMESTAMP64_LSN ||
         dtype_ == TIMESTAMP64_LSN_NANO) {
       // discard LSN
@@ -417,19 +430,16 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
       dsize_ = getDataTypeSize(dtype);
     }
   }
-  __attribute__((visibility("hidden"))) void Add(const TSSlice &col_data) noexcept;
+  __attribute__((visibility("hidden"))) void Add(const TSSlice& col_data) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {
-    buffer_.reserve(nrow * getDataTypeSize(dtype_));
-    bitmap_.Reset(nrow);
+    data_buffer_.reserve(nrow * getDataTypeSize(dtype_));
+    bitmap_.Reset(has_bitmap_ ? nrow : 0);
   }
-  TSSlice GetData() {
-    assert(row_cnt_ == bitmap_.GetCount());
-    return TSSlice{buffer_.data(), buffer_.size()};
-  }
+  TSSlice GetData() { return TSSlice{data_buffer_.data(), data_buffer_.size()}; }
 
-  TSSlice GetBitmap() { return bitmap_.GetData(); }
+  TSSlice GetBitmap() { return TSSlice{bitmap_buffer_.data(), bitmap_buffer_.size()}; }
 };
 
 struct TsLastSegmentSlice {

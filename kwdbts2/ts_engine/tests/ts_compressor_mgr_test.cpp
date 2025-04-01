@@ -14,8 +14,7 @@
 
 TEST(CompressorManager, TwoLevelCompress) {
   const auto& inst = kwdbts::CompressorManager::GetInstance();
-  auto comp =
-      inst.GetCompressor(DATATYPE::INT64, kwdbts::TsCmpAlg::kSimple8B, kwdbts::GenCmpAlg::kSnappy);
+  auto comp = inst.GetCompressor(kwdbts::TsCompAlg::kSimple8B_s64, kwdbts::GenCompAlg::kSnappy);
 
   int count = 10333;
   std::vector<int64_t> vec(count);

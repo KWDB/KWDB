@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -173,19 +174,28 @@ class ColumnCompressorMgr {
   void initDeCompressor();
 };
 
-
 // Compression algorithm for timeseries
-enum class TsCmpAlg : uint8_t {
+enum class TsCompAlg : uint16_t {
   kPlain = 0,
-  kGorilla = 1,
-  kSimple8B = 2,
-  kChimp = 3,
-  // kALP = 4,
-  // kELF = 5,
+  kGorilla_32 = 1,
+  kGorilla_64 = 2,
+  kSimple8B_s8 = 3,
+  kSimple8B_s16 = 4,
+  kSimple8B_s32 = 5,
+  kSimple8B_s64 = 6,
+  kSimple8B_u8 = 7,
+  kSimple8B_u16 = 8,
+  kSimple8B_u32 = 9,
+  kSimple8B_u64 = 10,
+  kChimp_32 = 11,
+  kChimp_64 = 12,
+  // kALP,
+  // kELF,
+  TS_COMP_ALG_LAST
 };
 
 // compression algorithms for general purpose.
-enum class GenCmpAlg : uint8_t {
+enum class GenCompAlg : uint16_t {
   kPlain = 0,
   kSnappy = 1,
   // kGzip = 2,
@@ -194,6 +204,12 @@ enum class GenCmpAlg : uint8_t {
   // kXz = 5,
   // kZstd = 6,
   // kLzma = 7,
+  GEN_COMP_ALG_LAST
+};
+
+enum class BitmapCompAlg : uint8_t {
+  kPlain = 0,
+  kCompressed = 1,
 };
 
 class TsCompressorBase;
@@ -205,18 +221,26 @@ class CompressorManager {
     const TsCompressorBase* first_;
     const GenCompressorBase* second_;
 
+    TsCompAlg first_algo_;
+    GenCompAlg second_algo_;
+
    public:
-    TwoLevelCompressor(const TsCompressorBase* first, const GenCompressorBase* second)
+    TwoLevelCompressor(const TsCompressorBase* first, const GenCompressorBase* second,
+                       TsCompAlg first_algo, GenCompAlg second_algo)
         : first_(first), second_(second) {
-      assert(!(first_ == nullptr && second_ == nullptr));
+      first_algo_ = first == nullptr ? TsCompAlg::kPlain : first_algo;
+      second_algo_ = second == nullptr ? GenCompAlg::kPlain : second_algo;
     }
     bool Compress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
 
     bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
+    bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); };
+    std::tuple<TsCompAlg, GenCompAlg> GetAlgorithms() const;
   };
 
-  std::unordered_map<DATATYPE, std::unordered_map<TsCmpAlg, TsCompressorBase*>> ts_compressor_;
-  std::unordered_map<GenCmpAlg, GenCompressorBase*> general_compressor_;
+  std::unordered_map<TsCompAlg, TsCompressorBase*> ts_comp_;
+  std::unordered_map<GenCompAlg, GenCompressorBase*> general_compressor_;
+  std::unordered_map<DATATYPE, std::tuple<TsCompAlg, GenCompAlg>> default_algs_;
 
   CompressorManager();
 
@@ -228,7 +252,9 @@ class CompressorManager {
   CompressorManager(const CompressorManager&) = delete;
   void operator=(const CompressorManager&) = delete;
 
-  TwoLevelCompressor GetCompressor(DATATYPE dtype, TsCmpAlg first, GenCmpAlg second) const;
+  TwoLevelCompressor GetCompressor(TsCompAlg first, GenCompAlg second) const;
+  std::tuple<TsCompAlg, GenCompAlg> GetDefaultAlgorithm(DATATYPE dtype) const;
+  TwoLevelCompressor GetDefaultCompressor(DATATYPE dtype) const;
 };
 
 }  //  namespace kwdbts

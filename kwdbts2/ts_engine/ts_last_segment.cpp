@@ -17,6 +17,7 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "data_type.h"
@@ -28,6 +29,7 @@
 #include "rocksdb/types.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
+#include "ts_compressor.h"
 #include "ts_env.h"
 #include "ts_io.h"
 #include "ts_last_segment_manager.h"
@@ -38,30 +40,20 @@
 #include "utils/big_table_utils.h"
 namespace kwdbts {
 
-TsStatus TsLastSegment::Append(const TSSlice& data) {
-  return file_->Append(data);
-}
+TsStatus TsLastSegment::Append(const TSSlice& data) { return file_->Append(data); }
 
-TsStatus TsLastSegment::Flush() {
-  return file_->Flush();
-}
+TsStatus TsLastSegment::Flush() { return file_->Flush(); }
 
-size_t TsLastSegment::GetFileSize() const {
-  return file_->GetFileSize();
-}
+size_t TsLastSegment::GetFileSize() const { return file_->GetFileSize(); }
 
-TsFile* TsLastSegment::GetFilePtr() {
-  return file_.get();
-}
+TsFile* TsLastSegment::GetFilePtr() { return file_.get(); }
 
-uint32_t TsLastSegment::GetVersion() const {
-  return ver_;
-}
+uint32_t TsLastSegment::GetVersion() const { return ver_; }
 
 KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) {
   TSSlice result;
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
-  file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char *>(footer));
+  file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
   if (result.len != sizeof(TsLastSegmentFooter)) {
     LOG_ERROR("last segment[%s] GetFooter failed.", file_->GetFilePath().c_str());
     return KStatus::FAIL;
@@ -69,13 +61,15 @@ KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsLastSegment::GetAllBlockIndex(TsLastSegmentFooter& footer, std::vector<TsLastSegmentBlockIndex>* block_indexes) {
+KStatus TsLastSegment::GetAllBlockIndex(TsLastSegmentFooter& footer,
+                                        std::vector<TsLastSegmentBlockIndex>* block_indexes) {
   TSSlice result;
   uint64_t nblock = footer.n_data_block;
   block_indexes->resize(nblock);
   for (uint64_t i = 0; i < nblock; ++i) {
-    file_->Read(footer.block_info_idx_offset + i * sizeof(TsLastSegmentBlockIndex), sizeof(TsLastSegmentBlockIndex), &result,
-                reinterpret_cast<char *>(&(*block_indexes)[i]));
+    file_->Read(footer.block_info_idx_offset + i * sizeof(TsLastSegmentBlockIndex),
+                sizeof(TsLastSegmentBlockIndex), &result,
+                reinterpret_cast<char*>(&(*block_indexes)[i]));
     if (result.len != sizeof(TsLastSegmentBlockIndex)) {
       LOG_ERROR("last segment[%s] GetAllBlockIndex failed.", file_->GetFilePath().c_str());
       return KStatus::FAIL;
@@ -105,20 +99,27 @@ KStatus TsLastSegment::GetBlockInfo(TsLastSegmentBlockIndex& block_index, size_t
   file_->Read(block_index.offset, block_info_size, &result, block_info_data);
   if (result.len != block_info_size) {
     delete[] block_info_data;
-    LOG_ERROR("last segment[%s] GetBlockInfo failed, read block info failed. "
-              "table id: %lu, table version: %u, block info offset: %lu.",
-              file_->GetFilePath().c_str(), block_index.table_id,
-              block_index.table_version, block_index.offset);
+    LOG_ERROR(
+        "last segment[%s] GetBlockInfo failed, read block info failed. "
+        "table id: %lu, table version: %u, block info offset: %lu.",
+        file_->GetFilePath().c_str(), block_index.table_id, block_index.table_version,
+        block_index.offset);
     return KStatus::FAIL;
   }
   // block info header
-  memcpy(reinterpret_cast<char *>(block_info), block_info_data, LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE);
+  memcpy(reinterpret_cast<char*>(block_info), block_info_data, LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE);
   // block info column offset
-  block_info->col_offset.resize(col_num);
+  block_info->col_infos.resize(col_num);
+  const char* ptr = block_info_data + LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE;
   for (size_t col_idx = 0; col_idx < col_num; ++col_idx) {
-    char* col_offset_addr = block_info_data + LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE + col_idx * sizeof(uint32_t);
-    block_info->col_offset[col_idx] = *reinterpret_cast<uint32_t*>(col_offset_addr);
+    block_info->col_infos[col_idx].data_len = DecodeFixed32(ptr);
+    ptr += 4;
+    block_info->col_infos[col_idx].bitmap_len = DecodeFixed16(ptr);
+    ptr += 2;
+    block_info->col_infos[col_idx].data_len = DecodeFixed32(ptr);
+    ptr += 4;
   }
+  assert(ptr == block_info_data + block_info_size);
   delete[] block_info_data;
   return KStatus::SUCCESS;
 }
@@ -129,33 +130,63 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
   TSSlice result;
   size_t offset = block_info.block_offset;
   for (uint32_t i = 0; i < block_info.ncol; ++i) {
-    size_t next_col_block_offset = i == block_info.ncol - 1 ? block_info.var_offset : block_info.col_offset[i + 1];
-    size_t col_block_len = next_col_block_offset - block_info.col_offset[i];
+    size_t col_block_len = block_info.col_infos[i].bitmap_len + block_info.col_infos[i].data_len;
     // read col block data
-    char *col_block_buf = new char[col_block_len];
-    file_->Read(offset, col_block_len, &result, col_block_buf);
+    auto col_block_buf = std::make_unique<char[]>(col_block_len);
+    file_->Read(offset + block_info.col_infos[i].offset, col_block_len, &result,
+                col_block_buf.get());
     if (result.len != col_block_len) {
-      delete[] col_block_buf;
       LOG_ERROR("last segment[%s] GetBlock failed, read column block[%u] failed.",
                 file_->GetFilePath().c_str(), i);
       return KStatus::FAIL;
     }
-    // decompress
-    auto compressor = TsEnvInstance::GetInstance().Compressor();
-    TSSlice col_block, bitmap;
-    bool ret = compressor->Decode({col_block_buf, col_block_len}, block_info.nrow, &col_block, &bitmap);
-    delete[] col_block_buf;
-    if (!ret) {
-      LOG_ERROR("last segment[%s] GetBlock failed, decode column block[%u] failed.",
-                file_->GetFilePath().c_str(), i);
-      return KStatus::FAIL;
+
+    // Decompress:
+
+    // parse TsBitmap;
+    const TsBitmap* p_bitmap = nullptr;
+    TsBitmap tmp;
+    bool has_bitmap = block_info.col_infos[i].bitmap_len != 0;
+    if (has_bitmap) {
+      // TODO(zzr) decompress bitmap first, compression for bitmap is not implemented yet.
+      BitmapCompAlg comp_type = static_cast<BitmapCompAlg>(*col_block_buf.get());
+      if (comp_type == BitmapCompAlg::kPlain) {
+        TSSlice raw_bitmap{col_block_buf.get() + 1, block_info.col_infos[i].bitmap_len};
+        tmp.Map(raw_bitmap, block_info.nrow);
+        p_bitmap = &tmp;
+      } else {
+        assert(false);  // bitmap compression not implemented
+      }
     }
+
+    // parse Data
+    char* ptr = col_block_buf.get() + block_info.col_infos[i].bitmap_len;
+    TsCompAlg first = static_cast<TsCompAlg>(*ptr);
+    ptr++;
+    GenCompAlg second = static_cast<GenCompAlg>(*ptr);
+    ptr++;
+    assert(first < TsCompAlg::TS_COMP_ALG_LAST && second < GenCompAlg::GEN_COMP_ALG_LAST);
+    auto compressor = CompressorManager::GetInstance().GetCompressor(first, second);
+
+    std::string_view plain_sv{ptr, block_info.col_infos[i].data_len};
+    std::string plain;
+    if (compressor.IsPlain()) {
+    } else {
+      bool ok = compressor.Decompress({ptr, block_info.col_infos[i].data_len}, p_bitmap,
+                                      block_info.nrow, &plain);
+      if (!ok) {
+        LOG_ERROR("last segment[%s] GetBlock failed, decode column block[%u] failed.",
+                  file_->GetFilePath().c_str(), i);
+        return KStatus::FAIL;
+      }
+      plain_sv = plain;
+    }
+
     // save decompressed col block data
-    block->column_blocks[i].buffer.assign(col_block.data, col_block.len);
-    block->column_blocks[i].bitmap.Reset(block_info.nrow);
-    block->column_blocks[i].bitmap.SetData(bitmap);
-    std::free(col_block.data);
-    std::free(bitmap.data);
+    block->column_blocks[i].buffer.assign(plain_sv);
+    if(has_bitmap){
+      block->column_blocks[i].bitmap = *p_bitmap;  // copy
+    }
     offset += col_block_len;
   }
   // read var data
@@ -163,7 +194,8 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
   file_->Read(offset, block_info.var_len, &result, var_buf);
   if (result.len != block_info.var_len) {
     delete[] var_buf;
-    LOG_ERROR("last segment[%s] GetBlock failed, read var data failed.", file_->GetFilePath().c_str());
+    LOG_ERROR("last segment[%s] GetBlock failed, read var data failed.",
+              file_->GetFilePath().c_str());
     return KStatus::FAIL;
   }
   // save var data
@@ -236,9 +268,17 @@ KStatus TsLastSegmentBuilder::WriteMetricBlock(MetricBlockBuilder* builder) {
   assert(builder->IsFinished());
   size_t len = 0;
   for (int i = 0; i < builder->GetNColumns(); ++i) {
+    auto bitmap = builder->GetColumnBitmap(i);
+    TsStatus s = last_segment_->Append(bitmap);
+    len += bitmap.len;
+    if (!s.ok()) {
+      LOG_ERROR("IO Fail: %s", s.ToString().c_str());
+      return FAIL;
+    }
+
     auto data = builder->GetColumnData(i);
+    s = last_segment_->Append(data);
     len += data.len;
-    TsStatus s = last_segment_->Append(data);
     if (!s.ok()) {
       LOG_ERROR("IO Fail: %s", s.ToString().c_str());
       return FAIL;
@@ -286,7 +326,8 @@ KStatus TsLastSegmentBuilder::Finalize() {
   footer.meta_block_idx_offset = meta_index_offset;
   footer.n_meta_block = 0;
   footer.file_version = 1;
-  auto ss = last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
+  auto ss =
+      last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
   if (!ss.ok()) {
     LOG_ERROR("IO error when write lastsegment %s", ss.ToString().c_str());
     return FAIL;
@@ -302,18 +343,36 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
   // TODO(zzr): parse bitmap from payload;
   // bitmap_[row_cnt_] = kValid;
   row_cnt_++;
-  buffer_.append(col_data.data, dsize_);
+  data_buffer_.append(col_data.data, dsize_);
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
-  auto compressor = TsEnvInstance::GetInstance().Compressor();
-  TSSlice plain{buffer_.data(), buffer_.size()};
-  // TODO(zzr)
-  char bitmap[1024];
-  memset(bitmap, 0xFFFFFFFF, sizeof(bitmap));
-  auto out = compressor->Encode(plain, {bitmap, (row_cnt_ + 7) / 8}, row_cnt_, dtype_);
-  buffer_.assign(out.data, out.len);
-  free(out.data);
+  const auto& mgr = CompressorManager::GetInstance();
+  auto compressor = mgr.GetDefaultCompressor(dtype_);
+  TSSlice plain{data_buffer_.data(), data_buffer_.size()};
+  std::string compressed;
+  TsBitmap* bm = has_bitmap_ ? &bitmap_ : nullptr;
+  bool ok = compressor.Compress(plain, bm, row_cnt_, &compressed);
+  std::string tmp;
+  if (ok) {
+    auto [first, second] = compressor.GetAlgorithms();
+    tmp.push_back(static_cast<char>(first));
+    tmp.push_back(static_cast<char>(second));
+    tmp.append(compressed);
+  } else {
+    tmp.push_back(static_cast<char>(TsCompAlg::kPlain));
+    tmp.push_back(static_cast<char>(GenCompAlg::kPlain));
+    tmp.append(data_buffer_);
+  }
+  data_buffer_.swap(tmp);
+
+  if (has_bitmap_) {
+    //  TODO(zzr) Compress bitmap..
+    data_buffer_.clear();
+    data_buffer_.push_back(0);  // TODO(zzr) which means plain, nocompression
+    auto slice = bitmap_.GetData();
+    data_buffer_.append(slice.data, slice.len);
+  }
 }
 
 auto TsLastSegmentBuilder::MetricBlockBuilder::GetBlockInfo() const -> BlockInfo {
@@ -347,11 +406,12 @@ KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint
   parser_ = std::make_unique<TsRawPayloadRowParser>(metric_schema_);
   int ncol = metric_schema_.size() + 2;  // one for entity_id, one for SeqNo
   colblocks_.reserve(ncol);
-  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64));  // for entity_id;
-  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64));  // for SeqNo;
+  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, false));  // for entity_id;
+  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, false));  // for SeqNo;
   for (int i = 0; i < metric_schema_.size(); ++i) {
-    colblocks_.push_back(
-        std::make_unique<ColumnBlockBuilder>(static_cast<DATATYPE>(metric_schema_[i].type)));
+    bool nullable = true;  // TODO(zzr): read from schema;
+    colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
+        static_cast<DATATYPE>(metric_schema_[i].type), nullable));
   }
   return KStatus::SUCCESS;
 }
@@ -412,10 +472,15 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Finish() {
     //    2. compress
 
     colblocks_[i]->Compress();
-    info_.col_offset.push_back(offset);
-
+    int bitmap_len = colblocks_[i]->GetBitmap().len;
+    int data_len = colblocks_[i]->GetData().len;
+    BlockInfo::ColInfo col_info;
+    col_info.col_offset = offset;
+    col_info.bitmap_len = bitmap_len;
+    col_info.data_len = data_len;
+    info_.col_infos.push_back(std::move(col_info));
     // update blockinfo
-    offset += colblocks_[i]->GetData().len;
+    offset += data_len + bitmap_len;
   }
   finished_ = true;
 }
@@ -443,7 +508,7 @@ size_t TsLastSegmentBuilder::InfoHandle::RecordBlock(size_t block_length, const 
   cursor_ += block_length;
 
   infos_.push_back(info);
-  size_t length = LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE + info.col_offset.size() * 4;
+  size_t length = LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE + info.col_infos.size() * (4 + 2 + 4);
 
   length_ += length;
 
@@ -456,11 +521,13 @@ KStatus TsLastSegmentBuilder::InfoHandle::WriteInfo(TsFile* file) {
   for (int i = 0; i < infos_.size(); ++i) {
     PutFixed64(&buf, offset_[i]);
     PutFixed32(&buf, infos_[i].nrow);
-    PutFixed32(&buf, infos_[i].col_offset.size());
+    PutFixed32(&buf, infos_[i].col_infos.size());
     PutFixed32(&buf, infos_[i].var_offset);
     PutFixed32(&buf, infos_[i].var_len);
-    for (int j = 0; j < infos_[i].col_offset.size(); ++j) {
-      PutFixed32(&buf, infos_[i].col_offset[j]);
+    for (int j = 0; j < infos_[i].col_infos.size(); ++j) {
+      PutFixed32(&buf, infos_[i].col_infos[j].col_offset);
+      PutFixed16(&buf, infos_[i].col_infos[j].bitmap_len);
+      PutFixed32(&buf, infos_[i].col_infos[j].data_len);
     }
   }
   assert(buf.size() == length_);
@@ -504,7 +571,8 @@ KStatus TsLastSegmentManager::NewLastSegment(std::shared_ptr<TsLastSegment>& las
   ver_++;
   std::snprintf(buffer, sizeof(buffer), "last.ver-%04u", ver_);
   auto filename = dir_path_ / buffer;
-  last_segment = std::make_shared<TsLastSegment>(ver_, new TsMMapFile(filename, false /*read_only*/));
+  last_segment =
+      std::make_shared<TsLastSegment>(ver_, new TsMMapFile(filename, false /*read_only*/));
   last_segments_.push_back(last_segment);
   return KStatus::SUCCESS;
 }
@@ -517,7 +585,8 @@ std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetCompactLast
   size_t offset = compacted_ver_ - last_segments_[0]->GetVersion() + 1;
   assert(offset < last_segments_.size());
   if (ver_ - compacted_ver_ > MAX_COMPACT_NUM) {
-    result.assign(last_segments_.begin() + offset, last_segments_.begin() + offset + MAX_COMPACT_NUM);
+    result.assign(last_segments_.begin() + offset,
+                  last_segments_.begin() + offset + MAX_COMPACT_NUM);
   }
   return result;
 }
@@ -527,8 +596,6 @@ bool TsLastSegmentManager::NeedCompact() {
   return ver_ - compacted_ver_ > MAX_COMPACT_NUM;
 }
 
-void TsLastSegmentManager::SetCompactedVer(uint32_t ver) {
-  compacted_ver_ = ver;
-}
+void TsLastSegmentManager::SetCompactedVer(uint32_t ver) { compacted_ver_ = ver; }
 
 }  // namespace kwdbts

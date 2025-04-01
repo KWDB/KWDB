@@ -43,4 +43,9 @@ TEST(TsBitmap, Rep) {
   std::string val = std::string{data.data, data.len};
   std::string exp("\x24\x49\x02");
   EXPECT_EQ(val, exp);
+
+  const kwdbts::TsBitmap bm2({exp.data(), exp.size()}, 10);
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(bm[i], bm2[i]);
+  }
 }

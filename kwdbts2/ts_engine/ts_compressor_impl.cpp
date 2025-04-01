@@ -225,7 +225,7 @@ bool GorillaIntV2::Decompress(const TSSlice &data, uint64_t count, std::string *
 }
 
 static int leading_mapping[] = {0, 8, 12, 16, 18, 20, 22, 24};
-template<class T>
+template <class T>
 bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
   assert(data.len == 8 * count);
   out->clear();
@@ -278,7 +278,7 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
   return true;
 }
 
-template<class T>
+template <class T>
 bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
   out->clear();
   if (count == 0) {
@@ -317,7 +317,7 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
       case 0b10: {
         ok = reader.ReadBits(64 - leading_mapping[prev_lead_idx], &v);
         xored = v;
-        if(!ok) return false;
+        if (!ok) return false;
         break;
       }
       case 0b11: {
@@ -499,6 +499,7 @@ bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string
 
 bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmap *bitmap,
                                                      uint32_t count, std::string *out) {
+  if (IsPlain()) return false;
   out->clear();
   std::string buf;
   TSSlice data;
@@ -520,6 +521,7 @@ bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const T
 }
 bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmap *bitmap,
                                                        uint32_t count, std::string *out) {
+  if (IsPlain()) return false;
   out->clear();
   std::string buf;
   TSSlice data;
@@ -540,34 +542,68 @@ bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const
   return first_->Decompress(data, bitmap, count, out);
 }
 
+std::tuple<TsCompAlg, GenCompAlg> CompressorManager::TwoLevelCompressor::GetAlgorithms() const {
+  return {first_algo_, second_algo_};
+}
+
 CompressorManager::CompressorManager() {
-  ts_compressor_[DATATYPE::TIMESTAMP][TsCmpAlg::kGorilla] =
-      &ConcreateTsCompressor<GorillaIntV2>::GetInstance();
-  ts_compressor_[DATATYPE::INT16][TsCmpAlg::kSimple8B] =
-      &ConcreateTsCompressor<Simple8BInt<int16_t>>::GetInstance();
-  ts_compressor_[DATATYPE::INT32][TsCmpAlg::kSimple8B] =
-      &ConcreateTsCompressor<Simple8BInt<int32_t>>::GetInstance();
-  ts_compressor_[DATATYPE::INT64][TsCmpAlg::kSimple8B] =
-      &ConcreateTsCompressor<Simple8BInt<int64_t>>::GetInstance();
-  ts_compressor_[DATATYPE::DOUBLE][TsCmpAlg::kChimp] =
-      &ConcreateTsCompressor<Chimp<double>>::GetInstance();
-  ts_compressor_[DATATYPE::FLOAT][TsCmpAlg::kChimp] =
-      &ConcreateTsCompressor<Chimp<float>>::GetInstance();
+  const std::vector<DATATYPE> timestamp_type{
+      DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
+      DATATYPE::TIMESTAMP64_LSN, DATATYPE::TIMESTAMP64_LSN_MICRO, DATATYPE::TIMESTAMP64_LSN_NANO};
+  for (auto i : timestamp_type) {
+    default_algs_[i] = {TsCompAlg::kGorilla_64, GenCompAlg::kPlain};
+  }
+  ts_comp_[TsCompAlg::kGorilla_64] = &ConcreateTsCompressor<GorillaIntV2>::GetInstance();
 
-  general_compressor_[GenCmpAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_s8] = &ConcreateTsCompressor<Simple8BInt<int8_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_s16] = &ConcreateTsCompressor<Simple8BInt<int16_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_s32] = &ConcreateTsCompressor<Simple8BInt<int32_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_s64] = &ConcreateTsCompressor<Simple8BInt<int64_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_u8] = &ConcreateTsCompressor<Simple8BInt<uint8_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_u16] = &ConcreateTsCompressor<Simple8BInt<uint16_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_u32] = &ConcreateTsCompressor<Simple8BInt<uint32_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kSimple8B_u64] = &ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
 
+  default_algs_[DATATYPE::INT16] = {TsCompAlg::kSimple8B_s16, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::INT32] = {TsCompAlg::kSimple8B_s32, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::INT64] = {TsCompAlg::kSimple8B_s64, GenCompAlg::kPlain};
+
+  // Float
+  ts_comp_[TsCompAlg::kChimp_32] = &ConcreateTsCompressor<Chimp<float>>::GetInstance();
+  ts_comp_[TsCompAlg::kChimp_64] = &ConcreateTsCompressor<Chimp<double>>::GetInstance();
+  default_algs_[DATATYPE::FLOAT] = {TsCompAlg::kChimp_32, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::DOUBLE] = {TsCompAlg::kChimp_64, GenCompAlg::kPlain};
+
+  general_compressor_[GenCompAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
+
+  // for debug use;
   ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
 }
-auto CompressorManager::GetCompressor(DATATYPE dtype, TsCmpAlg first, GenCmpAlg second) const
+auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
     -> TwoLevelCompressor {
   const TsCompressorBase *first_comp = nullptr;
   const GenCompressorBase *second_comp = nullptr;
-  auto it_first = ts_compressor_.at(dtype).find(first);
-  if (it_first != ts_compressor_.at(dtype).end()) first_comp = it_first->second;
-  auto it_second = general_compressor_.find(second);
-  if (it_second != general_compressor_.end()) second_comp = it_second->second;
-  return TwoLevelCompressor{first_comp, second_comp};
+  {
+    auto it = ts_comp_.find(first);
+    if (it != ts_comp_.end()) first_comp = it->second;
+  }
+  {
+    auto it = general_compressor_.find(second);
+    if (it != general_compressor_.end()) second_comp = it->second;
+  }
+  return TwoLevelCompressor{first_comp, second_comp, first, second};
 }
-// class Chimp128Compressor : public CompressorBase {};
+
+auto CompressorManager::GetDefaultAlgorithm(DATATYPE dtype) const
+    -> std::tuple<TsCompAlg, GenCompAlg> {
+  auto it = default_algs_.find(dtype);
+  if (it == default_algs_.end()) return {TsCompAlg::kPlain, GenCompAlg::kPlain};
+  return it->second;
+}
+
+auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCompressor {
+  auto [first, second] = GetDefaultAlgorithm(dtype);
+  return GetCompressor(first, second);
+}
 
 }  // namespace kwdbts

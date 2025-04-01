@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <type_traits>
 
@@ -128,12 +129,12 @@ class ConcreateTsCompressor : public TsCompressorBase {
   bool Compress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
                 std::string *out) const override {
     out->clear();
-    assert(raw.len == count * 8);
     assert(bitmap == nullptr || bitmap->GetCount() == count);
     int stride = Compressor::stride;
     if (stride < 0 || bitmap == nullptr || bitmap->IsAllValid()) {
       return Compressor::GetInstance().Compress(raw, count, out);
     }
+    assert(raw.len == count * stride);
 
     std::string valid_data;
     const char *data = raw.data;

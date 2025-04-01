@@ -48,8 +48,16 @@ class TsBitmap {
  public:
   TsBitmap() : nrows_(0), nvalid_(0) {}
   explicit TsBitmap(int nrows) { Reset(nrows); }
-  explicit TsBitmap(TSSlice rep, int nrows) : nrows_(nrows) {
-    assert(rep.len >= rep_.size());
+  explicit TsBitmap(TSSlice rep, int nrows) { Map(rep, nrows); }
+
+  TsBitmap(const TsBitmap &) = default;
+  TsBitmap(TsBitmap &&) = default;
+
+  TsBitmap &operator=(const TsBitmap &) = default;
+  TsBitmap &operator=(TsBitmap &&) = default;
+
+  void Map(TSSlice rep, int nrows) {
+    nrows_ = nrows;
     rep_.assign(rep.data, rep.len);
     nvalid_ = 0;
     for (int i = 0; i < nrows_; ++i) {
@@ -84,21 +92,13 @@ class TsBitmap {
     }
   }
 
-  void SetData(TSSlice rep) {
-    rep_.assign(rep.data, rep.len);
-  }
+  void SetData(TSSlice rep) { rep_.assign(rep.data, rep.len); }
 
-  TSSlice GetData() {
-    return {rep_.data(), rep_.size()};
-  }
+  TSSlice GetData() { return {rep_.data(), rep_.size()}; }
 
-  size_t GetCount() const {
-    return nrows_;
-  }
+  size_t GetCount() const { return nrows_; }
 
-  static size_t GetBitmapLen(size_t nrows) {
-    return (nbit_per_row * nrows + 7) / 8;
-  }
+  static size_t GetBitmapLen(size_t nrows) { return (nbit_per_row * nrows + 7) / 8; }
   size_t GetValidCount() const { return nvalid_; };
   bool IsAllValid() const {
     return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
