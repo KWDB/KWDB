@@ -4,5 +4,10 @@ CREATE TS DATABASE
 CREATE TABLE
 > insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq');
 INSERT 1
-> insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD', 'qqq1');
-INSERT 1
+> select * from test.sjcx01 order by k_timestamp;
+         k_timestamp        | a | b | c |   d   | t1_attribute
+----------------------------+---+---+---+-------+---------------
+  2023-04-10 07:18:30+00:00 | 1 | 1 |   | FDARG | qqq
+(1 row)
+> drop database test cascade;
+DROP DATABASE

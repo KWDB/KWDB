@@ -30,6 +30,11 @@ class TsTableV2Impl : public TsTable {
                           std::vector<uint32_t> scan_tags,
                           const vector<uint32_t> hps,
                           BaseEntityIterator** iter, k_uint32 table_version) override;
+  KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
+                            std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
+                            std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
+                            TsIterator** iter, std::vector<timestamp64> ts_points,
+                            bool reverse, bool sorted) override;
 
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_{nullptr};
