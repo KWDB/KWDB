@@ -4,10 +4,22 @@ CREATE TS DATABASE
 CREATE TABLE
 > insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq');
 INSERT 1
+> insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD', 'qqq1');
+INSERT 1
+> insert into test.sjcx01 values (1681111110002,3,3,'C','A', 'A1');
+INSERT 1
+> insert into test.sjcx01 values (1681111110003,4,4,'D','B', 'B2');
+INSERT 1
+> insert into test.sjcx01 values (1681111110004,5,5,'E','C', 'C3');
+INSERT 1
 > select * from test.sjcx01 order by k_timestamp;
-         k_timestamp        | a | b | c |   d   | t1_attribute
-----------------------------+---+---+---+-------+---------------
-  2023-04-10 07:18:30+00:00 | 1 | 1 |   | FDARG | qqq
-(1 row)
+           k_timestamp          | a | b | c |    d     | t1_attribute
+--------------------------------+---+---+---+----------+---------------
+  2023-04-10 07:18:30+00:00     | 1 | 1 | A | DFFDARG  | qqq
+  2023-04-10 07:18:30.001+00:00 | 2 | 2 | B | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 | 3 | 3 | C | A        | A1
+  2023-04-10 07:18:30.003+00:00 | 4 | 4 | D | B        | B2
+  2023-04-10 07:18:30.004+00:00 | 5 | 5 | E | C        | C3
+(5 rows)
 > drop database test cascade;
 DROP DATABASE
