@@ -253,9 +253,14 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
         batch = new VarColumnBatch(*count, bitmap, 0, nullptr);
         for (int row = 0; row < row_data_list.size(); ++row) {
           parser_->GetColValueAddr(row_data_list[row], i, &col_data);
-          std::shared_ptr<void> ptr(col_data.data, free);
+          char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
+          KUint16(buffer) = col_data.len;
+          memcpy(buffer + 2, col_data.data, col_data.len);
+          *(buffer + col_data.len + 2) = 0;
+          std::shared_ptr<void> ptr(buffer, free);
           batch->push_back(ptr);
         }
+        batch->is_new = true;
       }
     } else {
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
@@ -263,7 +268,7 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
     }
     res->push_back(i, batch);
   }
-  res->entity_index = {1, entity_ids_[cur_entity_idx_], vgroup_->GetVGroupID()};
+  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
 
   ++cur_entity_index_;
   return KStatus::SUCCESS;
