@@ -552,15 +552,13 @@ EEIteratorErrCode StorageHandler::NewTagIterator(kwdbContext_p ctx) {
   EnterFunc();
   KStatus ret = FAIL;
   if (EngineOptions::isSingleNode()) {
-      if (read_mode_ == TSTableReadMode::metaTable) {
-        MetaIterator *meta = nullptr;
-        ret = ts_table_->GetMetaIterator(ctx, &meta, table_->table_version_);
-        tag_iterator = meta;
-      } else {
-        BaseEntityIterator *tag = nullptr;
-        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &tag, table_->table_version_);
-        tag_iterator = tag;
-      }
+    BaseEntityIterator* iter = nullptr;
+    if (read_mode_ == TSTableReadMode::metaTable) {
+        ret = ts_table_->GetTagIterator(ctx, {}, &iter, table_->table_version_);
+    } else {
+        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &iter, table_->table_version_);
+    }
+    tag_iterator = iter;
   } else {
     BaseEntityIterator *tag = nullptr;
     ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, table_->hash_points_, &tag, table_->table_version_);

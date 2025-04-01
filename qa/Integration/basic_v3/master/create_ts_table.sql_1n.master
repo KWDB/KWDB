@@ -9,5 +9,10 @@ INSERT 1
 ----------------------------+---+---+---+-------+---------------
   2023-04-10 07:18:30+00:00 | 1 | 1 |   | FDARG | qqq
 (1 row)
+> select k_timestamp, A, B from test.sjcx01;
+         k_timestamp        | a | b
+----------------------------+---+----
+  2023-04-10 07:18:30+00:00 | 1 | 1
+(1 row)
 > drop database test cascade;
 DROP DATABASE
