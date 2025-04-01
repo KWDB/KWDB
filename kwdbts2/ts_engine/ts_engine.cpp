@@ -159,10 +159,13 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
       return s;
     }
   }
-  s = tbl_grp->PutData(ctx, table_id, entity_id, payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
-    return s;
+  uint8_t payload_data_flag = p.GetRowType();
+  if (payload_data_flag != DataTagFlag::TAG_ONLY) {
+    s = tbl_grp->PutData(ctx, table_id, entity_id, payload);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
+      return s;
+    }
   }
   return s;
 }
