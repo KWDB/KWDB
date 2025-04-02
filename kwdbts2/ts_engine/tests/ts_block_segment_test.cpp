@@ -65,8 +65,8 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
       TsRawPayloadRowParser parser{metric_schema};
       TsRawPayload p{payload, metric_schema};
 
-      for (int i = 0; i < p.GetRowCount(); ++i) {
-        s = builder.PutRowData(table_id, 1, 1, i, p.GetRowData(i));
+      for (int j = 0; j < p.GetRowCount(); ++j) {
+        s = builder.PutRowData(table_id, 1, 1, j, p.GetRowData(j));
         EXPECT_EQ(s, KStatus::SUCCESS);
       }
       builder.Finalize();
@@ -76,6 +76,6 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     }
 
     //partition->Compact();
-    EXPECT_EQ(partition->Compact(1), KStatus::SUCCESS);
+    EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
   }
 }

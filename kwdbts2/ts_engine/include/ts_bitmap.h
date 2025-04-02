@@ -99,7 +99,7 @@ class TsBitmap {
   size_t GetCount() const { return nrows_; }
 
   static size_t GetBitmapLen(size_t nrows) { return (nbit_per_row * nrows + 7) / 8; }
-  size_t GetValidCount() const { return nvalid_; };
+  size_t GetValidCount() const { return nvalid_; }
   bool IsAllValid() const {
     return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
   }

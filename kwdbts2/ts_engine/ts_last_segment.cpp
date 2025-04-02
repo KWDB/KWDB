@@ -151,7 +151,8 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
       // TODO(zzr) decompress bitmap first, compression for bitmap is not implemented yet.
       BitmapCompAlg comp_type = static_cast<BitmapCompAlg>(*col_block_buf.get());
       if (comp_type == BitmapCompAlg::kPlain) {
-        TSSlice raw_bitmap{col_block_buf.get() + 1, block_info.col_infos[i].bitmap_len};
+        size_t raw_bitmap_len = block_info.col_infos[i].bitmap_len - 1;
+        TSSlice raw_bitmap{col_block_buf.get() + 1, raw_bitmap_len};
         tmp.Map(raw_bitmap, block_info.nrow);
         p_bitmap = &tmp;
       } else {
@@ -183,7 +184,7 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
 
     // save decompressed col block data
     block->column_blocks[i].buffer.assign(plain_sv);
-    if(has_bitmap){
+    if (has_bitmap) {
       block->column_blocks[i].bitmap = *p_bitmap;  // copy
     }
     offset += col_block_len;
@@ -355,7 +356,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
   bitmap_buffer_.clear();
   if (has_bitmap_) {
-    //  TODO(zzr) Compress bitmap..
+    // TODO(zzr) Compress bitmap..
     bitmap_buffer_.push_back(0);  // TODO(zzr) which means plain, nocompression
     auto slice = bitmap_.GetData();
     bitmap_buffer_.append(slice.data, slice.len);
@@ -600,7 +601,7 @@ std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetCompactLast
   }
   size_t offset = compacted_ver_ - last_segments_[0]->GetVersion() + 1;
   assert(offset < last_segments_.size());
-  if (ver_ - compacted_ver_ > MAX_COMPACT_NUM + MAX_FLUSH_NUM) {
+  if (ver_ - compacted_ver_ >= MAX_COMPACT_NUM) {
     result.assign(last_segments_.begin() + offset,
                   last_segments_.begin() + offset + MAX_COMPACT_NUM);
   }

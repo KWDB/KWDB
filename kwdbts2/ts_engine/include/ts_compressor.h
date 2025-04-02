@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 
 #include "data_type.h"
@@ -234,7 +235,7 @@ class CompressorManager {
     bool Compress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
 
     bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
-    bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); };
+    bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); }
     std::tuple<TsCompAlg, GenCompAlg> GetAlgorithms() const;
   };
 

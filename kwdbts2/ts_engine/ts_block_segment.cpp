@@ -272,10 +272,10 @@ KStatus TsBlockSegmentBuilder::buildColData(std::vector<TsLastSegmentBlockRowInf
   if (is_var_col) {
     memcpy(col_data.data() + row_count * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
   }
-
+  return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentBuilder::compress(std::string col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count,
+KStatus TsBlockSegmentBuilder::compress(const std::string& col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count,
                                         std::string& buffer) {
   // write bitmap to buffer
   bool has_bitmap = bitmap != nullptr;
@@ -290,7 +290,7 @@ KStatus TsBlockSegmentBuilder::compress(std::string col_data, TsBitmap* bitmap, 
   // compress col data & write to buffer
   const auto& mgr = CompressorManager::GetInstance();
   auto compressor = mgr.GetDefaultCompressor(d_type);
-  TSSlice plain{col_data.data(), col_data.size()};
+  TSSlice plain{const_cast<char *>(col_data.data()), col_data.size()};
   std::string compressed;
   bool ok = compressor.Compress(plain, bitmap, row_count, &compressed);
   std::string tmp;
@@ -319,7 +319,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
   {
     std::mutex entity_values_mutex;
 
-    auto read_last_segment = [&](std::shared_ptr<TsLastSegment> last_segment, uint32_t last_segment_idx) {
+    auto read_last_segment = [&](std::shared_ptr<TsLastSegment>& last_segment, uint32_t last_segment_idx) {
       // get block indexes
       std::vector<TsLastSegmentBlockIndex> block_indexes;
       KStatus s = last_segment->GetAllBlockIndex(&block_indexes);
@@ -363,13 +363,13 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
 
     // Distribute segments across threads
     uint32_t compact_num_per_thread = (last_segments_.size() + thread_num - 1) / thread_num;
-    for (uint32_t i = 0; i < thread_num; ++i) {
-      workers.emplace_back([&, i]() {
-        uint32_t end_idx = i == thread_num - 1 ? last_segments_.size() : (i + 1) * compact_num_per_thread;
-        for (size_t idx = i * compact_num_per_thread; idx < end_idx && idx < last_segments_.size(); ++idx) {
+    for (uint32_t thread_idx = 0; thread_idx < thread_num; ++thread_idx) {
+      workers.emplace_back([&, thread_idx]() {
+        uint32_t end_idx = (thread_idx + 1) * compact_num_per_thread;
+        for (size_t idx = thread_idx * compact_num_per_thread; idx < end_idx && idx < last_segments_.size(); ++idx) {
           KStatus s = read_last_segment(last_segments_[idx], idx);
           if (s != KStatus::SUCCESS) {
-            LOG_ERROR("read last segment failed, segment idx: %lu", idx);
+            LOG_ERROR("read last segment[%u] failed, thread idx: %lu", last_segments_[idx]->GetVersion(), thread_idx);
             global_status = s;
             return;
           }
@@ -456,12 +456,12 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
       return KStatus::SUCCESS;
     };
 
-    for (uint32_t i = 0; i < thread_num; i++) {
-      workers.emplace_back([&, i]() {
-        for (size_t idx = i; idx < last_segments_.size(); idx += thread_num) {
+    for (uint32_t thread_idx = 0; thread_idx < thread_num; thread_idx++) {
+      workers.emplace_back([&, thread_idx]() {
+        for (size_t idx = thread_idx; idx < entities_vec.size(); idx += thread_num) {
           KStatus s = write_block_segment(entities_vec[idx].first, entities_vec[idx].second);
           if (s != KStatus::SUCCESS) {
-            LOG_ERROR("write block segment failed, segment idx: %lu", idx);
+            LOG_ERROR("write block segment failed, thread idx: %u", thread_idx);
             global_status = s;
             return;
           }

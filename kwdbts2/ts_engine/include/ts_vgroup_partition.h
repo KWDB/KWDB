@@ -56,7 +56,7 @@ class TsVGroupPartition {
 
   KStatus Open();
   // compact data from last segment to block segment. compact one block data every time.
-  KStatus Compact(int thread_num = 5);
+  KStatus Compact(int thread_num = 2);
 
   KStatus NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment);
   void PublicLastSegment(std::unique_ptr<TsLastSegment>&& last_segment);
@@ -72,8 +72,7 @@ class TsVGroupPartition {
   TsEngineSchemaManager* GetSchemaMgr() { return schema_mgr_; }
 
   KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
-                               TSSlice block_data, TSSlice block_agg, uint32_t row_num);                      
-
+                               TSSlice block_data, TSSlice block_agg, uint32_t row_num);
  protected:
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);

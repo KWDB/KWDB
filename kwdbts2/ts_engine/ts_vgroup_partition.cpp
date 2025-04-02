@@ -30,7 +30,7 @@ TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id
       end_(end),
       path_(root / GetFileName()),
       last_segment_mgr_(path_),
-      open_compact_thread_(open_compact_thread){
+      open_compact_thread_(open_compact_thread) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
   initCompactThread();
 }

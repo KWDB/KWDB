@@ -269,7 +269,8 @@ class TsBlockSegmentBuilder {
                        bool has_bitmap, DATATYPE d_type, size_t d_size,
                        string& col_data, TsBitmap& bitmap);
 
-  KStatus compress(std::string col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count, std::string& buffer);
+  KStatus compress(const std::string& col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count,
+                   std::string& buffer);
 
  public:
   explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,

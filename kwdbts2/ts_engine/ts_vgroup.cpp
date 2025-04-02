@@ -61,7 +61,6 @@ TsVGroup::~TsVGroup() {
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   rocksdb::Options options;
   options.create_if_missing = true;
-  options.write_buffer_size = 4 << 10;
   options.env = &env_;
   options.comparator = TsComparator();
   options.max_background_jobs = 4;
