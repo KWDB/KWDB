@@ -1285,6 +1285,10 @@ MMapRootTableManager* TsTable::OpenMMapRootTableManager(string& db_path, string&
   return tmp_bt_manager;
 }
 
+TsTable::TsTable() {
+  is_dropped_.store(false);
+}
+
 TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id)
     : db_path_(db_path), table_id_(table_id) {
   entity_bt_manager_ = nullptr;
@@ -1320,6 +1324,12 @@ TsTable::~TsTable() {
     snapshot_manage_mtx_ = nullptr;
   }
 }
+
+TsTableImpl::TsTableImpl(kwdbContext_p ctx, const std::string &db_path,
+                         const KTableKey &table_id)
+    : TsTable(ctx, db_path, table_id) {}
+
+TsTableImpl::~TsTableImpl() = default;
 
 // Check that the directory name is a numeric
 bool IsNumber(struct dirent* dir) {
@@ -2760,7 +2770,7 @@ KStatus TsTable::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultInd
 
 KStatus TsTable::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 const std::vector<uint32_t> hps,
-                                TagIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version) {
   std::vector<EntityGroupTagIterator*> eg_tag_iters;
   EntityGroupTagIterator* eg_tag_iter = nullptr;
 

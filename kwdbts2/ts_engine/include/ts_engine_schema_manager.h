@@ -49,14 +49,14 @@ class TsEngineSchemaManager {
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
   KStatus GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
-                               std::shared_ptr<MMapMetricsTable>* schema) const;
+                               std::shared_ptr<MMapMetricsTable>* metric_schema) const;
 
-  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& schema) const {
-    auto it = table_schema_.find(tbl_id);
-    if (it == table_schema_.end()) {
+  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) const {
+    auto it = table_schema_mgrs_.find(tbl_id);
+    if (it == table_schema_mgrs_.end()) {
       return KStatus::FAIL;
     }
-    schema = it->second;
+    tb_schema_mgr = it->second;
     return KStatus::SUCCESS;
   }
 
@@ -70,11 +70,14 @@ class TsEngineSchemaManager {
 
   uint32_t GetDBIDByTableID(TSTableID table_id) const;
 
+  KStatus AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                     uint32_t cur_version, uint32_t new_version, string& msg);
+
  protected:
   std::filesystem::path root_path_;
   uint32_t vgroup_id_;
   string tbl_sub_path_;
-  std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_;
+  std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;
   std::unordered_map<TSTableID, uint32_t> table_2_db_;
 };
 

@@ -13,41 +13,40 @@
 
 namespace kwdbts {
 
-TsBlockFile::TsBlockFile(const string& file_path) : file_path_(file_path) {
+TsBlockSegmentBlockFile::TsBlockSegmentBlockFile(const string& file_path) : file_path_(file_path) {
+  file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
   file_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_BLOCK_FILE_RWLOCK);
+  memset(&header_, 0, sizeof(TsBlockFileHeader));
 }
 
-TsBlockFile::~TsBlockFile() {
-  if (file_ != nullptr) {
-    fclose(file_);
-    file_ = nullptr;
+TsBlockSegmentBlockFile::~TsBlockSegmentBlockFile() {}
+
+KStatus TsBlockSegmentBlockFile::Open() {
+  TSSlice result;
+  TsStatus s = file_->Read(0, sizeof(TsBlockFileHeader), &result, reinterpret_cast<char *>(&header_));
+  if (header_.status != TsFileStatus::READY) {
+    file_->Reset();
+    header_.status = TsFileStatus::READY;
+    header_.magic = TS_BLOCK_SEGMENT_BLOCK_FILE_MAGIC;
+    s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsBlockFileHeader)});
   }
+  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
 }
 
-KStatus TsBlockFile::Open() {
-  file_ = std::fopen(file_path_.c_str(), "wb+");
-  if (file_ == NULL) {
-    LOG_ERROR("open file [%s] failed. errno: %d.", file_path_.c_str(), errno);
-    return KStatus::FAIL;
-  }
-  std::fseek(file_, 0, SEEK_END);
-  file_len_ = ftell(file_);
-  LOG_DEBUG("open file [%s] success. file length: %lu", file_path_.c_str(), file_len_);
-  return KStatus::SUCCESS;
-}
-
-KStatus TsBlockFile::Append(const TSSlice& block, uint64_t* offset) {
+KStatus TsBlockSegmentBlockFile::AppendBlock(const TSSlice& block, uint64_t* offset) {
   RW_LATCH_X_LOCK(file_mtx_);
-  std::fseek(file_, 0, SEEK_END);
-  assert(file_len_ == ftell(file_));
-  *offset = file_len_;
-  fwrite(block.data, 1, block.len, file_);
-  file_len_ += block.len;
+  *offset = file_->GetFileSize();
+  file_->Append(block);
   RW_LATCH_UNLOCK(file_mtx_);
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockFile::ReadBlock(uint64_t offset, char* buff) {
+KStatus TsBlockSegmentBlockFile::ReadBlock(uint64_t offset, char* buff, size_t len) {
+  RW_LATCH_S_LOCK(file_mtx_);
+  TSSlice result;
+  file_->Read(offset, len, &result, buff);
+  assert(result.len == len);
+  RW_LATCH_UNLOCK(file_mtx_);
   return KStatus::SUCCESS;
 }
 

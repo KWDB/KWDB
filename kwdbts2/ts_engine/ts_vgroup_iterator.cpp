@@ -16,8 +16,7 @@ TsBlockSegmentIterator::~TsBlockSegmentIterator() {
 }
 
 KStatus TsBlockSegmentIterator::Init() {
-  std::vector<TsBlockItem*> blk_items;
-  // segment_.GetAllBlockItemsNeedDel();
+  std::vector<TsBlockSegmentBlockItem*> blk_items;
   return KStatus::FAIL;
 }
 

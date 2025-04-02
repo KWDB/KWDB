@@ -32,6 +32,8 @@ class WALMgr {
  public:
   WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity_grp_id, EngineOptions* opt);
 
+  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt);
+
   ~WALMgr();
 
   KStatus Create(kwdbContext_p ctx);

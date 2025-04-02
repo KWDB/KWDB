@@ -34,7 +34,7 @@ KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
  std::vector<TagInfo>* tag_schema, std::vector<AttributeInfo>* data_schema) {
   if (params_.engine_version == "2") {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema;
-    KStatus s = ts_engine_->GetTsSchemaMgr(ctx, table_id, schema);
+    KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -341,7 +341,7 @@ TsTable* CreateTable(kwdbts::kwdbContext_p ctx, roachpb::CreateTsTable* meta, st
       metric_schema.push_back(std::move(col_var));
     }
   }
-  TsTable* table = new TsTable(ctx, db_path, meta->ts_table().ts_table_id());
+  TsTableImpl* table = new TsTableImpl(ctx, db_path, meta->ts_table().ts_table_id());
   s = table->Create(ctx, metric_schema, meta->ts_table().partition_interval());
   assert(s == KStatus::SUCCESS);
   std::shared_ptr<TsEntityGroup> table_range;

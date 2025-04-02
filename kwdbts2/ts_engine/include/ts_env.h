@@ -17,11 +17,13 @@
 #include "ts_common.h"
 
 namespace kwdbts {
+
 class TsEnvInstance {
  private:
   std::mutex obj_create_mutex_;
   ColumnCompressorMgr* compressor_mgr_{nullptr};
   size_t THREAD_MAX_NUM = 4;
+  DedupRule g_dedup_rule_ = DedupRule::KEEP;
 
  private:
   TsEnvInstance() {}
@@ -42,6 +44,10 @@ class TsEnvInstance {
 
   bool SetCompressorPolicy(ColumnCompressorPolicy policy) {
     return Compressor()->ResetPolicy(policy);
+  }
+
+  DedupRule GetDedupRule() {
+    return g_dedup_rule_;
   }
 
   // KThreadID ApplyJob(std::function<void(void *)> &&job, void *arg, KWDBOperatorInfo *kwdb_operator_info) {

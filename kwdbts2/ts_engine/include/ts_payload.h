@@ -138,6 +138,12 @@ class TsRawPayload {
     return row_parser_.GetColValueAddr(row_data_[row], col_id, col_data);
   }
 
+  timestamp64 GetTS(int row) {
+    assert(can_parse_);
+    assert(row < row_data_.size());
+    return row_parser_.GetTimestamp(row_data_[row]);
+  }
+
   TSSlice GetRowData(int row) {
     assert(row < row_data_.size());
     return row_data_[row];

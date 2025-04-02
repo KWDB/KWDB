@@ -38,7 +38,7 @@ namespace kwdbts {
 
 class TsEntityGroup;
 class TsStorageIterator;
-class TagIterator;
+class BaseEntityIterator;
 class MetaIterator;
 class EntityGroupTagIterator;
 class EntityGroupMetaIterator;
@@ -49,7 +49,7 @@ const uint64_t default_entitygroup_id_in_dist_v2 = 1;
 
 class TsTable {
  public:
-  TsTable() = delete;
+  TsTable();
 
   TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id);
 
@@ -433,15 +433,15 @@ class TsTable {
   /**
    * @brief Create an iterator TsStorageIterator for Tag tables
    * @param[in] scan_tags tag index
-   * @param[out] TagIterator**
+   * @param[out] BaseEntityIterator**
    */
   virtual KStatus GetTagIterator(kwdbContext_p ctx,
                                  std::vector<uint32_t> scan_tags,
                                  const vector<uint32_t> hps,
-                                 TagIterator** iter, k_uint32 table_version);
+                                 BaseEntityIterator** iter, k_uint32 table_version);
 
   KStatus GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
-                                TagIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version) {
     return GetTagIterator(ctx, scan_tags, {}, iter, table_version);
   }
   /**
@@ -531,7 +531,7 @@ class TsTable {
   string tbl_sub_path_;
 
 //  MMapTagColumnTable* tag_bt_;
-  MMapRootTableManager* entity_bt_manager_;
+  MMapRootTableManager* entity_bt_manager_{nullptr};
 
   std::unordered_map<uint64_t, std::shared_ptr<TsEntityGroup>> entity_groups_{};
 
@@ -569,11 +569,11 @@ class TsTable {
 
  protected:
   using TsTableEntityGrpsRwLatch = KRWLatch;
-  TsTableEntityGrpsRwLatch* entity_groups_mtx_;
+  TsTableEntityGrpsRwLatch* entity_groups_mtx_{nullptr};
 
  private:
   using TsTableSnapshotLatch = KLatch;
-  TsTableSnapshotLatch* snapshot_manage_mtx_;
+  TsTableSnapshotLatch* snapshot_manage_mtx_{nullptr};
 
   void latchLock() {
     MUTEX_LOCK(snapshot_manage_mtx_);
@@ -582,6 +582,16 @@ class TsTable {
   void latchUnlock() {
     MUTEX_UNLOCK(snapshot_manage_mtx_);
   }
+};
+
+class TsTableImpl : public TsTable {
+ public:
+  TsTableImpl() = delete;
+
+  TsTableImpl(kwdbContext_p ctx, const std::string &db_path,
+              const KTableKey &table_id);
+
+  ~TsTableImpl() override;
 };
 
 // PutAfterProcessInfo records the information that needs to be processed after writing.

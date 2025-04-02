@@ -62,15 +62,21 @@ class TsTableSchemaManager {
   string tag_schema_path_;
   KRWLatch schema_rw_lock_;
 
+  int getColumnIndex(const AttributeInfo& attr_info);
+
+  KStatus alterTableTag(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
+                        uint32_t cur_version, uint32_t new_version, string& msg);
+
+  KStatus alterTableCol(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
+                        uint32_t cur_version, uint32_t new_version, string& msg);
+
  protected:
   uint32_t cur_schema_version_{0};
   // metric schema of current version
   std::shared_ptr<MMapMetricsTable> cur_metric_schema_;
-  // tag schema of current version
-  std::shared_ptr<TagTable> cur_tag_schema_;
   // schemas of all versions
   std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_schemas_;
-  std::unordered_map<uint32_t, std::shared_ptr<TagTable>> tag_schemas_;
+  std::shared_ptr<TagTable> tag_table_;
   // Partition interval.
   uint64_t partition_interval_;
   // Compression status.
@@ -98,7 +104,7 @@ class TsTableSchemaManager {
 
   KStatus Init(kwdbContext_p ctx);
 
-  void put(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> schema);
+  void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);
 
   std::shared_ptr<MMapMetricsTable> Get(uint32_t ts_version, bool lock = true);
 
@@ -112,8 +118,9 @@ class TsTableSchemaManager {
 
   KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
                             ErrorInfo& err_info, uint32_t cur_version = 0);
+  KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version, ErrorInfo& err_info);
 
-  KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t ts_version, ErrorInfo& err_info);
+  KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
@@ -160,6 +167,12 @@ class TsTableSchemaManager {
   KStatus UpdateTableVersionOfLastData(uint32_t version);
 
   uint32_t GetTableVersionOfLatestData();
+
+  static KStatus GetColAttrInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
+                                     AttributeInfo& attr_info, bool first_col);
+
+  KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                     uint32_t cur_version, uint32_t new_version, string& msg);
 };
 
 }  // namespace kwdbts

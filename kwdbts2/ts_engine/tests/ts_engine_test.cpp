@@ -71,7 +71,7 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTsSchemaMgr(ctx_, table_id, schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<AttributeInfo> metric_schema;
@@ -83,7 +83,10 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   ASSERT_EQ(metric_schema.size(), metric_type.size());
   timestamp64 start_ts = 10086000;
   auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
-  s = engine_->PutData(ctx_, table_id, 1, &pay_load, true);
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(pay_load.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 }
@@ -98,7 +101,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTsSchemaMgr(ctx_, table_id, schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<AttributeInfo> metric_schema;
   s = schema_mgr->GetMetricMeta(1, metric_schema);
@@ -107,11 +110,13 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   s = schema_mgr->GetTagMeta(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema.size(), metric_type.size());
-
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   timestamp64 ts = 10086000;
   for (int i = 0; i < 100000; ++i) {
     auto pay_load = GenRowPayload(metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-    s = engine_->PutData(ctx_, table_id, 2, &pay_load, true);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
     ts += 1000;
@@ -128,7 +133,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTsSchemaMgr(ctx_, table_id, schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<AttributeInfo> metric_schema;
   s = schema_mgr->GetMetricMeta(1, metric_schema);
@@ -137,12 +142,14 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   s = schema_mgr->GetTagMeta(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema.size(), metric_type.size());
-
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   timestamp64 ts = 10086000;
   for (size_t j = 0; j < 5; j++) {
     for (int i = 0; i < 10000; ++i) {
       auto pay_load = GenRowPayload(metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-      s = engine_->PutData(ctx_, table_id, 2, &pay_load, true);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;

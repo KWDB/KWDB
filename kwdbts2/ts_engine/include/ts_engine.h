@@ -28,7 +28,7 @@
 #include "ts_vgroup.h"
 #include "ts_engine_schema_manager.h"
 #include "engine.h"
-#include "ts_table_v2.h"
+#include "ts_table_v2_impl.h"
 #include "ts_flush_manager.h"
 
 namespace kwdbts {
@@ -39,11 +39,10 @@ namespace kwdbts {
 class TSEngineV2Impl : public TSEngine {
  private:
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
-  std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::vector<std::unique_ptr<TsVGroup>> table_grps_;
   int table_grp_max_num_{0};
   EngineOptions options_;
-  std::unordered_map<TSTableID, std::shared_ptr<TsTableV2>> tables_;
+  std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
 
@@ -67,36 +66,35 @@ class TSEngineV2Impl : public TSEngine {
                      ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override {
     // TODO(liangbo01)  need input change version
     KStatus s = KStatus::SUCCESS;
-    table_mutex_.lock();
-    auto it = tables_.find(table_id);
-    if (it != tables_.end()) {
-      ts_table = it->second;
-    } else {
+    ts_table = tables_cache_->Get(table_id);
+    if (ts_table == nullptr) {
       std::shared_ptr<TsTableSchemaManager> schema;
       auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
       if (s == KStatus::SUCCESS) {
-        auto table = std::make_shared<TsTableV2>(schema, table_grps_);
+        auto table = std::make_shared<TsTableV2Impl>(schema, table_grps_);
         if (table.get() != nullptr) {
           tables_[table_id] = table;
           ts_table = table;
+          tables_cache_->Put(table_id, ts_table);
         } else {
-          LOG_ERROR("make TsTableV2 failed for table[%lu]", table_id);
+          LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
           s = KStatus::FAIL;
         }
       } else {
         LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
         s = KStatus::FAIL;
       }
-      
+      table_mutex_.unlock();
     }
-    table_mutex_.unlock();
+
     if (s == KStatus::SUCCESS) {
       // todo(liangbo01) if version no exist.
     }
     return s;
   }
 
-  KStatus GetTsSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+  std::vector<std::unique_ptr<TsVGroup>>* GetTsVGroups();
+  KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override {
     // TODO(liangbo01)  need input change version
     auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
@@ -116,9 +114,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) override {
-    return PutData(ctx, table_id, mtr_id, payload_data, writeWAL);
-  }
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) override;
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
@@ -215,22 +211,16 @@ class TSEngineV2Impl : public TSEngine {
   KStatus LogInit();
 
   KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                    TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override {
-    return KStatus::SUCCESS;
-  }
+                    TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus DropColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                     TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override {
-    return KStatus::SUCCESS;
-  }
+                     TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                          TSSlice new_column, TSSlice origin_column,
-                          uint32_t cur_version, uint32_t new_version, string& err_msg) override {
+                          TSSlice new_column, TSSlice origin_column, uint32_t cur_version,
+                          uint32_t new_version, string& err_msg) override;
+
+  KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override {
     return KStatus::SUCCESS;
   }
 
@@ -247,8 +237,6 @@ class TSEngineV2Impl : public TSEngine {
   KStatus Init(kwdbContext_p ctx);
 
   KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta);
-
-  KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* payload, bool write_wal);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 

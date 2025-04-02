@@ -10,40 +10,44 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <unordered_map>
+#include <string>
+#include <vector>
 #include <memory>
-
-#include "ts_table_schema_manager.h"
-#include "libkwdbts2.h"
-#include "ts_vgroup.h"
 #include "ts_table.h"
+#include "ts_vgroup.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
-class TsTableV2 : public TsTable {
+class TsTableV2Impl : public TsTable {
  private:
-  std::shared_ptr<TsTableSchemaManager> table_schema_;
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<std::unique_ptr<TsVGroup>>& table_grps_;
 
  public:
-  TsTableV2(std::shared_ptr<TsTableSchemaManager> table_schema, const std::vector<std::unique_ptr<TsVGroup>>& table_grps) :
-            TsTable(nullptr, "./wrong/", 0), table_schema_(table_schema), table_grps_(table_grps) {}
+  TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema, const std::vector<std::unique_ptr<TsVGroup>>& table_grps) :
+            TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), table_grps_(table_grps) {}
 
-  ~TsTableV2() {}
+  ~TsTableV2Impl();
 
 
   KTableKey GetTableId() override {
-    return table_schema_->GetTableId();
+    return table_schema_mgr_->GetTableId();
   }
 
   uint32_t GetCurrentTableVersion() override {
-    return table_schema_->GetCurrentVersion();
+    return table_schema_mgr_->GetCurrentVersion();
   }
 
   KStatus PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
-                          DedupResult* dedup_result, const DedupRule& dedup_rule) override { return KStatus::FAIL; }
-};
+                          DedupResult* dedup_result, const DedupRule& dedup_rule) override;
 
+  KStatus GetTagIterator(kwdbContext_p ctx,
+                          std::vector<uint32_t> scan_tags,
+                          const vector<uint32_t> hps,
+                          BaseEntityIterator** iter, k_uint32 table_version) override;
+
+};
 
 }  // namespace kwdbts

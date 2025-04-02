@@ -15,24 +15,33 @@
 #include <string>
 #include <cstdio>
 #include "ts_common.h"
+#include "ts_io.h"
 
 namespace kwdbts {
+static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_FILE_MAGIC = 0xcb2ffe9321847274;
 
-class TsBlockFile {
+class TsBlockSegmentBlockFile {
  private:
   string file_path_;
-  FILE* file_{nullptr};
+  std::unique_ptr<TsFile> file_{nullptr};
   std::unique_ptr<KRWLatch> file_mtx_;
-  uint64_t file_len_{0};
+
+  struct TsBlockFileHeader {
+    uint64_t magic;
+    int32_t encoding;
+    int32_t status;
+  };
+
+  TsBlockFileHeader header_;
 
  public:
-  explicit TsBlockFile(const string& file_path);
+  explicit TsBlockSegmentBlockFile(const string& file_path);
 
-  ~TsBlockFile();
+  ~TsBlockSegmentBlockFile();
 
   KStatus Open();
-  KStatus Append(const TSSlice& block, uint64_t* offset);
-  KStatus ReadBlock(uint64_t offset, char* buff);
+  KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
+  KStatus ReadBlock(uint64_t offset, char* buff, size_t len);
 };
 
 }  // namespace kwdbts
