@@ -71,6 +71,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
       }
       builder.Finalize();
       builder.Flush();
+      partition->PublicLastSegment(builder.Finish());
       free(payload.data);
     }
 
