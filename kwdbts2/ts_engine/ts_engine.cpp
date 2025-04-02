@@ -21,7 +21,7 @@
 #include "ee_executor.h"
 #include "ts_table_v2_impl.h"
 
-extern int storage_engine_vgroup_max_num = 10;
+extern int storage_engine_vgroup_max_num = 6;
 namespace kwdbts {
 
 const char schema_directory[]= "schema";
