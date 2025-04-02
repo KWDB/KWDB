@@ -134,8 +134,7 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
     size_t col_block_len = block_info.col_infos[i].bitmap_len + block_info.col_infos[i].data_len;
     // read col block data
     auto col_block_buf = std::make_unique<char[]>(col_block_len);
-    file_->Read(offset + block_info.col_infos[i].offset, col_block_len, &result,
-                col_block_buf.get());
+    file_->Read(offset, col_block_len, &result, col_block_buf.get());
     if (result.len != col_block_len) {
       LOG_ERROR("last segment[%s] GetBlock failed, read column block[%u] failed.",
                 file_->GetFilePath().c_str(), i);

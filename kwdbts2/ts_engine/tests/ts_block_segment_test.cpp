@@ -58,7 +58,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     partition->Open();
 
     std::unique_ptr<TsLastSegment> last_segment;
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < 10; ++i) {
       partition->NewLastSegment(&last_segment);
       TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment));
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 10, 123, 1);
@@ -76,6 +76,6 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     }
 
     //partition->Compact();
-    EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
+    EXPECT_EQ(partition->Compact(1), KStatus::SUCCESS);
   }
 }
