@@ -315,6 +315,10 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
   blocks_.resize(last_segments_.size());
   std::vector<std::thread> workers;
   KStatus global_status = KStatus::SUCCESS;
+#ifdef K_DEBUG
+  std::atomic<size_t> read_row_num;
+  std::atomic<size_t> write_row_num;
+#endif
   // Parallel reading of last segments
   {
     std::mutex entity_values_mutex;
@@ -336,6 +340,9 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
           return s;
         }
 
+#ifdef K_DEBUG
+        read_row_num.fetch_add(block_info.nrow);
+#endif
         auto block = std::make_shared<TsLastSegmentBlock>();
         s = last_segment->GetBlock(block_info, block.get());
         if (s != KStatus::SUCCESS || global_status != KStatus::SUCCESS) {
@@ -413,13 +420,14 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
       size_t row_count = row_values.size() > max_rows_per_block_ ? max_rows_per_block_ : row_values.size();
       size_t col_count = metric_schema.size() + 1;
 
-      while (row_count >= max_rows_per_block_) {
+      while (row_count != 0) {
         std::string buffer;
         buffer.resize((col_count + 1) * sizeof(uint32_t));
 
         for (int col_idx = 0; col_idx < col_count; ++col_idx) {
-          DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : static_cast<DATATYPE>(metric_schema[col_idx - 1].type);
-          size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>(metric_schema[col_idx - 1].size);
+          DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
+            static_cast<DATATYPE>(metric_schema[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
+          size_t d_size = col_idx == 0 ? 8 : col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema[col_idx - 1].size);
           bool has_bitmap = col_idx != 0;
 
           // write col offset to buffer
@@ -431,6 +439,10 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
           string col_data;
           buildColData(row_values, col_idx, row_offset, row_count, has_bitmap, d_type, d_size, col_data, bitmap);
 
+#ifdef K_DEBUG
+          size_t offset_len = isVarLenType(d_type) ? (row_count + 1) * 4 : 0;
+          assert(col_data.size() == d_size * row_count + offset_len);
+#endif
           // compress
           if (has_bitmap) {
             compress(col_data, &bitmap, d_type, row_count, buffer);
@@ -438,6 +450,9 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
             compress(col_data, nullptr, d_type, row_count, buffer);
           }
         }
+#ifdef K_DEBUG
+        write_row_num.fetch_add(row_count);
+#endif
         // write last col data end offset
         uint32_t offset = buffer.size();
         memcpy(buffer.data() + col_count * sizeof(uint32_t), &offset, sizeof(uint32_t));
@@ -480,7 +495,9 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
       return global_status;
     }
   }
-
+#ifdef KDEBUG
+  assert(read_row_num.load() == write_row_num.load());
+#endif
   return KStatus::SUCCESS;
 }
 

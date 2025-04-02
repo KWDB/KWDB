@@ -447,7 +447,7 @@ struct TsLastSegmentSlice {
   uint32_t count;
 };
 
-const uint32_t MAX_COMPACT_NUM = 1;
+const uint32_t MAX_COMPACT_NUM = 4;
 
 class TsLastSegmentManager {
  private:

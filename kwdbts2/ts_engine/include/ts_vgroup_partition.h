@@ -73,6 +73,7 @@ class TsVGroupPartition {
 
   KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
                                TSSlice block_data, TSSlice block_agg, uint32_t row_num);
+
  protected:
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);
