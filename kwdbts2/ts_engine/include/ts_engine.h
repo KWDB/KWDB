@@ -31,8 +31,6 @@
 
 namespace kwdbts {
 
-extern const int storage_engine_vgroup_max_num;
-
 /**
  * @brief TSEngineV2Impl
  */

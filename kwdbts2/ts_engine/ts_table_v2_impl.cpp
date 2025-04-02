@@ -87,7 +87,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = ts_engine->GetTsVGroups();
   for (auto& vgroup_iter : vgroup_ids) {
     if (vgroup_iter.first >= storage_engine_vgroup_max_num) {
-      LOG_ERROR("Invalid vgroup id.", vgroup_iter.first);
+      LOG_ERROR("Invalid vgroup id[%u].", vgroup_iter.first);
       return s;
     }
     vgroup = (*ts_vgroups)[vgroup_iter.first];
@@ -96,7 +96,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
                               scan_cols, ts_scan_cols, scan_agg_types, table_schema_mgr_,
                               table_version, &ts_iter, vgroup, ts_points, reverse, sorted);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("cannot create iterator for vgroup[%lu].", vgroup_iter.first);
+      LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
     }
     ts_table_iterator->AddEntityIterator(ts_iter);

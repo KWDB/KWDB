@@ -3336,13 +3336,13 @@ uint32_t TsTable::GetCurrentTableVersion() {
 KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
                                       const uint32_t cur_version, const uint32_t new_version,
                                       const std::vector<uint32_t/* tag column id*/>& tags) {
-  LOG_INFO("CreateNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (auto& entity_group : entity_groups_) {
     if (!entity_group.second->CreateNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
-      LOG_ERROR("Failed to create normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+      LOG_ERROR("Failed to create normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
       return FAIL;
     }
   }
@@ -3351,7 +3351,7 @@ KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transact
     LOG_ERROR("Update table version error");
     return s;
   }
-  LOG_INFO("CreateNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("CreateNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -3359,17 +3359,17 @@ KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transact
 KStatus TsTable::createNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
                                       const uint32_t cur_version, const uint32_t new_version,
                                       const std::vector<uint32_t/* tag column id*/>& tags) {
-    LOG_INFO("snapshot create Normal Tag Index start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+    LOG_INFO("snapshot create Normal Tag Index start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
     RW_LATCH_S_LOCK(entity_groups_mtx_);
     Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
     for (auto& entity_group : entity_groups_) {
         if (!entity_group.second->createNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
-            LOG_ERROR("Failed to create normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+            LOG_ERROR("Failed to create normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
             return FAIL;
         }
     }
-    LOG_INFO("CreateNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+    LOG_INFO("CreateNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
     return SUCCESS;
 }
@@ -3396,13 +3396,13 @@ std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndex
 
 KStatus TsTable::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                     const uint32_t new_version, const uint64_t index_id) {
-  LOG_INFO("DropNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (auto& entity_group : entity_groups_) {
     if (!entity_group.second->DropNormalTagIndex(ctx, transaction_id, cur_version, new_version, index_id)) {
-        LOG_ERROR("Failed to drop normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+        LOG_ERROR("Failed to drop normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
         return FAIL;
     }
   }
@@ -3411,7 +3411,7 @@ KStatus TsTable::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transactio
     LOG_ERROR("Update table version error");
     return s;
   }
-  LOG_INFO("DropNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("DropNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -3476,7 +3476,7 @@ std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsEntityGroup::GetAllNTa
 
 KStatus TsEntityGroup::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                           const uint32_t new_version, const uint64_t index_id) {
-  LOG_INFO("DropNormalTagIndex index_id:%d, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  LOG_INFO("DropNormalTagIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
   RW_LATCH_S_LOCK(drop_mutex_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   ErrorInfo errorInfo;
