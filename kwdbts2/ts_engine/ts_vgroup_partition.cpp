@@ -12,10 +12,12 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <utility>
 
 #include "ts_block_segment.h"
 #include "ts_vgroup_partition.h"
 #include "ts_env.h"
+#include "ts_last_segment_manager.h"
 #include "ts_metric_block.h"
 
 namespace kwdbts {
@@ -81,13 +83,12 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::FlushToLastSegment(const std::string &piece) {
-  // todo add function.
-  return KStatus::SUCCESS;
+KStatus TsVGroupPartition::NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment) {
+  return last_segment_mgr_.NewLastSegment(last_segment);
 }
 
-KStatus TsVGroupPartition::NewLastSegment(std::shared_ptr<TsLastSegment>& last_segment) {
-  return last_segment_mgr_.NewLastSegment(last_segment);
+void TsVGroupPartition::PublicLastSegment(std::unique_ptr<TsLastSegment>&& last_segment) {
+  last_segment_mgr_.TakeLastSegmentOwnership(std::move(last_segment));
 }
 
 std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }

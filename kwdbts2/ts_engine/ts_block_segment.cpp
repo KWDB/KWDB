@@ -319,7 +319,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
   {
     std::mutex entity_values_mutex;
 
-    auto read_last_segment = [&](std::shared_ptr<TsLastSegment>& last_segment, uint32_t last_segment_idx) {
+    auto read_last_segment = [&](std::shared_ptr<TsLastSegment> last_segment, uint32_t last_segment_idx) {
       // get block indexes
       std::vector<TsLastSegmentBlockIndex> block_indexes;
       KStatus s = last_segment->GetAllBlockIndex(&block_indexes);
@@ -366,7 +366,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
     for (uint32_t i = 0; i < thread_num; ++i) {
       workers.emplace_back([&, i]() {
         uint32_t end_idx = i == thread_num - 1 ? last_segments_.size() : (i + 1) * compact_num_per_thread;
-        for (size_t idx = i * compact_num_per_thread; idx < end_idx; ++idx) {
+        for (size_t idx = i * compact_num_per_thread; idx < end_idx && idx < last_segments_.size(); ++idx) {
           KStatus s = read_last_segment(last_segments_[idx], idx);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("read last segment failed, segment idx: %lu", idx);

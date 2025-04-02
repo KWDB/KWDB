@@ -14,17 +14,16 @@
 #include "ts_payload.h"
 #include "ts_slice.h"
 
-void Tester(int nrow, const std::string &filename) {
+void Tester(TSTableID table_id, int nrow, const std::string &filename) {
   auto compressor = kwdbts::TsEnvInstance::GetInstance().Compressor();
   compressor->ResetPolicy(LIGHT_COMRESS);
   using namespace roachpb;
+  std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT, DataType::INT,
+                                        DataType::INT, DataType::INT};
   {
     System("rm -rf schema");
     CreateTsTable meta;
-    TSTableID table_id = 123;
-    ConstructRoachpbTableWithTypes(
-        &meta, table_id,
-        {DataType::TIMESTAMP, DataType::INT, DataType::INT, DataType::INT, DataType::INT});
+    ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
     auto s = mgr->CreateTable(nullptr, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -40,9 +39,9 @@ void Tester(int nrow, const std::string &filename) {
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     TsLastSegmentManager last_segment_mgr("./");
-    std::shared_ptr<TsLastSegment> last_segment;
-    last_segment_mgr.NewLastSegment(last_segment);
-    TsLastSegmentBuilder builder(mgr.get(), last_segment);
+    std::unique_ptr<TsLastSegment> last_segment;
+    last_segment_mgr.NewLastSegment(&last_segment);
+    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment));
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};
@@ -72,20 +71,64 @@ void Tester(int nrow, const std::string &filename) {
     TsLastSegmentBlockIndex idx_block;
     file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice,
                reinterpret_cast<char *>(&idx_block));
-    // char buf[32];
-    // file->Read(idx_block.offset, 32, &slice, buf);
-    // auto table_id = DecodeFixed<64>(buf + 8);
-    EXPECT_EQ(idx_block.table_id, 123);
+    EXPECT_EQ(idx_block.table_id, table_id);
+
+    char buf[1024];
+    TSSlice result;
+    file->Read(idx_block.offset, idx_block.length, &result, buf);
+    TsLastSegmentBlockInfo info;
+    const char *ptr = buf;
+    info.block_offset = DecodeFixed64(ptr);
+    ptr += 8;
+    info.nrow = DecodeFixed32(ptr);
+    ptr += 4;
+    info.ncol = DecodeFixed32(ptr);
+    ptr += 4;
+    info.var_offset = DecodeFixed32(ptr);
+    ptr += 4;
+    info.var_len = DecodeFixed32(ptr);
+    ptr += 4;
+
+    ASSERT_EQ(info.ncol, dtypes.size() + 2);
+    info.col_infos.resize(info.ncol);
+    for (int j = 0; j < info.ncol; ++j) {
+      info.col_infos[j].offset = DecodeFixed32(ptr);
+      ptr += 4;
+      info.col_infos[j].bitmap_len = DecodeFixed16(ptr);
+      ptr += 2;
+      info.col_infos[j].data_len = DecodeFixed32(ptr);
+      ptr += 4;
+
+      EXPECT_NE(info.col_infos[j].bitmap_len, 1);
+    }
+    ASSERT_EQ(ptr, buf + idx_block.length);
+    for (int j = 0; j < info.ncol; ++j) {
+      if (j < 2) {
+        ASSERT_EQ(info.col_infos[j].bitmap_len, 0) << "At Column " << j;
+      }
+      if (info.col_infos[j].bitmap_len != 0) {
+        file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len,
+                   &result, buf);
+        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j;
+      }
+    }
   }
 }
 
-TEST(LastSegmentBuilder, WriteAndRead) {
+TEST(LastSegmentBuilder, WriteAndRead1) {
+  Tester(13, 1, "last.ver-0001");
   std::filesystem::remove_all("schema");
   std::filesystem::remove("last.ver-0001");
-  Tester(1, "last.ver-0001");
+}
+
+TEST(LastSegmentBuilder, WriteAndRead2) {
+  Tester(14, 12345, "last.ver-0001");
   std::filesystem::remove_all("schema");
   std::filesystem::remove("last.ver-0001");
-  Tester(12345, "last.ver-0001");
-  // std::filesystem::remove_all("schema");
-  // std::filesystem::remove("last2");
+}
+
+TEST(LastSegmentBuilder, WriteAndRead3) {
+  Tester(15, 4096, "last.ver-0001");
+  std::filesystem::remove_all("schema");
+  std::filesystem::remove("last.ver-0001");
 }

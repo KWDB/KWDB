@@ -256,7 +256,7 @@ struct TsBlockSegmentColumnBlock {
 
 class TsBlockSegmentBuilder {
  private:
-  std::vector<std::shared_ptr<TsLastSegment>>& last_segments_;
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
   TsVGroupPartition* partition_;
 
   std::vector<std::vector<std::shared_ptr<TsLastSegmentBlock>>> blocks_;
@@ -272,7 +272,7 @@ class TsBlockSegmentBuilder {
   KStatus compress(std::string col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count, std::string& buffer);
 
  public:
-  explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>>& last_segments,
+  explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
                                  TsVGroupPartition* partition = nullptr,
                                  size_t max_rows_per_block = 1000) :
                                  last_segments_(last_segments),

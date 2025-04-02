@@ -156,7 +156,7 @@ struct TsLastSegmentFooter {
 static_assert(sizeof(TsLastSegmentFooter) == 64);
 
 struct TsLastSegmentBlockIndex {
-  uint64_t offset;
+  uint64_t offset, length;
   uint64_t table_id;
   uint32_t table_version, n_entity;
   int64_t min_ts, max_ts;
@@ -254,7 +254,7 @@ class TsLastSegment {
 
 class TsLastSegmentBuilder {
   static constexpr int kNRowPerBlock = 4 << 10;
-  std::shared_ptr<TsLastSegment> last_segment_;
+  std::unique_ptr<TsLastSegment> last_segment_;
 
   struct BlockInfo;
   class MetricBlockBuilder;  // Helper for build DataBlock
@@ -284,8 +284,8 @@ class TsLastSegmentBuilder {
 
  public:
   TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr,
-                       std::shared_ptr<TsLastSegment> last_segment)
-      : last_segment_(last_segment),
+                       std::unique_ptr<TsLastSegment>&& last_segment)
+      : last_segment_(std::move(last_segment)),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
         info_handle_(std::make_unique<InfoHandle>()),
         index_handle_(std::make_unique<IndexHandle>()),
@@ -303,6 +303,7 @@ class TsLastSegmentBuilder {
   bool ConsistentWith(TSTableID table_id, uint32_t version) const {
     return table_id == table_id_ && version_ == version;
   }
+  std::unique_ptr<TsLastSegment> Finish();
 };
 
 struct TsLastSegmentBuilder::BlockInfo {
@@ -455,7 +456,8 @@ class TsLastSegmentManager {
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
   KRWLatch rw_latch_;
 
-  uint32_t ver_ = 0;
+  std::atomic<uint32_t> ver_ = 0;
+  std::atomic<uint32_t> n_lastsegment_ = 0;
   uint32_t compacted_ver_ = 0;
 
   int rdLock() {return RW_LATCH_S_LOCK(&rw_latch_);}
@@ -468,7 +470,8 @@ class TsLastSegmentManager {
 
   ~TsLastSegmentManager() {}
 
-  KStatus NewLastSegment(std::shared_ptr<TsLastSegment>& last_segment);
+  KStatus NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment);
+  void TakeLastSegmentOwnership(std::unique_ptr<TsLastSegment>&& last_segment);
 
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments();
 
