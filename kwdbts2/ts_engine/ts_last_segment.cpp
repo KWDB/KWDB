@@ -597,7 +597,7 @@ std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetCompactLast
   }
   size_t offset = compacted_ver_ - last_segments_[0]->GetVersion() + 1;
   assert(offset < last_segments_.size());
-  if (ver_ - compacted_ver_ > MAX_COMPACT_NUM + MAX_FLUSH_NUM) {
+  if (ver_ - compacted_ver_ >= MAX_COMPACT_NUM + MAX_FLUSH_NUM) {
     result.assign(last_segments_.begin() + offset,
                   last_segments_.begin() + offset + MAX_COMPACT_NUM);
   }

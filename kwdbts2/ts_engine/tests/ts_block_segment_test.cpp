@@ -9,137 +9,72 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <gtest/gtest.h>
-#include <memory>
-#include "ts_block_segment.h"
+#include <fcntl.h>
+#include <unistd.h>
+#include "libkwdbts2.h"
+#include "me_metadata.pb.h"
+#include "ts_engine.h"
 #include "sys_utils.h"
+#include "test_util.h"
 
 using namespace kwdbts;  // NOLINT
 
-const string block_segment_path = "./blk_segment";
-class TestTsBlockSegment : public ::testing::Test {
- public:
-  TsBlockSegment * block_seg_{nullptr};
- public:
-  TestTsBlockSegment() {
-    Remove(block_segment_path);
-    MakeDirectory(block_segment_path);
-    block_seg_ = new TsBlockSegment(block_segment_path);
-    KStatus s = block_seg_->Open();
-    EXPECT_EQ(s, KStatus::SUCCESS);
-  }
-  ~TestTsBlockSegment() {
-    if (block_seg_) {
-      delete block_seg_;
-    }
+
+class TsBlockSegmentTest : public ::testing::Test {
+public:
+  TsBlockSegmentTest() {}
+
+  ~TsBlockSegmentTest() {
+    KWDBDynamicThreadPool::GetThreadPool().Stop();
   }
 };
 
-TEST_F(TestTsBlockSegment, empty) {
-}
+TEST_F(TsBlockSegmentTest, simpleInsert) {
+  using namespace roachpb;
+  {
+    System("rm -rf schema");
+    System("rm -rf db001-123");
+    CreateTsTable meta;
+    TSTableID table_id = 123;
+    ConstructRoachpbTableWithTypes(
+      &meta, table_id,
+      {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT});
+    auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    auto s = mgr->CreateTable(nullptr, table_id, &meta);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    std::shared_ptr<TsTableSchemaManager> schema_mgr;
+    s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+    ASSERT_EQ(s, KStatus::SUCCESS);
 
-TEST_F(TestTsBlockSegment, InsertOneBlock) {
-//  TsBlockItem item = TsBlockItem::NewBlockItem(1);
-//  item->Info().row_count = 7;
-//  item->Info().is_agg_res_available = true;
-//  item->Info().entity_id = 3;
-//  item->Info().is_overflow = true;
-//  item->Info().max_ts_in_block = 666555;
-//  item->Info().min_ts_in_block = 555666;
-//  bool del;
-//  item->isDeleted(6, &del);
-//  EXPECT_EQ(del, false);
-//  item->setDeleted(6);
-//  item->isDeleted(6, &del);
-//  EXPECT_EQ(del, true);
-//
-//  std::vector<TsBlockItem*> items;
-//  KStatus s = block_seg_->GetAllBlockItems(1, &items);
-//  EXPECT_EQ(s, KStatus::SUCCESS);
-//  EXPECT_EQ(0, items.size());
-//
-//  std::string data_str = "hello 1342xdfxcvaser";
-//  TSSlice data{data_str.data(), data_str.length() + 1};
-//
-//  s = block_seg_->AppendBlockData(item, data, data);
-//  EXPECT_EQ(s, KStatus::SUCCESS);
-//
-//  items.clear();
-//  s = block_seg_->GetAllBlockItems(1, &items);
-//  EXPECT_EQ(s, KStatus::SUCCESS);
-//  EXPECT_EQ(0, items.size());
-//
-//  items.clear();
-//  s = block_seg_->GetAllBlockItems(3, &items);
-//  EXPECT_EQ(s, KStatus::SUCCESS);
-//  EXPECT_EQ(1, items.size());
-//  EXPECT_EQ(items[0]->Info().row_count, 7);
-//  EXPECT_EQ(items[0]->Info().is_agg_res_available, false);
-//  EXPECT_EQ(items[0]->Info().entity_id, 3);
-//  EXPECT_EQ(items[0]->Info().min_ts_in_block, 555666);
-//  items[0]->isDeleted(6, &del);
-//  EXPECT_EQ(del, true);
-//
-//  auto buff = std::make_unique<char[]>(items[0]->Info().data_size);
-//  s = block_seg_->GetBlockData(items[0], buff.get());
-//  EXPECT_EQ(s, KStatus::SUCCESS);
-//  EXPECT_EQ(memcmp(data.data, buff.get(), data.len), 0);
-//
-//  TsBlockItem::DeleteBlockItem(item);
-//  TsBlockItem::DeleteBlockItem(items[0]);
-}
+    std::vector<AttributeInfo> metric_schema;
+    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    std::vector<TagInfo> tag_schema;
+    s = schema_mgr->GetTagMeta(1, tag_schema);
+    ASSERT_EQ(s, KStatus::SUCCESS);
 
-TEST_F(TestTsBlockSegment, InsertSomeBlocks) {
-//  int blk_item_num = 10;
-//  std::string data_str_prefix = "hello 1342xdfxcvaser_";
-//  bool del;
-//  std::vector<TsBlockItem*> gen_items;
-//  for (size_t i = 0; i < blk_item_num; i++) {
-//    TsBlockItem* item = TsBlockItem::NewBlockItem(200 + i);
-//    item->Info().row_count = 200 + i;
-//    item->Info().is_agg_res_available = true;
-//    item->Info().entity_id = 1 + i;
-//    item->Info().is_overflow = true;
-//    item->Info().max_ts_in_block = 666555;
-//    item->Info().min_ts_in_block = 555666 + i;
-//    item->isDeleted(100 + i, &del);
-//    EXPECT_EQ(del, false);
-//    item->setDeleted(100 + i);
-//    item->isDeleted(100 + i, &del);
-//    EXPECT_EQ(del, true);
-//    std::string data_str = data_str_prefix + std::to_string(i);
-//    TSSlice data{data_str.data(), data_str.length() + 1};
-//    auto s = block_seg_->AppendBlockData(item, data, data);
-//    EXPECT_EQ(s, KStatus::SUCCESS);
-//    gen_items.push_back(item);
-//  }
-//
-//  for (size_t i = 0; i < blk_item_num; i++) {
-//    std::vector<TsBlockItem*> items;
-//    auto s = block_seg_->GetAllBlockItems(1 + i, &items);
-//    EXPECT_EQ(s, KStatus::SUCCESS);
-//    EXPECT_EQ(1, items.size());
-//    EXPECT_EQ(items[0]->Info().row_count, 200 + i);
-//    EXPECT_EQ(items[0]->Info().is_agg_res_available, false);
-//    EXPECT_EQ(items[0]->Info().entity_id, 1 + i);
-//    EXPECT_EQ(items[0]->Info().min_ts_in_block, 555666 + i);
-//    items[0]->isDeleted(100 + i, &del);
-//    EXPECT_EQ(del, true);
-//    items[0]->isDeleted(99, &del);
-//    EXPECT_EQ(del, false);
-//
-//    // char* buff = (char*)(malloc(items[0]->Info().data_size));
-//    auto buff = std::make_unique<char[]>(items[0]->Info().data_size);
-//    s = block_seg_->GetBlockData(items[0], buff.get());
-//    EXPECT_EQ(s, KStatus::SUCCESS);
-//    std::string data_str = data_str_prefix + std::to_string(i);
-//    TSSlice data{data_str.data(), data_str.length() + 1};
-//    EXPECT_EQ(memcmp(data.data, buff.get(), data.len), 0);
-//
-//    TsBlockItem::DeleteBlockItem(items[0]);
-//  }
-//
-//  for (size_t i = 0; i < blk_item_num; i++) {
-//    TsBlockItem::DeleteBlockItem(gen_items[i]);
-//  }
+    std::filesystem::path path = "db001-123";
+    std::shared_ptr<TsVGroupPartition> partition = std::make_shared<TsVGroupPartition>(path, 0, mgr.get(), 0, 1000000, false);
+    partition->Open();
+
+    std::shared_ptr<TsLastSegment> last_segment;
+    for (int i = 0; i < 1; ++i) {
+      partition->NewLastSegment(last_segment);
+      TsLastSegmentBuilder builder(mgr.get(), last_segment);
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 10, 123, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
+
+      for (int i = 0; i < p.GetRowCount(); ++i) {
+        s = builder.PutRowData(table_id, 1, 1, i, p.GetRowData(i));
+        EXPECT_EQ(s, KStatus::SUCCESS);
+      }
+      builder.Finalize();
+      builder.Flush();
+      free(payload.data);
+    }
+
+    //partition->Compact();
+    EXPECT_EQ(partition->Compact(1), KStatus::SUCCESS);
+  }
 }

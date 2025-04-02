@@ -280,7 +280,7 @@ class TsBlockSegmentBuilder {
                                  max_rows_per_block_(max_rows_per_block) {}
   ~TsBlockSegmentBuilder() {}
 
-  KStatus BuildAndFlush(uint32_t thread_num = 1);
+  KStatus BuildAndFlush(uint32_t thread_num);
 };
 
 }  // namespace kwdbts

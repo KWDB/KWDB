@@ -21,20 +21,20 @@
 namespace kwdbts {
 
 TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
-                                     int64_t start, int64_t end)
+                                     int64_t start, int64_t end, bool open_compact_thread)
     : database_id_(database_id),
       schema_mgr_(schema_mgr),
       start_(start),
       end_(end),
       path_(root / GetFileName()),
-      last_segment_mgr_(path_) {
+      last_segment_mgr_(path_),
+      open_compact_thread_(open_compact_thread){
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
-  is_running_ = true;
   initCompactThread();
 }
 
 TsVGroupPartition::~TsVGroupPartition() {
-  is_running_ = false;
+  open_compact_thread_ = false;
   closeCompactThread();
 }
 
@@ -44,7 +44,7 @@ KStatus TsVGroupPartition::Open() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::Compact() {
+KStatus TsVGroupPartition::Compact(int thread_num) {
   // TODO(limeng04): Compact all the last segments in the historical partition.
   // 1. Get all the last segments that need to be compacted.
   std::vector<std::shared_ptr<TsLastSegment>> last_segments = last_segment_mgr_.GetCompactLastSegments();
@@ -53,7 +53,7 @@ KStatus TsVGroupPartition::Compact() {
   }
   // 2. Build the column block.
   TsBlockSegmentBuilder builder(last_segments, this);
-  KStatus s = builder.BuildAndFlush();
+  KStatus s = builder.BuildAndFlush(thread_num);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("partition[%s] compact failed", path_.c_str());
     return s;
@@ -99,13 +99,13 @@ std::string TsVGroupPartition::GetFileName() const {
 }
 
 void TsVGroupPartition::compactRoutine(void* args) {
-  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && is_running_) {
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && open_compact_thread_) {
     std::unique_lock<std::mutex> lock(cv_mutex_);
     // Check every 10 seconds if compact is necessary
-    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !is_running_; });
+    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !open_compact_thread_; });
     lock.unlock();
     // If the thread pool stops or the system is no longer running, exit the loop
-    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !is_running_) {
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !open_compact_thread_) {
       break;
     }
     // Execute compact tasks
@@ -116,6 +116,9 @@ void TsVGroupPartition::compactRoutine(void* args) {
 }
 
 void TsVGroupPartition::initCompactThread() {
+  if (!open_compact_thread_) {
+    return;
+  }
   KWDBOperatorInfo kwdb_operator_info;
   // Set the name and owner of the operation
   kwdb_operator_info.SetOperatorName("TsVGroupPartition::CompactThread");

@@ -18,7 +18,7 @@
 #include "ts_table_schema_manager.h"
 #include "sys_utils.h"
 
-extern const int storage_engine_vgroup_max_num = 1;
+extern const int storage_engine_vgroup_max_num = 10;
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 

@@ -39,8 +39,8 @@ class TsVGroupPartition {
 
   TsEngineSchemaManager* schema_mgr_;
 
-  // Flag indicating whether it is running or not
-  bool is_running_{false};
+  // compact thread flag
+  bool open_compact_thread_{false};
   // Id of the compact thread
   KThreadID compact_thread_id_{0};
   // Conditional variable
@@ -50,13 +50,13 @@ class TsVGroupPartition {
 
  public:
   TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
-                    int64_t start, int64_t end);
+                    int64_t start, int64_t end, bool open_compact_thread = true);
 
   ~TsVGroupPartition();
 
   KStatus Open();
   // compact data from last segment to block segment. compact one block data every time.
-  KStatus Compact();
+  KStatus Compact(int thread_num = 5);
 
   KStatus FlushToLastSegment(const std::string& piece);
 
