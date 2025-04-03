@@ -98,7 +98,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
   return s;
 }
 
-KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id,
+KStatus TSEngineV2Impl::PutTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id,
   TsRawPayload& payload) {
   ErrorInfo err_info;
   // 1. Write tag data
@@ -146,7 +146,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t 
       }
     }
     entity_id = tbl_grp->AllocateEntityID();
-    s = putTagData(ctx, table_id, tbl_grp_id, entity_id, p);
+    s = PutTagData(ctx, table_id, tbl_grp_id, entity_id, p);
     if (s != KStatus::SUCCESS) {
       return s;
     }
