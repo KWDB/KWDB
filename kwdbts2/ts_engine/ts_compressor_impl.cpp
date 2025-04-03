@@ -39,9 +39,8 @@ namespace kwdbts {
 //       timestamp is recorded as nanosecond.
 bool GorillaInt::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
   static constexpr int dsize = sizeof(int64_t);
-  if (count == 0) {
-    out->clear();
-    return true;
+  if (count < 2) {
+    return false;
   }
   assert(data.len == count * dsize);
   out->reserve(dsize * count);
@@ -164,6 +163,9 @@ bool GorillaInt::Decompress(const TSSlice &data, uint64_t count, std::string *ou
 
 bool GorillaIntV2::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
   static constexpr int dsize = sizeof(int64_t);
+  if (count < 2) {
+    return false;
+  }
   assert(data.len == count * dsize);
   out->reserve(dsize * count);
   int64_t *ts_data = reinterpret_cast<int64_t *>(data.data);

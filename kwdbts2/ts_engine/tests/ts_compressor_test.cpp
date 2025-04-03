@@ -67,6 +67,17 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
   }
 }
 
+TYPED_TEST(TimestampCompressorTester, CompressDecompressOneRow) {
+  int start = 0x12345678;
+  const kwdbts::CompressorImpl &comp = TypeParam::GetInstance();
+  std::vector<int64_t> ts(1);
+  ts[0] = start;
+  TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * 8};
+
+  std::string out;
+  ASSERT_FALSE(comp.Compress(data, 1, &out));
+}
+
 template <class Compressor>
 class IntegerCompressorTester : public ::testing::Test {};
 using AllIntTypes = ::testing::Types<kwdbts::Simple8BInt<uint64_t>>;
