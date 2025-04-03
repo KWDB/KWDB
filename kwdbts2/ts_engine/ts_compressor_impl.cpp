@@ -363,29 +363,55 @@ alignas(64) static constexpr int32_t GROUPSIZE[16] = {240, 120, 60, 30, 20, 15, 
 
 template <typename T>
 static inline int GetValidBits(T v) {
-  return 64 - (std::is_signed_v<T> ? __builtin_clrsbl(v) : __builtin_clzl(v));
+  static_assert(std::is_unsigned_v<T>);
+  if (v == 0) return 1;
+  if constexpr (sizeof(T) == sizeof(unsigned int)) {
+    return sizeof(T) * 8 - __builtin_clz(v);
+  } else if constexpr (sizeof(T) == sizeof(unsigned long)) {
+    return sizeof(T) * 8 - __builtin_clzl(v);
+  }
+  return sizeof(T) * 8 - __builtin_clzll(v);
+}
+
+template <class T>
+static inline std::make_unsigned_t<T> EncodeZigZagIfNeeded(T v) {
+  if constexpr (std::is_signed_v<T>) {
+    return EncodeZigZag(v);
+  }
+  return v;
+}
+
+template <class T>
+static inline T DecodeZigZagIfNeeded(std::make_unsigned_t<T> v) {
+  if constexpr (std::is_signed_v<T>) {
+    return DecodeZigZag(v);
+  }
+  return v;
 }
 
 template <typename T>
 static bool CompressImplGreedy(const T *data, uint64_t count, std::string *out) {
+  static_assert(std::is_integral_v<T>);
   out->clear();
   for (int i = 0; i < count;) {
-    int j = i;
 
-    int valid_nbits = GetValidBits(data[j]);
+    auto data_i = EncodeZigZagIfNeeded(data[i]);
+    int valid_nbits = GetValidBits(data_i);
     if (valid_nbits > 60) return false;
     uint8_t selector = NBITS2SELECTOR[valid_nbits];
 
-    T header = data[i];
+    auto header = data_i;
     bool all_same = true;
+    int j = i + 1;
     for (; j < count; ++j) {
-      all_same &= (data[j] == header);
+      auto data_j = EncodeZigZagIfNeeded(data[j]);
+      all_same &= (data_j == header);
       if (all_same && j - i < GROUPSIZE[0]) continue;
       if (j - i >= GROUPSIZE[selector]) {
         // current group cannot take this number, break and process in next iteration
         break;
       }
-      valid_nbits = GetValidBits(data[j]);
+      valid_nbits = GetValidBits(data_j);
       if (valid_nbits > 60) return false;  // data >= 1ULL << 60, can not compress
       uint8_t current_selector = NBITS2SELECTOR[valid_nbits];
 
@@ -426,7 +452,7 @@ static bool CompressImplGreedy(const T *data, uint64_t count, std::string *out) 
       uint64_t mask = (1ULL << item_width) - 1;
       for (int k = 0; k < GROUPSIZE[selector]; ++k) {
         batch <<= item_width;
-        batch += static_cast<uint64_t>(data[i + k]) & mask;
+        batch += static_cast<uint64_t>(EncodeZigZagIfNeeded(data[i + k])) & mask;
       }
       batch <<= 60 % GROUPSIZE[selector];
       assert(batch >> 60 == selector);
@@ -451,9 +477,7 @@ template <class T>
 static inline T Restore(uint64_t n, int width) {
   uint64_t mask = (1ULL << width) - 1;
   n &= mask;
-  bool needs_flip = std::is_signed_v<T> && (n >> (width - 1));
-  n = needs_flip ? n | ~mask : n;
-  return static_cast<T>(n);
+  return DecodeZigZagIfNeeded<T>(n);
 }
 
 template <typename T>
