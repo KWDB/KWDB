@@ -20,6 +20,7 @@
 #include "ee_global.h"
 #include "ee_executor.h"
 #include "ts_table_v2_impl.h"
+#include "ts_instance_params.h"
 
 namespace kwdbts {
 const int storage_engine_vgroup_max_num = 10;
@@ -166,9 +167,9 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   }
   
   dedup_result->payload_num = payload_num;
-  dedup_result->dedup_rule = static_cast<int>(TsEnvInstance::GetInstance().GetDedupRule());
+  dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
   auto s = ts_table->PutData(ctx, range_group_id, payload_data, payload_num,
-                        mtr_id, inc_entity_cnt, inc_unordered_cnt, dedup_result, TsEnvInstance::GetInstance().GetDedupRule());
+                        mtr_id, inc_entity_cnt, inc_unordered_cnt, dedup_result, TsEngineInstanceParams::g_dedup_rule);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("put data failed. table[%lu].", table_id);
     return s;

@@ -23,10 +23,10 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
     segment_.push_back(std::make_shared<TsMemSegment>());
   }
   segment_lock_.unlock();
-  if (segments->get() != nullptr && (*segments)->SetImm()) {
-    // do nothing
-  } else {
-    LOG_ERROR("can not switch mem segment.");
+  if (segments->get() != nullptr) {
+    if (!(*segments)->SetImm()) {
+      LOG_ERROR("can not switch mem segment.");
+    }
   }
 }
 
@@ -149,7 +149,7 @@ KStatus TsMemSegBlockItemInfo::GetValueSlice(int row_num, int col_id,
 
 bool TsMemSegment::AppendOneRow(const TSMemSegRowData& row) {
   size_t malloc_size = sizeof(TSMemSegRowData) + row.row_data.len;
-  auto alloc_space = arena_.Allocate(malloc_size);
+  auto alloc_space = arena_.AllocateAligned(malloc_size);
   if (alloc_space != nullptr) {
     TSMemSegRowData* cur_row = reinterpret_cast<TSMemSegRowData*>(alloc_space);
     memcpy(cur_row, &row, sizeof(TSMemSegRowData));
@@ -179,7 +179,7 @@ bool TsMemSegment::GetEntityRows(uint32_t db_id, TSTableID table_id, TSEntityID 
   TSMemSegRowData begin;
   begin.database_id = db_id;
   begin.table_id = table_id;
-  begin.entity_id = 0;
+  begin.entity_id = entity_id;
   begin.lsn = 0;
   begin.table_version = 0;
   begin.ts = 0;

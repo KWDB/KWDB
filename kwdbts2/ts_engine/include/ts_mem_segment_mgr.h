@@ -21,12 +21,13 @@
 #include "ts_payload.h"
 #include "inlineskiplist.h"
 #include "ts_block_item_info.h"
+#include "ts_arena.h"
 
 namespace kwdbts {
 
 class TsVGroup;
 
-
+// store row-based data struct for certain entity.
 struct TSMemSegRowData {
   uint32_t database_id;
   TSTableID table_id;
@@ -56,46 +57,11 @@ struct TSMemSegRowData {
   }
 };
 
-
 enum TsMemSegmentStatus : uint8_t {
   MEM_SEGMENT_INITED = 1,
   MEM_SEGMENT_IMMUTABLE = 2,
   MEM_SEGMENT_FLUSHING = 3,
   MEM_SEGMENT_DELETING = 4,
-};
-
-// todo(liangbo01) using block page to reduce memory fragments.
-class SystemAllocator : public Allocator {
- private:
-  uint32_t block_size_{64 << 10};
-  std::mutex list_mutex_;
-  std::list<char*> alloc_mem_;
-  uint32_t alloc_pos_;
-
- public:
-  ~SystemAllocator() {
-    for (auto mem : alloc_mem_) {
-      free(mem);
-    }
-  }
-
-  char* Allocate(size_t bytes) override {
-    auto mem = reinterpret_cast<char*>(malloc(bytes));
-    if (mem != nullptr) {
-      list_mutex_.lock();
-      alloc_mem_.push_back(mem);
-      list_mutex_.unlock();
-    }
-    return mem;
-  }
-  char* AllocateAligned(size_t bytes, size_t huge_page_size = 0,
-                                Logger* logger = nullptr) override {
-    return Allocate(bytes);
-  }
-
-  size_t BlockSize() const override {
-    return 0;
-  }
 };
 
 struct TSRowDataComparator {
@@ -119,7 +85,7 @@ struct TSRowDataComparator {
 
 class TsMemSegment {
  private:
-  SystemAllocator arena_;
+  ConcurrentArena arena_;
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_; 
   std::atomic<uint32_t> cur_size_{0};
@@ -130,7 +96,6 @@ class TsMemSegment {
  public:
   TsMemSegment() : skiplist_(comp_, &arena_) {}
   ~TsMemSegment() {
-    assert(status_.load() == MEM_SEGMENT_DELETING);
   }
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func);
@@ -236,9 +201,6 @@ class TsMemSegmentManager {
   TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
 
   ~TsMemSegmentManager() {
-    for (auto& seg : segment_) {
-      seg->SetDeleting();
-    }
     segment_.clear();
   }
 

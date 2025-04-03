@@ -66,7 +66,8 @@ TEST_F(TsMemSegMgrTest, empty) {
 
 TEST_F(TsMemSegMgrTest, insertOneRow) {
   uint64_t row_value = 123456789;
-  TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+  TSMemSegRowData tmp_data;
+  TSMemSegRowData* row_data = &tmp_data;
   row_data->database_id = 1;
   row_data->table_id = 1001;
   row_data->entity_id = 100001;
@@ -80,7 +81,8 @@ TEST_F(TsMemSegMgrTest, insertOneRow) {
 
 TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   uint64_t row_value = 123456789;
-  TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+  TSMemSegRowData tmp_data;
+  TSMemSegRowData* row_data = &tmp_data;
   row_data->database_id = 1;
   row_data->table_id = 1001;
   row_data->entity_id = 100001;
@@ -113,8 +115,9 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   TSTableID table_id = 33;
   uint32_t row_num = 10;
   std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
   for (size_t i = 0; i < row_num; i++) {
-    TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+   TSMemSegRowData* row_data = &tmp_data;
     row_data->database_id = db_id;
     row_data->table_id = table_id;
     row_data->entity_id = entity_id;
@@ -155,8 +158,9 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   TSTableID table_id = 33;
   uint32_t row_num = 10;
   std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
   for (size_t i = 0; i < row_num; i++) {
-    TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+    TSMemSegRowData* row_data = &tmp_data;
     row_data->database_id = db_id;
     row_data->table_id = table_id;
     row_data->entity_id = entity_id;
@@ -198,8 +202,9 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
   uint32_t row_num = 100;
   uint32_t entity_num = 10;
   std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
   for (size_t i = 0; i < row_num; i++) {
-    TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+    TSMemSegRowData* row_data = &tmp_data;
     row_data->database_id = db_id;
     row_data->table_id = table_id;
     row_data->entity_id = i % entity_num + 1;
@@ -244,8 +249,9 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
   uint32_t row_num = 10;
   uint32_t version_num = 2;
   std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
   for (size_t i = 0; i < row_num; i++) {
-    TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+    TSMemSegRowData* row_data = &tmp_data;
     row_data->database_id = db_id;
     row_data->table_id = table_id;
     row_data->entity_id = entity_id;
@@ -290,11 +296,12 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
   uint32_t row_num = 24;
   uint32_t table_num = 4;
   uint32_t version_num = 2;
+  TSMemSegRowData tmp_data;
   std::list<uint64_t*> values;
   for (size_t i = 0; i < row_num / table_num / version_num; i++) {
     for (size_t tbl_id = 0; tbl_id < table_num; tbl_id++) {
       for (size_t v_num = 0; v_num < version_num; v_num++) {
-        TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(malloc(sizeof(TSMemSegRowData)));
+        TSMemSegRowData* row_data = &tmp_data;
         row_data->database_id = db_id;
         row_data->table_id = table_id + tbl_id;
         row_data->entity_id = entity_id;
