@@ -48,7 +48,9 @@ class TsBlockSegmentBlockItem {
   TsBlockSegmentBlockItemInfo info_;
 
  public:
-  TsBlockSegmentBlockItem() {}
+  TsBlockSegmentBlockItem() {
+    memset(&info_, 0, sizeof(TsBlockSegmentBlockItemInfo));
+  }
   ~TsBlockSegmentBlockItem() {}
 
   TsBlockSegmentBlockItemInfo& Info() {
@@ -89,7 +91,7 @@ class TsBlockSegmentEntityItemFile {
     uint64_t cur_block_id = 0;        // block id that is allocating space for writing.
     int64_t max_ts = INT64_MIN;       // max ts of current entity in this Partition
     int64_t min_ts = INT64_MAX;       // min ts of current entity in this Partition
-    uint64_t row_written;             // row num that has written into file.
+    uint64_t row_written = 0;         // row num that has written into file.
     char reserved[88];                // reserved for user-defined information.
   };
   static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");

@@ -23,20 +23,20 @@
 namespace kwdbts {
 
 TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
-                                     int64_t start, int64_t end, bool open_compact_thread)
+                                     int64_t start, int64_t end, bool enable_compact_thread)
     : database_id_(database_id),
       schema_mgr_(schema_mgr),
       start_(start),
       end_(end),
       path_(root / GetFileName()),
       last_segment_mgr_(path_),
-      open_compact_thread_(open_compact_thread) {
+      enable_compact_thread_(enable_compact_thread) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
   initCompactThread();
 }
 
 TsVGroupPartition::~TsVGroupPartition() {
-  open_compact_thread_ = false;
+  enable_compact_thread_ = false;
   closeCompactThread();
 }
 
@@ -100,13 +100,13 @@ std::string TsVGroupPartition::GetFileName() const {
 }
 
 void TsVGroupPartition::compactRoutine(void* args) {
-  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && open_compact_thread_) {
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
     std::unique_lock<std::mutex> lock(cv_mutex_);
     // Check every 10 seconds if compact is necessary
-    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !open_compact_thread_; });
+    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !enable_compact_thread_; });
     lock.unlock();
     // If the thread pool stops or the system is no longer running, exit the loop
-    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !open_compact_thread_) {
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_compact_thread_) {
       break;
     }
     // Execute compact tasks
@@ -117,7 +117,7 @@ void TsVGroupPartition::compactRoutine(void* args) {
 }
 
 void TsVGroupPartition::initCompactThread() {
-  if (!open_compact_thread_) {
+  if (!enable_compact_thread_) {
     return;
   }
   KWDBOperatorInfo kwdb_operator_info;

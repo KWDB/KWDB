@@ -296,16 +296,12 @@ KStatus TsBlockSegmentBuilder::compress(const std::string& col_data, TsBitmap* b
   std::string tmp;
   if (ok) {
     auto [first, second] = compressor.GetAlgorithms();
-    char first_type = static_cast<char>(first);
-    buffer.append(&first_type);
-    char second_type = static_cast<char>(second);
-    buffer.append(&second_type);
+    buffer.push_back(static_cast<char>(first));
+    buffer.push_back(static_cast<char>(second));
     buffer.append(compressed);
   } else {
-    char first_type = static_cast<char>(TsCompAlg::kPlain);
-    buffer.append(&first_type);
-    char second_type = static_cast<char>(GenCompAlg::kPlain);
-    buffer.append(&second_type);
+    buffer.push_back(static_cast<char>(TsCompAlg::kPlain));
+    buffer.push_back(static_cast<char>(GenCompAlg::kPlain));
     buffer.append(col_data);
   }
   return KStatus::SUCCESS;

@@ -40,7 +40,7 @@ class TsVGroupPartition {
   TsEngineSchemaManager* schema_mgr_;
 
   // compact thread flag
-  bool open_compact_thread_{false};
+  bool enable_compact_thread_{true};
   // Id of the compact thread
   KThreadID compact_thread_id_{0};
   // Conditional variable
@@ -50,7 +50,7 @@ class TsVGroupPartition {
 
  public:
   TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
-                    int64_t start, int64_t end, bool open_compact_thread = true);
+                    int64_t start, int64_t end, bool enable_compact_thread = true);
 
   ~TsVGroupPartition();
 

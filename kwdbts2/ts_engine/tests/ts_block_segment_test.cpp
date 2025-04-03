@@ -66,7 +66,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
       TsRawPayload p{payload, metric_schema};
 
       for (int j = 0; j < p.GetRowCount(); ++j) {
-        s = builder.PutRowData(table_id, 1, 1, j, p.GetRowData(j));
+        s = builder.PutRowData(table_id, 1, 1 + i * 123, j, p.GetRowData(j));
         EXPECT_EQ(s, KStatus::SUCCESS);
       }
       builder.Finalize();
