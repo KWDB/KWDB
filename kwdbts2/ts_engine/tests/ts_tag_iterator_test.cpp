@@ -116,4 +116,5 @@ TEST_F(TestEngine, tagiterator) {
   ASSERT_EQ(fetch_total_count, cnt);
   iter->Close();
   delete iter;
+  ts_table.reset();
 }
