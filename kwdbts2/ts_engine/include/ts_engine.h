@@ -233,21 +233,11 @@ class TSEngineV2Impl : public TSEngine {
   KStatus AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                               const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
                               const std::vector<uint32_t/* tag column id*/> &new_index_schema) override {return FAIL; }
-  TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);
-
-  KStatus PutTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
-
-  TsEngineSchemaManager* GetSchemaMgr() {
-    if (!schema_mgr_) {
-      std::cerr << "[INTERNAL FATAL] schema_mgr_ is nullptr!" << std::endl;
-    }
-    return schema_mgr_.get();
-  }
 
  private:
-  // TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);
+  TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);
 
-  // KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
+  KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
 };
 
 }  //  namespace kwdbts

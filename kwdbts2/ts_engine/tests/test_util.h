@@ -176,7 +176,6 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id) {
   // add tag infos
   std::vector<ZTableColumnMeta> tag_metas;
   tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
-  tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
   for (int i = 0; i< tag_metas.size(); i++) {
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
     column->set_storage_type((roachpb::DataType)(tag_metas[i].type));
@@ -321,130 +320,6 @@ TSSlice GenSomePayloadData(kwdbContext_p ctx, k_uint32 count, KTimestamp start_t
   }
   return ret;
 }
-
-TSSlice GenSomePayloadData_V2Fixed(kwdbContext_p ctx, k_uint32 count, KTimestamp start_ts,
-                                   roachpb::CreateTsTable* meta, k_uint32 ms_interval = 10) {
-  std::vector<AttributeInfo> schema;
-  std::vector<AttributeInfo> tag_schema;
-  std::vector<uint32_t> actual_cols;
-  std::string test_str = "abcdefghijklmnopqrstuvwxyz";
-  int tag_value_len = 0;
-  int payload_row_len = 0;
-  int tag_offset = 0;
-
-  for (int i = 0; i < meta->k_column_size(); i++) {
-    const auto& col = meta->k_column(i);
-
-
-
-    int col_id = col.column_id();
-    auto col_type = col.col_type();    
-
-    std::cout << "[DEBUG] col_id = " << col_id
-              << ", type = " << col_type << std::endl;
-
-
-    AttributeInfo col_var;
-    ParseToAttributeInfo(col, col_var, i == 0);
-    if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
-      tag_value_len += col_var.size;
-      col_var.offset = tag_offset;
-      tag_offset += col_var.size;
-      if (col_var.type == DATATYPE::VARSTRING || col_var.type == DATATYPE::VARBINARY) {
-        tag_value_len += (32 + 2);  // varlen overhead
-      }
-      tag_schema.push_back(col_var);
-    } else if (!col.dropped()) {
-      payload_row_len += col_var.size;
-      if (col_var.type == DATATYPE::VARSTRING || col_var.type == DATATYPE::VARBINARY) {
-        payload_row_len += (test_str.size() + 2);
-      }
-      actual_cols.push_back(schema.size());
-      schema.push_back(col_var);
-    }
-  }
-
-  // ==== Payload layout size ====
-  const uint32_t header_len = TsRawPayload::header_size_;
-  const int primary_len_len = 2;
-  const int primary_tag_len = 8;
-  const int tag_len_len = 4;
-  const int data_len_len = 4;
-
-  const int tag_bitmap_len = (tag_schema.size() + 7) / 8;
-  tag_value_len += tag_bitmap_len;
-
-  const int per_row_len = 4 + payload_row_len;  // 4 bytes row_len + row_data
-  const int total_data_len = per_row_len * count;
-
-  const int payload_len = header_len + primary_len_len + primary_tag_len +
-                          tag_len_len + tag_value_len + data_len_len + total_data_len;
-
-  char* buf = reinterpret_cast<char*>(malloc(payload_len));
-  memset(buf, 0, payload_len);
-  TSSlice ret{buf, static_cast<size_t>(payload_len)};
-
-  // ==== Fill header ====
-  memset(buf + 0, 0xab, 16);  // txnID
-  KUint16(buf + 16) = 0;  // range group ID
-  KUint32(buf + 18) = 1;  // payload version
-  KUint32(buf + 22) = 999;  // db id
-  KUint64(buf + 26) = meta->ts_table().ts_table_id();  // table id
-  KUint32(buf + 34) = meta->ts_table().ts_version() == 0 ? 1 : meta->ts_table().ts_version();  // ts version
-  KUint32(buf + 38) = count;  // row count
-  KUint8(buf + 42) = 0;  // row type
-
-  // ==== Primary tag ====
-  KInt16(buf + header_len) = primary_tag_len;
-  KUint64(buf + header_len + primary_len_len) = start_ts;
-
-  // ==== Tag len slot (just reserve for now) ====
-  const int tag_offset_in_buf = header_len + primary_len_len + primary_tag_len;
-  KInt32(buf + tag_offset_in_buf) = tag_value_len;
-
-  // ==== Data section size ====
-  const int data_len_offset = tag_offset_in_buf + tag_len_len + tag_value_len;
-  KInt32(buf + data_len_offset) = total_data_len;
-
-  // ==== Use Payload to write tag zone only ====
-  {
-    Payload tag_writer(tag_schema, {}, {buf, static_cast<size_t>(payload_len)});
-    GenPayloadTagData(tag_writer, tag_schema, start_ts, false);
-  }
-
-  // ==== Write row data manually ====
-  char* data_ptr = buf + data_len_offset + data_len_len;
-
-  for (int i = 0; i < count; i++) {
-    KUint32(data_ptr) = payload_row_len;
-    data_ptr += 4;
-
-    for (const auto& col : schema) {
-      switch (col.type) {
-        case DATATYPE::INT64:
-          KInt64(data_ptr) = 333333;
-          data_ptr += 8;
-          break;
-        case DATATYPE::TIMESTAMP64:
-          KTimestamp(data_ptr) = start_ts;
-          data_ptr += 8;
-          break;
-        case DATATYPE::DOUBLE:
-          KDouble64(data_ptr) = 55.555;
-          data_ptr += 8;
-          break;
-        default:
-          memset(data_ptr, 0, col.size);
-          data_ptr += col.size;
-          break;
-      }
-    }
-    start_ts += ms_interval;
-  }
-
-  return ret;
-}
-
 
 void ConstructRoachpbTableWithTypes(roachpb::CreateTsTable* meta, KTableKey table_id,
                                     const std::vector<roachpb::DataType>& metric_col) {
