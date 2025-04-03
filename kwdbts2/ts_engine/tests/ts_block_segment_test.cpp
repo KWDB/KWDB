@@ -16,6 +16,7 @@
 #include "ts_engine.h"
 #include "sys_utils.h"
 #include "test_util.h"
+#include "ts_hash_latch.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -61,7 +62,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     for (int i = 0; i < 10; ++i) {
       partition->NewLastSegment(&last_segment);
       TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment));
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 10, 123, 1);
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 10, 123, 1);
       TsRawPayloadRowParser parser{metric_schema};
       TsRawPayload p{payload, metric_schema};
 

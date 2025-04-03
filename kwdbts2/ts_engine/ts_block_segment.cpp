@@ -31,16 +31,16 @@ KStatus TsBlockSegmentEntityItemFile::Open() {
   return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
 }
 
-void TsBlockSegmentEntityItemFile::WrLock(uint64_t entity_id) {
-  entity_hash_latch_.WrLock(entity_id);
+void TsBlockSegmentEntityItemFile::WrLock() {
+  RW_LATCH_X_LOCK(&rw_latch_);
 }
 
-void TsBlockSegmentEntityItemFile::RdLock(uint64_t entity_id) {
-  entity_hash_latch_.RdLock(entity_id);
+void TsBlockSegmentEntityItemFile::RdLock() {
+  RW_LATCH_S_LOCK(&rw_latch_);
 }
 
-void TsBlockSegmentEntityItemFile::UnLock(uint64_t entity_id) {
-  entity_hash_latch_.Unlock(entity_id);
+void TsBlockSegmentEntityItemFile::UnLock() {
+  RW_LATCH_UNLOCK(&rw_latch_);
 }
 
 KStatus TsBlockSegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
@@ -49,7 +49,7 @@ KStatus TsBlockSegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   TsEntityItem entity_item{};
   TSSlice result;
   if (lock) {
-    entity_hash_latch_.WrLock(entity_id);
+    WrLock();
   }
   TsStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
                            &result, reinterpret_cast<char *>(&entity_item));
@@ -67,7 +67,7 @@ KStatus TsBlockSegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   s = file_->Write(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem),
                    TSSlice{reinterpret_cast<char *>(&entity_item), sizeof(entity_item)});
   if (lock) {
-    entity_hash_latch_.Unlock(entity_id);
+    UnLock();
   }
   return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
 }
@@ -76,12 +76,12 @@ KStatus TsBlockSegmentEntityItemFile::GetEntityCurBlockId(uint64_t entity_id, ui
   TsEntityItem entity_item{};
   TSSlice result;
   if (lock) {
-    entity_hash_latch_.RdLock(entity_id);
+    RdLock();
   }
   TsStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
                            &result, reinterpret_cast<char *>(&entity_item));
   if (lock) {
-    entity_hash_latch_.Unlock(entity_id);
+    UnLock();
   }
 
   cur_block_id = entity_item.cur_block_id;
@@ -162,8 +162,8 @@ KStatus TsBlockSegmentMetaManager::Open() {
 
 KStatus TsBlockSegmentMetaManager::AppendBlockItem(TsBlockSegmentBlockItem* blk_item) {
   uint64_t entity_id = blk_item->Info().entity_id;
-  entity_meta_.WrLock(entity_id);
-  Defer defer([&]() { entity_meta_.UnLock(entity_id); });
+  entity_meta_.WrLock();
+  Defer defer([&]() { entity_meta_.UnLock(); });
   // get last block id
   uint64_t last_blk_id;
   KStatus s = entity_meta_.GetEntityCurBlockId(entity_id, last_blk_id, false);

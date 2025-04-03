@@ -69,8 +69,6 @@ class TsBlockSegmentBlockItem {
 static constexpr uint64_t TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
 static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
 
-#define ENTITY_ITEM_FILE_LATCH_BUCKET_NUM 100
-
 /**
  * TsBlockSegmentEntityItemFile used for managing entity_item file.
  * index of block items.
@@ -99,13 +97,13 @@ class TsBlockSegmentEntityItemFile {
   string file_path_;
   std::unique_ptr<TsFile> file_;
 
-  TsHashRWLatch entity_hash_latch_;
+  KRWLatch rw_latch_;
 
   TsEntityItemFileHeader header_;
 
  public:
   explicit TsBlockSegmentEntityItemFile(const string& file_path) :
-           file_path_(file_path), entity_hash_latch_(ENTITY_ITEM_FILE_LATCH_BUCKET_NUM, RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
+           file_path_(file_path), rw_latch_(RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
     memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
@@ -114,11 +112,11 @@ class TsBlockSegmentEntityItemFile {
 
   KStatus Open();
 
-  void WrLock(uint64_t entity_id);
+  void WrLock();
 
-  void RdLock(uint64_t entity_id);
+  void RdLock();
 
-  void UnLock(uint64_t entity_id);
+  void UnLock();
 
   KStatus UpdateEntityItem(uint64_t entity_id, const TsBlockSegmentBlockItemInfo& block_item_info, bool lock = true);
 

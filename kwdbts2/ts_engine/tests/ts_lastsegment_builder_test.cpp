@@ -73,7 +73,7 @@ void Tester(TSTableID table_id, int nrow, const std::string &filename) {
                reinterpret_cast<char *>(&idx_block));
     EXPECT_EQ(idx_block.table_id, table_id);
 
-    char buf[1024];
+    char buf[10240];
     TSSlice result;
     file->Read(idx_block.offset, idx_block.length, &result, buf);
     TsLastSegmentBlockInfo info;

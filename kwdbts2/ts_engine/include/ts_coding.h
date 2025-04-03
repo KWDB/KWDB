@@ -294,15 +294,19 @@ class TsBitReader {
     uint64_t tmp1 = (rep_[idx] >> (nleft - nread)) & ((1 << nread) - 1);
     nbits -= nread;
     tmp1 <<= nbits;
+    *v += tmp1;
     pos_ += nread;
 
-    if (nbits != 0 && idx + 1 >= rep_.size()) {
+    if (nbits == 0) {
+      return true;
+    }
+    if (idx + 1 > rep_.size()) {
       pos_ = pos;
       return false;
     }
     // read bits from next byte;
-    uint64_t tmp2 = idx + 1 < rep_.size() ? (rep_[idx + 1] >> (8 - nbits)) & ((1 << nbits) - 1) : 0;
-    *v += (tmp1 + tmp2);
+    uint64_t tmp2 = (rep_[idx + 1] >> (8 - nbits)) & ((1 << nbits) - 1);
+    *v += tmp2;
     pos_ += nbits;
     return true;
   }
