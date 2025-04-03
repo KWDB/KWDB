@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <endian.h>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -18,64 +19,162 @@
 #include <string>
 #include <string_view>
 #include <algorithm>
+#include <type_traits>
 
 namespace kwdbts {
 
-namespace coding::details {
-template <int N>
-struct Type {};
+char *EncodeFixed16(char *buf, uint16_t v);
+char *EncodeFixed32(char *buf, uint32_t v);
+char *EncodeFixed64(char *buf, uint64_t v);
 
-#define declear_type(n)        \
-  template <>                  \
-  struct Type<n> {             \
-    using dtype = uint##n##_t; \
+// LEB128 encoding (unsigned)
+char *EncodeVarint32(char *buf, uint32_t v);
+char *EncodeVarint64(char *buf, uint64_t v);
+
+void PutFixed16(std::string *dst, uint16_t v);
+void PutFixed32(std::string *dst, uint32_t v);
+void PutFixed64(std::string *dst, uint64_t v);
+
+uint16_t DecodeFixed16(const char *ptr);
+uint32_t DecodeFixed32(const char *ptr);
+uint64_t DecodeFixed64(const char *ptr);
+
+const char *DecodeVarint32(const char *ptr, const char *limit, uint32_t *v);
+const char *DecodeVarint64(const char *ptr, const char *limit, uint64_t *v);
+
+inline char *EncodeFixed16(char *buf, uint16_t v) {
+  v = htole16(v);
+  std::memcpy(buf, &v, sizeof(v));
+  return buf + sizeof(v);
+}
+
+inline char *EncodeFixed32(char *buf, uint32_t v) {
+  v = htole32(v);
+  std::memcpy(buf, &v, sizeof(v));
+  return buf + sizeof(v);
+}
+
+inline char *EncodeFixed64(char *buf, uint64_t v) {
+  v = htole64(v);
+  std::memcpy(buf, &v, sizeof(v));
+  return buf + sizeof(v);
+}
+
+inline char *EncodeVarint32(char *dst, uint32_t v) {
+  unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
+  static const int B = 128;
+  if (v < (1 << 7)) {
+    *(ptr++) = v;
+  } else if (v < (1 << 14)) {
+    *(ptr++) = v | B;
+    *(ptr++) = v >> 7;
+  } else if (v < (1 << 21)) {
+    *(ptr++) = v | B;
+    *(ptr++) = (v >> 7) | B;
+    *(ptr++) = v >> 14;
+  } else if (v < (1 << 28)) {
+    *(ptr++) = v | B;
+    *(ptr++) = (v >> 7) | B;
+    *(ptr++) = (v >> 14) | B;
+    *(ptr++) = v >> 21;
+  } else {
+    *(ptr++) = v | B;
+    *(ptr++) = (v >> 7) | B;
+    *(ptr++) = (v >> 14) | B;
+    *(ptr++) = (v >> 21) | B;
+    *(ptr++) = v >> 28;
   }
-declear_type(8);
-declear_type(16);
-declear_type(32);
-declear_type(64);
-#undef declear_type
-
-template <int N>
-using DType = typename Type<N>::dtype;
-
-}  // namespace coding::details
-
-template <int N>
-void EncodeFixed(char *dst, coding::details::DType<N> v) {
-  // TODO(zzr) fix endian
-  memcpy(dst, &v, sizeof(v));
+  return reinterpret_cast<char*>(ptr);
 }
 
-template <int N>
-void PutFixed(std::string *dst, coding::details::DType<N> v) {
-  dst->append(const_cast<const char *>(reinterpret_cast<char *>(&v)), sizeof(v));
+inline char *EncodeVarint64(char *dst, uint64_t v) {
+  static const unsigned int B = 128;
+  unsigned char *ptr = reinterpret_cast<unsigned char *>(dst);
+  while (v >= B) {
+    *(ptr++) = (v & (B - 1)) | B;
+    v >>= 7;
+  }
+  *(ptr++) = static_cast<unsigned char>(v);
+  return reinterpret_cast<char *>(ptr);
 }
 
-template <class T>
-inline void PutType(std::string *dst, const T &v) {
-  dst->append(reinterpret_cast<const char *>(&v), sizeof(v));
-}
-
-template <class T>
-inline char *PutType(char *dst, const T &v) {
-  memcpy(dst, &v, sizeof(v));
-  dst += sizeof(v);
-  return dst;
-}
-
-template <int N>
-coding::details::DType<N> DecodeFixed(const char *ptr) {
-  coding::details::DType<N> result;
+inline uint16_t DecodeFixed16(const char *ptr) {
+  uint16_t result;
   memcpy(&result, ptr, sizeof(result));
-  return result;
+  return le16toh(result);
+}
+
+inline uint32_t DecodeFixed32(const char *ptr) {
+  uint32_t result;
+  memcpy(&result, ptr, sizeof(result));
+  return le32toh(result);
+}
+
+inline uint64_t DecodeFixed64(const char *ptr) {
+  uint64_t result;
+  memcpy(&result, ptr, sizeof(result));
+  return le64toh(result);
+}
+
+inline void PutFixed16(std::string *dst, uint16_t v) {
+  v = htole16(v);
+  dst->append(reinterpret_cast<char *>(&v), sizeof(v));
+}
+
+inline void PutFixed32(std::string *dst, uint32_t v) {
+  v = htole32(v);
+  dst->append(reinterpret_cast<char *>(&v), sizeof(v));
+}
+
+inline void PutFixed64(std::string *dst, uint64_t v) {
+  v = htole64(v);
+  dst->append(reinterpret_cast<char *>(&v), sizeof(v));
+}
+
+inline void PutVarint32(std::string *dst, uint32_t v) {
+  char buf[5];
+  char *ptr = EncodeVarint32(buf, v);
+  dst->append(buf, ptr - buf);
+}
+
+inline void PutVarint64(std::string *dst, uint64_t v) {
+  char buf[10];
+  char *ptr = EncodeVarint64(buf, v);
+  dst->append(buf, ptr - buf);
+}
+
+inline const char *DecodeVarint32(const char *ptr, const char *limit, uint32_t *v) {
+  *v = 0;
+  int shift = 0;
+  for (int shift = 0; ptr < limit && shift <= 28; shift += 7) {
+    uint32_t b = static_cast<uint8_t>(*ptr);
+    ++ptr;
+    *v += (b & 0x7F) << shift;
+    if ((b & 0x80) == 0) return ptr;
+  }
+  return nullptr;
+}
+inline const char *DecodeVarint64(const char *ptr, const char *limit, uint64_t *v) {
+  *v = 0;
+  int shift = 0;
+  for (int shift = 0; ptr < limit && shift <= 63; shift += 7) {
+    uint64_t b = static_cast<uint8_t>(*ptr);
+    ++ptr;
+    *v += (b & 0x7F) << shift;
+    if ((b & 0x80) == 0) return ptr;
+  }
+  return nullptr;
 }
 
 template <class T>
-T DecodeType(const char *ptr) {
-  T result;
-  memcpy(&result, ptr, sizeof(result));
-  return result;
+std::make_unsigned_t<T> EncodeZigZag(T v) {
+  static_assert(std::is_signed_v<T>);
+  return (v << 1) ^ (v >> (sizeof(T) * 8 - 1));
+}
+template <class T>
+std::make_signed_t<T> DecodeZigZag(T v) {
+  static_assert(std::is_unsigned_v<T>);
+  return (v >> 1) ^ -(v & 1);
 }
 
 class TsBitWriter {
@@ -195,15 +294,19 @@ class TsBitReader {
     uint64_t tmp1 = (rep_[idx] >> (nleft - nread)) & ((1 << nread) - 1);
     nbits -= nread;
     tmp1 <<= nbits;
+    *v += tmp1;
     pos_ += nread;
 
-    if (nbits != 0 && idx + 1 >= rep_.size()) {
+    if (nbits == 0) {
+      return true;
+    }
+    if (idx + 1 > rep_.size()) {
       pos_ = pos;
       return false;
     }
     // read bits from next byte;
     uint64_t tmp2 = (rep_[idx + 1] >> (8 - nbits)) & ((1 << nbits) - 1);
-    *v += (tmp1 + tmp2);
+    *v += tmp2;
     pos_ += nbits;
     return true;
   }

@@ -61,7 +61,6 @@ TsVGroup::~TsVGroup() {
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   rocksdb::Options options;
   options.create_if_missing = true;
-  // options.write_buffer_size = 256;
   options.env = &env_;
   options.comparator = TsComparator();
   options.max_background_jobs = 4;
@@ -304,10 +303,10 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
 
       auto it = builders.find(partition);
       if (it == builders.end()) {
-        std::shared_ptr<TsLastSegment> last_segment;
-        partition->NewLastSegment(last_segment);
+        std::unique_ptr<TsLastSegment> last_segment;
+        partition->NewLastSegment(&last_segment);
         auto result =
-            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
+            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, std::move(last_segment)}});
         it = result.first;
       }
 
@@ -327,6 +326,7 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
     auto s = kv.second.Finalize();
     if (s == FAIL) return rocksdb::Status::Incomplete("flush error");
     kv.second.Flush();
+    kv.first->PublicLastSegment(kv.second.Finish());
   }
   return rocksdb::Status::OK();
 }
