@@ -118,6 +118,8 @@ class TsRawPayload {
   }
   static TSTableID GetTableIDFromSlice(const TSSlice &raw) { return KUint64(raw.data + table_id_offset_); }
 
+  static uint32_t GetDatabaseIdFromSlice(const TSSlice &raw) { return KUint32(raw.data + db_id_offset_); }
+
   static uint32_t GetTableVersionFromSlice(const TSSlice &raw) { return KUint32(raw.data + ts_version_offset_); }
 
   TSTableID GetTableID() const { return KUint64(payload_.data + table_id_offset_); }

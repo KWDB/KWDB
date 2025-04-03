@@ -75,9 +75,12 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
 
 KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {
   TSMemSegRowData row_data;
+  row_data.database_id = TsRawPayload::GetDatabaseIdFromSlice(payload);
   row_data.table_id = TsRawPayload::GetTableIDFromSlice(payload);
   row_data.table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   row_data.entity_id = entity_id;
+  // TODO(Yongyan): Somebody needs to update lsn later.
+  row_data.lsn = 0;
   std::vector<AttributeInfo> schema;
   if (!GetMetricSchema(row_data.table_id, row_data.table_version, schema)) {
     LOG_ERROR("GetMetricSchema failed.");
