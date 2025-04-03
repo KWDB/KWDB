@@ -233,8 +233,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     auto partition = GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
     auto it = builders.find(partition);
     if (it == builders.end()) {
-      std::shared_ptr<TsLastSegment> last_segment;
-      partition->NewLastSegment(last_segment);
+      std::unique_ptr<TsLastSegment> last_segment;
+      partition->NewLastSegment(&last_segment);
       auto result =  builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, last_segment}});
       it = result.first;
     }
@@ -368,7 +368,7 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
         std::unique_ptr<TsLastSegment> last_segment;
         partition->NewLastSegment(&last_segment);
         auto result =
-            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, std::move(last_segment)}});
+            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
         it = result.first;
       }
 
