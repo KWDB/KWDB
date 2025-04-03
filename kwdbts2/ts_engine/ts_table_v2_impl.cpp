@@ -20,7 +20,7 @@ TsTableV2Impl::~TsTableV2Impl() = default;
 
 KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
-                          DedupResult* dedup_result, const DedupRule& dedup_rule) {                        
+                          DedupResult* dedup_result, const DedupRule& dedup_rule) {
   uint32_t entity_id = 0;
   uint32_t tbl_grp_id = 0;
   std::shared_ptr<TagTable> tag_schema;
@@ -41,7 +41,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSli
       return s;
     }
   }
-  return KStatus::SUCCESS; 
+  return KStatus::SUCCESS;
 }
 
 

@@ -681,7 +681,7 @@ void InlineSkipList<Comparator>::FindSpliceForLevel(const DecodedKey& key,
       PREFETCH(next->Next(level), 0, 1);
     }
     if (prefetch_before == true) {
-      if (next != nullptr && level>0) {
+      if (next != nullptr && level > 0) {
         PREFETCH(next->Next(level-1), 0, 1);
       }
     }
@@ -962,4 +962,4 @@ void InlineSkipList<Comparator>::TEST_Validate() const {
   }
 }
 
-}  // namespace rocksdb
+}  // namespace kwdbts

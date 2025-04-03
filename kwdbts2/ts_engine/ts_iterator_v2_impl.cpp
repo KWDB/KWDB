@@ -207,7 +207,8 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
 
   KStatus ret;
   std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
-  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(0, table_schema_mgr_->GetTableID(), entity_ids_[cur_entity_index_], &blocks);
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(0, table_schema_mgr_->GetTableID(),
+                                                    entity_ids_[cur_entity_index_], &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }

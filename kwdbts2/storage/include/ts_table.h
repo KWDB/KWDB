@@ -291,7 +291,8 @@ class TsTable {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash, KwTsSpan ts_span, uint64_t mtr_id);
+  virtual KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                    KwTsSpan ts_span, uint64_t mtr_id);
 
   /**
    * @brief row-based payload convert to col-based payload

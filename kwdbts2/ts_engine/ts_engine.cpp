@@ -165,7 +165,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       inc_entity_cnt++;
     }
   }
-  
+
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
   auto s = ts_table->PutData(ctx, range_group_id, payload_data, payload_num,

@@ -13,6 +13,10 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <vector>
+#include <utility>
+
 #if defined(__i386__) || defined(__x86_64__)
 #include <cpuid.h>
 #endif

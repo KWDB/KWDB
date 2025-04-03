@@ -230,7 +230,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       }
       last_row_info.cur_table_version = tbl->table_version;
     }
-    // 3. get partition for metric data. 
+    // 3. get partition for metric data.
     auto partition = GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
     auto it = builders.find(partition);
     if (it == builders.end()) {
@@ -238,7 +238,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       partition->NewLastSegment(last_segment);
       auto result =  builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, last_segment}});
       it = result.first;
-      
     }
     // 4. insert data into segment builder.
     TsLastSegmentBuilder& builder = it->second;
@@ -258,7 +257,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
   for (auto& kv : builders) {
     auto s = kv.second.Finalize();
-    if (s == FAIL){
+    if (s == FAIL) {
       LOG_ERROR("last segment Finalize failed.");
       return KStatus::FAIL;
     }

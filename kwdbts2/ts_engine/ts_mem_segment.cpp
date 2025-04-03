@@ -173,7 +173,8 @@ bool TsMemSegment::AppendOneRow(const TSMemSegRowData& row) {
   return false;
 }
 
-bool TsMemSegment::GetEntityRows(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, std::list<TSMemSegRowData*>* rows) {
+bool TsMemSegment::GetEntityRows(uint32_t db_id, TSTableID table_id,
+                                  TSEntityID entity_id, std::list<TSMemSegRowData*>* rows) {
   rows->clear();
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   TSMemSegRowData begin;

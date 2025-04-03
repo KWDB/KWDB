@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -29,7 +30,7 @@ class TsBlockItemInfo {
   virtual void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) = 0;
   virtual size_t GetRowNum() = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) = 0;
-  // if just get timestamp , this function return fast. 
+  // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
 };
 
