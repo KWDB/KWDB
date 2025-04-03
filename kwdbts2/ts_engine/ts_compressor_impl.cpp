@@ -367,7 +367,7 @@ static inline int GetValidBits(T v) {
   if (v == 0) return 1;
   if constexpr (sizeof(T) == sizeof(unsigned int)) {
     return sizeof(T) * 8 - __builtin_clz(v);
-  } else if constexpr (sizeof(T) == sizeof(unsigned long)) {
+  } else if constexpr (sizeof(T) == sizeof(unsigned long)) {  // NOLINT
     return sizeof(T) * 8 - __builtin_clzl(v);
   }
   return sizeof(T) * 8 - __builtin_clzll(v);
@@ -394,7 +394,6 @@ static bool CompressImplGreedy(const T *data, uint64_t count, std::string *out) 
   static_assert(std::is_integral_v<T>);
   out->clear();
   for (int i = 0; i < count;) {
-
     auto data_i = EncodeZigZagIfNeeded(data[i]);
     int valid_nbits = GetValidBits(data_i);
     if (valid_nbits > 60) return false;
