@@ -126,17 +126,45 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
 
 KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL) {
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
+  uint32_t tbl_grp_id;
+  TSEntityID entity_id;
   for (size_t i = 0; i < payload_num; i++) {
-    auto tbl_version = TsRawPayload::GetTableVersionFromSlice(payload_data[i]);
+    TsRawPayload p{payload_data[i]};
+    TSSlice primary_key = p.GetPrimaryTag();
+    auto tbl_version = p.GetTableVersion();
     auto s = GetTsTable(ctx, table_id, ts_table, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
       return s;
     }
+    bool new_tag;
+    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &tbl_grp_id, &entity_id, &new_tag);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
+    assert(tbl_grp != nullptr);
+    if (new_tag) {
+      if (write_wal) {
+        // no need lock, lock inside.
+        s = tbl_grp->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i]);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("failed WriteInsertWAL for new tag.");
+          return s;
+        }
+      }
+      entity_id = tbl_grp->AllocateEntityID();
+      s = putTagData(ctx, table_id, tbl_grp_id, entity_id, p);
+      if (s != KStatus::SUCCESS) {
+        return s;
+      }
+      inc_entity_cnt++;
+    }
   }
+  
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(TsEnvInstance::GetInstance().GetDedupRule());
   auto s = ts_table->PutData(ctx, range_group_id, payload_data, payload_num,
@@ -205,7 +233,7 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
                                  cur_version, new_version, err_msg);
 }
 
-std::vector<std::unique_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
+std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
   return &table_grps_;
 }
 

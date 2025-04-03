@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "kwdb_type.h"
 #include "rocksdb/status.h"
@@ -127,6 +128,10 @@ class TsVGroup {
     return schema_mgr_;
   }
 
+  WALMgr* GetWALManager() {
+    return wal_manager_.get();
+  }
+
   // flush all mem segment data into last segment.
   KStatus Flush() {
     std::shared_ptr<TsMemSegment> imm_segment;
@@ -142,6 +147,19 @@ class TsVGroup {
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);
 
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload);
+
+  KStatus GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
+                      std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
+                      std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
+                      std::vector<Sumfunctype> scan_agg_types,
+                      std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                      uint32_t table_version, TsStorageIterator** iter,
+                      std::shared_ptr<TsVGroup> vgroup,
+                      std::vector<timestamp64> ts_points, bool reverse, bool sorted);
+
+  rocksdb::DB* GetDB();
+
+  uint32_t GetVGroupID();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 

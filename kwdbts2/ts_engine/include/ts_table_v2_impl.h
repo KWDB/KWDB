@@ -22,10 +22,10 @@ namespace kwdbts {
 class TsTableV2Impl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  const std::vector<std::unique_ptr<TsVGroup>>& table_grps_;
+  const std::vector<std::shared_ptr<TsVGroup>>& table_grps_;
 
  public:
-  TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema, const std::vector<std::unique_ptr<TsVGroup>>& table_grps) :
+  TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema, const std::vector<std::shared_ptr<TsVGroup>>& table_grps) :
             TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), table_grps_(table_grps) {}
 
   ~TsTableV2Impl();
@@ -47,6 +47,11 @@ class TsTableV2Impl : public TsTable {
                           std::vector<uint32_t> scan_tags,
                           const vector<uint32_t> hps,
                           BaseEntityIterator** iter, k_uint32 table_version) override;
+  KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
+                            std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
+                            std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
+                            TsIterator** iter, std::vector<timestamp64> ts_points,
+                            bool reverse, bool sorted) override;
 
 };
 

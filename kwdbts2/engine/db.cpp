@@ -290,6 +290,7 @@ TSStatus TSDropTsTable(TSEngine* engine, TSTableID table_id) {
 }
 
 TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts) {
+  return kTsSuccess;
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -315,6 +316,7 @@ TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts)
 }
 
 TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id) {
+  return kTsSuccess;
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -342,6 +344,7 @@ TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID ta
 }
 
 TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_version) {
+  return kTsSuccess;
   bool expected = false;
   if (!g_is_vacuuming.compare_exchange_strong(expected, true)) {
     LOG_INFO("The engine is vacuuming, ignore vacuum request");
@@ -370,6 +373,7 @@ TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_versi
 }
 
 TSStatus TSMigrateTsTable(TSEngine* engine, TSTableID table_id) {
+  return kTsSuccess;
   if (TsTier::GetInstance().TierEnabled()) {
     bool expected = false;
     if (!g_is_migrating.compare_exchange_strong(expected, true)) {
@@ -863,6 +867,7 @@ TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp en
 }
 
 TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* row_size) {
+  return kTsSuccess;
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -885,6 +890,7 @@ TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* ro
 // Query the total amount of data within the range (an approximate value is sufficient)
 TSStatus TSGetDataVolume(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
                         KwTsSpan ts_span, uint64_t* volume) {
+  return kTsSuccess;
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);

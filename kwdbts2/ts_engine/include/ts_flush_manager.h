@@ -34,13 +34,13 @@ class TsLSNFlushManager {
     KThreadID thread_id;
     std::list<std::pair<TsVGroup*, std::shared_ptr<TsMemSegment>>> vgrp_mem_segs;
   };
-  const std::vector<std::unique_ptr<TsVGroup>>& vgrps_;
+  const std::vector<std::shared_ptr<TsVGroup>>& vgrps_;
   std::mutex job_mutex_;
   std::deque<SwithJobInfo> jobs_;
   TS_LSN flushed_lsn_{0};
 
  public:
-  TsLSNFlushManager(std::vector<std::unique_ptr<TsVGroup>>& vgrps) : vgrps_(vgrps) {}
+  TsLSNFlushManager(std::vector<std::shared_ptr<TsVGroup>>& vgrps) : vgrps_(vgrps) {}
 
   TS_LSN GetFinishedLSN() {
     return flushed_lsn_;

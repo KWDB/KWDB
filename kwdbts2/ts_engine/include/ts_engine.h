@@ -33,13 +33,15 @@
 
 namespace kwdbts {
 
+extern const int storage_engine_vgroup_max_num;
+
 /**
  * @brief TSEngineV2Impl
  */
 class TSEngineV2Impl : public TSEngine {
  private:
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
-  std::vector<std::unique_ptr<TsVGroup>> table_grps_;
+  std::vector<std::shared_ptr<TsVGroup>> table_grps_;
   int table_grp_max_num_{0};
   EngineOptions options_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
@@ -93,7 +95,7 @@ class TSEngineV2Impl : public TSEngine {
     return s;
   }
 
-  std::vector<std::unique_ptr<TsVGroup>>* GetTsVGroups();
+  std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
   KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override {
     // TODO(liangbo01)  need input change version

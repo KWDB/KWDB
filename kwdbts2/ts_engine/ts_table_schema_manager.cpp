@@ -692,5 +692,15 @@ KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::K
   return SUCCESS;
 }
 
+DATATYPE TsTableSchemaManager::GetTsColDataType() {
+  rdLock();
+  Defer defer([&]() { unLock(); });
+  return (DATATYPE)(Get(cur_schema_version_, false)->getSchemaInfoExcludeDropped()[0].type);
+}
+
+TSTableID TsTableSchemaManager::GetTableID() {
+  return table_id_;
+}
+
 }  //  namespace kwdbts
 
