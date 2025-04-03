@@ -204,6 +204,76 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
     return KStatus::SUCCESS;
   }
   *is_finished = false;
+
+  KStatus ret;
+  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(0, table_schema_mgr_->GetTableID(), entity_ids_[cur_entity_index_], &blocks);
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
+
+  for (auto block : blocks) {
+    *count += block->GetRowNum();
+  }
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_int32 col_idx = ts_scan_cols_[i];
+    Batch* batch;
+    if (col_idx >= 0 && col_idx < attrs_.size()) {
+      void* bitmap = malloc(KW_BITMAP_SIZE(*count));
+      if (bitmap == nullptr) {
+        return KStatus::FAIL;
+      }
+      memset(bitmap, 0xFF, KW_BITMAP_SIZE(*count));
+      TSSlice col_data;
+      if (!isVarLenType(attrs_[col_idx].type)) {
+        char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
+        int row = 0;
+        for (auto block : blocks) {
+          for (int i = 0; i < block->GetRowNum(); ++i) {
+            ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+            if (ret != KStatus::SUCCESS) {
+              return ret;
+            }
+            memcpy(value + row * attrs_[col_idx].size,
+                    col_data.data,
+                    attrs_[col_idx].size);
+            ++row;
+          }
+        }
+        batch = new Batch(static_cast<void *>(value), *count, bitmap, 0, nullptr);
+        batch->is_new = true;
+      } else {
+        batch = new VarColumnBatch(*count, bitmap, 0, nullptr);
+        for (auto block : blocks) {
+          for (int i = 0; i < block->GetRowNum(); ++i) {
+            ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+            if (ret != KStatus::SUCCESS) {
+              return ret;
+            }
+            char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
+            KUint16(buffer) = col_data.len;
+            memcpy(buffer + 2, col_data.data, col_data.len);
+            *(buffer + col_data.len + 2) = 0;
+            std::shared_ptr<void> ptr(buffer, free);
+            batch->push_back(ptr);
+          }
+        }
+        batch->is_new = true;
+      }
+    } else {
+      void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
+      batch = new Batch(bitmap, *count, bitmap, 0, nullptr);
+    }
+    res->push_back(i, batch);
+  }
+
+  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
+
+  ++cur_entity_index_;
+  return KStatus::SUCCESS;
+}
+
+/*
   rocksdb::DB* db = vgroup_->GetDB();
   TsInternalKey key;
   key.table_id = table_schema_mgr_->GetTableID();
@@ -268,10 +338,6 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
     }
     res->push_back(i, batch);
   }
-  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-
-  ++cur_entity_index_;
-  return KStatus::SUCCESS;
-}
+*/
 
 }  //  namespace kwdbts

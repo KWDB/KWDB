@@ -168,6 +168,10 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
 }
 
+TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() {
+  return &mem_segment_mgr_;
+}
+
 TsVGroupPartition* TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
   auto partition_manager = partitions_[database_id].get();
   if (partition_manager == nullptr) {
