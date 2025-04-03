@@ -23,7 +23,7 @@ static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_FILE_MAGIC = 0xcb2ffe9321847274
 class TsBlockSegmentBlockFile {
  private:
   string file_path_;
-  std::unique_ptr<TsFile> file_{nullptr};
+  std::unique_ptr<TsFile> file_ = nullptr;
   std::unique_ptr<KRWLatch> file_mtx_;
 
   struct TsBlockFileHeader {

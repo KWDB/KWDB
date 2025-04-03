@@ -181,6 +181,14 @@ class TsTableSchemaManager {
    */
   DATATYPE GetTsColDataType();
 
+  /**
+   * @brief Gets index information for the actual column (exclude dropped columns)
+   *
+   * @param table_version Version number of the table. The default is 0.
+   * @return Returns index information for the actual column.
+   */
+  const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
+
   TSTableID GetTableID();
 };
 

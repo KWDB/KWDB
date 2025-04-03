@@ -383,6 +383,11 @@ TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& 
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
+        case DATATYPE::INT64: {
+          int data = GetRandomNumber(10240);
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
         case ::roachpb::DataType::DOUBLE: {
           double data = GetRandomNumber(1024 * 1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
