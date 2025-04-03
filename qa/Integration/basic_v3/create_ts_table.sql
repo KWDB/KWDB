@@ -6,5 +6,6 @@ insert into test.sjcx01 values (1681111110002,3,3,'C','A', 'A1');
 insert into test.sjcx01 values (1681111110003,4,4,'D','B', 'B2');
 insert into test.sjcx01 values (1681111110004,5,5,'E','C', 'C3');
 select * from test.sjcx01 order by k_timestamp;
-select k_timestamp, A, B from test.sjcx01 order by k_timestamp;;
+select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
+select A, B from test.sjcx01 order by k_timestamp;
 drop database test cascade;
