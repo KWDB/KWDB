@@ -21,7 +21,7 @@ INSERT 1
   2023-04-10 07:18:30.003+00:00 | 4 | 4 | D | B        | B2
   2023-04-10 07:18:30.004+00:00 | 5 | 5 | E | C        | C3
 (5 rows)
-> select k_timestamp, A, B from test.sjcx01 order by k_timestamp;;
+> select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
            k_timestamp          | a | b
 --------------------------------+---+----
   2023-04-10 07:18:30+00:00     | 1 | 1
@@ -29,6 +29,15 @@ INSERT 1
   2023-04-10 07:18:30.002+00:00 | 3 | 3
   2023-04-10 07:18:30.003+00:00 | 4 | 4
   2023-04-10 07:18:30.004+00:00 | 5 | 5
+(5 rows)
+> select A, B from test.sjcx01 order by k_timestamp;
+  a | b
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
 (5 rows)
 > drop database test cascade;
 DROP DATABASE

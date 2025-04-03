@@ -698,6 +698,12 @@ DATATYPE TsTableSchemaManager::GetTsColDataType() {
   return (DATATYPE)(Get(cur_schema_version_, false)->getSchemaInfoExcludeDropped()[0].type);
 }
 
+const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_version) {
+  rdLock();
+  Defer defer([&]() { unLock(); });
+  return Get(table_version, false)->getIdxForValidCols();
+}
+
 TSTableID TsTableSchemaManager::GetTableID() {
   return table_id_;
 }
