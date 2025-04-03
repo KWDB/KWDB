@@ -41,7 +41,7 @@ void Tester(TSTableID table_id, int nrow, const std::string &filename) {
     TsLastSegmentManager last_segment_mgr("./");
     std::unique_ptr<TsLastSegment> last_segment;
     last_segment_mgr.NewLastSegment(&last_segment);
-    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment));
+    TsLastSegmentBuilder builder(mgr.get(), last_segment);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};

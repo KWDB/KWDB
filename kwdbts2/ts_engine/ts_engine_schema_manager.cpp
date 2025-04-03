@@ -120,6 +120,7 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
   if (tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entityid, groupid)) {
     *entity_id = entityid;
     *tbl_grp_id = groupid;
+    *new_tag = false;
     return KStatus::SUCCESS;
   }
   // TODO(qinlipeng) lock tag

@@ -61,7 +61,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     std::unique_ptr<TsLastSegment> last_segment;
     for (int i = 0; i < 10; ++i) {
       partition->NewLastSegment(&last_segment);
-      TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment));
+      TsLastSegmentBuilder builder(mgr.get(), last_segment);
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 10, 123, 1);
       TsRawPayloadRowParser parser{metric_schema};
       TsRawPayload p{payload, metric_schema};

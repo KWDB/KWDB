@@ -284,7 +284,7 @@ class TsLastSegmentBuilder {
 
  public:
   TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr,
-                       std::unique_ptr<TsLastSegment>&& last_segment)
+                       std::unique_ptr<TsLastSegment>& last_segment)
       : last_segment_(std::move(last_segment)),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
         info_handle_(std::make_unique<InfoHandle>()),

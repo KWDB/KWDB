@@ -86,6 +86,14 @@ enum class VacuumStatus {
   FAILED
 };
 
+enum class DedupRule {
+  KEEP = 0,      // not deduplicate
+  OVERRIDE = 1,  // deduplicate by row
+  REJECT = 2,    // reject duplicate rows
+  DISCARD = 3,   // ignore duplicate rows
+  MERGE = 4,     // duplicate by column
+};
+
 enum SortOrder {
   ASC = 0,
   DESC,

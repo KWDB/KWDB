@@ -118,6 +118,8 @@ class TsRawPayload {
   }
   static TSTableID GetTableIDFromSlice(const TSSlice &raw) { return KUint64(raw.data + table_id_offset_); }
 
+  static uint32_t GetDatabaseIdFromSlice(const TSSlice &raw) { return KUint32(raw.data + db_id_offset_); }
+
   static uint32_t GetTableVersionFromSlice(const TSSlice &raw) { return KUint32(raw.data + ts_version_offset_); }
 
   TSTableID GetTableID() const { return KUint64(payload_.data + table_id_offset_); }
@@ -136,6 +138,12 @@ class TsRawPayload {
     assert(can_parse_);
     assert(row < row_data_.size());
     return row_parser_.GetColValueAddr(row_data_[row], col_id, col_data);
+  }
+
+  timestamp64 GetTS(int row) {
+    assert(can_parse_);
+    assert(row < row_data_.size());
+    return row_parser_.GetTimestamp(row_data_[row]);
   }
 
   TSSlice GetRowData(int row) {
