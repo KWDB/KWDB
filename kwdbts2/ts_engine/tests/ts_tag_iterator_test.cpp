@@ -8,7 +8,7 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
-
+#include "libkwdbts2.h"
 #include "ts_engine.h"
 #include "test_util.h"
 
@@ -79,7 +79,8 @@ TEST_F(TestEngine, tagiterator) {
   TSSlice data_value{};
   data_value = GenRowPayload(metric_schema, tag_schema ,cur_table_id, 1, start_ts1, 1, start_ts1);
 
-  s = ts_engine_->PutData(ctx_, TSTableID(cur_table_id), 1, &data_value, true);
+  TSTableID ts_id(cur_table_id);
+  s = ts_engine_->PutData(ctx_, ts_id, 1, &data_value, true);
   ASSERT_EQ(s , KStatus::SUCCESS);
   free(data_value.data);
 
@@ -96,8 +97,6 @@ TEST_F(TestEngine, tagiterator) {
   k_uint32 fetch_total_count = 0;
   k_uint64 ptag = 0;
   k_uint32 count = 0;
-  k_uint32 all_idx = 0;
-  k_uint32 tag_val = 0;
   do {
     ASSERT_EQ(iter->Next(&entity_id_list, &res, &count), KStatus::SUCCESS);
     if (count == 0) {
