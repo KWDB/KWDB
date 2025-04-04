@@ -90,7 +90,7 @@ TEST_F(TestEngine, tagiterator) {
   int cnt = 1;
 
   std::vector<EntityResultIndex> entity_id_list;
-  std::vector<k_uint32> scan_tags = {1};
+  std::vector<k_uint32> scan_tags = {0};
   std::vector<k_uint32> hps;
   make_hashpoint(&hps);
   BaseEntityIterator *iter;
