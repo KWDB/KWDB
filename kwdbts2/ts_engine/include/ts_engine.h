@@ -28,6 +28,8 @@
 #include "ts_vgroup.h"
 #include "ts_engine_schema_manager.h"
 #include "engine.h"
+#include "ts_table_v2_impl.h"
+#include "ts_flush_manager.h"
 
 namespace kwdbts {
 
@@ -42,6 +44,9 @@ class TSEngineV2Impl : public TSEngine {
   std::vector<std::shared_ptr<TsVGroup>> table_grps_;
   int table_grp_max_num_{0};
   EngineOptions options_;
+  std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
+  std::mutex table_mutex_;
+  TsLSNFlushManager flush_mgr_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -62,13 +67,32 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                      ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override {
     // TODO(liangbo01)  need input change version
-    std::shared_ptr<TsTableSchemaManager> schema;
-    auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
+    KStatus s = KStatus::SUCCESS;
     ts_table = tables_cache_->Get(table_id);
-    return KStatus::SUCCESS;
+    if (ts_table == nullptr) {
+      std::shared_ptr<TsTableSchemaManager> schema;
+      auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+      if (s == KStatus::SUCCESS) {
+        auto table = std::make_shared<TsTableV2Impl>(schema, table_grps_);
+        if (table.get() != nullptr) {
+          tables_[table_id] = table;
+          ts_table = table;
+          tables_cache_->Put(table_id, ts_table);
+        } else {
+          LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
+          s = KStatus::FAIL;
+        }
+      } else {
+        LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
+        s = KStatus::FAIL;
+      }
+      table_mutex_.unlock();
+    }
+
+    if (s == KStatus::SUCCESS) {
+      // todo(liangbo01) if version no exist.
+    }
+    return s;
   }
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
@@ -92,9 +116,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) override {
-    return PutData(ctx, table_id, mtr_id, payload_data, writeWAL);
-  }
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) override;
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
@@ -218,8 +240,6 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta);
 
-  KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* payload, bool write_wal);
-
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
@@ -233,6 +253,14 @@ class TSEngineV2Impl : public TSEngine {
   KStatus AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                               const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
                               const std::vector<uint32_t/* tag column id*/> &new_index_schema) override {return FAIL; }
+
+  KStatus SwitchMemSegments(TS_LSN lsn) {
+    return flush_mgr_.FlashMemSegment(lsn);
+  }
+
+  TS_LSN GetFinishedLSN() {
+    return flush_mgr_.GetFinishedLSN();
+  }
 
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);

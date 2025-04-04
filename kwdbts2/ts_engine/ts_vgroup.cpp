@@ -41,7 +41,8 @@ TsEnv TsVGroup::env_;
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr)
-    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), path_(engine_options.db_path + "/" + GetFileName()),
+    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), mem_segment_mgr_(this),
+      path_(engine_options.db_path + "/" + GetFileName()),
       entity_counter_(0), engine_options_(engine_options) {}
 
 TsVGroup::~TsVGroup() {
@@ -61,7 +62,6 @@ TsVGroup::~TsVGroup() {
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   rocksdb::Options options;
   options.create_if_missing = true;
-  // options.write_buffer_size = 256;
   options.env = &env_;
   options.comparator = TsComparator();
   options.max_background_jobs = 4;
@@ -108,31 +108,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 }
 
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, TSEntityID entity_id, TSSlice* payload) {
-  //  TsRawPayload p{*payload};
-  //  uint32_t db_id = schema_mgr_->GetDBIDByTableID(table_id);
-  //  KTimestamp start_ts = *(KTimestamp*)(p.GetData().data);
-  //  // TODO(limeng04): 相同设备payload的起始start_ts不具有唯一性
-  //  std::string key = std::to_string(db_id) + '/' + std::to_string(table_id) + '/' +
-  //                    std::to_string(entity_id) + '/' + std::to_string(start_ts);
-  //  rocksdb::WriteOptions write_options;
-  //  write_options.disableWAL = false;
-  //  rocksdb::Status s = db_->Put(write_options, key, rocksdb::Slice(payload->data, payload->len));
-  //  return s.ok() ? KStatus::SUCCESS : KStatus::FAIL;
-
-  TsRawPayloadV2 p{*payload};
-  uint32_t version = p.GetTableVersion();
-  TsInternalKey key;
-  key.table_id = table_id;
-  key.version = version;
-  key.entity_id = entity_id;
-  rocksdb::WriteOptions opts;
-  // todo(liangbo01)  no need write rocksdb WAL any more.
-  opts.disableWAL = true;
-  char buf[TsInternalKey::size];
-  rocksdb::Slice s_key;
-  key.Encode(&s_key, buf);
-  db_->Put(opts, s_key, rocksdb::Slice{payload->data, payload->len});
-  return KStatus::SUCCESS;
+  return mem_segment_mgr_.PutData(*payload, entity_id);
 }
 
 std::filesystem::path TsVGroup::GetPath() const {
@@ -191,6 +167,10 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
 }
 
+TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() {
+  return &mem_segment_mgr_;
+}
+
 TsVGroupPartition* TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
   auto partition_manager = partitions_[database_id].get();
   if (partition_manager == nullptr) {
@@ -207,6 +187,87 @@ int TsVGroup::saveToFile(uint32_t new_id) const {
   memcpy(reinterpret_cast<char*>(config_file_->memAddr()), &entity_id, sizeof(entity_id));
   // return config_file_->sync(MS_SYNC);
   return 0;
+}
+
+KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
+  if (!mem_seg->SetFlushing()) {
+    LOG_ERROR("cannot set status for mem segment.");
+    return KStatus::FAIL;
+  }
+  std::unordered_map<TsVGroupPartition*, TsLastSegmentBuilder> builders;
+  struct LastRowInfo {
+    TSTableID cur_table_id = 0;
+    uint32_t database_id = 0;
+    uint32_t cur_table_version = 0;
+    std::vector<AttributeInfo> info;
+    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
+  };
+  LastRowInfo last_row_info;
+  bool flush_success = true;
+
+  mem_seg->Traversal([&](TSMemSegRowData* tbl) -> bool {
+    // 1. get table schema manager.
+    if (last_row_info.cur_table_id != tbl->table_id) {
+      auto s =  schema_mgr_->GetTableSchemaMgr(tbl->table_id, last_row_info.schema_mgr);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("cannot get table[%lu] schemainfo.", tbl->table_id);
+        flush_success = false;
+        return false;
+      }
+      last_row_info.cur_table_id = tbl->table_id;
+      last_row_info.database_id = schema_mgr_->GetDBIDByTableID(tbl->table_id);
+      last_row_info.cur_table_version = 0;
+    }
+    // 2. get table schema info of certain version.
+    if (last_row_info.cur_table_version != tbl->table_version) {
+      last_row_info.info.clear();
+      auto s = last_row_info.schema_mgr->GetColumnsExcludeDropped(last_row_info.info, tbl->table_version);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("cannot get table[%lu] version[%u] schema info.", tbl->table_id, tbl->table_version);
+        flush_success = false;
+        return false;
+      }
+      last_row_info.cur_table_version = tbl->table_version;
+    }
+    // 3. get partition for metric data.
+    auto partition = GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
+    auto it = builders.find(partition);
+    if (it == builders.end()) {
+      std::unique_ptr<TsLastSegment> last_segment;
+      partition->NewLastSegment(&last_segment);
+      auto result =  builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, last_segment}});
+      it = result.first;
+    }
+    // 4. insert data into segment builder.
+    TsLastSegmentBuilder& builder = it->second;
+    auto s = builder.PutRowData(tbl->table_id, tbl->table_version, tbl->entity_id, tbl->lsn, tbl->row_data);
+    if (s != SUCCESS) {
+      LOG_ERROR("PutRowData failed.");
+      flush_success = false;
+      return false;
+    }
+    return true;
+  });
+  // todo(liangbo01) deleting all new created files.
+  if (!flush_success) {
+    LOG_ERROR("faile flush memsegment to last segment.");
+    return KStatus::FAIL;
+  }
+
+  for (auto& kv : builders) {
+    auto s = kv.second.Finalize();
+    if (s == FAIL) {
+      LOG_ERROR("last segment Finalize failed.");
+      return KStatus::FAIL;
+    }
+    kv.second.Flush();
+  }
+  // todo(liangbo01) add all new files into new_file_list.
+  std::list<TsLastSegment> new_file_list;
+  //  todo(liangbo01) atomic: mem segment delete, and last segments load.
+  mem_seg->SetDeleting();
+  mem_segment_mgr_.RemoveMemSegment(mem_seg);
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
@@ -304,8 +365,8 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
 
       auto it = builders.find(partition);
       if (it == builders.end()) {
-        std::shared_ptr<TsLastSegment> last_segment;
-        partition->NewLastSegment(last_segment);
+        std::unique_ptr<TsLastSegment> last_segment;
+        partition->NewLastSegment(&last_segment);
         auto result =
             builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
         it = result.first;
@@ -327,6 +388,7 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
     auto s = kv.second.Finalize();
     if (s == FAIL) return rocksdb::Status::Incomplete("flush error");
     kv.second.Flush();
+    kv.first->PublicLastSegment(kv.second.Finish());
   }
   return rocksdb::Status::OK();
 }

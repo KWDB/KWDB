@@ -127,21 +127,13 @@ class TsMMapFile final : public TsFile {
       new_len *= 2;
     }
     int err_code;
-    if (new_len >= len_) {
-      if ((err_code = posix_fallocate(fd_, 0, new_len)) != 0) {
-        close(fd_);
-        LOG_ERROR("resize file failed, error code:%d", err_code);
-        return TsStatus::SpaceLimit();
-      }
-    } else {
+    if (new_len != len_) {
       err_code = ftruncate(fd_, new_len);
       if (err_code < 0) {
         close(fd_);
         LOG_ERROR("resize file failed, error code:%d", err_code);
         return TsStatus::SpaceLimit();
       }
-    }
-    if (new_len != len_) {
       void* base = mremap(addr_, len_, new_len, MREMAP_MAYMOVE);
       if (base == MAP_FAILED) {
         err_code = errno;
@@ -161,7 +153,7 @@ class TsMMapFile final : public TsFile {
     }
     memcpy(addr_ + offset, data.data, data.len);
     if (offset + data.len > size_) {
-      size_ += data.len;
+      size_ = offset + data.len;
     }
     return TsStatus::OK();
   }

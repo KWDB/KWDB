@@ -48,7 +48,9 @@ class TsBlockSegmentBlockItem {
   TsBlockSegmentBlockItemInfo info_;
 
  public:
-  TsBlockSegmentBlockItem() {}
+  TsBlockSegmentBlockItem() {
+    memset(&info_, 0, sizeof(TsBlockSegmentBlockItemInfo));
+  }
   ~TsBlockSegmentBlockItem() {}
 
   TsBlockSegmentBlockItemInfo& Info() {
@@ -66,8 +68,6 @@ class TsBlockSegmentBlockItem {
 
 static constexpr uint64_t TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
 static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
-
-#define ENTITY_ITEM_FILE_LATCH_BUCKET_NUM 100
 
 /**
  * TsBlockSegmentEntityItemFile used for managing entity_item file.
@@ -89,7 +89,7 @@ class TsBlockSegmentEntityItemFile {
     uint64_t cur_block_id = 0;        // block id that is allocating space for writing.
     int64_t max_ts = INT64_MIN;       // max ts of current entity in this Partition
     int64_t min_ts = INT64_MAX;       // min ts of current entity in this Partition
-    uint64_t row_written;             // row num that has written into file.
+    uint64_t row_written = 0;         // row num that has written into file.
     char reserved[88];                // reserved for user-defined information.
   };
   static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
@@ -97,13 +97,13 @@ class TsBlockSegmentEntityItemFile {
   string file_path_;
   std::unique_ptr<TsFile> file_;
 
-  TsHashRWLatch entity_hash_latch_;
+  KRWLatch rw_latch_;
 
   TsEntityItemFileHeader header_;
 
  public:
   explicit TsBlockSegmentEntityItemFile(const string& file_path) :
-           file_path_(file_path), entity_hash_latch_(ENTITY_ITEM_FILE_LATCH_BUCKET_NUM, RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
+           file_path_(file_path), rw_latch_(RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
     memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
@@ -112,11 +112,11 @@ class TsBlockSegmentEntityItemFile {
 
   KStatus Open();
 
-  void WrLock(uint64_t entity_id);
+  void WrLock();
 
-  void RdLock(uint64_t entity_id);
+  void RdLock();
 
-  void UnLock(uint64_t entity_id);
+  void UnLock();
 
   KStatus UpdateEntityItem(uint64_t entity_id, const TsBlockSegmentBlockItemInfo& block_item_info, bool lock = true);
 
@@ -226,11 +226,9 @@ struct TsEntityKey {
   inline bool operator==(const TsEntityKey& other) const {
     return entity_id == other.entity_id && table_version == other.table_version;
   }
-};
 
-struct TsEntityKeyHash {
-  inline std::size_t operator()(const TsEntityKey& k) const {
-    return std::hash<uint64_t>()(k.entity_id) ^ (std::hash<uint32_t>()(k.table_version) << 1);
+  inline bool operator<(const TsEntityKey& other) const {
+    return entity_id != other.entity_id ? entity_id < other.entity_id : table_version < other.table_version;
   }
 };
 
@@ -238,8 +236,9 @@ struct TsLastSegmentBlockRowInfo {
   timestamp64 ts;
   uint64_t seq_no;
 
-  uint32_t last_segment_block_idx;
-  uint32_t row_idx_in_block;
+  uint32_t last_segment_idx;
+  uint32_t block_idx;
+  uint32_t row_idx;
 
   inline bool operator<(const TsLastSegmentBlockRowInfo& other) const {
     return ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
@@ -257,31 +256,32 @@ struct TsBlockSegmentColumnBlock {
 
 class TsBlockSegmentBuilder {
  private:
-  std::vector<std::shared_ptr<TsLastSegment>>& last_segments_;
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
   TsVGroupPartition* partition_;
 
-  std::vector<TsLastSegmentBlock*> blocks_;
-  std::unordered_map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>, TsEntityKeyHash> entity_row_values_;
+  std::vector<std::vector<std::shared_ptr<TsLastSegmentBlock>>> blocks_;
+  std::map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>> entity_row_values_;
 
   size_t max_rows_per_block_;
 
+  KStatus buildColData(std::vector<TsLastSegmentBlockRowInfo>& row_values,
+                       int col_idx, size_t row_offset, size_t row_count,
+                       bool has_bitmap, DATATYPE d_type, size_t d_size,
+                       string& col_data, TsBitmap& bitmap);
+
+  KStatus compress(const std::string& col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count,
+                   std::string& buffer);
+
  public:
-  explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>>& last_segments,
+  explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
                                  TsVGroupPartition* partition = nullptr,
                                  size_t max_rows_per_block = 1000) :
                                  last_segments_(last_segments),
                                  partition_(partition),
                                  max_rows_per_block_(max_rows_per_block) {}
-  ~TsBlockSegmentBuilder() {
-    for (TsLastSegmentBlock* block : blocks_) {
-      if (block) {
-        delete block;
-        block = nullptr;
-      }
-    }
-  }
+  ~TsBlockSegmentBuilder() {}
 
-  KStatus BuildAndFlush(uint32_t thread_num = 1);
+  KStatus BuildAndFlush(uint32_t thread_num);
 };
 
 }  // namespace kwdbts

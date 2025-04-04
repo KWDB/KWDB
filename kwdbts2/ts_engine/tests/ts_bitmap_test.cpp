@@ -15,13 +15,23 @@ TEST(TsBitmap, Write) {
   for (int i = 0; i < 997; ++i) {
     bm[i] = static_cast<kwdbts::DataFlags>(i % 3);
   }
+  EXPECT_EQ(bm.GetValidCount(), 333);
   for (int i = 0; i < 997; ++i) {
     EXPECT_TRUE(bm[i] == static_cast<kwdbts::DataFlags>(i % 3));
+  }
+  const kwdbts::TsBitmap &const_ref_bm = bm;
+  for (int i = 0; i < 997; ++i) {
+    EXPECT_EQ(bm[i], const_ref_bm[i]);
   }
   bm.SetAll(kwdbts::DataFlags::kNone);
   for (int i = 0; i < 997; ++i) {
     EXPECT_EQ(bm[i], kwdbts::kNone);
   }
+  EXPECT_EQ(bm.GetValidCount(), 0);
+
+  EXPECT_FALSE(bm.IsAllValid());
+  bm.SetAll(kwdbts::kValid);
+  EXPECT_TRUE(bm.IsAllValid());
 }
 
 TEST(TsBitmap, Rep) {
@@ -31,6 +41,11 @@ TEST(TsBitmap, Rep) {
   }
   auto data = bm.GetData();
   std::string val = std::string{data.data, data.len};
-  std::string exp("\x18\x61\x80");
+  std::string exp("\x24\x49\x02");
   EXPECT_EQ(val, exp);
+
+  const kwdbts::TsBitmap bm2({exp.data(), exp.size()}, 10);
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(bm[i], bm2[i]);
+  }
 }

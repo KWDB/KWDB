@@ -112,6 +112,12 @@ class TsTableSchemaManager {
     return cur_schema_version_;
   }
 
+  TSTableID GetTableId() {
+    return table_id_;
+  }
+
+  KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
+                            ErrorInfo& err_info, uint32_t cur_version = 0);
   KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version, ErrorInfo& err_info);
 
   KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
