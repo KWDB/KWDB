@@ -408,3 +408,9 @@ TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& 
   builder.Build(table_id, version, &payload);
   return payload;
 }
+
+void make_hashpoint(std::vector<k_uint32> *hps) {
+  for (uint32_t i=0; i<HASHPOINT_RANGE; i++) {
+    hps->push_back(i);
+  }
+}
