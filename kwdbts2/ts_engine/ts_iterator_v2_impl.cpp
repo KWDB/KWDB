@@ -75,21 +75,30 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
     return ret;
   }
 
-  mem_table_iterator_ = std::make_unique<TsMemTableIteratorV2Impl>(vgroup_, entity_ids_, ts_spans_, ts_col_type_,
+  cur_entity_index_ = 0;
+  status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
+
+  mem_table_scanner_ = std::make_unique<TsMemTableScanner>(vgroup_, entity_ids_, ts_spans_, ts_col_type_,
                                                                     kw_scan_cols_, ts_scan_cols_, table_schema_mgr_,
                                                                     table_version_);
-  if (mem_table_iterator_ == nullptr) {
+  if (mem_table_scanner_ == nullptr) {
     return KStatus::FAIL;
   }
-  if (mem_table_iterator_->Init(is_reversed) != KStatus::SUCCESS) {
-    mem_table_iterator_ = nullptr;
+  if (mem_table_scanner_->Init(is_reversed) != KStatus::SUCCESS) {
+    mem_table_scanner_ = nullptr;
     return KStatus::FAIL;
   }
-  status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
+
   return KStatus::SUCCESS;
 }
 
 KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+  if (cur_entity_index_ >= entity_ids_.size()) {
+    *count = 0;
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
+
   *count = 0;
   KStatus ret;
   while (status_ != STORAGE_SCAN_STATUS::SCAN_STATUS_DONE && *count == 0) {
@@ -97,23 +106,45 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
       case STORAGE_SCAN_STATUS::SCAN_MEM_TABLE: {
           // Scan mem tables
           bool is_done = false;
-          ret = mem_table_iterator_->Next(res, count, &is_done, ts);
+          ret = mem_table_scanner_->Scan(entity_ids_[cur_entity_index_], res, count, ts);
           if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("can not get next mem table.");
+            LOG_ERROR("Failed to scan mem table for entity(%d).", entity_ids_[cur_entity_index_]);
             return KStatus::FAIL;
           }
-          if (is_done) {
-            status_ = STORAGE_SCAN_STATUS::SCAN_PARTITION;
+          status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
+          cur_partition_index_ = 0;
+        }
+        break;
+      case STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT: {
+          // Scan last segment
+          if (cur_partition_index_ >= ts_partitions_.size()) {
+            status_ = STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT;
+            cur_partition_index_ = 0;
+          } else {
+            // Scan last segment of current partition
+            ++cur_partition_index_;
           }
         }
         break;
-      case STORAGE_SCAN_STATUS::SCAN_PARTITION: {
-          status_ = STORAGE_SCAN_STATUS::SCAN_STATUS_DONE;
+      case STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT: {
+          // Scan block segment
+          if (cur_partition_index_ >= ts_partitions_.size()) {
+            ++cur_entity_index_;
+            cur_partition_index_ = 0;
+            if (cur_entity_index_ >= entity_ids_.size()) {
+              status_ = STORAGE_SCAN_STATUS::SCAN_STATUS_DONE;
+            } else {
+              status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
+            }
+          } else {
+            // Scan block segment of current partition
+            ++cur_partition_index_;
+          }
         }
         break;
       default: {
-          // error
-          status_ = STORAGE_SCAN_STATUS::SCAN_STATUS_DONE;
+          // internal error
+          return KStatus::FAIL;
         };
     }
   }
@@ -171,44 +202,34 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   return KStatus::FAIL;
 }
 
-TsMemTableIteratorV2Impl::TsMemTableIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
-                                                  vector<uint32_t>& entity_ids,
-                                                  std::vector<KwTsSpan>& ts_spans,
-                                                  DATATYPE ts_col_type,
-                                                  std::vector<k_uint32>& kw_scan_cols,
-                                                  std::vector<k_uint32>& ts_scan_cols,
-                                                  std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                                                  uint32_t table_version) :
-                          TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
-                                                                            kw_scan_cols, ts_scan_cols, table_schema_mgr,
-                                                                            table_version) {
+TsMemTableScanner::TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup,
+                                      vector<uint32_t>& entity_ids,
+                                      std::vector<KwTsSpan>& ts_spans,
+                                      DATATYPE ts_col_type,
+                                      std::vector<k_uint32>& kw_scan_cols,
+                                      std::vector<k_uint32>& ts_scan_cols,
+                                      std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                      uint32_t table_version) :
+                  TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
+                                                                    kw_scan_cols, ts_scan_cols, table_schema_mgr,
+                                                                    table_version) {
 }
 
-TsMemTableIteratorV2Impl::~TsMemTableIteratorV2Impl() {
+TsMemTableScanner::~TsMemTableScanner() {
 }
 
-KStatus TsMemTableIteratorV2Impl::Init(bool is_reversed) {
+KStatus TsMemTableScanner::Init(bool is_reversed) {
   KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
-  cur_entity_index_ = 0;
-  parser_ = std::make_unique<TsRawPayloadRowParser>(attrs_);
-  return KStatus::SUCCESS;
 }
 
-KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  if (cur_entity_index_ >= entity_ids_.size()) {
-    *count = 0;
-    *is_finished = true;
-    return KStatus::SUCCESS;
-  }
-  *is_finished = false;
-
+KStatus TsMemTableScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
   ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(0, table_schema_mgr_->GetTableID(),
-                                                    entity_ids_[cur_entity_index_], &blocks);
+                                                    entity_id, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
@@ -268,77 +289,8 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
     res->push_back(i, batch);
   }
 
-  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-
-  ++cur_entity_index_;
+  res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
   return KStatus::SUCCESS;
 }
-
-/*
-  rocksdb::DB* db = vgroup_->GetDB();
-  TsInternalKey key;
-  key.table_id = table_schema_mgr_->GetTableID();
-  key.version = table_version_;
-  key.entity_id = entity_ids_[cur_entity_index_];
-  rocksdb::ReadOptions opts;
-  char buf[TsInternalKey::size];
-  rocksdb::Slice s_key;
-  key.Encode(&s_key, buf);
-  string value;
-  db->Get(opts, s_key, &value);
-
-  TsRawPayloadV2 payload({const_cast<char*>(value.c_str()), value.length()});
-  auto row_iter = payload.GetRowIterator();
-  std::vector<TSSlice> row_data_list;
-
-  for (; row_iter.Valid(); row_iter.Next()) {
-    auto row_data = row_iter.Value();
-    timestamp64 ts = parser_->GetTimestamp(row_data);
-    if (this->checkIfTsInSpan(ts)) {
-      row_data_list.push_back(row_data);
-    }
-  }
-
-  *count = row_data_list.size();
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    k_int32 col_idx = ts_scan_cols_[i];
-    Batch* batch;
-    if (col_idx >= 0 && col_idx < attrs_.size()) {
-      void* bitmap = malloc(KW_BITMAP_SIZE(*count));
-      if (bitmap == nullptr) {
-        return KStatus::FAIL;
-      }
-      memset(bitmap, 0xFF, KW_BITMAP_SIZE(*count));
-      TSSlice col_data;
-      if (!isVarLenType(attrs_[col_idx].type)) {
-        char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
-        for (int row = 0; row < row_data_list.size(); ++row) {
-          parser_->GetColValueAddr(row_data_list[row], i, &col_data);
-          memcpy(value + row * attrs_[col_idx].size,
-                  col_data.data,
-                  attrs_[col_idx].size);
-        }
-        batch = new Batch(static_cast<void *>(value), *count, bitmap, 0, nullptr);
-        batch->is_new = true;
-      } else {
-        batch = new VarColumnBatch(*count, bitmap, 0, nullptr);
-        for (int row = 0; row < row_data_list.size(); ++row) {
-          parser_->GetColValueAddr(row_data_list[row], i, &col_data);
-          char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
-          KUint16(buffer) = col_data.len;
-          memcpy(buffer + 2, col_data.data, col_data.len);
-          *(buffer + col_data.len + 2) = 0;
-          std::shared_ptr<void> ptr(buffer, free);
-          batch->push_back(ptr);
-        }
-        batch->is_new = true;
-      }
-    } else {
-      void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
-      batch = new Batch(bitmap, *count, bitmap, 0, nullptr);
-    }
-    res->push_back(i, batch);
-  }
-*/
 
 }  //  namespace kwdbts
