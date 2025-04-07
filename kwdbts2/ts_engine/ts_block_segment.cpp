@@ -12,6 +12,7 @@
 #include "ts_block_segment.h"
 #include "ts_timsort.h"
 #include "ts_vgroup_partition.h"
+#include "ts_compressor.h"
 
 namespace kwdbts {
 
@@ -372,7 +373,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
         for (size_t idx = thread_idx * compact_num_per_thread; idx < end_idx && idx < last_segments_.size(); ++idx) {
           KStatus s = read_last_segment(last_segments_[idx], idx);
           if (s != KStatus::SUCCESS) {
-            LOG_ERROR("read last segment[%u] failed, thread idx: %lu", last_segments_[idx]->GetVersion(), thread_idx);
+            LOG_ERROR("read last segment[%u] failed, thread idx: %u", last_segments_[idx]->GetVersion(), thread_idx);
             global_status = s;
             return;
           }

@@ -12,17 +12,13 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <map>
 #include <memory>
 #include <string>
-#include <vector>
 #include <cstdio>
 
-#include "ts_common.h"
-#include "payload.h"
 #include "ts_block_segment.h"
-#include "ts_last_segment_manager.h"
-#include "ts_metric_block.h"
+#include "ts_lastsegment_manager.h"
+#include "ts_engine_schema_manager.h"
 
 namespace kwdbts {
 

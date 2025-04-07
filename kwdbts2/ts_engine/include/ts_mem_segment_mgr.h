@@ -137,7 +137,7 @@ class TsMemSegBlockItemInfo : public TsBlockItemInfo {
   std::vector<TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::unique_ptr<TsRawPayloadRowParser> parser_{nullptr};
+  std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
 
  public:
   explicit TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}

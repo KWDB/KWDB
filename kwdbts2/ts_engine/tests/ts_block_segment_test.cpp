@@ -17,6 +17,7 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_hash_latch.h"
+#include "ts_lastsegment_builder.h"
 
 using namespace kwdbts;  // NOLINT
 

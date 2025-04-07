@@ -113,8 +113,7 @@ class TsVGroup {
     return GetPartition(database_id, p_time);
   }
 
-  __attribute__((visibility("hidden"))) KStatus PutData(kwdbContext_p ctx, TSTableID table_id,
-                                                        TSEntityID entity_id, TSSlice* payload);
+  KStatus PutData(kwdbContext_p ctx, TSTableID table_id, TSEntityID entity_id, TSSlice* payload);
 
   std::filesystem::path GetPath() const;
 

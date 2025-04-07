@@ -10,9 +10,9 @@
 #include "ts_engine_schema_manager.h"
 #include "ts_env.h"
 #include "ts_io.h"
-#include "ts_last_segment_manager.h"
+#include "ts_lastsegment_manager.h"
 #include "ts_payload.h"
-#include "ts_slice.h"
+#include "ts_lastsegment_builder.h"
 
 void Tester(TSTableID table_id, int nrow, const std::string &filename) {
   auto compressor = kwdbts::TsEnvInstance::GetInstance().Compressor();

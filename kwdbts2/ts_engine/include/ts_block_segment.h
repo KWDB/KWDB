@@ -13,17 +13,12 @@
 #include <filesystem>
 #include <map>
 #include <memory>
-#include <utility>
-#include <list>
-#include <set>
-#include <unordered_map>
 #include <string>
 #include <vector>
-#include "ts_common.h"
 #include "ts_block_segment_data.h"
-#include "ts_hash_latch.h"
 #include "ts_io.h"
-#include "ts_last_segment_manager.h"
+#include "ts_lastsegment_manager.h"
+#include "ts_lastsegment.h"
 
 
 namespace kwdbts {
