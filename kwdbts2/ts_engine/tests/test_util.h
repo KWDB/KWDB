@@ -383,6 +383,11 @@ TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& 
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
+        case DATATYPE::INT64: {
+          int data = GetRandomNumber(10240);
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
         case ::roachpb::DataType::DOUBLE: {
           double data = GetRandomNumber(1024 * 1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
@@ -402,4 +407,10 @@ TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& 
   TSSlice payload{nullptr, 0};
   builder.Build(table_id, version, &payload);
   return payload;
+}
+
+void make_hashpoint(std::vector<k_uint32> *hps) {
+  for (uint32_t i=0; i<HASHPOINT_RANGE; i++) {
+    hps->push_back(i);
+  }
 }

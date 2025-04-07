@@ -291,7 +291,8 @@ class TsTable {
    *
    * @return KStatus
    */
-  KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash, KwTsSpan ts_span, uint64_t mtr_id);
+  virtual KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                    KwTsSpan ts_span, uint64_t mtr_id);
 
   /**
    * @brief row-based payload convert to col-based payload
@@ -309,7 +310,7 @@ class TsTable {
    *
    * @return KStatus
    */
-  KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+  virtual KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                             KwTsSpan ts_span, uint64_t* count);
 
   /**
@@ -498,11 +499,11 @@ class TsTable {
 
   virtual uint64_t GetPartitionInterval();
 
-  void SetDropped();
+  virtual void SetDropped();
 
-  bool IsDropped();
+  virtual bool IsDropped();
 
-  uint64_t partitionInterval() {
+  virtual uint64_t partitionInterval() {
     return entity_bt_manager_->GetPartitionInterval();
   }
 
@@ -510,9 +511,9 @@ class TsTable {
     return entity_bt_manager_;
   }
 
-  KStatus GetEntityNum(kwdbContext_p ctx, uint64_t* entity_num);
+  virtual KStatus GetEntityNum(kwdbContext_p ctx, uint64_t* entity_num);
 
-  KStatus GetDataRowNum(kwdbContext_p ctx, const KwTsSpan& ts_span, uint64_t* row_num);
+  virtual KStatus GetDataRowNum(kwdbContext_p ctx, const KwTsSpan& ts_span, uint64_t* row_num);
 
   /**
     * @brief clean ts table

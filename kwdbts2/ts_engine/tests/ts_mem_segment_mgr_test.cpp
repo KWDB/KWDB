@@ -1,0 +1,333 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+#include <gtest/gtest.h>
+#include <filesystem>
+#include "ts_mem_segment_mgr.h"
+
+using namespace kwdbts;  // NOLINT
+
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {
+  TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(payload.data);
+  uint32_t row_num = 1;
+  segment_lock_.lock();
+  if (segment_.size() == 0) {
+    segment_.push_front(std::make_shared<TsMemSegment>());
+  }
+  std::shared_ptr<TsMemSegment> cur_mem_seg = segment_.front();
+  cur_mem_seg->AllocRowNum(row_num);
+  segment_lock_.unlock();
+  cur_mem_seg->AppendOneRow(*row_data);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsMemSegBlockItemInfo::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) {
+  value = row_data_[row_num]->row_data;
+  return KStatus::SUCCESS;
+}
+
+
+class TsMemSegMgrTest : public ::testing::Test {
+ public:
+  TsMemSegmentManager mem_seg_mgr_;
+  kwdbContext_t g_ctx_;
+  kwdbContext_p ctx_;
+
+  virtual void SetUp() override {
+    ctx_ = &g_ctx_;
+    InitKWDBContext(ctx_);
+    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
+  }
+
+  virtual void TearDown() override {
+    KWDBDynamicThreadPool::GetThreadPool().Stop();
+  }
+
+ public:
+  TsMemSegMgrTest() : mem_seg_mgr_(nullptr) {
+    ctx_ = &g_ctx_;
+    InitKWDBContext(ctx_);
+  }
+  ~TsMemSegMgrTest() {
+
+  }
+};
+
+TEST_F(TsMemSegMgrTest, empty) {
+}
+
+TEST_F(TsMemSegMgrTest, insertOneRow) {
+  uint64_t row_value = 123456789;
+  TSMemSegRowData tmp_data;
+  TSMemSegRowData* row_data = &tmp_data;
+  row_data->database_id = 1;
+  row_data->table_id = 1001;
+  row_data->entity_id = 100001;
+  row_data->lsn = 10009;
+  row_data->table_version = 9;
+  row_data->ts = 10086;
+  row_data->row_data = TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)};
+  auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+}
+
+TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
+  uint64_t row_value = 123456789;
+  TSMemSegRowData tmp_data;
+  TSMemSegRowData* row_data = &tmp_data;
+  row_data->database_id = 1;
+  row_data->table_id = 1001;
+  row_data->entity_id = 100001;
+  row_data->lsn = 10009;
+  row_data->table_version = 9;
+  row_data->ts = 10086;
+  row_data->row_data = TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)};
+  auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+  s = mem_seg_mgr_.GetBlockItems(row_data->database_id, row_data->table_id, row_data->entity_id, &blocks);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(blocks.size(), 1);
+  auto block = blocks.front();
+  ASSERT_EQ(block->GetEntityId(), row_data->entity_id);
+  ASSERT_EQ(block->GetRowNum(), 1);
+  ASSERT_EQ(block->GetTableId(), row_data->table_id);
+  std::vector<AttributeInfo> schema;
+  ASSERT_EQ(block->GetTS(0), row_data->ts);
+  TSSlice value;
+  s = block->GetValueSlice(0, 0, schema, value);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(KUint64(value.data), row_value);
+}
+
+TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
+  uint64_t row_value = 123456789;
+  TSEntityID entity_id = 11;
+  uint32_t db_id = 22;
+  TSTableID table_id = 33;
+  uint32_t row_num = 10;
+  std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
+  for (size_t i = 0; i < row_num; i++) {
+   TSMemSegRowData* row_data = &tmp_data;
+    row_data->database_id = db_id;
+    row_data->table_id = table_id;
+    row_data->entity_id = entity_id;
+    row_data->lsn = 10009 + i;
+    row_data->table_version = 9;
+    row_data->ts = 10086 + i;
+    uint64_t* cur_value = new uint64_t(row_value + i);
+    values.push_back(cur_value);
+    row_data->row_data = TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)};
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+  }
+  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+  auto s = mem_seg_mgr_.GetBlockItems(db_id, table_id, entity_id, &blocks);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(blocks.size(), 1);
+  auto block = blocks.front();
+  ASSERT_EQ(block->GetEntityId(), entity_id);
+  ASSERT_EQ(block->GetTableId(), table_id);
+  ASSERT_EQ(block->GetRowNum(), row_num);
+  std::vector<AttributeInfo> schema;
+  for (size_t i = 0; i < row_num; i++) {
+    ASSERT_EQ(block->GetTS(i), 10086 + i);
+    TSSlice value;
+    s = block->GetValueSlice(i, 0, schema, value);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    ASSERT_EQ(KUint64(value.data), row_value + i);
+  }
+  for (auto v : values) {
+    delete v;
+  }
+}
+
+TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
+  uint64_t row_value = 123456789;
+  TSEntityID entity_id = 11;
+  uint32_t db_id = 22;
+  TSTableID table_id = 33;
+  uint32_t row_num = 10;
+  std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
+  for (size_t i = 0; i < row_num; i++) {
+    TSMemSegRowData* row_data = &tmp_data;
+    row_data->database_id = db_id;
+    row_data->table_id = table_id;
+    row_data->entity_id = entity_id;
+    row_data->lsn = 10009 + i;
+    row_data->table_version = 9;
+    row_data->ts = 10086;
+    uint64_t* cur_value = new uint64_t(row_value + i);
+    values.push_back(cur_value);
+    row_data->row_data = TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)};
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+  }
+  
+  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+  auto s = mem_seg_mgr_.GetBlockItems(db_id, table_id, entity_id, &blocks);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(blocks.size(), 1);
+  auto block = blocks.front();
+  ASSERT_EQ(block->GetEntityId(), entity_id);
+  ASSERT_EQ(block->GetTableId(), table_id);
+  ASSERT_EQ(block->GetRowNum(), row_num);
+  std::vector<AttributeInfo> schema;
+  for (size_t i = 0; i < row_num; i++) {
+    ASSERT_EQ(block->GetTS(i), 10086);
+    TSSlice value;
+    s = block->GetValueSlice(i, 0, schema, value);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    ASSERT_EQ(KUint64(value.data), row_value + i);
+  }
+  for (auto v : values) {
+    delete v;
+  }
+}
+
+TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
+  uint64_t row_value = 123456789;
+  uint32_t db_id = 22;
+  TSTableID table_id = 33;
+  uint32_t row_num = 100;
+  uint32_t entity_num = 10;
+  std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
+  for (size_t i = 0; i < row_num; i++) {
+    TSMemSegRowData* row_data = &tmp_data;
+    row_data->database_id = db_id;
+    row_data->table_id = table_id;
+    row_data->entity_id = i % entity_num + 1;
+    row_data->lsn = 10009 + i;
+    row_data->table_version = 9;
+    row_data->ts = 10086 + i;
+    uint64_t* cur_value = new uint64_t(row_value + i);
+    values.push_back(cur_value);
+    row_data->row_data = TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)};
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+  }
+  auto mem_seg = mem_seg_mgr_.GetActiveMemSeg();
+  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+  for (size_t j = 1; j <= entity_num; j++) {
+    auto s = mem_seg_mgr_.GetBlockItems(db_id, table_id, j, &blocks);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    ASSERT_EQ(blocks.size(), 1);
+    auto block = blocks.front();
+    ASSERT_EQ(block->GetEntityId(), j);
+    ASSERT_EQ(block->GetTableId(), table_id);
+    ASSERT_EQ(block->GetRowNum(), row_num / entity_num);
+    std::vector<AttributeInfo> schema;
+    for (size_t i = 0; i < block->GetRowNum(); i++) {
+      ASSERT_EQ(block->GetTS(i), 10086 + i * 10 + j - 1);
+      TSSlice value;
+      s = block->GetValueSlice(i, 0, schema, value);
+      ASSERT_TRUE(s == KStatus::SUCCESS);
+      ASSERT_EQ(KUint64(value.data), row_value + i * 10 + j - 1);
+    }
+  }
+  for (auto v : values) {
+    delete v;
+  }
+}
+
+TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
+  uint64_t row_value = 123456789;
+  TSEntityID entity_id = 11;
+  uint32_t db_id = 22;
+  TSTableID table_id = 33;
+  uint32_t row_num = 10;
+  uint32_t version_num = 2;
+  std::list<uint64_t*> values;
+  TSMemSegRowData tmp_data;
+  for (size_t i = 0; i < row_num; i++) {
+    TSMemSegRowData* row_data = &tmp_data;
+    row_data->database_id = db_id;
+    row_data->table_id = table_id;
+    row_data->entity_id = entity_id;
+    row_data->lsn = 10009 + i;
+    row_data->table_version = 9 + i % version_num;
+    row_data->ts = 10086 + i;
+    uint64_t* cur_value = new uint64_t(row_value + i);
+    values.push_back(cur_value);
+    row_data->row_data = TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)};
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+  }
+  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+  auto s = mem_seg_mgr_.GetBlockItems(db_id, table_id, entity_id, &blocks);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(blocks.size(), version_num);
+  int j = 0;
+  for (auto block : blocks) {
+    ASSERT_EQ(block->GetEntityId(), entity_id);
+    ASSERT_EQ(block->GetTableId(), table_id);
+    ASSERT_EQ(block->GetRowNum(), row_num / version_num);
+    std::vector<AttributeInfo> schema;
+    for (size_t i = 0; i < row_num / version_num; i++) {
+      ASSERT_EQ(block->GetTS(i), 10086 + i * version_num + j);
+      TSSlice value;
+      s = block->GetValueSlice(i, 0, schema, value);
+      ASSERT_TRUE(s == KStatus::SUCCESS);
+      ASSERT_EQ(KUint64(value.data), row_value + i * version_num + j);
+    }
+    j++;
+  }  
+  for (auto v : values) {
+    delete v;
+  }
+}
+
+TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
+  uint64_t row_value = 123456789;
+  TSEntityID entity_id = 11;
+  uint32_t db_id = 22;
+  TSTableID table_id = 33;
+  uint32_t row_num = 24;
+  uint32_t table_num = 4;
+  uint32_t version_num = 2;
+  TSMemSegRowData tmp_data;
+  std::list<uint64_t*> values;
+  for (size_t i = 0; i < row_num / table_num / version_num; i++) {
+    for (size_t tbl_id = 0; tbl_id < table_num; tbl_id++) {
+      for (size_t v_num = 0; v_num < version_num; v_num++) {
+        TSMemSegRowData* row_data = &tmp_data;
+        row_data->database_id = db_id;
+        row_data->table_id = table_id + tbl_id;
+        row_data->entity_id = entity_id;
+        row_data->lsn = 10009 + i;
+        row_data->table_version = 9 + v_num;
+        row_data->ts = 10086 + i;
+        uint64_t* cur_value = new uint64_t(row_value + i);
+        values.push_back(cur_value);
+        row_data->row_data = TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)};
+        auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(row_data), sizeof(row_data)}, row_data->entity_id);
+        ASSERT_TRUE(s == KStatus::SUCCESS);
+      }
+    }
+  }
+  for (size_t i = 0; i < table_num; i++) {
+    std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
+    auto s = mem_seg_mgr_.GetBlockItems(db_id, table_id + i, entity_id, &blocks);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    ASSERT_EQ(blocks.size(), version_num);
+    for (auto block : blocks) {
+      ASSERT_EQ(block->GetEntityId(), entity_id);
+      ASSERT_EQ(block->GetTableId(), table_id + i);
+      ASSERT_EQ(block->GetRowNum(), row_num / version_num / table_num);
+    }
+  }
+  for (auto v : values) {
+    delete v;
+  }
+}

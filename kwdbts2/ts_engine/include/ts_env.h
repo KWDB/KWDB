@@ -17,14 +17,20 @@
 #include "ts_common.h"
 
 namespace kwdbts {
+
 class TsEnvInstance {
  private:
   std::mutex obj_create_mutex_;
   ColumnCompressorMgr* compressor_mgr_{nullptr};
 
-
  private:
-  TsEnvInstance() = default;
+  TsEnvInstance() {}
+
+  ~TsEnvInstance() {
+    if (compressor_mgr_ != nullptr) {
+      delete compressor_mgr_;
+    }
+  }
 
  public:
   static TsEnvInstance& GetInstance() {

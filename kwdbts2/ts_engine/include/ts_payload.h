@@ -118,6 +118,8 @@ class TsRawPayload {
   }
   static TSTableID GetTableIDFromSlice(const TSSlice &raw) { return KUint64(raw.data + table_id_offset_); }
 
+  static uint32_t GetDatabaseIdFromSlice(const TSSlice &raw) { return KUint32(raw.data + db_id_offset_); }
+
   static uint32_t GetTableVersionFromSlice(const TSSlice &raw) { return KUint32(raw.data + ts_version_offset_); }
 
   TSTableID GetTableID() const { return KUint64(payload_.data + table_id_offset_); }
@@ -136,6 +138,12 @@ class TsRawPayload {
     assert(can_parse_);
     assert(row < row_data_.size());
     return row_parser_.GetColValueAddr(row_data_[row], col_id, col_data);
+  }
+
+  timestamp64 GetTS(int row) {
+    assert(can_parse_);
+    assert(row < row_data_.size());
+    return row_parser_.GetTimestamp(row_data_[row]);
   }
 
   TSSlice GetRowData(int row) {
@@ -193,7 +201,7 @@ class TsRawPayloadV2 {
     RowIterator(char* ptr, char* end) : ptr_(ptr), end_(end) {}
     bool Valid() const { return ptr_ < end_; }
     void Next() {
-      uint32_t len = DecodeType<uint32_t>(ptr_);
+      uint32_t len = DecodeFixed32(ptr_);
       ptr_ += 4;
       ptr_ += len;
       // for DEBUG
@@ -204,7 +212,7 @@ class TsRawPayloadV2 {
     TSSlice Value() const {
       assert(Valid());
       TSSlice res;
-      res.len = DecodeType<uint32_t>(ptr_);
+      res.len = DecodeFixed32(ptr_);
       res.data = ptr_ + sizeof(uint32_t);
       assert(res.data + res.len <= end_);
       return res;
@@ -215,14 +223,14 @@ class TsRawPayloadV2 {
   explicit TsRawPayloadV2(TSSlice payload) : payload_(payload) {
     assert(payload.len > header_size_);
   }
-  uint32_t GetRowCount() const { return DecodeType<uint32_t>(payload_.data + row_num_offset_); }
-  TSTableID GetTableID() const { return DecodeType<uint64_t>(payload_.data + table_id_offset_); }
+  uint32_t GetRowCount() const { return DecodeFixed32(payload_.data + row_num_offset_); }
+  TSTableID GetTableID() const { return DecodeFixed64(payload_.data + table_id_offset_); }
   uint32_t GetTableVersion() const {
-    return DecodeType<uint32_t>(payload_.data + ts_version_offset_);
+    return DecodeFixed32(payload_.data + ts_version_offset_);
   }
   TSSlice GetPrimaryTag() const {
     TSSlice pkey;
-    pkey.len = DecodeType<uint16_t>(payload_.data + header_size_);
+    pkey.len = DecodeFixed16(payload_.data + header_size_);
     pkey.data = payload_.data + header_size_ + sizeof(uint16_t);
     assert(pkey.data - payload_.data + 4 < payload_.len);
     return pkey;
@@ -231,7 +239,7 @@ class TsRawPayloadV2 {
     TSSlice ptag = GetPrimaryTag();
     TSSlice tag;
     tag.data = ptag.data + ptag.len + sizeof(uint32_t);
-    tag.len = DecodeType<uint32_t>(tag.data - sizeof(uint32_t));
+    tag.len = DecodeFixed32(tag.data - sizeof(uint32_t));
     assert(tag.len <= payload_.len);
     return tag;
   }

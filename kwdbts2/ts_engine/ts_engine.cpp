@@ -20,13 +20,14 @@
 #include "ee_global.h"
 #include "ee_executor.h"
 #include "ts_table_v2_impl.h"
+#include "ts_instance_params.h"
 
 extern int storage_engine_vgroup_max_num = 6;
 namespace kwdbts {
 
 const char schema_directory[]= "schema";
 
-TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options) {
+TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(table_grps_) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -100,7 +101,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
     return s;
   }
-  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(ctx, table_schema_mgr);
+  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(table_schema_mgr, table_grps_);
   tables_cache_->Put(table_id, ts_table);
   return s;
 }
@@ -131,48 +132,55 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id,
-                                TSSlice* payload, bool write_wal) {
-  TsRawPayload p{*payload};
-  TSEntityID entity_id = 0;
-  uint32_t tbl_grp_id = 0;
-  bool new_tag = false;
-
-  KStatus s = schema_mgr_->GetVGroup(ctx, table_id, p.GetPrimaryTag(), &tbl_grp_id, &entity_id, &new_tag);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
-  assert(tbl_grp != nullptr);
-  if (new_tag) {
-    if (options_.wal_level != WALMode::OFF) {
-      KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, *payload);
-      if (s == KStatus::FAIL) {
-        LOG_ERROR("failed WriteInsertWAL for new tag");
+KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  ErrorInfo err_info;
+  uint32_t tbl_grp_id;
+  TSEntityID entity_id;
+  for (size_t i = 0; i < payload_num; i++) {
+    TsRawPayload p{payload_data[i]};
+    TSSlice primary_key = p.GetPrimaryTag();
+    auto tbl_version = p.GetTableVersion();
+    auto s = GetTsTable(ctx, table_id, ts_table, err_info, tbl_version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
+      return s;
+    }
+    bool new_tag;
+    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &tbl_grp_id, &entity_id, &new_tag);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
+    assert(tbl_grp != nullptr);
+    if (new_tag) {
+      if (write_wal) {
+        // no need lock, lock inside.
+        s = tbl_grp->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i]);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("failed WriteInsertWAL for new tag.");
+          return s;
+        }
+      }
+      entity_id = tbl_grp->AllocateEntityID();
+      s = putTagData(ctx, table_id, tbl_grp_id, entity_id, p);
+      if (s != KStatus::SUCCESS) {
         return s;
       }
-    }
-    entity_id = tbl_grp->AllocateEntityID();
-    s = putTagData(ctx, table_id, tbl_grp_id, entity_id, p);
-    if (s != KStatus::SUCCESS) {
-      return s;
+      inc_entity_cnt++;
     }
   }
 
-  if (options_.wal_level != WALMode::OFF) {
-    KStatus s = tbl_grp->WriteInsertWAL(ctx, mtr_id, p.GetPrimaryTag(), *payload);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("putdata failed. because wal failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
-      return s;
-    }
-  }
-  uint8_t payload_data_flag = p.GetRowType();
-  if (payload_data_flag != DataTagFlag::TAG_ONLY) {
-    s = tbl_grp->PutData(ctx, table_id, entity_id, payload);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id, tbl_grp_id);
-      return s;
-    }
+
+  dedup_result->payload_num = payload_num;
+  dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
+  auto s = ts_table->PutData(ctx, range_group_id, payload_data, payload_num,
+                        mtr_id, inc_entity_cnt, inc_unordered_cnt, dedup_result, TsEngineInstanceParams::g_dedup_rule);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("put data failed. table[%lu].", table_id);
+    return s;
   }
   return s;
 }

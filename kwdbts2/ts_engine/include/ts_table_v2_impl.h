@@ -14,17 +14,35 @@
 #include <vector>
 #include <memory>
 #include "ts_table.h"
+#include "ts_vgroup.h"
 #include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
 class TsTableV2Impl : public TsTable {
- public:
-  TsTableV2Impl(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
-  TsTableV2Impl(kwdbContext_p ctx, const std::string &db_path,
-                const KTableKey &table_id);
+ private:
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
+  const std::vector<std::shared_ptr<TsVGroup>>& table_grps_;
 
-  ~TsTableV2Impl() override;
+ public:
+  TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
+                const std::vector<std::shared_ptr<TsVGroup>>& table_grps) :
+            TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), table_grps_(table_grps) {}
+
+  ~TsTableV2Impl();
+
+
+  KTableKey GetTableId() override {
+    return table_schema_mgr_->GetTableId();
+  }
+
+  uint32_t GetCurrentTableVersion() override {
+    return table_schema_mgr_->GetCurrentVersion();
+  }
+
+  KStatus PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSlice* payload, int payload_num,
+                          uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
+                          DedupResult* dedup_result, const DedupRule& dedup_rule) override;
 
   KStatus GetTagIterator(kwdbContext_p ctx,
                           std::vector<uint32_t> scan_tags,
@@ -35,9 +53,6 @@ class TsTableV2Impl : public TsTable {
                             std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
                             TsIterator** iter, std::vector<timestamp64> ts_points,
                             bool reverse, bool sorted) override;
-
- private:
-  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_{nullptr};
 };
 
 }  // namespace kwdbts

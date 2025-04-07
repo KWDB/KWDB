@@ -202,6 +202,8 @@ generate_proto(${NART_PROTOS_EE})
 # rocksdb include dir
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX")
 set(ROCKSDB_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../kwbase/c-deps/rocksdb/include ${CMAKE_CURRENT_SOURCE_DIR}/../kwbase/c-deps/rocksdb)
+set(SNAPPY_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../kwbase/c-deps/snappy)
+set(SNAPPY_LIB $ENV{GOPATH}/native/snappy/libsnappy.a)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(ROCKSDB_LIB $ENV{GOPATH}/native/rocksdb_assert/librocksdb.a)
 else ()
@@ -223,6 +225,7 @@ set(TS_INCLUDE
         exec/include
         statistic/include
         ${ROCKSDB_INCLUDE}
+        ${SNAPPY_INCLUDE}
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -326,7 +329,7 @@ if (WITH_TESTS)
                 third_party/gtest-1.8.1/fused-src
                 )
 
-        target_link_libraries(${tname} ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} ${ROCKSDB_LIB} common gtest dl rt snappy)
+        target_link_libraries(${tname} ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} ${ROCKSDB_LIB} ${SNAPPY_LIB} common gtest dl rt)
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO
