@@ -22,13 +22,20 @@
 #include "ts_table_v2_impl.h"
 #include "ts_instance_params.h"
 
+extern int storage_engine_vgroup_max_num = 6;
 namespace kwdbts {
-const int storage_engine_vgroup_max_num = 10;
+
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(table_grps_) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
+  char* vgroup_num = getenv("KW_VGROUP_NUM");
+  if (vgroup_num != nullptr) {
+    char *endptr;
+    storage_engine_vgroup_max_num = strtol(vgroup_num, &endptr, 10);
+    assert(*endptr == '\0');
+  }
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
@@ -165,6 +172,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       inc_entity_cnt++;
     }
   }
+
 
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);

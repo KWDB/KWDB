@@ -30,7 +30,7 @@
 #include "lg_api.h"
 #include "ts_table_schema_manager.h"
 
-
+extern int storage_engine_vgroup_max_num;
 namespace kwdbts {
 
 /**
