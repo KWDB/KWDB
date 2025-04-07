@@ -19,7 +19,7 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
   segments->reset();
   segment_lock_.lock();
   if (segment_.size() > 0) {
-    *segments = segment_.front();
+    *segments = segment_.back();
     segment_.push_back(std::make_shared<TsMemSegment>());
   }
   segment_lock_.unlock();
@@ -106,15 +106,15 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegmentManager::GetBlockItems(uint32_t db_id, TSTableID table_id, TSEntityID entity_id,
-                                          std::list<std::shared_ptr<TsBlockItemInfo>>* blocks) {
+KStatus TsMemSegmentManager::GetBlockItems(const TsBlockITemFilterParams& filter,
+                                          std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks) {
   blocks->clear();
   segment_lock_.lock();
   std::deque<std::shared_ptr<TsMemSegment>> segments = segment_;
   segment_lock_.unlock();
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   for (auto& mem : segments) {
-    bool ok = mem->GetEntityRows(db_id, table_id, entity_id, &row_datas);
+    bool ok = mem->GetEntityRows(filter, &row_datas);
     if (!ok) {
       LOG_ERROR("GetBlockItems failed in GetEntityRows.");
       return KStatus::FAIL;
@@ -132,6 +132,32 @@ KStatus TsMemSegmentManager::GetBlockItems(uint32_t db_id, TSTableID table_id, T
     }
   }
   return KStatus::SUCCESS;
+}
+
+char* TsMemSegBlockItemInfo::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) {
+  assert(!isVarLenType(schema[col_id].type));
+  auto col_len = schema[col_id].size;
+  auto col_based_len = col_len * row_data_.size();
+  char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
+  if (col_based_mem == nullptr) {
+    return nullptr;
+  }
+  col_based_mems_.push_back(col_based_mem);
+  if (parser_ == nullptr) {
+    parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
+  }
+  TSSlice value;
+  char* cur_offset = col_based_mem;
+  for (auto& row : row_data_) {
+    auto ok = parser_->GetColValueAddr(row->row_data, col_id, &value);
+    if (!ok) {
+      LOG_ERROR("GetColValueAddr failed.");
+      return nullptr;
+    }
+    memcpy(cur_offset, value.data, value.len);
+    cur_offset += value.len;
+  }
+  return col_based_mem;
 }
 
 KStatus TsMemSegBlockItemInfo::GetValueSlice(int row_num, int col_id,
@@ -173,13 +199,13 @@ bool TsMemSegment::AppendOneRow(const TSMemSegRowData& row) {
   return false;
 }
 
-bool TsMemSegment::GetEntityRows(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, std::list<TSMemSegRowData*>* rows) {
+bool TsMemSegment::GetEntityRows(const TsBlockITemFilterParams& filter, std::list<TSMemSegRowData*>* rows) {
   rows->clear();
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   TSMemSegRowData begin;
-  begin.database_id = db_id;
-  begin.table_id = table_id;
-  begin.entity_id = entity_id;
+  begin.database_id = filter.db_id;
+  begin.table_id = filter.table_id;
+  begin.entity_id = filter.entity_id;
   begin.lsn = 0;
   begin.table_version = 0;
   begin.ts = 0;
@@ -188,10 +214,11 @@ bool TsMemSegment::GetEntityRows(uint32_t db_id, TSTableID table_id, TSEntityID 
   while (iter.Valid()) {
     auto cur_row = TSRowDataComparator::decode_key(iter.key());
     assert(cur_row != nullptr);
-    if (cur_row->table_id != table_id) {
+    if (cur_row->table_id != filter.table_id) {
       break;
     }
-    if (cur_row->entity_id == entity_id) {
+    if (cur_row->entity_id == filter.entity_id &&
+        cur_row->ts >= filter.start_ts && cur_row->ts <= filter.end_ts) {
       rows->push_back(cur_row);
     }
     iter.Next();
@@ -213,7 +240,13 @@ bool TsMemSegment::GetAllEntityRows(std::list<TSMemSegRowData*>* rows) {
 }
 
 void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func) {
-  assert(intent_row_num_.load() == written_row_num_.load());
+  int re_try_times = 0;
+  while (intent_row_num_.load() != written_row_num_.load()) {
+    if (re_try_times++ > 0)
+      LOG_WARN("TsMemSegment intent_row_num_[%u] != written_row_num_[%u], sleep 1ms. times[%d].",
+              intent_row_num_.load(), written_row_num_.load(), re_try_times);
+    usleep(1000);
+  }
   bool run_ok = true;
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   iter.SeekToFirst();

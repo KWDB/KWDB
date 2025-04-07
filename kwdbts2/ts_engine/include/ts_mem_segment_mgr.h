@@ -38,6 +38,7 @@ struct TSMemSegRowData {
   TSSlice row_data;
 
   int Compare(TSMemSegRowData* b) {
+    // return memcmp(this, b, sizeof(TSMemSegRowData));
     if (database_id != b->database_id) {
       return database_id > b->database_id ? 1 : -1;
     }
@@ -47,9 +48,9 @@ struct TSMemSegRowData {
     if (table_version != b->table_version) {
       return table_version > b->table_version ? 1 : -1;
     }
-     if (entity_id != b->entity_id) {
-      return entity_id > b->entity_id ? 1 : -1;
-     }
+    if (entity_id != b->entity_id) {
+    return entity_id > b->entity_id ? 1 : -1;
+    }
     if (ts != b->ts) {
       return ts > b->ts ? 1 : -1;
     }
@@ -85,13 +86,13 @@ struct TSRowDataComparator {
 
 class TsMemSegment {
  private:
-  ConcurrentArena arena_;
-  TSRowDataComparator comp_;
-  InlineSkipList<TSRowDataComparator> skiplist_; 
   std::atomic<uint32_t> cur_size_{0};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
+  ConcurrentArena arena_;
+  TSRowDataComparator comp_;
+  InlineSkipList<TSRowDataComparator> skiplist_; 
 
  public:
   TsMemSegment() : skiplist_(comp_, &arena_) {}
@@ -100,13 +101,17 @@ class TsMemSegment {
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func);
 
+  size_t Size() {
+    return arena_.MemoryAllocatedBytes();
+  }
+
   inline void AllocRowNum(uint32_t row_num) {
     intent_row_num_.fetch_add(row_num);
   }
 
   bool AppendOneRow(const TSMemSegRowData& row);
 
-  bool GetEntityRows(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, std::list<TSMemSegRowData*>* rows);
+  bool GetEntityRows(const TsBlockITemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
 
   bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
 
@@ -121,7 +126,7 @@ class TsMemSegment {
 
   inline bool SetFlushing() {
     TsMemSegmentStatus tmp = MEM_SEGMENT_IMMUTABLE;
-    return status_.compare_exchange_strong(tmp, MEM_SEGMENT_IMMUTABLE);
+    return status_.compare_exchange_strong(tmp, MEM_SEGMENT_FLUSHING);
   }
 
   inline void SetDeleting() {
@@ -130,16 +135,25 @@ class TsMemSegment {
 
 };
 
-class TsMemSegBlockItemInfo : public TsBlockItemInfo {
+class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
  private:
   std::shared_ptr<TsMemSegment> mem_seg_;
   std::vector<TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
   std::unique_ptr<TsRawPayloadRowParser> parser_{nullptr};
+  std::list<char*> col_based_mems_;
 
  public:
   TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg){}
+
+  ~TsMemSegBlockItemInfo() {
+    for(auto& mem : col_based_mems_) {
+      free(mem);
+    }
+    col_based_mems_.clear();
+  }
+
   TSEntityID GetEntityId() override {
     assert(row_data_.size() > 0);
     return row_data_[0]->entity_id;
@@ -167,6 +181,8 @@ class TsMemSegBlockItemInfo : public TsBlockItemInfo {
     return row_data_[row_num]->ts;
   }
 
+  char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
+ 
   bool InsertRow(TSMemSegRowData* row) {
     bool can_insert = true;
     if (row_data_.size() != 0) {
@@ -204,10 +220,6 @@ class TsMemSegmentManager {
     segment_.clear();
   }
 
-  std::shared_ptr<TsMemSegment> GetActiveMemSeg() {
-    return segment_.front();
-  }
-
   // WAL CreateCheckPoint call this function to persistent metric datas.
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
 
@@ -217,8 +229,7 @@ class TsMemSegmentManager {
 
   bool GetMetricSchema(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema);
 
-  KStatus GetBlockItems(uint32_t db_id, TSTableID table_id, TSEntityID entity_id,
-                        std::list<std::shared_ptr<TsBlockItemInfo>>* blocks);
+  KStatus GetBlockItems(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
 
 };
 

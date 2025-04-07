@@ -132,6 +132,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   ErrorInfo err_info;
   uint32_t tbl_grp_id;
   TSEntityID entity_id;
+  size_t payload_size = 0;
   for (size_t i = 0; i < payload_num; i++) {
     TsRawPayload p{payload_data[i]};
     TSSlice primary_key = p.GetPrimaryTag();
@@ -164,6 +165,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       }
       inc_entity_cnt++;
     }
+    payload_size += p.GetData().len;
   }
   
   dedup_result->payload_num = payload_num;
@@ -174,6 +176,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     LOG_ERROR("put data failed. table[%lu].", table_id);
     return s;
   }
+  flush_mgr_.Count(payload_size);
   return s;
 }
 
