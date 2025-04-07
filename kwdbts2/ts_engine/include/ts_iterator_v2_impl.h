@@ -92,7 +92,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
 class TsMemTableScanner : public TsStorageIteratorV2Impl {
  public:
- TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
@@ -101,5 +101,5 @@ class TsMemTableScanner : public TsStorageIteratorV2Impl {
   KStatus Init(bool is_reversed) override;
   KStatus Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS);
 };
- 
+
 }  //  namespace kwdbts
