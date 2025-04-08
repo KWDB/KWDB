@@ -245,7 +245,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       return false;
     }
     return true;
-  });
+  }, true);
   // todo(liangbo01) deleting all new created files.
   if (!flush_success) {
     LOG_ERROR("faile flush memsegment to last segment.");

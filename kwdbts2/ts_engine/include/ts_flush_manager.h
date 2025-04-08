@@ -68,6 +68,7 @@ class TsLSNFlushManager {
       }
     }
     while (jobs_.size() > 4) {
+      LOG_INFO("current flush job number [%lu] sleep 1 second.", jobs_.size());
       sleep(1);
     }
     SwithJobInfo flush_job;
