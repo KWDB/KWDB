@@ -241,50 +241,61 @@ KStatus TsMemTableScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* co
     k_int32 col_idx = ts_scan_cols_[i];
     Batch* batch;
     if (col_idx >= 0 && col_idx < attrs_.size()) {
-      void* bitmap = malloc(KW_BITMAP_SIZE(*count));
+      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
       if (bitmap == nullptr) {
         return KStatus::FAIL;
       }
-      memset(bitmap, 0xFF, KW_BITMAP_SIZE(*count));
+      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
       TSSlice col_data;
       if (!isVarLenType(attrs_[col_idx].type)) {
         char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
         int row = 0;
         for (auto block : blocks) {
           for (int i = 0; i < block->GetRowNum(); ++i) {
-            ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
-            if (ret != KStatus::SUCCESS) {
-              return ret;
+            if (block->IsColNull(i, col_idx, attrs_)) {
+              set_null_bitmap(bitmap, i);
+            } else {
+              ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+              if (ret != KStatus::SUCCESS) {
+                return ret;
+              }
+              memcpy(value + row * attrs_[col_idx].size,
+                      col_data.data,
+                      attrs_[col_idx].size);
             }
-            memcpy(value + row * attrs_[col_idx].size,
-                    col_data.data,
-                    attrs_[col_idx].size);
             ++row;
           }
         }
-        batch = new Batch(static_cast<void *>(value), *count, bitmap, 0, nullptr);
+        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
         batch->is_new = true;
+        batch->need_free_bitmap = true;
       } else {
-        batch = new VarColumnBatch(*count, bitmap, 0, nullptr);
+        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
         for (auto block : blocks) {
           for (int i = 0; i < block->GetRowNum(); ++i) {
-            ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
-            if (ret != KStatus::SUCCESS) {
-              return ret;
+            if (block->IsColNull(i, col_idx, attrs_)) {
+              set_null_bitmap(bitmap, i);
+              batch->push_back(nullptr);
+            } else {
+              ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+              if (ret != KStatus::SUCCESS) {
+                return ret;
+              }
+              char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
+              KUint16(buffer) = col_data.len;
+              memcpy(buffer + 2, col_data.data, col_data.len);
+              *(buffer + col_data.len + 2) = 0;
+              std::shared_ptr<void> ptr(buffer, free);
+              batch->push_back(ptr);
             }
-            char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
-            KUint16(buffer) = col_data.len;
-            memcpy(buffer + 2, col_data.data, col_data.len);
-            *(buffer + col_data.len + 2) = 0;
-            std::shared_ptr<void> ptr(buffer, free);
-            batch->push_back(ptr);
           }
         }
         batch->is_new = true;
+        batch->need_free_bitmap = true;
       }
     } else {
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
-      batch = new Batch(bitmap, *count, bitmap, 0, nullptr);
+      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
     res->push_back(i, batch);
   }
