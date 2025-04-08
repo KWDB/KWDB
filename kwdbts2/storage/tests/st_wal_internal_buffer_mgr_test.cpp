@@ -313,7 +313,7 @@ TEST_F(TestWalManagerWriter, TestBufferRestart) {
   delete wal_mgr;
 
   wal_mgr = new WALFileMgr(kDbPath + "/wal/", table_id_, opts);
-  res = wal_mgr->Open(0);
+  res = wal_mgr->Open();
   EXPECT_EQ(res, SUCCESS);
   buf = new WALBufferMgr(opts, wal_mgr);
   buf->init(lsn);
@@ -562,7 +562,7 @@ TEST_F(TestWalManagerWriter, TestLogFileGroup) {
   duration = std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
   std::cout << "Duration for reading logs is: " << duration.count() << "ms" << std::endl;
 
-  res = wal_file_mgr.Open(0);
+  res = wal_file_mgr.Open();
   EXPECT_EQ(res, KStatus::SUCCESS);
   hb = wal_file_mgr.readHeaderBlock();
   EXPECT_EQ(hb.getStartLSN(), 0);
@@ -572,7 +572,7 @@ TEST_F(TestWalManagerWriter, TestLogFileGroup) {
   EXPECT_EQ(hb.getCheckpointNo(), 0);
   EXPECT_EQ(hb.getCheckpointLSN(), 4096 + 12);
 
-  res = wal_file_mgr.Open(1);
+  res = wal_file_mgr.Open();
   EXPECT_EQ(res, KStatus::SUCCESS);
   hb = wal_file_mgr.readHeaderBlock();
   EXPECT_EQ(hb.getStartLSN(), (1 << 20));
@@ -582,7 +582,7 @@ TEST_F(TestWalManagerWriter, TestLogFileGroup) {
   EXPECT_EQ(hb.getCheckpointNo(), 1);
   EXPECT_EQ(hb.getCheckpointLSN(), checkpoint_lsn);
 
-  res = wal_file_mgr.Open(2);
+  res = wal_file_mgr.Open();
   EXPECT_EQ(res, KStatus::SUCCESS);
   hb = wal_file_mgr.readHeaderBlock();
   EXPECT_EQ(hb.getStartLSN(), (2 << 20));
@@ -592,7 +592,7 @@ TEST_F(TestWalManagerWriter, TestLogFileGroup) {
   EXPECT_EQ(hb.getCheckpointNo(), 1);
   EXPECT_EQ(hb.getCheckpointLSN(), checkpoint_lsn);
 
-  res = wal_file_mgr.Open(3);
+  res = wal_file_mgr.Open();
   EXPECT_EQ(res, KStatus::SUCCESS);
   hb = wal_file_mgr.readHeaderBlock();
   EXPECT_EQ(hb.getStartLSN(), (4 << 20));

@@ -137,7 +137,7 @@ uint32_t TsVGroup::GetMaxEntityID() const {
 
 KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload) {
   // no need lock, lock inside.
-  return wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, prepared_payload);
+  return wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, prepared_payload, vgroup_id_);
 }
 
 KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload) {
@@ -145,7 +145,7 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
   // lock current lsn: Lock the current LSN until the log is written to the cache
   wal_manager_->Lock();
   TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
-  KStatus s = wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, primary_tag, prepared_payload, entry_lsn);
+  KStatus s = wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, primary_tag, prepared_payload, entry_lsn, vgroup_id_);
   if (s == KStatus::FAIL) {
     wal_manager_->Unlock();
     return s;
@@ -159,6 +159,119 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TsVGroup::WriteCheckpointWALAndUpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
+  // 1.UpdateLSN
+  KStatus s = wal_manager_->UpdateCheckpointWithoutFlush(ctx, chk_lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to WriteCheckpointWAL.")
+    return FAIL;
+  }
+  // 2.WriteCheckpointWAL
+  TS_LSN lsn;
+  s = wal_manager_->WriteCheckpointWAL(ctx, 0, lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to WriteCheckpointWAL.")
+    return FAIL;
+  }
+  // 3. remove chk file
+  s = wal_manager_->RemoveChkFile(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to WriteCheckpointWAL.")
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
+  // 1. read chk wal log
+  // 2. switch new file
+  wal_manager_->Lock();
+  KStatus  s = wal_manager_->ReadWALLogAndSwitchFile(logs, wal_manager_->FetchCheckpointLSN(),
+                                                     wal_manager_->FetchCurrentLSN());
+  last_lsn = wal_manager_->FetchCurrentLSN();
+  wal_manager_->Unlock();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLogAndSwitchFile.")
+  }
+  return s;
+}
+
+KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
+  // 1. read chk wal log
+  wal_manager_->Lock();
+  KStatus  s = wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(),
+                                                     wal_manager_->FetchCurrentLSN());
+  last_lsn = wal_manager_->FetchCurrentLSN();
+  wal_manager_->Unlock();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLogAndSwitchFile.")
+  }
+  return s;
+}
+
+KStatus TsVGroup::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs) {
+  return wal_manager_->ReadWALLogForMtr(mtr_trans_id, logs);
+}
+
+KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) {
+
+
+}
+//KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) {
+//  // get checkpoint_lsn
+//  TS_LSN checkpoint_lsn = wal_manager_->FetchCurrentLSN();
+//
+//  if (new_tag_bt_ == nullptr || root_bt_manager_ == nullptr) {
+//    LOG_ERROR("Failed to fetch current LSN.")
+//    return FAIL;
+//  }
+//
+//  // call Tag.flush, pass Checkpoint_LSN as parameter
+//  new_tag_bt_->sync_with_lsn(checkpoint_lsn);
+//
+//  /**
+//   * Call the Flush method of the Metrics table with the input parameter Current LSN
+//   * During the recovery process, check the dat aof each Entity based on Checkpoint LSN to determine the offset of
+//   * each Entity at the Checkpoint
+//   * The Checkpoint log of this solution is smaller, but the recovery time is longer.
+//   *
+//   * Another solution is to record the offset of each Entity at Checkpoint moment in the Checkpoint logs
+//   * The offset is used to reset the current write offset of the corresponding Entity while recovery
+//   * In this solution, the Checkpoint log is large, but the recovery time is reduced.
+//   *
+//   * At present, solution 1 is used, and later performance evaluation is needed to determine the final scheme.
+//  **/
+//  ErrorInfo err_info;
+//  map<uint32_t, uint64_t> rows;
+//  if (root_bt_manager_->Sync(checkpoint_lsn, err_info) != 0) {
+//    LOG_ERROR("Failed to flush the Metrics table.")
+//    return FAIL;
+//  }
+//  // force sync metric data into files.
+//  ebt_manager_->sync(0);
+//
+//  // update wal metadata lsn
+//  wal_manager_->CreateCheckpoint(ctx);
+//
+//  // construct CHECKPOINT log entry
+//  TS_LSN entry_lsn;
+//  KStatus s = wal_manager_->WriteCheckpointWAL(ctx, 0, entry_lsn);
+//
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to construct/write checkpoint WAL Log Entry.")
+//    return s;
+//  }
+//
+//  // TODO(liuwei) check whether entry_lsn is equal to checkpoint_lsn. if not, need to Re-Checkpoint
+//  s = wal_manager_->Flush(ctx);
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to flush the WAL log buffer to ensure the checkpoint is done.")
+//    return s;
+//  }
+//
+//  return SUCCESS;
+//}
 
 TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
@@ -386,9 +499,359 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
+  KStatus s;
+
+  switch (wal_log->getType()) {
+    case WALLogType::INSERT: {
+      auto insert_log = reinterpret_cast<InsertLogEntry*>(wal_log);
+      // tag or metrics
+      if (insert_log->getTableType() == WALTableType::DATA) {
+        auto log = reinterpret_cast<InsertLogMetricsEntry*>(wal_log);
+        return undoPut(ctx, log->getLSN(), log->getPayload());
+      } else {
+        auto log = reinterpret_cast<InsertLogTagsEntry*>(wal_log);
+        return undoPutTag(ctx, log->getLSN(), log->getPayload());
+      }
+    }
+    case WALLogType::UPDATE: {
+      auto update_log = reinterpret_cast<UpdateLogEntry*>(wal_log);
+      if (update_log->getTableType() == WALTableType::TAG) {
+        auto log = reinterpret_cast<UpdateLogTagsEntry*>(wal_log);
+        return undoUpdateTag(ctx, log->getLSN(), log->getPayload(), log->getOldPayload());
+      }
+      break;
+    }
+    case WALLogType::DELETE: {
+      auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
+      WALTableType t_type = del_log->getTableType();
+      std::string p_tag;
+
+      if (t_type == WALTableType::DATA) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
+        p_tag = log->getPrimaryTag();
+        vector<DelRowSpan> partitions = log->getRowSpans();
+        return undoDelete(ctx, p_tag, log->getLSN(), partitions);
+      } else {
+        auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
+        TSSlice primary_tag = log->getPrimaryTag();
+        TSSlice tags = log->getTags();
+        return undoDeleteTag(ctx, primary_tag, log->getLSN(), log->group_id_, log->entity_id_, tags);
+      }
+    }
+
+    case WALLogType::CHECKPOINT:
+      break;
+    case WALLogType::MTR_BEGIN:
+      break;
+    case WALLogType::MTR_COMMIT:
+      break;
+    case WALLogType::MTR_ROLLBACK:
+      break;
+    case WALLogType::TS_BEGIN:
+      break;
+    case WALLogType::TS_COMMIT:
+      break;
+    case WALLogType::TS_ROLLBACK:
+      break;
+    case WALLogType::DDL_CREATE:
+      break;
+    case WALLogType::DDL_DROP:
+      break;
+    case WALLogType::DDL_ALTER_COLUMN:
+      break;
+    case WALLogType::DB_SETTING:
+      break;
+    case WALLogType::RANGE_SNAPSHOT:
+    {
+//      auto snapshot_log = reinterpret_cast<SnapshotEntry*>(wal_log);
+//      if (snapshot_log == nullptr) {
+//        LOG_ERROR(" WAL rollback cannot prase temp dirctory object.");
+//        return KStatus::FAIL;
+//      }
+//      HashIdSpan hash_span;
+//      KwTsSpan ts_span;
+//      snapshot_log->GetRangeInfo(&hash_span, &ts_span);
+//      uint64_t count = 0;
+//      auto s = DeleteRangeData(ctx, hash_span, 0, {ts_span}, nullptr, &count, snapshot_log->getXID(), false);
+//      if (s != KStatus::SUCCESS) {
+//        LOG_ERROR(" WAL rollback snapshot delete range data faild.");
+//        return KStatus::FAIL;
+//      }
+//      break;
+    }
+    case WALLogType::SNAPSHOT_TMP_DIRCTORY:
+    {
+      auto temp_path_log = reinterpret_cast<TempDirectoryEntry*>(wal_log);
+      if (temp_path_log == nullptr) {
+        LOG_ERROR(" WAL rollback cannot prase temp dirctory object.");
+        return KStatus::FAIL;
+      }
+      std::string path = temp_path_log->GetPath();
+      if (!Remove(path)) {
+        LOG_ERROR(" WAL rollback cannot remove path[%s]", path.c_str());
+        return KStatus::FAIL;
+      }
+      break;
+    }
+    case WALLogType::PARTITION_TIER_CHANGE:
+    {
+//      auto tier_log = reinterpret_cast<PartitionTierChangeEntry*>(wal_log);
+//      if (tier_log == nullptr) {
+//        LOG_ERROR(" WAL rollback cannot prase partition tier log.");
+//        return KStatus::FAIL;
+//      }
+//      ErrorInfo err_info;
+//      auto s = TsTierPartitionManager::GetInstance().Recover(tier_log->GetLinkPath(), tier_log->GetTierPath(), err_info);
+//      if (s != KStatus::SUCCESS) {
+//        LOG_ERROR(" WAL rollback partition tier change faild. %s", err_info.errmsg.c_str());
+//        return KStatus::FAIL;
+//      }
+//      break;
+    }
+  }
+
+  return SUCCESS;
+}
+
+KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
+                 std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete) {
+  switch (wal_log->getType()) {
+    case WALLogType::INSERT: {
+      auto insert_log = reinterpret_cast<InsertLogEntry*>(wal_log);
+      std::string p_tag;
+      // tag or metrics
+      if (insert_log->getTableType() == WALTableType::DATA) {
+        auto log = reinterpret_cast<InsertLogMetricsEntry*>(wal_log);
+        p_tag = log->getPrimaryTag();
+        return redoPut(ctx, p_tag, log->getLSN(), log->getPayload());
+      } else {
+        auto log = reinterpret_cast<InsertLogTagsEntry*>(wal_log);
+        return redoPutTag(ctx, log->getLSN(), log->getPayload());
+      }
+    }
+    case WALLogType::DELETE: {
+      auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
+      WALTableType t_type = del_log->getTableType();
+      std::string p_tag;
+
+      if (t_type == WALTableType::DATA) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
+        p_tag = log->getPrimaryTag();
+        vector<DelRowSpan> partitions = log->getRowSpans();
+        return redoDelete(ctx, p_tag, log->getLSN(), partitions);
+      } else {
+        auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
+        auto p_tag_slice = log->getPrimaryTag();
+        auto tag_slice = log->getTags();
+        return redoDeleteTag(ctx, p_tag_slice, log->getLSN(), log->group_id_, log->entity_id_, tag_slice);
+      }
+    }
+    case WALLogType::UPDATE: {
+      auto update_log = reinterpret_cast<UpdateLogEntry*>(wal_log);
+      WALTableType t_type = update_log->getTableType();
+      std::string p_tag;
+      if (t_type == WALTableType::TAG) {
+        auto log = reinterpret_cast<UpdateLogTagsEntry*>(update_log);
+        auto slice = log->getPayload();
+        return redoUpdateTag(ctx, log->getLSN(), slice);
+      }
+      break;
+    }
+      // There is nothing to do while applying CHECKPOINT WAL.
+    case WALLogType::CHECKPOINT: {
+      KStatus s = wal_manager_->CreateCheckpointWithoutFlush(ctx);
+      if (s == FAIL) return s;
+      break;
+    }
+    case WALLogType::MTR_BEGIN: {
+      auto log = reinterpret_cast<MTRBeginEntry*>(wal_log);
+      incomplete.insert(std::pair<TS_LSN, MTRBeginEntry*>(log->getXID(), log));
+      break;
+    }
+    case WALLogType::MTR_COMMIT: {
+      auto log = reinterpret_cast<MTREntry*>(wal_log);
+      incomplete.erase(log->getXID());
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 uint32_t TsVGroup::GetVGroupID() {
   return vgroup_id_;
 }
+
+KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
+
+}
+
+KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload) {
+
+}
+
+/**
+ * @brief undoPut undo a put operation. This function is used to undo a previously executed put operation.
+ *
+ * @param ctx The context of the database, providing necessary environment for the operation.
+ * @param log_lsn The log sequence number identifying the specific log entry to be undone.
+ * @param payload A slice of the transaction log containing the data needed to reverse the put operation.
+ *
+ * @return KStatus The status of the undo operation, indicating success or specific failure reasons.
+ */
+KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
+
+}
+
+/**
+ * Undoes deletion of rows within a specified entity group.
+ *
+ * @param ctx Pointer to the database context.
+ * @param primary_tag Primary tag identifying the entity.
+ * @param log_lsn LSN of the log for ensuring atomicity and consistency of the operation.
+ * @param rows Collection of row spans to be undeleted.
+ * @return Status of the operation, success or failure.
+ */
+KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
+                   const std::vector<DelRowSpan>& rows) {
+
+}
+
+KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
+                      uint32_t group_id, uint32_t entity_id, TSSlice& tags) {
+
+}
+
+/**
+ * redoPut redo a put operation. This function is utilized during log recovery to redo a put operation.
+ *
+ * @param ctx The context of the operation.
+ * @param primary_tag The primary tag associated with the data being operated on.
+ * @param log_lsn The log sequence number indicating the position in the log of this operation.
+ * @param payload The actual data payload being put into the database, provided as a slice.
+ *
+ * @return KStatus The status of the operation, indicating success or failure.
+ */
+KStatus TsVGroup::redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
+                const TSSlice& payload) {
+
+}
+
+KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
+
+}
+
+KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
+
+}
+
+KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
+                   const vector<DelRowSpan>& rows) {
+
+}
+
+KStatus TsVGroup::redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
+                      uint32_t group_id, uint32_t entity_id, TSSlice& payload) {
+
+}
+
+KStatus TsVGroup::redoCreateHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t ts_version) {
+
+}
+
+KStatus TsVGroup::undoCreateHashIndex(uint32_t index_id, uint32_t ts_version) {
+
+}
+
+KStatus TsVGroup::redoDropHashIndex(uint32_t index_id, uint32_t ts_version) {
+
+}
+
+KStatus TsVGroup::undoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t ts_version) {
+
+}
+
+//TsVGroup::TsPartitionedFlush::TsPartitionedFlush(TsVGroup* group, rocksdb::InternalIterator* iter)
+//    : vgroup_(group), iter_(iter) {}
+//
+//rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
+//  iter_->SeekToFirst();
+//  TsEngineSchemaManager* schema_mgr = vgroup_->schema_mgr_;
+//
+//  rocksdb::FullKey full_key;
+//  TsInternalKey ts_key;
+//  std::unordered_map<TsVGroupPartition*, TsLastSegmentBuilder> builders;
+//
+//  std::shared_ptr<MMapMetricsTable> table_schema;
+//  std::vector<AttributeInfo> metric_schema;
+//
+//  std::unique_ptr<TsRawPayloadRowParser> parser;
+//  TSTableID last_table_id = -1;
+//  uint32_t last_version = -1;
+//  uint32_t db_id = -1;
+//  TsVGroupPartition* partition = nullptr;
+//
+//  for (; iter_->Valid(); iter_->Next()) {
+//    rocksdb::ParseFullKey(iter_->key(), &full_key);
+//    rocksdb::SequenceNumber seq_no = full_key.sequence;
+//    ts_key.Decode(full_key.user_key);
+//    if (last_table_id != ts_key.table_id) {
+//      db_id = schema_mgr->GetDBIDByTableID(ts_key.table_id);
+//    }
+//
+//    if (!(last_table_id == ts_key.table_id && last_version == ts_key.version)) {
+//      schema_mgr->GetTableMetricSchema(nullptr, ts_key.table_id, ts_key.version, &table_schema);
+//      assert(table_schema != nullptr);
+//      metric_schema = table_schema->getSchemaInfoExcludeDropped();
+//      parser = std::make_unique<TsRawPayloadRowParser>(metric_schema);
+//      last_table_id = ts_key.table_id;
+//      last_version = ts_key.version;
+//    }
+//
+//    auto val = iter_->value();
+//    assert(!metric_schema.empty());
+//    // TsRawPayload payload_prev{{const_cast<char*>(val.data()), val.size()}, metric_schema};
+//    TsRawPayloadV2 payload{{const_cast<char*>(val.data()), val.size()}};
+//    auto row_iter = payload.GetRowIterator();
+//
+//    int row_cnt = 0;
+//    for (; row_iter.Valid(); row_iter.Next()) {
+//      auto row_data = row_iter.Value();
+//      ++row_cnt;
+//      timestamp64 ts = parser->GetTimestamp(row_data);
+//      if (partition == nullptr || ts >= partition->EndTs() || ts < partition->StartTs()) {
+//        partition = this->vgroup_->GetPartition(db_id, ts, (DATATYPE)metric_schema[0].type);
+//      }
+//
+//      auto it = builders.find(partition);
+//      if (it == builders.end()) {
+//        std::shared_ptr<TsLastSegment> last_segment;
+//        partition->NewLastSegment(last_segment);
+//        auto result =
+//            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
+//        it = result.first;
+//      }
+//
+//      TsLastSegmentBuilder& builder = it->second;
+//      auto s =
+//          builder.PutRowData(ts_key.table_id, ts_key.version, ts_key.entity_id, seq_no, row_data);
+//      if (s != SUCCESS) {
+//        return rocksdb::Status::Incomplete("flush error");
+//      }
+//    }
+//
+//    int nrows = payload.GetRowCount();
+//    assert(nrows == row_cnt);
+//    // assert(payload.GetRowCount() == payload_prev.GetRowCount());
+//  }
+//  for (auto& kv : builders) {
+//    auto s = kv.second.Finalize();
+//    if (s == FAIL) return rocksdb::Status::Incomplete("flush error");
+//    kv.second.Flush();
+//  }
+//  return rocksdb::Status::OK();
+//}
 
 std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
   int idx = timestamp / interval_;

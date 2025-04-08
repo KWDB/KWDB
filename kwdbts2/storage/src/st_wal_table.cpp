@@ -89,7 +89,7 @@ LoggedTsEntityGroup::LoggedTsEntityGroup(kwdbContext_p ctx, MMapRootTableManager
   wal_manager_ = KNEW WALMgr(db_path, table_id, range.range_group_id, opt);
   tsx_manager_ = KNEW TSxMgr(wal_manager_);
   optimistic_read_lsn_ = wal_manager_->FetchCurrentLSN();
-  wal_manager_->SetCheckpointObject(this);
+//  wal_manager_->SetCheckpointObject(this);
   logged_mutex_ = new LoggedTsEntityGroupLatch(LATCH_ID_LOGGED_TSSUBENTITY_GROUP_MUTEX);
 }
 

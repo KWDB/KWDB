@@ -46,6 +46,9 @@ class TSEngineV2Impl : public TSEngine {
   std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
+  std::unique_ptr<TSxMgr> tsx_mgr_;
+  std::unique_ptr<WALMgr> wal_mgr_;
+  std::map<uint64_t, uint64_t> range_indexes_map_{};
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -210,11 +213,11 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus FlushBuffer(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
 
-  KStatus CreateCheckpoint(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus CreateCheckpoint(kwdbContext_p ctx) override;
 
   KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override { return KStatus::SUCCESS; }
 
-  KStatus Recover(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus Recover(kwdbContext_p ctx, const std::map<uint64_t, uint64_t>& applied_indexes);
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      uint64_t range_id, uint64_t index, uint64_t& mtr_id) override { return KStatus::SUCCESS; }
@@ -295,6 +298,40 @@ class TSEngineV2Impl : public TSEngine {
 
   // TODO(liangbo01)  To be implemented
   KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
+  /**
+* @brief Start a mini-transaction for the current EntityGroup.
+* @param[in] table_id Identifier of TS table.
+* @param[in] range_id Unique ID associated to a Raft consensus group, used to identify the current write batch.
+* @param[in] index The lease index of current write batch.
+* @param[out] mtr_id Mini-transaction id for TS table.
+*
+* @return KStatus
+*/
+  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id);
+
+  /**
+    * @brief Submit the mini-transaction for the current EntityGroup.
+    * @param[in] mtr_id Mini-transaction id for TS table.
+    *
+    * @return KStatus
+    */
+  KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id);
+
+  /**
+    * @brief Roll back the mini-transaction of the current EntityGroup.
+    * @param[in] mtr_id Mini-transaction id for TS table.
+    *
+    * @return KStatus
+    */
+  KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool skip_log = false);
+
+  static uint64_t GetAppliedIndex(const uint64_t range_id, const std::map<uint64_t, uint64_t>& range_indexes_map) {
+    const auto iter = range_indexes_map.find(range_id);
+    if (iter == range_indexes_map.end()) {
+      return 0;
+    }
+    return iter->second;
+  }
 
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);

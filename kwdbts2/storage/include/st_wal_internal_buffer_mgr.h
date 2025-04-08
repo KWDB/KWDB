@@ -83,7 +83,8 @@ class WALBufferMgr {
    * @param txn_id Only the log entries of this txn_id are read. The default value is 0, that is, all logs are read.
    * @return
    */
-  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn, uint64_t txn_id = 0);
+  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn, uint64_t txn_id = 0,
+                      bool for_chk = false);
 
   /**
    * Cache specified length bytes from current EntryBlock.
@@ -96,6 +97,8 @@ class WALBufferMgr {
   KStatus readBytes(TS_LSN& start_offset, std::queue<EntryBlock*>& read_queue, size_t length, char*& res);
 
   TS_LSN getCurrentLsn();
+
+  HeaderBlock getHeaderBlock() { return headerBlock_; }
 
  private:
   // This mutex is used to protect current block,Header Block,EntryBlock Linked list.
@@ -157,13 +160,13 @@ class WALBufferMgr {
   }
 
   KStatus readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
 
   KStatus readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
 
   KStatus readDeleteLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
 
   KStatus readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
                             TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);

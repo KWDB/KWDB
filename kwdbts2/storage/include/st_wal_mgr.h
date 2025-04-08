@@ -19,6 +19,7 @@
 #include "st_wal_internal_log_structure.h"
 #include "st_logged_entity_group.h"
 #include "lt_rw_latch.h"
+//#include "ts_vgroup.h"
 
 namespace kwdbts {
 
@@ -30,7 +31,7 @@ class LoggedTsEntityGroup;
  */
 class WALMgr {
  public:
-  WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity_grp_id, EngineOptions* opt);
+  WALMgr(const string& db_path, const KTableKey& table_id, uint64_t tbl_grp_id, EngineOptions* opt);
 
   WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt);
 
@@ -53,6 +54,8 @@ class WALMgr {
    * @return
    */
   KStatus WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_LSN& entry_lsn);
+
+  KStatus WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> logs);
 
   inline KStatus writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_LSN& entry_lsn);
 
@@ -90,6 +93,8 @@ class WALMgr {
 
   KStatus CreateCheckpointWithoutFlush(kwdbContext_p ctx);
 
+  KStatus UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn);
+
   KStatus Close();
 
   KStatus Drop();
@@ -104,7 +109,7 @@ class WALMgr {
    * @return
    */
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                         size_t offset, TSSlice prepared_payload);
+                         size_t offset, TSSlice prepared_payload, uint64_t vgrp_id = 0);
 
   /**
    * Construct the log entry for the UPDATE Tag operation.
@@ -131,7 +136,7 @@ class WALMgr {
    * @return
    */
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                         size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn);
+                         size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn, uint64_t vgrp_id = 0);
 
   /**
    * Construct the log entry for the DELETE Metrics operation.
@@ -296,6 +301,14 @@ class WALMgr {
   KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn);
 
   /**
+   *
+   * @param logs
+   * @param start_lsn
+   * @param end_lsn
+   * @return
+   */
+  KStatus ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn);
+  /**
    * Read the relevant log entry according to the Mini-Transaction ID.
    * @param mtr_trans_id Mini-Transaction ID
    * @param[out] logs WAL log entries list
@@ -344,10 +357,23 @@ class WALMgr {
   */
   void CleanUp(kwdbContext_p ctx);
 
+  /*
+   *
+   */
+  KStatus RemoveChkFile(kwdbContext_p ctx);
+
   /**
    * Reset WAL files.
    */
   KStatus ResetWAL(kwdbContext_p ctx);
+
+  /**
+   * Switch Current File to Next File.
+   * @param ctx
+   * @return KStatus
+   */
+
+  KStatus SwitchNextFile();
 
   /**
   * NeedCheckpoint
@@ -358,7 +384,7 @@ class WALMgr {
   * Set the EntityGroup to be checkpoint.
   * @param eg LoggedTsEntityGroup instance
   */
-  void SetCheckpointObject(LoggedTsEntityGroup* eg);
+//  void SetCheckpointObject(TsVGroup* eg);
 
  protected:
   /**
@@ -390,6 +416,6 @@ class WALMgr {
   std::fstream meta_file_;
   using WALMgrLatch = KLatch;
   WALMgrLatch* meta_mutex_;
-  LoggedTsEntityGroup* eg_{nullptr};
+//  TsVGroup* vg_{nullptr};
 };
 }  // namespace kwdbts

@@ -116,7 +116,7 @@ TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
   return vgroups_[vgroup_id - 1].get();
 }
 
-KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta) {
+KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable *meta) {
   LOG_INFO("Create TsTable %lu begin.", table_id);
   KStatus s;
 
@@ -145,7 +145,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
 }
 
 KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id,
-  TsRawPayload& payload) {
+                                   TsRawPayload &payload) {
   ErrorInfo err_info;
   // 1. Write tag data
   uint8_t payload_data_flag = payload.GetRowType();
@@ -227,16 +227,16 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineV2Impl::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta) {
+KStatus TSEngineV2Impl::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable *meta) {
   return schema_mgr_->GetMeta(ctx, table_id, version, meta);
 }
 
 KStatus TSEngineV2Impl::LogInit() {
   LogConf cfg = {
-    options_.lg_opts.path.c_str(),
-    options_.lg_opts.file_max_size,
-    options_.lg_opts.dir_max_size,
-    options_.lg_opts.level
+          options_.lg_opts.path.c_str(),
+          options_.lg_opts.file_max_size,
+          options_.lg_opts.dir_max_size,
+          options_.lg_opts.level
   };
   LOG_INIT(cfg);
   if (options_.lg_opts.trace_on_off != "") {
@@ -306,6 +306,223 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
 
 std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
   return &vgroups_;
+}
+
+KStatus TSEngineV2Impl::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+  // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
+  return tsx_mgr_->MtrBegin(ctx, range_id, index, mtr_id);
+}
+
+KStatus TSEngineV2Impl::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id) {
+  // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
+  return tsx_mgr_->MtrCommit(ctx, mtr_id);
+}
+
+KStatus TSEngineV2Impl::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool skip_log) {
+  EnterFunc()
+//  1. Write ROLLBACK log;
+//  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
+//  3. Invoke the reverse operation based on the type of each log:
+//    1) For INSERT operations, add the DELETE MARK to the corresponding data;
+//    2) For the DELETE operation, remove the DELETE MARK of the corresponding data;
+//    3) For ALTER operations, roll back to the previous schema version;
+//  4. If the rollback fails, a system log is generated and an error exit is reported.
+
+  KStatus s;
+  if (!skip_log) {
+    s = tsx_mgr_->MtrRollback(ctx, mtr_id);
+    if (s == FAIL) Return(s)
+  }
+
+  // for range
+  for (auto vgrp : vgroups_) {
+    std::vector<LogEntry*> wal_logs;
+    Defer defer{[&]() {
+      for (auto& log : wal_logs) {
+        delete log;
+      }
+    }};
+    s = vgrp->ReadWALLogForMtr(mtr_id, wal_logs);
+    if (s == FAIL && !wal_logs.empty()) {
+      Return(s)
+    }
+    std::reverse(wal_logs.begin(), wal_logs.end());
+    for (auto wal_log : wal_logs) {
+      if (wal_log->getXID() == mtr_id && s != FAIL) {
+        s = vgrp->rollback(ctx, wal_log);
+      }
+      delete wal_log;
+    }
+  }
+  Return(s)
+}
+
+KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
+  /*
+   * 1. read chk log from chk file.
+   * 2. read wal log from all vgroup
+   * 3. merge chk log and wal log
+   * 4. rewrite wal log to new chk file
+   * 5. trig all vgroup flush
+   * 6. write EndWAL to chk file
+   * 7. trig all vgroup write checkpoint wal and update checkpoint LSN
+   * 8. remove vgroup wal file and old chk file
+   */
+  std::vector<LogEntry*> logs;
+  std::vector<LogEntry *> rewrite;
+  std::unordered_map<uint64_t, uint64_t>  vgrp_lsn;
+  Defer defer{[&]() {
+    for (auto& log : logs) {
+      delete log;
+    }
+    for (auto& log : rewrite) {
+      delete log;
+    }
+  }};
+  // 1. read chk log from chk file.
+  wal_mgr_->ReadWALLog(logs, 0, wal_mgr_->FetchCurrentLSN());
+
+  // 2. read wal log from all vgroup
+  for (const auto &vgrp: vgroups_) {
+    std::vector<LogEntry *> vlogs;
+    TS_LSN lsn;
+    if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
+      LOG_ERROR("Failed to CreateCheckpointInternal for vgroup : %d", vgrp->GetVGroupID())
+      return KStatus::FAIL;
+    }
+    vgrp_lsn[vgrp->GetVGroupID()] = lsn;
+    logs.insert(logs.end(), vlogs.begin(), vlogs.end());
+  }
+  // 3. merge chk log and wal log
+  std::vector<uint64_t> commit;
+
+  for (auto log: logs) {
+    switch (log->getType()) {
+      case MTR_COMMIT : {
+        commit.emplace_back(log->getXID());
+      }
+      default:
+        continue;
+    }
+  }
+
+  for (auto log: logs) {
+    bool skip = false;
+    for (auto xid: commit) {
+      if (log->getXID() == xid) {
+        skip = true;
+        break;
+      }
+    }
+    if (!skip) {
+      rewrite.emplace_back(log);
+    }
+  }
+
+  // 4. rewrite wal log to chk file
+   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
+     LOG_ERROR("Failed to WriteIncompleteWAL.")
+     return KStatus::FAIL;
+   }
+
+  // 5. trig all vgroup flush
+  for (const auto &vgrp: vgroups_) {
+//    vgrp.Sync();
+  }
+
+  // 6.write EndWAL to chk file
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, 0);
+  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
+
+  // 7. a). update checkpoint LSN .
+  //    b). trig all vgroup write checkpoint wal.
+  //    c). remove vgroup wal file.
+  for (const auto &vgrp: vgroups_) {
+    vgrp->WriteCheckpointWALAndUpdateLSN(ctx, vgrp_lsn[vgrp->GetVGroupID()]);
+  }
+
+  // 8. remove vgroup wal file and old chk file
+  wal_mgr_->RemoveChkFile(ctx);
+
+  // after checkpoint, engine wal mgr meta sync?
+  return wal_mgr_->CreateCheckpoint(ctx);
+}
+
+KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx, const std::map<uint64_t, uint64_t>& applied_indexes) {
+  //todo recover logic
+  /*
+   * 1. get engine chk wal log.
+   * 2. get all vgroup wal log from last checkpoint lsn.
+   * 3. merge wal and apply wal
+   */
+
+  // 1. get engine chk wal log.
+  std::vector<LogEntry*> logs;
+  KStatus s = wal_mgr_->ReadWALLog(logs, 0, wal_mgr_->FetchCurrentLSN());
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLog from chk file while recovering.")
+    return KStatus::FAIL;
+  }
+
+  // 2. get all vgroup wal log
+  for (const auto &vgrp: vgroups_) {
+    std::vector<LogEntry *> vlogs;
+    TS_LSN lsn;
+    if (vgrp->ReadLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
+      LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint for vgroup : %d", vgrp->GetVGroupID())
+      return KStatus::FAIL;
+    }
+    logs.insert(logs.end(), vlogs.begin(), vlogs.end());
+  }
+
+  // 3. apply redo log
+  std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
+  for (auto wal_log : logs) {
+    switch (wal_log->getType()) {
+      case WALLogType::MTR_ROLLBACK: {
+        auto log = reinterpret_cast<MTREntry*>(wal_log);
+        auto x_id = log->getXID();
+        if (MtrRollback(ctx, x_id, true) == KStatus::FAIL) return s;
+        incomplete.erase(log->getXID());
+        break;
+      }
+      case WALLogType::CHECKPOINT: {
+        //todo need write checkpoint wal to every vgroup wal file?
+//      KStatus s = wal_manager_->CreateCheckpointWithoutFlush(ctx);
+//      if (s == FAIL) return s;
+        break;
+      }
+      case WALLogType::MTR_BEGIN: {
+        auto log = reinterpret_cast<MTRBeginEntry*>(wal_log);
+        incomplete.insert(std::pair<TS_LSN, MTRBeginEntry*>(log->getXID(), log));
+        break;
+      }
+      case WALLogType::MTR_COMMIT: {
+        auto log = reinterpret_cast<MTREntry*>(wal_log);
+        incomplete.erase(log->getXID());
+        break;
+      }
+      default:
+        auto vgrp_id = wal_log->getVGroupID();
+        TsVGroup* vg = GetVGroupByID(ctx, vgrp_id);
+        vg->ApplyWal(ctx, wal_log, incomplete);
+    }
+  }
+  // 4. rollback incomplete wal
+  for (auto& it : incomplete) {
+    TS_LSN mtr_id = it.first;
+    auto log_entry = it.second;
+    uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), applied_indexes);
+    if (it.second->getIndex() <= applied_index) {
+      s = tsx_mgr_->MtrCommit(ctx, mtr_id);
+      if (s == FAIL) return s;
+    } else {
+      s = MtrRollback(ctx, mtr_id);
+      if (s == FAIL) return s;
+    }
+  }
+
+  return KStatus::SUCCESS;
 }
 
 }  // namespace kwdbts
