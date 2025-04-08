@@ -1039,7 +1039,7 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
                          inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
     } else {
       // todo(liangbo01) current interface dedup result no support multi-payload insert.
-      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload_row[i], payload_num, mtr_id,
+      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
                           inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
     }
     if (s != KStatus::SUCCESS) {
