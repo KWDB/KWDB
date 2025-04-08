@@ -27,6 +27,10 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSli
   table_schema_mgr_->GetTagSchema(ctx, &tag_schema);
   for (size_t i = 0; i < payload_num; i++) {
     TsRawPayload p{payload[i]};
+    uint8_t payload_data_flag = p.GetRowType();
+    if (payload_data_flag == DataTagFlag::TAG_ONLY) {
+      continue;
+    }
     TSSlice primary_key = p.GetPrimaryTag();
     if (!tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, tbl_grp_id)) {
       LOG_ERROR("cannot found vgroup for this entity.");
