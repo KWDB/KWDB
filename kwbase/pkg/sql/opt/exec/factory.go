@@ -31,7 +31,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/constraint"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -139,32 +138,18 @@ type Factory interface {
 	// the data in leftBoundColMap. The apply join can be any kind of join except
 	// for right outer and full outer.
 	//
-	// leftBoundColMap is a map from opt.ColumnID to opt.ColumnOrdinal that maps
-	// a column bound by the left side of the apply join to the column ordinal
-	// in the left side that contains the binding.
-	//
-	// memo, rightProps, and right are the memo, required physical properties, and
-	// RelExpr of the right side of the join that will be repeatedly modified,
-	// re-planned and executed for every row from the left side. The rightProps
-	// always includes a presentation.
-	//
-	// fakeRight is a pre-planned node that is the right side of the join with
-	// all outer columns replaced by NULL. The physical properties of this node
-	// (its output columns, their order and types) are used to pre-determine the
-	// runtime indexes and types for the right side of the apply join, since all
-	// re-plannings of the right hand side will be pinned to output the exact
-	// same output columns in the same order.
+	// To plan the right-hand side, planRightSideFn must be called for each left
+	// row. This function generates a plan (using the same factory) that produces
+	// the rightColumns (in order).
 	//
 	// onCond is the join condition.
 	ConstructApplyJoin(
 		joinType sqlbase.JoinType,
 		left Node,
-		leftBoundColMap opt.ColMap,
-		memo *memo.Memo,
-		rightProps *physical.Required,
-		fakeRight Node,
-		right memo.RelExpr,
+		rightColumns sqlbase.ResultColumns,
 		onCond tree.TypedExpr,
+		right memo.RelExpr,
+		planRightSideFn ApplyJoinPlanRightSideFn,
 	) (Node, error)
 
 	// ConstructBatchLookUpJoin returns a node that runs a join between the results
@@ -806,6 +791,11 @@ type KVOption struct {
 // InsertFastPathMaxRows is the maximum number of rows for which we can use the
 // insert fast path.
 const InsertFastPathMaxRows = 10000
+
+// ApplyJoinPlanRightSideFn creates a plan for an iteration of ApplyJoin, given
+// a row produced from the left side. The plan is guaranteed to produce the
+// rightColumns passed to ConstructApplyJoin (in order).
+type ApplyJoinPlanRightSideFn func(leftRow tree.Datums, listMap *sqlbase.WhiteListMap) (Plan, error)
 
 // RecursiveCTEIterationFn creates a plan for an iteration of WITH RECURSIVE,
 // given the result of the last iteration (as a Buffer that can be used with

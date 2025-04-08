@@ -908,7 +908,6 @@ KStatus TsTimePartition::Vacuum(uint32_t ts_version, VacuumStatus &vacuum_result
   // check whether partition is being inserted.
   // Partition's ref count has a wider range than lock.
   if (IsWriting()) {
-    LOG_WARN("partition[%s] is being inserted, ref count [%d], cannot vacuum now", GetPath().c_str(), writing_count_.load());
     return SUCCESS;
   }
 
@@ -1036,6 +1035,7 @@ KStatus TsTimePartition::Vacuum(uint32_t ts_version, VacuumStatus &vacuum_result
     auto block_spans = iter.second;
     int64_t entity_row_count = 0;
     // Traverse every block span of this entity
+    uint32_t block_cnt = 0;
     for (auto block_span : block_spans) {
       BlockItem* cur_block_item = block_span.block_item;
       uint32_t block_start_row = block_span.start_row;
@@ -1061,6 +1061,11 @@ KStatus TsTimePartition::Vacuum(uint32_t ts_version, VacuumStatus &vacuum_result
         return s;
       }
       entity_row_count += row_count;
+      ++block_cnt;
+      if (block_cnt == 100 && g_vacuum_sleep_time > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(g_vacuum_sleep_time));
+        block_cnt = 0;
+      }
     }
     EntityItem* tmp_entity_item = tmp_pt->getEntityItem(entity_id);
     EntityItem* origin_entity_item = getEntityItem(entity_id);

@@ -2,6 +2,8 @@
 SET CLUSTER SETTING
 > set cluster setting sql.stats.tag_automatic_collection.enabled = false;
 SET CLUSTER SETTING
+> set cluster setting sql.stats.automatic_collection.enabled = false;
+SET CLUSTER SETTING
 > CREATE TS DATABASE my_timeseries_db;
 CREATE TS DATABASE
 > CREATE TABLE my_timeseries_db.firegases (
@@ -4755,4 +4757,6 @@ DELETE 29
 > set cluster setting ts.sql.query_opt_mode = 1110;
 SET CLUSTER SETTING
 > set cluster setting sql.stats.tag_automatic_collection.enabled = true;
+SET CLUSTER SETTING
+> set cluster setting sql.stats.automatic_collection.enabled = true;
 SET CLUSTER SETTING

@@ -2,6 +2,8 @@
 DROP DATABASE
 > drop database if exists redb cascade;
 DROP DATABASE
+> set cluster setting ts.sql.query_opt_mode=1110;
+SET CLUSTER SETTING
 > CREATE TS DATABASE tsdb;
 CREATE TS DATABASE
 > CREATE TABLE tsdb.ts1 (
@@ -1804,6 +1806,8 @@ SET CLUSTER SETTING
                                         | table       | re1@primary
                                         | spans       | FULL SCAN
 (28 rows)
+> set cluster setting ts.sql.query_opt_mode=11110;
+SET CLUSTER SETTING
 > drop database if exists tsdb cascade;
 DROP DATABASE
 > drop database if exists redb cascade;

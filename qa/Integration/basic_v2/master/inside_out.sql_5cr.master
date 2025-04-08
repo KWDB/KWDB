@@ -1,5 +1,7 @@
 > CREATE TS DATABASE db_pipec;
 CREATE TS DATABASE
+> set cluster setting ts.sql.query_opt_mode=1110;
+SET CLUSTER SETTING
 > CREATE TABLE db_pipec.t_point (
                                   k_timestamp timestamp NOT NULL,
                                   measure_value double
@@ -151,16 +153,15 @@ SET
                                         | vectorized         | false
   render                                |                    |
    │                                    | max                | max
-   └── group                            |                    |
-        │                               | aggregate 0        | pipeline_sn
-        │                               | aggregate 1        | max(max)
-        │                               | group by           | pipeline_sn
-        │                               | ordered            | +pipeline_sn
-        └── render                      |                    |
-             │                          | pipeline_sn        | pipeline_sn
-             │                          | max                | max
-             └── sort                   |                    |
-                  │                     | order              | +pipeline_sn
+   └── sort                             |                    |
+        │                               | order              | +pipeline_sn
+        └── group                       |                    |
+             │                          | aggregate 0        | pipeline_sn
+             │                          | aggregate 1        | max(max)
+             │                          | group by           | pipeline_sn
+             └── render                 |                    |
+                  │                     | pipeline_sn        | pipeline_sn
+                  │                     | max                | max
                   └── hash-join         |                    |
                        │                | type               | inner
                        │                | equality           | (station_sn) = (station_sn)
@@ -178,7 +179,7 @@ SET
                        └── scan         |                    |
                                         | table              | station_info@station_sn_index
                                         | spans              | FULL SCAN
-(31 rows)
+(30 rows)
 > select max(measure_value) from (select * from db_pipec.t_point where station_sn='d1') p,pipec_r.station_info s where p.station_sn=s.station_sn;
   max
 --------
@@ -558,27 +559,26 @@ order by timebucket;
    │                                         | max_value          | max
    │                                         | min_value          | min
    │                                         | number_of_values   | sum_int
-   └── group                                 |                    |
-        │                                    | aggregate 0        | pipeline_name
-        │                                    | aggregate 1        | measure_type
-        │                                    | aggregate 2        | timebucket
-        │                                    | aggregate 3        | sum(sum)
-        │                                    | aggregate 4        | sum_int(count)
-        │                                    | aggregate 5        | max(max)
-        │                                    | aggregate 6        | min(min)
-        │                                    | aggregate 7        | sum_int(count)
-        │                                    | group by           | pipeline_name, measure_type, timebucket
-        │                                    | ordered            | +timebucket
-        └── render                           |                    |
-             │                               | pipeline_name      | pipeline_name
-             │                               | measure_type       | measure_type
-             │                               | timebucket         | timebucket
-             │                               | sum                | sum
-             │                               | count              | count
-             │                               | max                | max
-             │                               | min                | min
-             └── sort                        |                    |
-                  │                          | order              | +timebucket
+   └── sort                                  |                    |
+        │                                    | order              | +timebucket
+        └── group                            |                    |
+             │                               | aggregate 0        | pipeline_name
+             │                               | aggregate 1        | measure_type
+             │                               | aggregate 2        | timebucket
+             │                               | aggregate 3        | sum(sum)
+             │                               | aggregate 4        | sum_int(count)
+             │                               | aggregate 5        | max(max)
+             │                               | aggregate 6        | min(min)
+             │                               | aggregate 7        | sum_int(count)
+             │                               | group by           | pipeline_name, measure_type, timebucket
+             └── render                      |                    |
+                  │                          | pipeline_name      | pipeline_name
+                  │                          | measure_type       | measure_type
+                  │                          | timebucket         | timebucket
+                  │                          | sum                | sum
+                  │                          | count              | count
+                  │                          | max                | max
+                  │                          | min                | min
                   └── hash-join              |                    |
                        │                     | type               | inner
                        │                     | equality           | (pipeline_sn) = (pipeline_sn)
@@ -606,7 +606,7 @@ order by timebucket;
                        └── scan              |                    |
                                              | table              | pipeline_info@pipeline_name_index
                                              | spans              | FULL SCAN
-(58 rows)
+(57 rows)
 > set cluster setting ts.sql.query_opt_mode=1110;
 SET CLUSTER SETTING
 > use defaultdb;
@@ -912,6 +912,8 @@ order BY
   area_name | device_name | device_no | index_name | obj_name | value_count | avg_value | max_value | min_value
 ------------+-------------+-----------+------------+----------+-------------+-----------+-----------+------------
 (0 rows)
+> set cluster setting ts.sql.query_opt_mode=11110;
+SET CLUSTER SETTING
 > use defaultdb;
 SET
 > drop database runba cascade;

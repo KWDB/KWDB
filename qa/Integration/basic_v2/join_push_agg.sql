@@ -1,6 +1,6 @@
 drop database if exists tsdb cascade;
 drop database if exists redb cascade;
-
+set cluster setting ts.sql.query_opt_mode=1110;
 CREATE TS DATABASE tsdb;
 CREATE TABLE tsdb.ts1 (
                           ts TIMESTAMPTZ NOT NULL,
@@ -217,6 +217,6 @@ explain select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select *
 
 select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r2.e1 or ts.tag2=r2.e2 on ts.tag1=r1.e1 or ts.tag2=r1.e2 group by r1.e1;
 explain select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r2.e1 or ts.tag2=r2.e2 on ts.tag1=r1.e1 or ts.tag2=r1.e2 group by r1.e1;
-
+set cluster setting ts.sql.query_opt_mode=11110;
 drop database if exists tsdb cascade;
 drop database if exists redb cascade;

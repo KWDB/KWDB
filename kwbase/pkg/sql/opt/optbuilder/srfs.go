@@ -27,6 +27,8 @@ package optbuilder
 import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
@@ -191,6 +193,9 @@ func (b *Builder) buildProjectSet(inScope *scope) {
 		cols := make(opt.ColList, len(srf.cols))
 		for j := range srf.cols {
 			cols[j] = srf.cols[j].id
+		}
+		if name, ok := memo.CheckGroupWindowExist(srf.fn); ok {
+			panic(pgerror.Newf(pgcode.Syntax, "%s() can be only used in groupby", name))
 		}
 		zip[i] = b.factory.ConstructZipItem(srf.fn, cols)
 	}

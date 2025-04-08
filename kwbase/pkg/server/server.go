@@ -210,6 +210,17 @@ var (
 		"ts.table_cache.capacity",
 		"maximum limit of ts table cache",
 		1000)
+
+	tsAutoVacuumSleep = settings.RegisterPublicValidatedIntSetting(
+		"ts.auto_vacuum.sleep",
+		"vacuum thread sleep duration, unit millisecond",
+		1000,
+		func(v int64) error {
+			if v < 0 {
+				return errors.Errorf("sleep duration must be nonnegative number")
+			}
+			return nil
+		})
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call
@@ -918,13 +929,6 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		),
 
 		TableStatsCache: stats.NewTableStatisticsCache(
-			s.cfg.SQLTableStatCacheSize,
-			s.gossip,
-			s.db,
-			internalExecutor,
-		),
-
-		UDFCache: sql.NewUDFCache(
 			s.cfg.SQLTableStatCacheSize,
 			s.gossip,
 			s.db,
@@ -1925,6 +1929,14 @@ func (s *Server) Start(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
+
+	// NewUDFCache creates a new udf cache.
+	s.execCfg.UDFCache = sql.NewUDFCache(
+		s.cfg.SQLTableStatCacheSize,
+		s.gossip,
+		s.db,
+		s.internalExecutor,
+	)
 
 	s.hashRouterManager, err = hashrouter.NewHashRouterManager(ctx, s.ClusterSettings(), s.db, s.tseDB, s.execCfg, s.gossip, s.leaseMgr, s.nodeLiveness, s.storePool)
 

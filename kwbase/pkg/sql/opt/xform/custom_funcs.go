@@ -3068,22 +3068,12 @@ func (c *CustomFuncs) CanApplyOutsideIn(left, right memo.RelExpr, on memo.Filter
 		return false
 	}
 
-	lRowCount := left.Relational().Stats.RowCount
-	rRowCount := right.Relational().Stats.RowCount
 	if lok {
-		if rRowCount > lRowCount {
-			c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
-			return false
-		}
 		if left.FirstExpr().Relational().Stats.Selectivity*ffCompFactor < right.FirstExpr().Relational().Stats.Selectivity {
 			c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
 			return false
 		}
 	} else {
-		if rRowCount < lRowCount {
-			c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
-			return false
-		}
 		if right.FirstExpr().Relational().Stats.Selectivity*ffCompFactor < left.FirstExpr().Relational().Stats.Selectivity {
 			c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
 			return false
@@ -3101,6 +3091,46 @@ func (c *CustomFuncs) CanApplyOutsideIn(left, right memo.RelExpr, on memo.Filter
 			return false
 		}
 	}
+
+	// limit of data length of columns in on filter.
+	// can not use outside-in when the length is not equ.
+	if lok {
+		left, right = right, left
+	}
+	leftEq, rightEq := memo.ExtractJoinEqualityColumns(
+		left.Relational().OutputCols,
+		right.Relational().OutputCols,
+		on,
+	)
+	for i := range leftEq {
+		md := c.e.mem.Metadata()
+		if md.ColumnMeta(leftEq[i]).Type.Family() == types.IntFamily ||
+			md.ColumnMeta(leftEq[i]).Type.Family() == types.FloatFamily {
+			leftLength := md.ColumnMeta(leftEq[i]).Type.InternalType.Width
+			rightLength := md.ColumnMeta(rightEq[i]).Type.InternalType.Width
+			if leftLength != rightLength {
+				c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
+				return false
+			}
+		}
+	}
+
+	ok := true
+	left.Relational().OutputCols.ForEach(func(col opt.ColumnID) {
+		colType := c.e.mem.Metadata().ColumnMeta(col).Type
+		if !memo.CheckDataType(colType) {
+			if colType.Name() == "text" || colType.Name() == "string" {
+			} else {
+				c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
+				ok = false
+				return
+			}
+		}
+	})
+	if !ok {
+		return false
+	}
+
 	c.e.mem.SetFlag(opt.CanApplyOutsideIn)
 	return true
 }
@@ -3161,9 +3191,6 @@ func (c *CustomFuncs) precheckInsideOutOptApplicable(
 	if !opt.CheckOptMode(opt.TSQueryOptMode.Get(c.GetSettingValues()), opt.JoinPushAgg) {
 		return false, nil
 	}
-	if c.e.mem.CheckFlag(opt.CanApplyOutsideIn) {
-		return false, nil
-	}
 
 	optTimeBucket := opt.CheckOptMode(opt.TSQueryOptMode.Get(c.GetSettingValues()), opt.JoinPushTimeBucket)
 
@@ -3218,7 +3245,46 @@ func (c *CustomFuncs) precheckInsideOutOptApplicable(
 		}
 	}
 
+	if c.e.mem.CheckFlag(opt.CanApplyOutsideIn) {
+		if CheckApplyOutsideIn(private, &aggs, c.e.mem) {
+			return false, nil
+		}
+	}
 	return true, join
+}
+
+// CheckApplyOutsideIn checks if agg can apply outside-in.
+// 1. the datType and dataLength of cols of grouping can not meet the conditions, agg can not apply outside-in.
+// 2. the datType of child of agg function can not meet the conditions or agg function can not execute in AE, agg can not apply outside-in.
+func CheckApplyOutsideIn(gp *memo.GroupingPrivate, aggs *memo.AggregationsExpr, m *memo.Memo) bool {
+	// check data types of grouping cols
+	ok := true
+	gp.GroupingCols.ForEach(func(col opt.ColumnID) {
+		if !memo.CheckDataType(m.Metadata().ColumnMeta(col).Type) ||
+			!memo.CheckDataLength(m.Metadata().ColumnMeta(col).Type) {
+			m.ClearFlag(opt.CanApplyOutsideIn)
+			ok = false
+			return
+		}
+	})
+	if !ok {
+		return false
+	}
+
+	for i := range *aggs {
+		srcExpr := (*aggs)[i].Agg
+
+		// check type of child of agg can execute in ts engine.
+		for j := 0; j < srcExpr.ChildCount(); j++ {
+			if scalarExpr, ok := srcExpr.Child(j).(opt.ScalarExpr); ok {
+				if !memo.CheckDataType(scalarExpr.DataType()) {
+					m.ClearFlag(opt.CanApplyOutsideIn)
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // getInnerJoin gets InnerJoinExpr.

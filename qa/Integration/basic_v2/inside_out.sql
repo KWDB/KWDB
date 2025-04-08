@@ -1,5 +1,5 @@
 CREATE TS DATABASE db_pipec;
-
+set cluster setting ts.sql.query_opt_mode=1110;
 -- 时序表
 CREATE TABLE db_pipec.t_point (
                                   k_timestamp timestamp NOT NULL,
@@ -473,7 +473,7 @@ order BY
     s.device_no,
     t.index_name,
     r.obj_name;
-
+set cluster setting ts.sql.query_opt_mode=11110;
 use defaultdb;
 drop database runba cascade;
 drop database runba_tra cascade;

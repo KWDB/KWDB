@@ -862,8 +862,7 @@ INSERT 1
 > prepare p1 as delete from t2 where b = $1;
 PREPARE
 > execute p1(32768);
-ERROR: integer out of range for type INT2 (column "b")
-SQLSTATE: 22003
+DELETE 0
 > insert into t3 values(1672531200000,1,'abc','abc');
 INSERT 1
 > prepare p2 as delete from t3 where b = $1 and c = $2;
@@ -1071,21 +1070,17 @@ PREPARE
 > prepare p25 as delete from t9 where b = $1;
 PREPARE
 > execute p23(32768);
-ERROR: integer out of range for type INT2 (column "b")
-SQLSTATE: 22003
+DELETE 0
 > execute p23(-32769);
-ERROR: integer out of range for type INT2 (column "b")
-SQLSTATE: 22003
+DELETE 0
 > execute p23(32767);
 DELETE 1
 > execute p23(-32768);
 DELETE 1
 > execute p24(2147483648);
-ERROR: integer out of range for type INT4 (column "b")
-SQLSTATE: 22003
+DELETE 0
 > execute p24(-2147483649);
-ERROR: integer out of range for type INT4 (column "b")
-SQLSTATE: 22003
+DELETE 0
 > execute p24(2147483647);
 DELETE 1
 > execute p24(-2147483648);
