@@ -159,7 +159,7 @@ class TsMemSegment {
   InlineSkipList<TSRowDataComparator> skiplist_; 
 
  public:
-  TsMemSegment() : skiplist_(comp_, &arena_) {}
+  TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
   ~TsMemSegment() {
   }
 
@@ -167,6 +167,10 @@ class TsMemSegment {
 
   size_t Size() {
     return arena_.MemoryAllocatedBytes();
+  }
+
+  uint32_t GetRowNum() {
+    return intent_row_num_.load();
   }
 
   inline void AllocRowNum(uint32_t row_num) {
@@ -272,7 +276,7 @@ class TsMemSegmentManager {
  private:
   TsVGroup* vgroup_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
-  std::deque<std::shared_ptr<TsMemSegment>> segment_;
+  std::list<std::shared_ptr<TsMemSegment>> segment_;
   std::mutex segment_lock_;
 
  public:

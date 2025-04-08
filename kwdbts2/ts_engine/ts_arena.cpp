@@ -19,7 +19,7 @@ namespace kwdbts {
 const size_t Arena::kInlineSize;
 #endif
 
-const size_t Arena::kMinBlockSize = 4096;
+const size_t Arena::kMinBlockSize = 32 * 4096;
 const size_t Arena::kMaxBlockSize = 2u << 30;
 static const int kAlignUnit = alignof(max_align_t);
 

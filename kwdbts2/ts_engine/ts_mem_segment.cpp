@@ -11,6 +11,7 @@
 
 #include "ts_mem_segment_mgr.h"
 #include "ts_vgroup.h"
+#include "ts_instance_params.h"
 
 namespace kwdbts {
 
@@ -20,7 +21,7 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
   segment_lock_.lock();
   if (segment_.size() > 0) {
     *segments = segment_.back();
-    segment_.push_back(std::make_shared<TsMemSegment>());
+    segment_.push_back(std::make_shared<TsMemSegment>(TsEngineInstanceParams::mem_segment_max_height));
     cur_mem_seg_ = segment_.back();
   }
   segment_lock_.unlock();
@@ -28,6 +29,9 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
     if (!(*segments)->SetImm()) {
       LOG_ERROR("can not switch mem segment.");
     }
+    auto row_num = (*segments)->GetRowNum();
+    uint32_t new_heigh = log2(row_num) / 2;
+    TsEngineInstanceParams::mem_segment_max_height = new_heigh;
   }
 }
 
@@ -88,7 +92,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   uint32_t row_num = pd.GetRowCount();
   if (cur_mem_seg_ == 0) {
     segment_lock_.lock();
-    segment_.push_back(std::make_shared<TsMemSegment>());
+    segment_.push_back(std::make_shared<TsMemSegment>(TsEngineInstanceParams::mem_segment_max_height));
     cur_mem_seg_ = segment_.back();
     segment_lock_.unlock();
   }
@@ -111,7 +115,7 @@ KStatus TsMemSegmentManager::GetBlockItems(const TsBlockITemFilterParams& filter
                                           std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks) {
   blocks->clear();
   segment_lock_.lock();
-  std::deque<std::shared_ptr<TsMemSegment>> segments = segment_;
+  std::list<std::shared_ptr<TsMemSegment>> segments = segment_;
   segment_lock_.unlock();
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   for (auto& mem : segments) {
