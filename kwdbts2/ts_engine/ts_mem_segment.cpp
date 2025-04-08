@@ -150,6 +150,14 @@ KStatus TsMemSegBlockItemInfo::GetValueSlice(int row_num, int col_id,
   return KStatus::SUCCESS;
 }
 
+bool TsMemSegBlockItemInfo::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) {
+  assert(row_data_.size() > row_num);
+  if (parser_ == nullptr) {
+    parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
+  }
+  return parser_->IsColNull(row_data_[row_num]->row_data, col_id);
+}
+
 bool TsMemSegment::AppendOneRow(const TSMemSegRowData& row) {
   size_t malloc_size = sizeof(TSMemSegRowData) + row.row_data.len;
   auto alloc_space = arena_.AllocateAligned(malloc_size);
