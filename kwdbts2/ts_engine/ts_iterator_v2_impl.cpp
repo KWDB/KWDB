@@ -264,6 +264,7 @@ KStatus TsMemTableScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* co
         }
         batch = new Batch(static_cast<void *>(value), *count, bitmap, 0, nullptr);
         batch->is_new = true;
+        batch->need_free_bitmap = true;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 0, nullptr);
         for (auto block : blocks) {
