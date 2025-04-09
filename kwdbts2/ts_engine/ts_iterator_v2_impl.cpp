@@ -223,6 +223,7 @@ KStatus TsMemTableScanner::Init(bool is_reversed) {
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsMemTableScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
