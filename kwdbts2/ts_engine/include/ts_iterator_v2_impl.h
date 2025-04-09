@@ -23,12 +23,13 @@ namespace kwdbts {
 typedef enum {
   SCAN_STATUS_UNKNOWN,
   SCAN_MEM_TABLE,
-  SCAN_PARTITION,
+  SCAN_LAST_SEGMENT,
+  SCAN_BLOCK_SEGMENT,
   SCAN_STATUS_DONE
 } STORAGE_SCAN_STATUS;
 
 class TsVGroup;
-class TsMemTableIteratorV2Impl;
+class TsMemTableScanner;
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -44,6 +45,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::shared_ptr<TsVGroup> vgroup_;
   STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
+  std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -57,7 +59,9 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
  protected:
-  std::unique_ptr<TsMemTableIteratorV2Impl> mem_table_iterator_ = nullptr;
+  k_uint32 cur_entity_index_;
+  k_uint32 cur_partition_index_;
+  std::unique_ptr<TsMemTableScanner> mem_table_scanner_ = nullptr;
 };
 
 class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -86,19 +90,16 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 };
 
-class TsMemTableIteratorV2Impl : public TsStorageIteratorV2Impl {
+class TsMemTableScanner : public TsStorageIteratorV2Impl {
  public:
-  TsMemTableIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsMemTableIteratorV2Impl();
+  ~TsMemTableScanner();
 
   KStatus Init(bool is_reversed) override;
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
- private:
-  k_uint32 cur_entity_index_;
-  std::unique_ptr<TsRawPayloadRowParser> parser_;
+  KStatus Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS);
 };
 
 }  //  namespace kwdbts

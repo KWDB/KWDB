@@ -41,6 +41,7 @@ class TsBlockSpanInfo {
   // if has three rows, this return three value for certain column using col-based storege struct.
   virtual char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) = 0;
+  virtual inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) = 0;
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
 };
