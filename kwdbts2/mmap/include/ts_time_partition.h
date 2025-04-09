@@ -37,6 +37,7 @@
 #define ENTITY_ITEM_LATCH_BUCKET_NUM 10
 
 extern int64_t g_vacuum_interval;
+extern uint64_t g_vacuum_sleep_time;
 
 enum class ExclusiveStatus{
   NONE = 0,

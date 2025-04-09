@@ -25,7 +25,8 @@ class TsTableV2Impl : public TsTable {
   const std::vector<std::shared_ptr<TsVGroup>>& table_grps_;
 
  public:
-  TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema, const std::vector<std::shared_ptr<TsVGroup>>& table_grps) :
+  TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
+                const std::vector<std::shared_ptr<TsVGroup>>& table_grps) :
             TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), table_grps_(table_grps) {}
 
   ~TsTableV2Impl();
@@ -52,7 +53,6 @@ class TsTableV2Impl : public TsTable {
                             std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
                             TsIterator** iter, std::vector<timestamp64> ts_points,
                             bool reverse, bool sorted) override;
-
 };
 
 }  // namespace kwdbts

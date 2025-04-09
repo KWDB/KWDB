@@ -41,7 +41,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
@@ -552,25 +551,20 @@ func (ef *execFactory) ConstructHashJoin(
 func (ef *execFactory) ConstructApplyJoin(
 	joinType sqlbase.JoinType,
 	left exec.Node,
-	leftBoundColMap opt.ColMap,
-	memo *memo.Memo,
-	rightProps *physical.Required,
-	fakeRight exec.Node,
-	right memo.RelExpr,
+	rightColumns sqlbase.ResultColumns,
 	onCond tree.TypedExpr,
+	right memo.RelExpr,
+	planRightSideFn exec.ApplyJoinPlanRightSideFn,
 ) (exec.Node, error) {
 	leftSrc := asDataSource(left)
-	rightSrc := asDataSource(fakeRight)
-	rightSrc.plan.Close(context.TODO())
-	pred, err := makePredicate(joinType, leftSrc.columns, rightSrc.columns)
+	pred, err := makePredicate(joinType, leftSrc.columns, rightColumns)
 	if err != nil {
 		return nil, err
 	}
 	pred.onCond = pred.iVarHelper.Rebind(
 		onCond, false /* alsoReset */, false, /* normalizeToNonNil */
 	)
-	rightCols := rightSrc.columns
-	apply, err := newApplyJoinNode(joinType, asDataSource(left), asDataSource(fakeRight), leftBoundColMap, rightProps, rightCols, right, pred, memo)
+	apply, err := newApplyJoinNode(joinType, leftSrc, rightColumns, pred, right, planRightSideFn)
 	if err != nil {
 		return nil, err
 	}

@@ -195,7 +195,7 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
           return s;
       }
   }
-  LOG_INFO("Table %d create NTAG index success.", table_id)
+  LOG_INFO("Table %lu create NTAG index success.", table_id)
 
 #ifndef KWBASE_OSS
   TsConfigAutonomy::UpdateTableStatisticInfo(ctx, table, true);
@@ -1521,7 +1521,7 @@ KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& t
                                            const char* transaction_id, const uint32_t cur_version,
                                            const uint32_t new_version,
                                            const std::vector<uint32_t/* tag column id*/> &index_schema) {
-    LOG_INFO("TSEngine CreateNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+    LOG_INFO("TSEngine CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
               table_id, index_id, cur_version, new_version)
     std::shared_ptr<TsTable> table;
     KStatus s = GetTsTable(ctx, table_id, table);
@@ -1544,7 +1544,7 @@ KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& t
 KStatus TSEngineImpl::DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                                          const char* transaction_id,  const uint32_t cur_version,
                                          const uint32_t new_version) {
-    LOG_INFO("TSEngine DropNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+    LOG_INFO("TSEngine DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              table_id, index_id, cur_version, new_version)
     std::shared_ptr<TsTable> table;
     KStatus s = GetTsTable(ctx, table_id, table);

@@ -192,13 +192,6 @@ func checkTsRowsPerBlockLimit(encodedValue string) error {
 	return nil
 }
 
-func checkTsCompressVacuum(encodedValue string) error {
-	if encodedValue != "true" && encodedValue != "false" {
-		return errors.New("invalid value, the value of ts.auto_vacuum.enabled must be true or false")
-	}
-	return nil
-}
-
 func checkTsCompressType(encodedValue string) error {
 	if encodedValue != "gzip" && encodedValue != "lz4" && encodedValue != "lzma" &&
 		encodedValue != "lzo" && encodedValue != "xz" && encodedValue != "zstd" {
@@ -274,7 +267,6 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.entities_per_subgroup.max_limit":          checkTsEntitiesPerSubgroupLimit,
 	"ts.blocks_per_segment.max_limit":             checkTsBlocksPerSegmentLimit,
 	"ts.rows_per_block.max_limit":                 checkTsRowsPerBlockLimit,
-	"ts.auto_vacuum.enabled":                      checkTsCompressVacuum,
 	"ts.compression.type":                         checkTsCompressType,
 	"ts.compression.level":                        checkTsCompressLevel,
 	"immediate_compression.threads":               checkTsCompressThreads,

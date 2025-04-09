@@ -18,7 +18,6 @@
 #include "ts_table_schema_manager.h"
 #include "sys_utils.h"
 
-extern const int storage_engine_vgroup_max_num = 10;
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 
@@ -120,6 +119,7 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
   if (tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entityid, groupid)) {
     *entity_id = entityid;
     *tbl_grp_id = groupid;
+    *new_tag = false;
     return KStatus::SUCCESS;
   }
   // TODO(qinlipeng) lock tag

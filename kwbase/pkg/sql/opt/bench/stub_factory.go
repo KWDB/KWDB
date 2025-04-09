@@ -32,7 +32,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/constraint"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
@@ -133,12 +132,10 @@ func (f *stubFactory) ConstructBatchLookUpJoin(
 func (f *stubFactory) ConstructApplyJoin(
 	joinType sqlbase.JoinType,
 	left exec.Node,
-	leftBoundColMap opt.ColMap,
-	memo *memo.Memo,
-	rightProps *physical.Required,
-	fakeRight exec.Node,
-	right memo.RelExpr,
+	rightColumns sqlbase.ResultColumns,
 	onCond tree.TypedExpr,
+	right memo.RelExpr,
+	planRightSideFn exec.ApplyJoinPlanRightSideFn,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }

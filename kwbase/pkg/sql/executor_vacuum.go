@@ -34,7 +34,7 @@ type ScheduledVacuumExecutor struct{}
 
 var _ jobs.ScheduledJobExecutor = &ScheduledVacuumExecutor{}
 
-var tsCompressionVacuum = settings.RegisterPublicBoolSetting(
+var tsAutoVacuum = settings.RegisterPublicBoolSetting(
 	"ts.auto_vacuum.enabled",
 	"enable auto vacuum in background",
 	true)
@@ -47,7 +47,7 @@ func (e *ScheduledVacuumExecutor) ExecuteJob(
 	schedule *jobs.ScheduledJob,
 	txn *kv.Txn,
 ) error {
-	if !tsCompressionVacuum.Get(&cfg.Settings.SV) {
+	if !tsAutoVacuum.Get(&cfg.Settings.SV) {
 		return nil
 	}
 	user := security.NodeUser

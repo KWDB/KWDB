@@ -1541,6 +1541,9 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		return retTmp.disableExecInTSEngine()
 	case *GroupByExpr:
 		input := source.Input
+		if source.IsInsideOut {
+			m.SetFlag(opt.IsInsideOut)
+		}
 		sortExpr, ok := (*src).Child(0).(*SortExpr)
 		if ok {
 			m.SetFlag(opt.OrderGroupBy)
@@ -1552,7 +1555,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		}
 		m.dealWithGroupBy(source, input, &retAgg)
 		if ok {
-			if retAgg.commonRet.execInTSEngine {
+			if retAgg.commonRet.execInTSEngine || m.CheckFlag(opt.IsInsideOut) {
 				// swap the positions of GroupByExpr and OrderExpr, when GroupByExpr exec
 				// in ts engine and there is the OrderGroupBy.
 				source.Input = sortExpr.Input

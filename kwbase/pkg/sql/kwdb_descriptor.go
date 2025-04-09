@@ -184,6 +184,8 @@ const (
 
 // InitWhiteList Inits BoWhiteList  Limit Order by Having Group by Select list Where
 var InitWhiteList = []sqlbase.WhiteList{
+	{"+", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"+", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"+", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	// There is an accuracy issue with the operation of floating-point numbers, so we will not push it down for now

@@ -11,9 +11,13 @@
 
 #pragma once
 
+#include <list>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <deque>
+#include <vector>
+#include <utility>
 #include "ts_common.h"
 #include "ts_vgroup.h"
 #include "ts_instance_params.h"
@@ -43,7 +47,7 @@ class TsLSNFlushManager {
   std::atomic<size_t> mem_total_size_{0};
 
  public:
-  TsLSNFlushManager(std::vector<std::shared_ptr<TsVGroup>>& vgrps) : vgrps_(vgrps) {}
+  explicit TsLSNFlushManager(std::vector<std::shared_ptr<TsVGroup>>& vgrps) : vgrps_(vgrps) {}
 
   TS_LSN GetFinishedLSN() {
     return flushed_lsn_;
@@ -61,7 +65,7 @@ class TsLSNFlushManager {
   }
 
   KStatus FlashMemSegment(TS_LSN lsn) {
-    for(auto& job : jobs_) {
+    for (auto& job : jobs_) {
       if (job.lsn == lsn) {
         LOG_ERROR("wal file [%lu] already in jobs.", lsn);
         return KStatus::FAIL;
@@ -101,7 +105,7 @@ class TsLSNFlushManager {
     return KStatus::SUCCESS;
   }
 
-  void updateFinishLSN () {
+  void updateFinishLSN() {
     job_mutex_.lock();
     while (jobs_.size() > 0) {
       SwithJobInfo& cur_job = jobs_.front();

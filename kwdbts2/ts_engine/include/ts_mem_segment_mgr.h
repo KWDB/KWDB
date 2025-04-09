@@ -12,9 +12,11 @@
 
 #include <list>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <atomic>
 #include <deque>
+#include <vector>
 
 #include "ts_env.h"
 #include "libkwdbts2.h"
@@ -200,7 +202,6 @@ class TsMemSegment {
   inline void SetDeleting() {
     status_.store(MEM_SEGMENT_DELETING);
   }
-
 };
 
 class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
@@ -213,7 +214,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   std::list<char*> col_based_mems_;
 
  public:
-  TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg){}
+  explicit TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg){}
 
   ~TsMemSegBlockItemInfo() {
     for(auto& mem : col_based_mems_) {
@@ -243,7 +244,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
 
-  // if just get timestamp , this function return fast. 
+  // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->ts;
@@ -280,7 +281,7 @@ class TsMemSegmentManager {
   std::mutex segment_lock_;
 
  public:
-  TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
+  explicit TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
 
   ~TsMemSegmentManager() {
     segment_.clear();

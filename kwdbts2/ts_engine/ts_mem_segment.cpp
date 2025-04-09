@@ -100,6 +100,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   cur_mem_seg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
     // todo(liangbo01) add lsn of wal.
+    // TODO(Yongyan): Somebody needs to update lsn later.
     row_data.SetData(pd.GetTS(i), 1, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {

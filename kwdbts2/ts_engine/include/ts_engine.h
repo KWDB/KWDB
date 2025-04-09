@@ -33,8 +33,6 @@
 
 namespace kwdbts {
 
-extern const int storage_engine_vgroup_max_num;
-
 /**
  * @brief TSEngineV2Impl
  */
@@ -266,7 +264,6 @@ class TSEngineV2Impl : public TSEngine {
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);
 
   KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
-
 };
 
 }  //  namespace kwdbts

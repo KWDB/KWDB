@@ -38,6 +38,7 @@ int g_engine_version{1};
 TSEngine* g_engine_ = nullptr;
 
 std::atomic<bool> g_is_vacuuming{false};
+uint64_t g_vacuum_sleep_time = 1000;
 std::atomic<bool> g_is_migrating{false};
 uint64_t g_duration_level0{30 * 24 * 60 * 60};
 uint64_t g_duration_level1{90 * 24 * 60 * 60};
@@ -290,7 +291,9 @@ TSStatus TSDropTsTable(TSEngine* engine, TSTableID table_id) {
 }
 
 TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts) {
-  return kTsSuccess;
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -316,7 +319,9 @@ TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts)
 }
 
 TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id) {
-  return kTsSuccess;
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -344,7 +349,9 @@ TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID ta
 }
 
 TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_version) {
-  return kTsSuccess;
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   bool expected = false;
   if (!g_is_vacuuming.compare_exchange_strong(expected, true)) {
     LOG_INFO("The engine is vacuuming, ignore vacuum request");
@@ -373,7 +380,9 @@ TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_versi
 }
 
 TSStatus TSMigrateTsTable(TSEngine* engine, TSTableID table_id) {
-  return kTsSuccess;
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   if (TsTier::GetInstance().TierEnabled()) {
     bool expected = false;
     if (!g_is_migrating.compare_exchange_strong(expected, true)) {
@@ -788,6 +797,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     }
   } else if ("ts.tier.duration" == key) {
     parseDurations(value);
+  } else if ("ts.auto_vacuum.sleep" == key) {
+    g_vacuum_sleep_time = atoll(value.c_str());
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT
@@ -867,7 +878,9 @@ TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp en
 }
 
 TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* row_size) {
-  return kTsSuccess;
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -890,7 +903,9 @@ TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* ro
 // Query the total amount of data within the range (an approximate value is sufficient)
 TSStatus TSGetDataVolume(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
                         KwTsSpan ts_span, uint64_t* volume) {
-  return kTsSuccess;
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);

@@ -14,6 +14,7 @@
 #include <memory>
 #include "ts_common.h"
 #include "iterator.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
@@ -56,7 +57,7 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
  protected:
-  std::unique_ptr<TsMemTableIteratorV2Impl> mem_table_iterator_{nullptr};
+  std::unique_ptr<TsMemTableIteratorV2Impl> mem_table_iterator_ = nullptr;
 };
 
 class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {

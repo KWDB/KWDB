@@ -196,6 +196,19 @@ type RowSourcedProcessor interface {
 //
 // src needs to have been Start()ed before calling this.
 func Run(ctx context.Context, src RowSource, dst RowReceiver, startTime time.Time) {
+	defer func() {
+		if p := recover(); p != nil {
+			err := errors.Errorf("%v", p)
+			if err.Error() == "" {
+				// for test.
+				panic(p)
+			}
+			metaErr := &execinfrapb.ProducerMetadata{Err: err}
+			dst.Push(nil, metaErr)
+			handleConsumerClosed(src, dst, startTime, nil)
+			return
+		}
+	}()
 	for {
 		row, meta := src.Next()
 		// Emit the row; stop if no more rows are needed.
@@ -210,9 +223,7 @@ func Run(ctx context.Context, src RowSource, dst RowReceiver, startTime time.Tim
 				dst.AddStats(timeutil.Since(startTime), row != nil)
 				return
 			case ConsumerClosed:
-				src.ConsumerClosed()
-				dst.ProducerDone()
-				dst.AddStats(timeutil.Since(startTime), row != nil)
+				handleConsumerClosed(src, dst, startTime, row)
 				return
 			}
 		}
@@ -221,6 +232,14 @@ func Run(ctx context.Context, src RowSource, dst RowReceiver, startTime time.Tim
 		dst.AddStats(timeutil.Since(startTime), row != nil)
 		return
 	}
+}
+
+func handleConsumerClosed(
+	src RowSource, dst RowReceiver, startTime time.Time, row sqlbase.EncDatumRow,
+) {
+	src.ConsumerClosed()
+	dst.ProducerDone()
+	dst.AddStats(timeutil.Since(startTime), row != nil)
 }
 
 // Releasable is an interface for objects than can be Released back into a

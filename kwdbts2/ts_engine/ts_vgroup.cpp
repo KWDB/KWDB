@@ -62,7 +62,6 @@ TsVGroup::~TsVGroup() {
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   rocksdb::Options options;
   options.create_if_missing = true;
-  // options.write_buffer_size = 256;
   options.env = &env_;
   options.comparator = TsComparator();
   options.max_background_jobs = 4;
@@ -168,6 +167,10 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
 }
 
+TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() {
+  return &mem_segment_mgr_;
+}
+
 TsVGroupPartition* TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
   auto partition_manager = partitions_[database_id].get();
   if (partition_manager == nullptr) {
@@ -226,15 +229,14 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       }
       last_row_info.cur_table_version = tbl->table_version;
     }
-    // 3. get partition for metric data. 
+    // 3. get partition for metric data.
     auto partition = GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
     auto it = builders.find(partition);
     if (it == builders.end()) {
-      std::shared_ptr<TsLastSegment> last_segment;
-      partition->NewLastSegment(last_segment);
+      std::unique_ptr<TsLastSegment> last_segment;
+      partition->NewLastSegment(&last_segment);
       auto result =  builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, last_segment}});
       it = result.first;
-      
     }
     // 4. insert data into segment builder.
     TsLastSegmentBuilder& builder = it->second;
@@ -254,7 +256,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
   for (auto& kv : builders) {
     auto s = kv.second.Finalize();
-    if (s == FAIL){
+    if (s == FAIL) {
       LOG_ERROR("last segment Finalize failed.");
       return KStatus::FAIL;
     }
@@ -363,8 +365,8 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
 
       auto it = builders.find(partition);
       if (it == builders.end()) {
-        std::shared_ptr<TsLastSegment> last_segment;
-        partition->NewLastSegment(last_segment);
+        std::unique_ptr<TsLastSegment> last_segment;
+        partition->NewLastSegment(&last_segment);
         auto result =
             builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
         it = result.first;
@@ -386,6 +388,7 @@ rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
     auto s = kv.second.Finalize();
     if (s == FAIL) return rocksdb::Status::Incomplete("flush error");
     kv.second.Flush();
+    kv.first->PublicLastSegment(kv.second.Finish());
   }
   return rocksdb::Status::OK();
 }

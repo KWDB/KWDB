@@ -221,7 +221,7 @@ func (h *batchLookupJoiner) Start(ctx context.Context) context.Context {
 	// get relational data and push to AE for actual join process
 	// start with buildAndConsumeStoredSide
 	h.runningState = bljBuildAndConsumingStoredSide
-	h.FlowCtx.PushingBLJCount++
+	h.FlowCtx.PushingBLJCount[h.tsTableReaderID]++
 	var leftStartDone = false
 	for !leftStartDone {
 		switch h.runningState {
@@ -237,7 +237,7 @@ func (h *batchLookupJoiner) Start(ctx context.Context) context.Context {
 		// no need to double check meta errors, when meta.Err != nil
 		// runningState is set to bljStateUnknown in buildAndConsumeStoredSide and pushToProbeSide
 	}
-	h.FlowCtx.PushingBLJCount--
+	h.FlowCtx.PushingBLJCount[h.tsTableReaderID]--
 	h.rightSource.Start(ctx)
 	ctx = h.StartInternal(ctx, batchLookupJoinerProcName)
 	return ctx
@@ -331,27 +331,9 @@ func (h *batchLookupJoiner) buildAndConsumeStoredSide() (
 	}
 
 	if h.rowCount == 0 {
-		// when turned to pull mode, we already push all data down to tse
-		// thus we need to send one more push end message to tse
-		var tsQueryInfo tse.TsQueryInfo
-		for {
-			if h.FlowCtx.TsHandleBreak {
-				log.Warning(h.PbCtx(), "tse returned an error, please check the error code")
-				h.MoveToDraining(nil)
-				return bljStateUnknown, nil, nil
-			}
-			if handle, ok := h.FlowCtx.TsHandleMap[h.tsTableReaderID]; ok {
-				tsQueryInfo.Handle = handle
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		tsQueryInfo.Buf = []byte("pushdata tsflow")
-		tsQueryInfo.PushData = nil
-		tsQueryInfo.RowCount = 0
-		pushErr := h.FlowCtx.Cfg.TsEngine.PushTsFlow(&(h.Ctx), tsQueryInfo)
-		if pushErr != nil {
-			log.Warning(h.PbCtx(), pushErr)
+		state := h.PushTsFlow(nil)
+		if state == bljStateUnknown {
+			return bljStateUnknown, nil, h.DrainHelper()
 		}
 		return bljPullFromProbeSide, nil, nil
 	}
@@ -650,27 +632,10 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		// update all field to FlowCtx
 		h.FlowCtx.TsBatchLookupInput = &dataChunk
 
-		var tsQueryInfo tse.TsQueryInfo
-		for {
-			if h.FlowCtx.TsHandleBreak {
-				log.Warning(h.PbCtx(), "tse returned an error, please check the error code")
-				h.MoveToDraining(nil)
-				return bljStateUnknown, nil, nil
-			}
-			if handle, ok := h.FlowCtx.TsHandleMap[h.tsTableReaderID]; ok {
-				tsQueryInfo.Handle = handle
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		tsQueryInfo.Buf = []byte("pushdata tsflow")
-		tsQueryInfo.PushData = &dataChunk
-
 		if dataChunk.RowCount > 0 {
-			tsQueryInfo.RowCount = int(dataChunk.RowCount)
-			pushErr := h.FlowCtx.Cfg.TsEngine.PushTsFlow(&(h.Ctx), tsQueryInfo)
-			if pushErr != nil {
-				log.Warning(h.PbCtx(), pushErr)
+			state := h.PushTsFlow(&dataChunk)
+			if state == bljStateUnknown {
+				return state, nil, nil
 			}
 			h.rowCount = 0
 			h.batchCount++
@@ -686,6 +651,11 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		h.storedRows = nil
 		return bljBuildAndConsumingStoredSide, nil, nil
 	}
+	h.PushTsFlow(nil)
+	return bljPullFromProbeSide, nil, nil
+}
+
+func (h *batchLookupJoiner) PushTsFlow(chunk *tse.DataChunkGo) batchLookupJoinerState {
 	// when turned to pull mode, we already push all data down to tse
 	// thus we need to send one more push end message to tse
 	var tsQueryInfo tse.TsQueryInfo
@@ -693,7 +663,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		if h.FlowCtx.TsHandleBreak {
 			log.Warning(h.PbCtx(), "tse returned an error, please check the error code")
 			h.MoveToDraining(nil)
-			return bljStateUnknown, nil, nil
+			return bljStateUnknown
 		}
 		if handle, ok := h.FlowCtx.TsHandleMap[h.tsTableReaderID]; ok {
 			tsQueryInfo.Handle = handle
@@ -702,13 +672,16 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		time.Sleep(10 * time.Millisecond)
 	}
 	tsQueryInfo.Buf = []byte("pushdata tsflow")
-	tsQueryInfo.PushData = nil
+	tsQueryInfo.PushData = chunk
 	tsQueryInfo.RowCount = 0
+	if chunk != nil {
+		tsQueryInfo.RowCount = int(chunk.RowCount)
+	}
 	pushErr := h.FlowCtx.Cfg.TsEngine.PushTsFlow(&(h.Ctx), tsQueryInfo)
 	if pushErr != nil {
 		log.Warning(h.PbCtx(), pushErr)
 	}
-	return bljPullFromProbeSide, nil, nil
+	return bljPushingToProbeSide
 }
 
 // pullFromProbeSide helps pull batchlookup join results from tse

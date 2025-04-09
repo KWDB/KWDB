@@ -185,7 +185,11 @@ const (
 	// GroupWindowUseOrderScan is set when grouping window function can exec in AE
 	GroupWindowUseOrderScan = 1 << 11
 
+	// CanApplyOutsideIn is set when the plan can use outside-in.
 	CanApplyOutsideIn = 1 << 12
+
+	// IsInsideOut is set when the plan uses inside-out.
+	IsInsideOut = 1 << 13
 )
 
 // OrderedTableType TSScanOrderedType

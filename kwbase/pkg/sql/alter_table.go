@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -953,7 +954,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 			if err = checkTSMutationColumnType(n.tableDesc, alteringTag); err != nil {
 				return err
 			}
-
+			if tagColumn.HasDefault() {
+				err := castDefaultFuncExpr(*tagColumn.DefaultExpr, alteringTag, params, newType)
+				if err != nil {
+					return err
+				}
+			}
 			//n.tableDesc.State = sqlbase.TableDescriptor_ALTER
 			n.tableDesc.AddColumnMutation(alteringTag, sqlbase.DescriptorMutation_NONE)
 			mutationID := n.tableDesc.ClusterVersion.NextMutationID
@@ -1630,6 +1636,12 @@ func applyColumnMutation(
 				if err = checkTSMutationColumnType(tableDesc, alteringCol); err != nil {
 					return false, err
 				}
+				if col.HasDefault() {
+					err := castDefaultFuncExpr(*col.DefaultExpr, alteringCol, params, typ)
+					if err != nil {
+						return false, err
+					}
+				}
 				// TODO(ZXY): Temporary use DescriptorMutation_NONE for alter type mutation
 				tableDesc.AddColumnMutation(alteringCol, sqlbase.DescriptorMutation_NONE)
 				mutationID := tableDesc.ClusterVersion.NextMutationID
@@ -1719,6 +1731,12 @@ func applyColumnMutation(
 				col.Type.SQLString(), typ.SQLString())
 		case schemachange.ColumnConversionTrivial:
 			col.Type = *typ
+			if col.HasDefault() {
+				err := castDefaultFuncExpr(*col.DefaultExpr, col, params, typ)
+				if err != nil {
+					return false, err
+				}
+			}
 		case schemachange.ColumnConversionGeneral:
 			return false, unimplemented.NewWithIssueDetailf(
 				9851,
@@ -1880,6 +1898,26 @@ func applyColumnMutation(
 		col.ComputeExpr = nil
 	}
 	return isOnlyMetaChanged, nil
+}
+
+func castDefaultFuncExpr(
+	originDefault string, col *sqlbase.ColumnDescriptor, params runParams, typ *types.T,
+) error {
+	parsedExpr, err := parser.ParseExpr(originDefault)
+	if err != nil {
+		return err
+	}
+	if tmp, ok := parsedExpr.(*tree.AnnotateTypeExpr); ok {
+		if innerExpr, isFunc := tmp.TypedInnerExpr().(*tree.FuncExpr); isFunc {
+			newDefaultExpr, err := innerExpr.TypeCheck(&params.p.semaCtx, typ)
+			if err != nil {
+				return err
+			}
+			s := tree.Serialize(newDefaultExpr)
+			col.DefaultExpr = &s
+		}
+	}
+	return nil
 }
 
 func labeledRowValues(cols []sqlbase.ColumnDescriptor, values tree.Datums) string {

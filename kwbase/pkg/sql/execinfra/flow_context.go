@@ -102,7 +102,7 @@ type FlowCtx struct {
 	TsHandleBreak bool
 
 	// PushingBLJCount define the number of BLJ operators pussing rel data into ts engine
-	PushingBLJCount int
+	PushingBLJCount map[int32]int
 
 	// Mu is the Mutex to protect TsHandleMap
 	// only used to get tshandle when the switch is on and the server starts

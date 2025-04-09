@@ -28,6 +28,9 @@ type dropFunctionNode struct {
 
 // DropFunction gets a dropfunctionNode to get function should delete from name.
 func (p *planner) DropFunction(ctx context.Context, n *tree.DropFunction) (planNode, error) {
+	if !p.extendedEvalCtx.TxnImplicit {
+		return nil, pgerror.New(pgcode.FeatureNotSupported, "Drop Function statement is not supported in explicit transaction")
+	}
 	return &dropFunctionNode{
 		n: n,
 		p: p,

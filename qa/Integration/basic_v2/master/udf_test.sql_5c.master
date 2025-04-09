@@ -103,3 +103,46 @@ DELETE 0
 SET
 > drop database test cascade;
 DROP DATABASE
+> BEGIN;
+BEGIN
+> CREATE FUNCTION test_txn(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function test_txn(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+ERROR: Create Function statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> COMMIT;
+ROLLBACK
+> CREATE FUNCTION test_txn(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function test_txn(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+CREATE FUNCTION
+> BEGIN;
+BEGIN
+> DROP FUNCTION test_txn;
+ERROR: Drop Function statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> COMMIT;
+ROLLBACK
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+  test_txn
+(1 row)
+> DROP FUNCTION test_txn;
+DROP FUNCTION
