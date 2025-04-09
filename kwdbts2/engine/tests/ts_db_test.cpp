@@ -11,7 +11,6 @@
 
 #include "libkwdbts2.h"
 #include "th_kwdb_dynamic_thread_pool.h"
-#include "util/random.h"
 #include "gtest/gtest.h"
 
 std::string kDbPath = "./test_db";  // NOLINT

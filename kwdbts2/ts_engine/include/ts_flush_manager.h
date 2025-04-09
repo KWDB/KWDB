@@ -20,6 +20,7 @@
 #include <utility>
 #include "ts_common.h"
 #include "ts_vgroup.h"
+#include "ts_instance_params.h"
 
 namespace kwdbts {
 
@@ -42,6 +43,8 @@ class TsLSNFlushManager {
   std::mutex job_mutex_;
   std::deque<SwithJobInfo> jobs_;
   TS_LSN flushed_lsn_{0};
+  std::atomic<size_t> mem_size_{0};
+  std::atomic<size_t> mem_total_size_{0};
 
  public:
   explicit TsLSNFlushManager(std::vector<std::shared_ptr<TsVGroup>>& vgrps) : vgrps_(vgrps) {}
@@ -50,12 +53,27 @@ class TsLSNFlushManager {
     return flushed_lsn_;
   }
 
+  void Count(size_t data_size) {
+    auto total_size = mem_total_size_.fetch_add(data_size);
+    mem_size_.fetch_add(data_size);
+    auto now_size = mem_size_.load();
+    if (now_size > TsEngineInstanceParams::mem_segment_max_size) {
+      if (mem_size_.compare_exchange_strong(now_size, 0)) {
+        FlashMemSegment(total_size);
+      }
+    }
+  }
+
   KStatus FlashMemSegment(TS_LSN lsn) {
     for (auto& job : jobs_) {
       if (job.lsn == lsn) {
         LOG_ERROR("wal file [%lu] already in jobs.", lsn);
         return KStatus::FAIL;
       }
+    }
+    while (jobs_.size() > 4) {
+      LOG_INFO("current flush job number [%lu] sleep 1 second.", jobs_.size());
+      sleep(1);
     }
     SwithJobInfo flush_job;
     flush_job.status = JOB_CREATED;
@@ -73,16 +91,17 @@ class TsLSNFlushManager {
     time_t now;
     // Record the start time of the operation
     kwdb_operator_info.SetOperatorStartTime((uint64_t) time(&now));
-    flush_job.thread_id = kwdbts::KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
-      std::bind(&TsLSNFlushManager::FlushThreadFunc, this, std::placeholders::_1), &flush_job,
-      &kwdb_operator_info);
-    if (flush_job.thread_id < 1) {
-      flush_job.status = JOB_FAILED;
-      LOG_ERROR("TsLSNFlushManager flush thread create failed");
-    }
     job_mutex_.lock();
     jobs_.push_back(std::move(flush_job));
+    SwithJobInfo& flush_job_in_list = jobs_.back();
     job_mutex_.unlock();
+    flush_job_in_list.thread_id = kwdbts::KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
+      std::bind(&TsLSNFlushManager::FlushThreadFunc, this, std::placeholders::_1), &flush_job_in_list,
+      &kwdb_operator_info);
+    if (flush_job_in_list.thread_id < 1) {
+      flush_job_in_list.status = JOB_FAILED;
+      LOG_ERROR("TsLSNFlushManager flush thread create failed");
+    }
     return KStatus::SUCCESS;
   }
 

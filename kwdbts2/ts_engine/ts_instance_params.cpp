@@ -15,5 +15,7 @@
 namespace kwdbts {
 
 DedupRule TsEngineInstanceParams::g_dedup_rule = DedupRule::KEEP;
+size_t TsEngineInstanceParams::mem_segment_max_size = 64 << 20;
+int32_t TsEngineInstanceParams::mem_segment_max_height = 12;
 
 }  //  namespace kwdbts

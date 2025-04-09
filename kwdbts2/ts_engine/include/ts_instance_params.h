@@ -20,6 +20,8 @@ namespace kwdbts {
 class TsEngineInstanceParams {
  public:
   static DedupRule g_dedup_rule;
+  static size_t mem_segment_max_size;
+  static int32_t mem_segment_max_height;
 };
 
 }  //  namespace kwdbts

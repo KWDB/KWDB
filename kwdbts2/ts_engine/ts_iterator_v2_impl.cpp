@@ -9,14 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "rocksdb/db.h"
-#include "rocksdb/options.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/status.h"
-#include "rocksdb/types.h"
-#include "rocksdb/write_batch.h"
 #include "ts_vgroup.h"
-#include "ts_format.h"
 #include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
@@ -227,9 +220,9 @@ KStatus TsMemTableScanner::Init(bool is_reversed) {
 
 KStatus TsMemTableScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
-  std::list<std::shared_ptr<TsBlockItemInfo>> blocks;
-  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(0, table_schema_mgr_->GetTableID(),
-                                                    entity_id, &blocks);
+  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, INT64_MIN, INT64_MAX};
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }

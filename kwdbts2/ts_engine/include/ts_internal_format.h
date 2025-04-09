@@ -16,7 +16,7 @@
 #include <iostream>
 #include <string>
 #include "libkwdbts2.h"
-#include "ts_slice.h"
+
 namespace kwdbts {
 class EntityKey {
  private:

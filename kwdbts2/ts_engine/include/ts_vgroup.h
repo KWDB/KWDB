@@ -19,10 +19,7 @@
 #include <vector>
 
 #include "kwdb_type.h"
-#include "rocksdb/status.h"
-#include "table/internal_iterator.h"
 #include "ts_engine_schema_manager.h"
-#include "ts_mmap_env.h"
 #include "ts_vgroup_partition.h"
 #include "ts_mem_segment_mgr.h"
 #include "st_wal_mgr.h"
@@ -89,10 +86,6 @@ class TsVGroup {
 
   MMapFile* config_file_;
 
-  rocksdb::DB* db_ = nullptr;
-
-  static TsEnv env_;
-
   EngineOptions engine_options_;
 
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
@@ -157,8 +150,6 @@ class TsVGroup {
                       std::shared_ptr<TsVGroup> vgroup,
                       std::vector<timestamp64> ts_points, bool reverse, bool sorted);
 
-  rocksdb::DB* GetDB();
-
   uint32_t GetVGroupID();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
@@ -170,18 +161,6 @@ class TsVGroup {
   TsVGroupPartition* GetPartition(uint32_t database_id, timestamp64 p_time);
 
   int saveToFile(uint32_t new_id) const;
-
- public:
-  class TsPartitionedFlush {
-   public:
-    TsPartitionedFlush() = delete;
-    TsPartitionedFlush(TsVGroup*, rocksdb::InternalIterator*);
-    rocksdb::Status FlushFromMem();
-
-   private:
-    TsVGroup* vgroup_;
-    rocksdb::InternalIterator* iter_;
-  };
 };
 
 
