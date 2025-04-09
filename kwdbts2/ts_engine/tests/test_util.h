@@ -414,3 +414,7 @@ void make_hashpoint(std::vector<k_uint32> *hps) {
     hps->push_back(i);
   }
 }
+
+KwTsSpan ConvertMsToPrecision(KwTsSpan& span, DATATYPE ts_type) {
+  return {convertMSToPrecisionTS(span.begin, ts_type), convertMSToPrecisionTS(span.end, ts_type)};
+}
