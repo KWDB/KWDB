@@ -9,14 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "rocksdb/db.h"
-#include "rocksdb/options.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/status.h"
-#include "rocksdb/types.h"
-#include "rocksdb/write_batch.h"
 #include "ts_vgroup.h"
-#include "ts_format.h"
 #include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
@@ -273,72 +266,5 @@ KStatus TsMemTableIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is
   ++cur_entity_index_;
   return KStatus::SUCCESS;
 }
-
-/*
-  rocksdb::DB* db = vgroup_->GetDB();
-  TsInternalKey key;
-  key.table_id = table_schema_mgr_->GetTableID();
-  key.version = table_version_;
-  key.entity_id = entity_ids_[cur_entity_index_];
-  rocksdb::ReadOptions opts;
-  char buf[TsInternalKey::size];
-  rocksdb::Slice s_key;
-  key.Encode(&s_key, buf);
-  string value;
-  db->Get(opts, s_key, &value);
-
-  TsRawPayloadV2 payload({const_cast<char*>(value.c_str()), value.length()});
-  auto row_iter = payload.GetRowIterator();
-  std::vector<TSSlice> row_data_list;
-
-  for (; row_iter.Valid(); row_iter.Next()) {
-    auto row_data = row_iter.Value();
-    timestamp64 ts = parser_->GetTimestamp(row_data);
-    if (this->checkIfTsInSpan(ts)) {
-      row_data_list.push_back(row_data);
-    }
-  }
-
-  *count = row_data_list.size();
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    k_int32 col_idx = ts_scan_cols_[i];
-    Batch* batch;
-    if (col_idx >= 0 && col_idx < attrs_.size()) {
-      void* bitmap = malloc(KW_BITMAP_SIZE(*count));
-      if (bitmap == nullptr) {
-        return KStatus::FAIL;
-      }
-      memset(bitmap, 0xFF, KW_BITMAP_SIZE(*count));
-      TSSlice col_data;
-      if (!isVarLenType(attrs_[col_idx].type)) {
-        char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
-        for (int row = 0; row < row_data_list.size(); ++row) {
-          parser_->GetColValueAddr(row_data_list[row], i, &col_data);
-          memcpy(value + row * attrs_[col_idx].size,
-                  col_data.data,
-                  attrs_[col_idx].size);
-        }
-        batch = new Batch(static_cast<void *>(value), *count, bitmap, 0, nullptr);
-        batch->is_new = true;
-      } else {
-        batch = new VarColumnBatch(*count, bitmap, 0, nullptr);
-        for (int row = 0; row < row_data_list.size(); ++row) {
-          parser_->GetColValueAddr(row_data_list[row], i, &col_data);
-          char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
-          KUint16(buffer) = col_data.len;
-          memcpy(buffer + 2, col_data.data, col_data.len);
-          *(buffer + col_data.len + 2) = 0;
-          std::shared_ptr<void> ptr(buffer, free);
-          batch->push_back(ptr);
-        }
-        batch->is_new = true;
-      }
-    } else {
-      void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
-      batch = new Batch(bitmap, *count, bitmap, 0, nullptr);
-    }
-    res->push_back(i, batch);
-  }
-*/
 
 }  //  namespace kwdbts

@@ -23,14 +23,14 @@ TsBlockSegmentBlockFile::~TsBlockSegmentBlockFile() {}
 
 KStatus TsBlockSegmentBlockFile::Open() {
   TSSlice result;
-  TsStatus s = file_->Read(0, sizeof(TsBlockFileHeader), &result, reinterpret_cast<char *>(&header_));
+  KStatus s = file_->Read(0, sizeof(TsBlockFileHeader), &result, reinterpret_cast<char *>(&header_));
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
     header_.status = TsFileStatus::READY;
     header_.magic = TS_BLOCK_SEGMENT_BLOCK_FILE_MAGIC;
     s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsBlockFileHeader)});
   }
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  return s == KStatus::SUCCESS ? KStatus::SUCCESS : KStatus::FAIL;
 }
 
 KStatus TsBlockSegmentBlockFile::AppendBlock(const TSSlice& block, uint64_t* offset) {

@@ -5,7 +5,7 @@
 [submodule "kwbase/c-deps"]
 	path = kwbase/c-deps
 	url = git@gitee.com:kwdb/kw-cdeps.git
-	branch = 3.0-master
+	branch = 2.0-master
 [submodule "kwdbts2/third_party"]
 	path = kwdbts2/third_party
 	url = https://gitee.com/kwdb/kw-third_party.git

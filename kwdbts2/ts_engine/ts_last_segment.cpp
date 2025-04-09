@@ -26,8 +26,6 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/types.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
 #include "ts_compressor.h"
@@ -35,15 +33,13 @@
 #include "ts_io.h"
 #include "ts_last_segment_manager.h"
 #include "ts_payload.h"
-#include "ts_slice.h"
-#include "ts_status.h"
 #include "ts_table_schema_manager.h"
 #include "utils/big_table_utils.h"
 namespace kwdbts {
 
-TsStatus TsLastSegment::Append(const TSSlice& data) { return file_->Append(data); }
+KStatus TsLastSegment::Append(const TSSlice& data) { return file_->Append(data); }
 
-TsStatus TsLastSegment::Flush() { return file_->Flush(); }
+KStatus TsLastSegment::Flush() { return file_->Flush(); }
 
 size_t TsLastSegment::GetFileSize() const { return file_->GetFileSize(); }
 
@@ -269,26 +265,26 @@ KStatus TsLastSegmentBuilder::WriteMetricBlock(MetricBlockBuilder* builder) {
   size_t len = 0;
   for (int i = 0; i < builder->GetNColumns(); ++i) {
     auto bitmap = builder->GetColumnBitmap(i);
-    TsStatus s = last_segment_->Append(bitmap);
+    KStatus s = last_segment_->Append(bitmap);
     len += bitmap.len;
-    if (!s.ok()) {
-      LOG_ERROR("IO Fail: %s", s.ToString().c_str());
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ast_segment Append failed.");
       return FAIL;
     }
 
     auto data = builder->GetColumnData(i);
     s = last_segment_->Append(data);
     len += data.len;
-    if (!s.ok()) {
-      LOG_ERROR("IO Fail: %s", s.ToString().c_str());
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ast_segment Append failed.");
       return FAIL;
     }
   }
   auto var_offset = len;
   TSSlice varchar_buf = builder->GetVarcharBuffer();
   auto s = last_segment_->Append(varchar_buf);
-  if (!s.ok()) {
-    LOG_ERROR("IO Fail: %s", s.ToString().c_str());
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ast_segment Append failed.");
     return FAIL;
   }
   len += varchar_buf.len;
@@ -330,8 +326,8 @@ KStatus TsLastSegmentBuilder::Finalize() {
   footer.file_version = 1;
   auto ss =
       last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
-  if (!ss.ok()) {
-    LOG_ERROR("IO error when write lastsegment %s", ss.ToString().c_str());
+  if (ss != KStatus::SUCCESS) {
+    LOG_ERROR("IO error when write lastsegment.");
     return FAIL;
   }
   return SUCCESS;
@@ -539,7 +535,7 @@ KStatus TsLastSegmentBuilder::InfoHandle::WriteInfo(TsFile* file) {
   }
   assert(buf.size() == length_);
   auto s = file->Append(buf);
-  return s.ok() ? SUCCESS : FAIL;
+  return s;
 }
 
 void TsLastSegmentBuilder::IndexHandle::RecordBlockInfo(size_t info_length, const BlockInfo& info) {
@@ -571,7 +567,7 @@ KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsFile* file) {
     PutFixed64(&buf, idx.max_entity_id);
   }
   auto s = file->Append(buf);
-  return s.ok() ? SUCCESS : FAIL;
+  return s;
 }
 
 KStatus TsLastSegmentManager::NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment) {

@@ -25,8 +25,6 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/types.h"
 #include "ts_bitmap.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_env.h"
@@ -34,6 +32,13 @@
 #include "ts_payload.h"
 #include "ts_table_schema_manager.h"
 #include "utils/big_table_utils.h"
+
+namespace rocksdb {
+
+typedef uint64_t SequenceNumber;
+
+};
+
 
 namespace kwdbts {
 
@@ -230,9 +235,9 @@ class TsLastSegment {
 
   ~TsLastSegment() = default;
 
-  TsStatus Append(const TSSlice& data);
+  KStatus Append(const TSSlice& data);
 
-  TsStatus Flush();
+  KStatus Flush();
 
   size_t GetFileSize() const;
 
@@ -293,7 +298,7 @@ class TsLastSegmentBuilder {
 
   int Flush() {
     auto s = last_segment_->Flush();
-    return s.ok() ? 0 : 1;
+    return s;
   }
 
   KStatus Finalize();

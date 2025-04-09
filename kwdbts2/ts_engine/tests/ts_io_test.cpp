@@ -12,10 +12,9 @@
 #include "ts_io.h"
 
 #include <gtest/gtest.h>
-
 #include <filesystem>
 
-#include "ts_slice.h"
+
 using namespace kwdbts;  // NOLINT
 TEST(MMAP, ReadWrite) {
   TsMMapFile* f = new TsMMapFile("test", false);
