@@ -79,7 +79,6 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
 }
 
 KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {
-  
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   std::vector<AttributeInfo> schema;
@@ -213,7 +212,8 @@ bool TsMemSegment::GetEntityRows(const TsBlockITemFilterParams& filter, std::lis
   rows->clear();
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
-  TSMemSegRowData* begin = new(key +TSMemSegRowData::GetKeyLen()) TSMemSegRowData(filter.db_id, filter.table_id, 0, filter.entity_id);
+  TSMemSegRowData* begin = new(key +TSMemSegRowData::GetKeyLen()) TSMemSegRowData
+                            (filter.db_id, filter.table_id, 0, filter.entity_id);
   begin->SetData(0, 0, {nullptr, 0});
   begin->GenKey(key);
   iter.Seek(reinterpret_cast<char*>(&key));

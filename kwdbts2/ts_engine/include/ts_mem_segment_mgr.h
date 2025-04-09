@@ -74,7 +74,7 @@ struct TSMemSegRowData {
     uint64_t cts = ts - INT64_MIN;
     HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
     HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
-    HTOBEFUNC(buf, htobe64(*(uint64_t*)&row_data.data), sizeof(uint64_t));
+    HTOBEFUNC(buf, htobe64(*reinterpret_cast<uint64_t*>(&row_data.data)), sizeof(uint64_t));
   }
 
   bool SameEntityAndTableVersion(TSMemSegRowData* b) {
@@ -120,7 +120,7 @@ struct TSMemSegRowData {
     return ret;
   }
 };
-#pragma pack() 
+#pragma pack()
 
 enum TsMemSegmentStatus : uint8_t {
   MEM_SEGMENT_INITED = 1,
@@ -158,10 +158,10 @@ class TsMemSegment {
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
   ConcurrentArena arena_;
   TSRowDataComparator comp_;
-  InlineSkipList<TSRowDataComparator> skiplist_; 
+  InlineSkipList<TSRowDataComparator> skiplist_;
 
  public:
-  TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
+  explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
   ~TsMemSegment() {
   }
 
@@ -214,10 +214,10 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   std::list<char*> col_based_mems_;
 
  public:
-  explicit TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg){}
+  explicit TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}
 
   ~TsMemSegBlockItemInfo() {
-    for(auto& mem : col_based_mems_) {
+    for (auto& mem : col_based_mems_) {
       free(mem);
     }
     col_based_mems_.clear();
@@ -252,7 +252,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   }
 
   char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
- 
+
   bool InsertRow(TSMemSegRowData* row) {
     bool can_insert = true;
     if (row_data_.size() != 0) {
@@ -298,9 +298,7 @@ class TsMemSegmentManager {
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
   KStatus GetBlockItems(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
-
 };
-
 
 }  // namespace kwdbts
 
