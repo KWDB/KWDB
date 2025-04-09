@@ -91,6 +91,19 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
     *is_finished = true;
     return KStatus::SUCCESS;
   }
+  TSTableID table_id = table_schema_mgr_->GetTableId();
+  auto schema_mgr = vgroup_->GetEngineSchemaMgr();
+  uint32_t database_id = schema_mgr->GetDBIDByTableID(table_id);
+  TsVGroupPartition* partition = vgroup_->GetPartition(database_id, ts, ts_col_type_);
+  size_t partition_index;
+  auto it = partition_index_map_.find(partition);
+  if (it != partition_index_map_.end()) {
+      partition_index = it->second;
+  } else {
+      partition_index = ts_partitions_.size();
+      ts_partitions_.emplace_back(std::shared_ptr<TsVGroupPartition>(partition, [](TsVGroupPartition*) {}));
+      partition_index_map_[partition] = partition_index;
+  }
 
   *count = 0;
   KStatus ret;

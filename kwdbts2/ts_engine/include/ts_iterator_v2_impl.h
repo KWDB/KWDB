@@ -46,6 +46,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
+  std::unordered_map<TsVGroupPartition*, size_t> partition_index_map_;
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
