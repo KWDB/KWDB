@@ -53,7 +53,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   }
 
   config_file_ = new MMapFile();
-  string cf_file_path = path_.string() + "/vgroup_config";
+  string cf_file_path = path_.string() + "/vg_config";
   int flag = MMAP_CREAT_EXCL;
   bool exist = false;
   if (IsExists(cf_file_path)) {
@@ -90,7 +90,7 @@ std::filesystem::path TsVGroup::GetPath() const {
 
 std::string TsVGroup::GetFileName() const {
   char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "group_%02u", vgroup_id_);
+  std::snprintf(buffer, sizeof(buffer), "vg_%03u", vgroup_id_);
   return buffer;
 }
 
