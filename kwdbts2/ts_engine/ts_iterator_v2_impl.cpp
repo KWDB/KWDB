@@ -82,6 +82,22 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
     return KStatus::FAIL;
   }
 
+  std::vector<TsVGroupPartition*> result;
+  TSTableID table_id = table_schema_mgr_->GetTableId();
+  auto schema_mgr = vgroup_->GetEngineSchemaMgr();
+  uint32_t database_id = schema_mgr->GetDBIDByTableID(table_id);
+  auto& partition_managers = vgroup_->GetPartitionManagers();
+  auto it = partition_managers.find(database_id);
+
+  if (it != partition_managers.end() && it->second) {
+    auto* partition_manager = it->second.get();
+    const auto& partitions = partition_manager->GetPartitions();
+
+    if (!partitions.empty()) {
+      CollectIntersectingPartitions(partitions, ts_spans_);
+    }
+  }
+
   return KStatus::SUCCESS;
 }
 
@@ -90,19 +106,6 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
     *count = 0;
     *is_finished = true;
     return KStatus::SUCCESS;
-  }
-  TSTableID table_id = table_schema_mgr_->GetTableId();
-  auto schema_mgr = vgroup_->GetEngineSchemaMgr();
-  uint32_t database_id = schema_mgr->GetDBIDByTableID(table_id);
-  TsVGroupPartition* partition = vgroup_->GetPartition(database_id, ts, ts_col_type_);
-  size_t partition_index;
-  auto it = partition_index_map_.find(partition);
-  if (it != partition_index_map_.end()) {
-      partition_index = it->second;
-  } else {
-      partition_index = ts_partitions_.size();
-      ts_partitions_.emplace_back(std::shared_ptr<TsVGroupPartition>(partition, [](TsVGroupPartition*) {}));
-      partition_index_map_[partition] = partition_index;
   }
 
   *count = 0;
