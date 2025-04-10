@@ -84,10 +84,6 @@ struct TSMemSegRowData {
     return this->table_id == b->table_id;
   }
 
-  bool InTsSpan(timestamp64 begin, timestamp64 end) {
-    return begin <= ts && ts <= end;
-  }
-
   int Compare(TSMemSegRowData* b) {
     auto ret = memcmp(skip_list_key_, b->skip_list_key_, GetKeyLen());
     // auto ret_1 = 0;
