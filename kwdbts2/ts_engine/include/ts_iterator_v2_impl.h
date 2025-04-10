@@ -29,7 +29,7 @@ typedef enum {
 } STORAGE_SCAN_STATUS;
 
 class TsVGroup;
-class TsMemTableScanner;
+class TsMemSegmentScanner;
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -62,7 +62,7 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
  protected:
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;
-  std::unique_ptr<TsMemTableScanner> mem_table_scanner_ = nullptr;
+  std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_ = nullptr;
 };
 
 class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -91,13 +91,13 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 };
 
-class TsMemTableScanner : public TsStorageIteratorV2Impl {
+class TsMemSegmentScanner : public TsStorageIteratorV2Impl {
  public:
-  TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsMemSegmentScanner(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsMemTableScanner();
+  ~TsMemSegmentScanner();
 
   KStatus Init(bool is_reversed) override;
   KStatus Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS);

@@ -71,14 +71,14 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
   cur_entity_index_ = 0;
   status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
 
-  mem_table_scanner_ = std::make_unique<TsMemTableScanner>(vgroup_, entity_ids_, ts_spans_, ts_col_type_,
+  mem_segment_scanner_ = std::make_unique<TsMemSegmentScanner>(vgroup_, entity_ids_, ts_spans_, ts_col_type_,
                                                                     kw_scan_cols_, ts_scan_cols_, table_schema_mgr_,
                                                                     table_version_);
-  if (mem_table_scanner_ == nullptr) {
+  if (mem_segment_scanner_ == nullptr) {
     return KStatus::FAIL;
   }
-  if (mem_table_scanner_->Init(is_reversed) != KStatus::SUCCESS) {
-    mem_table_scanner_ = nullptr;
+  if (mem_segment_scanner_->Init(is_reversed) != KStatus::SUCCESS) {
+    mem_segment_scanner_ = nullptr;
     return KStatus::FAIL;
   }
 
@@ -112,7 +112,7 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
       case STORAGE_SCAN_STATUS::SCAN_MEM_TABLE: {
           // Scan mem tables
           bool is_done = false;
-          ret = mem_table_scanner_->Scan(entity_ids_[cur_entity_index_], res, count, ts);
+          ret = mem_segment_scanner_->Scan(entity_ids_[cur_entity_index_], res, count, ts);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("Failed to scan mem table for entity(%d).", entity_ids_[cur_entity_index_]);
             return KStatus::FAIL;
@@ -208,7 +208,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   return KStatus::FAIL;
 }
 
-TsMemTableScanner::TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup,
+TsMemSegmentScanner::TsMemSegmentScanner(std::shared_ptr<TsVGroup>& vgroup,
                                       vector<uint32_t>& entity_ids,
                                       std::vector<KwTsSpan>& ts_spans,
                                       DATATYPE ts_col_type,
@@ -221,10 +221,10 @@ TsMemTableScanner::TsMemTableScanner(std::shared_ptr<TsVGroup>& vgroup,
                                                                     table_version) {
 }
 
-TsMemTableScanner::~TsMemTableScanner() {
+TsMemSegmentScanner::~TsMemSegmentScanner() {
 }
 
-KStatus TsMemTableScanner::Init(bool is_reversed) {
+KStatus TsMemSegmentScanner::Init(bool is_reversed) {
   KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
   if (ret != KStatus::SUCCESS) {
     return ret;
@@ -232,7 +232,7 @@ KStatus TsMemTableScanner::Init(bool is_reversed) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemTableScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
+KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
   TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, INT64_MIN, INT64_MAX};

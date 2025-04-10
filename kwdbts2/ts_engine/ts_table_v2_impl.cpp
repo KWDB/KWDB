@@ -22,7 +22,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSli
                           uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
                           DedupResult* dedup_result, const DedupRule& dedup_rule) {
   uint32_t entity_id = 0;
-  uint32_t tbl_grp_id = 0;
+  uint32_t vgroup_id = 0;
   std::shared_ptr<TagTable> tag_schema;
   table_schema_mgr_->GetTagSchema(ctx, &tag_schema);
   for (size_t i = 0; i < payload_num; i++) {
@@ -32,16 +32,16 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSli
       continue;
     }
     TSSlice primary_key = p.GetPrimaryTag();
-    if (!tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, tbl_grp_id)) {
+    if (!tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, vgroup_id)) {
       LOG_ERROR("cannot found vgroup for this entity.");
       return KStatus::FAIL;
     }
-    auto tbl_grp = table_grps_[tbl_grp_id - 1].get();
-    assert(tbl_grp != nullptr);
-    auto s = tbl_grp->PutData(ctx, GetTableId(), entity_id, &payload[i]);
+    auto vgroup = vgroups_[vgroup_id - 1].get();
+    assert(vgroup != nullptr);
+    auto s = vgroup->PutData(ctx, GetTableId(), entity_id, &payload[i]);
     if (s != KStatus::SUCCESS) {
       // todo(liangbo01) if failed. should we need rollback all inserted data?
-      LOG_ERROR("putdata failed. table id[%lu], group id[%u]", GetTableId(), tbl_grp_id);
+      LOG_ERROR("putdata failed. table id[%lu], group id[%u]", GetTableId(), vgroup_id);
       return s;
     }
   }

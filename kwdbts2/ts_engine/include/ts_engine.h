@@ -39,8 +39,8 @@ namespace kwdbts {
 class TSEngineV2Impl : public TSEngine {
  private:
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
-  std::vector<std::shared_ptr<TsVGroup>> table_grps_;
-  int table_grp_max_num_{0};
+  std::vector<std::shared_ptr<TsVGroup>> vgroups_;
+  int vgroup_max_num_{0};
   EngineOptions options_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
   std::mutex table_mutex_;
@@ -71,7 +71,7 @@ class TSEngineV2Impl : public TSEngine {
       std::shared_ptr<TsTableSchemaManager> schema;
       auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
       if (s == KStatus::SUCCESS) {
-        auto table = std::make_shared<TsTableV2Impl>(schema, table_grps_);
+        auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
         if (table.get() != nullptr) {
           tables_[table_id] = table;
           ts_table = table;
@@ -261,7 +261,7 @@ class TSEngineV2Impl : public TSEngine {
   }
 
  private:
-  TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id);
+  TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
   KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
 };

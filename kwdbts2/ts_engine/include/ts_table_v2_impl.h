@@ -22,12 +22,12 @@ namespace kwdbts {
 class TsTableV2Impl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  const std::vector<std::shared_ptr<TsVGroup>>& table_grps_;
+  const std::vector<std::shared_ptr<TsVGroup>>& vgroups_;
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
-                const std::vector<std::shared_ptr<TsVGroup>>& table_grps) :
-            TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), table_grps_(table_grps) {}
+                const std::vector<std::shared_ptr<TsVGroup>>& vgroups) :
+            TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), vgroups_(vgroups) {}
 
   ~TsTableV2Impl();
 

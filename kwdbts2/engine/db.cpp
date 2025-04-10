@@ -1017,9 +1017,9 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetTsTable Error!");
   }
-  for (size_t i = 0; i < payload_num; i++) {
-    TSSlice payload;
-    if (g_engine_version == 1) {
+  if (g_engine_version == 1) {
+    for (size_t i = 0; i < payload_num; i++) {
+      TSSlice payload;
       s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
       if (s != KStatus::SUCCESS) {
         uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
@@ -1032,16 +1032,19 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
           return ToTsStatus("ConvertRowTypePayload Error!");
         }
       }
-    }
-    Defer defer([&](){ if (g_engine_version == 1) { free(payload.data); }});
-    if (g_engine_version == 1) {
+      Defer defer([&](){ free(payload.data); });
       s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
-                         inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
-    } else {
-      // todo(liangbo01) current interface dedup result no support multi-payload insert.
-      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
-                          inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+                           inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+      if (s != KStatus::SUCCESS) {
+        std::ostringstream ss;
+        ss << tmp_range_group_id;
+        return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
+      }
     }
+  } else {
+    // todo(liangbo01) current interface dedup result no support multi-payload insert.
+    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
+                        inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
     if (s != KStatus::SUCCESS) {
       std::ostringstream ss;
       ss << tmp_range_group_id;
