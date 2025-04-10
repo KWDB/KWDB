@@ -24,7 +24,7 @@
 
 namespace kwdbts {
 
-const uint32_t MAX_COMPACT_NUM = 4;
+const uint32_t MAX_LAST_SEGMENT_NUM = 3;
 
 class TsLastSegmentManager {
  private:
@@ -34,7 +34,6 @@ class TsLastSegmentManager {
 
   std::atomic<uint32_t> ver_ = 0;
   std::atomic<uint32_t> n_lastsegment_ = 0;
-  uint32_t compacted_ver_ = 0;
 
   int rdLock() { return RW_LATCH_S_LOCK(&rw_latch_); }
   int wrLock() { return RW_LATCH_X_LOCK(&rw_latch_); }
@@ -49,7 +48,7 @@ class TsLastSegmentManager {
   KStatus NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment);
   void TakeLastSegmentOwnership(std::unique_ptr<TsLastSegment>&& last_segment);
 
-  std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments();
+  void GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);
 
   bool NeedCompact();
 

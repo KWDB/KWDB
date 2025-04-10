@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_block_segment.h"
+#include "ts_lastsegment_builder.h"
 #include "ts_timsort.h"
 #include "ts_vgroup_partition.h"
 #include "ts_compressor.h"
@@ -58,13 +59,13 @@ KStatus TsBlockSegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
     entity_item.entity_id = entity_id;
   }
   entity_item.cur_block_id = block_item_info.block_id;
-  if (entity_item.max_ts < block_item_info.max_ts_in_block) {
-    entity_item.max_ts = block_item_info.max_ts_in_block;
+  if (entity_item.max_ts < block_item_info.max_ts) {
+    entity_item.max_ts = block_item_info.max_ts;
   }
-  if (entity_item.min_ts > block_item_info.min_ts_in_block) {
-    entity_item.min_ts = block_item_info.min_ts_in_block;
+  if (entity_item.min_ts > block_item_info.min_ts) {
+    entity_item.min_ts = block_item_info.min_ts;
   }
-  entity_item.row_written += block_item_info.row_count;
+  entity_item.row_written += block_item_info.rows;
   s = file_->Write(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem),
                    TSSlice{reinterpret_cast<char *>(&entity_item), sizeof(entity_item)});
   if (lock) {
@@ -246,255 +247,264 @@ KStatus TsBlockSegment::GetBlockData(TsBlockSegmentBlockItem* blk_item, char* bu
   return block_file_.ReadBlock(blk_item->Info().block_offset, buff, blk_item->Info().block_len);
 }
 
-KStatus TsBlockSegmentBuilder::buildColData(std::vector<TsLastSegmentBlockRowInfo>& row_values,
-                                            int col_idx, size_t row_offset, size_t row_count,
-                                            bool has_bitmap, DATATYPE d_type, size_t d_size,
-                                            string& col_data, TsBitmap& bitmap) {
-  bitmap.Reset(row_count);
-  uint32_t var_offset = 0;
-  bool is_var_col = isVarLenType(d_type);
-  if (is_var_col) {
-    col_data.resize((row_count + 1) * sizeof(uint32_t));
-  }
-  for (size_t row_idx = row_offset; row_idx < row_offset + row_count; ++row_idx) {
-    uint32_t last_segment_idx = row_values[row_idx].last_segment_idx;
-    uint32_t block_idx = row_values[row_idx].block_idx;
-    std::shared_ptr<TsLastSegmentBlock> &metric_block = blocks_[last_segment_idx][block_idx];
-    if (has_bitmap) {
-      bitmap[row_idx - row_offset] = metric_block->GetBitmap(col_idx + 1, row_values[row_idx].row_idx);
+TsBlockSegmentBlock::TsBlockSegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
+                                    std::vector<AttributeInfo>& metric_schema) :
+                                    table_id_(table_id), table_version_(table_version),
+                                    entity_id_(entity_id), metric_schema_(metric_schema) {
+  n_cols_ = metric_schema.size() + 1;
+  column_blocks.resize(n_cols_);
+  for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
+    TsBlockSegmentColumnBlock& column_block = column_blocks[col_idx];
+    column_block.bitmap.Reset(MAX_ROWS_PER_BLOCK);
+    DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
+    if (isVarLenType(d_type)) {
+      column_block.buffer.resize((MAX_ROWS_PER_BLOCK + 1) * sizeof(uint32_t));
     }
-    TSSlice value = metric_block->GetData(col_idx + 1, row_values[row_idx].row_idx, d_type, d_size);
+  }
+  block_info.col_block_offset.resize(n_cols_ + 1);
+}
+TsBlockSegmentBlock::TsBlockSegmentBlock(const TsBlockSegmentBlock& other) {
+  table_id_ = other.table_id_;
+  table_version_ = other.table_version_;
+  entity_id_ = other.entity_id_;
+  metric_schema_ = other.metric_schema_;
+  block_info = other.block_info;
+  column_blocks = other.column_blocks;
+  n_rows_ = other.n_rows_;
+  n_cols_ = other.n_cols_;
+}
+
+uint64_t TsBlockSegmentBlock::GetSeqNo(uint32_t row_idx) {
+  return *(uint64_t*)(column_blocks[0].buffer.data() + row_idx * sizeof(uint64_t));
+}
+
+timestamp64 TsBlockSegmentBlock::GetTimestamp(uint32_t row_idx) {
+  return *(uint64_t*)(column_blocks[1].buffer.data() + row_idx * sizeof(uint64_t));
+}
+
+KStatus TsBlockSegmentBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value) {
+  for (int col_idx = 1; col_idx < n_cols_; ++col_idx) {
+    if (isVarLenType(metric_schema_[col_idx - 1].type)) {
+      uint32_t start_offset = *(uint32_t*)(column_blocks[col_idx].buffer.data() + row_idx * sizeof(uint32_t));
+      uint32_t end_offset = *(uint32_t*)(column_blocks[col_idx].buffer.data() + (row_idx + 1) * sizeof(uint32_t));
+      value.push_back({column_blocks[col_idx].buffer.data() + start_offset, end_offset - start_offset});
+    } else {
+      size_t d_size = col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
+      value.push_back({column_blocks[col_idx].buffer.data() + row_idx * d_size, d_size});
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSegmentBlock::Append(TsLastSegmentBlockSpan& span, bool& is_full) {
+  size_t end_row = span.end_row - span.start_row + n_rows_ > MAX_ROWS_PER_BLOCK ?
+                   span.start_row + MAX_ROWS_PER_BLOCK - n_rows_ : span.end_row;
+  for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
+    DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
+                      static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
+    size_t d_size = col_idx == 0 ? 8 : col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
+    bool has_bitmap = col_idx != 0;
+
+    bool is_var_col = isVarLenType(d_type);
+    TsBlockSegmentColumnBlock& block = column_blocks[col_idx];
+    size_t row_idx_in_block = n_rows_;
+    for (size_t span_row_idx = span.start_row; span_row_idx < end_row; ++span_row_idx) {
+      if (has_bitmap) {
+        block.bitmap[row_idx_in_block] = span.block->GetBitmap(col_idx + 1, span_row_idx);
+      }
+      TSSlice value;
+      if (is_var_col) {
+        value = span.block->GetData(col_idx + 1, span_row_idx, d_type, d_size);
+        uint32_t var_offset = block.buffer.size();
+        memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
+        block.buffer.append(value.data, value.len);
+      }
+      row_idx_in_block++;
+    }
     if (is_var_col) {
-      memcpy(col_data.data() + (row_idx - row_offset) * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
-      var_offset += value.len;
+      uint32_t var_offset = block.buffer.size();
+      memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
+    } else {
+      TSSlice value = span.block->GetNotVarBatchData(col_idx + 1, span.start_row, end_row - span.start_row, d_size);
+      block.buffer.append(value.data, value.len);
     }
-    col_data.append(value.data, value.len);
   }
-  if (is_var_col) {
-    memcpy(col_data.data() + row_count * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
-  }
+  n_rows_ += end_row - span.start_row;
+  span.start_row = end_row;
+  is_full = n_rows_ == MAX_ROWS_PER_BLOCK;
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentBuilder::compress(const std::string& col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count,
-                                        std::string& buffer) {
-  // write bitmap to buffer
-  bool has_bitmap = bitmap != nullptr;
-  if (has_bitmap) {
-    TSSlice bitmap_data = bitmap->GetData();
-    // TODO(limeng04): compress bitmap
-    char bitmap_compress_type = 0;
-    buffer.append(&bitmap_compress_type);
-    buffer.append(bitmap_data.data, bitmap_data.len);
-  }
-
-  // compress col data & write to buffer
+KStatus TsBlockSegmentBlock::Flush(TsVGroupPartition* partition) {
+  // compressor manager
   const auto& mgr = CompressorManager::GetInstance();
-  auto compressor = mgr.GetDefaultCompressor(d_type);
-  TSSlice plain{const_cast<char *>(col_data.data()), col_data.size()};
-  std::string compressed;
-  bool ok = compressor.Compress(plain, bitmap, row_count, &compressed);
-  std::string tmp;
-  if (ok) {
-    auto [first, second] = compressor.GetAlgorithms();
-    buffer.push_back(static_cast<char>(first));
-    buffer.push_back(static_cast<char>(second));
-    buffer.append(compressed);
-  } else {
-    buffer.push_back(static_cast<char>(TsCompAlg::kPlain));
-    buffer.push_back(static_cast<char>(GenCompAlg::kPlain));
-    buffer.append(col_data);
+  // init col offsets to buffer
+  string buffer;
+  buffer.resize((n_cols_ + 1) * sizeof(uint32_t));
+  // write column block data to buffer
+  for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
+    DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
+                      static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
+    size_t d_size = col_idx == 0 ? 8 : col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
+    bool has_bitmap = col_idx != 0;
+    bool is_var_col = isVarLenType(d_type);
+
+    // record col offset
+    block_info.col_block_offset.push_back(buffer.size());
+
+    TsBlockSegmentColumnBlock& block = column_blocks[col_idx];
+    // compress
+    // compress bitmap
+    if (has_bitmap) {
+      TSSlice bitmap_data = block.bitmap.GetData();
+      // TODO(limeng04): compress bitmap
+      char bitmap_compress_type = 0;
+      buffer.append(&bitmap_compress_type);
+      buffer.append(bitmap_data.data, bitmap_data.len);
+    }
+    // compress col data & write to buffer
+    std::string compressed;
+    auto compressor = mgr.GetDefaultCompressor(d_type);
+    TSSlice plain{const_cast<char *>(block.buffer.data()), block.buffer.size()};
+    TsBitmap* b = has_bitmap ? &block.bitmap : nullptr;
+    bool ok = compressor.Compress(plain, b, n_rows_, &compressed);
+    if (ok) {
+      auto [first, second] = compressor.GetAlgorithms();
+      buffer.push_back(static_cast<char>(first));
+      buffer.push_back(static_cast<char>(second));
+      buffer.append(compressed);
+    } else {
+      buffer.push_back(static_cast<char>(TsCompAlg::kPlain));
+      buffer.push_back(static_cast<char>(GenCompAlg::kPlain));
+      buffer.append(block.buffer);
+    }
+  }
+
+  // record col offset
+  block_info.col_block_offset.push_back(buffer.size());
+  // write last col data end offset
+  memcpy(buffer.data(), &(block_info.col_block_offset), (n_cols_ + 1) * sizeof(uint32_t));
+
+  // flush
+  timestamp64 min_ts = GetTimestamp(0);
+  timestamp64 max_ts = GetTimestamp(n_rows_ - 1);
+  KStatus s = partition->AppendToBlockSegment(table_id_, entity_id_, table_version_, max_ts, min_ts,
+                                              {buffer.data(), buffer.size()}, {}, n_rows_);
+  if (s != KStatus::SUCCESS) {
+    return s;
   }
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentBuilder::BuildAndFlush(uint32_t thread_num) {
-  blocks_.resize(last_segments_.size());
-  std::vector<std::thread> workers;
-  KStatus global_status = KStatus::SUCCESS;
-#ifdef K_DEBUG
-  std::atomic<size_t> read_row_num;
-  std::atomic<size_t> write_row_num;
-#endif
-  // Parallel reading of last segments
-  {
-    std::mutex entity_values_mutex;
-
-    auto read_last_segment = [&](std::shared_ptr<TsLastSegment>& last_segment, uint32_t last_segment_idx) {
-      // get block indexes
-      std::vector<TsLastSegmentBlockIndex> block_indexes;
-      KStatus s = last_segment->GetAllBlockIndex(&block_indexes);
-      if (s != KStatus::SUCCESS || global_status != KStatus::SUCCESS) {
-        return s;
-      }
-
-      // read entity row values
-      std::map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>> local_entity_row_values;
-      for (TsLastSegmentBlockIndex& block_index : block_indexes) {
-        TsLastSegmentBlockInfo block_info;
-        s = last_segment->GetBlockInfo(block_index, &block_info);
-        if (s != KStatus::SUCCESS || global_status != KStatus::SUCCESS) {
-          return s;
-        }
-
-#ifdef K_DEBUG
-        read_row_num.fetch_add(block_info.nrow);
-#endif
-        auto block = std::make_shared<TsLastSegmentBlock>();
-        s = last_segment->GetBlock(block_info, block.get());
-        if (s != KStatus::SUCCESS || global_status != KStatus::SUCCESS) {
-          return s;
-        }
-
-        for (uint32_t row_idx = 0; row_idx < block_info.nrow; row_idx++) {
-          TsEntityKey entity{block->GetEntityId(row_idx), block_index.table_id, block_index.table_version};
-          TsLastSegmentBlockRowInfo row_info{block->GetTimestamp(row_idx), block->GetSeqNo(row_idx), last_segment_idx,
-                                             static_cast<uint32_t>(blocks_[last_segment_idx].size()), row_idx};
-          local_entity_row_values[entity].push_back(row_info);
-        }
-
-        blocks_[last_segment_idx].push_back(block);
-      }
-
-      // Merge local results into global structures
-      {
-        std::lock_guard<std::mutex> lock_entity(entity_values_mutex);
-        entity_row_values_.merge(local_entity_row_values);
-      }
-
-      return KStatus::SUCCESS;
-    };
-
-    // Distribute segments across threads
-    uint32_t compact_num_per_thread = (last_segments_.size() + thread_num - 1) / thread_num;
-    for (uint32_t thread_idx = 0; thread_idx < thread_num; ++thread_idx) {
-      workers.emplace_back([&, thread_idx]() {
-        uint32_t end_idx = (thread_idx + 1) * compact_num_per_thread;
-        for (size_t idx = thread_idx * compact_num_per_thread; idx < end_idx && idx < last_segments_.size(); ++idx) {
-          KStatus s = read_last_segment(last_segments_[idx], idx);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("read last segment[%u] failed, thread idx: %u", last_segments_[idx]->GetVersion(), thread_idx);
-            global_status = s;
-            return;
-          }
-        }
-      });
-    }
-
-    for (auto& worker : workers) {
-      worker.join();
-    }
-
-    if (global_status != KStatus::SUCCESS) {
-      return global_status;
-    }
+void TsBlockSegmentBlock::Clear() {
+  n_rows_ = 0;
+  for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
+    TsBlockSegmentColumnBlock& column_block = column_blocks[col_idx];
+    column_block.bitmap.Reset(MAX_ROWS_PER_BLOCK);
+    column_block.buffer.clear();
   }
+  block_info.col_block_offset.clear();
+  block_info.col_block_offset.resize(n_cols_ + 1);
+}
 
-  // Parallel processing of entity row values
-  {
-    TsEngineSchemaManager* schema_mgr = partition_->GetSchemaMgr();
-
-    workers.clear();
-    global_status = KStatus::SUCCESS;
-
-    // Convert entity_row_values_ to vector for parallel processing
-    std::vector<std::pair<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>>> entities_vec(
-      entity_row_values_.begin(), entity_row_values_.end());
-
-    auto write_block_segment = [&](TsEntityKey& entity_key, std::vector<TsLastSegmentBlockRowInfo>& row_values) {
+KStatus TsBlockSegmentBuilder::BuildAndFlush() {
+  KStatus s;
+  // 1. The iterator will be used to read MAX_COMPACT_NUM last segment data
+  TsLastSegmentBlockSpan block_span;
+  bool is_finished = false;
+  TsEngineSchemaManager* schema_mgr = partition_->GetSchemaMgr();
+  // 2. Traverse the last segment data and write the data to the block segment
+  size_t write_cnt = (last_segments_.size() + MAX_COMPACT_NUM - 1) / MAX_COMPACT_NUM;
+  for (size_t cnt = 0; cnt < write_cnt; ++cnt) {
+    std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+    size_t start = cnt * MAX_COMPACT_NUM;
+    size_t end = std::min(last_segments_.size(), (cnt + 1) * MAX_COMPACT_NUM);
+    last_segments.assign(last_segments_.begin() + start, last_segments_.begin() + end);
+    TsLastSegmentIterator iter(last_segments);
+    iter.Init();
+    while (true) {
+      if (block_span.end_row - block_span.start_row <= 0) {
+        s = iter.Next(&block_span, is_finished);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, iterate last segments failed.")
+          return s;
+        }
+        if (is_finished) {
+          break;
+        }
+      }
+      // Get the metric schema
       std::shared_ptr<MMapMetricsTable> table_schema_;
-      KStatus s = schema_mgr->GetTableMetricSchema({}, entity_key.table_id, entity_key.table_version, &table_schema_);
+      s = schema_mgr->GetTableMetricSchema({}, block_span.table_id, block_span.table_version, &table_schema_);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("get table schema failed. table id: %lu, table version: %u.",
-                  entity_key.table_id, entity_key.table_version);
+        LOG_ERROR("get table schema failed. table id: %u, table version: %u.",
+                  block_span.table_id, block_span.table_version);
         return s;
       }
       std::vector<AttributeInfo> metric_schema = table_schema_->getSchemaInfoExcludeDropped();
-
-      timsort(row_values.begin(), row_values.end());
-
-      size_t row_offset = 0;
-      size_t row_count = row_values.size() > max_rows_per_block_ ? max_rows_per_block_ : row_values.size();
-      size_t col_count = metric_schema.size() + 1;
-
-      while (row_count != 0) {
-        std::string buffer;
-        buffer.resize((col_count + 1) * sizeof(uint32_t));
-
-        for (int col_idx = 0; col_idx < col_count; ++col_idx) {
-          DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
-            static_cast<DATATYPE>(metric_schema[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
-          size_t d_size = col_idx == 0 ? 8 : col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema[col_idx - 1].size);
-          bool has_bitmap = col_idx != 0;
-
-          // write col offset to buffer
-          uint32_t offset = buffer.size();
-          memcpy(buffer.data() + col_idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
-
-          // build column data
-          TsBitmap bitmap;
-          string col_data;
-          buildColData(row_values, col_idx, row_offset, row_count, has_bitmap, d_type, d_size, col_data, bitmap);
-
-#ifdef K_DEBUG
-          size_t offset_len = isVarLenType(d_type) ? (row_count + 1) * 4 : 0;
-          assert(col_data.size() == d_size * row_count + offset_len);
-#endif
-          // compress
-          if (has_bitmap) {
-            compress(col_data, &bitmap, d_type, row_count, buffer);
-          } else {
-            compress(col_data, nullptr, d_type, row_count, buffer);
-          }
-        }
-#ifdef K_DEBUG
-        write_row_num.fetch_add(row_count);
-#endif
-        // write last col data end offset
-        uint32_t offset = buffer.size();
-        memcpy(buffer.data() + col_count * sizeof(uint32_t), &offset, sizeof(uint32_t));
-
-        // flush
-        s = partition_->AppendToBlockSegment(entity_key.table_id, entity_key.entity_id, entity_key.table_version,
-                                             {buffer.data(), buffer.size()}, {}, row_count);
+      // init the block segment block
+      TsTableKey table_key = {block_span.table_id, block_span.table_version};
+      if (blocks_.find(table_key) == blocks_.end()) {
+        blocks_.insert({table_key, {}});
+      }
+      if (blocks_[table_key].find(block_span.entity_id) == blocks_[table_key].end()) {
+        blocks_[table_key].insert({block_span.entity_id, TsBlockSegmentBlock(block_span.table_id, block_span.table_version,
+                                                                             block_span.entity_id, metric_schema)});
+      }
+      // write data to block buffer
+      bool is_full = false;
+      TsBlockSegmentBlock &block = blocks_[table_key].at(block_span.entity_id);
+      s = block.Append(block_span, is_full);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, append block failed.")
+        return s;
+      }
+      // flush block if full
+      if (is_full) {
+        s = block.Flush(partition_);
         if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, flush block failed.")
           return s;
         }
-
-        row_offset += row_count;
-        row_count = row_values.size() - row_offset > max_rows_per_block_ ?
-                    max_rows_per_block_ : row_values.size() - row_offset;
+        block.Clear();
       }
-      return KStatus::SUCCESS;
-    };
-
-    for (uint32_t thread_idx = 0; thread_idx < thread_num; thread_idx++) {
-      workers.emplace_back([&, thread_idx]() {
-        for (size_t idx = thread_idx; idx < entities_vec.size(); idx += thread_num) {
-          KStatus s = write_block_segment(entities_vec[idx].first, entities_vec[idx].second);
+    }
+    // 3. Writes the incomplete data back to the last segment
+    std::unique_ptr<TsLastSegment> last_segment;
+    s = partition_->NewLastSegment(&last_segment);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, new last segment failed.")
+      return s;
+    }
+    TsLastSegmentBuilder builder(schema_mgr, last_segment);
+    for (auto &[table_key, blocks]: blocks_) {
+      for (auto &[entity_id, block]: blocks) {
+        if (!block.HasData()) {
+          continue;
+        }
+        for (uint32_t row_idx = 0; row_idx < block.GetNRows(); ++row_idx) {
+          uint64_t seq_no = block.GetSeqNo(row_idx);
+          std::vector<TSSlice> metric_value;
+          block.GetMetricValue(row_idx, metric_value);
+          s = builder.PutColData(table_key.table_id, table_key.table_version, entity_id, row_idx, metric_value);
           if (s != KStatus::SUCCESS) {
-            LOG_ERROR("write block segment failed, thread idx: %u", thread_idx);
-            global_status = s;
-            return;
-          }
-          if (global_status == KStatus::FAIL) {
-            return;
+            LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder put failed.")
+            return s;
           }
         }
-      });
+      }
     }
-
-    for (auto& worker : workers) {
-      worker.join();
+    s = builder.Finalize();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder finalize failed.")
+      return s;
     }
-
-    if (global_status != KStatus::SUCCESS) {
-      return global_status;
+    int ret = builder.Flush();
+    if (ret != 0) {
+      LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush failed.")
+      return KStatus::FAIL;
     }
   }
-#ifdef KDEBUG
-  assert(read_row_num.load() == write_row_num.load());
-#endif
   return KStatus::SUCCESS;
 }
 

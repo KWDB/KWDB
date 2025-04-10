@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include "ts_block_segment_data.h"
+#include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_lastsegment.h"
@@ -23,19 +24,23 @@
 
 namespace kwdbts {
 
+const size_t MAX_ROWS_PER_BLOCK = 1000;
+const size_t MAX_COMPACT_NUM = 6;
+
 struct TsBlockSegmentBlockItemInfo {
-  uint64_t block_id;          // block item id
-  uint64_t entity_id;
-  uint64_t prev_block_id;     // pre block item id
-  uint32_t table_version;
-  uint32_t row_count;
-  timestamp64 min_ts_in_block;
-  timestamp64 max_ts_in_block;
-  uint64_t block_offset;
-  uint64_t block_len;
-  char reserved[128];      // reserved for user-defined information.
+  uint64_t block_id = 0;          // block item id
+  uint64_t entity_id = 0;
+  uint64_t prev_block_id = 0;     // pre block item id
+  uint64_t block_offset = 0;
+  uint32_t block_len = 0;
+  uint32_t table_version = 0;
+  uint32_t cols = 0;
+  uint32_t rows = 0;
+  timestamp64 min_ts = INT64_MAX;
+  timestamp64 max_ts = INT64_MIN;
+  char reserved[64] = {0};      // reserved for user-defined information.
 };
-static_assert(sizeof(TsBlockSegmentBlockItemInfo) == 192,
+static_assert(sizeof(TsBlockSegmentBlockItemInfo) == 128,
               "wrong size of TsBlockSegmentBlockItemInfo, please check compatibility.");
 
 class TsBlockSegmentBlockItem {
@@ -75,9 +80,9 @@ class TsBlockSegmentEntityItemFile {
     int32_t encoding;             // Encoding scheme.
     int32_t status;               // status flag.
     uint64_t entity_num;          // entity num
-    char reserved[104];           // reserved for user-defined meta data information.
+    char reserved[40];           // reserved for user-defined meta data information.
   };
-  static_assert(sizeof(TsEntityItemFileHeader) == 128, "wrong size of TsBlockFileHeader, please check compatibility.");
+  static_assert(sizeof(TsEntityItemFileHeader) == 64, "wrong size of TsBlockFileHeader, please check compatibility.");
 
   struct TsEntityItem {
     uint64_t entity_id = 0;
@@ -85,7 +90,7 @@ class TsBlockSegmentEntityItemFile {
     int64_t max_ts = INT64_MIN;       // max ts of current entity in this Partition
     int64_t min_ts = INT64_MAX;       // min ts of current entity in this Partition
     uint64_t row_written = 0;         // row num that has written into file.
-    char reserved[88];                // reserved for user-defined information.
+    char reserved[88] = {0};          // reserved for user-defined information.
   };
   static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
 
@@ -130,9 +135,9 @@ class TsBlockSegmentBlockItemFile {
     int32_t encoding;             // Encoding scheme.
     int32_t status;               // status flag.
     uint64_t block_num;
-    char user_defined[104];       // reserved for user-defined meta data information.
+    char user_defined[40];       // reserved for user-defined meta data information.
   };
-  static_assert(sizeof(TsBlockItemFileHeader) == 128,
+  static_assert(sizeof(TsBlockItemFileHeader) == 64,
                 "wrong size of TsBlockItemFileHeader, please check compatibility.");
 
   TsBlockItemFileHeader header_;
@@ -213,33 +218,6 @@ class TsBlockSegment {
 
 class TsVGroupPartition;
 
-struct TsEntityKey {
-  uint64_t entity_id;
-  uint64_t table_id;
-  uint32_t table_version;
-
-  inline bool operator==(const TsEntityKey& other) const {
-    return entity_id == other.entity_id && table_version == other.table_version;
-  }
-
-  inline bool operator<(const TsEntityKey& other) const {
-    return entity_id != other.entity_id ? entity_id < other.entity_id : table_version < other.table_version;
-  }
-};
-
-struct TsLastSegmentBlockRowInfo {
-  timestamp64 ts;
-  uint64_t seq_no;
-
-  uint32_t last_segment_idx;
-  uint32_t block_idx;
-  uint32_t row_idx;
-
-  inline bool operator<(const TsLastSegmentBlockRowInfo& other) const {
-    return ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
-  }
-};
-
 struct TsBlockSegmentBlockInfo {
   std::vector<uint32_t> col_block_offset;
 };
@@ -249,34 +227,79 @@ struct TsBlockSegmentColumnBlock {
   std::string buffer;
 };
 
+class TsBlockSegmentBlock {
+ private:
+  uint32_t table_id_;
+  uint32_t table_version_;
+  uint64_t entity_id_;
+  std::vector<AttributeInfo> metric_schema_;
+
+  TsBlockSegmentBlockInfo block_info;
+  std::vector<TsBlockSegmentColumnBlock> column_blocks;
+
+  uint32_t n_rows_ = 0;
+  uint32_t n_cols_ = 0;
+
+public:
+  TsBlockSegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
+                      std::vector<AttributeInfo>& metric_schema);
+  TsBlockSegmentBlock(const TsBlockSegmentBlock& other);
+  ~TsBlockSegmentBlock(){}
+
+  bool HasData() { return n_rows_ > 0; }
+
+  uint32_t GetNRows() const { return n_rows_; }
+
+  uint32_t GetTableId() const { return table_id_; }
+
+  uint32_t GetTableVersion() const { return table_version_; }
+
+  uint64_t GetEntityId() const { return entity_id_; }
+
+  uint64_t GetSeqNo(uint32_t row_idx);
+
+  timestamp64 GetTimestamp(uint32_t row_idx);
+
+  KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value);
+
+  KStatus Append(TsLastSegmentBlockSpan& span, bool& is_full);
+
+  KStatus Flush(TsVGroupPartition* partition);
+
+  void Clear();
+};
+
 class TsBlockSegmentBuilder {
  private:
+  struct TsTableKey {
+    uint32_t table_id;
+    uint32_t table_version;
+
+    bool operator==(const TsTableKey& other) const {
+      return table_id == other.table_id && table_version == other.table_version;
+    }
+  };
+
+  struct TsTableKeyHash {
+    std::size_t operator()(const TsTableKey& key) const {
+      std::size_t h1 = std::hash<uint32_t>{}(key.table_id);
+      std::size_t h2 = std::hash<uint32_t>{}(key.table_version);
+      return h1 ^ (h2 << 1);
+    }
+  };
+
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
   TsVGroupPartition* partition_;
 
-  std::vector<std::vector<std::shared_ptr<TsLastSegmentBlock>>> blocks_;
-  std::map<TsEntityKey, std::vector<TsLastSegmentBlockRowInfo>> entity_row_values_;
-
-  size_t max_rows_per_block_;
-
-  KStatus buildColData(std::vector<TsLastSegmentBlockRowInfo>& row_values,
-                       int col_idx, size_t row_offset, size_t row_count,
-                       bool has_bitmap, DATATYPE d_type, size_t d_size,
-                       string& col_data, TsBitmap& bitmap);
-
-  KStatus compress(const std::string& col_data, TsBitmap* bitmap, DATATYPE d_type, size_t row_count,
-                   std::string& buffer);
+  std::unordered_map<TsTableKey, std::map<uint64_t, TsBlockSegmentBlock>, TsTableKeyHash> blocks_;
 
  public:
   explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
-                                 TsVGroupPartition* partition = nullptr,
-                                 size_t max_rows_per_block = 1000) :
-                                 last_segments_(last_segments),
-                                 partition_(partition),
-                                 max_rows_per_block_(max_rows_per_block) {}
+                                 TsVGroupPartition* partition = nullptr) :
+                                 last_segments_(last_segments), partition_(partition) {}
   ~TsBlockSegmentBuilder() {}
 
-  KStatus BuildAndFlush(uint32_t thread_num);
+  KStatus BuildAndFlush();
 };
 
 }  // namespace kwdbts

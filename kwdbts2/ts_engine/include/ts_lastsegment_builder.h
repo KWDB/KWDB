@@ -40,10 +40,18 @@ class TsLastSegmentBuilder {
     TSSlice metric;
   };
   std::vector<EntityPayload> payload_buffer_;
+  struct EntityColData {
+    TS_LSN seq_no;
+    TSEntityID entity_id;
+    std::vector<TSSlice> col_data;
+  };
+  std::vector<EntityColData> col_data_buffer_;
   const TsEngineSchemaManager* schema_mgr_;
 
   KStatus WriteMetricBlock(MetricBlockBuilder* builder);
+  KStatus FlushBuffer();
   KStatus FlushPayloadBuffer();
+  KStatus FlushColDataBuffer();
 
  public:
   TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr,
@@ -62,6 +70,9 @@ class TsLastSegmentBuilder {
   KStatus Finalize();
   KStatus PutRowData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
                      TSSlice row_data);
+
+  KStatus PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
+                     std::vector<TSSlice> col_data);
 
   bool ConsistentWith(TSTableID table_id, uint32_t version) const {
     return table_id == table_id_ && version_ == version;
@@ -150,6 +161,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder {
   KStatus Reset(TSTableID table_id, uint32_t table_version);
 
   void Add(TSEntityID entity_id, TS_LSN seq_no, TSSlice metric_data);
+  void Add(TSEntityID entity_id, TS_LSN seq_no, const std::vector<TSSlice>& col_data);
   void Finish();
   bool IsFinished() const { return finished_; }
   BlockInfo GetBlockInfo() const;

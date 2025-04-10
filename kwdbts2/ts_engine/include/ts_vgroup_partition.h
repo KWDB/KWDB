@@ -35,24 +35,15 @@ class TsVGroupPartition {
 
   TsEngineSchemaManager* schema_mgr_;
 
-  // compact thread flag
-  bool enable_compact_thread_{true};
-  // Id of the compact thread
-  KThreadID compact_thread_id_{0};
-  // Conditional variable
-  std::condition_variable cv_;
-  // Mutexes for condition variables
-  std::mutex cv_mutex_;
-
  public:
   TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
-                    int64_t start, int64_t end, bool enable_compact_thread = true);
+                    int64_t start, int64_t end);
 
   ~TsVGroupPartition();
 
   KStatus Open();
   // compact data from last segment to block segment. compact one block data every time.
-  KStatus Compact(int thread_num = 2);
+  KStatus Compact();
 
   KStatus NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment);
   void PublicLastSegment(std::unique_ptr<TsLastSegment>&& last_segment);
@@ -61,22 +52,16 @@ class TsVGroupPartition {
 
   std::string GetFileName() const;
 
+  int GetDBId() const { return database_id_; }
+
   int64_t StartTs() const { return start_; }
 
   int64_t EndTs() const { return end_; }
 
   TsEngineSchemaManager* GetSchemaMgr() { return schema_mgr_; }
 
-  KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
-                               TSSlice block_data, TSSlice block_agg, uint32_t row_num);
-
- protected:
-  // Thread scheduling executes compact tasks to clean up items that require erasing.
-  void compactRoutine(void* args);
-  // Initialize compact thread.
-  void initCompactThread();
-  // Close compact thread.
-  void closeCompactThread();
+  KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version, timestamp64 max_ts,
+                               timestamp64 min_ts, TSSlice block_data, TSSlice block_agg, uint32_t row_num);
 };
 
 

@@ -211,32 +211,19 @@ void TsLastSegmentManager::TakeLastSegmentOwnership(std::unique_ptr<TsLastSegmen
   unLock();
 }
 
-// TODO(zzr) get lastsegments from VersionManager, this method must be atomic
-std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetCompactLastSegments() {
-  std::vector<std::shared_ptr<TsLastSegment>> result;
+// TODO(zzr) get last segments from VersionManager, this method must be atomic
+void TsLastSegmentManager::GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result) {
   rdLock();
-  if (last_segments_.empty()) {
-    unLock();
-    return result;
-  }
-  size_t offset = compacted_ver_ - last_segments_[0]->GetVersion() + 1;
-  assert(offset < last_segments_.size());
-  if (ver_ - compacted_ver_ >= MAX_COMPACT_NUM) {
-    result.assign(last_segments_.begin() + offset,
-                  last_segments_.begin() + offset + MAX_COMPACT_NUM);
-  }
+  result = last_segments_;
   unLock();
-  return result;
 }
 
 bool TsLastSegmentManager::NeedCompact() {
-  assert(ver_ > compacted_ver_);
-  return n_lastsegment_.load(std::memory_order_relaxed) > MAX_COMPACT_NUM;
+  return n_lastsegment_.load(std::memory_order_relaxed) > MAX_LAST_SEGMENT_NUM;
 }
 
 void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
   wrLock();
-  compacted_ver_ = ver;
   for (auto it = last_segments_.begin(); it != last_segments_.end();) {
     if ((*it)->GetVersion() <= ver) {
       (*it)->GetFilePtr()->MarkDelete();
