@@ -157,7 +157,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
     if (new_tag) {
-      if (write_wal) {
+      if (options_.wal_level != WALMode::OFF) {
         // no need lock, lock inside.
         s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i]);
         if (s == KStatus::FAIL) {

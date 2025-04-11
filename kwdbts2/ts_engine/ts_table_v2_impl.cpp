@@ -38,7 +38,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSli
     }
     auto vgroup = vgroups_[vgroup_id - 1].get();
     assert(vgroup != nullptr);
-    auto s = vgroup->PutData(ctx, GetTableId(), entity_id, &payload[i]);
+    auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, entity_id, &payload[i]);
     if (s != KStatus::SUCCESS) {
       // todo(liangbo01) if failed. should we need rollback all inserted data?
       LOG_ERROR("putdata failed. table id[%lu], group id[%u]", GetTableId(), vgroup_id);
