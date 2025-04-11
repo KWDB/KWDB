@@ -1855,9 +1855,7 @@ func BuildInputForTSDelete(
 					}
 					break
 				}
-				if inputRow, err = TSTypeCheckForInput(evalCtx, &resValue, &column.Type, column); err != nil {
-					return nil, isOutOfRange, err
-				}
+				inputRow = resValue
 			}
 			switch v := inputRow.(type) {
 			case *tree.DInt:

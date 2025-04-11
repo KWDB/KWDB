@@ -19,10 +19,7 @@
 #include <vector>
 
 #include "kwdb_type.h"
-#include "rocksdb/status.h"
-#include "table/internal_iterator.h"
 #include "ts_engine_schema_manager.h"
-#include "ts_mmap_env.h"
 #include "ts_vgroup_partition.h"
 #include "ts_mem_segment_mgr.h"
 #include "st_wal_mgr.h"
@@ -92,10 +89,6 @@ class TsVGroup {
   mutable std::mutex mutex_;
 
   MMapFile* config_file_;
-
-  rocksdb::DB* db_ = nullptr;
-
-  static TsEnv env_;
 
   EngineOptions engine_options_;
 
@@ -171,8 +164,6 @@ class TsVGroup {
                       uint32_t table_version, TsStorageIterator** iter,
                       std::shared_ptr<TsVGroup> vgroup,
                       std::vector<timestamp64> ts_points, bool reverse, bool sorted);
-
-  rocksdb::DB* GetDB();
 
   uint32_t GetVGroupID();
 

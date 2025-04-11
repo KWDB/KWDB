@@ -18,10 +18,8 @@
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "mmap/mmap_metrics_table.h"
-#include "rocksdb/slice.h"
 #include "ts_coding.h"
 #include "mmap/mmap_tag_column_table.h"
-#include "ts_slice.h"
 #include "utils/big_table_utils.h"
 
 namespace kwdbts {

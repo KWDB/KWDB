@@ -20,23 +20,14 @@
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-#include "rocksdb/options.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/status.h"
-#include "rocksdb/types.h"
-#include "rocksdb/write_batch.h"
 #include "sys_utils.h"
-#include "ts_comparator.h"
-#include "ts_db_impl.h"
-#include "ts_format.h"
-#include "ts_lastsegment_builder.h"
+#include "ts_io.h"
+#include "ts_last_segment_manager.h"
 #include "ts_payload.h"
 #include "ts_vgroup_partition.h"
 #include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
-
-TsEnv TsVGroup::env_;
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
@@ -65,13 +56,6 @@ TsVGroup::~TsVGroup() {
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
-  rocksdb::Options options;
-  options.create_if_missing = true;
-  options.env = &env_;
-  options.comparator = TsComparator();
-  options.max_background_jobs = 4;
-  options.max_write_buffer_number = 10;
-  options.max_background_flushes = 4;
   MakeDirectory(path_);
   wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, GetFileName(), &engine_options_);
   auto res = wal_manager_->Init(ctx);
@@ -80,12 +64,8 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     return res;
   }
 
-  auto s = rocksdb::TsDBImpl::Open(options, path_.string() + "/mem", this, &db_);
-  if (!s.ok()) {
-    return KStatus::FAIL;
-  }
   config_file_ = new MMapFile();
-  string cf_file_path = path_.string() + "/vgroup_config";
+  string cf_file_path = path_.string() + "/vg_config";
   int flag = MMAP_CREAT_EXCL;
   bool exist = false;
   if (IsExists(cf_file_path)) {
@@ -122,7 +102,7 @@ std::filesystem::path TsVGroup::GetPath() const {
 
 std::string TsVGroup::GetFileName() const {
   char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "group_%02u", vgroup_id_);
+  std::snprintf(buffer, sizeof(buffer), "vg_%03u", vgroup_id_);
   return buffer;
 }
 
@@ -335,7 +315,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       return false;
     }
     return true;
-  });
+  }, true);
   // todo(liangbo01) deleting all new created files.
   if (!flush_success) {
     LOG_ERROR("faile flush memsegment to last segment.");
@@ -391,94 +371,8 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
   return KStatus::SUCCESS;
 }
 
-rocksdb::DB* TsVGroup::GetDB() {
-  return db_;
-}
-
 uint32_t TsVGroup::GetVGroupID() {
   return vgroup_id_;
-}
-
-TsVGroup::TsPartitionedFlush::TsPartitionedFlush(TsVGroup* group, rocksdb::InternalIterator* iter)
-    : vgroup_(group), iter_(iter) {}
-
-rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
-  iter_->SeekToFirst();
-  TsEngineSchemaManager* schema_mgr = vgroup_->schema_mgr_;
-
-  rocksdb::FullKey full_key;
-  TsInternalKey ts_key;
-  std::unordered_map<std::shared_ptr<TsVGroupPartition>, TsLastSegmentBuilder> builders;
-
-  std::shared_ptr<MMapMetricsTable> table_schema;
-  std::vector<AttributeInfo> metric_schema;
-
-  std::unique_ptr<TsRawPayloadRowParser> parser;
-  TSTableID last_table_id = -1;
-  uint32_t last_version = -1;
-  uint32_t db_id = -1;
-  std::shared_ptr<TsVGroupPartition> partition = nullptr;
-
-  for (; iter_->Valid(); iter_->Next()) {
-    rocksdb::ParseFullKey(iter_->key(), &full_key);
-    rocksdb::SequenceNumber seq_no = full_key.sequence;
-    ts_key.Decode(full_key.user_key);
-    if (last_table_id != ts_key.table_id) {
-      db_id = schema_mgr->GetDBIDByTableID(ts_key.table_id);
-    }
-
-    if (!(last_table_id == ts_key.table_id && last_version == ts_key.version)) {
-      schema_mgr->GetTableMetricSchema(nullptr, ts_key.table_id, ts_key.version, &table_schema);
-      assert(table_schema != nullptr);
-      metric_schema = table_schema->getSchemaInfoExcludeDropped();
-      parser = std::make_unique<TsRawPayloadRowParser>(metric_schema);
-      last_table_id = ts_key.table_id;
-      last_version = ts_key.version;
-    }
-
-    auto val = iter_->value();
-    assert(!metric_schema.empty());
-    // TsRawPayload payload_prev{{const_cast<char*>(val.data()), val.size()}, metric_schema};
-    TsRawPayloadV2 payload{{const_cast<char*>(val.data()), val.size()}};
-    auto row_iter = payload.GetRowIterator();
-
-    int row_cnt = 0;
-    for (; row_iter.Valid(); row_iter.Next()) {
-      auto row_data = row_iter.Value();
-      ++row_cnt;
-      timestamp64 ts = parser->GetTimestamp(row_data);
-      if (partition == nullptr || ts >= partition->EndTs() || ts < partition->StartTs()) {
-        partition = this->vgroup_->GetPartition(db_id, ts, (DATATYPE)metric_schema[0].type);
-      }
-
-      auto it = builders.find(partition);
-      if (it == builders.end()) {
-        std::unique_ptr<TsLastSegment> last_segment;
-        partition->NewLastSegment(&last_segment);
-        auto result =
-            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
-        it = result.first;
-      }
-
-      TsLastSegmentBuilder& builder = it->second;
-      auto s =
-          builder.PutRowData(ts_key.table_id, ts_key.version, ts_key.entity_id, seq_no, row_data);
-      if (s != SUCCESS) {
-        return rocksdb::Status::Incomplete("flush error");
-      }
-    }
-
-    int nrows = payload.GetRowCount();
-    assert(nrows == row_cnt);
-    // assert(payload.GetRowCount() == payload_prev.GetRowCount());
-  }
-  for (auto& kv : builders) {
-    auto s = kv.second.Finalize();
-    if (s == FAIL) return rocksdb::Status::Incomplete("flush error");
-    kv.second.Flush();
-    kv.first->PublicLastSegment(kv.second.Finish());
-  }
-  return rocksdb::Status::OK();
 }
 
 std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {

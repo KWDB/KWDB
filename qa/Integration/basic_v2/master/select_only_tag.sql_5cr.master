@@ -472,9 +472,11 @@ INSERT 10
                          | distributed    | true
                          | vectorized     | false
   render                 |                |
+   │                     | engine type    | time series
    │                     | ptag1          | ptag1
    │                     | sum            | sum
    └── group             |                |
+        │                | engine type    | time series
         │                | aggregate 0    | ptag1
         │                | aggregate 1    | t1
         │                | aggregate 2    | t2
@@ -482,6 +484,7 @@ INSERT 10
         │                | aggregate 4    | sum((t1 + t2) + t3)
         │                | group by       | ptag1, t1, t2, t3
         └── render       |                |
+             │           | engine type    | time series
              │           | (t1 + t2) + t3 | t3 + (t1 + t2)
              │           | ptag1          | ptag1
              │           | t1             | t1
@@ -491,7 +494,7 @@ INSERT 10
                          | ts-table       | table1
                          | only tag       | true
                          | access mode    | tableTableMeta
-(22 rows)
+(25 rows)
 > explain select sum(t1+t2) from only_tag.table1 group by ptag1 having sum(t1) > 3000;
              tree             |    field    |  description
 ------------------------------+-------------+-----------------
@@ -610,10 +613,13 @@ INSERT 10
                               | distributed    | true
                               | vectorized     | false
   render                      |                |
+   │                          | engine type    | time series
    │                          | sum            | sum
    └── filter                 |                |
+        │                     | engine type    | time series
         │                     | filter         | sum > 3000
         └── group             |                |
+             │                | engine type    | time series
              │                | aggregate 0    | ptag1
              │                | aggregate 1    | t1
              │                | aggregate 2    | t2
@@ -622,6 +628,7 @@ INSERT 10
              │                | aggregate 5    | sum(t1)
              │                | group by       | ptag1, t1, t2, t3
              └── render       |                |
+                  │           | engine type    | time series
                   │           | (t1 + t2) + t3 | t3 + (t1 + t2)
                   │           | ptag1          | ptag1
                   │           | t1             | t1
@@ -631,7 +638,7 @@ INSERT 10
                               | ts-table       | table1
                               | only tag       | true
                               | access mode    | tableTableMeta
-(24 rows)
+(28 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1 order by sm;
            tree          |     field      |     description
 -------------------------+----------------+----------------------
@@ -1251,9 +1258,11 @@ INSERT 10
                          | distributed    | true
                          | vectorized     | false
   render                 |                |
+   │                     | engine type    | time series
    │                     | ptag1          | ptag1
    │                     | sum            | sum
    └── group             |                |
+        │                | engine type    | time series
         │                | aggregate 0    | ptag1
         │                | aggregate 1    | t1
         │                | aggregate 2    | t2
@@ -1261,6 +1270,7 @@ INSERT 10
         │                | aggregate 4    | sum((t1 + t2) + t3)
         │                | group by       | ptag1, t1, t2, t3
         └── render       |                |
+             │           | engine type    | time series
              │           | (t1 + t2) + t3 | t3 + (t1 + t2)
              │           | ptag1          | ptag1
              │           | t1             | t1
@@ -1270,7 +1280,7 @@ INSERT 10
                          | ts-table       | table2
                          | only tag       | true
                          | access mode    | tableTableMeta
-(22 rows)
+(25 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1 having sum(t1) > 3000;
              tree             |      field       |  description
 ------------------------------+------------------+-----------------
@@ -1392,11 +1402,14 @@ INSERT 10
                               | distributed    | true
                               | vectorized     | false
   render                      |                |
+   │                          | engine type    | time series
    │                          | ptag1          | ptag1
    │                          | sum            | sum
    └── filter                 |                |
+        │                     | engine type    | time series
         │                     | filter         | sum > 3000
         └── group             |                |
+             │                | engine type    | time series
              │                | aggregate 0    | ptag1
              │                | aggregate 1    | t1
              │                | aggregate 2    | t2
@@ -1405,6 +1418,7 @@ INSERT 10
              │                | aggregate 5    | sum(t1)
              │                | group by       | ptag1, t1, t2, t3
              └── render       |                |
+                  │           | engine type    | time series
                   │           | (t1 + t2) + t3 | t3 + (t1 + t2)
                   │           | ptag1          | ptag1
                   │           | t1             | t1
@@ -1414,7 +1428,7 @@ INSERT 10
                               | ts-table       | table2
                               | only tag       | true
                               | access mode    | tableTableMeta
-(25 rows)
+(29 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1 order by sm;
            tree          |      field       |     description
 -------------------------+------------------+----------------------

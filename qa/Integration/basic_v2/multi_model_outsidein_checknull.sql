@@ -1,5 +1,6 @@
 set cluster setting ts.sql.query_opt_mode = 1100;
 set cluster setting sql.stats.tag_automatic_collection.enabled = false;
+set cluster setting sql.stats.automatic_collection.enabled = false;
 -- create and insert data into time-series table
 CREATE TS DATABASE my_timeseries_db;
 
@@ -1562,3 +1563,4 @@ delete  from system.table_statistics where name = '_stats_firegases' or name = '
 
 set cluster setting ts.sql.query_opt_mode = 1110;
 set cluster setting sql.stats.tag_automatic_collection.enabled = true;
+set cluster setting sql.stats.automatic_collection.enabled = true;

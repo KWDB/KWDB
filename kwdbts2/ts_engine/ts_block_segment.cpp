@@ -23,14 +23,14 @@ const char block_data_file_name[] = "block";
 
 KStatus TsBlockSegmentEntityItemFile::Open() {
   TSSlice result;
-  TsStatus s = file_->Read(0, sizeof(TsEntityItemFileHeader), &result, reinterpret_cast<char *>(&header_));
+  KStatus s = file_->Read(0, sizeof(TsEntityItemFileHeader), &result, reinterpret_cast<char *>(&header_));
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
     header_.magic = TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
     header_.status = TsFileStatus::READY;
     s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsEntityItemFileHeader)});
   }
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  return s;
 }
 
 void TsBlockSegmentEntityItemFile::WrLock() {
@@ -53,7 +53,7 @@ KStatus TsBlockSegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   if (lock) {
     WrLock();
   }
-  TsStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
+  KStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
                            &result, reinterpret_cast<char *>(&entity_item));
   if (entity_item.entity_id == 0) {
     entity_item.entity_id = entity_id;
@@ -71,7 +71,7 @@ KStatus TsBlockSegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   if (lock) {
     UnLock();
   }
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  return s;
 }
 
 KStatus TsBlockSegmentEntityItemFile::GetEntityCurBlockId(uint64_t entity_id, uint64_t& cur_block_id, bool lock) {
@@ -80,26 +80,26 @@ KStatus TsBlockSegmentEntityItemFile::GetEntityCurBlockId(uint64_t entity_id, ui
   if (lock) {
     RdLock();
   }
-  TsStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
+  KStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
                            &result, reinterpret_cast<char *>(&entity_item));
   if (lock) {
     UnLock();
   }
 
   cur_block_id = entity_item.cur_block_id;
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  return s;
 }
 
 KStatus TsBlockSegmentBlockItemFile::Open() {
   TSSlice result;
-  TsStatus s = file_->Read(0, sizeof(TsBlockItemFileHeader), &result, reinterpret_cast<char *>(&header_));
+  KStatus s = file_->Read(0, sizeof(TsBlockItemFileHeader), &result, reinterpret_cast<char *>(&header_));
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
     header_.status = TsFileStatus::READY;
     header_.magic = TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC;
     s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsBlockItemFileHeader)});
   }
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  return s;
 }
 
 KStatus TsBlockSegmentBlockItemFile::AllocateBlockItem(uint64_t entity_id, TsBlockSegmentBlockItemInfo& block_item_info) {
@@ -131,13 +131,13 @@ KStatus TsBlockSegmentBlockItemFile::GetBlockItem(uint64_t entity_id, uint64_t b
 
 KStatus TsBlockSegmentBlockItemFile::readFileHeader(TsBlockItemFileHeader& block_meta) {
   TSSlice result;
-  TsStatus s = file_->Read(0, sizeof(TsBlockItemFileHeader), &result, reinterpret_cast<char *>(&block_meta));
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  KStatus s = file_->Read(0, sizeof(TsBlockItemFileHeader), &result, reinterpret_cast<char *>(&block_meta));
+  return s;
 }
 
 KStatus TsBlockSegmentBlockItemFile::writeFileMeta(TsBlockItemFileHeader& block_meta) {
-  TsStatus s = file_->Write(0, TSSlice{reinterpret_cast<char *>(&block_meta), sizeof(TsBlockItemFileHeader)});
-  return s == TsStatus::OK() ? KStatus::SUCCESS : KStatus::FAIL;
+  KStatus s = file_->Write(0, TSSlice{reinterpret_cast<char *>(&block_meta), sizeof(TsBlockItemFileHeader)});
+  return s;
 }
 
 TsBlockSegmentMetaManager::TsBlockSegmentMetaManager(const string& path) :

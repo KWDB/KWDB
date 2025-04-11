@@ -285,7 +285,7 @@ func tsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
 
 // WaitForBLJ wait for all the BLJ operators to complete pushing before draining
 func (ttr *TsTableReader) WaitForBLJ() {
-	if ttr.FlowCtx.PushingBLJCount == 0 {
+	if ttr.FlowCtx.PushingBLJCount[ttr.tsTableReaderID] == 0 {
 		return
 	}
 	timeout := time.After(10 * time.Second)
@@ -294,7 +294,7 @@ func (ttr *TsTableReader) WaitForBLJ() {
 	for {
 		select {
 		case <-ticker.C:
-			if ttr.FlowCtx.PushingBLJCount == 0 {
+			if ttr.FlowCtx.PushingBLJCount[ttr.tsTableReaderID] == 0 {
 				return
 			}
 		case <-timeout:
@@ -348,12 +348,12 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 				if err == nil {
 					err = errors.Newf("There is no error message for this error code. The err code is %d.\n", respInfo.Code)
 				}
-				ttr.WaitForBLJ()
-				ttr.MoveToDraining(err)
-				log.Errorf(context.Background(), err.Error())
 				if ttr.FlowCtx != nil {
 					ttr.FlowCtx.TsHandleBreak = true
 				}
+				ttr.MoveToDraining(err)
+				log.Errorf(context.Background(), err.Error())
+				ttr.WaitForBLJ()
 				ttr.cleanup(ttr.PbCtx())
 				return nil, &execinfrapb.ProducerMetadata{Err: err}
 			}

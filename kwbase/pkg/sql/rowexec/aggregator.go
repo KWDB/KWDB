@@ -378,11 +378,15 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 		if !newTimeDur.Time.Equal(gw.timeWindowHelper.tsTimeStampStartTZ.Time) {
 			gw.timeWindowHelper.tsTimeStampStartTZ = *newTimeDur
 			gw.groupWindowValue++
-			row[gw.groupWindowTsColID].Datum = newTimeDur
+			if gw.groupWindowTsColID >= 0 {
+				row[gw.groupWindowTsColID].Datum = newTimeDur
+			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
 			newTime := &tree.DTimestampTZ{Time: durTime}
-			row[gw.groupWindowTsColID].Datum = newTime
+			if gw.groupWindowTsColID >= 0 {
+				row[gw.groupWindowTsColID].Datum = newTime
+			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
 	case *tree.DTimestamp:
@@ -402,11 +406,15 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 		if !newTimeDur.Time.Equal(gw.timeWindowHelper.tsTimeStampStart.Time) {
 			gw.timeWindowHelper.tsTimeStampStart = *newTimeDur
 			gw.groupWindowValue++
-			row[gw.groupWindowTsColID].Datum = newTimeDur
+			if gw.groupWindowTsColID >= 0 {
+				row[gw.groupWindowTsColID].Datum = newTimeDur
+			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
 			newTime := &tree.DTimestamp{Time: durTime}
-			row[gw.groupWindowTsColID].Datum = newTime
+			if gw.groupWindowTsColID >= 0 {
+				row[gw.groupWindowTsColID].Datum = newTime
+			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
 	default:
@@ -523,10 +531,14 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 
 	if !gw.timeWindowHelper.hasFirst {
 		newTimeEnd := tree.MakeDTimestampTZ(gw.timeWindowHelper.tsTimeStampEndTZ.Time, 0)
-		row1[gw.groupWindowTsColID].Datum = newTimeEnd
+		if gw.groupWindowTsColID >= 0 {
+			row1[gw.groupWindowTsColID].Datum = newTimeEnd
+		}
 	} else {
 		newTimeStart := tree.MakeDTimestampTZ(gw.timeWindowHelper.tsTimeStampStartTZ.Time, 0)
-		row1[gw.groupWindowTsColID].Datum = newTimeStart
+		if gw.groupWindowTsColID >= 0 {
+			row1[gw.groupWindowTsColID].Datum = newTimeStart
+		}
 	}
 	gw.timeWindowHelper.hasFirst = false
 
@@ -644,10 +656,14 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 
 	if !gw.timeWindowHelper.hasFirst {
 		newTimeEnd := tree.MakeDTimestamp(gw.timeWindowHelper.tsTimeStampEnd.Time, 0)
-		row1[gw.groupWindowTsColID].Datum = newTimeEnd
+		if gw.groupWindowTsColID >= 0 {
+			row1[gw.groupWindowTsColID].Datum = newTimeEnd
+		}
 	} else {
 		newTimeStart := tree.MakeDTimestamp(gw.timeWindowHelper.tsTimeStampStart.Time, 0)
-		row1[gw.groupWindowTsColID].Datum = newTimeStart
+		if gw.groupWindowTsColID >= 0 {
+			row1[gw.groupWindowTsColID].Datum = newTimeStart
+		}
 	}
 	gw.timeWindowHelper.hasFirst = false
 

@@ -76,6 +76,37 @@ DELETE FROM system.user_defined_function WHERE true;
 use default;
 drop database test cascade;
 
+--- bug-45930
+BEGIN;
+CREATE FUNCTION test_txn(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function test_txn(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+COMMIT;
+CREATE FUNCTION test_txn(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function test_txn(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+BEGIN;
+DROP FUNCTION test_txn;
+COMMIT;
+SHOW FUNCTIONS;
+DROP FUNCTION test_txn;
+
 --testcase0001 Tests the input parameter types of the creation function timestamp
 -- Create a function to calculate the timestamp difference
 CREATE FUNCTION time_difference_to_string(start_time timestamp, end_time timestamp)

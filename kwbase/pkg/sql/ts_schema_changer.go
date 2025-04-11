@@ -1167,6 +1167,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 					// change origin type to new type
 					originCol.Type = mutaCol.Type
 					originCol.TsCol = mutaCol.TsCol
+					originCol.DefaultExpr = mutaCol.DefaultExpr
 				}
 				// If isSucceeded = true, increase TsVersion and NextTsVersion.
 				// If isSucceeded = false, just increase NextTsVersion.

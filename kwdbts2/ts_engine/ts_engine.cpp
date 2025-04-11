@@ -22,18 +22,25 @@
 #include "ts_table_v2_impl.h"
 #include "ts_instance_params.h"
 
+extern int storage_engine_vgroup_max_num = 6;
 namespace kwdbts {
-const int storage_engine_vgroup_max_num = 10;
+
 const char schema_directory[]= "schema";
 
-TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(table_grps_) {
+TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(vgroups_) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
+  char* vgroup_num = getenv("KW_VGROUP_NUM");
+  if (vgroup_num != nullptr) {
+    char *endptr;
+    storage_engine_vgroup_max_num = strtol(vgroup_num, &endptr, 10);
+    assert(*endptr == '\0');
+  }
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
-  table_grps_.clear();
+  vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
 
@@ -48,14 +55,14 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
 
   InitExecutor(ctx, options_);
 
-  table_grps_.clear();
+  vgroups_.clear();
   for (size_t i = 0; i < storage_engine_vgroup_max_num; i++) {
-    auto tbl_grp = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
-    s = tbl_grp->Init(ctx);
+    auto vgroup = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
+    s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    table_grps_.push_back(std::move(tbl_grp));
+    vgroups_.push_back(std::move(vgroup));
   }
 
   // Compressor
@@ -66,9 +73,9 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t table_grp_id) {
-  assert(storage_engine_vgroup_max_num >= table_grp_id);
-  return table_grps_[table_grp_id - 1].get();
+TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
+  assert(storage_engine_vgroup_max_num >= vgroup_id);
+  return vgroups_[vgroup_id - 1].get();
 }
 
 KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta) {
@@ -94,7 +101,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
     return s;
   }
-  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(table_schema_mgr, table_grps_);
+  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(table_schema_mgr, vgroups_);
   tables_cache_->Put(table_id, ts_table);
   return s;
 }
@@ -130,8 +137,9 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
                   uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
-  uint32_t tbl_grp_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
+  size_t payload_size = 0;
   for (size_t i = 0; i < payload_num; i++) {
     TsRawPayload p{payload_data[i]};
     TSSlice primary_key = p.GetPrimaryTag();
@@ -142,29 +150,31 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       return s;
     }
     bool new_tag;
-    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &tbl_grp_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    auto tbl_grp = GetVGroupByID(ctx, tbl_grp_id);
-    assert(tbl_grp != nullptr);
+    auto vgroup = GetVGroupByID(ctx, vgroup_id);
+    assert(vgroup != nullptr);
     if (new_tag) {
       if (write_wal) {
         // no need lock, lock inside.
-        s = tbl_grp->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i]);
+        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i]);
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
           return s;
         }
       }
-      entity_id = tbl_grp->AllocateEntityID();
-      s = putTagData(ctx, table_id, tbl_grp_id, entity_id, p);
+      entity_id = vgroup->AllocateEntityID();
+      s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
         return s;
       }
       inc_entity_cnt++;
     }
+    payload_size += p.GetData().len;
   }
+
 
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
@@ -174,6 +184,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     LOG_ERROR("put data failed. table[%lu].", table_id);
     return s;
   }
+  flush_mgr_.Count(payload_size);
   return s;
 }
 
@@ -235,7 +246,7 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
 }
 
 std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
-  return &table_grps_;
+  return &vgroups_;
 }
 
 }  // namespace kwdbts

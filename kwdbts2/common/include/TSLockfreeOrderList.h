@@ -15,6 +15,7 @@
 #include <functional>
 #include <atomic>
 #include <vector>
+#include "lg_api.h"
 
 template<typename K, typename V>
 class TSLockfreeOrderList {
@@ -71,7 +72,7 @@ class TSLockfreeOrderList {
     }
   }
 
-  bool Seek(K s_key, K& key, V& value) const {
+  bool Seek(K s_key, K& key, V& value, int32_t retry_cnt = 0) const {
     const TSListItem *cur = &tail_;
     TSListItem *prev = cur->prev_.load();
     while (true) {
@@ -81,7 +82,12 @@ class TSLockfreeOrderList {
       if (prev->key <= s_key) {
         key = prev->key;
         value = prev->value;
-        return true;
+        if (value != V{}) {
+          return true;
+        } else {
+          LOG_INFO("TSLockfreeOrderList Seek, retry count[%d]", ++retry_cnt);
+          return Seek(s_key, key, value, retry_cnt);
+        }
       }
       cur = prev;
       prev = cur->prev_.load();

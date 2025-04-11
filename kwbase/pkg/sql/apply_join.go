@@ -27,8 +27,7 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
@@ -54,18 +53,8 @@ type applyJoinNode struct {
 
 	optimizer xform.Optimizer
 
-	// The memo for the right side of the join - the one with the outer columns.
-	rightMemo *memo.Memo
-
 	// The data source with no outer columns.
 	input planDataSource
-
-	// fakeRight only use in explain.
-	//fakeRight planDataSource
-
-	// leftBoundColMap maps an outer opt column id, bound by this apply join, to
-	// the position in the left plan's row that contains the binding.
-	leftBoundColMap opt.ColMap
 
 	// pred represents the join predicate.
 	pred *joinPredicate
@@ -94,6 +83,11 @@ type applyJoinNode struct {
 	// direct use.
 	right memo.RelExpr
 
+	// ApplyJoinPlanRightSideFn creates a plan for an iteration of ApplyJoin, given
+	// a row produced from the left side. The plan is guaranteed to produce the
+	// rightColumns passed to ConstructApplyJoin (in order).
+	planRightSideFn exec.ApplyJoinPlanRightSideFn
+
 	run struct {
 		// emptyRight is a cached, all-NULL slice that's used for left outer joins
 		// in the case of finding no match on the left.
@@ -120,13 +114,10 @@ type applyJoinNode struct {
 func newApplyJoinNode(
 	joinType sqlbase.JoinType,
 	left planDataSource,
-	fakeRight planDataSource,
-	leftBoundColMap opt.ColMap,
-	rightProps *physical.Required,
 	rightCols sqlbase.ResultColumns,
-	right memo.RelExpr,
 	pred *joinPredicate,
-	memo *memo.Memo,
+	right memo.RelExpr,
+	planRightSideFn exec.ApplyJoinPlanRightSideFn,
 ) (planNode, error) {
 	switch joinType {
 	case sqlbase.JoinType_RIGHT_OUTER, sqlbase.JoinType_FULL_OUTER:
@@ -136,24 +127,21 @@ func newApplyJoinNode(
 	}
 
 	return &applyJoinNode{
-		joinType: joinType,
-		input:    left,
-		//fakeRight:       fakeRight,
-		leftBoundColMap: leftBoundColMap,
+		joinType:        joinType,
+		input:           left,
 		pred:            pred,
-		rightMemo:       memo,
-		rightProps:      rightProps,
 		rightCols:       rightCols,
 		right:           right,
+		planRightSideFn: planRightSideFn,
 		columns:         pred.cols,
 	}, nil
 }
 
 func (a *applyJoinNode) startExec(params runParams) error {
-	// If needed, pre-allocate a left row of NULL tuples for when the
+	// If needed, pre-allocate a right row of NULL tuples for when the
 	// join predicate fails to match.
 	if a.joinType == sqlbase.LeftOuterJoin {
-		a.run.emptyRight = make(tree.Datums, a.right.Relational().OutputCols.Len())
+		a.run.emptyRight = make(tree.Datums, len(a.rightCols))
 		for i := range a.run.emptyRight {
 			a.run.emptyRight[i] = tree.DNull
 		}
@@ -252,47 +240,8 @@ func (a *applyJoinNode) Next(params runParams) (bool, error) {
 		// the right side of the join using the optimizer, with all outer columns
 		// in the right side replaced by the bindings that were defined by the most
 		// recently read left row.
-		//
-		// We have a cached optimizer here that we'll use to re-plan that right
-		// side. Now, we'll essentially go through an entire recursive planning and
-		// execution phase. Initialize the optimizer, replace the outer columns,
-		// run the optimizer on the replaced right side, transform the optimized
-		// expression into logical planNodes, perform physical planning on the
-		// logical planNodes, and finally(!) run the physical plan. That will
-		// produce n new rows from the right side of the join, which we'll join to
-		// the current left row using the ordinary join semantics defined by the
-		// type of join we've been instructed to do (inner, left outer, semi, or
-		// anti).
-
-		a.optimizer.Init(params.p.EvalContext(), &params.p.optPlanningCtx.catalog)
-
-		bindings := make(map[opt.ColumnID]tree.Datum, a.leftBoundColMap.Len())
-		a.leftBoundColMap.ForEach(func(k, v int) {
-			bindings[opt.ColumnID(k)] = row[v]
-		})
-
-		// Replace the outer VariableExprs that this applyJoin node is responsible
-		// for with the constant values in the latest left row.
-		factory := a.optimizer.Factory()
-		execbuilder.ReplaceVars(factory, a.right, a.rightProps, bindings)
-		a.optimizer.Memo().SetWhiteList(a.rightMemo.GetWhiteList())
-		newRightSide, err := a.optimizer.Optimize()
+		p, err := a.planRightSideFn(row, a.optimizer.Factory().TSWhiteListMap)
 		if err != nil {
-			return false, err
-		}
-
-		execFactory := makeExecFactory(params.p)
-		eb := execbuilder.New(&execFactory, factory.Memo(), nil /* catalog */, newRightSide, params.EvalContext())
-		eb.DisableTelemetry()
-		p, err := eb.Build()
-		if err != nil {
-			if errors.IsAssertionFailure(err) {
-				// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
-				// expression.
-				fmtFlags := memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars | memo.ExprFmtHideTypes
-				explainOpt := a.optimizer.FormatExpr(newRightSide, fmtFlags)
-				err = errors.WithDetailf(err, "newRightSide:\n%s", explainOpt)
-			}
 			return false, err
 		}
 		plan := p.(*planTop)

@@ -951,7 +951,7 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
 
 int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                                      const std::vector<uint32_t> &tags, uint32_t index_id, HashIndex idx_flag) {
-  LOG_INFO("AddNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
+  LOG_INFO("AddNewPartitionVersion table id:%lu, new version:%d", this->m_table_id, new_version)
   // 1. create tag version object
   auto tag_ver_obj = m_version_mgr_->CreateTagVersionObject(schema, new_version, err_info);
   if (nullptr == tag_ver_obj) {
@@ -1137,7 +1137,7 @@ int TagTable::CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint
     }
     return 0;
   }
-  LOG_ERROR("Failed create hash index table id:%d, index id:%d, cur_version:%d, new_version:%d", m_table_id, index_id,
+  LOG_ERROR("Failed create hash index table id:%lu, index id:%d, cur_version:%d, new_version:%d", m_table_id, index_id,
             cur_version, new_version)
   return -1;
 }
@@ -1233,7 +1233,7 @@ int TagTable::DropHashIndex(uint32_t index_id,  const uint32_t cur_version,
     }
     return 0;
   }
-  LOG_ERROR("Failed drop hash index table id:%d, index id:%d, cur_version:%d, new_version:%d", m_table_id, index_id,
+  LOG_ERROR("Failed drop hash index table id:%lu, index id:%d, cur_version:%d, new_version:%d", m_table_id, index_id,
             cur_version, new_version)
   return -1;
 }
@@ -1481,7 +1481,7 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id,
       ntag_index->remove(ret.second, ret.first, index_key, len);
       if (ntag_index->insert(index_key, len, ret.first, ret.second) < 0) {
           tag_partition_table->NtagIndexRWMutexUnLock();
-          LOG_ERROR("InsertForRedo insert remove index data failed. table_version: %u row_no: %lu ", ret.first, ret.second);
+          LOG_ERROR("InsertForRedo insert remove index data failed. table_version: %u row_no: %u ", ret.first, ret.second);
           return -1;
       }
     }
@@ -1532,7 +1532,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id,
       ntag_index->remove(ret.second, ret.first, index_key, len);
       if (ntag_index->insert(index_key, len, ret.first, ret.second) < 0) {
           tag_partition_table->NtagIndexRWMutexUnLock();
-          LOG_ERROR("DeleteForUndo insert index data failed. table_version: %u row_no: %lu ", ret.first, ret.second);
+          LOG_ERROR("DeleteForUndo insert index data failed. table_version: %u row_no: %u ", ret.first, ret.second);
           return -1;
       }
     }
@@ -1602,7 +1602,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id,
       }
       if (ntag_index->insert(index_key, len, ret.first, ret.second) < 0) {
           tag_partition_table->NtagIndexRWMutexUnLock();
-          LOG_ERROR("DeleteForUndo insert remove index data failed. table_version: %u row_no: %lu ", ret.first, ret.second);
+          LOG_ERROR("DeleteForUndo insert remove index data failed. table_version: %u row_no: %u ", ret.first, ret.second);
           return -1;
       }
   }

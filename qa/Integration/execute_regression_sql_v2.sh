@@ -230,6 +230,8 @@ function execute_regression_sql_distribute_v2() {
             return 1
           fi
           if [ "$res" = "FAIL" ]; then
+		    echo -e "${INFO}$0 PASSED $passed_cnt/${#test_results[@]} ($((test_end_time-test_start_time)))s${NC}" | tee -a $SUMMARY_FILE
+            ( IFS=$'\n'; echo -e "${test_results[*]}" ) | tee -a $SUMMARY_FILE
             return 1
           fi
         done

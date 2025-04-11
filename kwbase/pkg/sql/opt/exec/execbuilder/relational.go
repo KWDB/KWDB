@@ -39,6 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/ordering"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
@@ -1534,31 +1535,6 @@ func (b *Builder) buildProject(prj *memo.ProjectExpr) (execPlan, error) {
 	return res, nil
 }
 
-// ReplaceVars replaces the VariableExprs within a RelExpr with constant Datums
-// provided by the vars map, which maps opt column id for each VariableExpr to
-// replace to the Datum that should replace it. The memo within the input
-// norm.Factory will be replaced with the result.
-// requiredPhysical is the set of physical properties that are required of the
-// root of the new expression.
-func ReplaceVars(
-	f *norm.Factory,
-	applyInput memo.RelExpr,
-	requiredPhysical *physical.Required,
-	vars map[opt.ColumnID]tree.Datum,
-) {
-	var replaceFn norm.ReplaceFunc
-	replaceFn = func(e opt.Expr) opt.Expr {
-		switch t := e.(type) {
-		case *memo.VariableExpr:
-			if d, ok := vars[t.Col]; ok {
-				return f.ConstructConstVal(d, t.Typ)
-			}
-		}
-		return f.CopyAndReplaceDefault(e, replaceFn)
-	}
-	f.CopyAndReplace(applyInput, requiredPhysical, replaceFn)
-}
-
 func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 	switch join.Op() {
 	case opt.InnerJoinApplyOp, opt.LeftJoinApplyOp, opt.SemiJoinApplyOp, opt.AntiJoinApplyOp:
@@ -1573,22 +1549,8 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 	if len(memo.WithUses(rightExpr)) != 0 {
 		return execPlan{}, fmt.Errorf("references to WITH expressions from correlated subqueries are unsupported")
 	}
-	// Create a fake version of the right-side plan that contains NULL for all
-	// outer columns, so that we can figure out the output columns and various
-	// other attributes.
-	var f norm.Factory
-	f.Init(b.evalCtx, b.catalog)
-	fakeBindings := make(map[opt.ColumnID]tree.Datum)
-	rightExpr.Relational().OuterCols.ForEach(func(k opt.ColumnID) {
-		fakeBindings[k] = tree.DNull
-	})
-	ReplaceVars(&f, rightExpr, rightExpr.RequiredPhysical(), fakeBindings)
 
-	// We increment nullifyMissingVarExprs here to instruct the scalar builder to
-	// replace the outer column VariableExprs with null for the current scope.
-	b.nullifyMissingVarExprs++
-	fakeRight, err := b.buildRelational(rightExpr)
-	b.nullifyMissingVarExprs--
+	leftPlan, err := b.buildRelational(leftExpr)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -1597,44 +1559,83 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 	if rightExpr.RequiredPhysical() == nil {
 		return execPlan{}, err
 	}
-	requiredProps := *rightExpr.RequiredPhysical()
-	requiredProps.Presentation = make(physical.Presentation, fakeRight.outputCols.Len())
-	fakeRight.outputCols.ForEach(func(k, v int) {
-		requiredProps.Presentation[opt.ColumnID(v)] = opt.AliasedColumn{
-			ID:    opt.ColumnID(k),
-			Alias: join.Memo().Metadata().ColumnMeta(opt.ColumnID(k)).Alias,
-		}
-	})
-
-	left, err := b.buildRelational(leftExpr)
-	if err != nil {
-		return execPlan{}, err
-	}
-
+	// Make a copy of the required props for the right side.
+	rightRequiredProps := *rightExpr.RequiredPhysical()
+	// The right-hand side will produce the output columns in order.
+	rightRequiredProps.Presentation = b.makePresentation(rightExpr.Relational().OutputCols)
 	// leftBoundCols is the set of columns that this apply join binds.
 	leftBoundCols := leftExpr.Relational().OutputCols.Intersection(rightExpr.Relational().OuterCols)
 	// leftBoundColMap is a map from opt.ColumnID to opt.ColumnOrdinal that maps
 	// a column bound by the left side of this apply join to the column ordinal
 	// in the left side that contains the binding.
 	var leftBoundColMap opt.ColMap
-	for k, ok := leftBoundCols.Next(0); ok; k, ok = leftBoundCols.Next(k + 1) {
-		v, ok := left.outputCols.Get(int(k))
+	for col, ok := leftBoundCols.Next(0); ok; col, ok = leftBoundCols.Next(col + 1) {
+		v, ok := leftPlan.outputCols.Get(int(col))
 		if !ok {
-			return execPlan{}, fmt.Errorf("couldn't find binding column %d in output columns", k)
+			return execPlan{}, fmt.Errorf("couldn't find binding column %d in left output columns", col)
 		}
-		leftBoundColMap.Set(int(k), v)
+		leftBoundColMap.Set(int(col), v)
 	}
 
-	allCols := joinOutputMap(left.outputCols, fakeRight.outputCols)
+	// We set up an ApplyJoinPlanRightSideFn which plans the
+	// right side given a particular left side row. We do this planning in a
+	// separate memo, but we use the same exec.Factory.
+	var o xform.Optimizer
+	planRightSideFn := func(leftRow tree.Datums, listMap *sqlbase.WhiteListMap) (exec.Plan, error) {
+		o.Init(b.evalCtx, b.catalog)
+		o.Memo().SetWhiteList(listMap)
+		f := o.Factory()
 
-	ctx := buildScalarCtx{
-		ivh:     tree.MakeIndexedVarHelper(nil /* container */, numOutputColsInMap(allCols)),
-		ivarMap: allCols,
+		// Copy the right expression into a new memo, replacing each bound column
+		// with the corresponding value from the left row.
+		var replaceFn norm.ReplaceFunc
+		replaceFn = func(e opt.Expr) opt.Expr {
+			switch t := e.(type) {
+			case *memo.VariableExpr:
+				if leftOrd, ok := leftBoundColMap.Get(int(t.Col)); ok {
+					return f.ConstructConstVal(leftRow[leftOrd], t.Typ)
+				}
+			}
+			return f.CopyAndReplaceDefault(e, replaceFn)
+		}
+		f.CopyAndReplace(rightExpr, &rightRequiredProps, replaceFn)
+
+		newRightSide, err := o.Optimize()
+		if err != nil {
+			return nil, err
+		}
+
+		eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
+		eb.disableTelemetry = true
+		plan, err := eb.Build()
+		if err != nil {
+			if errors.IsAssertionFailure(err) {
+				// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
+				// expression.
+				fmtFlags := memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars | memo.ExprFmtHideTypes
+				explainOpt := o.FormatExpr(newRightSide, fmtFlags)
+				err = errors.WithDetailf(err, "newRightSide:\n%s", explainOpt)
+			}
+			return nil, err
+		}
+		return plan, nil
 	}
+
+	// The right plan will always produce the columns in the presentation, in
+	// the same order.
+	var rightOutputCols opt.ColMap
+	for i := range rightRequiredProps.Presentation {
+		rightOutputCols.Set(int(rightRequiredProps.Presentation[i].ID), i)
+	}
+	allCols := joinOutputMap(leftPlan.outputCols, rightOutputCols)
 
 	var onExpr tree.TypedExpr
 	if len(*filters) != 0 {
-		onExpr, err = b.buildScalar(&ctx, filters)
+		scalarCtx := buildScalarCtx{
+			ivh:     tree.MakeIndexedVarHelper(nil /* container */, numOutputColsInMap(allCols)),
+			ivarMap: allCols,
+		}
+		onExpr, err = b.buildScalar(&scalarCtx, filters)
 		if err != nil {
 			return execPlan{}, err
 		}
@@ -1643,7 +1644,7 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 	var outputCols opt.ColMap
 	if joinType == sqlbase.LeftSemiJoin || joinType == sqlbase.LeftAntiJoin {
 		// For semi and anti join, only the left columns are output.
-		outputCols = left.outputCols
+		outputCols = leftPlan.outputCols
 	} else {
 		outputCols = allCols
 	}
@@ -1652,18 +1653,44 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 
 	ep.root, err = b.factory.ConstructApplyJoin(
 		joinType,
-		left.root,
-		leftBoundColMap,
-		b.mem,
-		&requiredProps,
-		fakeRight.root,
-		rightExpr,
+		leftPlan.root,
+		b.presentationToResultColumns(rightRequiredProps.Presentation),
 		onExpr,
+		rightExpr,
+		planRightSideFn,
 	)
 	if err != nil {
 		return execPlan{}, err
 	}
 	return ep, nil
+}
+
+// makePresentation creates a Presentation that contains the given columns, in
+// order of their IDs.
+func (b *Builder) makePresentation(cols opt.ColSet) physical.Presentation {
+	md := b.mem.Metadata()
+	result := make(physical.Presentation, 0, cols.Len())
+	cols.ForEach(func(col opt.ColumnID) {
+		result = append(result, opt.AliasedColumn{
+			Alias: md.ColumnMeta(col).Alias,
+			ID:    col,
+		})
+	})
+	return result
+}
+
+// presentationToResultColumns returns ResultColumns corresponding to the
+// columns in a presentation.
+func (b *Builder) presentationToResultColumns(pres physical.Presentation) sqlbase.ResultColumns {
+	md := b.mem.Metadata()
+	result := make(sqlbase.ResultColumns, len(pres))
+	for i := range pres {
+		result[i] = sqlbase.ResultColumn{
+			Name: pres[i].Alias,
+			Typ:  md.ColumnMeta(pres[i].ID).Type,
+		}
+	}
+	return result
 }
 
 func (b *Builder) buildHashJoin(join memo.RelExpr) (execPlan, error) {

@@ -27,9 +27,7 @@
 
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "rocksdb/status.h"
-#include "ts_slice.h"
-#include "ts_status.h"
+
 
 namespace kwdbts {
 
@@ -53,21 +51,21 @@ class TsFile {
 
   virtual size_t GetFileSize() const = 0;
 
-  virtual TsStatus Sync() = 0;
-  virtual TsStatus Flush() = 0;
+  virtual KStatus Sync() = 0;
+  virtual KStatus Flush() = 0;
 
-  virtual TsStatus Append(const TSSlice&) = 0;
-  virtual TsStatus Append(const std::string& data) {
+  virtual KStatus Append(const TSSlice&) = 0;
+  virtual KStatus Append(const std::string& data) {
     return this->Append(TSSlice{const_cast<char*>(data.data()), data.size()});
   }
 
-  virtual TsStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) = 0;
+  virtual KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) = 0;
 
-  virtual TsStatus Write(size_t offset, const TSSlice& data) = 0;
+  virtual KStatus Write(size_t offset, const TSSlice& data) = 0;
 
-  virtual TsStatus Reset() = 0;
+  virtual KStatus Reset() = 0;
 
-  virtual TsStatus Close() = 0;
+  virtual KStatus Close() = 0;
 
   void MarkDelete() { delete_after_free.store(true); }
 
@@ -106,22 +104,22 @@ class TsMMapFile final : public TsFile {
 
   ~TsMMapFile() override { Close(); }
 
-  TsStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) override {
+  KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) override {
     size_t size = size_;
 
     if (offset >= size) {
       result->len = 0;
-      return TsStatus::OK();
+      return KStatus::SUCCESS;
     }
 
     size_t nread = std::min(size - offset, n);
     memcpy(buffer, addr_ + offset, nread);
     result->len = nread;
     result->data = buffer;
-    return TsStatus::OK();
+    return KStatus::SUCCESS;
   }
 
-  TsStatus Write(size_t offset, const TSSlice& data) override {
+  KStatus Write(size_t offset, const TSSlice& data) override {
     size_t new_len = len_;
     while (new_len < offset + data.len) {
       new_len *= 2;
@@ -132,7 +130,7 @@ class TsMMapFile final : public TsFile {
       if (err_code < 0) {
         close(fd_);
         LOG_ERROR("resize file failed, error code:%d", err_code);
-        return TsStatus::SpaceLimit();
+        return KStatus::FAIL;
       }
       void* base = mremap(addr_, len_, new_len, MREMAP_MAYMOVE);
       if (base == MAP_FAILED) {
@@ -155,11 +153,11 @@ class TsMMapFile final : public TsFile {
     if (offset + data.len > size_) {
       size_ = offset + data.len;
     }
-    return TsStatus::OK();
+    return KStatus::SUCCESS;
   }
 
   using TsFile::Append;
-  TsStatus Append(const TSSlice& data) override {
+  KStatus Append(const TSSlice& data) override {
     size_t newlen = len_;
     while (newlen - size_ < data.len) {
       newlen *= 2;
@@ -167,7 +165,8 @@ class TsMMapFile final : public TsFile {
 
     if (newlen != len_) {
       if (ftruncate(fd_, newlen) == -1) {
-        return TsStatus::IOError("ftruncate error ", strerror(errno));
+        LOG_ERROR("ftruncate error %s.", strerror(errno));
+        return KStatus::FAIL;
       }
       void* base = mremap(addr_, len_, newlen, MREMAP_MAYMOVE);
       if (base == MAP_FAILED) {
@@ -177,12 +176,14 @@ class TsMMapFile final : public TsFile {
             munmap(addr_, len_);
             base = mmap(nullptr, newlen, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
             if (base == MAP_FAILED) {
-              return TsStatus::IOError("mmap error ", strerror(errno));
+              LOG_ERROR("mmap error %s.", strerror(errno))
+              return KStatus::FAIL;
             }
           case EINVAL:
             assert(false);
           case ENOMEM:
-            return TsStatus::MemoryLimit("mremap error ", strerror(errno));
+            LOG_ERROR("mremap error %s.", strerror(errno));
+            return KStatus::FAIL;
         }
       }
       assert(base != MAP_FAILED);
@@ -195,10 +196,10 @@ class TsMMapFile final : public TsFile {
     }
     memcpy(addr_ + size_, data.data, data.len);
     size_ += data.len;
-    return TsStatus::OK();
+    return KStatus::SUCCESS;
   }
 
-  TsStatus Close() override {
+  KStatus Close() override {
     if (fd_ != -1) {
       Sync();
       ftruncate(fd_, size_);
@@ -207,10 +208,10 @@ class TsMMapFile final : public TsFile {
       fd_ = -1;
       addr_ = nullptr;
     }
-    return TsStatus::OK();
+    return KStatus::SUCCESS;
   }
 
-  TsStatus Reset() override {
+  KStatus Reset() override {
     munmap(addr_, len_);
     size_ = 0;
     len_ = getpagesize();
@@ -222,20 +223,21 @@ class TsMMapFile final : public TsFile {
       std::string err_info = "mmap[" + filename_.string() + "] failed, error_no: " + std::to_string(err_code)
                              + ", error_msg: " + error_msg + ", length:" + std::to_string(len_);
       LOG_ERROR("%s", err_info.c_str());
-      return TsStatus::Corruption(err_info);
+      return KStatus::FAIL;
     }
     addr_ = reinterpret_cast<char*>(base);
-    return TsStatus::OK();
+    return KStatus::SUCCESS;
   }
 
-  TsStatus Sync() override {
+  KStatus Sync() override {
     int err = msync(addr_, len_, MS_SYNC);
     if (err != 0) {
-      return TsStatus::IOError();
+      LOG_ERROR("msync failed. err: %d", err);
+      return KStatus::FAIL;
     }
-    return TsStatus::OK();
+    return KStatus::SUCCESS;
   }
-  TsStatus Flush() override { return rocksdb::Status::OK(); }
+  KStatus Flush() override { return KStatus::SUCCESS; }
 
   size_t GetFileSize() const override { return size_; }
 };

@@ -18,7 +18,6 @@
 #include "ts_table_schema_manager.h"
 #include "sys_utils.h"
 
-extern const int storage_engine_vgroup_max_num = 10;
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 
@@ -106,7 +105,7 @@ KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID
 }
 
 KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
-                                             uint32_t* tbl_grp_id, TSEntityID* entity_id, bool* new_tag) const {
+                                             uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) const {
   std::shared_ptr<TsTableSchemaManager> tb_schema;
   KStatus s = GetTableSchemaMgr(tbl_id, tb_schema);
   if (s != KStatus::SUCCESS) {
@@ -119,14 +118,14 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
   uint32_t entityid, groupid;
   if (tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entityid, groupid)) {
     *entity_id = entityid;
-    *tbl_grp_id = groupid;
+    *vgroup_id = groupid;
     *new_tag = false;
     return KStatus::SUCCESS;
   }
   // TODO(qinlipeng) lock tag
   // [1, 3]
   std::uniform_int_distribution<int> distrib(1, storage_engine_vgroup_max_num);
-  *tbl_grp_id = distrib(gen);
+  *vgroup_id = distrib(gen);
   *new_tag = true;
   return KStatus::SUCCESS;
 }

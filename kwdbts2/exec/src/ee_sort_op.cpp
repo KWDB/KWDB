@@ -16,7 +16,6 @@
 #include "ee_kwthd_context.h"
 #include "ee_pb_plan.pb.h"
 #include "lg_api.h"
-// #include "rocksdb/db.h"
 
 namespace kwdbts {
 

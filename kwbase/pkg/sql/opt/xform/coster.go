@@ -606,11 +606,13 @@ func (c *coster) computeBatchLoopUpJoinCost(join memo.RelExpr) memo.Cost {
 		return hugeCost
 	}
 
-	var relationalRowCount float64
+	var relationalRowCount, tsRowCount float64
 	if walk(join.Child(0)) {
+		tsRowCount = join.Child(0).(memo.RelExpr).Relational().Stats.RowCount
 		relationalRowCount = join.Child(1).(memo.RelExpr).Relational().Stats.RowCount
 	} else {
 		relationalRowCount = join.Child(0).(memo.RelExpr).Relational().Stats.RowCount
+		tsRowCount = join.Child(1).(memo.RelExpr).Relational().Stats.RowCount
 	}
 
 	// A hash join must process every row from both tables once.
@@ -623,7 +625,12 @@ func (c *coster) computeBatchLoopUpJoinCost(join memo.RelExpr) memo.Cost {
 	// TODO(rytaft): This is the cost of an in-memory hash join. When a certain
 	// amount of memory is used, distsql switches to a disk-based hash join with
 	// a temp RocksDB store.
-	cost := memo.Cost(1.25*0+1.75*relationalRowCount) * cpuCostFactor
+	var cost memo.Cost
+	if relationalRowCount < tsRowCount {
+		cost = memo.Cost(1.75*relationalRowCount) * cpuCostFactor
+	} else {
+		cost = memo.Cost(1.25*relationalRowCount) * cpuCostFactor
+	}
 
 	// Add the CPU cost of emitting the rows.
 	rowsProcessed, ok := c.mem.RowsProcessed(join)

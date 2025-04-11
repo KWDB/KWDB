@@ -30,7 +30,7 @@
 #include "lg_api.h"
 #include "ts_table_schema_manager.h"
 
-
+extern int storage_engine_vgroup_max_num;
 namespace kwdbts {
 
 /**
@@ -64,7 +64,7 @@ class TsEngineSchemaManager {
 
   // Get or allocate vgroup_id and entity_id
   KStatus GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
-                        uint32_t* tbl_grp_id, TSEntityID* entity_id, bool* new_tag) const;
+                        uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) const;
 
   KStatus SetTableID2DBID(kwdbContext_p ctx, TSTableID table_id, uint32_t database_id);
 
