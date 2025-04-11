@@ -206,7 +206,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   std::vector<TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::unique_ptr<TsRawPayloadRowParser> parser_{nullptr};
+  std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::list<char*> col_based_mems_;
 
  public:

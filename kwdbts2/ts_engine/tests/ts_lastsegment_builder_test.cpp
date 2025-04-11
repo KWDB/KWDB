@@ -10,10 +10,8 @@
 #include <memory>
 #include <numeric>
 #include <random>
-#include <string_view>
-#include <type_traits>
 #include <unordered_map>
-#include <variant>
+#include <utility>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -135,7 +133,7 @@ void IteratorCheck(const std::string &filename, TSTableID table_id) {
   ASSERT_TRUE(file.Open() == kwdbts::SUCCESS);
 
   kwdbts::Arena arena;
-  auto iter = file.NewIterator(&arena);
+  auto iter = file.NewIterator();
   while (iter->Valid()) {
     auto entity_block = iter->GetEntityBlock();
     EXPECT_EQ(entity_block->GetEntityId(), 1);
@@ -314,8 +312,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
 
-  kwdbts::Arena arena;
-  auto iter = last_segment.NewIterator(&arena);
+  auto iter = last_segment.NewIterator();
 
   auto dev_iter = dev_ids.begin();
   while (iter->Valid()) {
@@ -334,15 +331,16 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
         checker_funcs[dtypes[icol]](val);
       }
     }
-
     iter->NextEntityBlock();
     dev_iter++;
   }
   EXPECT_EQ(dev_iter, dev_ids.end());
 
   // scan for specific table & entity;
-  iter = last_segment.NewIterator(&arena, table_id, 3, INT64_MIN, INT64_MAX);
+  iter = last_segment.NewIterator(table_id, 3, {{INT64_MIN, INT64_MAX}});
   ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(iter->GetEntityBlock()->GetEntityId(), 3);
+  EXPECT_EQ(iter->GetEntityBlock()->GetRowNum(), 2048);
   iter->NextEntityBlock();
   ASSERT_FALSE(iter->Valid());
 
@@ -357,7 +355,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
        start_ts + 9 * interval}};
 
   for (auto c : cases) {
-    iter = last_segment.NewIterator(&arena, table_id, 3, c.min_ts, c.max_ts);
+    iter = last_segment.NewIterator(table_id, 3, {{c.min_ts, c.max_ts}});
     ASSERT_TRUE(iter->Valid());
     auto entityblock = iter->GetEntityBlock();
     EXPECT_EQ(entityblock->GetRowNum(), c.expect_row);
@@ -368,11 +366,18 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
     iter->NextEntityBlock();
     ASSERT_FALSE(iter->Valid());
   }
-  iter = last_segment.NewIterator(&arena, table_id, 3, 1000, 0);
+  iter = last_segment.NewIterator(table_id, 3, {{1000, 0}});
   ASSERT_FALSE(iter->Valid());
 
-  iter = last_segment.NewIterator(&arena, table_id, 3, -100, 0);
+  iter = last_segment.NewIterator(table_id, 3, {{-100, 0}});
   ASSERT_FALSE(iter->Valid());
+
+  iter = last_segment.NewIterator(table_id, 3, {{123, 2000}, {3000, 6000}});
+  ASSERT_TRUE(iter->Valid());
+  auto entityblocks = iter->GetAllEntityBlocks();
+  ASSERT_EQ(entityblocks.size(), 2);
+  EXPECT_EQ(entityblocks[0]->GetRowNum(), 2);
+  EXPECT_EQ(entityblocks[1]->GetRowNum(), 3);
 }
 
 TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
@@ -380,7 +385,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   uint32_t table_version = 1;
   int interval = 993;
   int start_ts = 12345;
-  
+
   auto res = GenBuilders(table_id);
   int nrow_per_block = TsLastSegment::kNRowPerBlock = 4096;
   ASSERT_EQ(nrow_per_block % 2, 0);
@@ -404,11 +409,11 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   TsLastSegment last_segment("last.ver-0001");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
-  int total  = std::accumulate(nrows.begin(), nrows.end(), 0);
+  int total = std::accumulate(nrows.begin(), nrows.end(), 0);
   ASSERT_EQ(footer.n_data_block, (total + nrow_per_block - 1) / nrow_per_block);
 
   kwdbts::Arena arena;
-  auto iter = last_segment.NewIterator(&arena);
+  auto iter = last_segment.NewIterator();
 
   int idx = 0;
   int sum = 0;
@@ -439,4 +444,70 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     iter->NextEntityBlock();
   }
   EXPECT_EQ(idx + 1, dev_ids.size());
+
+  std::vector<int> expected_rows;
+  std::vector<int> expected_dev;
+  {
+    int i = 0;
+    int space = nrow_per_block;
+    int dev_left = 0;
+    while (dev_left > 0 || i < nrows.size()) {
+      if (dev_left == 0) {
+        dev_left = nrows[i];
+        ++i;
+        continue;
+      }
+      if (dev_left < space) {
+        expected_rows.push_back(dev_left);
+        space -= dev_left;
+        dev_left = 0;
+      } else {
+        expected_rows.push_back(space);
+        dev_left -= space;
+        space = nrow_per_block;
+      }
+      expected_dev.push_back(dev_ids[i - 1]);
+    }
+  }
+
+  auto blocks = iter->GetAllEntityBlocks();
+  ASSERT_EQ(blocks.size(), expected_rows.size());
+  for (int i = 0; i < expected_rows.size(); ++i) {
+    EXPECT_EQ(blocks[i]->GetRowNum(), expected_rows[i]);
+    EXPECT_EQ(blocks[i]->GetEntityId(), expected_dev[i]);
+  }
+
+  iter = last_segment.NewIterator(table_id, 9913, {{INT64_MIN, INT64_MAX}});
+  blocks = iter->GetAllEntityBlocks();
+  ASSERT_EQ(blocks.size(), 4);
+  for (int i = 0; i < blocks.size(); ++i) {
+    EXPECT_EQ(blocks[i]->GetEntityId(), 9913);
+    auto expn = std::vector<int>{2084, 4096, 4096, 2059}[i];
+    EXPECT_EQ(blocks[i]->GetRowNum(), expn);
+  }
+
+  std::vector<KwTsSpan> spans{
+      {start_ts, start_ts + interval * 2000},
+      {start_ts + interval * 2080, start_ts + interval * 4096},
+      {start_ts + interval * 5000, start_ts + interval * (2084 + 4096)},
+  };
+  iter = last_segment.NewIterator(table_id, 9913, spans);
+  blocks = iter->GetAllEntityBlocks();
+  ASSERT_EQ(blocks.size(), 5);
+  std::vector<std::pair<int, int>> expected_minmax = {
+      {start_ts, start_ts + interval * 2000},
+      {start_ts + interval * 2080, start_ts + interval * 2083},
+      {start_ts + interval * 2084, start_ts + interval * 4096},
+      {start_ts + interval * 5000, start_ts + interval * (2084 + 4096 - 1)},
+      {start_ts + interval * (2084 + 4096), start_ts + interval * (2084 + 4096)},
+  };
+  for (int i = 0; i < blocks.size(); ++i) {
+    EXPECT_EQ(blocks[i]->GetEntityId(), 9913);
+    auto expn = std::vector<int>{2001, 4, 2013, 1180, 1}[i];
+    EXPECT_EQ(blocks[i]->GetRowNum(), expn);
+    timestamp64 min_ts, max_ts;
+    blocks[i]->GetTSRange(&min_ts, &max_ts);
+    EXPECT_EQ(min_ts, expected_minmax[i].first);
+    EXPECT_EQ(max_ts, expected_minmax[i].second);
+  }
 }

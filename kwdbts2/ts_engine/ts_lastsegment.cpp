@@ -219,7 +219,8 @@ void TsLastSegmentManager::TakeLastSegmentOwnership(std::unique_ptr<TsLastSegmen
 }
 
 // TODO(zzr) get last segments from VersionManager, this method must be atomic
-void TsLastSegmentManager::GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result) {
+void TsLastSegmentManager::GetCompactLastSegments(
+    std::vector<std::shared_ptr<TsLastSegment>>& result) {
   rdLock();
   size_t compact_num = std::min(last_segments_.size(), static_cast<size_t>(MAX_COMPACT_NUM));
   result.assign(last_segments_.begin(), last_segments_.begin() + compact_num);
@@ -244,19 +245,18 @@ void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
   unLock();
 }
 
-std::unique_ptr<TsLastSegmentBlockIterator> TsLastSegment::NewIterator(Allocator* alloc) const {
-  auto iter =
-      std::unique_ptr<TsLastSegmentBlockIterator>(new TsLastSegmentBlockIterator(alloc, this));
+std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> TsLastSegment::NewIterator() const {
+  auto iter = std::unique_ptr<TsLastSegmentFullEntityBlockIterator>(
+      new TsLastSegmentFullEntityBlockIterator(this));
+  iter->Init();
   return iter;
 }
 
-std::unique_ptr<TsLastSegmentBlockIterator> TsLastSegment::NewIterator(Allocator* alloc,
-                                                                       TSTableID table_id,
-                                                                       TSEntityID entity_id,
-                                                                       timestamp64 min_ts,
-                                                                       timestamp64 max_ts) const {
-  auto iter = std::unique_ptr<TsLastSegmentBlockIterator>(
-      new TsLastSegmentBlockIterator(alloc, this, table_id, entity_id, min_ts, max_ts));
+std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> TsLastSegment::NewIterator(
+    TSTableID table_id, TSEntityID entity_id, const std::vector<KwTsSpan>& spans) const {
+  auto iter = std::unique_ptr<TsLastSegmentPartialEntityBlockIterator>(
+      new TsLastSegmentPartialEntityBlockIterator(this, table_id, entity_id, spans));
+  iter->Init();
   return iter;
 }
 
@@ -273,108 +273,10 @@ static void ParseBlockInfo(TSSlice data, TsLastSegmentBlockInfo* info) {
     GetFixed32(&data, &info->col_infos[i].data_len);
   }
   assert(data.len == 0);
-}
-
-TsLastSegmentBlockIterator::TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last)
-    : alloc_(alloc),
-      lastsegment_(last),
-      specfic_scan_(false),
-      min_ts_(INT64_MIN),
-      max_ts_(INT64_MAX),
-      entityblock_buffer_(std::make_unique<CurrentBlockCache>()) {
-  LoadBlockIndex();
-  curr_idx_ = 0;
-  if (!Valid()) return;
-  LoadToCurrentBlockCache();
-  entityblock_buffer_->row_start = 0;  // begin from the first;
-  entity_id_ = entityblock_buffer_->entities[0];
-  LocateUpperBound();
-}
-
-TsLastSegmentBlockIterator::TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last,
-                                                       TSTableID table_id, TSEntityID entity_id,
-                                                       timestamp64 min_ts, timestamp64 max_ts)
-    : alloc_(alloc),
-      lastsegment_(last),
-      specfic_scan_(true),
-      table_id_(table_id),
-      entity_id_(entity_id),
-      min_ts_(min_ts),
-      max_ts_(max_ts),
-      entityblock_buffer_(std::make_unique<CurrentBlockCache>()) {
-  LoadBlockIndex();
-  curr_idx_ = 0;
-  for (; curr_idx_ < block_idx_.size(); ++curr_idx_) {
-    const auto& cur_block = block_idx_[curr_idx_];
-    if (cur_block.table_id == table_id && cur_block.min_entity_id <= entity_id &&
-        cur_block.max_entity_id >= entity_id &&
-        !(max_ts < cur_block.min_ts && min_ts > cur_block.max_ts))
-      break;
-  }
-  if (!Valid()) return;
-  LoadToCurrentBlockCache();
-  LocateLowerBound();
-  if (entityblock_buffer_->row_start == entityblock_buffer_->info.nrow) {
-    // cannot find entity in this table, invalidate the iterator;
-    Invalidate();
-    return;
-  }
-  LocateUpperBound();
-  if (entityblock_buffer_->row_end <= entityblock_buffer_->row_start) {
-    Invalidate();
-  }
-}
-
-void TsLastSegmentBlockIterator::NextBlock() {
-  ++curr_idx_;
-  column_block_cache_.clear();
-  if (!Valid()) return;
-  LoadToCurrentBlockCache();
-}
-
-void TsLastSegmentBlockIterator::NextEntityBlock() {
-  if (!specfic_scan_) {
-    if (entityblock_buffer_->row_end == entityblock_buffer_->info.nrow) {
-      // move to the next lastsegment block
-      NextBlock();
-      if (!Valid()) return;
-      entityblock_buffer_->row_start = 0;
-    } else {
-      entityblock_buffer_->row_start = entityblock_buffer_->row_end;
-    }
-    entity_id_ = entityblock_buffer_->entities[entityblock_buffer_->row_start];
-    LocateUpperBound();
-  } else {
-    if (entityblock_buffer_->row_end < entityblock_buffer_->info.nrow) {
-      // finish, invalidate the iterator
-      Invalidate();
-      return;
-    }
-    NextBlock();
-    if (!Valid()) return;
-    entityblock_buffer_->row_start = 0;
-    if (entity_id_ != entityblock_buffer_->entities[entityblock_buffer_->row_start]) {
-      Invalidate();
-      return;
-    }
-    LocateUpperBound();
-  }
-}
-
-void TsLastSegmentBlockIterator::LoadBlockIndex() {
-  TsLastSegmentFooter footer;
-  auto s = lastsegment_->GetFooter(&footer);
-  assert(s == SUCCESS);
-  block_idx_.resize(footer.n_data_block);
-  TSSlice result;
-  lastsegment_->file_->Read(footer.block_info_idx_offset,
-                            block_idx_.size() * sizeof(TsLastSegmentBlockIndex), &result,
-                            reinterpret_cast<char*>(block_idx_.data()));
-  assert(result.len == block_idx_.size() * sizeof(TsLastSegmentBlockIndex));
-}
+};
 
 static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
-                               std::string* out) {
+                               std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {
   size_t offset = info.block_offset + info.col_infos[col_id].offset;
   size_t len = info.col_infos[col_id].bitmap_len + info.col_infos[col_id].data_len;
   bool has_bitmap = info.col_infos[col_id].bitmap_len != 0;
@@ -385,14 +287,14 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
     return FAIL;
   }
   TsBitmap* p_bitmap = nullptr;
-  TsBitmap bitmap;
   if (has_bitmap) {
+    *bitmap = std::make_unique<TsBitmap>();
     BitmapCompAlg alg = static_cast<BitmapCompAlg>(buf[0]);
     switch (alg) {
       case BitmapCompAlg::kPlain: {
         size_t len = info.col_infos[col_id].bitmap_len - 1;
-        bitmap = TsBitmap({buf.get() + 1, len}, info.nrow);
-        p_bitmap = &bitmap;
+        **bitmap = TsBitmap({buf.get() + 1, len}, info.nrow);
+        p_bitmap = bitmap->get();
         break;
       }
       case BitmapCompAlg::kCompressed:
@@ -410,11 +312,11 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   const auto& compressor = CompressorManager::GetInstance().GetCompressor(first, second);
   RemovePrefix(&result, 2);
   bool ok = true;
-  out->clear();
+  col_data->clear();
   if (compressor.IsPlain()) {
-    out->assign(result.data, result.len);
+    col_data->assign(result.data, result.len);
   } else {
-    ok = compressor.Decompress(result, p_bitmap, info.nrow, out);
+    ok = compressor.Decompress(result, p_bitmap, info.nrow, col_data);
   }
 
   return ok ? SUCCESS : FAIL;
@@ -453,119 +355,32 @@ static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info
   return ok ? SUCCESS : FAIL;
 }
 
-KStatus TsLastSegmentBlockIterator::LoadToCurrentBlockCache() {
-  if (curr_idx_ == entityblock_buffer_->block_id) {
-    return SUCCESS;
-  }
-  const auto& cur_block = block_idx_[curr_idx_];
-  TSSlice result;
-  auto buf = std::make_unique<char[]>(cur_block.length);
-  lastsegment_->file_->Read(cur_block.offset, cur_block.length, &result, buf.get());
-  ParseBlockInfo(result, &entityblock_buffer_->info);
-  entityblock_buffer_->block_id = curr_idx_;
+void TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetTSRange(timestamp64* min_ts,
+                                                                   timestamp64* max_ts) {
+  int row_start = current_.GetRowStart();
+  int row_end = current_.GetRowEnd();
+  int block_id = current_.block_id;
+  parent_iter_->LoadColumnToCache(block_id, 2);
+  timestamp64* ptr = reinterpret_cast<timestamp64*>(
+      parent_iter_->cache_.GetColumnBlock(block_id, 2)->data->data());
+  *min_ts = ptr[row_start];
 
-  auto s = LoadColumnToCache(0);  // 0 for entity id
-  if (s == FAIL) {
-    return FAIL;
-  }
-  entityblock_buffer_->entities = reinterpret_cast<TSEntityID*>(column_block_cache_[0]->data());
-
-  // need to load ts column;
-  if (specfic_scan_) {
-    s = LoadColumnToCache(2);
-    if (s == FAIL) {
-      return FAIL;
-    }
-    entityblock_buffer_->ts = reinterpret_cast<timestamp64*>(column_block_cache_[2]->data());
-  }
-  return SUCCESS;
+  assert(row_end >= 1 && row_end <= parent_iter_->current_.info.nrow);
+  *max_ts = ptr[row_end - 1];
 }
 
-KStatus TsLastSegmentBlockIterator::LoadColumnToCache(int col_id) {
-  if (column_block_cache_[col_id] == nullptr) {
-    std::string out;
-    auto s = ReadColumnBlock(lastsegment_->file_.get(), entityblock_buffer_->info, col_id, &out);
-    if (s == FAIL) {
-      LOG_ERROR("cannot read column block from lastsegment");
-      return FAIL;
-    }
-    column_block_cache_[col_id] = std::make_unique<std::string>(std::move(out));
-  }
-  return SUCCESS;
-}
-
-KStatus TsLastSegmentBlockIterator::LoadVarcharToCache() {
-  if (column_block_cache_[-1] == nullptr) {
-    std::string out;
-    auto s = ReadVarcharBlock(lastsegment_->file_.get(), entityblock_buffer_->info, &out);
-    if (s == FAIL) {
-      LOG_ERROR("cannot read varchar block from lastsegment");
-      return FAIL;
-    }
-    column_block_cache_[-1] = std::make_unique<std::string>(std::move(out));
-  }
-  return SUCCESS;
-}
-
-void TsLastSegmentBlockIterator::LocateUpperBound() {
-  // TODO(zzr) can optimize the complicity to O(logn)
-  int idx = entityblock_buffer_->row_start;
-  for (; idx < entityblock_buffer_->info.nrow; ++idx) {
-    if (entityblock_buffer_->entities[idx] != entity_id_) break;
-  }
-  entityblock_buffer_->row_end = idx;
-  if (!specfic_scan_) return;
-  idx = entityblock_buffer_->row_start;
-  for (; idx < entityblock_buffer_->row_end; ++idx) {
-    if (entityblock_buffer_->ts[idx] > max_ts_) break;
-  }
-  entityblock_buffer_->row_end = idx;
-}
-
-void TsLastSegmentBlockIterator::LocateLowerBound() {
-  // TODO(zzr) can optimize the complicity to O(logn)
-  int idx = 0;
-  for (; idx < entityblock_buffer_->info.nrow; ++idx) {
-    if (entityblock_buffer_->entities[idx] == entity_id_) break;
-  }
-  entityblock_buffer_->row_start = idx;
-  if (!specfic_scan_) return;
-
-  for (; idx < entityblock_buffer_->info.nrow; ++idx) {
-    if (entityblock_buffer_->ts[idx] >= min_ts_) break;
-  }
-  entityblock_buffer_->row_start = idx;
-}
-
-auto TsLastSegmentBlockIterator::GetEntityBlock() -> EntityBlock* {
-  assert(Valid());
-  auto ptr = alloc_->AllocateAligned(sizeof(EntityBlock));
-  auto res = new (ptr) EntityBlock(this);
-  return res;
-}
-
-void TsLastSegmentBlockIterator::EntityBlock::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
-  parent_iter_->LoadColumnToCache(2);
-  int begin = parent_iter_->entityblock_buffer_->row_start;
-  int end = parent_iter_->entityblock_buffer_->row_end;
-  timestamp64* ptr = reinterpret_cast<timestamp64*>(parent_iter_->column_block_cache_[2]->data());
-  *min_ts = ptr[begin];
-
-  assert(end >= 1 && end < parent_iter_->entityblock_buffer_->info.nrow);
-  *max_ts = ptr[end - 1];
-}
-
-KStatus TsLastSegmentBlockIterator::EntityBlock::GetValueSlice(
+KStatus TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetValueSlice(
     int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) {
-  parent_iter_->LoadColumnToCache(col_id + 2);  // Skip entity id & LSN;
-  char* ptr = parent_iter_->column_block_cache_[col_id + 2]->data();
+  int block_id = current_.block_id;
+  parent_iter_->LoadColumnToCache(block_id, col_id + 2);  // Skip entity id & LSN;
+  char* ptr = parent_iter_->cache_.GetColumnBlock(block_id, col_id + 2)->data->data();
   int dtype = schema[col_id].type;
   int dsize = 0;
   if (isVarLenType(dtype)) {
-    parent_iter_->LoadVarcharToCache();
+    parent_iter_->LoadVarcharToCache(block_id);
     const size_t* data = reinterpret_cast<const size_t*>(ptr);
-    size_t offset = data[row_num + parent_iter_->entityblock_buffer_->row_start];
-    TSSlice result{parent_iter_->column_block_cache_[-1]->data() + offset, 2};
+    size_t offset = data[row_num + current_.GetRowStart()];
+    TSSlice result{parent_iter_->cache_.GetColumnBlock(block_id, -1)->data->data() + offset, 2};
     uint16_t len;
     GetFixed16(&result, &len);
     value.data = result.data;
@@ -579,15 +394,285 @@ KStatus TsLastSegmentBlockIterator::EntityBlock::GetValueSlice(
       dsize = getDataTypeSize(dtype);
     }
     value.len = dsize;
-    value.data = ptr + dsize * (row_num + parent_iter_->entityblock_buffer_->row_start);
+    value.data = ptr + dsize * (row_num + current_.GetRowStart());
   }
   return SUCCESS;
 }
 
-timestamp64 TsLastSegmentBlockIterator::EntityBlock::GetTS(int row_num, const std::vector<AttributeInfo>& schema) {
-  parent_iter_->LoadColumnToCache(2);
-  timestamp64* ptr = reinterpret_cast<timestamp64*>(parent_iter_->column_block_cache_[2]->data());
-  return ptr[row_num + parent_iter_->entityblock_buffer_->row_start];
+timestamp64 TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetTS(
+    int row_num, const std::vector<AttributeInfo>& schema) {
+  parent_iter_->LoadColumnToCache(current_.GetRowStart(), 2);
+  timestamp64* ptr = reinterpret_cast<timestamp64*>(
+      parent_iter_->cache_.GetColumnBlock(current_.block_id, 2)->data->data());
+  return ptr[row_num + current_.GetRowStart()];
+}
+
+bool TsLastSegmentEntityBlockIteratorBase::EntityBlock::IsColNull(
+    int row_num, int col_id, const std::vector<AttributeInfo>& schema) {
+  int block_id = current_.block_id;
+  parent_iter_->LoadColumnToCache(block_id, col_id + 2);
+  auto col_block = parent_iter_->cache_.GetColumnBlock(block_id, col_id + 2);
+  if (!col_block->HasBitmap()) {
+    return false;
+  }
+  return (*col_block->bitmap)[row_num + current_.GetRowStart()] == kNull;
+}
+
+char* TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetColAddr(
+    uint32_t col_id, const std::vector<AttributeInfo>& schema) {
+  return nullptr;
+}
+
+KStatus TsLastSegmentEntityBlockIteratorBase::LoadBlockIndex() {
+  TsLastSegmentFooter footer;
+  auto s = lastsegment_->GetFooter(&footer);
+  if (s != SUCCESS) {
+    return FAIL;
+  }
+  block_indices_.resize(footer.n_data_block);
+  TSSlice result;
+  auto buf = std::make_unique<char[]>(footer.n_data_block * sizeof(TsLastSegmentBlockIndex));
+  lastsegment_->file_->Read(footer.block_info_idx_offset,
+                            block_indices_.size() * sizeof(TsLastSegmentBlockIndex), &result,
+                            buf.get());
+  assert(result.len == block_indices_.size() * sizeof(TsLastSegmentBlockIndex));
+  for (int i = 0; i < block_indices_.size(); ++i) {
+    GetFixed64(&result, &block_indices_[i].offset);
+    GetFixed64(&result, &block_indices_[i].length);
+    GetFixed64(&result, &block_indices_[i].table_id);
+    GetFixed32(&result, &block_indices_[i].table_version);
+    GetFixed32(&result, &block_indices_[i].n_entity);
+    uint64_t v;
+    GetFixed64(&result, &v);
+    block_indices_[i].min_ts = v;
+    GetFixed64(&result, &v);
+    block_indices_[i].max_ts = v;
+    GetFixed64(&result, &block_indices_[i].min_entity_id);
+    GetFixed64(&result, &block_indices_[i].max_entity_id);
+  }
+  assert(result.len == 0);
+  return SUCCESS;
+}
+
+auto TsLastSegmentEntityBlockIteratorBase::GetEntityBlock() -> std::unique_ptr<EntityBlock> {
+  assert(Valid());
+  return std::make_unique<EntityBlock>(this);
+}
+
+KStatus TsLastSegmentEntityBlockIteratorBase::LoadColumnToCache(int block_id, int col_id) {
+  if (!cache_.HasCached(block_id, col_id)) {
+    std::string out;
+    std::unique_ptr<TsBitmap> bitmap;
+    auto s = ReadColumnBlock(lastsegment_->file_.get(), current_.info, col_id, &out, &bitmap);
+    if (s == FAIL) {
+      LOG_ERROR("cannot read column block from lastsegment");
+      return FAIL;
+    }
+    cache_.PutData(block_id, col_id, std::move(out));
+    if (bitmap != nullptr) {
+      cache_.PutBitmap(block_id, col_id, std::move(bitmap));
+    }
+  }
+  return SUCCESS;
+}
+
+KStatus TsLastSegmentEntityBlockIteratorBase::LoadVarcharToCache(int block_id) {
+  if (!cache_.HasCached(block_id, -1)) {
+    std::string out;
+    auto s = ReadVarcharBlock(lastsegment_->file_.get(), current_.info, &out);
+    if (s == FAIL) {
+      LOG_ERROR("cannot read varchar block from lastsegment");
+      return FAIL;
+    }
+    cache_.PutData(block_id, -1, std::move(out));
+  }
+  return SUCCESS;
+}
+
+KStatus TsLastSegmentEntityBlockIteratorBase::LoadToCurrentBlockCache() {
+  if (idx_ == current_.block_id) {
+    return SUCCESS;
+  }
+  const auto& cur_block = block_indices_[idx_];
+  TSSlice result;
+  auto buf = std::make_unique<char[]>(cur_block.length);
+  lastsegment_->file_->Read(cur_block.offset, cur_block.length, &result, buf.get());
+  ParseBlockInfo(result, &current_.info);
+  current_.block_id = idx_;
+
+  auto s = LoadColumnToCache(idx_, 0);  // 0 for entity id
+  if (s == FAIL) {
+    return FAIL;
+  }
+  current_.entities = reinterpret_cast<TSEntityID*>(cache_.GetColumnBlock(idx_, 0)->data->data());
+  s = LoadColumnToCache(idx_, 2);
+  if (s == FAIL) {
+    return FAIL;
+  }
+  current_.timestamps =
+      reinterpret_cast<timestamp64*>(cache_.GetColumnBlock(idx_, 2)->data->data());
+  return SUCCESS;
+}
+
+auto TsLastSegmentEntityBlockIteratorBase::GetAllEntityBlocks()
+    -> std::vector<std::unique_ptr<EntityBlock>> {
+  std::vector<std::unique_ptr<EntityBlock>> result;
+  SeekToFirst();
+  while (Valid()) {
+    result.push_back(GetEntityBlock());
+    NextEntityBlock();
+  }
+  return result;
+}
+
+KStatus TsLastSegmentFullEntityBlockIterator::Init() {
+  LoadBlockIndex();
+  return SeekToFirst();
+}
+
+KStatus TsLastSegmentFullEntityBlockIterator::SeekToFirst() {
+  idx_ = 0;
+  auto s = LoadToCurrentBlockCache();
+  if (s == FAIL) {
+    Invalidate();
+    return FAIL;
+  }
+  current_.SetRowStart(0);
+  current_.FindUpperBound(current_.GetEntityID(), INT64_MAX);
+  return SUCCESS;
+}
+
+void TsLastSegmentFullEntityBlockIterator::NextEntityBlock() {
+  if (current_.Finished()) {
+    NextBlock();
+    if (!Valid()) return;
+    current_.SetRowStart(0);
+    current_.FindUpperBound(current_.GetEntityID(), INT64_MAX);
+  } else {
+    current_.SetRowStart(current_.GetRowEnd());
+    current_.FindUpperBound(current_.GetEntityID(), INT64_MAX);
+  }
+}
+
+void TsLastSegmentPartialEntityBlockIterator::LocateToSpan(const KwTsSpan& span) {
+  int64_t min_ts = span.begin;
+  int64_t max_ts = span.end;
+  if (max_ts < min_ts) {
+    Invalidate();
+    return;
+  }
+  int i = idx_;
+
+  for (; i < block_indices_.size(); ++i) {
+    const auto& cur_block = block_indices_[i];
+    if (cur_block.table_id == table_id_ && cur_block.min_entity_id <= entity_id_ &&
+        cur_block.max_entity_id >= entity_id_ &&
+        !(max_ts < cur_block.min_ts && min_ts > cur_block.max_ts))
+      break;
+  }
+  if (i == block_indices_.size()) {
+    Invalidate();
+    return;
+  }
+  idx_ = i;
+}
+
+KStatus TsLastSegmentPartialEntityBlockIterator::Init() {
+  if (spans_.empty()) {
+    return FAIL;
+  }
+  LoadBlockIndex();
+  SeekToFirst();
+  return SUCCESS;
+}
+
+KStatus TsLastSegmentPartialEntityBlockIterator::SeekToFirst() {
+  span_idx_ = -1;
+  idx_ = 0;
+  MoveToNextSpan();
+  return SUCCESS;
+}
+
+void TsLastSegmentPartialEntityBlockIterator::MoveToNextSpan() {
+  ++span_idx_;
+  if (span_idx_ >= spans_.size()) {
+    Invalidate();
+    return;
+  }
+  LocateToSpan(CurrentSpan());
+  if (!Valid()) return;
+
+  LoadToCurrentBlockCache();
+  current_.FindLowerBound(entity_id_, CurrentSpan().begin);
+  if (current_.GetRowStart() >= current_.info.nrow) {
+    Invalidate();
+    return;
+  }
+
+  current_.FindUpperBound(entity_id_, CurrentSpan().end);
+  if (current_.GetRowCount() == 0) {
+    Invalidate();
+  }
+}
+
+void TsLastSegmentPartialEntityBlockIterator::NextEntityBlock() {
+  if (current_.Finished()) {
+    NextBlock();
+    if (!Valid()) return;
+    current_.SetRowStart(0);
+    if (current_.GetEntityID() != entity_id_ || current_.GetStartTs() > CurrentSpan().end) {
+      MoveToNextSpan();
+    } else {
+      current_.FindUpperBound(entity_id_, CurrentSpan().end);
+    }
+  } else {
+    MoveToNextSpan();
+  }
+}
+
+struct Element_ {
+  TSEntityID e_id;
+  timestamp64 ts;
+  bool operator==(const Element_& rhs) const { return e_id == rhs.e_id && ts == rhs.ts; }
+};
+
+static inline bool CompareLess(const Element_& lhs, const Element_& rhs) {
+  return lhs.e_id < rhs.e_id || (lhs.e_id == rhs.e_id && lhs.ts < rhs.ts);
+}
+
+void TsLastSegmentEntityBlockIteratorBase::CurrentBlock::FindLowerBound(TSEntityID e_id,
+                                                                        timestamp64 ts) {
+  int l = 0, r = info.nrow;
+  Element_ target{e_id, ts};
+  while (r - l > 0) {
+    int m = (l + r) / 2;
+    Element_ current{entities[m], timestamps[m]};
+    if (CompareLess(current, target)) {
+      l = m + 1;
+      continue;
+    }
+    r = m;
+  }
+  row_start = r;
+  if (row_start < info.nrow) {
+    entity_id_ = entities[r];
+  }
+}
+
+void TsLastSegmentEntityBlockIteratorBase::CurrentBlock::FindUpperBound(TSEntityID e_id,
+                                                                        timestamp64 ts) {
+  int l = row_start, r = info.nrow;
+  Element_ target{e_id, ts};
+  while (r - l > 0) {
+    int m = (l + r) / 2;
+    Element_ current{entities[m], timestamps[m]};
+    if (CompareLess(current, target) || current == target) {
+      l = m + 1;
+      continue;
+    }
+    r = m;
+  }
+  row_end = r;
 }
 
 }  // namespace kwdbts

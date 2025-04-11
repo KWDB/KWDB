@@ -17,6 +17,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <unordered_map>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -104,15 +105,15 @@ struct TsLastSegmentBlock {
       value.data = &column_blocks[col_idx].buffer[row_idx * d_size];
       value.len = d_size;
     } else {
-      size_t offset =
-          *reinterpret_cast<size_t*>(&column_blocks[col_idx].buffer[row_idx * d_size]);
+      size_t offset = *reinterpret_cast<size_t*>(&column_blocks[col_idx].buffer[row_idx * d_size]);
       value.len = *reinterpret_cast<uint16_t*>(&var_buffer[offset]);
       value.data = &var_buffer[offset + sizeof(uint16_t)];
     }
     return value;
   }
 
-  TSSlice GetNotVarBatchData(uint32_t col_idx, uint32_t row_idx, uint32_t row_count, size_t d_size) {
+  TSSlice GetNotVarBatchData(uint32_t col_idx, uint32_t row_idx, uint32_t row_count,
+                             size_t d_size) {
     TSSlice value;
     value.data = &column_blocks[col_idx].buffer[row_idx * d_size];
     value.len = d_size * row_count;
@@ -121,10 +122,12 @@ struct TsLastSegmentBlock {
 };
 
 class TsLastSegmentBlockIterator;
+class TsLastSegmentEntityBlockIteratorBase;
 class TsLastSegment {
  public:
   static int kNRowPerBlock;
   friend class TsLastSegmentBlockIterator;
+  friend class TsLastSegmentEntityBlockIteratorBase;
 
  private:
   uint32_t ver_;  // not the schema version;
@@ -177,92 +180,157 @@ class TsLastSegment {
 
   KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
 
-  std::unique_ptr<TsLastSegmentBlockIterator> NewIterator(Allocator* alloc) const;
+  std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator() const;
 
-  std::unique_ptr<TsLastSegmentBlockIterator> NewIterator(Allocator* alloc, TSTableID table_id,
-                                                          TSEntityID entity_id, timestamp64 min_ts,
-                                                          timestamp64 max_ts) const;
+  std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator(
+      TSTableID table_id, TSEntityID entity_id, const std::vector<KwTsSpan>& spans) const;
 };
 
-class TsLastSegmentBlockIterator {
+class TsLastSegmentEntityBlockIteratorBase {
   friend class TsLastSegment;
 
- private:
-  Allocator* alloc_;
+ protected:
+  bool valid_ = true;
   const TsLastSegment* lastsegment_;
 
-  bool specfic_scan_;
-  TSTableID table_id_;
-  TSEntityID entity_id_;
-  timestamp64 min_ts_, max_ts_;
+  struct CurrentBlock {
+   private:
+    int row_start, row_end;
+    TSEntityID entity_id_;
 
-  int curr_idx_;
-
-  std::vector<TsLastSegmentBlockIndex> block_idx_;
-
-  struct CurrentBlockCache {
+   public:
     int block_id = -1;
     TsLastSegmentBlockInfo info;
     TSEntityID* entities;
-    timestamp64* ts = nullptr;
-    int row_start, row_end;
+    timestamp64* timestamps;
+    void SetRowStart(int start) {
+      assert(start < info.nrow);
+      row_start = start;
+      entity_id_ = entities[start];
+    }
+    void SetRowEnd(int end) { row_end = end; }
+    int GetRowStart() const { return row_start; }
+    int GetRowEnd() const { return row_end; }
+    int GetRowCount() const { return row_end - row_start; }
+    bool Finished() const { return row_end == info.nrow; }
+    TSEntityID GetEntityID() const { return entity_id_; }
+    timestamp64 GetStartTs() const { return timestamps[row_start]; }
+    void FindLowerBound(TSEntityID e_id, timestamp64 ts);
+    void FindUpperBound(TSEntityID e_id, timestamp64 ts);
+  } current_;
+  std::vector<TsLastSegmentBlockIndex> block_indices_;
+  int idx_ = 0;
+
+  using DataBlock = std::unique_ptr<std::string>;
+  using BitmapBlock = std::unique_ptr<TsBitmap>;
+  struct ColumnBlock {
+    BitmapBlock bitmap;
+    DataBlock data;
+    bool HasBitmap() const { return bitmap != nullptr; }
   };
-  std::unique_ptr<CurrentBlockCache> entityblock_buffer_;
 
-  mutable std::unordered_map<int, std::unique_ptr<std::string>> column_block_cache_;
-
-  // Default constructor for full scan; used by compaction
-  explicit TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last);
-
-  // Constructor for scan specific table and entity.
-  explicit TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last,
-                                      TSTableID table_id, TSEntityID entity_id, timestamp64 min_ts,
-                                      timestamp64 max_ts);
-
-  void Invalidate() { curr_idx_ = block_idx_.size(); }
-  void LoadBlockIndex();
-  void LocateUpperBound();
-  void LocateLowerBound();
-  void NextBlock();
-  KStatus LoadToCurrentBlockCache();
-  KStatus LoadColumnToCache(int col_id);
-  KStatus LoadVarcharToCache();
+  // Store decompressed data to this class
+  struct BlockCache {
+    std::unordered_map<int, std::unordered_map<int, std::unique_ptr<ColumnBlock>>> cache_;
+    void PutData(int block_id, int col_id, std::string&& data) {
+      if (cache_[block_id][col_id] == nullptr) {
+        cache_[block_id][col_id] = std::make_unique<ColumnBlock>();
+      }
+      cache_[block_id][col_id]->data = std::make_unique<std::string>(std::move(data));
+    }
+    void PutBitmap(int block_id, int col_id, std::unique_ptr<TsBitmap>&& bitmap) {
+      if (cache_[block_id][col_id] == nullptr) {
+        cache_[block_id][col_id] = std::make_unique<ColumnBlock>();
+      }
+      cache_[block_id][col_id]->bitmap = std::move(bitmap);
+    }
+    ColumnBlock* GetColumnBlock(int block_id, int col_id) { return cache_[block_id][col_id].get(); }
+    bool HasCached(int block_id, int col_id) {
+      auto p = GetColumnBlock(block_id, col_id);
+      return p != nullptr && p->data != nullptr;
+    }
+  } cache_;
 
   class EntityBlock : public TsBlockSpanInfo {
    private:
-    TsLastSegmentBlockIterator* parent_iter_;
+    TsLastSegmentEntityBlockIteratorBase* parent_iter_;
+    const CurrentBlock current_;
 
    public:
-    explicit EntityBlock(TsLastSegmentBlockIterator* piter) : parent_iter_(piter) {}
-    TSEntityID GetEntityId() override { return parent_iter_->entity_id_; }
+    explicit EntityBlock(TsLastSegmentEntityBlockIteratorBase* piter)
+        : parent_iter_(piter), current_(parent_iter_->current_) {}
+    ~EntityBlock() {}
+    TSEntityID GetEntityId() override { return current_.GetEntityID(); }
     TSTableID GetTableId() override {
-      return parent_iter_->block_idx_[parent_iter_->curr_idx_].table_id;
+      return parent_iter_->block_indices_[current_.block_id].table_id;
     }
     uint32_t GetTableVersion() override {
-      return parent_iter_->block_idx_[parent_iter_->curr_idx_].table_version;
+      return parent_iter_->block_indices_[current_.block_id].table_version;
     }
     void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override;
-    size_t GetRowNum() override {
-      const auto& ptr = parent_iter_->entityblock_buffer_;
-      return ptr->row_end - ptr->row_start;
-    }
+    size_t GetRowNum() override { return current_.GetRowCount(); }
     KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                           TSSlice& value) override;
-
     timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
-
-    bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
-      return false;
-    }
-    char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override {
-      return nullptr;
-    }
+    bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
+    char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
   };
 
+  void Invalidate() { valid_ = false; }
+  KStatus LoadBlockIndex();
+  void NextBlock() {
+    idx_++;
+    if (Valid()) LoadToCurrentBlockCache();
+  }
+  KStatus LoadColumnToCache(int block_id, int col_id);
+  KStatus LoadVarcharToCache(int block_id);
+  KStatus LoadToCurrentBlockCache();
+
  public:
-  bool Valid() const { return curr_idx_ < block_idx_.size(); }
-  void NextEntityBlock();
-  EntityBlock* GetEntityBlock();
+  TsLastSegmentEntityBlockIteratorBase(const TsLastSegment* last) : lastsegment_(last) {}
+  virtual ~TsLastSegmentEntityBlockIteratorBase() = default;
+
+  bool Valid() const { return valid_ && idx_ < block_indices_.size(); }
+
+  virtual KStatus Init() = 0;
+  virtual KStatus SeekToFirst() = 0;
+  virtual void NextEntityBlock() = 0;
+  std::unique_ptr<EntityBlock> GetEntityBlock();
+  std::vector<std::unique_ptr<EntityBlock>> GetAllEntityBlocks();
+};
+
+class TsLastSegmentFullEntityBlockIterator : public TsLastSegmentEntityBlockIteratorBase {
+ public:
+  TsLastSegmentFullEntityBlockIterator(const TsLastSegment* last)
+      : TsLastSegmentEntityBlockIteratorBase(last) {}
+  KStatus Init() override;
+  KStatus SeekToFirst() override;
+  void NextEntityBlock() override;
+};
+
+class TsLastSegmentPartialEntityBlockIterator : public TsLastSegmentEntityBlockIteratorBase {
+ private:
+  const TSEntityID entity_id_;
+  const TSTableID table_id_;
+
+  const std::vector<KwTsSpan> spans_;
+  int span_idx_ = -1;
+
+  void LocateToSpan(const KwTsSpan& span);
+  void MoveToNextSpan();
+  const KwTsSpan& CurrentSpan() const { return spans_[span_idx_]; }
+
+ public:
+  // REQUIRE: span has no intersection and must be ordered, check should be done by caller
+  TsLastSegmentPartialEntityBlockIterator(const TsLastSegment* last, TSTableID table_id,
+                                          TSEntityID entity_id, const std::vector<KwTsSpan>& span)
+      : TsLastSegmentEntityBlockIteratorBase(last),
+        entity_id_(entity_id),
+        table_id_(table_id),
+        spans_(span) {}
+  KStatus Init() override;
+  KStatus SeekToFirst() override;
+  void NextEntityBlock() override;
 };
 
 struct TsLastSegmentBlockSpan {
@@ -287,8 +355,8 @@ class TsLastSegmentsMergeIterator {
     uint32_t row_idx;
 
     inline bool operator<(const TsIteratorRowInfo& other) const {
-      return entity_id != other.entity_id ? entity_id < other.entity_id :
-             ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
+      return entity_id != other.entity_id ? entity_id < other.entity_id
+                                          : ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
     }
   };
 
@@ -334,7 +402,8 @@ class TsLastSegmentsMergeIterator {
     if (!cur_blocks_[segment_idx]) {
       cur_blocks_[segment_idx] = new TsLastSegmentBlock();
     }
-    return last_segments_[segment_idx]->GetBlock(block_infos_[segment_idx][block_idx], cur_blocks_[segment_idx]);
+    return last_segments_[segment_idx]->GetBlock(block_infos_[segment_idx][block_idx],
+                                                 cur_blocks_[segment_idx]);
   }
 
  public:
@@ -398,11 +467,13 @@ class TsLastSegmentsMergeIterator {
       second_row_info = row_infos_.front();
     }
 
-    uint32_t n_rows_in_block = block_infos_[first_row_info.last_segment_idx][first_row_info.block_idx].nrow;
+    uint32_t n_rows_in_block =
+        block_infos_[first_row_info.last_segment_idx][first_row_info.block_idx].nrow;
     uint32_t row_idx = first_row_info.row_idx;
     TsLastSegmentBlock* block = cur_blocks_[first_row_info.last_segment_idx];
     for (; row_idx < n_rows_in_block; ++row_idx) {
-      TsIteratorRowInfo new_row_info = {block->GetEntityId(row_idx), block->GetTimestamp(row_idx), block->GetSeqNo(row_idx)};
+      TsIteratorRowInfo new_row_info = {block->GetEntityId(row_idx), block->GetTimestamp(row_idx),
+                                        block->GetSeqNo(row_idx)};
       if (second_row_info < new_row_info) {
         new_row_info.last_segment_idx = first_row_info.last_segment_idx;
         new_row_info.block_idx = first_row_info.block_idx;
@@ -412,7 +483,8 @@ class TsLastSegmentsMergeIterator {
       }
     }
 
-    TsLastSegmentBlockIndex block_index = block_indexes_[first_row_info.last_segment_idx][first_row_info.block_idx];
+    TsLastSegmentBlockIndex block_index =
+        block_indexes_[first_row_info.last_segment_idx][first_row_info.block_idx];
     block_span->block = block;
     block_span->table_id = block_index.table_id;
     block_span->table_version = block_index.table_version;
