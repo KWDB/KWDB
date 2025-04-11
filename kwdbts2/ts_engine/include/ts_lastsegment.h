@@ -24,7 +24,7 @@
 #include "libkwdbts2.h"
 #include "ts_arena.h"
 #include "ts_bitmap.h"
-#include "ts_block_item_info.h"
+#include "ts_block_span_info.h"
 #include "ts_io.h"
 
 namespace kwdbts {

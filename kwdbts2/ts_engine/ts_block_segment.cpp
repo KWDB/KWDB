@@ -220,7 +220,7 @@ KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockITemFilterParams& 
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    if (cur_blk_item.min_ts <= filter.end_ts && cur_blk_item.max_ts >= filter.start_ts) {
+    if (isTimestampInSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
       std::shared_ptr<TsBlockSpanInfo> block_span = std::make_shared<TsBlockSegmentBlockSpan>(blk_segment, filter.table_id,
                                                                                               cur_blk_item);
       block_spans->push_front(block_span);
