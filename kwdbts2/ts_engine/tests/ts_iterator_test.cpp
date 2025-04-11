@@ -91,7 +91,7 @@ TEST_F(TestV2Iterator, basic) {
         }
         TsStorageIterator* ts_iter;
         k_uint32 entity_id = 1;
-        KwTsSpan ts_span = {start_ts, start_ts + 2 * 10};
+        KwTsSpan ts_span = {start_ts + 1000, start_ts + 1020};
         DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
         ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
         std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
