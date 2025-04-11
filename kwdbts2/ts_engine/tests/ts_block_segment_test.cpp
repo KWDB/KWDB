@@ -79,5 +79,18 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
 
     //partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
+
+    TsBlockSegment* block_segment = partition->GetBlockSegment();
+    for (int i = 0; i < 10; ++i) {
+      TsBlockITemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), INT64_MIN, INT64_MAX};
+      std::list<std::shared_ptr<TsBlockSpanInfo>> block_spans;
+      s = block_segment->GetBlockSpans(filter, &block_spans);
+      EXPECT_EQ(s, KStatus::SUCCESS);
+      EXPECT_EQ(block_spans.size(), i);
+      if (i != 0) {
+        EXPECT_EQ(block_spans.front()->GetTS(0, metric_schema), 123);
+        EXPECT_EQ(block_spans.back()->GetTS(block_spans.back()->GetRowNum() - 1, metric_schema), 123 + i * 1000 - 1);
+      }
+    }
   }
 }

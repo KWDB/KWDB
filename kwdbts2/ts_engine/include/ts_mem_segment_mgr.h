@@ -244,7 +244,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
 
   // if just get timestamp , this function return fast.
-  timestamp64 GetTS(int row_num) override {
+  timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->ts;
   }
@@ -295,7 +295,7 @@ class TsMemSegmentManager {
 
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
-  KStatus GetBlockItems(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
+  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
 };
 
 }  // namespace kwdbts

@@ -43,7 +43,7 @@ class TsBlockSpanInfo {
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) = 0;
   virtual inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) = 0;
   // if just get timestamp , this function return fast.
-  virtual timestamp64 GetTS(int row_num) = 0;
+  virtual timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) = 0;
 };
 
 

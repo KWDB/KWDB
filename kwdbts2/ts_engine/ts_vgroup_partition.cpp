@@ -61,17 +61,18 @@ KStatus TsVGroupPartition::Compact() {
 }
 
 KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
-                                                timestamp64 max_ts, timestamp64 min_ts, TSSlice block_data,
-                                                TSSlice block_agg, uint32_t row_num) {
+                                                uint32_t col_num, uint32_t row_num, timestamp64 max_ts, timestamp64 min_ts,
+                                                TSSlice block_data, TSSlice block_agg) {
   // generating new block item info ,and append to block segment.
   TsBlockSegmentBlockItem blk_item;
-  blk_item.Info().entity_id = entity_id;
-  blk_item.Info().table_version = table_version;
-  blk_item.Info().rows = row_num;
-  blk_item.Info().max_ts = max_ts;
-  blk_item.Info().min_ts = min_ts;
+  blk_item.entity_id = entity_id;
+  blk_item.table_version = table_version;
+  blk_item.n_cols = col_num;
+  blk_item.n_rows = row_num;
+  blk_item.max_ts = max_ts;
+  blk_item.min_ts = min_ts;
 
-  KStatus s = blk_segment_->AppendBlockData(&blk_item, block_data, block_agg);
+  KStatus s = blk_segment_->AppendBlockData(blk_item, block_data, block_agg);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("insert into block segment of partition[%s] failed.", path_.c_str());
     return s;

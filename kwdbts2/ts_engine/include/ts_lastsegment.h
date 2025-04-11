@@ -249,7 +249,7 @@ class TsLastSegmentBlockIterator {
     KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                           TSSlice& value) override;
 
-    timestamp64 GetTS(int row_num) override;
+    timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
 
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
       return false;

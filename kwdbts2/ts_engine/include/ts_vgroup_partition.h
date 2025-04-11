@@ -60,8 +60,11 @@ class TsVGroupPartition {
 
   TsEngineSchemaManager* GetSchemaMgr() { return schema_mgr_; }
 
-  KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version, timestamp64 max_ts,
-                               timestamp64 min_ts, TSSlice block_data, TSSlice block_agg, uint32_t row_num);
+  TsBlockSegment* GetBlockSegment() { return blk_segment_.get(); }
+
+  KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
+                               uint32_t col_num, uint32_t row_num, timestamp64 max_ts, timestamp64 min_ts,
+                               TSSlice block_data, TSSlice block_agg);
 };
 
 

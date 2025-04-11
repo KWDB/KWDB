@@ -85,7 +85,7 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   params.entity_id = tmp_data.entity_id;
   params.start_ts = INT64_MIN;
   params.end_ts = INT64_MAX;
-  s = mem_seg_mgr_.GetBlockItems(params, &blocks);
+  s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
@@ -93,7 +93,7 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   ASSERT_EQ(block->GetRowNum(), 1);
   ASSERT_EQ(block->GetTableId(), tmp_data.table_id);
   std::vector<AttributeInfo> schema;
-  ASSERT_EQ(block->GetTS(0), tmp_data.ts);
+  ASSERT_EQ(block->GetTS(0, schema), tmp_data.ts);
   TSSlice value;
   s = block->GetValueSlice(0, 0, schema, value);
   ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -122,7 +122,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   params.entity_id = entity_id;
   params.start_ts = INT64_MIN;
   params.end_ts = INT64_MAX;
-  auto s = mem_seg_mgr_.GetBlockItems(params, &blocks);
+  auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
@@ -131,7 +131,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   ASSERT_EQ(block->GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
   for (size_t i = 0; i < row_num; i++) {
-    ASSERT_EQ(block->GetTS(i), 10086 + i);
+    ASSERT_EQ(block->GetTS(i, schema), 10086 + i);
     TSSlice value;
     s = block->GetValueSlice(i, 0, schema, value);
     ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -165,7 +165,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   params.entity_id = entity_id;
   params.start_ts = INT64_MIN;
   params.end_ts = INT64_MAX;
-  auto s = mem_seg_mgr_.GetBlockItems(params, &blocks);
+  auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
@@ -174,7 +174,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   ASSERT_EQ(block->GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
   for (size_t i = 0; i < row_num; i++) {
-    ASSERT_EQ(block->GetTS(i), 10086);
+    ASSERT_EQ(block->GetTS(i, schema), 10086);
     TSSlice value;
     s = block->GetValueSlice(i, 0, schema, value);
     ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -208,7 +208,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     params.entity_id = j;
     params.start_ts = INT64_MIN;
     params.end_ts = INT64_MAX;
-    auto s = mem_seg_mgr_.GetBlockItems(params, &blocks);
+    auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), 1);
     auto block = blocks.front();
@@ -217,7 +217,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     ASSERT_EQ(block->GetRowNum(), row_num / entity_num);
     std::vector<AttributeInfo> schema;
     for (size_t i = 0; i < block->GetRowNum(); i++) {
-      ASSERT_EQ(block->GetTS(i), 10086 + i * 10 + j - 1);
+      ASSERT_EQ(block->GetTS(i, schema), 10086 + i * 10 + j - 1);
       TSSlice value;
       s = block->GetValueSlice(i, 0, schema, value);
       ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -252,7 +252,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
   params.entity_id = entity_id;
   params.start_ts = INT64_MIN;
   params.end_ts = INT64_MAX;
-  auto s = mem_seg_mgr_.GetBlockItems(params, &blocks);
+  auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), version_num);
   int j = 0;
@@ -262,7 +262,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     ASSERT_EQ(block->GetRowNum(), row_num / version_num);
     std::vector<AttributeInfo> schema;
     for (size_t i = 0; i < row_num / version_num; i++) {
-      ASSERT_EQ(block->GetTS(i), 10086 + i * version_num + j);
+      ASSERT_EQ(block->GetTS(i, schema), 10086 + i * version_num + j);
       TSSlice value;
       s = block->GetValueSlice(i, 0, schema, value);
       ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -304,7 +304,7 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
     params.entity_id = entity_id;
     params.start_ts = INT64_MIN;
     params.end_ts = INT64_MAX;
-    auto s = mem_seg_mgr_.GetBlockItems(params, &blocks);
+    auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), version_num);
     for (auto block : blocks) {
