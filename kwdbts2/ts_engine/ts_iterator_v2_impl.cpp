@@ -222,14 +222,18 @@ KStatus TsMemSegmentScanner::Init(bool is_reversed) {
 KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
-  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, INT64_MIN, INT64_MAX};
+  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
 
+  *count = 0;
   for (auto block : blocks) {
     *count += block->GetRowNum();
+  }
+  if (*count == 0) {
+    return KStatus::SUCCESS;
   }
   for (int i = 0; i < kw_scan_cols_.size(); ++i) {
     k_int32 col_idx = ts_scan_cols_[i];

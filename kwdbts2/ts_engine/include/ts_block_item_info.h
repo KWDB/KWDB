@@ -27,8 +27,7 @@ struct TsBlockITemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
   TSEntityID entity_id;
-  timestamp64 start_ts;
-  timestamp64 end_ts;
+  std::vector<KwTsSpan>& ts_spans_;
 };
 
 class TsBlockSpanInfo {

@@ -223,7 +223,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockITemFilterParams& filter, std::lis
     if (!cur_row->SameTableId(begin)) {
       break;
     }
-    if (cur_row->entity_id == filter.entity_id && cur_row->InTsSpan(filter.start_ts, filter.end_ts)) {
+    if (cur_row->entity_id == filter.entity_id && CheckIfTsInSpan(cur_row->ts, filter.ts_spans_)) {
       rows->push_back(cur_row);
     }
     iter.Next();
