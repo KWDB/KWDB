@@ -10,13 +10,16 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include "data_type.h"
+#include "libkwdbts2.h"
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_lastsegment.h"
+#include "ts_payload.h"
 #include "ts_lastsegment.h"
 
 namespace kwdbts {
 class TsLastSegmentBuilder {
-  static constexpr int kNRowPerBlock = 4 << 10;
   std::unique_ptr<TsLastSegment> last_segment_;
 
   struct BlockInfo;
@@ -39,13 +42,45 @@ class TsLastSegmentBuilder {
     TSEntityID entity_id;
     TSSlice metric;
   };
-  std::vector<EntityPayload> payload_buffer_;
   struct EntityColData {
     TS_LSN seq_no;
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
   };
   std::vector<EntityColData> col_data_buffer_;
+
+  struct PayloadBuffer {
+    std::vector<EntityPayload> buffer;
+    bool disordered = false;
+    std::unique_ptr<TsRawPayloadRowParser> parser;
+
+    void Reset(const std::vector<AttributeInfo>& schema) {
+      parser = std::make_unique<TsRawPayloadRowParser>(schema);
+    }
+
+    bool Compare(const EntityPayload& lhs, const EntityPayload& rhs) const {
+      auto ts_lhs = parser->GetTimestamp(lhs.metric);
+      auto ts_rhs = parser->GetTimestamp(rhs.metric);
+      return lhs.entity_id < rhs.entity_id || (lhs.entity_id == rhs.entity_id && ts_lhs < ts_rhs);
+    }
+    void push_back(const EntityPayload& v) {
+      assert(buffer.empty() || buffer.back().entity_id <= v.entity_id);
+      disordered = disordered || (!buffer.empty() && Compare(v, buffer.back()));
+      buffer.push_back(v);
+    }
+    void sort() {
+      if (!disordered) return;
+      std::sort(
+          buffer.begin(), buffer.end(),
+          [this](const EntityPayload& l, const EntityPayload& r) { return this->Compare(l, r); });
+    }
+    void clear() {
+      buffer.clear();
+      disordered = false;
+    }
+  };
+  PayloadBuffer payload_buffer_;
+
   const TsEngineSchemaManager* schema_mgr_;
 
   KStatus WriteMetricBlock(MetricBlockBuilder* builder);

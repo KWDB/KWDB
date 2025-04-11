@@ -11,10 +11,17 @@
 
 #pragma once
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
 
 #include "data_type.h"
+#include "kwdb_type.h"
+#include "lg_api.h"
+#include "libkwdbts2.h"
+#include "ts_arena.h"
 #include "ts_bitmap.h"
+#include "ts_block_item_info.h"
 #include "ts_io.h"
 
 namespace kwdbts {
@@ -26,6 +33,7 @@ class MetaBlockBase {
 };
 
 // first 8 byte of `md5 -s kwdbts::TsLastSegment`
+// TODO(zzr) fix endian
 static constexpr uint64_t FOOTER_MAGIC = 0xcb2ffe9321847271;
 
 struct TsLastSegmentFooter {
@@ -109,16 +117,41 @@ struct TsLastSegmentBlock {
   }
 };
 
+class TsLastSegmentBlockIterator;
 class TsLastSegment {
+ public:
+  static int kNRowPerBlock;
+  friend class TsLastSegmentBlockIterator;
+
  private:
   uint32_t ver_;  // not the schema version;
 
   std::unique_ptr<TsFile> file_;
 
  public:
+  explicit TsLastSegment(const std::string& path)
+      : ver_(0), file_(std::make_unique<TsMMapFile>(path, true)) {}
   TsLastSegment(uint32_t ver, TsFile* file) : ver_(ver), file_(file) {}
 
   ~TsLastSegment() = default;
+
+  KStatus Open() {
+    // just check the magic number;
+    auto sz = file_->GetFileSize();
+    if (sz < sizeof(TsLastSegmentFooter)) {
+      LOG_ERROR("lastsegment file corruption");
+      return FAIL;
+    }
+    char buf[8];
+    TSSlice result;
+    file_->Read(sz - 8, sz, &result, buf);
+    int c = std::memcmp(buf, &FOOTER_MAGIC, 8);
+    if (c != 0) {
+      LOG_ERROR("magic mismatch")
+      return FAIL;
+    }
+    return SUCCESS;
+  }
 
   TsStatus Append(const TSSlice& data);
 
@@ -126,11 +159,11 @@ class TsLastSegment {
 
   size_t GetFileSize() const;
 
-  TsFile* GetFilePtr();
+  TsFile* GetFilePtr() const;
 
   uint32_t GetVersion() const;
 
-  KStatus GetFooter(TsLastSegmentFooter* footer);
+  KStatus GetFooter(TsLastSegmentFooter* footer) const;
 
   KStatus GetAllBlockIndex(TsLastSegmentFooter& footer,
                            std::vector<TsLastSegmentBlockIndex>* block_indexes);
@@ -140,6 +173,87 @@ class TsLastSegment {
   KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, TsLastSegmentBlockInfo* block_info);
 
   KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
+
+  std::unique_ptr<TsLastSegmentBlockIterator> NewIterator(Allocator* alloc) const;
+
+  std::unique_ptr<TsLastSegmentBlockIterator> NewIterator(Allocator* alloc, TSTableID table_id,
+                                                          TSEntityID entity_id, timestamp64 min_ts,
+                                                          timestamp64 max_ts) const;
+};
+
+class TsLastSegmentBlockIterator {
+  friend class TsLastSegment;
+
+ private:
+  Allocator* alloc_;
+  const TsLastSegment* lastsegment_;
+
+  bool specfic_scan_;
+  TSTableID table_id_;
+  TSEntityID entity_id_;
+  timestamp64 min_ts_, max_ts_;
+
+  int curr_idx_;
+
+  std::vector<TsLastSegmentBlockIndex> block_idx_;
+
+  struct CurrentBlockCache {
+    int block_id = -1;
+    TsLastSegmentBlockInfo info;
+    TSEntityID* entities;
+    timestamp64* ts = nullptr;
+    int row_start, row_end;
+  };
+  std::unique_ptr<CurrentBlockCache> entityblock_buffer_;
+
+  mutable std::unordered_map<int, std::unique_ptr<std::string>> column_block_cache_;
+
+  // Default constructor for full scan; used by compaction
+  explicit TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last);
+
+  // Constructor for scan specific table and entity.
+  explicit TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last,
+                                      TSTableID table_id, TSEntityID entity_id, timestamp64 min_ts,
+                                      timestamp64 max_ts);
+
+  void Invalidate() { curr_idx_ = block_idx_.size(); }
+  void LoadBlockIndex();
+  void LocateUpperBound();
+  void LocateLowerBound();
+  void NextBlock();
+  KStatus LoadToCurrentBlockCache();
+  KStatus LoadColumnToCache(int col_id);
+  KStatus LoadVarcharToCache();
+
+  class EntityBlock : public TsBlockItemInfo {
+   private:
+
+    TsLastSegmentBlockIterator* parent_iter_;
+
+   public:
+    explicit EntityBlock(TsLastSegmentBlockIterator* piter) : parent_iter_(piter) {}
+    TSEntityID GetEntityId() const override { return parent_iter_->entity_id_; }
+    TSTableID GetTableId() const override {
+      return parent_iter_->block_idx_[parent_iter_->curr_idx_].table_id;
+    }
+    uint32_t GetTableVersion() const override {
+      return parent_iter_->block_idx_[parent_iter_->curr_idx_].table_version;
+    }
+    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) const override;
+    size_t GetRowNum() const override {
+      const auto& ptr = parent_iter_->entityblock_buffer_;
+      return ptr->row_end - ptr->row_start;
+    }
+    KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
+                          TSSlice& value) override;
+
+    timestamp64 GetTS(int row_num) override;
+  };
+
+ public:
+  bool Valid() const { return curr_idx_ < block_idx_.size(); }
+  void NextEntityBlock();
+  EntityBlock* GetEntityBlock();
 };
 
 struct TsLastSegmentBlockSpan {

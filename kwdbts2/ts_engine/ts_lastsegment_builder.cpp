@@ -15,6 +15,8 @@
 #include "kwdb_type.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
+#include "ts_compressor_impl.h"
+#include "ts_lastsegment.h"
 
 namespace kwdbts {
 
@@ -31,34 +33,23 @@ KStatus TsLastSegmentBuilder::FlushBuffer() {
 }
 
 KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
-  if (payload_buffer_.empty()) {
+  if (payload_buffer_.buffer.empty()) {
     return SUCCESS;
   }
-  std::shared_ptr<TsTableSchemaManager> table_mgr;
-  auto s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
-  schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
-  std::vector<AttributeInfo> data_schema;
-  table_mgr->GetColumnsExcludeDropped(data_schema);
-  TsRawPayloadRowParser parser(data_schema);
+  payload_buffer_.sort();
+  int kNRowPerBlock = TsLastSegment::kNRowPerBlock;
 
-  auto comp = [&parser](const EntityPayload& l, const EntityPayload& r) {
-    auto ts_lhs = parser.GetTimestamp(l.metric);
-    auto ts_rhs = parser.GetTimestamp(r.metric);
-    return l.entity_id < r.entity_id && ts_lhs < ts_rhs;
-  };
-  // std::sort(payload_buffer_.begin(), payload_buffer_.end(), comp);
-
-  int left = payload_buffer_.size();
+  int left = payload_buffer_.buffer.size();
   data_block_builder_->Reset(table_id_, version_);
-  auto reserved_size = std::min<int>(payload_buffer_.size(), kNRowPerBlock);
+  auto reserved_size = std::min<int>(payload_buffer_.buffer.size(), kNRowPerBlock);
   data_block_builder_->Reserve(reserved_size);
 
-  for (int idx = 0; idx < payload_buffer_.size(); ++idx) {
-    const EntityPayload& p = payload_buffer_[idx];
+  for (int idx = 0; idx < payload_buffer_.buffer.size(); ++idx) {
+    const EntityPayload& p = payload_buffer_.buffer[idx];
     data_block_builder_->Add(p.entity_id, p.seq_no, p.metric);
     --left;
 
-    if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == payload_buffer_.size()) {
+    if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == payload_buffer_.buffer.size()) {
       data_block_builder_->Finish();
       auto s = WriteMetricBlock(data_block_builder_.get());
       if (s != SUCCESS) return FAIL;
@@ -76,6 +67,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
   if (col_data_buffer_.empty()) {
     return SUCCESS;
   }
+  int kNRowPerBlock = TsLastSegment::kNRowPerBlock;
   std::shared_ptr<TsTableSchemaManager> table_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
@@ -118,7 +110,20 @@ KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, T
                                          TS_LSN seq_no, TSSlice row_data) {
   if (table_id != table_id_ || version != version_) {
     auto s = FlushPayloadBuffer();
-    if (s != SUCCESS) return FAIL;
+
+    std::shared_ptr<TsTableSchemaManager> table_mgr;
+    s = schema_mgr_->GetTableSchemaMgr(table_id, table_mgr);
+    if (s == FAIL) {
+      LOG_ERROR("can not get table schema manager, table id: %lu", table_id);
+      return FAIL;
+    }
+    std::vector<AttributeInfo> data_schema;
+    s = table_mgr->GetColumnsExcludeDropped(data_schema, version);
+    if (s == FAIL) {
+      LOG_ERROR("can not get schema, table id: %lu, version: %u", table_id, version);
+      return FAIL;
+    }
+    payload_buffer_.Reset(data_schema);
   }
   table_id_ = table_id;
   version_ = version;
@@ -228,7 +233,9 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
   // assert(getDataTypeSize(dtype_) == col_data.len);
 #endif
   // TODO(zzr): parse bitmap from payload;
-  // bitmap_[row_cnt_] = kValid;
+  if (has_bitmap_) {
+    bitmap_[row_cnt_] = kValid;
+  }
   row_cnt_++;
   data_buffer_.append(col_data.data, dsize_);
 }
@@ -403,6 +410,19 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Finish() {
     // update blockinfo
     offset += data_len + bitmap_len;
   }
+
+  // compress varchar;
+  const auto& snappy = SnappyString::GetInstance();
+  std::string tmp;
+  std::string out;
+  if (snappy.Compress({varchar_buffer_.data(), varchar_buffer_.size()}, 0, &out)) {
+    tmp.push_back(static_cast<char>(GenCompAlg::kSnappy));
+    tmp.append(out);
+  } else {
+    tmp.push_back(static_cast<char>(GenCompAlg::kPlain));
+    tmp.append(varchar_buffer_);
+  }
+  varchar_buffer_.swap(tmp);
   finished_ = true;
 }
 
