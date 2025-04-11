@@ -62,24 +62,14 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  private:
-  inline void CollectIntersectingPartitions(
-    const std::unordered_map<int, std::unique_ptr<TsVGroupPartition>>& partitions,
-    const std::vector<KwTsSpan>& ts_spans_) {
-    std::unordered_set<TsVGroupPartition*> seen;
-    for (const auto& [idx, partition_ptr] : partitions) {
-      if (!partition_ptr) continue;
-      int64_t p_start = partition_ptr->StartTs();
-      int64_t p_end = partition_ptr->EndTs();
-      for (const auto& span : ts_spans_) {
-        if (!(span.end <= p_start || span.begin >= p_end)) {
-          if (seen.insert(partition_ptr.get()).second) {
-            ts_partitions_.emplace_back(
-              std::shared_ptr<TsVGroupPartition>(partition_ptr.get(), [](TsVGroupPartition*) {}));
-          }
-          break;
-        }
+  inline bool HasIntersection(int64_t part_start, int64_t part_end,
+                            const std::vector<KwTsSpan>& spans) {
+    for (const auto& span : spans) {
+      if (!(span.end <= part_start || span.begin >= part_end)) {
+        return true;
       }
     }
+    return false;
   }
 
  protected:

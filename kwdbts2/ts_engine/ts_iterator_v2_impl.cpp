@@ -82,7 +82,6 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
     return KStatus::FAIL;
   }
 
-  std::vector<TsVGroupPartition*> result;
   TSTableID table_id = table_schema_mgr_->GetTableId();
   auto schema_mgr = vgroup_->GetEngineSchemaMgr();
   uint32_t database_id = schema_mgr->GetDBIDByTableID(table_id);
@@ -90,13 +89,24 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
   auto it = partition_managers.find(database_id);
 
   if (it != partition_managers.end() && it->second) {
-    auto* partition_manager = it->second.get();
-    const auto& partitions = partition_manager->GetPartitions();
+  auto* partition_manager = it->second.get();
+  const auto& partitions = partition_manager->GetPartitions();
 
-    if (!partitions.empty()) {
-      CollectIntersectingPartitions(partitions, ts_spans_);
+  if (!partitions.empty()) {
+    std::unordered_set<TsVGroupPartition*> seen;
+    for (const auto& [idx, partition_ptr] : partitions) {
+      if (!partition_ptr) continue;
+      int64_t p_start = partition_ptr->StartTs();
+      int64_t p_end = partition_ptr->EndTs();
+      if (HasIntersection(p_start, p_end, ts_spans_)) {
+        if (seen.insert(partition_ptr.get()).second) {
+          ts_partitions_.emplace_back(
+            std::shared_ptr<TsVGroupPartition>(partition_ptr.get(), [](TsVGroupPartition*) {}));
+        }
+      }
     }
   }
+}
 
   return KStatus::SUCCESS;
 }
