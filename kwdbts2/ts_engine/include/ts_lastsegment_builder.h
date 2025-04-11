@@ -10,13 +10,16 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_lastsegment.h"
 #include "ts_payload.h"
-#include "ts_lastsegment.h"
 
 namespace kwdbts {
 class TsLastSegmentBuilder {
@@ -47,7 +50,6 @@ class TsLastSegmentBuilder {
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
   };
-  std::vector<EntityColData> col_data_buffer_;
 
   struct PayloadBuffer {
     std::vector<EntityPayload> buffer;
@@ -80,6 +82,33 @@ class TsLastSegmentBuilder {
     }
   };
   PayloadBuffer payload_buffer_;
+
+  struct ColDataBuffer {
+    std::vector<EntityColData> buffer;
+    bool disordered = false;
+
+    bool Compare(const EntityColData& lhs, const EntityColData& rhs) const {
+      auto ts_lhs = KTimestamp(lhs.col_data[0].data);
+      auto ts_rhs = KTimestamp(lhs.col_data[0].data);
+      return lhs.entity_id < rhs.entity_id || (lhs.entity_id == rhs.entity_id && ts_lhs < ts_rhs);
+    }
+    void push_back(const EntityColData& v) {
+      assert(buffer.empty() || buffer.back().entity_id <= v.entity_id);
+      disordered = disordered || (!buffer.empty() && Compare(v, buffer.back()));
+      buffer.push_back(v);
+    }
+    void sort() {
+      if (!disordered) return;
+      std::sort(
+        buffer.begin(), buffer.end(),
+        [this](const EntityColData& l, const EntityColData& r) { return this->Compare(l, r); });
+    }
+    void clear() {
+      buffer.clear();
+      disordered = false;
+    }
+  };
+  ColDataBuffer cols_data_buffer_;
 
   const TsEngineSchemaManager* schema_mgr_;
 

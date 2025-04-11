@@ -64,9 +64,10 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
 }
 
 KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
-  if (col_data_buffer_.empty()) {
+  if (cols_data_buffer_.buffer.empty()) {
     return SUCCESS;
   }
+  cols_data_buffer_.sort();
   int kNRowPerBlock = TsLastSegment::kNRowPerBlock;
   std::shared_ptr<TsTableSchemaManager> table_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
@@ -74,25 +75,17 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
   std::vector<AttributeInfo> data_schema;
   table_mgr->GetColumnsExcludeDropped(data_schema);
 
-  // TODO(limeng04): sort
-  auto comp = [&](const EntityColData& l, const EntityColData& r) {
-    auto ts_lhs = *(timestamp64*)l.col_data[0].data;
-    auto ts_rhs = *(timestamp64*)r.col_data[0].data;
-    return l.entity_id < r.entity_id && ts_lhs < ts_rhs;
-  };
-  // std::sort(col_data_buffer_.begin(), col_data_buffer_.end(), comp);
-
-  int left = col_data_buffer_.size();
+  int left = cols_data_buffer_.buffer.size();
   data_block_builder_->Reset(table_id_, version_);
-  auto reserved_size = std::min<int>(col_data_buffer_.size(), kNRowPerBlock);
+  auto reserved_size = std::min<int>(cols_data_buffer_.buffer.size(), kNRowPerBlock);
   data_block_builder_->Reserve(reserved_size);
 
-  for (int idx = 0; idx < col_data_buffer_.size(); ++idx) {
-    const EntityColData& p = col_data_buffer_[idx];
+  for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
+    const EntityColData& p = cols_data_buffer_.buffer[idx];
     data_block_builder_->Add(p.entity_id, p.seq_no, p.col_data);
     --left;
 
-    if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == col_data_buffer_.size()) {
+    if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == cols_data_buffer_.buffer.size()) {
       data_block_builder_->Finish();
       auto s = WriteMetricBlock(data_block_builder_.get());
       if (s != SUCCESS) return FAIL;
@@ -102,7 +95,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
       data_block_builder_->Reserve(reserved_size);
     }
   }
-  col_data_buffer_.clear();
+  cols_data_buffer_.clear();
   return SUCCESS;
 }
 
@@ -139,7 +132,7 @@ KStatus TsLastSegmentBuilder::PutColData(TSTableID table_id, uint32_t version, T
   }
   table_id_ = table_id;
   version_ = version;
-  col_data_buffer_.push_back({seq_no, entity_id, col_data});
+  cols_data_buffer_.push_back({seq_no, entity_id, std::move(col_data)});
   return KStatus::SUCCESS;
 }
 

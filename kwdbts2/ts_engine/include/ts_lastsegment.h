@@ -12,8 +12,11 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+#include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -272,7 +275,7 @@ struct TsLastSegmentBlockSpan {
   uint32_t end_row = 0;
 };
 
-class TsLastSegmentIterator {
+class TsLastSegmentsMergeIterator {
  private:
   struct TsIteratorRowInfo {
     uint64_t entity_id;
@@ -335,8 +338,9 @@ class TsLastSegmentIterator {
   }
 
  public:
-  TsLastSegmentIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments) : last_segments_(last_segments) {}
-  ~TsLastSegmentIterator(){
+  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments) :
+    last_segments_(last_segments) {}
+  ~TsLastSegmentsMergeIterator() {
     for (int i = 0; i < cur_blocks_.size(); ++i) {
       if (cur_blocks_[i]) {
         delete cur_blocks_[i];
@@ -347,7 +351,7 @@ class TsLastSegmentIterator {
         prev_blocks_[i] = nullptr;
       }
     }
-  };
+  }
 
   KStatus Init() {
     block_indexes_.resize(last_segments_.size());

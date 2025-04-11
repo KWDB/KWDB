@@ -25,7 +25,6 @@
 namespace kwdbts {
 
 const size_t MAX_ROWS_PER_BLOCK = 1000;
-const size_t MAX_COMPACT_NUM = 6;
 
 struct TsBlockSegmentBlockItemInfo {
   uint64_t block_id = 0;          // block item id
@@ -240,11 +239,11 @@ class TsBlockSegmentBlock {
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
 
-public:
+ public:
   TsBlockSegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
                       std::vector<AttributeInfo>& metric_schema);
   TsBlockSegmentBlock(const TsBlockSegmentBlock& other);
-  ~TsBlockSegmentBlock(){}
+  ~TsBlockSegmentBlock() {}
 
   bool HasData() { return n_rows_ > 0; }
 
@@ -255,6 +254,8 @@ public:
   uint32_t GetTableVersion() const { return table_version_; }
 
   uint64_t GetEntityId() const { return entity_id_; }
+
+  std::vector<AttributeInfo> GetMetricSchema() { return metric_schema_; }
 
   uint64_t GetSeqNo(uint32_t row_idx);
 
@@ -271,27 +272,30 @@ public:
 
 class TsBlockSegmentBuilder {
  private:
-  struct TsTableKey {
-    uint32_t table_id;
-    uint32_t table_version;
+  struct TsEntityKey {
+    uint32_t table_id = 0;
+    uint32_t table_version = 0;
+    uint64_t entity_id = 0;
 
-    bool operator==(const TsTableKey& other) const {
-      return table_id == other.table_id && table_version == other.table_version;
+    bool operator==(const TsEntityKey& other) const {
+      return table_id == other.table_id && table_version == other.table_version && entity_id == other.entity_id;
     }
-  };
-
-  struct TsTableKeyHash {
-    std::size_t operator()(const TsTableKey& key) const {
-      std::size_t h1 = std::hash<uint32_t>{}(key.table_id);
-      std::size_t h2 = std::hash<uint32_t>{}(key.table_version);
-      return h1 ^ (h2 << 1);
+    bool operator!=(const TsEntityKey& other) const {
+      return !(*this == other);
+    }
+    bool operator<(const TsEntityKey& other) const {
+      if (table_id != other.table_id) {
+        return table_id < other.table_id;
+      }
+      if (table_version != other.table_version) {
+        return table_version < other.table_version;
+      }
+      return entity_id < other.entity_id;
     }
   };
 
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
   TsVGroupPartition* partition_;
-
-  std::unordered_map<TsTableKey, std::map<uint64_t, TsBlockSegmentBlock>, TsTableKeyHash> blocks_;
 
  public:
   explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,

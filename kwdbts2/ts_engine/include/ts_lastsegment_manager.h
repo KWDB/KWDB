@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@
 namespace kwdbts {
 
 const uint32_t MAX_LAST_SEGMENT_NUM = 3;
+const uint32_t MAX_COMPACT_NUM = UINT32_MAX;
 
 class TsLastSegmentManager {
  private:

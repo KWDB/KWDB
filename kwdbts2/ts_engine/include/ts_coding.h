@@ -132,9 +132,7 @@ inline void PutFixed64(std::string *dst, uint64_t v) {
   dst->append(reinterpret_cast<char *>(&v), sizeof(v));
 }
 
-inline void GetChar(TSSlice *slice, char v){
-
-}
+inline void GetChar(TSSlice *slice, char v) {}
 
 inline void GetFixed16(TSSlice *slice, uint16_t *v) {
   assert(slice->len >= 2);

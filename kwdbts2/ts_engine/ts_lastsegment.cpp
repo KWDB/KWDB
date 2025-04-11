@@ -11,6 +11,7 @@
 
 #include "ts_lastsegment.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -220,7 +221,8 @@ void TsLastSegmentManager::TakeLastSegmentOwnership(std::unique_ptr<TsLastSegmen
 // TODO(zzr) get last segments from VersionManager, this method must be atomic
 void TsLastSegmentManager::GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result) {
   rdLock();
-  result = last_segments_;
+  size_t compact_num = std::min(last_segments_.size(), static_cast<size_t>(MAX_COMPACT_NUM));
+  result.assign(last_segments_.begin(), last_segments_.begin() + compact_num);
   unLock();
 }
 
@@ -271,7 +273,7 @@ static void ParseBlockInfo(TSSlice data, TsLastSegmentBlockInfo* info) {
     GetFixed32(&data, &info->col_infos[i].data_len);
   }
   assert(data.len == 0);
-};
+}
 
 TsLastSegmentBlockIterator::TsLastSegmentBlockIterator(Allocator* alloc, const TsLastSegment* last)
     : alloc_(alloc),
