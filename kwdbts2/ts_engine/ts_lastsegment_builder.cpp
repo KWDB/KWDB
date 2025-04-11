@@ -505,8 +505,7 @@ KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsFile* file) {
     PutFixed64(&buf, idx.min_entity_id);
     PutFixed64(&buf, idx.max_entity_id);
   }
-  auto s = file->Append(buf);
-  return s.ok() ? SUCCESS : FAIL;
+  return file->Append(buf);
 }
 
 }  // namespace kwdbts

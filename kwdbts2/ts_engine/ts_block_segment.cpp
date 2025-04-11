@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_block_segment.h"
+#include "kwdb_type.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_timsort.h"
 #include "ts_vgroup_partition.h"
@@ -499,8 +500,8 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush() {
       LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder finalize failed.")
       return s;
     }
-    int ret = builder.Flush();
-    if (ret != 0) {
+    s = builder.Flush();
+    if (s == FAIL) {
       LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush failed.")
       return KStatus::FAIL;
     }

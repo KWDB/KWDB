@@ -227,21 +227,19 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
     assert(row_data_.size() > 0);
     return row_data_[0]->entity_id;
   }
-  TSTableID GetTableId() const override {
+  TSTableID GetTableId() override {
     assert(row_data_.size() > 0);
     return row_data_[0]->table_id;
   }
-  uint32_t GetTableVersion() const override {
+  uint32_t GetTableVersion() override {
     assert(row_data_.size() > 0);
     return row_data_[0]->table_version;
   }
-  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) const override {
+  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override {
     *min_ts = min_ts_;
     *max_ts = max_ts_;
   }
-  size_t GetRowNum() const override {
-    return row_data_.size();
-  }
+  size_t GetRowNum() override { return row_data_.size(); }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
   inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
 

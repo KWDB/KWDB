@@ -153,9 +153,9 @@ class TsLastSegment {
     return SUCCESS;
   }
 
-  TsStatus Append(const TSSlice& data);
+  KStatus Append(const TSSlice& data);
 
-  TsStatus Flush();
+  KStatus Flush();
 
   size_t GetFileSize() const;
 
@@ -225,22 +225,21 @@ class TsLastSegmentBlockIterator {
   KStatus LoadColumnToCache(int col_id);
   KStatus LoadVarcharToCache();
 
-  class EntityBlock : public TsBlockItemInfo {
+  class EntityBlock : public TsBlockSpanInfo {
    private:
-
     TsLastSegmentBlockIterator* parent_iter_;
 
    public:
     explicit EntityBlock(TsLastSegmentBlockIterator* piter) : parent_iter_(piter) {}
-    TSEntityID GetEntityId() const override { return parent_iter_->entity_id_; }
-    TSTableID GetTableId() const override {
+    TSEntityID GetEntityId() override { return parent_iter_->entity_id_; }
+    TSTableID GetTableId() override {
       return parent_iter_->block_idx_[parent_iter_->curr_idx_].table_id;
     }
-    uint32_t GetTableVersion() const override {
+    uint32_t GetTableVersion() override {
       return parent_iter_->block_idx_[parent_iter_->curr_idx_].table_version;
     }
-    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) const override;
-    size_t GetRowNum() const override {
+    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override;
+    size_t GetRowNum() override {
       const auto& ptr = parent_iter_->entityblock_buffer_;
       return ptr->row_end - ptr->row_start;
     }
@@ -248,6 +247,13 @@ class TsLastSegmentBlockIterator {
                           TSSlice& value) override;
 
     timestamp64 GetTS(int row_num) override;
+
+    bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
+      return false;
+    }
+    char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override {
+      return nullptr;
+    }
   };
 
  public:

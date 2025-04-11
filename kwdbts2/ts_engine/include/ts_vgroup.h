@@ -183,18 +183,6 @@ class TsVGroup {
   void initCompactThread();
   // Close compact thread.
   void closeCompactThread();
-
- public:
-  class TsPartitionedFlush {
-   public:
-    TsPartitionedFlush() = delete;
-    TsPartitionedFlush(TsVGroup*, rocksdb::InternalIterator*);
-    rocksdb::Status FlushFromMem();
-
-   private:
-    TsVGroup* vgroup_;
-    rocksdb::InternalIterator* iter_;
-  };
 };
 
 

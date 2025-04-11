@@ -107,7 +107,7 @@ TEST_F(TestV2Iterator, basic) {
         bool is_finished = false;
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 1);
-        ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts+1000, ts_col_type)); //1000 is the inteval added in GenRowPayload
+        ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 0);

@@ -21,11 +21,9 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "sys_utils.h"
-#include "ts_io.h"
-#include "ts_last_segment_manager.h"
-#include "ts_payload.h"
-#include "ts_vgroup_partition.h"
 #include "ts_iterator_v2_impl.h"
+#include "ts_lastsegment_builder.h"
+#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
@@ -42,12 +40,6 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  if (db_ != nullptr) {
-    rocksdb::FlushOptions flush_opts;
-    db_->Flush(flush_opts);
-    db_->Close();
-    delete db_;
-  }
   if (config_file_ != nullptr) {
     config_file_->sync(MS_SYNC);
     delete config_file_;

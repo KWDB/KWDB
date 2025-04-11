@@ -11,7 +11,6 @@
 
 #include "ts_lastsegment.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -32,15 +31,14 @@
 #include "ts_compressor_impl.h"
 #include "ts_io.h"
 #include "ts_lastsegment_manager.h"
-#include "ts_status.h"
 #include "utils/big_table_utils.h"
 namespace kwdbts {
 
 int TsLastSegment::kNRowPerBlock = 4096;
 
-TsStatus TsLastSegment::Append(const TSSlice& data) { return file_->Append(data); }
+KStatus TsLastSegment::Append(const TSSlice& data) { return file_->Append(data); }
 
-TsStatus TsLastSegment::Flush() { return file_->Flush(); }
+KStatus TsLastSegment::Flush() { return file_->Flush(); }
 
 size_t TsLastSegment::GetFileSize() const { return file_->GetFileSize(); }
 
@@ -381,8 +379,7 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   TSSlice result;
   auto buf = std::make_unique<char[]>(len);
   auto s = file->Read(offset, len, &result, buf.get());
-  if (!s.ok()) {
-    LOG_ERROR("%s", s.ToString().c_str());
+  if (s == FAIL) {
     return FAIL;
   }
   TsBitmap* p_bitmap = nullptr;
@@ -545,8 +542,7 @@ auto TsLastSegmentBlockIterator::GetEntityBlock() -> EntityBlock* {
   return res;
 }
 
-void TsLastSegmentBlockIterator::EntityBlock::GetTSRange(timestamp64* min_ts,
-                                                         timestamp64* max_ts) const {
+void TsLastSegmentBlockIterator::EntityBlock::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
   parent_iter_->LoadColumnToCache(2);
   int begin = parent_iter_->entityblock_buffer_->row_start;
   int end = parent_iter_->entityblock_buffer_->row_end;

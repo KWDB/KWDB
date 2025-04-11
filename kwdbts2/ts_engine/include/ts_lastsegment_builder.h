@@ -97,10 +97,7 @@ class TsLastSegmentBuilder {
         index_handle_(std::make_unique<IndexHandle>()),
         schema_mgr_(schema_mgr) {}
 
-  int Flush() {
-    auto s = last_segment_->Flush();
-    return s.ok() ? 0 : 1;
-  }
+  KStatus Flush() { return last_segment_->Flush(); }
 
   KStatus Finalize();
   KStatus PutRowData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
