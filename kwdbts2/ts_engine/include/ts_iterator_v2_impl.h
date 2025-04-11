@@ -61,17 +61,6 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
- private:
-  inline bool HasIntersection(int64_t part_start, int64_t part_end,
-                            const std::vector<KwTsSpan>& spans) {
-    for (const auto& span : spans) {
-      if (!(span.end <= part_start || span.begin >= part_end)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
  protected:
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;

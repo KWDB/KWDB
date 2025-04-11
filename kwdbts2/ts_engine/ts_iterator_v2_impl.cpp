@@ -98,7 +98,7 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
       if (!partition_ptr) continue;
       int64_t p_start = partition_ptr->StartTs();
       int64_t p_end = partition_ptr->EndTs();
-      if (HasIntersection(p_start, p_end, ts_spans_)) {
+      if (isTimestampInSpans(ts_spans_, p_start, p_end)) {
         if (seen.insert(partition_ptr.get()).second) {
           ts_partitions_.emplace_back(
             std::shared_ptr<TsVGroupPartition>(partition_ptr.get(), [](TsVGroupPartition*) {}));
