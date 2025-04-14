@@ -14,8 +14,9 @@
 #include "ts_engine.h"
 #include "ts_vgroup.h"
 
-namespace kwdbts {
 extern bool g_go_start_service;
+
+namespace kwdbts {
 
 TsTableV2Impl::~TsTableV2Impl() = default;
 
