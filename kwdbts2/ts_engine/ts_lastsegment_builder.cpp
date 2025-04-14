@@ -149,7 +149,7 @@ KStatus TsLastSegmentBuilder::WriteMetricBlock(MetricBlockBuilder* builder) {
     KStatus s = last_segment_->Append(bitmap);
     len += bitmap.len;
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ast_segment Append failed.");
+      LOG_ERROR("last_segment Append failed.");
       return FAIL;
     }
 
@@ -157,7 +157,7 @@ KStatus TsLastSegmentBuilder::WriteMetricBlock(MetricBlockBuilder* builder) {
     s = last_segment_->Append(data);
     len += data.len;
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ast_segment Append failed.");
+      LOG_ERROR("last_segment Append failed.");
       return FAIL;
     }
   }
@@ -165,7 +165,7 @@ KStatus TsLastSegmentBuilder::WriteMetricBlock(MetricBlockBuilder* builder) {
   TSSlice varchar_buf = builder->GetVarcharBuffer();
   auto s = last_segment_->Append(varchar_buf);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("ast_segment Append failed.");
+    LOG_ERROR("last_segment Append failed.");
     return FAIL;
   }
   len += varchar_buf.len;

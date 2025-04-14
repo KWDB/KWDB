@@ -26,7 +26,7 @@
 namespace kwdbts {
 
 const uint32_t MAX_LAST_SEGMENT_NUM = 3;
-const uint32_t MAX_COMPACT_NUM = UINT32_MAX;
+const uint32_t MAX_COMPACT_NUM = 10;
 
 class TsLastSegmentManager {
  private:

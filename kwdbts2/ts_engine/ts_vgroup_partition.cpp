@@ -42,6 +42,9 @@ KStatus TsVGroupPartition::Open() {
 }
 
 KStatus TsVGroupPartition::Compact() {
+  if (!last_segment_mgr_.NeedCompact()) {
+    return KStatus::SUCCESS;
+  }
   // 1. Get all the last segments that need to be compacted.
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
   last_segment_mgr_.GetCompactLastSegments(last_segments);

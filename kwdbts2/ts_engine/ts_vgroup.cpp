@@ -175,8 +175,8 @@ int TsVGroup::saveToFile(uint32_t new_id) const {
 void TsVGroup::compactRoutine(void* args) {
   while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
     std::unique_lock<std::mutex> lock(cv_mutex_);
-    // Check every 5 seconds if compact is necessary
-    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !enable_compact_thread_; });
+    // Check every 2 seconds if compact is necessary
+    cv_.wait_for(lock, std::chrono::seconds(2), [this] { return !enable_compact_thread_; });
     lock.unlock();
     // If the thread pool stops or the system is no longer running, exit the loop
     if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_compact_thread_) {
@@ -223,7 +223,7 @@ inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& x, std::shared
 
 KStatus TsVGroup::Compact(int thread_num) {
   std::vector<std::shared_ptr<TsVGroupPartition>> vgroup_partitions;
-  RW_LATCH_X_LOCK(&partitions_latch_);
+  RW_LATCH_S_LOCK(&partitions_latch_);
   for (auto& partition : partitions_) {
     std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetPartitions();
     vgroup_partitions.insert(vgroup_partitions.end(), v.begin(), v.end());
@@ -320,7 +320,12 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("last segment Finalize failed.");
       return KStatus::FAIL;
     }
-    kv.second.Flush();
+    s = kv.second.Flush();
+    if (s == FAIL) {
+      LOG_ERROR("last segment Flush failed.");
+      return KStatus::FAIL;
+    }
+    kv.first->PublicLastSegment(kv.second.Finish());
   }
   // todo(liangbo01) add all new files into new_file_list.
   std::list<TsLastSegment> new_file_list;

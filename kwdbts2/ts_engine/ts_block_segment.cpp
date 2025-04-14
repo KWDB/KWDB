@@ -699,6 +699,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush() {
     LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush failed.")
     return KStatus::FAIL;
   }
+  partition_->PublicLastSegment(builder.Finish());
   return KStatus::SUCCESS;
 }
 
