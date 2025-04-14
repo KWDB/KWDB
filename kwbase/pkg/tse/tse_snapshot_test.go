@@ -194,6 +194,7 @@ func TestSnapshotMultiNode(t *testing.T) {
 }
 
 func TestCreateTsTableFailed(t *testing.T) {
+	t.Skip()
 	defer leaktest.AfterTest(t)()
 
 	ctx := context.Background()

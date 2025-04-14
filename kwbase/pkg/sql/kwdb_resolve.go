@@ -86,6 +86,43 @@ func IsObjectCannotFoundError(err error) bool {
 	return false
 }
 
+//export checkTableMetaExist
+func checkTableMetaExist(id C.TSTableID) C.bool {
+	ctx := context.Background()
+	tableID := uint64(id)
+	var tb *sqlbase.TableDescriptor
+	err := handler.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		// get tableDesc
+		descKey := sqlbase.MakeDescMetadataKey(sqlbase.ID(tableID))
+		endKey := descKey.PrefixEnd()
+		var kvs []kv.KeyValue
+		var err error
+		kvs, err = txn.Scan(ctx, descKey, endKey, 0)
+		if err != nil {
+			return err
+		}
+		for _, v := range kvs {
+			desc := &sqlbase.Descriptor{}
+			if err := v.ValueProto(desc); err != nil {
+				return err
+			}
+			switch t := desc.Union.(type) {
+			case *sqlbase.Descriptor_Table:
+				tb = desc.GetTable()
+				break
+			default:
+				return errors.AssertionFailedf("Descriptor.Union has unexpected type %T", t)
+			}
+		}
+		return nil
+	})
+	if err != nil || tb == nil {
+		log.Error(ctx, err)
+		return C.bool(false)
+	}
+	return C.bool(!tb.Dropped())
+}
+
 //export getTableMetaByVersion
 func getTableMetaByVersion(
 	id C.TSTableID, tsVer C.uint64_t, outputLen *C.size_t, errMsg **C.char,
@@ -98,7 +135,14 @@ func getTableMetaByVersion(
 		// get tableDesc with specific tsVersion
 		descKey := sqlbase.MakeDescMetadataKey(sqlbase.ID(tableID))
 		endKey := descKey.PrefixEnd()
-		kvs, err := txn.ScanAllMvccVerForOneTable(ctx, descKey, endKey, 0)
+		var kvs []kv.KeyValue
+		var err error
+		isGetLatestVersion := tsVersion == 0
+		if isGetLatestVersion {
+			kvs, err = txn.Scan(ctx, descKey, endKey, 0)
+		} else {
+			kvs, err = txn.ScanAllMvccVerForOneTable(ctx, descKey, endKey, 0)
+		}
 		if err != nil {
 			return err
 		}
@@ -112,7 +156,10 @@ func getTableMetaByVersion(
 			switch t := desc.Union.(type) {
 			case *sqlbase.Descriptor_Table:
 				table := desc.GetTable()
-
+				if isGetLatestVersion {
+					targetDesc = table
+					break
+				}
 				// when we get multiple tableDesc with the same tsVersion, use the one with bigger tableDesc.Version
 				if uint32(table.TsTable.TsVersion) == tsVersion && uint32(table.Version) > biggerDescVersion {
 					targetDesc = table

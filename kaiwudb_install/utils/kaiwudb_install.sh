@@ -378,7 +378,7 @@ LimitNOFILE=1048576
 $cpus
 WorkingDirectory=/usr/local/kaiwudb/bin
 EnvironmentFile=/etc/kaiwudb/script/kaiwudb_env
-ExecStartPre=/usr/bin/sudo /usr/sbin/sysctl -w vm.max_map_count=10000000
+ExecStartPre=$(which sudo) $(which sysctl) -w vm.max_map_count=10000000
 ExecStart=/usr/local/kaiwudb/bin/kwbase $start_type \\\$KAIWUDB_START_ARG $secure_param --listen-addr=0.0.0.0:$g_kwdb_port --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:$g_rest_port --store=$g_data_root $encrypto_opt $opt_join
 ExecStop=/bin/kill \\\$MAINPID
 KillMode=control-group
@@ -402,7 +402,7 @@ Type=simple
 LimitMEMLOCK=infinity
 LimitNOFILE=1048576
 WorkingDirectory=/etc/kaiwudb/script
-ExecStartPre=/usr/sbin/sysctl -w vm.max_map_count=10000000
+ExecStartPre=$(which sysctl) -w vm.max_map_count=10000000
 ExecStart=$(which docker-compose) --compatibility up
 ExecStop=$(which docker-compose) stop
 # Restart=on-failure

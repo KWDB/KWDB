@@ -1929,6 +1929,7 @@ func (s *Server) Start(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
+	sql.Init(s.db, s.tsEngine)
 
 	// NewUDFCache creates a new udf cache.
 	s.execCfg.UDFCache = sql.NewUDFCache(
@@ -2076,6 +2077,9 @@ func (s *Server) Start(ctx context.Context) error {
 	// Start garbage collecting system events.
 	s.startSystemLogsGC(ctx)
 
+	// Start ts table garbage collecting.
+	s.startTSTableGC(ctx)
+
 	// Register gRPC-gateway endpoints used by the admin UI.
 	var authHandler http.Handler = gwMux
 	if s.cfg.RequireWebSession() {
@@ -2209,7 +2213,6 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	})
 
-	sql.Init(s.db, s.tsEngine)
 	// Start serving SQL clients.
 	if err := s.startServeSQL(ctx, workersCtx, connManager, pgL); err != nil {
 		return err

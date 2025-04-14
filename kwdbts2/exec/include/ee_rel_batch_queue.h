@@ -31,6 +31,8 @@ class RelBatchQueue {
 
   std::deque<DataChunkPtr> data_queue_;
   bool no_more_data_chunk{false};
+  bool is_init_{false};
+  bool is_error_{false};
 
  public:
   RelBatchQueue();
@@ -65,6 +67,11 @@ class RelBatchQueue {
    * @return Iterator error code
    */
   EEIteratorErrCode Done(kwdbContext_p ctx);
+
+  void NotifyError() {
+    is_error_ = true;
+    cv.notify_all();
+  }
 };
 
 };  // namespace kwdbts

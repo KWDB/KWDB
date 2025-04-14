@@ -464,6 +464,10 @@ func (f *rowBasedFlow) Release() {
 
 // Cleanup is part of the flowinfra.Flow interface.
 func (f *rowBasedFlow) Cleanup(ctx context.Context) {
+	for _, processor := range f.TsTableReaders {
+		tsTableReader := processor.(*rowexec.TsTableReader)
+		tsTableReader.DropHandle(ctx)
+	}
 	f.FlowBase.Cleanup(ctx)
 	f.Release()
 }

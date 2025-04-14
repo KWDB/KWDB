@@ -201,7 +201,7 @@ func (sw *TSSchemaChangeWorker) completeTsTxn(ctx context.Context, syncErr error
 		InitialBackoff: 500 * time.Millisecond,
 		MaxBackoff:     30 * time.Second,
 		Multiplier:     2,
-		MaxRetries:     9,
+		MaxRetries:     3,
 	}
 	var event txnEvent
 	event = txnCommit
@@ -260,9 +260,22 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 		TsVersion:         uint32(d.SNTable.TsTable.GetTsVersion()),
 	}
 
+	nTagIndexInfos := make([]sqlbase.NTagIndexInfo, len(d.SNTable.Indexes))
+	for i, idx := range d.SNTable.Indexes {
+		columnIDs := make([]uint32, len(idx.ColumnIDs))
+		for j, colID := range idx.ColumnIDs {
+			columnIDs[j] = uint32(colID)
+		}
+		nTagIndexInfos[i] = sqlbase.NTagIndexInfo{
+			IndexId: uint32(idx.ID),
+			ColIds:  columnIDs,
+		}
+	}
+
 	return sqlbase.CreateTsTable{
-		TsTable: kObjectTable,
-		KColumn: kColDescs,
+		TsTable:   kObjectTable,
+		KColumn:   kColDescs,
+		IndexInfo: nTagIndexInfos,
 	}
 }
 
@@ -286,7 +299,10 @@ func (sw *TSSchemaChangeWorker) handleResult(
 		var updateErr error
 		switch d.Type {
 		case createKwdbTsTable:
-			updateErr = p.handleCreateTSTable(ctx, d.SNTable, syncErr)
+			if syncErr != nil {
+				log.Infof(ctx, "TS SchemaChange job(create table) failed, reason: %s", syncErr.Error())
+			}
+			//updateErr = p.handleCreateTSTable(ctx, d.SNTable, syncErr)
 		//case dropKwdbTsTable:
 		//	updateErr = p.handleDropTsTable(ctx, d.SNTable, sw.jobRegistry, syncErr)
 		//case dropKwdbTsDatabase:
@@ -1096,7 +1112,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 ) error {
 	var updateFn func(desc *sqlbase.MutableTableDescriptor) error
 	var eventFn func(txn *kv.Txn) error
-	isSucceeded := syncErr == nil
+	isSucceeded := true
 	switch d.Type {
 	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAddTag, alterKwdbDropTag, createTagIndex:
 		updateFn = func(tableDesc *sqlbase.MutableTableDescriptor) error {
@@ -1255,7 +1271,6 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 					break
 				}
 			}
-
 			return nil
 		}
 	default:

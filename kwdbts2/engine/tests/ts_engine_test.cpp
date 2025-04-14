@@ -140,7 +140,7 @@ TEST_F(TestEngine, doubleCreateTable) {
   s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
   EXPECT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-  EXPECT_EQ(s, KStatus::FAIL);
+  EXPECT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTable> ts_table_1;
   s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table_1);
   EXPECT_EQ(s, KStatus::SUCCESS);

@@ -30,6 +30,8 @@ KStatus RelBatchQueue::Init(std::vector<Field*> &output_fields) {
                                        output_fields[i]->get_storage_type(),
                                        output_fields[i]->get_return_type());
   }
+  is_init_ = true;
+  cv.notify_one();
   return KStatus::SUCCESS;
 }
 
@@ -43,6 +45,14 @@ KStatus RelBatchQueue::Add(kwdbContext_p ctx, char *batchData, k_uint32 count) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NULL_VALUE_NOT_ALLOWED, "Relational batch data pointer should not be null");
     Return(KStatus::FAIL);
   }
+  while (!is_init_) {
+    // wait
+    std::unique_lock<std::mutex> lk(mutex_);
+    cv.wait_for(lk, std::chrono::milliseconds(10));
+    if (is_error_) {
+      Return(KStatus::FAIL);
+    }
+  }
   DataChunkPtr data_chunk = std::make_unique<kwdbts::DataChunk>(output_col_info_, output_col_num_, count);
   if (data_chunk->Initialize() < 0) {
       data_chunk = nullptr;
@@ -52,7 +62,9 @@ KStatus RelBatchQueue::Add(kwdbContext_p ctx, char *batchData, k_uint32 count) {
   if (data_chunk->PutData(ctx, batchData, count) != KStatus::SUCCESS) {
     Return(KStatus::FAIL);
   }
+  std::unique_lock<std::mutex> lk(mutex_);
   data_queue_.push_back(std::move(data_chunk));
+  cv.notify_one();
   Return(KStatus::SUCCESS);
 }
 
@@ -63,18 +75,25 @@ EEIteratorErrCode RelBatchQueue::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   }
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   std::unique_lock<std::mutex> lk(mutex_);
-  if (cv.wait_for(lk, std::chrono::milliseconds(10), [this]{ return data_queue_.size() > 0; })) {
-    chunk = std::move(data_queue_.front());
-    data_queue_.pop_front();
-  } else {
-    code = EEIteratorErrCode::EE_TIMESLICE_OUT;
+  while (data_queue_.size() < 1) {
+    cv.wait_for(lk, std::chrono::milliseconds(10),
+                [this] { return data_queue_.size() > 0; });
+    if (no_more_data_chunk && data_queue_.empty()) {
+      Return(EEIteratorErrCode::EE_END_OF_RECORD);
+    }
+    if (is_error_) {
+      Return(EEIteratorErrCode::EE_ERROR);
+    }
   }
+  chunk = std::move(data_queue_.front());
+  data_queue_.pop_front();
   Return(code);
 }
 
 EEIteratorErrCode RelBatchQueue::Done(kwdbContext_p ctx) {
   EnterFunc();
   no_more_data_chunk = true;
+  cv.notify_one();
   Return(EEIteratorErrCode::EE_OK);
 }
 
