@@ -625,6 +625,11 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
       code = EEIteratorErrCode::EE_END_OF_RECORD;
       break;
     }
+
+    if (tag_rowbatch_->Count() > 1) {
+      // sort by entityIndex
+      tag_rowbatch_->SortByEntityIndex();
+    }
     tag_rowbatch_->SetPipeEntityNum(ctx, current_thd->GetDegree());
     code = EEIteratorErrCode::EE_OK;
   } while (0);
