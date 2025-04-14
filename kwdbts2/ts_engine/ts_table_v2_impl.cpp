@@ -15,6 +15,8 @@
 #include "ts_vgroup.h"
 
 namespace kwdbts {
+extern bool g_go_start_service;
+
 TsTableV2Impl::~TsTableV2Impl() = default;
 
 
@@ -128,6 +130,37 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
               scan_agg_types.size(), ts_table_iterator->GetIterNumber());
   (*iter) = ts_table_iterator;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
+  if (!g_go_start_service) return KStatus::SUCCESS;
+  if (version == GetCurrentTableVersion()) {
+    return KStatus::SUCCESS;
+  }
+
+  if (table_schema_mgr_->Get(version) != nullptr) {
+    return KStatus::SUCCESS;
+  }
+
+  char* error;
+  size_t data_len = 0;
+  char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
+  if (error != nullptr) {
+    LOG_ERROR(error);
+    return KStatus::FAIL;
+  }
+  roachpb::CreateTsTable meta;
+  if (!meta.ParseFromString({data, data_len})) {
+    LOG_ERROR("Parse schema From String failed.");
+    return KStatus::FAIL;
+  }
+
+  ErrorInfo err_info;
+  if (table_schema_mgr_->CreateTable(ctx, &meta, version, err_info) != KStatus::SUCCESS) {
+    LOG_ERROR("failed during upper version, err: %s", err_info.errmsg.c_str());
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 

@@ -89,7 +89,10 @@ class TSEngineV2Impl : public TSEngine {
     }
 
     if (s == KStatus::SUCCESS) {
-      // todo(liangbo01) if version no exist.
+      if (version != 0 && ts_table->CheckAndAddSchemaVersion(ctx, table_id, version) != KStatus::SUCCESS) {
+        LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", table_id);
+        return KStatus::FAIL;
+      }
     }
     return s;
   }

@@ -53,6 +53,8 @@ class TsTableV2Impl : public TsTable {
                             std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
                             TsIterator** iter, std::vector<timestamp64> ts_points,
                             bool reverse, bool sorted) override;
+
+  KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) override;
 };
 
 }  // namespace kwdbts
