@@ -179,6 +179,7 @@ KStatus DmlExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
                        k_int32 id, k_int32 uniqueID, RespInfo *resp) {
   KWDB_DURATION(StStatistics::Get().dml_setup);
   EnterFunc();
+  current_thd = thd_;
   KStatus ret = KStatus::FAIL;
   resp->tp = EnMqType::MQ_TYPE_DML_SETUP;
   resp->ret = 0;
