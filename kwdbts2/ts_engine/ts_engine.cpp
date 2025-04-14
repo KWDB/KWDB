@@ -140,6 +140,8 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   uint32_t vgroup_id;
   TSEntityID entity_id;
   size_t payload_size = 0;
+  dedup_result->payload_num = payload_num;
+  dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
   for (size_t i = 0; i < payload_num; i++) {
     TsRawPayload p{payload_data[i]};
     TSSlice primary_key = p.GetPrimaryTag();
@@ -173,19 +175,18 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       inc_entity_cnt++;
     }
     payload_size += p.GetData().len;
-  }
-
-
-  dedup_result->payload_num = payload_num;
-  dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
-  auto s = ts_table->PutData(ctx, range_group_id, payload_data, payload_num,
-                        mtr_id, inc_entity_cnt, inc_unordered_cnt, dedup_result, TsEngineInstanceParams::g_dedup_rule);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("put data failed. table[%lu].", table_id);
-    return s;
+    // s = ts_table->PutData(ctx, vgroup_id, &payload_data[i], 1,
+    //                       mtr_id, reinterpret_cast<uint16_t*>(&entity_id),
+    //                       inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule));
+    s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, p, entity_id, mtr_id,
+            inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule));
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("put data failed. table[%lu].", table_id);
+      return s;
+    }
   }
   flush_mgr_.Count(payload_size);
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta) {
