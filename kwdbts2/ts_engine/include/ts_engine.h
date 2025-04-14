@@ -63,7 +63,8 @@ class TSEngineV2Impl : public TSEngine {
   }
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
-                     ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override {
+                     bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
+                     uint32_t version = 0) override {
     // TODO(liangbo01)  need input change version
     KStatus s = KStatus::SUCCESS;
     ts_table = tables_cache_->Get(table_id);
@@ -259,6 +260,9 @@ class TSEngineV2Impl : public TSEngine {
   TS_LSN GetFinishedLSN() {
     return flush_mgr_.GetFinishedLSN();
   }
+
+  // TODO(liangbo01)：  To be implemented
+  KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
 
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
