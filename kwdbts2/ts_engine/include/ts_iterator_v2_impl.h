@@ -12,6 +12,8 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include "ts_common.h"
 #include "iterator.h"
 #include "ts_table_schema_manager.h"
@@ -58,6 +60,7 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+
  protected:
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;

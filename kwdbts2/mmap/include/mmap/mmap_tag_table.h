@@ -166,6 +166,16 @@ class TagTable {
                              const std::vector<uint32_t> &tags = {}, uint32_t index_id = 0,
                              HashIndex idx_flag = HashIndex::None);
 
+  /**
+* @brief Building a database version directory (with the designated version number) that includes the indexs, utilizing
+*        the provided index metadata.
+* @param schema the table schema corresponding the new_version.
+* @param new_version the version num need to create.
+* @param idx_info the table index info corresponding the new_version.
+*/
+  int AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
+                                       const std::vector<roachpb::NTagIndexInfo>& idx_info);
+
   int createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,
                       uint32_t index_id);
 

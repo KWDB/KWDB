@@ -13,8 +13,9 @@
 #include "th_kwdb_dynamic_thread_pool.h"
 #include "gtest/gtest.h"
 
-std::string kDbPath = "./test_db";  // NOLINT
+extern bool g_go_start_service;
 
+std::string kDbPath = "./test_db";  // NOLINT
 RangeGroup kDefaultRange{101, 0};
 
 // test CGO interface
@@ -36,6 +37,7 @@ class TestDB : public ::testing::Test {
     opts_.is_single_node = true;
     opts_.buffer_pool_size = 1024;
     ts_db_ = nullptr;
+    g_go_start_service = false;
   }
 
   ~TestDB() {
@@ -134,7 +136,7 @@ TEST_F(TestDB, multi_create) {
   ASSERT_STREQ(s.data, nullptr);
   free(s.data);
   s = TSCreateTsTable(ts_db_, table_id, meta, range_groups);
-  ASSERT_STRNE(s.data, nullptr);
+  ASSERT_STREQ(s.data, nullptr);
   free(s.data);
 }
 

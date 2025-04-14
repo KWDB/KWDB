@@ -861,13 +861,11 @@ func (r *Replica) stageTsBatchRequest(
 				}
 			}
 		case *roachpb.ClearRangeRequest:
-			if exist, _ := r.store.TsEngine.TSIsTsTableExist(req.TableId); exist {
-				if err = r.store.TsEngine.DropTsTable(req.TableId); err != nil {
-					log.Errorf(ctx, "drop table %v failed: %v", req.TableId, err.Error())
-					err = nil
-				} else {
-					log.Infof(ctx, "drop table %v succeed", req.TableId)
-				}
+			if err = r.store.TsEngine.DropTsTable(req.TableId); err != nil {
+				log.Errorf(ctx, "drop table %v failed: %v", req.TableId, err.Error())
+				err = nil
+			} else {
+				log.Infof(ctx, "drop table %v succeed", req.TableId)
 			}
 		}
 	}
@@ -1201,9 +1199,7 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 	if b.TSTxnID != 0 {
 		err := b.r.store.TsEngine.MtrCommit(b.tableID, b.rangeGroupID, b.TSTxnID)
 		if err != nil {
-			if exist, _ := r.store.TsEngine.TSIsTsTableExist(b.tableID); exist {
-				return wrapWithNonDeterministicFailure(err, "unable to commit mini-transaction")
-			}
+			return wrapWithNonDeterministicFailure(err, "unable to commit mini-transaction")
 		}
 	}
 	b.batch.Close()

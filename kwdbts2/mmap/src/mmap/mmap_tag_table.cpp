@@ -1011,6 +1011,47 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
   return 0;
 }
 
+int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
+                           const std::vector<roachpb::NTagIndexInfo>& idx_info) {
+  LOG_INFO("AddNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
+  // 1. create tag version object
+  auto tag_ver_obj = m_version_mgr_->CreateTagVersionObject(schema, new_version, err_info);
+  if (nullptr == tag_ver_obj) {
+    LOG_ERROR("call CreateTagVersionObject failed, %s ", err_info.errmsg.c_str());
+    return -1;
+  }
+  // get newest version
+  TagVersionObject* newest_tag_ver_obj = nullptr;
+  uint32_t newest_part_real_ver = 0;
+  newest_tag_ver_obj = m_version_mgr_->GetVersionObject(m_version_mgr_->GetNewestTableVersion());
+  if (nullptr != newest_tag_ver_obj) {
+    newest_part_real_ver = newest_tag_ver_obj->metaData()->m_real_used_version_;
+  }
+
+  // 2. create tag partition table
+  if (m_partition_mgr_->CreateTagPartitionTable(schema, new_version, err_info, newest_part_real_ver) < 0) {
+    LOG_ERROR("CreateTagPartitionTable failed, %s", err_info.errmsg.c_str());
+    m_version_mgr_->RollbackTableVersion(new_version, err_info);
+    return -1;
+  }
+
+  // 3.
+  if (!idx_info.empty()) {
+    for (auto it = idx_info.begin(); it <= idx_info.end(); it++) {
+      const std::vector<uint32_t> tags (it->col_ids().begin(), it->col_ids().end());
+      if (createHashIndex(new_version, err_info, tags, it->index_id()) < 0) {
+        LOG_ERROR("error happening while createHashIndex.");
+        m_version_mgr_->RollbackTableVersion(new_version, err_info);
+        return -1;
+      }
+    }
+  }
+
+  tag_ver_obj->setStatus(TAG_STATUS_READY);
+  m_version_mgr_->UpdateNewestTableVersion(new_version);
+  return 0;
+}
+
 int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info,
                     uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info) {
   LOG_INFO("AlterTableTag cur_version%d, new_version:%d", cur_version, new_version)

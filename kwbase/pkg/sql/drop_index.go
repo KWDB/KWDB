@@ -520,7 +520,7 @@ func (p *planner) dropIndexByName(
 			CreateOrAlterTagIndex: *idx,
 			MutationID:            mutationID,
 		}
-		jobID, err := p.createTSSchemaChangeJob(ctx, syncDetail, p.stmt.SQL)
+		jobID, err := p.createTSSchemaChangeJob(ctx, syncDetail, p.stmt.SQL, p.txn)
 		if err != nil {
 			return err
 		}
@@ -537,7 +537,7 @@ func (p *planner) dropIndexByName(
 			return err
 		}
 
-		// After the transaction commits successfully, execute the Job and wait for it to complete.
+		//After the transaction commits successfully, execute the Job and wait for it to complete.
 		if err = p.ExecCfg().JobRegistry.Run(
 			ctx,
 			p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),

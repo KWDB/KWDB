@@ -76,6 +76,8 @@ struct TSEngine {
  */
   virtual KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) = 0;
 
+  virtual KStatus DropResidualTsTable(kwdbContext_p ctx) = 0;
+
   virtual KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                                        const char* transaction_id, const uint32_t cur_version,
                                        const uint32_t new_version,
@@ -101,13 +103,17 @@ struct TSEngine {
 
   /**
    * @brief get ts table object
-   * @param[in] table_id
-   * @param[out] ts_table
+   * @param[in] table_id id of the time series table
+   * @param[out] ts_table ts table
+   * @param[in] create_if_not_exist whether to create ts table if not exist
+   * @param[out] err_info error info
+   * @param[in] version version of the table
    *
    * @return KStatus
    */
   virtual KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
-                             ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) = 0;
+                             bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
+                             uint32_t version = 0) = 0;
 
 
   virtual KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
@@ -550,6 +556,8 @@ class TSEngineImpl : public TSEngine {
 
   KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override;
 
+  KStatus DropResidualTsTable(kwdbContext_p ctx) override;
+
   KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                                const char* transaction_id, const uint32_t cur_version, const uint32_t new_version,
                                const std::vector<uint32_t/* tag column id*/> &index_schema) override;
@@ -565,7 +573,8 @@ class TSEngineImpl : public TSEngine {
   KStatus CompressTsTable(kwdbContext_p ctx, const KTableKey& table_id, KTimestamp ts) override;
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
-                     ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override;
+                     bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
+                     uint32_t version = 0) override;
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override;

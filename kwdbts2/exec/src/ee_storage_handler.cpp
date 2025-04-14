@@ -39,7 +39,7 @@ EEIteratorErrCode StorageHandler::Init(kwdbContext_p ctx) {
   KStatus ret = KStatus::FAIL;
   TSEngine *ts_engine = static_cast<TSEngine *>(ctx->ts_engine);
   if (ts_engine)
-    ret = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_, err_info, table_->table_version_);
+    ret = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_, true, err_info, table_->table_version_);
   if (ret == KStatus::FAIL) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                   "scanning column data fail when getting ts table");

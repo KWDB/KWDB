@@ -144,7 +144,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     TsRawPayload p{payload_data[i]};
     TSSlice primary_key = p.GetPrimaryTag();
     auto tbl_version = p.GetTableVersion();
-    auto s = GetTsTable(ctx, table_id, ts_table, err_info, tbl_version);
+    auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
       return s;

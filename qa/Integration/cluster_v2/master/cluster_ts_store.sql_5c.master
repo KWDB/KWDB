@@ -23,25 +23,11 @@ INSERT 1
 ---------
       5
 (1 row)
-> INSERT INTO tsdb.ts1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10, tag11, tag12, tag13, tag14, tag15, tag16) VALUES ('2024-01-01T00:00:05+00:00', '2024-03-01 10:13:33', 558, 290, 692, -3401.496054468469, 7584.4174993787165, True, 'f', 'j', 'j', 'W', 'j', 'S', 't', 'P', '0', '7', '2', '7', True, 451, 243, 403, 6242.813244476303, -8411.184327891333, '2', 'F', 'D', 'C', 'q', 'e', 'a', 't', 'l', 'I'); 
-INSERT 1
-> INSERT INTO tsdb.ts1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10, tag11, tag12, tag13, tag14, tag15, tag16) VALUES ('2024-01-01T00:00:06+00:00', '2024-03-01 10:13:33', 30, 600, 750, -9322.677455416664, 3267.8120154597273, False, 'C', 'b', 'a', 'r', 'Q', 'r', 'N', 'C', 'F', '8', '7', 'B', True, 764, 538, 884, -460.68600840290674, -2843.4447150997185, '7', '9', '8', '3', 'k', 'M', 'X', 'L', 'e', 'B'); 
-INSERT 1
-> INSERT INTO tsdb.ts1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10, tag11, tag12, tag13, tag14, tag15, tag16) VALUES ('2024-01-01T00:00:07+00:00', '2024-03-01 10:13:33', 672, 944, 990, 8039.006233657263, -452.7330099401697, False, 'K', 'C', 'Z', 'v', 'F', 'M', 'p', 'X', '4', 'B', '3', '0', True, 402, 228, 951, 6524.391812714177, 7903.077732617439, '7', '3', '4', 'C', 'V', 'C', 'x', 'c', 'S', 'f'); 
-INSERT 1
-> INSERT INTO tsdb.ts1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10, tag11, tag12, tag13, tag14, tag15, tag16) VALUES ('2024-01-01T00:00:08+00:00', '2024-03-01 10:13:33', 541, 816, 100, 6587.635040327961, -5877.841456168977, True, 'S', 'x', 'D', 'G', 'H', 'K', 's', 'o', '0', 'D', 'D', '7', False, 682, 668, 564, -7752.64928854315, -5239.617655573612, 'A', '3', '7', '4', 'v', 'U', 'o', 'S', 'l', 'R'); 
-INSERT 1
-> INSERT INTO tsdb.ts1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10, tag11, tag12, tag13, tag14, tag15, tag16) VALUES ('2024-01-01T00:00:09+00:00', '2024-03-01 10:13:33', 630, 900, 977, -4679.772368281976, 1852.1603881555366, True, 'E', 'G', 'v', 'v', 'J', 'o', 'a', 'D', '8', '6', '4', '5', False, 726, 372, 744, 6239.251279258919, 3092.1266121824974, 'D', '8', '3', '5', 'M', 'M', 'M', 'M', 'Z', 'r'); 
-INSERT 1
 > select count(*) from tsdb.ts1; 
   count
 ---------
-     10
+      0
 (1 row)
-> select count(*) from tsdb.ts1; 
-ERROR: scanning column data fail when getting ts table
-SQLSTATE: 29P02
-Failed running "sql"
 > CREATE TS DATABASE tsdb; 
 ERROR: database "tsdb" already exists
 SQLSTATE: 42P04

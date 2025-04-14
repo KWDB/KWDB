@@ -348,7 +348,7 @@ TEST_F(TestEngineWAL, DeleteData) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<kwdbts::TsTable>  ts_table;
   ErrorInfo err_info;
-  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, err_info);
+  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, false, err_info);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
 
@@ -415,7 +415,7 @@ TEST_F(TestEngineWAL, DeleteDataRollback) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<kwdbts::TsTable>  ts_table;
   ErrorInfo err_info;
-  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, err_info);
+  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, false, err_info);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
 
@@ -690,7 +690,7 @@ TEST_F(TestEngineWAL, EngineApi) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<kwdbts::TsTable>  ts_table;
   ErrorInfo err_info;
-  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, err_info);
+  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, false, err_info);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
 

@@ -88,7 +88,7 @@ func NewTsTableReader(
 	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 ) (*TsTableReader, error) {
 
-	tsi := &TsTableReader{sid: sid, tsProcessorSpecs: tsProcessorSpecs, tsHandle: nil}
+	tsi := &TsTableReader{sid: sid, tsHandle: nil}
 	if sp := opentracing.SpanFromContext(flowCtx.EvalCtx.Ctx()); sp != nil && tracing.IsRecording(sp) {
 		tsi.collected = true
 		tsi.FinishTrace = tsi.outputStatsToTrace
@@ -115,7 +115,52 @@ func NewTsTableReader(
 	); err != nil {
 		return nil, err
 	}
+	if err := tsi.initTableReader(flowCtx.EvalCtx.Ctx(), tsProcessorSpecs); err != nil {
+		return nil, err
+	}
 	return tsi, nil
+}
+
+func (ttr *TsTableReader) initTableReader(
+	ctx context.Context, tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+) error {
+	// ts processor output StreamID map
+	outPutMap := make(map[execinfrapb.StreamID]int)
+
+	// The timing operator has only one input and one output,
+	// and each input and output has only one stream.
+	for i, proc := range tsProcessorSpecs {
+		if proc.Output != nil {
+			outPutMap[proc.Output[0].Streams[0].StreamID] = i
+		}
+
+	}
+
+	// The set of operators on the ts flow.
+	var tsSpecs []execinfrapb.TSProcessorSpec
+
+	tsTopProcessorIndex := outPutMap[ttr.sid]
+	tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
+	for tsProcessorSpecs[tsTopProcessorIndex].Input != nil {
+		if tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader != nil {
+			ttr.tsTableReaderID = tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader.TsTablereaderId
+		}
+		streamID := tsProcessorSpecs[tsTopProcessorIndex].Input[0].Streams[0].StreamID
+		tsTopProcessorIndex = outPutMap[streamID]
+		tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
+	}
+	ttr.tsProcessorSpecs = tsSpecs
+	var info tse.TsQueryInfo
+	info.Handle = nil
+	info.Buf = []byte("init ts handle")
+	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.InitTsHandle(&(ttr.Ctx), info)
+	if err != nil {
+		log.Warning(ctx, err)
+		return err
+	}
+	ttr.tsHandle = respInfo.Handle
+	ttr.FlowCtx.TsHandleMap[ttr.tsTableReaderID] = ttr.tsHandle
+	return nil
 }
 
 var kwdbFlowSpecPool = sync.Pool{
@@ -136,38 +181,13 @@ func NewTSFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfra
 func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 	ttr.StartInternal(ctx, tsTableReaderProcName)
 
-	var tsProcessorSpecs = ttr.tsProcessorSpecs
+	var tsSpecs = ttr.tsProcessorSpecs
 	var randomNumber int
-	if tsProcessorSpecs != nil {
+	if tsSpecs != nil {
 		rand.Seed(timeutil.Now().UnixNano())
 		randomNumber = rand.Intn(100000) + 1
 		flowID := execinfrapb.FlowID{}
 		flowID.UUID = uuid.MakeV4()
-		// ts processor output StreamID map
-		outPutMap := make(map[execinfrapb.StreamID]int)
-
-		// The timing operator has only one input and one output,
-		// and each input and output has only one stream.
-		for i, proc := range tsProcessorSpecs {
-			if proc.Output != nil {
-				outPutMap[proc.Output[0].Streams[0].StreamID] = i
-			}
-
-		}
-
-		// The set of operators on the ts flow.
-		var tsSpecs []execinfrapb.TSProcessorSpec
-
-		tsTopProcessorIndex := outPutMap[ttr.sid]
-		tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
-		for tsProcessorSpecs[tsTopProcessorIndex].Input != nil {
-			if tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader != nil {
-				ttr.tsTableReaderID = tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader.TsTablereaderId
-			}
-			streamID := tsProcessorSpecs[tsTopProcessorIndex].Input[0].Streams[0].StreamID
-			tsTopProcessorIndex = outPutMap[streamID]
-			tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
-		}
 
 		tsFlowSpec := NewTSFlowSpec(flowID, ttr.FlowCtx.NodeID)
 		for j := len(tsSpecs) - 1; j >= 0; j-- {
@@ -194,7 +214,7 @@ func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 		_, offSet := timeInLocation.Zone()
 		timezone := offSet / 3600
 		ttr.timeZone = timezone
-		var tsHandle unsafe.Pointer
+		tsHandle := ttr.tsHandle
 		var tsQueryInfo = tse.TsQueryInfo{
 			ID:       int(ttr.sid),
 			Buf:      msg,
@@ -207,24 +227,21 @@ func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 			if ttr.FlowCtx != nil {
 				ttr.FlowCtx.TsHandleBreak = true
 			}
-			respInfo.Buf = []byte("close tsflow")
-			closeErr := ttr.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(ttr.Ctx), respInfo)
-			if closeErr != nil {
-				log.Warning(ctx, closeErr)
-			}
 			ttr.MoveToDraining(setupErr)
 			return ctx
 		}
 		ttr.tsHandle = respInfo.Handle
-		ttr.FlowCtx.Mu.Lock()
-		defer ttr.FlowCtx.Mu.Unlock()
-		ttr.FlowCtx.TsHandleMap[ttr.tsTableReaderID] = ttr.tsHandle
 	}
 	ctx = ttr.StartInternal(ctx, sqlbase.TsTableReaderProcName)
 	return ctx
 }
 
 func (ttr *TsTableReader) cleanup(ctx context.Context) {
+	// ttr.DropHandle(ctx)
+}
+
+// DropHandle is to close ts handle.
+func (ttr *TsTableReader) DropHandle(ctx context.Context) {
 	if ttr.tsHandle != nil {
 		var tsCloseInfo tse.TsQueryInfo
 		tsCloseInfo.Handle = ttr.tsHandle
@@ -235,6 +252,11 @@ func (ttr *TsTableReader) cleanup(ctx context.Context) {
 		}
 		ttr.tsHandle = nil
 	}
+}
+
+// IsShortCircuitForPgEncode is part of the processor interface.
+func (ttr *TsTableReader) IsShortCircuitForPgEncode() bool {
+	return false
 }
 
 // name of processor in time series
@@ -283,27 +305,6 @@ func tsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
 	return tsUnknownName
 }
 
-// WaitForBLJ wait for all the BLJ operators to complete pushing before draining
-func (ttr *TsTableReader) WaitForBLJ() {
-	if ttr.FlowCtx.PushingBLJCount[ttr.tsTableReaderID] == 0 {
-		return
-	}
-	timeout := time.After(10 * time.Second)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if ttr.FlowCtx.PushingBLJCount[ttr.tsTableReaderID] == 0 {
-				return
-			}
-		case <-timeout:
-			log.Infof(context.TODO(), "Timed out waiting for pushing BLJ operators to complete.")
-			return
-		}
-	}
-}
-
 // Next is part of the RowSource interface.
 func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
 	for ttr.State == execinfra.StateRunning {
@@ -336,7 +337,6 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 			}
 			if respInfo.Code == -1 {
 				// Data read completed.
-				ttr.WaitForBLJ()
 				// BLJ operator must stop pushing down data before cleanup
 				ttr.cleanup(ttr.PbCtx())
 				if ttr.collected {
@@ -353,7 +353,6 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 				}
 				ttr.MoveToDraining(err)
 				log.Errorf(context.Background(), err.Error())
-				ttr.WaitForBLJ()
 				ttr.cleanup(ttr.PbCtx())
 				return nil, &execinfrapb.ProducerMetadata{Err: err}
 			}

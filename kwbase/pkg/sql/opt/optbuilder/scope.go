@@ -31,7 +31,6 @@ import (
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
@@ -141,9 +140,6 @@ type scope struct {
 	// interpolateWithLast is used to limit features not supported by last.
 	// for specific restrictions, see the annotations to the struct definition.
 	interpolateWithLast interpolateWithLast
-
-	// tagsOfStableIDS record the IDs of the template table with a tag in filter.
-	tagsOfStableIDS []cat.StableID
 
 	// TableType identifies what type the table is.
 	TableType sqlbase.TableTypeMap
@@ -997,21 +993,6 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 		}
 		col := colI.(*scopeColumn)
 
-		// the tag column of agg expr in filter does not need to convert to IndexedVar, eg: where avg(e1)<100
-		if s.builder.factory.Metadata().ColumnMeta(col.id).IsTag() &&
-			(s.context == exprTypeWhere || s.context == exprTypeHaving || s.context == exprTypeOn) &&
-			!opt.CheckTsProperty(s.ScopeTSProp, ScopeTSPropIsAggExpr) {
-			tableID := s.builder.factory.Metadata().ColumnMeta(col.id).Table
-			if s.tagsOfStableIDS == nil {
-				s.tagsOfStableIDS = append(s.tagsOfStableIDS, cat.StableID(tableID))
-			} else {
-				for _, id := range s.tagsOfStableIDS {
-					if id != cat.StableID(tableID) {
-						s.tagsOfStableIDS = append(s.tagsOfStableIDS, cat.StableID(tableID))
-					}
-				}
-			}
-		}
 		return false, col
 
 	case *tree.FuncExpr:
