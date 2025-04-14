@@ -261,7 +261,7 @@ class TSEngineV2Impl : public TSEngine {
     return flush_mgr_.GetFinishedLSN();
   }
 
-  // TODO(liangbo01)：  To be implemented
+  // TODO(liangbo01)  To be implemented
   KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
 
  private:
