@@ -466,6 +466,37 @@ func (ex *connExecutor) execPreparedirectBind(
 			"unknown prepared statement %q", bindCmd.PreparedStatementName))
 	}
 
+	numQArgs := uint16(len(ps.InferredTypes))
+	if bindCmd.internalArgs != nil {
+		if len(bindCmd.internalArgs) != int(numQArgs) {
+			return retErr(
+				pgwirebase.NewProtocolViolationErrorf(
+					"expected %d arguments, got %d", numQArgs, len(bindCmd.internalArgs)))
+		}
+	} else {
+		qArgFormatCodes := bindCmd.ArgFormatCodes
+		if len(qArgFormatCodes) != 1 && len(qArgFormatCodes) != int(numQArgs) {
+			return retErr(pgwirebase.NewProtocolViolationErrorf(
+				"wrong number of format codes specified: %d for %d arguments",
+				len(qArgFormatCodes), numQArgs))
+		}
+
+		if len(qArgFormatCodes) == 1 && numQArgs > 1 {
+			fmtCode := qArgFormatCodes[0]
+			qArgFormatCodes = make([]pgwirebase.FormatCode, numQArgs)
+			for i := range qArgFormatCodes {
+				qArgFormatCodes[i] = fmtCode
+			}
+			bindCmd.ArgFormatCodes = qArgFormatCodes
+		}
+
+		if len(bindCmd.Args) != int(numQArgs) {
+			return retErr(
+				pgwirebase.NewProtocolViolationErrorf(
+					"expected %d arguments, got %d", numQArgs, len(bindCmd.Args)))
+		}
+	}
+
 	if ins, ok := ps.PrepareMetadata.Statement.AST.(*tree.Insert); ok {
 		var di DirectInsert
 		copy(ins.Columns, ps.PrepareInsertDirect.Dit.Desc)
