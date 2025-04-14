@@ -30,6 +30,7 @@
 #include "engine.h"
 #include "ts_table_v2_impl.h"
 #include "ts_flush_manager.h"
+extern bool g_go_start_service;
 
 namespace kwdbts {
 
@@ -70,7 +71,7 @@ class TSEngineV2Impl : public TSEngine {
     ts_table = tables_cache_->Get(table_id);
     if (ts_table == nullptr) {
       std::shared_ptr<TsTableSchemaManager> schema;
-      auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+      s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
       if (s == KStatus::SUCCESS) {
         auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
         if (table.get() != nullptr) {
@@ -86,6 +87,33 @@ class TSEngineV2Impl : public TSEngine {
         s = KStatus::FAIL;
       }
       table_mutex_.unlock();
+    }
+
+    // if table no exist. try get schema from go level.
+    if (ts_table == nullptr && create_if_not_exist) {
+      LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
+      if (!g_go_start_service) {  // unit test from c, just return falsed.
+        return KStatus::FAIL;
+      }
+      char* error;
+      size_t data_len = 0;
+      char* data = getTableMetaByVersion(table_id, 0, &data_len, &error);
+      if (error != nullptr) {
+        LOG_ERROR("getTableMetaByVersion error: %s.", error);
+        return KStatus::FAIL;
+      }
+      roachpb::CreateTsTable meta;
+      if (!meta.ParseFromString({data, data_len})) {
+        LOG_ERROR("Parse schema From String failed.");
+        return KStatus::FAIL;
+      }
+      CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
+      ts_table = tables_cache_->Get(table_id);
+      if (ts_table == nullptr || ts_table->IsDropped()) {
+        LOG_ERROR("failed during upper version.");
+        return KStatus::FAIL;
+      }
+      s = KStatus::SUCCESS;
     }
 
     if (s == KStatus::SUCCESS) {
