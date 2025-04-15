@@ -194,8 +194,24 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
               file_->GetFilePath().c_str());
     return KStatus::FAIL;
   }
+
+  char* ptr = var_buf;
+  GenCompAlg alg = static_cast<GenCompAlg>(*ptr);
+  ptr++;
+  const auto& snappy = SnappyString::GetInstance();
+  std::string tmp;
+  std::string out;
+  if (alg == GenCompAlg::kSnappy) {
+    if (snappy.Decompress({ptr, block_info.var_len - 1}, 0, &out)) {
+      tmp.append(out);
+    } else {
+      assert(false);
+    }
+  } else {
+    tmp.append({ptr, block_info.var_len - 1});
+  }
   // save var data
-  block->var_buffer.assign(var_buf, block_info.var_len);
+  block->var_buffer.assign(tmp);
   delete[] var_buf;
 
   return KStatus::SUCCESS;
@@ -273,7 +289,7 @@ static void ParseBlockInfo(TSSlice data, TsLastSegmentBlockInfo* info) {
     GetFixed32(&data, &info->col_infos[i].data_len);
   }
   assert(data.len == 0);
-};
+}
 
 static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {

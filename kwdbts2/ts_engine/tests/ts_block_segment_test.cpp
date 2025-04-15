@@ -40,7 +40,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     TSTableID table_id = 123;
     ConstructRoachpbTableWithTypes(
       &meta, table_id,
-      {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT});
+      {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT, DataType::VARCHAR});
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
     auto s = mgr->CreateTable(nullptr, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -88,9 +88,24 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
       s = block_segment->GetBlockSpans(filter, &block_spans);
       EXPECT_EQ(s, KStatus::SUCCESS);
       EXPECT_EQ(block_spans.size(), i);
-      if (i != 0) {
-        EXPECT_EQ(block_spans.front()->GetTS(0, metric_schema), 123);
-        EXPECT_EQ(block_spans.back()->GetTS(block_spans.back()->GetRowNum() - 1, metric_schema), 123 + i * 1000 - 1);
+      int row_idx = 0;
+      while (!block_spans.empty()) {
+        auto block_span = block_spans.front();
+        block_spans.pop_front();
+        for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
+          EXPECT_EQ(block_span->GetTS(idx, metric_schema), 123 + row_idx + idx);
+          TSSlice value;
+          block_span->GetValueSlice(idx, 1, metric_schema, value);
+          EXPECT_LE(*(int32_t *) value.data, 1024);
+          block_span->GetValueSlice(idx, 2, metric_schema, value);
+          EXPECT_LE(*(double *) value.data, 1024 * 1024);
+          block_span->GetValueSlice(idx, 3, metric_schema, value);
+          EXPECT_LE(*(double *) value.data, 10240);
+          block_span->GetValueSlice(idx, 4, metric_schema, value);
+          string str(value.data, 10);
+          EXPECT_EQ(str, "varstring_");
+        }
+        row_idx += block_span->GetRowNum();
       }
     }
   }

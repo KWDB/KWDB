@@ -16,8 +16,8 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include <unordered_map>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -287,7 +287,7 @@ class TsLastSegmentEntityBlockIteratorBase {
   KStatus LoadToCurrentBlockCache();
 
  public:
-  TsLastSegmentEntityBlockIteratorBase(const TsLastSegment* last) : lastsegment_(last) {}
+  explicit TsLastSegmentEntityBlockIteratorBase(const TsLastSegment* last) : lastsegment_(last) {}
   virtual ~TsLastSegmentEntityBlockIteratorBase() = default;
 
   bool Valid() const { return valid_ && idx_ < block_indices_.size(); }
@@ -301,7 +301,7 @@ class TsLastSegmentEntityBlockIteratorBase {
 
 class TsLastSegmentFullEntityBlockIterator : public TsLastSegmentEntityBlockIteratorBase {
  public:
-  TsLastSegmentFullEntityBlockIterator(const TsLastSegment* last)
+  explicit TsLastSegmentFullEntityBlockIterator(const TsLastSegment* last)
       : TsLastSegmentEntityBlockIteratorBase(last) {}
   KStatus Init() override;
   KStatus SeekToFirst() override;

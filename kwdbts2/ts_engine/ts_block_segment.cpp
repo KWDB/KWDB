@@ -267,14 +267,14 @@ timestamp64 TsBlockSegmentBlock::GetTimestamp(uint32_t row_idx) {
 
 KStatus TsBlockSegmentBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value) {
   for (int col_idx = 1; col_idx < n_cols_; ++col_idx) {
+    char* ptr = column_blocks_[col_idx].buffer.data();
     if (isVarLenType(metric_schema_[col_idx - 1].type)) {
-      char* ptr = column_blocks_[col_idx].buffer.data();
       uint32_t start_offset = *reinterpret_cast<uint32_t*>(ptr + row_idx * sizeof(uint32_t));
       uint32_t end_offset = *reinterpret_cast<uint32_t*>(ptr + (row_idx + 1) * sizeof(uint32_t));
-      value.push_back({column_blocks_[col_idx].buffer.data() + start_offset, end_offset - start_offset});
+      value.push_back({ptr + start_offset, end_offset - start_offset});
     } else {
       size_t d_size = col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
-      value.push_back({column_blocks_[col_idx].buffer.data() + row_idx * d_size, d_size});
+      value.push_back({ptr + row_idx * d_size, d_size});
     }
   }
   return KStatus::SUCCESS;
@@ -467,6 +467,10 @@ void TsBlockSegmentBlock::Clear() {
     TsBlockSegmentColumnBlock& column_block = column_blocks_[col_idx];
     column_block.bitmap.Reset(MAX_ROWS_PER_BLOCK);
     column_block.buffer.clear();
+    DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
+    if (isVarLenType(d_type)) {
+      column_block.buffer.resize((MAX_ROWS_PER_BLOCK + 1) * sizeof(uint32_t));
+    }
   }
   block_info_.col_block_offset.clear();
   block_info_.col_block_offset.resize(n_cols_ + 1);
@@ -630,11 +634,11 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush() {
             LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder put failed.")
             return s;
           }
-          s = builder.FlushBuffer();
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush buffer failed.")
-            return s;
-          }
+        }
+        s = builder.FlushBuffer();
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush buffer failed.")
+          return s;
         }
       }
       // Get the metric schema
