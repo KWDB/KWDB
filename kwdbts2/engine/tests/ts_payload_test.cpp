@@ -803,7 +803,7 @@ TEST_F(TestPayload, multityVarColumnInsert) {
   int thread_num = 10;
   std::thread threads[10];
   for (int i = 0; i < thread_num; i++) {
-    threads[i] = std::thread([&](int n) {
+    threads[i] = std::thread([&, i](int n) {
       KTimestamp start_ts = std::chrono::duration_cast<std::chrono::milliseconds>
           (std::chrono::system_clock::now().time_since_epoch()).count();
       k_uint32 p_len = 0;

@@ -249,7 +249,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
   TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
-  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(params, &blocks);
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }

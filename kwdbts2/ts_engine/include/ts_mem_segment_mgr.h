@@ -22,7 +22,7 @@
 #include "libkwdbts2.h"
 #include "ts_payload.h"
 #include "inlineskiplist.h"
-#include "ts_block_item_info.h"
+#include "ts_block_span_info.h"
 #include "ts_arena.h"
 
 namespace kwdbts {
@@ -206,7 +206,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   std::vector<TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::unique_ptr<TsRawPayloadRowParser> parser_{nullptr};
+  std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::list<char*> col_based_mems_;
 
  public:
@@ -235,14 +235,12 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
     *min_ts = min_ts_;
     *max_ts = max_ts_;
   }
-  size_t GetRowNum() override {
-    return row_data_.size();
-  }
+  size_t GetRowNum() override { return row_data_.size(); }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
   inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
 
   // if just get timestamp , this function return fast.
-  timestamp64 GetTS(int row_num) override {
+  timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->ts;
   }
@@ -293,7 +291,7 @@ class TsMemSegmentManager {
 
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
-  KStatus GetBlockItems(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
+  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
 };
 
 }  // namespace kwdbts

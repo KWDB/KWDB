@@ -111,8 +111,8 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegmentManager::GetBlockItems(const TsBlockITemFilterParams& filter,
-                                          std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks) {
+KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockITemFilterParams& filter,
+                                           std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks) {
   blocks->clear();
   segment_lock_.lock();
   std::list<std::shared_ptr<TsMemSegment>> segments = segment_;
@@ -121,7 +121,7 @@ KStatus TsMemSegmentManager::GetBlockItems(const TsBlockITemFilterParams& filter
   for (auto& mem : segments) {
     bool ok = mem->GetEntityRows(filter, &row_datas);
     if (!ok) {
-      LOG_ERROR("GetBlockItems failed in GetEntityRows.");
+      LOG_ERROR("GetBlockSpans failed in GetEntityRows.");
       return KStatus::FAIL;
     }
     if (row_datas.size() == 0) {

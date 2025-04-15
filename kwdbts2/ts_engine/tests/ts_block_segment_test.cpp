@@ -17,6 +17,7 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_hash_latch.h"
+#include "ts_lastsegment_builder.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -39,7 +40,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     TSTableID table_id = 123;
     ConstructRoachpbTableWithTypes(
       &meta, table_id,
-      {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT});
+      {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT, DataType::VARCHAR});
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
     auto s = mgr->CreateTable(nullptr, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -55,14 +56,14 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::filesystem::path path = "db001-123";
-    std::shared_ptr<TsVGroupPartition> partition = std::make_shared<TsVGroupPartition>(path, 0, mgr.get(), 0, 1000000, false);
+    std::shared_ptr<TsVGroupPartition> partition = std::make_shared<TsVGroupPartition>(path, 0, mgr.get(), 0, 1000000);
     partition->Open();
 
     std::unique_ptr<TsLastSegment> last_segment;
     for (int i = 0; i < 10; ++i) {
       partition->NewLastSegment(&last_segment);
       TsLastSegmentBuilder builder(mgr.get(), last_segment);
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 10, 123, 1);
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
       TsRawPayloadRowParser parser{metric_schema};
       TsRawPayload p{payload, metric_schema};
 
@@ -78,5 +79,34 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
 
     //partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
+
+    TsBlockSegment* block_segment = partition->GetBlockSegment();
+    for (int i = 0; i < 10; ++i) {
+      std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
+      TsBlockITemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+      std::list<std::shared_ptr<TsBlockSpanInfo>> block_spans;
+      s = block_segment->GetBlockSpans(filter, &block_spans);
+      EXPECT_EQ(s, KStatus::SUCCESS);
+      EXPECT_EQ(block_spans.size(), i);
+      int row_idx = 0;
+      while (!block_spans.empty()) {
+        auto block_span = block_spans.front();
+        block_spans.pop_front();
+        for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
+          EXPECT_EQ(block_span->GetTS(idx, metric_schema), 123 + row_idx + idx);
+          TSSlice value;
+          block_span->GetValueSlice(idx, 1, metric_schema, value);
+          EXPECT_LE(*(int32_t *) value.data, 1024);
+          block_span->GetValueSlice(idx, 2, metric_schema, value);
+          EXPECT_LE(*(double *) value.data, 1024 * 1024);
+          block_span->GetValueSlice(idx, 3, metric_schema, value);
+          EXPECT_LE(*(double *) value.data, 10240);
+          block_span->GetValueSlice(idx, 4, metric_schema, value);
+          string str(value.data, 10);
+          EXPECT_EQ(str, "varstring_");
+        }
+        row_idx += block_span->GetRowNum();
+      }
+    }
   }
 }

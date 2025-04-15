@@ -17,28 +17,23 @@
 #include "ts_block_segment.h"
 #include "ts_vgroup_partition.h"
 #include "ts_env.h"
-#include "ts_last_segment_manager.h"
+#include "ts_lastsegment_manager.h"
 #include "ts_metric_block.h"
 
 namespace kwdbts {
 
 TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id, TsEngineSchemaManager* schema_mgr,
-                                     int64_t start, int64_t end, bool enable_compact_thread)
+                                     int64_t start, int64_t end)
     : database_id_(database_id),
       schema_mgr_(schema_mgr),
       start_(start),
       end_(end),
       path_(root / GetFileName()),
-      last_segment_mgr_(path_),
-      enable_compact_thread_(enable_compact_thread) {
+      last_segment_mgr_(path_) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
-  initCompactThread();
 }
 
-TsVGroupPartition::~TsVGroupPartition() {
-  enable_compact_thread_ = false;
-  closeCompactThread();
-}
+TsVGroupPartition::~TsVGroupPartition() {}
 
 KStatus TsVGroupPartition::Open() {
   std::filesystem::create_directories(path_);
@@ -46,16 +41,19 @@ KStatus TsVGroupPartition::Open() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::Compact(int thread_num) {
-  // TODO(limeng04): Compact all the last segments in the historical partition.
+KStatus TsVGroupPartition::Compact() {
+  if (!last_segment_mgr_.NeedCompact()) {
+    return KStatus::SUCCESS;
+  }
   // 1. Get all the last segments that need to be compacted.
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments = last_segment_mgr_.GetCompactLastSegments();
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+  last_segment_mgr_.GetCompactLastSegments(last_segments);
   if (last_segments.empty()) {
     return KStatus::SUCCESS;
   }
   // 2. Build the column block.
   TsBlockSegmentBuilder builder(last_segments, this);
-  KStatus s = builder.BuildAndFlush(thread_num);
+  KStatus s = builder.BuildAndFlush();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("partition[%s] compact failed", path_.c_str());
     return s;
@@ -66,15 +64,18 @@ KStatus TsVGroupPartition::Compact(int thread_num) {
 }
 
 KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
-                                                TSSlice block_data, TSSlice block_agg, uint32_t row_num) {
+                                                uint32_t col_num, uint32_t row_num, timestamp64 max_ts, timestamp64 min_ts,
+                                                TSSlice block_data, TSSlice block_agg) {
   // generating new block item info ,and append to block segment.
   TsBlockSegmentBlockItem blk_item;
-  blk_item.Info().entity_id = entity_id;
-  blk_item.Info().table_version = table_version;
-  blk_item.Info().row_count = row_num;
-  // TODO(limeng04): block_item_info.max_ts & min_ts
+  blk_item.entity_id = entity_id;
+  blk_item.table_version = table_version;
+  blk_item.n_cols = col_num;
+  blk_item.n_rows = row_num;
+  blk_item.max_ts = max_ts;
+  blk_item.min_ts = min_ts;
 
-  KStatus s = blk_segment_->AppendBlockData(&blk_item, block_data, block_agg);
+  KStatus s = blk_segment_->AppendBlockData(blk_item, block_data, block_agg);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("insert into block segment of partition[%s] failed.", path_.c_str());
     return s;
@@ -97,53 +98,6 @@ std::string TsVGroupPartition::GetFileName() const {
   char buffer[64];
   std::snprintf(buffer, sizeof(buffer), "db%02d-%010ld", database_id_, start_);
   return buffer;
-}
-
-void TsVGroupPartition::compactRoutine(void* args) {
-  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
-    std::unique_lock<std::mutex> lock(cv_mutex_);
-    // Check every 10 seconds if compact is necessary
-    cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !enable_compact_thread_; });
-    lock.unlock();
-    // If the thread pool stops or the system is no longer running, exit the loop
-    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_compact_thread_) {
-      break;
-    }
-    // Execute compact tasks
-    if (last_segment_mgr_.NeedCompact()) {
-      this->Compact();
-    }
-  }
-}
-
-void TsVGroupPartition::initCompactThread() {
-  if (!enable_compact_thread_) {
-    return;
-  }
-  KWDBOperatorInfo kwdb_operator_info;
-  // Set the name and owner of the operation
-  kwdb_operator_info.SetOperatorName("TsVGroupPartition::CompactThread");
-  kwdb_operator_info.SetOperatorOwner("TsVGroupPartition");
-  time_t now;
-  // Record the start time of the operation
-  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
-  // Start asynchronous thread
-  compact_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
-    std::bind(&TsVGroupPartition::compactRoutine, this, std::placeholders::_1), this,
-    &kwdb_operator_info);
-  if (compact_thread_id_ < 1) {
-    // If thread creation fails, record error message
-    LOG_ERROR("TsVGroupPartition compact thread create failed");
-  }
-}
-
-void TsVGroupPartition::closeCompactThread() {
-  if (compact_thread_id_ > 0) {
-    // Wake up potentially dormant compact threads
-    cv_.notify_all();
-    // Waiting for the compact thread to complete
-    KWDBDynamicThreadPool::GetThreadPool().JoinThread(compact_thread_id_, 0);
-  }
 }
 
 }  //  namespace kwdbts

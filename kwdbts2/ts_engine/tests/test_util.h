@@ -98,8 +98,7 @@ bool RemoveDirectory(const char* path) {
 }
 
 uint64_t GetRandomNumber(uint64_t max) {
-  static std::random_device rd;   // Declare static random device
-  static std::mt19937 eng(rd());  // Declare static random number engine
+  static std::mt19937 eng(2);  // Declare static random number engine
   // Define the range
   std::uniform_int_distribution<> distr(0, max);
   // Generate and return the random number
@@ -363,13 +362,12 @@ struct SliceGuard {
   std::string guard;
 };
 
-TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& tag, TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts, KTimestamp interval = 1000) {
+TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag, TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts, KTimestamp interval = 1000) {
   TSRowPayloadBuilder builder(tag, metric, num);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
 
   timestamp64 cur_ts = ts;
   for (size_t i = 0; i < num; i++) {
-    cur_ts += interval;
     for (int j = 0; j < metric.size(); ++j) {
       switch (metric[j].type) {
         case DATATYPE::TIMESTAMP:
@@ -388,7 +386,12 @@ TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& 
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case ::roachpb::DataType::DOUBLE: {
+        case DATATYPE::FLOAT: {
+          float data = GetRandomNumber(1024 * 1024);
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
+        case DATATYPE::DOUBLE: {
           double data = GetRandomNumber(1024 * 1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
@@ -403,11 +406,24 @@ TSSlice GenRowPayload(std::vector<AttributeInfo>& metric, std::vector<TagInfo>& 
           assert(false);
       }
     }
+    cur_ts += interval;
   }
   TSSlice payload{nullptr, 0};
   builder.Build(table_id, version, &payload);
   return payload;
 }
+
+namespace kwtest {
+class PayloadBuilder {
+ private:
+  const std::vector<AttributeInfo>& metric_;
+  const std::vector<TagInfo>& tag_;
+
+ public:
+  explicit PayloadBuilder(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag)
+      : metric_(metric), tag_(tag) {}
+};
+}  // namespace kwtest
 
 void make_hashpoint(std::vector<k_uint32> *hps) {
   for (uint32_t i=0; i<HASHPOINT_RANGE; i++) {
