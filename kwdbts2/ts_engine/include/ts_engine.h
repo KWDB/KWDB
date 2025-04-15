@@ -70,7 +70,7 @@ class TSEngineV2Impl : public TSEngine {
     ts_table = tables_cache_->Get(table_id);
     if (ts_table == nullptr) {
       std::shared_ptr<TsTableSchemaManager> schema;
-      auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+      s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
       if (s == KStatus::SUCCESS) {
         auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
         if (table.get() != nullptr) {
@@ -110,6 +110,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
+    //TODO check version
     return KStatus::SUCCESS;
   }
 

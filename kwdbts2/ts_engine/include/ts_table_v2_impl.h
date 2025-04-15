@@ -54,6 +54,9 @@ class TsTableV2Impl : public TsTable {
                             TsIterator** iter, std::vector<timestamp64> ts_points,
                             bool reverse, bool sorted) override;
 
+  KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                     uint32_t cur_version, uint32_t new_version, string& msg) override;
+
   KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) override;
 };
 
