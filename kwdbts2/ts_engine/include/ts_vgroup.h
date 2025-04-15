@@ -132,7 +132,7 @@ class TsVGroup {
 
   std::filesystem::path GetPath() const;
 
-  std::string GetFileName() const; 
+  std::string GetFileName() const;
 
   uint32_t AllocateEntityID();
 
