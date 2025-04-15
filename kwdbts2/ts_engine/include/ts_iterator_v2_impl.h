@@ -91,6 +91,12 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+
+ protected:
+  k_uint32 cur_entity_index_;
+  k_uint32 cur_partition_index_;
+  std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_ = nullptr;
+  std::vector<Sumfunctype> scan_agg_types_;
 };
 
 class TsMemSegmentScanner : public TsStorageIteratorV2Impl {
