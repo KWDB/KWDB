@@ -1585,6 +1585,8 @@ int TsTimePartition::UndoDelete(uint32_t entity_id, kwdbts::TS_LSN lsn,
 }
 
 int TsTimePartition::UndoDeleteEntity(uint32_t entity_id, kwdbts::TS_LSN lsn, uint64_t* count, ErrorInfo& err_info) {
+  MUTEX_LOCK(vacuum_delete_lock_);
+  Defer defer{[&]() { MUTEX_UNLOCK(vacuum_delete_lock_); }};
   int err_code = 0;
   EntityItem* entity_item = getEntityItem(entity_id);
   entity_item->is_deleted = false;
@@ -1741,6 +1743,8 @@ int TsTimePartition::RedoPut(kwdbts::kwdbContext_p ctx, uint32_t entity_id, kwdb
 
 int TsTimePartition::RedoDelete(uint32_t entity_id, kwdbts::TS_LSN lsn,
                                 const vector<DelRowSpan>* rows, ErrorInfo& err_info) {
+  MUTEX_LOCK(vacuum_delete_lock_);
+  Defer defer{[&]() { MUTEX_UNLOCK(vacuum_delete_lock_); }};
   for (auto row_span : *rows) {
     // Retrieve the block item based on its ID
     BlockItem* block_item = GetBlockItem(row_span.blockitem_id);
@@ -2755,6 +2759,20 @@ int TsTimePartition::DropSegmentDir(const std::vector<BLOCK_ID>& segment_ids) {
     BLOCK_ID key;
     bool ret = data_segments_.Seek(segment_id, key, segment_table);
     if (ret) {
+      // try umount segment
+      int error_code = segment_table->try_umount();
+      if (error_code < 0) {
+        LOG_ERROR("try umount segment[%s] failed", segment_table->GetPath().c_str());
+        return error_code;
+      }
+      LOG_INFO("try umount segment[%s] succeed", segment_table->GetPath().c_str());
+    }
+  }
+  for (unsigned int segment_id : segment_ids) {
+    std::shared_ptr<MMapSegmentTable> segment_table;
+    BLOCK_ID key;
+    bool ret = data_segments_.Seek(segment_id, key, segment_table);
+    if (ret) {
       // set all blockitem in segment invalid.
       auto block_id = segment_id;
       while (true) {
@@ -2774,7 +2792,7 @@ int TsTimePartition::DropSegmentDir(const std::vector<BLOCK_ID>& segment_ids) {
           break;
         }
       }
-      // delete segment directory
+      // remove segment
       int error_code = segment_table->remove();
       if (error_code < 0) {
         LOG_ERROR("remove segment[%s] failed", segment_table->GetPath().c_str());

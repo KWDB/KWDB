@@ -413,6 +413,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
 
   virtual int remove();
 
+  int try_umount();
+
 //  virtual bool isTemporary() const;
 
   /*--------------------------------------------------------------------
