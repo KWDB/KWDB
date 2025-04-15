@@ -84,6 +84,10 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   return KStatus::SUCCESS;
 }
 
+TsLastSegmentManager* TsVGroupPartition::GetLastSegmentMgr() {
+  return &last_segment_mgr_;
+}
+
 KStatus TsVGroupPartition::NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment) {
   return last_segment_mgr_.NewLastSegment(last_segment);
 }
