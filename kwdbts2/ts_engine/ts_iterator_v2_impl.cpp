@@ -275,38 +275,10 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
       case STORAGE_SCAN_STATUS::SCAN_MEM_TABLE: {
           // Scan mem tables
           bool is_done = false;
-          ret = mem_segment_scanner_->Scan(entity_ids_[cur_entity_index_], res, count, ts);
+          ret = mem_segment_scanner_->ScanAgg(entity_ids_[cur_entity_index_], res, count, ts, scan_agg_types_);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("Failed to scan mem table for entity(%d).", entity_ids_[cur_entity_index_]);
             return KStatus::FAIL;
-          }
-
-          res->clear();
-          for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
-            k_int32 col_idx = -1;
-            if (i < ts_scan_cols_.size()) {
-              col_idx = ts_scan_cols_[i];
-            }
-            if (col_idx < 0) {
-              LOG_ERROR("TsAggIteratorV2Impl::Next : no column : %d", kw_scan_cols_[i]);
-              continue;
-            }
-            switch (scan_agg_types_[i]) {
-              case Sumfunctype::COUNT: {
-                k_uint64 row_count = *count;
-                char* value = static_cast<char*>(malloc(sizeof(k_uint64)));
-                *reinterpret_cast<k_uint64*>(value) = row_count;
-                unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
-                memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
-                Batch* b = new Batch(static_cast<void*>(value), 1, bitmap, 1, nullptr);
-                b->is_new = true;
-                res->push_back(0, b);
-                *count = 1;
-                res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-                status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
-                break;
-              }
-            }
           }
 
           status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
@@ -451,6 +423,66 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
     res->push_back(i, batch);
+  }
+
+  res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+  return KStatus::SUCCESS;
+}
+
+KStatus TsMemSegmentScanner::ScanAgg(uint32_t entity_id, ResultSet* res,
+                                     k_uint32* count, timestamp64 ts,
+                                     std::vector<Sumfunctype>& scan_agg_types) {
+  KStatus ret;
+  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
+
+  *count = 0;
+  for (auto block : blocks) {
+    *count += block->GetRowNum();
+  }
+  if (*count == 0) {
+    return KStatus::SUCCESS;
+  }
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_int32 col_idx = -1;
+    if (i < ts_scan_cols_.size()) {
+      col_idx = ts_scan_cols_[i];
+    }
+    if (col_idx < 0) {
+      LOG_ERROR("TsAggIteratorV2Impl::Next : no column : %d", kw_scan_cols_[i]);
+      continue;
+    }
+    switch (scan_agg_types[i]) {
+      case Sumfunctype::COUNT: {
+        // Construct COUNT batch
+        char* value = static_cast<char*>(malloc(sizeof(k_uint64)));
+        *reinterpret_cast<k_uint64*>(value) = *count;
+
+        unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(1)));
+        memset(bitmap, 0x00, KW_BITMAP_SIZE(1));
+
+        Batch* batch = new Batch(value, 1, bitmap, 1, nullptr);
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+
+        res->push_back(i, batch);
+        break;
+      }
+
+      // case Sumfunctype::SUM:
+      // case Sumfunctype::MAX:
+      // case Sumfunctype::MIN:
+      //   // placeholder for future
+      //   break;
+
+      default:
+        LOG_ERROR("Unsupported aggregation function in ScanAgg()");
+        return KStatus::FAIL;
+    }
   }
 
   res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
