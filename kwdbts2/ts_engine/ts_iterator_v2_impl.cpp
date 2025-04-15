@@ -116,8 +116,10 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
 
 KStatus TsRawDataIteratorV2Impl::InitializeLastSegmentIterator() {
   if (cur_partition_index_ < ts_partitions_.size()) {
-    last_segment_iterator_ = std::make_unique<TsLastSegmentIterator>(vgroup_, ts_partitions_[cur_partition_index_], entity_ids_[cur_entity_index_], ts_spans_, ts_col_type_,
-                                                                      kw_scan_cols_, ts_scan_cols_, table_schema_mgr_, table_version_);
+    last_segment_iterator_ = std::make_unique<TsLastSegmentIterator>(vgroup_, ts_partitions_[cur_partition_index_],
+                                                                     entity_ids_[cur_entity_index_], ts_spans_,
+                                                                     ts_col_type_, kw_scan_cols_, ts_scan_cols_,
+                                                                     table_schema_mgr_, table_version_);
     return last_segment_iterator_->Init(is_reversed_);
   } else {
     last_segment_iterator_ = nullptr;
@@ -147,7 +149,8 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
           cur_partition_index_ = 0;
           ret = InitializeLastSegmentIterator();
           if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).", cur_partition_index_, entity_ids_[cur_entity_index_]);
+            LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
+                      cur_partition_index_, entity_ids_[cur_entity_index_]);
             return KStatus::FAIL;
           }
         }
@@ -169,7 +172,8 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
               ++cur_partition_index_;
               ret = InitializeLastSegmentIterator();
               if (ret != KStatus::SUCCESS) {
-                LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).", cur_partition_index_, entity_ids_[cur_entity_index_]);
+                LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
+                          cur_partition_index_, entity_ids_[cur_entity_index_]);
                 return KStatus::FAIL;
               }
             }
@@ -389,7 +393,8 @@ KStatus TsLastSegmentIterator::Init(bool is_reversed) {
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
   ts_partition_->GetLastSegmentMgr()->GetCompactLastSegments(last_segments);
   for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
-    last_segment_block_iterators_.push_back(last_segment->NewIterator(table_schema_mgr_->GetTableID(), entity_id_, ts_spans_));
+    last_segment_block_iterators_.push_back(last_segment->NewIterator(table_schema_mgr_->GetTableID(),
+                                            entity_id_, ts_spans_));
   }
   last_segment_block_iterator_index_ = 0;
   return KStatus::SUCCESS;
