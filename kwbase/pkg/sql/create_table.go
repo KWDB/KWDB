@@ -671,8 +671,23 @@ func (n *createTableNode) startExec(params runParams) error {
 			wg.Wait()
 			log.Infof(params.ctx, "done relocate for MPP mode")
 		}
+
+		if updateErr := params.p.ExecCfg().DB.Txn(params.ctx, func(ctx context.Context, txn *kv.Txn) error {
+			desc.State = sqlbase.TableDescriptor_PUBLIC
+			if err := txn.SetSystemConfigTrigger(); err != nil {
+				return err
+			}
+			b := txn.NewBatch()
+			err := writeDescToBatch(ctx, params.p.extendedEvalCtx.Tracing.KVTracingEnabled(), params.p.execCfg.Settings, b, desc.GetID(), desc.TableDesc())
+			if err != nil {
+				return err
+			}
+			return txn.Run(params.ctx, b)
+		}); updateErr != nil {
+			return updateErr
+		}
 	}
-	log.Infof(params.ctx, "create table %s 1st txn finished, type: %s, id: %d", n.n.Table.String(), tree.TableTypeName(n.n.TableType), desc.ID)
+
 	return nil
 }
 
@@ -686,24 +701,24 @@ func createAndExecCreateTSTableJob(
 		SNTable:  desc.TableDescriptor,
 		Database: *n.dbDesc,
 	}
-	jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+	_, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 	if err != nil {
 		return errors.Wrap(err, "createSyncMetaCacheJob failed")
 	}
 	// Actively commit a transaction, and read/write system table operations
 	// need to be performed before this.
 	if err := params.p.txn.Commit(params.ctx); err != nil {
-		return errors.Wrap(err, "createSyncMetaCacheJob commit failed")
+		return err
 	}
 
 	// After the transaction commits successfully, execute the Job and wait for it to complete.
-	if err = params.ExecCfg().JobRegistry.Run(
-		params.ctx,
-		params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
-		[]int64{jobID},
-	); err != nil {
-		return errors.Wrap(err, "createSyncMetaCacheJob run failed")
-	}
+	//if err = params.ExecCfg().JobRegistry.Run(
+	//	params.ctx,
+	//	params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+	//	[]int64{jobID},
+	//); err != nil {
+	//	return errors.Wrap(err, "createSyncMetaCacheJob run failed")
+	//}
 	return nil
 }
 
@@ -2990,7 +3005,7 @@ func createInstanceTable(
 		CTable:   crCtable,
 		Database: *db,
 	}
-	jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n, params.Ann()))
+	jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n, params.Ann()), params.p.txn)
 	if err != nil {
 		return err
 	}

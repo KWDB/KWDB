@@ -35,6 +35,10 @@ DmlExec::~DmlExec() {
 KStatus DmlExec::Init() {
   thd_ = new KWThdContext();
   current_thd = thd_;
+  rel_batch_queue_ = new RelBatchQueue();
+  if (rel_batch_queue_ == nullptr) {
+    return FAIL;
+  }
   return SUCCESS;
 }
 
@@ -96,10 +100,6 @@ void DmlExec::ClearTsScans(kwdbContext_p ctx) {
 
 KStatus DmlExec::CreateRelBatchQueue(kwdbContext_p ctx, std::vector<Field*> &output_fields) {
   EnterFunc();
-  rel_batch_queue_ = new RelBatchQueue();
-  if (rel_batch_queue_ == nullptr) {
-    Return(KStatus::FAIL);
-  }
   KStatus res = rel_batch_queue_->Init(output_fields);
   Return(res);
 }
@@ -120,7 +120,8 @@ KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
   k_int32 id = req->id;
   k_int32 uniqueID = req->unique_id;
   try {
-    if (!req->handle && type != EnMqType::MQ_TYPE_DML_SETUP) {
+    if (!req->handle && type != EnMqType::MQ_TYPE_DML_INIT &&
+        type != EnMqType::MQ_TYPE_DML_SETUP) {
       Return(ret);
     }
     DmlExec *handle = nullptr;
@@ -144,6 +145,12 @@ KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
         delete handle;
         resp->ret = 1;
         resp->tp = req->tp;
+        break;
+      case EnMqType::MQ_TYPE_DML_INIT:
+        resp->ret = 1;
+        resp->tp = req->tp;
+        resp->code = 0;
+        resp->handle = handle;
         break;
       case EnMqType::MQ_TYPE_DML_NEXT:
         ret = handle->Next(ctx, id, false, resp);
@@ -227,6 +234,7 @@ KStatus DmlExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
 
 void DmlExec::DisposeError(kwdbContext_p ctx, QueryInfo *return_info) {
   kwdbts::KwdbError *error = nullptr;
+  rel_batch_queue_->NotifyError();
   if (EEPgErrorInfo::IsError()) {
     return_info->code = EEPgErrorInfo::GetPgErrorInfo().code;
     return_info->len = strlen(EEPgErrorInfo::GetPgErrorInfo().msg);

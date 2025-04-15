@@ -102,40 +102,38 @@ func (ex *connExecutor) execPrepare(
 	inferredTypes := make([]oid.Oid, len(types))
 	copy(inferredTypes, parseCmd.RawTypeHints)
 
+	var inscolsnum int
+	var colName string
+	var dit DirectInsertTable
 	colDescMap := make(map[string]oid.Oid)
-	if len(parseCmd.PrepareInsertDirect.Dit.Desc) != 0 {
+	if ps.Insertdirectstmt.InsertFast {
 		for _, colDesc := range parseCmd.PrepareInsertDirect.Dit.ColsDesc {
 			colDescMap[colDesc.Name] = colDesc.Type.InternalType.Oid
 		}
+		inscolsnum = parseCmd.PrepareInsertDirect.Inscolsnum
+		dit = parseCmd.PrepareInsertDirect.Dit
 	}
 
 	for i := range types {
-		// OID to Datum is not a 1-1 mapping (for example, int4 and int8
-		// both map to TypeInt), so we need to maintain the types sent by
-		// the client.
-		if ps.Insertdirectstmt.InsertFast && ps.TypeHints[i] == nil {
-			if i < ps.PrepareInsertDirect.Inscolsnum {
-				if len(parseCmd.PrepareInsertDirect.Dit.Desc) != 0 {
-					colName := string(parseCmd.PrepareInsertDirect.Dit.Desc[i])
-					if Oid, ok := colDescMap[colName]; ok {
-						for j := i; j < len(inferredTypes); j += ps.PrepareInsertDirect.Inscolsnum {
-							inferredTypes[j] = Oid
-						}
-					}
-				} else {
-					oid := parseCmd.PrepareInsertDirect.Dit.ColsDesc[i%parseCmd.PrepareInsertDirect.Inscolsnum].Type.InternalType.Oid
-					for j := i; j < len(inferredTypes); j += ps.PrepareInsertDirect.Inscolsnum {
-						inferredTypes[j] = oid
-					}
-					continue
-				}
-			} else {
-				break
+		if !ps.Insertdirectstmt.InsertFast {
+			// OID to Datum is not a 1-1 mapping (for example, int4 and int8
+			// both map to TypeInt), so we need to maintain the types sent by
+			// the client.
+			if inferredTypes[i] == 0 {
+				t, _ := ps.ValueType(tree.PlaceholderIdx(i))
+				inferredTypes[i] = t.Oid()
 			}
+			continue
 		}
-		if inferredTypes[i] == 0 {
-			t, _ := ps.ValueType(tree.PlaceholderIdx(i))
-			inferredTypes[i] = t.Oid()
+		if ps.TypeHints[i] == nil {
+			if len(dit.Desc) == 0 {
+				colName = dit.ColsDesc[i%inscolsnum].Name
+			} else {
+				colName = string(dit.Desc[i%inscolsnum])
+			}
+			if Oid, ok := colDescMap[colName]; ok {
+				inferredTypes[i] = Oid
+			}
 		}
 	}
 	// Remember the inferred placeholder types so they can be reported on

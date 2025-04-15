@@ -45,7 +45,10 @@ KStatus TsBlockSegmentBlockFile::ReadBlock(uint64_t offset, char* buff, size_t l
   RW_LATCH_S_LOCK(file_mtx_);
   TSSlice result;
   file_->Read(offset, len, &result, buff);
-  assert(result.len == len);
+  if (result.len != len) {
+    LOG_ERROR("TsBlockSegmentBlockFile read block failed, offset=%lu, len=%zu", offset, len)
+    return KStatus::FAIL;
+  }
   RW_LATCH_UNLOCK(file_mtx_);
   return KStatus::SUCCESS;
 }

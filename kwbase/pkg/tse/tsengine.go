@@ -463,6 +463,16 @@ func (r *TsEngine) DropTsTable(tableID uint64) error {
 	return nil
 }
 
+// DropLeftTsTableGarbage drop left ts table metadata garbage.
+func (r *TsEngine) DropLeftTsTableGarbage() error {
+	r.checkOrWaitForOpen()
+	status := C.TSDropResidualTsTable(r.tdb)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not drop residual ts table")
+	}
+	return nil
+}
+
 // AddTSColumn adds column for ts table.
 func (r *TsEngine) AddTSColumn(
 	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,
@@ -1125,6 +1135,14 @@ func (r *TsEngine) CloseTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (e
 	r.checkOrWaitForOpen()
 	_, err = r.tsExecute(ctx, C.MQ_TYPE_DML_CLOSE, tsQueryInfo)
 	return err
+}
+
+// InitTsHandle corresponding to init ts handle
+func (r *TsEngine) InitTsHandle(
+	ctx *context.Context, tsQueryInfo TsQueryInfo,
+) (tsRespInfo TsQueryInfo, err error) {
+	r.checkOrWaitForOpen()
+	return r.tsExecute(ctx, C.MQ_TYPE_DML_INIT, tsQueryInfo)
 }
 
 // FlushBuffer flush WALs of all ts tables to files in the node

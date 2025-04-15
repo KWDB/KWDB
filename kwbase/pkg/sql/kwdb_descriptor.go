@@ -3212,7 +3212,7 @@ func InitScheduleForKWDB(ctx context.Context, db *kv.DB, ie sqlutil.InternalExec
 
 // createTSSchemaChangeJob creates a new job to synchronize the metadata cache with the agent.
 func (p *planner) createTSSchemaChangeJob(
-	ctx context.Context, details jobspb.SyncMetaCacheDetails, jobDesc string,
+	ctx context.Context, details jobspb.SyncMetaCacheDetails, jobDesc string, txn *kv.Txn,
 ) (int64, error) {
 	// Queue a new job.
 	jobRecord := jobs.Record{
@@ -3223,7 +3223,8 @@ func (p *planner) createTSSchemaChangeJob(
 		// ts schema change job can not be canceled
 		NonCancelable: true,
 	}
-	job, err := p.extendedEvalCtx.QueueJob(jobRecord)
+	job, err := p.extendedEvalCtx.ExecCfg.JobRegistry.CreateJobWithTxn(ctx, jobRecord, txn)
+	//job, err := p.extendedEvalCtx.QueueJob(jobRecord)
 	if err != nil {
 		return 0, err
 	}

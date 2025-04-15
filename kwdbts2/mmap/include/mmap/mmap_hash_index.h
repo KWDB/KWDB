@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <array>
 #include <utility>
 #include "ts_object.h"
 #include "data_type.h"

@@ -290,6 +290,20 @@ TSStatus TSDropTsTable(TSEngine* engine, TSTableID table_id) {
   return kTsSuccess;
 }
 
+TSStatus TSDropResidualTsTable(TSEngine* engine) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->DropResidualTsTable(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("DropResidualTsTable Error!");
+  }
+  return kTsSuccess;
+}
+
 TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts) {
   if (g_engine_version == 2) {
     return kTsSuccess;
@@ -302,7 +316,7 @@ TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts)
   }
   LOG_INFO("compress table[%lu] start, end_ts: %lu", table_id, ts);
   std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table);
+  s = engine->GetTsTable(ctx_p, table_id, table, false);
   if (s != KStatus::SUCCESS) {
     LOG_INFO("The current node does not have the table[%lu], skip compress", table_id);
     return kTsSuccess;
@@ -332,7 +346,7 @@ TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID ta
 
   LOG_INFO("compress table[%lu] start", table_id);
   std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table);
+  s = engine->GetTsTable(ctx_p, table_id, table, false);
   if (s != KStatus::SUCCESS) {
     LOG_INFO("The current node does not have the table[%lu], skip compress", table_id);
     return kTsSuccess;
@@ -366,7 +380,7 @@ TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_versi
   }
   ErrorInfo err_info;
   std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table, err_info, ts_version);
+  s = engine->GetTsTable(ctx_p, table_id, table, false, err_info, ts_version);
   if (s != KStatus::SUCCESS) {
     LOG_INFO("The current node does not have the table[%lu], skip vacuum", table_id);
     return kTsSuccess;
@@ -397,7 +411,7 @@ TSStatus TSMigrateTsTable(TSEngine* engine, TSTableID table_id) {
       return ToTsStatus("InitServerKWDBContext Error!");
     }
     std::shared_ptr<TsTable> table;
-    s = engine->GetTsTable(ctx_p, table_id, table);
+    s = engine->GetTsTable(ctx_p, table_id, table, false);
     if (s != KStatus::SUCCESS) {
       LOG_INFO("The current node does not have the table[%lu], skip migrate", table_id);
       return kTsSuccess;
@@ -860,7 +874,7 @@ TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp en
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, table_id, ts_tb);
+  s = engine->GetTsTable(ctx_p, table_id, ts_tb, false);
   if (s != KStatus::SUCCESS) {
     LOG_INFO("The current node does not have the table[%lu], skip delete expired data", table_id);
     return kTsSuccess;

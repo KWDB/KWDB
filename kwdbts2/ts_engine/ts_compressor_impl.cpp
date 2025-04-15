@@ -229,7 +229,7 @@ bool GorillaIntV2::Decompress(const TSSlice &data, uint64_t count, std::string *
 static int leading_mapping[] = {0, 8, 12, 16, 18, 20, 22, 24};
 template <class T>
 bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
-  assert(data.len == 8 * count);
+  assert(data.len == sizeof(T) * count);
   out->clear();
   if (count == 0 || count == 1) {
     return false;
@@ -523,7 +523,7 @@ bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string
 }
 
 bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmap *bitmap,
-                                                     uint32_t count, std::string *out) {
+                                                     uint32_t count, std::string *out) const {
   if (IsPlain()) return false;
   out->clear();
   std::string buf;
@@ -545,7 +545,7 @@ bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const T
   return second_->Compress(data, out);
 }
 bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmap *bitmap,
-                                                       uint32_t count, std::string *out) {
+                                                       uint32_t count, std::string *out) const {
   if (IsPlain()) return false;
   out->clear();
   std::string buf;
@@ -601,8 +601,8 @@ CompressorManager::CompressorManager() {
 
   general_compressor_[GenCompAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
 
-  // for debug use;
-  ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
+  // Varchar..
+  default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
 }
 auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
     -> TwoLevelCompressor {

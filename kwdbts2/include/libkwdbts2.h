@@ -133,6 +133,7 @@ typedef enum _EnMqType {
   MQ_TYPE_DML_NEXT,
   MQ_TYPE_DML_CLOSE,
   MQ_TYPE_DML_PG_RESULT,
+  MQ_TYPE_DML_INIT,
   MQ_TYPE_MAX
 } EnMqType;
 
@@ -191,6 +192,8 @@ TSStatus TSUpdateRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroups ra
 TSStatus TSCreateRangeGroup(TSEngine* engine, TSTableID table_id, TSSlice schema, RangeGroups range_groups);
 
 TSStatus TSDropTsTable(TSEngine* engine, TSTableID tableId);
+
+TSStatus TSDropResidualTsTable(TSEngine* engine);
 
 TSStatus TSCreateNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id,
                                 char* transaction_id, uint32_t cur_version, uint32_t new_version,
@@ -323,6 +326,7 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
 TSStatus TsTestGetAndAddSchemaVersion(TSEngine* engine, TSTableID table_id, uint64_t version);
 
 char* __attribute__((weak)) getTableMetaByVersion(TSTableID table_id, uint64_t ver, size_t* data_len, char** error);
+bool __attribute__((weak)) checkTableMetaExist(TSTableID table_id);
 /**
  * @brief delete data in range, used after snapshot finished. 
  * it maybe delete tstable in storage engine. in this case, before next input data, we should create table first.

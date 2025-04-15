@@ -38,7 +38,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
-	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 	"github.com/lib/pq/oid"
 )
@@ -470,7 +469,7 @@ func (n *createIndexNode) startExec(params runParams) error {
 			CreateOrAlterTagIndex: *indexDesc,
 			MutationID:            mutationID,
 		}
-		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 		if err != nil {
 			return err
 		}
@@ -495,7 +494,7 @@ func (n *createIndexNode) startExec(params runParams) error {
 		); err != nil {
 			return err
 		}
-		log.Infof(params.ctx, "create tag index %s 1st txn finished, id: %d", n.n.Name.String(), indexDesc.ID)
+		//log.Infof(params.ctx, "create tag index %s 1st txn finished, id: %d", n.n.Name.String(), indexDesc.ID)
 	} else {
 		if err := params.p.writeSchemaChange(
 			params.ctx, n.tableDesc, mutationID, tree.AsStringWithFQNames(n.n, params.Ann()),

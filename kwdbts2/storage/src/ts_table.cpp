@@ -2858,9 +2858,10 @@ KStatus TsTable::SyncTagTsVersion(uint32_t cur_version, uint32_t new_version) {
   return SUCCESS;
 }
 
-KStatus TsTable::AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version) {
+KStatus TsTable::AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version,
+                                     const std::vector<roachpb::NTagIndexInfo>& idx_info) {
   for (auto& entity_group : entity_groups_) {
-    if (entity_group.second->AddTagSchemaVersion(schema, new_version) < 0) {
+    if (entity_group.second->AddTagSchemaVersion(schema, new_version, idx_info) < 0) {
       return FAIL;
     }
   }
@@ -3021,6 +3022,10 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
        table_id_, upper_version, it.m_id, it.m_flag);
   }
 #endif
+  std::vector<roachpb::NTagIndexInfo> idx_info;
+  for (int i = 0; i < meta->index_info_size(); i++) {
+    idx_info.emplace_back(meta->index_info(i));
+  }
   s = AddTagSchemaVersion(tag_schema, upper_version);
   return s;
 }

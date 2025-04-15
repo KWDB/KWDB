@@ -232,9 +232,9 @@ class CompressorManager {
       first_algo_ = first == nullptr ? TsCompAlg::kPlain : first_algo;
       second_algo_ = second == nullptr ? GenCompAlg::kPlain : second_algo;
     }
-    bool Compress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
+    bool Compress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out) const;
 
-    bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out);
+    bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out) const;
     bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); }
     std::tuple<TsCompAlg, GenCompAlg> GetAlgorithms() const;
   };

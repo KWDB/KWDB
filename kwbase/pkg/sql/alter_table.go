@@ -225,7 +225,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 					AlterTag:   *TSColumn,
 					MutationID: mutationID,
 				}
-				jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+				jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 				if err != nil {
 					return err
 				}
@@ -247,7 +247,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 					params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 					[]int64{jobID},
 				); err != nil {
-					return err
+					log.Info(params.ctx, err)
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 				return nil
@@ -562,7 +562,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 					AlterTag:   *colToDrop,
 					MutationID: mutationID,
 				}
-				jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+				jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 				if err != nil {
 					return err
 				}
@@ -585,7 +585,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 					params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 					[]int64{jobID},
 				); err != nil {
-					return err
+					log.Info(params.ctx, err)
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 				return nil
@@ -971,7 +971,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				OriginColumn: *tagColumn,
 				MutationID:   mutationID,
 			}
-			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
 				return err
 			}
@@ -994,7 +994,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 				[]int64{jobID},
 			); err != nil {
-				return err
+				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 
@@ -1162,9 +1162,9 @@ func (n *alterTableNode) startExec(params runParams) error {
 				AlterTag:   *tagCol,
 				MutationID: mutationID,
 			}
-			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
-				return err
+				log.Info(params.ctx, err)
 			}
 			if mutationID != sqlbase.InvalidMutationID {
 				n.tableDesc.MutationJobs = append(n.tableDesc.MutationJobs, sqlbase.TableDescriptor_MutationJob{
@@ -1185,7 +1185,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 				[]int64{jobID},
 			); err != nil {
-				return err
+				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 			return nil
@@ -1249,7 +1249,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				AlterTag:   *tagColumn,
 				MutationID: mutationID,
 			}
-			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
 				return err
 			}
@@ -1272,7 +1272,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 				[]int64{jobID},
 			); err != nil {
-				return err
+				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 			return nil
@@ -1341,7 +1341,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				SNTable: n.tableDesc.TableDescriptor,
 				SetTag:  jobspb.SetTag{TableName: cTableName, TableId: int64(insTable.InstTableID), DbName: db.Name, TagName: tagName, TagValue: tagVal},
 			}
-			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
 				return err
 			}
@@ -1361,7 +1361,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 				[]int64{jobID},
 			); err != nil {
-				return err
+				log.Info(params.ctx, err)
 			}
 			return nil
 
@@ -1436,7 +1436,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				Type:    alterKwdbAlterPartitionInterval,
 				SNTable: n.tableDesc.TableDescriptor,
 			}
-			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()))
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
 				return err
 			}
@@ -1654,7 +1654,7 @@ func applyColumnMutation(
 					OriginColumn: *col,
 					MutationID:   mutationID,
 				}
-				jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, params.p.stmt.SQL)
+				jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, params.p.stmt.SQL, params.p.txn)
 				if err != nil {
 					return false, err
 				}
@@ -1677,7 +1677,8 @@ func applyColumnMutation(
 					params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
 					[]int64{jobID},
 				); err != nil {
-					return false, err
+					log.Info(params.ctx, err)
+					return false, nil
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", tableDesc.Name, tableDesc.ID, mut)
 				return false, nil

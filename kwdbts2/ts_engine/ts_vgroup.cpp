@@ -21,21 +21,25 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "sys_utils.h"
-#include "ts_io.h"
-#include "ts_last_segment_manager.h"
-#include "ts_payload.h"
-#include "ts_vgroup_partition.h"
 #include "ts_iterator_v2_impl.h"
+#include "ts_lastsegment_builder.h"
+#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
 // todo(liangbo01) using normal path for mem_segment.
-TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr)
-    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), mem_segment_mgr_(this),
-      path_(engine_options.db_path + "/" + GetFileName()),
-      entity_counter_(0), engine_options_(engine_options) {}
+TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
+                   TsEngineSchemaManager* schema_mgr, bool enable_compact_thread)
+    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), partitions_latch_(RWLATCH_ID_VGROUP_PARTITIONS_RWLOCK),
+      mem_segment_mgr_(this), path_(engine_options.db_path + "/" + GetFileName()),
+      entity_counter_(0), engine_options_(engine_options),
+      enable_compact_thread_(enable_compact_thread) {
+  initCompactThread();
+}
 
 TsVGroup::~TsVGroup() {
+  enable_compact_thread_ = false;
+  closeCompactThread();
   if (config_file_ != nullptr) {
     config_file_->sync(MS_SYNC);
     delete config_file_;
@@ -164,13 +168,19 @@ TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() {
   return &mem_segment_mgr_;
 }
 
-TsVGroupPartition* TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
+std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
+  RW_LATCH_S_LOCK(&partitions_latch_);
   auto partition_manager = partitions_[database_id].get();
+  RW_LATCH_UNLOCK(&partitions_latch_);
   if (partition_manager == nullptr) {
     // TODO(zzr): interval should be fetched form global setting;
-    uint64_t interval = 3600 * 24 * 30;  // 30 days.
-    partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
+    RW_LATCH_X_LOCK(&partitions_latch_);
+    if (partitions_[database_id].get() == nullptr) {
+      uint64_t interval = 3600 * 24 * 30;  // 30 days.
+      partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
+    }
     partition_manager = partitions_[database_id].get();
+    RW_LATCH_UNLOCK(&partitions_latch_);
   }
   return partition_manager->Get(p_time, true);
 }
@@ -182,12 +192,89 @@ int TsVGroup::saveToFile(uint32_t new_id) const {
   return 0;
 }
 
+void TsVGroup::compactRoutine(void* args) {
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
+    std::unique_lock<std::mutex> lock(cv_mutex_);
+    // Check every 2 seconds if compact is necessary
+    cv_.wait_for(lock, std::chrono::seconds(2), [this] { return !enable_compact_thread_; });
+    lock.unlock();
+    // If the thread pool stops or the system is no longer running, exit the loop
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_compact_thread_) {
+      break;
+    }
+    // Execute compact tasks
+    Compact();
+  }
+}
+
+void TsVGroup::initCompactThread() {
+  if (!enable_compact_thread_) {
+    return;
+  }
+  KWDBOperatorInfo kwdb_operator_info;
+  // Set the name and owner of the operation
+  kwdb_operator_info.SetOperatorName("TsVGroupPartition::CompactThread");
+  kwdb_operator_info.SetOperatorOwner("TsVGroupPartition");
+  time_t now;
+  // Record the start time of the operation
+  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
+  // Start asynchronous thread
+  compact_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
+    std::bind(&TsVGroup::compactRoutine, this, std::placeholders::_1), this,
+    &kwdb_operator_info);
+  if (compact_thread_id_ < 1) {
+    // If thread creation fails, record error message
+    LOG_ERROR("TsVGroupPartition compact thread create failed");
+  }
+}
+
+void TsVGroup::closeCompactThread() {
+  if (compact_thread_id_ > 0) {
+    // Wake up potentially dormant compact threads
+    cv_.notify_all();
+    // Waiting for the compact thread to complete
+    KWDBDynamicThreadPool::GetThreadPool().JoinThread(compact_thread_id_, 0);
+  }
+}
+
+inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& x, std::shared_ptr<TsVGroupPartition>& y) {
+  return x->StartTs() > y->StartTs();
+}
+
+KStatus TsVGroup::Compact(int thread_num) {
+  std::vector<std::shared_ptr<TsVGroupPartition>> vgroup_partitions;
+  RW_LATCH_S_LOCK(&partitions_latch_);
+  for (auto& partition : partitions_) {
+    std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetPartitionArray();
+    vgroup_partitions.insert(vgroup_partitions.end(), v.begin(), v.end());
+  }
+  RW_LATCH_UNLOCK(&partitions_latch_);
+  // Prioritize the latest partition
+  std::sort(vgroup_partitions.begin(), vgroup_partitions.end(), PartitionLessThan);
+  // Compact partitions
+  std::vector<std::thread> workers;
+  for (uint32_t thread_idx = 0; thread_idx < thread_num; thread_idx++) {
+    workers.emplace_back([&, thread_idx]() {
+      for (size_t idx = thread_idx; idx < vgroup_partitions.size(); idx += thread_num) {
+        KStatus s = vgroup_partitions[idx]->Compact();
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsVGroupPartition[%s] compact failed", vgroup_partitions[idx]->GetFileName().c_str())
+        }
+      }
+    });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
   if (!mem_seg->SetFlushing()) {
     LOG_ERROR("cannot set status for mem segment.");
     return KStatus::FAIL;
   }
-  std::unordered_map<TsVGroupPartition*, TsLastSegmentBuilder> builders;
+  std::unordered_map<std::shared_ptr<TsVGroupPartition>, TsLastSegmentBuilder> builders;
   struct LastRowInfo {
     TSTableID cur_table_id = 0;
     uint32_t database_id = 0;
@@ -253,7 +340,12 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("last segment Finalize failed.");
       return KStatus::FAIL;
     }
-    kv.second.Flush();
+    s = kv.second.Flush();
+    if (s == FAIL) {
+      LOG_ERROR("last segment Flush failed.");
+      return KStatus::FAIL;
+    }
+    kv.first->PublicLastSegment(kv.second.Finish());
   }
   // todo(liangbo01) add all new files into new_file_list.
   std::list<TsLastSegment> new_file_list;
@@ -300,10 +392,12 @@ uint32_t TsVGroup::GetVGroupID() {
   return vgroup_id_;
 }
 
-TsVGroupPartition* PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
+std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
   int idx = timestamp / interval_;
+  RW_LATCH_S_LOCK(&partitions_latch_);
   auto it = partitions_.find(idx);
   if (it == partitions_.end()) {
+    RW_LATCH_UNLOCK(&partitions_latch_);
     if (!create_if_not_exist) {
       return nullptr;
     }
@@ -311,13 +405,30 @@ TsVGroupPartition* PartitionManager::Get(int64_t timestamp, bool create_if_not_e
     int64_t start = idx * interval_;
     int64_t end = start + interval_;
     auto root = vgroup_->GetPath();
-    auto partition = std::make_unique<TsVGroupPartition>(root, database_id_, vgroup_->GetSchemaMgr(), start, end);
-    partition->Open();
-    auto [it, success] = partitions_.emplace(idx, std::move(partition));
-    assert(success);
-    return it->second.get();
+    RW_LATCH_X_LOCK(&partitions_latch_);
+    it = partitions_.find(idx);
+    if (it == partitions_.end()) {
+      auto partition = std::make_shared<TsVGroupPartition>(root, database_id_, vgroup_->GetSchemaMgr(), start, end);
+      partition->Open();
+      partitions_[idx] = partition;
+      RW_LATCH_UNLOCK(&partitions_latch_);
+      return partition;
+    }
   }
-  return it->second.get();
+  RW_LATCH_UNLOCK(&partitions_latch_);
+  return it->second;
+}
+
+std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetPartitionArray() {
+  std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
+  RW_LATCH_S_LOCK(&partitions_latch_);
+  for (auto& kv : partitions_) {
+    if (kv.second != nullptr) {
+      partitions.push_back(kv.second);
+    }
+  }
+  RW_LATCH_UNLOCK(&partitions_latch_);
+  return partitions;
 }
 
 }  //  namespace kwdbts

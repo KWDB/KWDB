@@ -36,7 +36,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 )
 
 // FlowCtx encompasses the configuration parameters needed for various flow
@@ -100,14 +99,6 @@ type FlowCtx struct {
 	// used only to jump out of the waiting loop in BLJ operator
 	// when tse returns an error.
 	TsHandleBreak bool
-
-	// PushingBLJCount define the number of BLJ operators pussing rel data into ts engine
-	PushingBLJCount map[int32]int
-
-	// Mu is the Mutex to protect TsHandleMap
-	// only used to get tshandle when the switch is on and the server starts
-	// with single node mode.
-	Mu syncutil.Mutex
 }
 
 // NewEvalCtx returns a modifiable copy of the FlowCtx's EvalContext.

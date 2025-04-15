@@ -30,6 +30,7 @@
 #include "engine.h"
 #include "ts_table_v2_impl.h"
 #include "ts_flush_manager.h"
+extern bool g_go_start_service;
 
 namespace kwdbts {
 
@@ -63,13 +64,14 @@ class TSEngineV2Impl : public TSEngine {
   }
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
-                     ErrorInfo& err_info = getDummyErrorInfo(), uint32_t version = 0) override {
+                     bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
+                     uint32_t version = 0) override {
     // TODO(liangbo01)  need input change version
     KStatus s = KStatus::SUCCESS;
     ts_table = tables_cache_->Get(table_id);
     if (ts_table == nullptr) {
       std::shared_ptr<TsTableSchemaManager> schema;
-      auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+      s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
       if (s == KStatus::SUCCESS) {
         auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
         if (table.get() != nullptr) {
@@ -87,8 +89,38 @@ class TSEngineV2Impl : public TSEngine {
       table_mutex_.unlock();
     }
 
+    // if table no exist. try get schema from go level.
+    if (ts_table == nullptr && create_if_not_exist) {
+      LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
+      if (!g_go_start_service) {  // unit test from c, just return falsed.
+        return KStatus::FAIL;
+      }
+      char* error;
+      size_t data_len = 0;
+      char* data = getTableMetaByVersion(table_id, 0, &data_len, &error);
+      if (error != nullptr) {
+        LOG_ERROR("getTableMetaByVersion error: %s.", error);
+        return KStatus::FAIL;
+      }
+      roachpb::CreateTsTable meta;
+      if (!meta.ParseFromString({data, data_len})) {
+        LOG_ERROR("Parse schema From String failed.");
+        return KStatus::FAIL;
+      }
+      CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
+      ts_table = tables_cache_->Get(table_id);
+      if (ts_table == nullptr || ts_table->IsDropped()) {
+        LOG_ERROR("failed during upper version.");
+        return KStatus::FAIL;
+      }
+      s = KStatus::SUCCESS;
+    }
+
     if (s == KStatus::SUCCESS) {
-      // todo(liangbo01) if version no exist.
+      if (version != 0 && ts_table->CheckAndAddSchemaVersion(ctx, table_id, version) != KStatus::SUCCESS) {
+        LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", table_id);
+        return KStatus::FAIL;
+      }
     }
     return s;
   }
@@ -106,6 +138,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
+    // TODO(liumengzhen) check version
     return KStatus::SUCCESS;
   }
 
@@ -259,6 +292,9 @@ class TSEngineV2Impl : public TSEngine {
   TS_LSN GetFinishedLSN() {
     return flush_mgr_.GetFinishedLSN();
   }
+
+  // TODO(liangbo01)  To be implemented
+  KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
 
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);

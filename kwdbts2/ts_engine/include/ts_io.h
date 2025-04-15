@@ -179,6 +179,7 @@ class TsMMapFile final : public TsFile {
               LOG_ERROR("mmap error %s.", strerror(errno))
               return KStatus::FAIL;
             }
+            break;
           case EINVAL:
             assert(false);
           case ENOMEM:

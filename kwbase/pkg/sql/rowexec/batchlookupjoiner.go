@@ -32,7 +32,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -221,7 +220,6 @@ func (h *batchLookupJoiner) Start(ctx context.Context) context.Context {
 	// get relational data and push to AE for actual join process
 	// start with buildAndConsumeStoredSide
 	h.runningState = bljBuildAndConsumingStoredSide
-	h.FlowCtx.PushingBLJCount[h.tsTableReaderID]++
 	var leftStartDone = false
 	for !leftStartDone {
 		switch h.runningState {
@@ -237,7 +235,6 @@ func (h *batchLookupJoiner) Start(ctx context.Context) context.Context {
 		// no need to double check meta errors, when meta.Err != nil
 		// runningState is set to bljStateUnknown in buildAndConsumeStoredSide and pushToProbeSide
 	}
-	h.FlowCtx.PushingBLJCount[h.tsTableReaderID]--
 	h.rightSource.Start(ctx)
 	ctx = h.StartInternal(ctx, batchLookupJoinerProcName)
 	return ctx
@@ -659,18 +656,18 @@ func (h *batchLookupJoiner) PushTsFlow(chunk *tse.DataChunkGo) batchLookupJoiner
 	// when turned to pull mode, we already push all data down to tse
 	// thus we need to send one more push end message to tse
 	var tsQueryInfo tse.TsQueryInfo
-	for {
-		if h.FlowCtx.TsHandleBreak {
-			log.Warning(h.PbCtx(), "tse returned an error, please check the error code")
-			h.MoveToDraining(nil)
-			return bljStateUnknown
-		}
-		if handle, ok := h.FlowCtx.TsHandleMap[h.tsTableReaderID]; ok {
-			tsQueryInfo.Handle = handle
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	if h.FlowCtx.TsHandleBreak {
+		log.Warning(h.PbCtx(), "tse returned an error, please check the error code")
+		h.MoveToDraining(nil)
+		return bljStateUnknown
 	}
+	handle, ok := h.FlowCtx.TsHandleMap[h.tsTableReaderID]
+	if !ok {
+		log.Warning(h.PbCtx(), "handle is nil, please check the error")
+		h.MoveToDraining(nil)
+		return bljStateUnknown
+	}
+	tsQueryInfo.Handle = handle
 	tsQueryInfo.Buf = []byte("pushdata tsflow")
 	tsQueryInfo.PushData = chunk
 	tsQueryInfo.RowCount = 0

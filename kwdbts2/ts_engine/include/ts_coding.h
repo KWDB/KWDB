@@ -20,6 +20,7 @@
 #include <string_view>
 #include <algorithm>
 #include <type_traits>
+#include "libkwdbts2.h"
 
 namespace kwdbts {
 
@@ -131,6 +132,34 @@ inline void PutFixed64(std::string *dst, uint64_t v) {
   dst->append(reinterpret_cast<char *>(&v), sizeof(v));
 }
 
+inline void GetChar(TSSlice *slice, char v) {}
+
+inline void GetFixed16(TSSlice *slice, uint16_t *v) {
+  assert(slice->len >= 2);
+  *v = DecodeFixed16(slice->data);
+  slice->data += 2;
+  slice->len -= 2;
+}
+
+inline void GetFixed32(TSSlice *slice, uint32_t *v) {
+  assert(slice->len >= 4);
+  *v = DecodeFixed32(slice->data);
+  slice->data += 4;
+  slice->len -= 4;
+}
+
+inline void GetFixed64(TSSlice *slice, uint64_t *v) {
+  assert(slice->len >= 8);
+  *v = DecodeFixed64(slice->data);
+  slice->data += 8;
+  slice->len -= 8;
+}
+
+inline void RemovePrefix(TSSlice *slice, int n) {
+  slice->data += n;
+  slice->len -= n;
+}
+
 inline void PutVarint32(std::string *dst, uint32_t v) {
   char buf[5];
   char *ptr = EncodeVarint32(buf, v);
@@ -235,15 +264,22 @@ class TsBitReader {
       return false;
     }
     *v = 0;
-    int ntail = 8 - pos_ % 8;
-    (*v) += rep_[idx] & ((1 << ntail) - 1);
-    (*v) <<= (8 - ntail);
+    int nhead = pos_ % 8;
+    if (nhead == 0) {
+      *v = static_cast<uint8_t>(rep_[idx]);
+      pos_ += 8;
+      return true;
+    }
 
-    int nhead = 8 - ntail;
-    if (nhead != 0 && idx + 1 == rep_.size()) {
+    int ntail = 8 - nhead;
+    *v += rep_[idx] & ((1U << ntail) - 1);
+    *v <<= nhead;
+
+    if (idx + 1 == rep_.size()) {
       return false;
     }
 
+    assert(idx + 1 < rep_.size());
     uint8_t tmp = rep_[idx + 1] & (((1 << nhead) - 1) << ntail);
     tmp >>= ntail;
     *v += tmp;
@@ -305,6 +341,7 @@ class TsBitReader {
       return false;
     }
     // read bits from next byte;
+    assert(idx + 1 < rep_.size());
     uint64_t tmp2 = (rep_[idx + 1] >> (8 - nbits)) & ((1 << nbits) - 1);
     *v += tmp2;
     pos_ += nbits;

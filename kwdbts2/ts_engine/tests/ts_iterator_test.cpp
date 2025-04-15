@@ -91,7 +91,7 @@ TEST_F(TestV2Iterator, basic) {
         }
         TsStorageIterator* ts_iter;
         k_uint32 entity_id = 1;
-        KwTsSpan ts_span = {start_ts + 1000, start_ts + 1020};
+        KwTsSpan ts_span = {start_ts, start_ts + 20};
         DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
         ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
         std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
@@ -107,7 +107,7 @@ TEST_F(TestV2Iterator, basic) {
         bool is_finished = false;
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 1);
-        ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts+1000, ts_col_type)); //1000 is the inteval added in GenRowPayload
+        ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 0);

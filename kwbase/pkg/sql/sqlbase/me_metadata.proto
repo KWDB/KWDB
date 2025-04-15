@@ -229,11 +229,19 @@ message KWDBKTSColumn {
   optional bool dropped = 10 [(gogoproto.nullable) = false];
 }
 
+// NTagHashIndexInfo
+message NTagIndexInfo {
+  optional uint32 index_id = 1 [(gogoproto.nullable) = false];
+  repeated uint32 col_ids = 2;
+}
+
 // CreateTsTable
 message CreateTsTable {
   required KWDBTsTable ts_table = 1 [(gogoproto.nullable) = false];
   repeated KWDBKTSColumn k_column = 2 [(gogoproto.nullable) = false];
   optional bool old_field = 3 [deprecated = true];
+  // NTagIndexInfo
+  repeated NTagIndexInfo index_info = 4 [(gogoproto.nullable) = false];
 }
 
 

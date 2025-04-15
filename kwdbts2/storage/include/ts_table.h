@@ -67,7 +67,7 @@ class TsTable {
     return this->entity_bt_manager_ != nullptr;
   }
 
-  KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version);
+  virtual KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version);
 
   /**
    * @brief Query Table Column Definition
@@ -554,7 +554,8 @@ class TsTable {
 
   KStatus SyncTagTsVersion(uint32_t cur_version, uint32_t new_version);
 
-  KStatus AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version);
+  KStatus AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version,
+                              const std::vector<roachpb::NTagIndexInfo>& idx_info = {});
 
  public:
   KStatus GetLastRowEntity(EntityResultIndex& entity_id);
@@ -1013,12 +1014,13 @@ class TsEntityGroup {
     return new_tag_bt_->GetTagTableVersionManager()->SyncFromMetricsTableVersion(cur_version, new_version);
   }
 
-  int AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version) {
+  int AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_t new_version,
+                          const std::vector<roachpb::NTagIndexInfo>& idx_info) {
     LOG_INFO("AddTagSchemaVersion , new_version:%d", new_version)
     RW_LATCH_S_LOCK(drop_mutex_);
     Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
     ErrorInfo err_info;
-    if (new_tag_bt_->AddNewPartitionVersion(schema, new_version, err_info) < 0) {
+    if (new_tag_bt_->AddNewPartitionVersion(schema, new_version, err_info, idx_info) < 0) {
       return -1;
     }
     return 0;

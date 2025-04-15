@@ -82,6 +82,32 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
     return KStatus::FAIL;
   }
 
+  TSTableID table_id = table_schema_mgr_->GetTableId();
+  auto schema_mgr = vgroup_->GetEngineSchemaMgr();
+  uint32_t database_id = schema_mgr->GetDBIDByTableID(table_id);
+  auto& partition_managers = vgroup_->GetPartitionManagers();
+  auto it = partition_managers.find(database_id);
+
+  if (it != partition_managers.end() && it->second) {
+  auto* partition_manager = it->second.get();
+  const auto& partitions = partition_manager->GetPartitions();
+
+  if (!partitions.empty()) {
+    std::unordered_set<TsVGroupPartition*> seen;
+    for (const auto& [idx, partition_ptr] : partitions) {
+      if (!partition_ptr) continue;
+      int64_t p_start = partition_ptr->StartTs();
+      int64_t p_end = partition_ptr->EndTs();
+      if (isTimestampInSpans(ts_spans_, p_start, p_end)) {
+        if (seen.insert(partition_ptr.get()).second) {
+          ts_partitions_.emplace_back(
+            std::shared_ptr<TsVGroupPartition>(partition_ptr.get(), [](TsVGroupPartition*) {}));
+        }
+      }
+    }
+  }
+}
+
   return KStatus::SUCCESS;
 }
 
@@ -223,7 +249,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
   TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
-  ret = vgroup_->GetMemSegmentMgr()->GetBlockItems(params, &blocks);
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
