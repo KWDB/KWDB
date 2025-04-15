@@ -110,7 +110,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
-    //TODO check version
+    // TODO(liumengzhen) check version
     return KStatus::SUCCESS;
   }
 
