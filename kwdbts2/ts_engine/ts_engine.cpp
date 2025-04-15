@@ -217,8 +217,14 @@ KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, 
     err_msg = "Parse protobuf error";
     return KStatus::FAIL;
   }
-  return schema_mgr_->AlterTable(ctx, table_id, AlterType::ADD_COLUMN, &column_meta,
-                                 cur_version, new_version, err_msg);
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, cur_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, cur_version, err_info.errmsg.c_str());
+    return s;
+  }
+  return ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
 }
 
 KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
@@ -229,8 +235,15 @@ KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id,
     err_msg = "Parse protobuf error";
     return KStatus::FAIL;
   }
-  return schema_mgr_->AlterTable(ctx, table_id, AlterType::DROP_COLUMN, &column_meta,
-                                 cur_version, new_version, err_msg);
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, cur_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, cur_version, err_info.errmsg.c_str());
+    return s;
+  }
+  return ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta,
+                              cur_version, new_version, err_msg);
 }
 
 KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
@@ -241,8 +254,15 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
     LOG_ERROR("ParseFromArray Internal Error");
     return KStatus::FAIL;
   }
-  return schema_mgr_->AlterTable(ctx, table_id, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
-                                 cur_version, new_version, err_msg);
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, cur_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, cur_version, err_info.errmsg.c_str());
+    return s;
+  }
+  return ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
+                              cur_version, new_version, err_msg);
 }
 
 std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {

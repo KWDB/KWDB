@@ -117,7 +117,10 @@ class TSEngineV2Impl : public TSEngine {
     }
 
     if (s == KStatus::SUCCESS) {
-      // todo(liangbo01) if version no exist.
+      if (version != 0 && ts_table->CheckAndAddSchemaVersion(ctx, table_id, version) != KStatus::SUCCESS) {
+        LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", table_id);
+        return KStatus::FAIL;
+      }
     }
     return s;
   }
@@ -135,6 +138,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
+    // TODO(liumengzhen) check version
     return KStatus::SUCCESS;
   }
 
