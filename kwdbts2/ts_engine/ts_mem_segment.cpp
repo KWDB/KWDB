@@ -30,8 +30,10 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
       LOG_ERROR("can not switch mem segment.");
     }
     auto row_num = (*segments)->GetRowNum();
-    uint32_t new_heigh = log2(row_num) / 2;
-    TsEngineInstanceParams::mem_segment_max_height = new_heigh;
+    uint32_t new_heigh = log2(row_num);
+    if (TsEngineInstanceParams::mem_segment_max_height < new_heigh) {
+      TsEngineInstanceParams::mem_segment_max_height = new_heigh;
+    }
   }
 }
 
@@ -78,7 +80,7 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   std::vector<AttributeInfo> schema;
@@ -100,7 +102,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   for (size_t i = 0; i < row_num; i++) {
     // todo(liangbo01) add lsn of wal.
     // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(pd.GetTS(i), 1, pd.GetRowData(i));
+    row_data.SetData(pd.GetTS(i), lsn, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);

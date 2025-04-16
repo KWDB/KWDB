@@ -18,4 +18,5 @@ select * from test.sjcx01
 where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
+select count(*) from test.sjcx01;
 drop database test cascade;

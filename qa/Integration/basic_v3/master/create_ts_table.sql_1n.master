@@ -92,5 +92,10 @@ order by k_timestamp;
   2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
   2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
 (5 rows)
+> select count(*) from test.sjcx01;
+  count
+---------
+      9
+(1 row)
 > drop database test cascade;
 DROP DATABASE

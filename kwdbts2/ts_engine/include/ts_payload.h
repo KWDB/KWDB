@@ -158,6 +158,9 @@ class TsRawPayload {
     assert(tmp.len <= payload_.len);
     return tmp;
   }
+  TSSlice GetPayload() {
+    return payload_;
+  }
 };
 
 // Parse row major payload as fast as possible

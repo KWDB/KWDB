@@ -84,8 +84,28 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, TSEntityID entity_id, TSSlice* payload) {
-  return mem_segment_mgr_.PutData(*payload, entity_id);
+KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
+                          TSEntityID entity_id, TSSlice* payload) {
+  TS_LSN current_lsn = 1;
+  if (engine_options_.wal_level != WALMode::OFF) {
+    TS_LSN entry_lsn = 0;
+    // lock current lsn: Lock the current LSN until the log is written to the cache
+    wal_manager_->Lock();
+    TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
+    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn);
+    if (s == KStatus::FAIL) {
+      wal_manager_->Unlock();
+      return s;
+    }
+    // unlock current lsn
+    wal_manager_->Unlock();
+
+    if (entry_lsn != current_lsn) {
+      LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
+      return KStatus::FAIL;
+    }
+  }
+  return mem_segment_mgr_.PutData(*payload, entity_id, current_lsn);
 }
 
 std::filesystem::path TsVGroup::GetPath() const {

@@ -287,7 +287,7 @@ class TsMemSegmentManager {
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id_);
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
 
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
