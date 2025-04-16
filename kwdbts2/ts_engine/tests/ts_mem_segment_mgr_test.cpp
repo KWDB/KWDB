@@ -15,7 +15,7 @@
 
 using namespace kwdbts;  // NOLINT
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
   TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(payload.data);
   uint32_t row_num = 1;
   segment_lock_.lock();
@@ -68,7 +68,7 @@ TEST_F(TsMemSegMgrTest, insertOneRow) {
   uint64_t row_value = 123456789;
   TSMemSegRowData tmp_data(1, 1001, 9, 100001);
   tmp_data.SetData(10086, 1009, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
-  auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+  auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
   ASSERT_TRUE(s == KStatus::SUCCESS);
 }
 
@@ -76,7 +76,7 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   uint64_t row_value = 123456789;
   TSMemSegRowData tmp_data(1, 1001, 9, 100001);
   tmp_data.SetData(10086, 1009, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
-  auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+  auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
@@ -108,7 +108,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9, entity_id);
     tmp_data.SetData(10086 + i, 1009 + i, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
-    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
@@ -146,7 +146,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9, entity_id);
     tmp_data.SetData(10086, 1009 + i, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
-    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   
@@ -185,7 +185,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9, i % entity_num + 1);
     tmp_data.SetData(10086 + i, 1009, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
-    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
@@ -226,7 +226,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9 + i % version_num, entity_id);
     tmp_data.SetData(10086 + i, 1009, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
-    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+    auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
@@ -271,7 +271,7 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
         values.push_back(cur_value);
         TSMemSegRowData tmp_data(db_id, table_id + tbl_id, 9 + v_num, entity_id);
         tmp_data.SetData(10086 + i, 1009 + i, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
-        auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id);
+        auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
         ASSERT_TRUE(s == KStatus::SUCCESS);
       }
     }
