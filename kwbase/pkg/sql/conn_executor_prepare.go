@@ -510,8 +510,11 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			flags := tree.ObjectLookupFlags{}
 			table, err := tables.GetTableVersion(ctx, txn, ps.PrepareInsertDirect.Dit.Tname, flags)
-			if table == nil || err != nil {
+			if err != nil {
 				return err
+			}
+			if table == nil {
+				return pgerror.Newf(pgcode.Syntax, "table is being dropped")
 			}
 			var sd sessiondata.SessionData
 			EvalContext := tree.EvalContext{
