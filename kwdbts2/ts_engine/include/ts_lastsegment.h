@@ -25,7 +25,7 @@
 #include "libkwdbts2.h"
 #include "ts_arena.h"
 #include "ts_bitmap.h"
-#include "ts_block_span_info.h"
+#include "ts_segment.h"
 #include "ts_io.h"
 
 namespace kwdbts {
@@ -251,7 +251,7 @@ class TsLastSegmentEntityBlockIteratorBase {
     }
   } cache_;
 
-  class EntityBlock : public TsBlockSpanInfo {
+  class EntityBlock : public TsSegmentBlockSpan {
    private:
     TsLastSegmentEntityBlockIteratorBase* parent_iter_;
     const CurrentBlock current_;
@@ -273,7 +273,7 @@ class TsLastSegmentEntityBlockIteratorBase {
                           TSSlice& value) override;
     timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
-    char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
+    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value, TsBitmap& bitmap) override;
   };
 
   void Invalidate() { valid_ = false; }

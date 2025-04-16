@@ -207,7 +207,7 @@ KStatus TsBlockSegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockITemFilterParams& filter, TsBlockSegment* blk_segment,
-                                                 std::list<std::shared_ptr<TsBlockSpanInfo>>* block_spans) {
+                                                 std::list<std::shared_ptr<TsSegmentBlockSpan>>* block_spans) {
   uint64_t last_blk_id;
   KStatus s = entity_meta_.GetEntityCurBlockId(filter.entity_id, last_blk_id);
   if (s != KStatus::SUCCESS) {
@@ -221,7 +221,7 @@ KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockITemFilterParams& 
       return s;
     }
     if (isTimestampInSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
-      std::shared_ptr<TsBlockSpanInfo> block_span = std::make_shared<TsBlockSegmentBlockSpan>(blk_segment, filter.table_id,
+      std::shared_ptr<TsSegmentBlockSpan> block_span = std::make_shared<TsBlockSegmentBlockSpan>(blk_segment, filter.table_id,
                                                                                               cur_blk_item);
       block_spans->push_front(block_span);
     }
@@ -280,7 +280,7 @@ KStatus TsBlockSegmentBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlic
   return KStatus::SUCCESS;
 }
 
-char* TsBlockSegmentBlock::GetMetricColAddr(uint32_t col_idx) {
+char* TsBlockSegmentBlock::GetMetricColAddr(uint32_t col_idx, TsBitmap& bitmap) {
   assert(col_idx < column_blocks_.size() - 1);
   return column_blocks_[col_idx + 1].buffer.data();
 }
@@ -516,7 +516,7 @@ KStatus TsBlockSegment::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsBlockSegment::GetBlockSpans(const TsBlockITemFilterParams& filter,
-                                      std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks) {
+                                      std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
   return meta_mgr_.GetBlockSpans(filter, this, blocks);
 }
 
@@ -562,11 +562,13 @@ void TsBlockSegmentBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_t
   max_ts = &block_item_.max_ts;
 }
 
-char* TsBlockSegmentBlockSpan::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) {
+KStatus TsBlockSegmentBlockSpan::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                                          char** value, TsBitmap& bitmap) {
   if (unlikely(!is_initialized_)) {
     loadBlockData(schema);
   }
-  return block_.GetMetricColAddr(col_id);
+  *value = block_.GetMetricColAddr(col_id, bitmap);
+  return KStatus::SUCCESS;
 }
 
 KStatus TsBlockSegmentBlockSpan::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,

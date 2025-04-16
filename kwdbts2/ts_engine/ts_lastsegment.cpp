@@ -434,9 +434,9 @@ bool TsLastSegmentEntityBlockIteratorBase::EntityBlock::IsColNull(
   return (*col_block->bitmap)[row_num + current_.GetRowStart()] == kNull;
 }
 
-char* TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetColAddr(
-    uint32_t col_id, const std::vector<AttributeInfo>& schema) {
-  return nullptr;
+KStatus TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetColAddr(
+    uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value, TsBitmap& bitmap) {
+  return KStatus::FAIL;
 }
 
 KStatus TsLastSegmentEntityBlockIteratorBase::LoadBlockIndex() {

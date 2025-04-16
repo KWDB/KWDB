@@ -172,7 +172,7 @@ class TsBlockSegmentMetaManager {
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, TsBlockSegment* blk_segment,
-                        std::list<std::shared_ptr<TsBlockSpanInfo>>* block_spans);
+                        std::list<std::shared_ptr<TsSegmentBlockSpan>>* block_spans);
 };
 
 struct TsBlockSegmentBlockInfo {
@@ -223,7 +223,7 @@ class TsBlockSegmentBlock {
 
   KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value);
 
-  char* GetMetricColAddr(uint32_t col_idx);
+  char* GetMetricColAddr(uint32_t col_idx, TsBitmap& bitmap);
 
   KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
 
@@ -239,7 +239,7 @@ class TsBlockSegmentBlock {
   void Clear();
 };
 
-class TsBlockSegment {
+class TsBlockSegment : public TsSegmentBase {
  private:
   string dir_path_;
   TsBlockSegmentMetaManager meta_mgr_;
@@ -258,14 +258,15 @@ class TsBlockSegment {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
+  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter,
+                        std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) override;
 
   KStatus GetBlock(uint32_t table_id, const std::vector<AttributeInfo>& metric_schemas,
                    const TsBlockSegmentBlockItem& blk_item, TsBlockSegmentBlock* block);
 };
 
 
-class TsBlockSegmentBlockSpan : public TsBlockSpanInfo {
+class TsBlockSegmentBlockSpan : public TsSegmentBlockSpan {
  private:
   TsBlockSegment* block_segment_;
   TSTableID table_id_;
@@ -289,7 +290,7 @@ class TsBlockSegmentBlockSpan : public TsBlockSpanInfo {
   size_t GetRowNum() override { return block_item_.n_rows; }
 
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override;
-  char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value, TsBitmap& bitmap) override;
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
   inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
   timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;

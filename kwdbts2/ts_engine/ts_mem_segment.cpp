@@ -114,7 +114,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 }
 
 KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockITemFilterParams& filter,
-                                           std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks) {
+                                           std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
   blocks->clear();
   segment_lock_.lock();
   std::list<std::shared_ptr<TsMemSegment>> segments = segment_;
@@ -141,30 +141,40 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockITemFilterParams& filter
   return KStatus::SUCCESS;
 }
 
-char* TsMemSegBlockItemInfo::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) {
+KStatus TsMemSegBlockItemInfo::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                                          char** value, TsBitmap& bitmap) {
   assert(!isVarLenType(schema[col_id].type));
   auto col_len = schema[col_id].size;
   auto col_based_len = col_len * row_data_.size();
+  bitmap.SetCount(row_data_.size());
   char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
   if (col_based_mem == nullptr) {
-    return nullptr;
+    LOG_ERROR("malloc memroy failed.");
+    return KStatus::FAIL;
   }
   col_based_mems_.push_back(col_based_mem);
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
   }
-  TSSlice value;
+  TSSlice value_slice;
   char* cur_offset = col_based_mem;
-  for (auto& row : row_data_) {
-    auto ok = parser_->GetColValueAddr(row->row_data, col_id, &value);
-    if (!ok) {
-      LOG_ERROR("GetColValueAddr failed.");
-      return nullptr;
+  for (int i = 0; i < row_data_.size(); i++) {
+    auto row = row_data_[i];
+    if (parser_->IsColNull(row->row_data, col_id)) {
+      bitmap.SetRowBitmap(i, DataFlags::kNull);
+    } else {
+      auto ok = parser_->GetColValueAddr(row->row_data, col_id, &value_slice);
+      if (!ok) {
+        LOG_ERROR("GetColValueAddr failed.");
+        return KStatus::FAIL;
+      }
+      assert(col_len == value_slice.len);
+      memcpy(cur_offset, value_slice.data, col_len);
     }
-    memcpy(cur_offset, value.data, value.len);
-    cur_offset += value.len;
+    cur_offset += col_len;
   }
-  return col_based_mem;
+  *value = col_based_mem;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsMemSegBlockItemInfo::GetValueSlice(int row_num, int col_id,
@@ -272,6 +282,25 @@ void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, boo
   }
 }
 
+KStatus TsMemSegment::GetBlockSpans(const TsBlockITemFilterParams& filter,
+                                    std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
+  blocks->clear();
+  std::list<kwdbts::TSMemSegRowData*> row_datas;
+  bool ok = GetEntityRows(filter, &row_datas);
+  if (!ok) {
+    LOG_ERROR("GetBlockSpans failed in GetEntityRows.");
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TsMemSegBlockItemInfo> cur_blk_item = nullptr;
+  for (auto row : row_datas) {
+    if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
+      cur_blk_item = std::make_shared<TsMemSegBlockItemInfo>(dynamic_pointer_cast<TsMemSegment>(filter.segment_));
+      blocks->push_back(cur_blk_item);
+      cur_blk_item->InsertRow(row);
+    }
+  }
+return KStatus::SUCCESS;
+}
 
 }  //  namespace kwdbts
 

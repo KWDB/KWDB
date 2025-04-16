@@ -84,7 +84,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     for (int i = 0; i < 10; ++i) {
       std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
       TsBlockITemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
-      std::list<std::shared_ptr<TsBlockSpanInfo>> block_spans;
+      std::list<std::shared_ptr<TsSegmentBlockSpan>> block_spans;
       s = block_segment->GetBlockSpans(filter, &block_spans);
       EXPECT_EQ(s, KStatus::SUCCESS);
       EXPECT_EQ(block_spans.size(), i);

@@ -22,7 +22,7 @@
 #include "libkwdbts2.h"
 #include "ts_payload.h"
 #include "inlineskiplist.h"
-#include "ts_block_span_info.h"
+#include "ts_segment.h"
 #include "ts_arena.h"
 
 namespace kwdbts {
@@ -146,7 +146,7 @@ struct TSRowDataComparator {
   }
 };
 
-class TsMemSegment {
+class TsMemSegment : public TsSegmentBase {
  private:
   std::atomic<uint32_t> cur_size_{0};
   std::atomic<uint32_t> intent_row_num_{0};
@@ -198,9 +198,12 @@ class TsMemSegment {
   inline void SetDeleting() {
     status_.store(MEM_SEGMENT_DELETING);
   }
+
+  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter,
+          std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) override;
 };
 
-class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
+class TsMemSegBlockItemInfo : public TsSegmentBlockSpan {
  private:
   std::shared_ptr<TsMemSegment> mem_seg_;
   std::vector<TSMemSegRowData*> row_data_;
@@ -245,7 +248,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
     return row_data_[row_num]->ts;
   }
 
-  char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value, TsBitmap& bitmap) override;
 
   bool InsertRow(TSMemSegRowData* row) {
     bool can_insert = true;
@@ -291,7 +294,7 @@ class TsMemSegmentManager {
 
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
+  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks);
 };
 
 }  // namespace kwdbts
