@@ -205,20 +205,121 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
                                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version) :
                           TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
                                                                             kw_scan_cols, ts_scan_cols, table_schema_mgr,
-                                                                            table_version) {
+                                                                            table_version),
+                          scan_agg_types_(scan_agg_types) {
 }
 
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
-  // TODO(Yongyan): initialization
-  return KStatus::FAIL;
+  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
+
+  cur_entity_index_ = 0;
+  status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
+
+  mem_segment_scanner_ = std::make_unique<TsMemSegmentScanner>(vgroup_, entity_ids_, ts_spans_, ts_col_type_,
+                                                                    kw_scan_cols_, ts_scan_cols_, table_schema_mgr_,
+                                                                    table_version_);
+  if (mem_segment_scanner_ == nullptr) {
+    return KStatus::FAIL;
+  }
+  if (mem_segment_scanner_->Init(is_reversed) != KStatus::SUCCESS) {
+    mem_segment_scanner_ = nullptr;
+    return KStatus::FAIL;
+  }
+
+  TSTableID table_id = table_schema_mgr_->GetTableId();
+  auto schema_mgr = vgroup_->GetEngineSchemaMgr();
+  uint32_t database_id = schema_mgr->GetDBIDByTableID(table_id);
+  auto& partition_managers = vgroup_->GetPartitionManagers();
+  auto it = partition_managers.find(database_id);
+
+  if (it != partition_managers.end() && it->second) {
+    auto* partition_manager = it->second.get();
+    const auto& partitions = partition_manager->GetPartitions();
+
+    if (!partitions.empty()) {
+      std::unordered_set<TsVGroupPartition*> seen;
+      for (const auto& [idx, partition_ptr] : partitions) {
+        if (!partition_ptr) continue;
+        int64_t p_start = partition_ptr->StartTs();
+        int64_t p_end = partition_ptr->EndTs();
+        if (isTimestampInSpans(ts_spans_, p_start, p_end)) {
+          if (seen.insert(partition_ptr.get()).second) {
+            ts_partitions_.emplace_back(
+              std::shared_ptr<TsVGroupPartition>(partition_ptr.get(), [](TsVGroupPartition*) {}));
+          }
+        }
+      }
+    }
+  }
+
+  return KStatus::SUCCESS;
 }
 
 KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  // TODO(Yongyan): scan next batch
-  return KStatus::FAIL;
+  if (cur_entity_index_ >= entity_ids_.size()) {
+    *count = 0;
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
+
+  *count = 0;
+  KStatus ret;
+  while (status_ != STORAGE_SCAN_STATUS::SCAN_STATUS_DONE && *count == 0) {
+    switch (status_) {
+      case STORAGE_SCAN_STATUS::SCAN_MEM_TABLE: {
+          // Scan mem tables
+          bool is_done = false;
+          ret = mem_segment_scanner_->ScanAgg(entity_ids_[cur_entity_index_], res, count, ts, scan_agg_types_);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("Failed to scan mem table for entity(%d).", entity_ids_[cur_entity_index_]);
+            return KStatus::FAIL;
+          }
+
+          status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
+          cur_partition_index_ = 0;
+        }
+        break;
+      case STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT: {
+          // Scan last segment
+          if (cur_partition_index_ >= ts_partitions_.size()) {
+            status_ = STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT;
+            cur_partition_index_ = 0;
+          } else {
+            // Scan last segment of current partition
+            ++cur_partition_index_;
+          }
+        }
+        break;
+      case STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT: {
+          // Scan block segment
+          if (cur_partition_index_ >= ts_partitions_.size()) {
+            ++cur_entity_index_;
+            cur_partition_index_ = 0;
+            if (cur_entity_index_ >= entity_ids_.size()) {
+              status_ = STORAGE_SCAN_STATUS::SCAN_STATUS_DONE;
+            } else {
+              status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
+            }
+          } else {
+            // Scan block segment of current partition
+            ++cur_partition_index_;
+          }
+        }
+        break;
+      default: {
+          // internal error
+          return KStatus::FAIL;
+        };
+    }
+  }
+  *is_finished = (status_ == STORAGE_SCAN_STATUS::SCAN_STATUS_DONE);
+  return KStatus::SUCCESS;
 }
 
 TsMemSegmentScanner::TsMemSegmentScanner(std::shared_ptr<TsVGroup>& vgroup,
@@ -322,6 +423,66 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
     res->push_back(i, batch);
+  }
+
+  res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+  return KStatus::SUCCESS;
+}
+
+KStatus TsMemSegmentScanner::ScanAgg(uint32_t entity_id, ResultSet* res,
+                                     k_uint32* count, timestamp64 ts,
+                                     std::vector<Sumfunctype>& scan_agg_types) {
+  KStatus ret;
+  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
+  ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
+
+  *count = 0;
+  for (auto block : blocks) {
+    *count += block->GetRowNum();
+  }
+  if (*count == 0) {
+    return KStatus::SUCCESS;
+  }
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_int32 col_idx = -1;
+    if (i < ts_scan_cols_.size()) {
+      col_idx = ts_scan_cols_[i];
+    }
+    if (col_idx < 0) {
+      LOG_ERROR("TsAggIteratorV2Impl::Next : no column : %d", kw_scan_cols_[i]);
+      continue;
+    }
+    switch (scan_agg_types[i]) {
+      case Sumfunctype::COUNT: {
+        // Construct COUNT batch
+        char* value = static_cast<char*>(malloc(sizeof(k_uint64)));
+        *reinterpret_cast<k_uint64*>(value) = *count;
+
+        unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(1)));
+        memset(bitmap, 0x00, KW_BITMAP_SIZE(1));
+
+        Batch* batch = new Batch(value, 1, bitmap, 1, nullptr);
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+
+        res->push_back(i, batch);
+        break;
+      }
+
+      // case Sumfunctype::SUM:
+      // case Sumfunctype::MAX:
+      // case Sumfunctype::MIN:
+      //   // placeholder for future
+      //   break;
+
+      default:
+        LOG_ERROR("Unsupported aggregation function in ScanAgg()");
+        return KStatus::FAIL;
+    }
   }
 
   res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
