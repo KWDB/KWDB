@@ -1493,30 +1493,30 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 	for i := 0; i < tsFetcher.Size; i++ {
 		fetcher := tsFetcher.CFetchers[i]
 		if fetcher.row_num > 0 {
-			statss[i].RowNum += int64(fetcher.row_num)
+			statss[i].RowNum = int64(fetcher.row_num)
 		}
 		if fetcher.stall_time > 0 {
-			statss[i].StallTime += int64(fetcher.stall_time)
+			statss[i].StallTime = int64(fetcher.stall_time)
 		}
 		if fetcher.bytes_read > 0 {
-			statss[i].BytesRead += int64(fetcher.bytes_read)
+			statss[i].BytesRead = int64(fetcher.bytes_read)
 		}
 		if fetcher.max_allocated_mem > 0 {
-			statss[i].MaxAllocatedMem += int64(fetcher.max_allocated_mem)
+			statss[i].MaxAllocatedMem = int64(fetcher.max_allocated_mem)
 		}
 		if fetcher.max_allocated_disk > 0 {
-			statss[i].MaxAllocatedDisk += int64(fetcher.max_allocated_disk)
+			statss[i].MaxAllocatedDisk = int64(fetcher.max_allocated_disk)
 		}
 		if fetcher.max_allocated_disk > 0 {
-			statss[i].MaxAllocatedDisk += int64(fetcher.max_allocated_disk)
+			statss[i].MaxAllocatedDisk = int64(fetcher.max_allocated_disk)
 		}
 		if fetcher.output_row_num > 0 {
-			statss[i].OutputRowNum += int64(fetcher.output_row_num)
+			statss[i].OutputRowNum = int64(fetcher.output_row_num)
 		}
 		// build_time only be used for hash tag scan op for multiple model processing
 		// when the switch is on and the server starts with single node mode.
 		if fetcher.build_time > 0 {
-			statss[i].BuildTime += int64(fetcher.build_time)
+			statss[i].BuildTime = int64(fetcher.build_time)
 		}
 	}
 	return statss
