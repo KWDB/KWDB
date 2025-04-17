@@ -303,98 +303,23 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     return KStatus::SUCCESS;
   }
 
-  static k_uint64 total_row_count = 0;
+  k_uint64 total_row_count = 0;
   *count = 0;
   KStatus ret;
-  bool is_done = false;
   ret = mem_segment_scanner_->ScanAgg(entity_ids_[cur_entity_index_], count, ts);
-  printf("[MemTable] entity_id=%d, count=%u\n", entity_ids_[cur_entity_index_], *count);
-  fflush(stdout);
   total_row_count += *count;
 
-  for (; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
     ret = InitializeLastSegmentIterator();
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
-    ret = last_segment_iterator_->NextAgg(count, &is_done, ts);
-    printf("[LastSegment] entity_id=%d, partition=%d, count=%u\n",
-         entity_ids_[cur_entity_index_], cur_partition_index_, *count);
-    fflush(stdout);
+    ret = last_segment_iterator_->ScanAgg(count, ts);
     total_row_count += *count;
-    //block segment
+    // block segment
   }
-  // while (status_ != STORAGE_SCAN_STATUS::SCAN_STATUS_DONE) {
-  //   switch (status_) {
-  //     case STORAGE_SCAN_STATUS::SCAN_MEM_TABLE: {
-  //         ResultSet raw_result((k_uint32)kw_scan_cols_.size());
-  //         // ret = mem_segment_scanner_->Scan(entity_ids_[cur_entity_index_], &raw_result, count, ts);
-  //         ret = mem_segment_scanner_->ScanAgg(entity_ids_[cur_entity_index_], count, ts);
-  //         if (ret != KStatus::SUCCESS) {
-  //           LOG_ERROR("Failed to scan mem table for entity(%d).", entity_ids_[cur_entity_index_]);
-  //           return KStatus::FAIL;
-  //         }
-  //         total_row_count += *count;
-
-  //         status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
-  //         cur_partition_index_ = 0;
-  //         ret = InitializeLastSegmentIterator();
-  //         if (ret != KStatus::SUCCESS) {
-  //           LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
-  //                     cur_partition_index_, entity_ids_[cur_entity_index_]);
-  //           return KStatus::FAIL;
-  //         }
-  //       }
-  //       break;
-
-  //     case STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT: {
-  //         ResultSet raw_result((k_uint32)kw_scan_cols_.size());
-  //         if (cur_partition_index_ >= ts_partitions_.size()) {
-  //           status_ = STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT;
-  //           cur_partition_index_ = 0;
-  //         } else {
-  //           bool is_done = false;
-  //           // ret = last_segment_iterator_->Next(&raw_result, count, &is_done, ts);
-  //           ret = last_segment_iterator_->NextAgg(count, &is_done, ts);
-  //           if (ret != KStatus::SUCCESS) {
-  //             LOG_ERROR("Failed to scan partition(%d).", cur_partition_index_);
-  //             return KStatus::FAIL;
-  //           }
-  //           total_row_count += *count;
-
-  //           if (is_done) {
-  //             ++cur_partition_index_;
-  //             ret = InitializeLastSegmentIterator();
-  //             if (ret != KStatus::SUCCESS) {
-  //               LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
-  //                         cur_partition_index_, entity_ids_[cur_entity_index_]);
-  //               return KStatus::FAIL;
-  //             }
-  //           }
-  //         }
-  //       }
-  //       break;
-
-  //     case STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT: {
-  //         if (cur_partition_index_ >= ts_partitions_.size()) {
-  //           ++cur_entity_index_;
-  //           cur_partition_index_ = 0;
-  //           if (cur_entity_index_ >= entity_ids_.size()) {
-  //             status_ = STORAGE_SCAN_STATUS::SCAN_STATUS_DONE;
-  //           } else {
-  //             status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
-  //           }
-  //         } else {
-  //           ++cur_partition_index_;
-  //         }
-  //       }
-  //       break;
-
-  //     default:
-  //       return KStatus::FAIL;
-  //   }
 
   if (total_row_count > 0) {
     res->clear();
@@ -430,7 +355,6 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
 
   *is_finished = true;
-  *count = 0;
   ++cur_entity_index_;
   return KStatus::SUCCESS;
 }
@@ -688,35 +612,25 @@ KStatus TsLastSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_fi
   return KStatus::SUCCESS;
 }
 
-KStatus TsLastSegmentIterator::NextAgg(k_uint32* count, bool* is_finished, timestamp64 ts) {
+KStatus TsLastSegmentIterator::ScanAgg(k_uint32* count, timestamp64 ts) {
   if (last_segment_block_iterator_index_ >= last_segment_block_iterators_.size()) {
-    *is_finished = true;
     return KStatus::SUCCESS;
   }
 
   *count = 0;
-  // if (last_segment_block_iterators_[last_segment_block_iterator_index_]->Valid()) {
-  //   auto entity_block = last_segment_block_iterators_[last_segment_block_iterator_index_]->GetEntityBlock();
-  //   *count = entity_block->GetRowNum();
-
-  //   last_segment_block_iterators_[last_segment_block_iterator_index_]->NextEntityBlock();
-  // } else {
-  //   ++last_segment_block_iterator_index_;
-  // }
-  while (last_segment_block_iterator_index_ < last_segment_block_iterators_.size()) {
+  for (size_t i = 0; i < last_segment_block_iterators_.size(); ++i) {
     auto& block_iter = last_segment_block_iterators_[last_segment_block_iterator_index_];
 
     while (block_iter->Valid()) {
       auto entity_block = block_iter->GetEntityBlock();
       *count += entity_block->GetRowNum();
 
-      block_iter->NextEntityBlock(); 
+      block_iter->NextEntityBlock();
     }
 
     ++last_segment_block_iterator_index_;
   }
 
-  *is_finished = true;
   return KStatus::SUCCESS;
 }
 
