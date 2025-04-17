@@ -2753,7 +2753,9 @@ KStatus TsTable::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultInd
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (const auto tbl_range : entity_groups_) {
-    tbl_range.second->GetTagList(ctx, entity_id_list, scan_tags, res, count, table_version);
+    if (tbl_range.second->GetTagList(ctx, entity_id_list, scan_tags, res, count, table_version) != KStatus::SUCCESS) {
+      return KStatus::FAIL;
+    }
   }
   return KStatus::SUCCESS;
 }

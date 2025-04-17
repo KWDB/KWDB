@@ -346,6 +346,30 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
     return true;
   }
 
+  bool HasRowNotValid(BlockItem* blk_item) {
+    if (hasDeleted(blk_item->rows_delete_flags, 1, blk_item->publish_row_count)) {
+      return true;
+    }
+    if (blk_item->alloc_row_count == blk_item->publish_row_count) {
+      return false;
+    }
+    for (uint32_t i = 1; i <= blk_item->publish_row_count; ++i) {
+      TimeStamp64LSN cur_ts(columnAddr({blk_item->block_id, i}, 0));
+      if (isTsWithLSNType((DATATYPE)(cols_info_include_dropped_[0].type))) {
+        // lsn = 0, means this row space is not filled with data.
+        if (cur_ts.lsn == 0) {
+          return true;
+        }
+      } else {
+        // ts = 0, means this row space is not filled with data.
+        if (cur_ts.ts64 == 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   void setNullBitmap(MetricRowID row_id, size_t c) {
     if (!isColExist(c)) {
       return;

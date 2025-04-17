@@ -2011,6 +2011,9 @@ int TsOffsetIterator::nextBlockSpan() {
         row_cnt += cnt;
       }
       ++p_time_it_;
+      if (0 == row_cnt) {
+        continue;
+      }
       filter_end_ = (filter_cnt_ > (offset_ - deviation_));
       if (!filter_end_) {
         if (filter_cnt_ + row_cnt <= offset_) {
@@ -2065,6 +2068,9 @@ KStatus TsOffsetIterator::fetchBlockItems(uint32_t subgroup_id, uint32_t* cnt) {
   while (!blocks_queue.empty()) {
     BlockItem* block_item = blocks_queue.front();
     blocks_queue.pop_front();
+    if (p_table->getEntityItem(block_item->entity_id)->is_deleted) {
+      continue;
+    }
     std::shared_ptr<MMapSegmentTable> segment_tbl = p_table->getSegmentTable(block_item->block_id);
     if (segment_tbl == nullptr) {
       LOG_ERROR("Can not find segment use block [%u], in path [%s]", block_item->block_id, p_table->GetPath().c_str());
@@ -2072,9 +2078,9 @@ KStatus TsOffsetIterator::fetchBlockItems(uint32_t subgroup_id, uint32_t* cnt) {
     }
     timestamp64 min_ts, max_ts;
     TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
-    if (!isTimestampInSpans(ts_spans_, min_ts, max_ts)) {
+    if (!isTimestampInSpans(ts_spans_, min_ts, max_ts) || !block_item->publish_row_count) {
       continue;
-    } else if (isTimestampWithinSpans(ts_spans_, min_ts, max_ts)) {
+    } else if (isTimestampWithinSpans(ts_spans_, min_ts, max_ts) && !segment_tbl->HasRowNotValid(block_item)) {
       row_cnt += block_item->publish_row_count;
       filter_block_spans_.push_back(BlockSpan{block_item, 0, block_item->publish_row_count,
                                                  subgroup_id, min_ts, max_ts});
