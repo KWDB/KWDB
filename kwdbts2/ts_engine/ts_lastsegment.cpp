@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -217,21 +218,32 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
   return KStatus::SUCCESS;
 }
 
-KStatus TsLastSegmentManager::NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment) {
+std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) const {
   char buffer[64];
-  ver_.fetch_add(1, std::memory_order_relaxed);
-  std::snprintf(buffer, sizeof(buffer), "last.ver-%04u", ver_.load(std::memory_order_relaxed));
+  std::snprintf(buffer, sizeof(buffer), "last.ver-%04u", file_number);
   auto filename = dir_path_ / buffer;
-  *last_segment =
-      std::make_unique<TsLastSegment>(ver_, new TsMMapFile(filename, false /*read_only*/));
+  return filename;
+}
+
+KStatus TsLastSegmentManager::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
+                                                 uint32_t* file_number) {
+  *file_number = ver_.fetch_add(1, std::memory_order_relaxed);
+  auto filename = LastSegmentFileName(*file_number);
+  *last_segment = std::make_unique<TsMMapFile>(filename, false /*read_only*/);
   return KStatus::SUCCESS;
 }
 
-void TsLastSegmentManager::TakeLastSegmentOwnership(std::unique_ptr<TsLastSegment>&& last_segment) {
+KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number) {
+  auto file = std::make_shared<TsLastSegment>(LastSegmentFileName(file_number));
+  auto s = file->Open();
+  if (s == FAIL) {
+    return FAIL;
+  }
   wrLock();
-  last_segments_.emplace_back(std::move(last_segment));
-  n_lastsegment_.fetch_add(1, std::memory_order_relaxed);
+  last_segments_.push_back(std::move(file));
   unLock();
+  n_lastsegment_.fetch_add(1, std::memory_order_relaxed);
+  return SUCCESS;
 }
 
 // TODO(zzr) get last segments from VersionManager, this method must be atomic

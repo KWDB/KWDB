@@ -21,7 +21,7 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
   segment_lock_.lock();
   if (segment_.size() > 0) {
     *segments = segment_.back();
-    segment_.push_back(std::make_shared<TsMemSegment>(TsEngineInstanceParams::mem_segment_max_height));
+    segment_.push_back(TsMemSegment::Create(TsEngineInstanceParams::mem_segment_max_height));
     cur_mem_seg_ = segment_.back();
   }
   segment_lock_.unlock();
@@ -93,7 +93,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   uint32_t row_num = pd.GetRowCount();
   if (cur_mem_seg_ == 0) {
     segment_lock_.lock();
-    segment_.push_back(std::make_shared<TsMemSegment>(TsEngineInstanceParams::mem_segment_max_height));
+    segment_.push_back(TsMemSegment::Create(TsEngineInstanceParams::mem_segment_max_height));
     cur_mem_seg_ = segment_.back();
     segment_lock_.unlock();
   }

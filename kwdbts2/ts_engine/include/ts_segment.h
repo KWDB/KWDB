@@ -25,7 +25,6 @@ struct TsBlockITemFilterParams {
   TSTableID table_id;
   TSEntityID entity_id;
   std::vector<KwTsSpan>& ts_spans_;
-  std::shared_ptr<TsSegmentBase> segment_;  // store shared_ptr to prevent deleted.
 };
 
 class TsSegmentBlockSpan {
@@ -44,6 +43,10 @@ class TsSegmentBlockSpan {
 };
 
 // base class for data segment
+
+// TsSegmentBase derives from std::enable_shared_from_this because TsSegmentBlockSpan may reference
+// it to prevent deallocation during queries. This inheritance might be removed after TsVersion is
+// implemented.
 class TsSegmentBase : public std::enable_shared_from_this<TsSegmentBase> {
  public:
   // filter blockspans that satisfied condition.

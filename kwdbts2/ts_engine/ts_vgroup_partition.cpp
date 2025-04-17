@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -84,12 +85,13 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment) {
-  return last_segment_mgr_.NewLastSegment(last_segment);
+KStatus TsVGroupPartition::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
+                                              uint32_t* ver) {
+  return last_segment_mgr_.NewLastSegmentFile(last_segment, ver);
 }
 
-void TsVGroupPartition::PublicLastSegment(std::unique_ptr<TsLastSegment>&& last_segment) {
-  last_segment_mgr_.TakeLastSegmentOwnership(std::move(last_segment));
+void TsVGroupPartition::PublicLastSegment(uint32_t file_number) {
+  last_segment_mgr_.OpenLastSegmentFile(file_number);
 }
 
 std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }

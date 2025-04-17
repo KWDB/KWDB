@@ -601,13 +601,14 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush() {
   bool is_finished = false;
   TsEngineSchemaManager* schema_mgr = partition_->GetSchemaMgr();
   // 2. Create a new last segment
-  std::unique_ptr<TsLastSegment> last_segment;
-  s = partition_->NewLastSegment(&last_segment);
+  std::unique_ptr<TsFile> last_segment;
+  uint32_t file_number;
+  s = partition_->NewLastSegmentFile(&last_segment, &file_number);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, new last segment failed.")
     return s;
   }
-  TsLastSegmentBuilder builder(schema_mgr, last_segment);
+  TsLastSegmentBuilder builder(schema_mgr, std::move(last_segment), file_number);
   // 3. Traverse the last segment data and write the data to the block segment
   TsLastSegmentsMergeIterator iter(last_segments_);
   iter.Init();
@@ -701,12 +702,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush() {
     LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder finalize failed.")
     return s;
   }
-  s = builder.Flush();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush failed.")
-    return KStatus::FAIL;
-  }
-  partition_->PublicLastSegment(builder.Finish());
+  partition_->PublicLastSegment(builder.GetFileNumber());
   return KStatus::SUCCESS;
 }
 

@@ -41,14 +41,16 @@ class TsLastSegmentManager {
   int wrLock() { return RW_LATCH_X_LOCK(&rw_latch_); }
   int unLock() { return RW_LATCH_UNLOCK(&rw_latch_); }
 
+  std::string LastSegmentFileName(uint32_t file_number) const;
+
  public:
   explicit TsLastSegmentManager(const string& dir_path)
       : dir_path_(dir_path), rw_latch_(RWLATCH_ID_LAST_SEGMENT_MANAGER_RWLOCK) {}
 
   ~TsLastSegmentManager() {}
 
-  KStatus NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment);
-  void TakeLastSegmentOwnership(std::unique_ptr<TsLastSegment>&& last_segment);
+  KStatus NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment, uint32_t* ver);
+  KStatus OpenLastSegmentFile(uint32_t file_number);
 
   void GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);
 

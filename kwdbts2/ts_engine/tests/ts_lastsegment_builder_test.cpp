@@ -34,11 +34,11 @@ class LastSegmentReadWriteTest : public testing::Test {
  protected:
   void SetUp() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-0001");
+    std::filesystem::remove("last.ver-0000");
   }
   void TearDown() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-0001");
+    std::filesystem::remove("last.ver-0000");
   }
 };
 
@@ -62,9 +62,10 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     TsLastSegmentManager last_segment_mgr("./");
-    std::unique_ptr<TsLastSegment> last_segment;
-    last_segment_mgr.NewLastSegment(&last_segment);
-    TsLastSegmentBuilder builder(mgr.get(), last_segment);
+    std::unique_ptr<TsFile> last_segment;
+    uint32_t file_number;
+    last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
+    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), file_number);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};
@@ -74,7 +75,6 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
       EXPECT_EQ(s, KStatus::SUCCESS);
     }
     builder.Finalize();
-    builder.Flush();
     free(payload.data);
   }
 
@@ -143,22 +143,18 @@ void IteratorCheck(const std::string &filename, TSTableID table_id) {
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead1) {
-  BuilderWithBasicCheck(13, 1, "last.ver-0001");
-  IteratorCheck("last.ver-0001", 13);
+  BuilderWithBasicCheck(13, 1, "last.ver-0000");
+  IteratorCheck("last.ver-0000", 13);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead2) {
-  BuilderWithBasicCheck(14, 12345, "last.ver-0001");
-  IteratorCheck("last.ver-0001", 14);
-  std::filesystem::remove_all("schema");
-  std::filesystem::remove("last.ver-0001");
+  BuilderWithBasicCheck(14, 12345, "last.ver-0000");
+  IteratorCheck("last.ver-0000", 14);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
-  BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock, "last.ver-0001");
-  IteratorCheck("last.ver-0001", 15);
-  std::filesystem::remove_all("schema");
-  std::filesystem::remove("last.ver-0001");
+  BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock, "last.ver-0000");
+  IteratorCheck("last.ver-0000", 15);
 }
 
 struct R {
@@ -182,10 +178,12 @@ R GenBuilders(TSTableID table_id) {
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
   TsLastSegmentManager last_segment_mgr("./");
-  std::unique_ptr<TsLastSegment> last_segment;
-  last_segment_mgr.NewLastSegment(&last_segment);
+  std::unique_ptr<TsFile> last_segment;
+  uint32_t file_number;
+  last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
   R res;
-  res.builder = std::make_unique<TsLastSegmentBuilder>(mgr.get(), last_segment);
+  res.builder =
+      std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), file_number);
   res.metric_schema = std::move(metric_schema);
   res.tag_schema = std::move(tag_schema);
   res.schema_mgr = std::move(mgr);
@@ -304,10 +302,9 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
     payloads.push_back(std::move(payload));
   }
   res.builder->Finalize();
-  res.builder->Flush();
   res.builder.reset();
 
-  TsLastSegment last_segment("last.ver-0001");
+  TsLastSegment last_segment("last.ver-0000");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
@@ -403,10 +400,9 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     payloads.push_back(std::move(payload));
   }
   res.builder->Finalize();
-  res.builder->Flush();
   res.builder.reset();
 
-  TsLastSegment last_segment("last.ver-0001");
+  TsLastSegment last_segment("last.ver-0000");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);

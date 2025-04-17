@@ -148,12 +148,11 @@ class TsLastSegment {
       LOG_ERROR("lastsegment file corruption");
       return FAIL;
     }
-    char buf[8];
+    uint64_t magic;
     TSSlice result;
-    file_->Read(sz - 8, sz, &result, buf);
-    int c = std::memcmp(buf, &FOOTER_MAGIC, 8);
-    if (c != 0) {
-      LOG_ERROR("magic mismatch")
+    file_->Read(sz - 8, sz, &result, reinterpret_cast<char*>(&magic));
+    if (magic != FOOTER_MAGIC) {
+      LOG_ERROR("magic mismatch, expect: %lx, found: %lx", FOOTER_MAGIC, magic);
       return FAIL;
     }
     return SUCCESS;

@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <atomic>
 #include <deque>
+#include <utility>
 #include <vector>
 
 #include "ts_env.h"
@@ -156,10 +157,14 @@ class TsMemSegment : public TsSegmentBase {
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_;
 
- public:
   explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
-  ~TsMemSegment() {
+
+ public:
+  template <class... Args>
+  static std::shared_ptr<TsMemSegment> Create(Args&&... args) {
+    return std::shared_ptr<TsMemSegment>(new TsMemSegment(std::forward<Args>(args)...));
   }
+  ~TsMemSegment() {}
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
 

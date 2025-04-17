@@ -310,12 +310,15 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       last_row_info.cur_table_version = tbl->table_version;
     }
     // 3. get partition for metric data.
-    auto partition = GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
+    auto partition =
+        GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
     auto it = builders.find(partition);
     if (it == builders.end()) {
-      std::unique_ptr<TsLastSegment> last_segment;
-      partition->NewLastSegment(&last_segment);
-      auto result =  builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, last_segment}});
+      std::unique_ptr<TsFile> last_segment;
+      uint32_t file_number;
+      partition->NewLastSegmentFile(&last_segment, &file_number);
+      auto result = builders.insert(
+          {partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment), file_number}});
       it = result.first;
     }
     // 4. insert data into segment builder.
@@ -340,12 +343,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("last segment Finalize failed.");
       return KStatus::FAIL;
     }
-    s = kv.second.Flush();
-    if (s == FAIL) {
-      LOG_ERROR("last segment Flush failed.");
-      return KStatus::FAIL;
-    }
-    kv.first->PublicLastSegment(kv.second.Finish());
+    kv.first->PublicLastSegment(kv.second.GetFileNumber());
   }
   // todo(liangbo01) add all new files into new_file_list.
   std::list<TsLastSegment> new_file_list;

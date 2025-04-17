@@ -20,7 +20,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   uint32_t row_num = 1;
   segment_lock_.lock();
   if (segment_.size() == 0) {
-    segment_.push_front(std::make_shared<TsMemSegment>(12));
+    segment_.push_front(TsMemSegment::Create(12));
   }
   std::shared_ptr<TsMemSegment> cur_mem_seg = segment_.front();
   cur_mem_seg->AllocRowNum(row_num);

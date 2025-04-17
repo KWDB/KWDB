@@ -101,6 +101,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
 
 KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, TSEntityID entity_id,
                                          TS_LSN seq_no, TSSlice row_data) {
+  assert(last_segment_ != nullptr);
   if (table_id != table_id_ || version != version_) {
     auto s = FlushPayloadBuffer();
 
@@ -186,11 +187,11 @@ KStatus TsLastSegmentBuilder::Finalize() {
 
   size_t infoblock_offset = last_segment_->GetFileSize();
   index_handle_->ApplyInfoBlockOffset(infoblock_offset);
-  s = info_handle_->WriteInfo(last_segment_->GetFilePtr());
+  s = info_handle_->WriteInfo(last_segment_.get());
   if (s != SUCCESS) return FAIL;
 
   size_t index_block_offset = last_segment_->GetFileSize();
-  s = index_handle_->WriteIndex(last_segment_->GetFilePtr());
+  s = index_handle_->WriteIndex(last_segment_.get());
   if (s != SUCCESS) return FAIL;
 
   assert(last_segment_->GetFileSize() - index_block_offset ==
@@ -212,12 +213,13 @@ KStatus TsLastSegmentBuilder::Finalize() {
     LOG_ERROR("IO error when write lastsegment.");
     return FAIL;
   }
+  ss = last_segment_->Flush();
+  if (ss == FAIL) {
+    LOG_ERROR("IO error when flush lastsegment.");
+    return FAIL;
+  }
+  last_segment_.reset();
   return SUCCESS;
-}
-
-std::unique_ptr<TsLastSegment> TsLastSegmentBuilder::Finish() {
-  assert(data_block_builder_->IsFinished());
-  return std::move(last_segment_);
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(

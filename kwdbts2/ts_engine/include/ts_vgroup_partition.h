@@ -45,8 +45,8 @@ class TsVGroupPartition {
   // compact data from last segment to block segment. compact one block data every time.
   KStatus Compact();
 
-  KStatus NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment);
-  void PublicLastSegment(std::unique_ptr<TsLastSegment>&& last_segment);
+  KStatus NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment, uint32_t *ver);
+  void PublicLastSegment(uint32_t file_number);
 
   std::filesystem::path GetPath() const;
 
