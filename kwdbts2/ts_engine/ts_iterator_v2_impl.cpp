@@ -303,36 +303,60 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     return KStatus::SUCCESS;
   }
 
+  static k_uint64 total_row_count = 0;  
   *count = 0;
   KStatus ret;
-  while (status_ != STORAGE_SCAN_STATUS::SCAN_STATUS_DONE && *count == 0) {
+
+  while (status_ != STORAGE_SCAN_STATUS::SCAN_STATUS_DONE) {
     switch (status_) {
       case STORAGE_SCAN_STATUS::SCAN_MEM_TABLE: {
-          // Scan mem tables
-          bool is_done = false;
-          ret = mem_segment_scanner_->ScanAgg(entity_ids_[cur_entity_index_], res, count, ts, scan_agg_types_);
+          ResultSet raw_result((k_uint32)kw_scan_cols_.size());
+          ret = mem_segment_scanner_->Scan(entity_ids_[cur_entity_index_], &raw_result, count, ts);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("Failed to scan mem table for entity(%d).", entity_ids_[cur_entity_index_]);
             return KStatus::FAIL;
           }
+          total_row_count += *count;
 
           status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
           cur_partition_index_ = 0;
+          ret = InitializeLastSegmentIterator();
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
+                      cur_partition_index_, entity_ids_[cur_entity_index_]);
+            return KStatus::FAIL;
+          }
         }
         break;
+
       case STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT: {
-          // Scan last segment
+          ResultSet raw_result((k_uint32)kw_scan_cols_.size());
           if (cur_partition_index_ >= ts_partitions_.size()) {
             status_ = STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT;
             cur_partition_index_ = 0;
           } else {
-            // Scan last segment of current partition
-            ++cur_partition_index_;
+            bool is_done = false;
+            ret = last_segment_iterator_->Next(&raw_result, count, &is_done, ts);
+            if (ret != KStatus::SUCCESS) {
+              LOG_ERROR("Failed to scan partition(%d).", cur_partition_index_);
+              return KStatus::FAIL;
+            }
+            total_row_count += *count;
+
+            if (is_done) {
+              ++cur_partition_index_;
+              ret = InitializeLastSegmentIterator();
+              if (ret != KStatus::SUCCESS) {
+                LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
+                          cur_partition_index_, entity_ids_[cur_entity_index_]);
+                return KStatus::FAIL;
+              }
+            }
           }
         }
         break;
+
       case STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT: {
-          // Scan block segment
           if (cur_partition_index_ >= ts_partitions_.size()) {
             ++cur_entity_index_;
             cur_partition_index_ = 0;
@@ -342,18 +366,64 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
               status_ = STORAGE_SCAN_STATUS::SCAN_MEM_TABLE;
             }
           } else {
-            // Scan block segment of current partition
             ++cur_partition_index_;
           }
         }
         break;
-      default: {
-          // internal error
-          return KStatus::FAIL;
-        };
+
+      default:
+        return KStatus::FAIL;
+    }
+
+    if (total_row_count > 0) {
+      res->clear();
+      for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+        switch (scan_agg_types_[i]) {
+          case Sumfunctype::COUNT: {
+            char* value = static_cast<char*>(malloc(sizeof(k_uint64)));
+            *reinterpret_cast<k_uint64*>(value) = total_row_count;
+
+            unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(1)));
+            memset(bitmap, 0x00, KW_BITMAP_SIZE(1));
+
+            Batch* b = new Batch(value, 1, bitmap, 1, nullptr);
+            b->is_new = true;
+            b->need_free_bitmap = true;
+            res->push_back(i, b);
+            break;
+          }
+          default: {
+            LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(scan_agg_types_[i]));
+            return KStatus::FAIL;
+          } 
+        }
+      }
+
+      res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
+      res->col_num_ = kw_scan_cols_.size();
+      *count = 1;
+      *is_finished = false;  
+      total_row_count = 0;   
+      return KStatus::SUCCESS;
     }
   }
-  *is_finished = (status_ == STORAGE_SCAN_STATUS::SCAN_STATUS_DONE);
+
+  *is_finished = true;
+  *count = 0;
+  return KStatus::SUCCESS;
+}
+
+
+KStatus TsAggIteratorV2Impl::InitializeLastSegmentIterator() {
+  if (cur_partition_index_ < ts_partitions_.size()) {
+    last_segment_iterator_ = std::make_unique<TsLastSegmentIterator>(vgroup_, ts_partitions_[cur_partition_index_],
+                                                                     entity_ids_[cur_entity_index_], ts_spans_,
+                                                                     ts_col_type_, kw_scan_cols_, ts_scan_cols_,
+                                                                     table_schema_mgr_, table_version_);
+    return last_segment_iterator_->Init(is_reversed_);
+  } else {
+    last_segment_iterator_ = nullptr;
+  }
   return KStatus::SUCCESS;
 }
 
