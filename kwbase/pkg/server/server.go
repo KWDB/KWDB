@@ -1973,9 +1973,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.recorder.AddNode(s.registry, s.node.Descriptor, s.node.startedAt, s.cfg.AdvertiseAddr, s.cfg.HTTPAdvertiseAddr, s.cfg.SQLAdvertiseAddr)
 
 	// Begin recording runtime statistics.
-	if err := s.startSampleEnvironment(ctx, DefaultMetricsSampleInterval); err != nil {
-		return err
-	}
+	// if err := s.startSampleEnvironment(ctx, DefaultMetricsSampleInterval); err != nil {
+	//	return err
+	// }
 
 	// Begin recording time series data collected by the status monitor.
 	s.tsDB.PollSource(

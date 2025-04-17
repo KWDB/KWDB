@@ -25,6 +25,7 @@
 package colencoding
 
 import (
+	"strconv"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
@@ -51,7 +52,7 @@ func DecodeTableValueToCol(
 	if valTyp.Family() != types.BoolFamily {
 		b = b[dataOffset:]
 	}
-	return decodeUntaggedDatumToCol(vec, idx, valTyp, b)
+	return decodeUntaggedDatumToCol(vec, idx, typ, valTyp, b)
 }
 
 // decodeUntaggedDatum is used to decode a Datum whose type is known,
@@ -64,7 +65,9 @@ func DecodeTableValueToCol(
 // If t is types.Bool, the value tag must be present, as its value is encoded in
 // the tag directly.
 // See the analog in sqlbase/column_type_encoding.go.
-func decodeUntaggedDatumToCol(vec coldata.Vec, idx int, t *types.T, buf []byte) ([]byte, error) {
+func decodeUntaggedDatumToCol(
+	vec coldata.Vec, idx int, typ encoding.Type, t *types.T, buf []byte,
+) ([]byte, error) {
 	var err error
 	switch t.Family() {
 	case types.BoolFamily:
@@ -82,6 +85,24 @@ func decodeUntaggedDatumToCol(vec coldata.Vec, idx int, t *types.T, buf []byte) 
 		buf, i, err = encoding.DecodeUntaggedIntValue(buf)
 		vec.Int64()[idx] = i
 	case types.DecimalFamily:
+		if typ == encoding.Int {
+			b, i, err := encoding.DecodeUntaggedIntValue(buf)
+			if err != nil {
+				return b, err
+			}
+			vec.Decimal()[idx].SetInt64(i)
+			return b, nil
+		} else if typ == encoding.Float {
+			b, data, err := encoding.DecodeUntaggedFloatValue(buf)
+			if err != nil {
+				return b, err
+			}
+			_, _, err = (vec.Decimal()[idx]).SetString(strconv.FormatFloat(data, 'f', -1, 64))
+			if err != nil {
+				return b, err
+			}
+			return b, nil
+		}
 		buf, err = encoding.DecodeIntoUntaggedDecimalValue(&vec.Decimal()[idx], buf)
 	case types.FloatFamily:
 		var f float64

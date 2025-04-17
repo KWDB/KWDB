@@ -365,6 +365,7 @@ func (ds *ServerImpl) setupFlow(
 	f.SetTS(req.Flow.TsProcessors != nil)
 	f.SetPushDown(allPushDown)
 	f.SetFormat(req.EvalContext.OutFormats)
+	f.SetVectorized(isVectorized)
 	if ctx, err = f.Setup(ctx, &req.Flow, opt); err != nil {
 		log.Errorf(ctx, "error setting up flow: %s", err)
 		// Flow.Cleanup will not be called, so we have to close the memory monitor

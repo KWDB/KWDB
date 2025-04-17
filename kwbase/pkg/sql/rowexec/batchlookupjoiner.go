@@ -363,8 +363,8 @@ func InsertData(
 	// get the byte where the row is in
 	index := row >> 3 // row / 8
 	// get the row pos in byte
-	pos := uint8(1 << 7)     // binary 1000 0000
-	mask := pos >> (row & 7) // pos >> (row % 8)
+	pos := uint8(1)          // binary 1000 0000
+	mask := pos << (row & 7) // pos >> (row % 8)
 	// Check NULL first
 	if coldata.IsNull() {
 		bitmap[index] |= mask // Set the bit to 1
@@ -832,6 +832,11 @@ func (bljs *BatchLookupJoinerStats) Stats() map[string]string {
 // TsStats is stats of analyse in time series
 func (bljs *BatchLookupJoinerStats) TsStats() map[int32]map[string]string {
 	return nil
+}
+
+// GetSpanStatsType check type of spanStats
+func (bljs *BatchLookupJoinerStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
 }
 
 // StatsForQueryPlan implements the DistSQLSpanStats interface.

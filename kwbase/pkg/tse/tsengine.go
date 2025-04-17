@@ -33,7 +33,9 @@ package tse
 // #include <libkwdbts2.h>
 import "C"
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -41,17 +43,23 @@ import (
 	"time"
 	"unsafe"
 
+	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
+	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
+	"github.com/cockroachdb/apd"
 	"github.com/lib/pq/oid"
 	"github.com/pkg/errors"
 )
@@ -66,12 +74,75 @@ const (
 	vacuumInterval   = "ts.vacuum_interval"
 )
 
+const (
+	// Nanosecond is one nano second
+	Nanosecond = 1
+	// Microsecond is one micro second to nano seconds
+	Microsecond = 1000 * Nanosecond
+	// Millisecond is one milli second to microseconds
+	Millisecond = 1000 * Microsecond
+	// Second is one second to milli seconds
+	Second = 1000 * Millisecond
+	// Minute is one minute to seconds
+	Minute = 60 * Second
+	// Hour is one hour to minutes
+	Hour = 60 * Minute
+	// Day is one day to hours
+	Day = 24 * Hour
+)
+
 // TsPayloadSizeLimit is the max size of per payload.
 var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
 	"ts.payload_size_limit",
 	"max size of payload(bytes)",
 	1<<20, // (1MiB)
 )
+
+// name of processor in time series
+const (
+	TsUnknownName int8 = iota
+	TsTableReaderName
+	TsAggregatorName
+	TsNoopName
+	TsSorterName
+	TsStatisticReaderName
+	TsSynchronizerName
+	TsSamplerName
+	TsTagReaderName
+	TsDistinctName
+)
+
+// TsGetNameValue get name of tsProcessor.
+func TsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
+	if this.TableReader != nil {
+		return TsTableReaderName
+	}
+	if this.Aggregator != nil {
+		return TsAggregatorName
+	}
+	if this.Noop != nil {
+		return TsNoopName
+	}
+	if this.Sorter != nil {
+		return TsSorterName
+	}
+	if this.StatisticReader != nil {
+		return TsStatisticReaderName
+	}
+	if this.Synchronizer != nil {
+		return TsSynchronizerName
+	}
+	if this.Sampler != nil {
+		return TsSamplerName
+	}
+	if this.TagReader != nil {
+		return TsTagReaderName
+	}
+	if this.Distinct != nil {
+		return TsDistinctName
+	}
+	return TsUnknownName
+}
 
 // A Error wraps an error returned from a TsEngine operation.
 type Error struct {
@@ -125,6 +196,34 @@ type TsQueryInfo struct {
 	// when the switch is on and the server starts with single node mode.
 	PushData *DataChunkGo
 	RowCount int
+	// PullData TsDataChunkToGo
+}
+
+// TsColumnInfoToGo ts col info To Go
+type TsColumnInfoToGo struct {
+	FixedLen    uint32
+	ReturnType  types.Family
+	StorageLen  uint32
+	StorageType sqlbase.DataType
+}
+
+// TsDataChunkToGo ts struct
+type TsDataChunkToGo struct {
+	ColumnNum   uint32
+	Column      []TsColumnInfoToGo
+	BitmapSize  uint32
+	RowSize     uint32
+	DataCount   uint32
+	Capacity    uint32
+	Data        []coldata.Vec
+	IsDataOwner bool
+	Begin       int
+	NeedType    []coltypes.T
+}
+
+// IsReadComplete read complete
+func (r *TsDataChunkToGo) IsReadComplete() bool {
+	return uint32(r.Begin) == r.DataCount
 }
 
 // ColumnInfo defines ColumInfo structure used for pushing batchlookup data down
@@ -902,6 +1001,358 @@ func (r *TsEngine) tsExecute(
 	return tsRespInfo, err
 }
 
+// tsVectorizedExecute Vectorized tsengine.go:137Execute
+func (r *TsEngine) tsVectorizedExecute(
+	ctx *context.Context, tp C.EnMqType, tsQueryInfo TsQueryInfo, rev *TsDataChunkToGo,
+) (tsRespInfo TsQueryInfo, err error) {
+	if len(tsQueryInfo.Buf) == 0 {
+		return tsRespInfo, errors.New("query buf is nul")
+	}
+	var queryInfo C.QueryInfo
+	bufC := C.CBytes(tsQueryInfo.Buf)
+	defer C.free(unsafe.Pointer(bufC))
+	queryInfo.value = bufC
+	queryInfo.len = C.uint(len(tsQueryInfo.Buf))
+	queryInfo.tp = tp
+	queryInfo.id = C.int(tsQueryInfo.ID)
+	queryInfo.handle = tsQueryInfo.Handle
+	queryInfo.unique_id = C.int(tsQueryInfo.UniqueID)
+	queryInfo.time_zone = C.int(tsQueryInfo.TimeZone)
+	queryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
+	// process push data for batch lookup join for multiple model processing
+	// only store the data chunk pointer into tsQueryInfo and push it down to tse
+	// when the switch is on and the server starts with single node mode.
+	dataChunk := tsQueryInfo.PushData
+	if dataChunk != nil {
+		pushDatabufC := C.CBytes(dataChunk.Data)
+		queryInfo.relRowCount = C.int(dataChunk.RowCount)
+		defer C.free(unsafe.Pointer(pushDatabufC))
+		queryInfo.relBatchData = pushDatabufC
+		dataChunk = nil // clean datachunk
+	}
+
+	// init fetcher of analyse
+	var vecFetcher C.VecTsFetcher
+	vecFetcher.collected = C.bool(false)
+	if tsQueryInfo.Fetcher.Collected {
+		vecFetcher.collected = C.bool(true)
+		vecFetcher.size = C.int8_t(tsQueryInfo.Fetcher.Size)
+		// vecFetcher.TsFetchers = &tsQueryInfo.Fetcher.CFetchers[0]
+		vecFetcher.goMutux = C.uint64_t(uintptr(unsafe.Pointer(&tsQueryInfo.Fetcher)))
+	} else {
+		tsFetchers := make([]C.TsFetcher, 1)
+		tsFetchers[0].processor_id = C.int32_t(-1)
+		tsQueryInfo.Fetcher.CFetchers = tsFetchers
+	}
+	var retInfo C.QueryInfo
+	retInfo.value = nil
+	C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	fet := tsQueryInfo.Fetcher
+	tsRespInfo.Fetcher = fet
+	tsRespInfo.ID = int(retInfo.id)
+	tsRespInfo.UniqueID = int(retInfo.unique_id)
+	tsRespInfo.Handle = unsafe.Pointer(retInfo.handle)
+	tsRespInfo.Code = int(retInfo.code)
+	tsRespInfo.RowNum = int(retInfo.row_num)
+
+	if tsRespInfo.RowNum > 0 {
+		capacity := rev.Capacity
+		rev.Begin = 0
+		rev.ColumnNum = uint32(retInfo.vectorize_data.column_num_)
+		rev.BitmapSize = uint32(retInfo.vectorize_data.bitmap_size_)
+		rev.RowSize = uint32(retInfo.vectorize_data.row_size_)
+		rev.DataCount = uint32(retInfo.vectorize_data.data_count_)
+		rev.Capacity = uint32(retInfo.vectorize_data.capacity_)
+		rev.IsDataOwner = bool(retInfo.vectorize_data.is_data_owner_)
+		if nil == rev.Column {
+			rev.Column = make([]TsColumnInfoToGo, rev.ColumnNum)
+			for i := 0; i < int(rev.ColumnNum); i++ {
+				cData := (*C.TsColumnInfo)(unsafe.Pointer(uintptr(unsafe.Pointer(retInfo.vectorize_data.column_)) + uintptr(i)*unsafe.Sizeof(*(retInfo.vectorize_data.column_))))
+
+				rev.Column[i].FixedLen = uint32(cData.fixed_len_)
+				rev.Column[i].ReturnType = types.Family(cData.return_type_)
+				rev.Column[i].StorageLen = uint32(cData.storage_len_)
+				rev.Column[i].StorageType = sqlbase.DataType(cData.storage_type_)
+			}
+		}
+
+		if nil == rev.Data || rev.Capacity > capacity {
+			if nil == rev.Data {
+				rev.Data = make([]coldata.Vec, rev.ColumnNum)
+			}
+			for i := range rev.NeedType {
+				rev.Data[i] = coldata.NewMemColumn(rev.NeedType[i], int(rev.Capacity))
+			}
+		}
+
+		for i := range rev.NeedType {
+			if err != nil {
+				break
+			}
+			coli := rev.Column[i]
+			colData := (*C.TsColumnData)(unsafe.Pointer(uintptr(unsafe.Pointer(retInfo.vectorize_data.column_data_)) + uintptr(i)*unsafe.Sizeof(*(retInfo.vectorize_data.column_data_))))
+			length := C.ulong(rev.DataCount) * C.ulong(coli.FixedLen)
+			nullBit := C.GoBytes(unsafe.Pointer(colData.bitmap_ptr_), C.int(rev.BitmapSize))
+			for k := range nullBit {
+				nullBit[k] ^= 0xff
+			}
+			rev.Data[i].Nulls().CopyNullsBitmap(nullBit, int(rev.BitmapSize))
+			if coli.StorageType == sqlbase.DataType_NULLVAL {
+				continue
+			}
+
+			switch coli.ReturnType {
+			case types.BoolFamily:
+				C.memcpy(unsafe.Pointer(&(rev.Data[i].Bool()[0])), colData.data_ptr_, length)
+			case types.IntFamily:
+				switch coli.FixedLen {
+				case 1, 2:
+					if rev.Data[i].Type() == coltypes.Int32 || rev.Data[i].Type() == coltypes.Int64 {
+						ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+						for j := 0; uint32(j) < rev.DataCount; j++ {
+							var value int16
+							err = binary.Read(ioBuf, binary.LittleEndian, &value)
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							if rev.Data[i].Type() == coltypes.Int32 {
+								rev.Data[i].Int32()[j] = int32(value)
+							} else {
+								rev.Data[i].Int64()[j] = int64(value)
+							}
+						}
+					} else {
+						C.memcpy(unsafe.Pointer(&(rev.Data[i].Int16()[0])), colData.data_ptr_, length)
+					}
+				case 4:
+					if rev.Data[i].Type() == coltypes.Int16 || rev.Data[i].Type() == coltypes.Int64 {
+						ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+						for j := 0; uint32(j) < rev.DataCount; j++ {
+							var value int32
+							err = binary.Read(ioBuf, binary.LittleEndian, &value)
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							if rev.Data[i].Type() == coltypes.Int16 {
+								rev.Data[i].Int16()[j] = int16(value)
+							} else {
+								rev.Data[i].Int64()[j] = int64(value)
+							}
+						}
+					} else {
+						C.memcpy(unsafe.Pointer(&(rev.Data[i].Int32()[0])), colData.data_ptr_, length)
+					}
+				default:
+					if rev.Data[i].Type() == coltypes.Int16 || rev.Data[i].Type() == coltypes.Int32 {
+						ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+						for j := 0; uint32(j) < rev.DataCount; j++ {
+							var value int64
+							err = binary.Read(ioBuf, binary.LittleEndian, &value)
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							if rev.Data[i].Type() == coltypes.Int16 {
+								rev.Data[i].Int16()[j] = int16(value)
+							} else {
+								rev.Data[i].Int32()[j] = int32(value)
+							}
+						}
+					} else {
+						C.memcpy(unsafe.Pointer(&(rev.Data[i].Int64()[0])), colData.data_ptr_, length)
+					}
+				}
+			case types.FloatFamily:
+				switch coli.FixedLen {
+				case 4:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value float32
+						err = binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						rev.Data[i].Float64()[j] = float64(value)
+					}
+				case 8:
+					C.memcpy(unsafe.Pointer(&(rev.Data[i].Float64()[0])), colData.data_ptr_, length)
+				}
+			case types.DecimalFamily:
+				switch coli.StorageType {
+				case sqlbase.DataType_BIGINT:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					var value int64
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						err = binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						rev.Data[i].Decimal()[j].SetInt64(value)
+					}
+				case sqlbase.DataType_DOUBLE:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					var value float64
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						err = binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						newDecimal, _, err := apd.NewFromString(strconv.FormatFloat(value, 'f', -1, 64))
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						rev.Data[i].Decimal()[j].Set(newDecimal)
+					}
+				case sqlbase.DataType_DECIMAL:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					val := make([]byte, uint32(coli.FixedLen))
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						err = binary.Read(ioBuf, binary.LittleEndian, &val)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						if val[0] != 1 {
+							var data int64
+							buf := bytes.NewReader(val[1:])
+							err := binary.Read(buf, binary.LittleEndian, &data)
+							if err != nil {
+								fmt.Println("Error reading int64:", err)
+								break
+							}
+							rev.Data[i].Decimal()[j].SetInt64(data)
+						} else {
+							bits := binary.LittleEndian.Uint64(val[1:])
+							data := math.Float64frombits(bits)
+							newDecimal, _, err := apd.NewFromString(strconv.FormatFloat(data, 'f', -1, 64))
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							rev.Data[i].Decimal()[j].Set(newDecimal)
+						}
+					}
+				}
+			case types.TimestampFamily, types.TimestampTZFamily:
+				var interval int64 = 1000
+				var sec int64
+				var nsec int64
+				switch coli.StorageType {
+				case sqlbase.DataType_TIMESTAMP_MICRO, sqlbase.DataType_TIMESTAMPTZ_MICRO:
+					interval = 1000000
+				case sqlbase.DataType_TIMESTAMP_NANO, sqlbase.DataType_TIMESTAMPTZ_NANO:
+					interval = 1000000000
+				}
+				src := coldata.NewMemColumn(coltypes.Int64, int(rev.DataCount))
+				C.memcpy(unsafe.Pointer(&(src.Int64()[0])), colData.data_ptr_, length)
+				for j := 0; uint32(j) < rev.DataCount; j++ {
+					val := src.Int64()[j]
+					if val < 0 && val%interval != 0 {
+						sec = val/interval - 1
+						nsec = ((val % interval) + interval) * (1000000000 / interval)
+					} else {
+						sec = val / interval
+						nsec = val % interval * (1000000000 / interval)
+					}
+					t := timeutil.Unix(sec, nsec)
+					rev.Data[i].Timestamp()[j] = t
+				}
+			case types.IntervalFamily:
+				ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+				switch coli.StorageType {
+				case sqlbase.DataType_TIMESTAMP_MICRO, sqlbase.DataType_TIMESTAMPTZ_MICRO:
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value int64
+						err := binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading int64:", err)
+							break
+						}
+						extraDays := value / (Day / 1000)
+						days := extraDays
+						value -= extraDays * (Day / 1000)
+						var nanos = value * 1000
+						var d duration.Duration = duration.DecodeDuration(0, days, nanos)
+						rev.Data[i].Interval()[j] = d
+					}
+				case sqlbase.DataType_TIMESTAMP_NANO, sqlbase.DataType_TIMESTAMPTZ_NANO:
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value int64
+						err := binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading int64:", err)
+							break
+						}
+						extraDays := value / (Day / 1)
+						days := extraDays
+						value -= extraDays * (Day / 1)
+						var nanos = value * 1
+						var d duration.Duration = duration.DecodeDuration(0, days, nanos)
+						rev.Data[i].Interval()[j] = d
+					}
+				default:
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value int64
+						err := binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading int64:", err)
+							break
+						}
+						extraDays := value / (Day / 1000000)
+						days := extraDays
+						value -= extraDays * (Day / 1000000)
+						var nanos = value * 1000000
+						var d duration.Duration = duration.DecodeDuration(0, days, nanos)
+						rev.Data[i].Interval()[j] = d
+					}
+				}
+			case types.BytesFamily, types.StringFamily:
+				rev.Data[i].Bytes().Reset()
+				colOffset := (*[1 << 30]int32)(unsafe.Pointer(colData.offset_))[: rev.DataCount+1 : rev.DataCount+1]
+				offset := make([]int32, rev.DataCount+1)
+				copy(offset[:], colOffset[:])
+				buf := C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(offset[rev.DataCount]))
+				coldata.BytesFromArrowSerializationFormat(rev.Data[i].Bytes(), buf, offset)
+				C.TSFree(unsafe.Pointer(colData.data_ptr_))
+				C.TSFree(unsafe.Pointer(colData.offset_))
+			default:
+				err = fmt.Errorf("Unknown column return type")
+				break
+			}
+		}
+
+		if rev.IsDataOwner {
+			C.TsMemPoolFree(unsafe.Pointer(retInfo.vectorize_data.data_))
+		}
+		C.TSFree(unsafe.Pointer(retInfo.vectorize_data.column_))
+		C.TSFree(unsafe.Pointer(retInfo.vectorize_data.column_data_))
+	}
+	if tsRespInfo.Code > 1 {
+		if unsafe.Pointer(retInfo.value) != nil {
+			strCode := make([]byte, 5)
+			code := tsRespInfo.Code
+			for i := 0; i < 5; i++ {
+				strCode[i] = byte(((code) & 0x3F) + '0')
+				code = code >> 6
+			}
+			tsRespInfo.Buf = C.GoBytes(unsafe.Pointer(retInfo.value), C.int(retInfo.len))
+			err = pgerror.Newf(string(strCode), string(tsRespInfo.Buf))
+		} else {
+			err = fmt.Errorf("Error Code: %s", strconv.Itoa(tsRespInfo.Code))
+		}
+	} else if retInfo.ret < 1 {
+		err = fmt.Errorf("Unknown error")
+	}
+
+	return tsRespInfo, err
+}
+
 func freeTSSlice(cTsSlice []C.TSSlice) {
 	for _, slice := range cTsSlice {
 		if slice.data != nil {
@@ -1095,6 +1546,13 @@ func (r *TsEngine) NextTsFlow(
 ) (tsRespInfo TsQueryInfo, err error) {
 	r.checkOrWaitForOpen()
 	return r.tsExecute(ctx, C.MQ_TYPE_DML_NEXT, tsQueryInfo)
+}
+
+// NextVectorizedTsFlow drive timing execution plan, receive execution results
+func (r *TsEngine) NextVectorizedTsFlow(
+	ctx *context.Context, tsQueryInfo TsQueryInfo, rev *TsDataChunkToGo,
+) (tsRespInfo TsQueryInfo, err error) {
+	return r.tsVectorizedExecute(ctx, C.MQ_TYPE_DML_VECTORIZE_NEXT, tsQueryInfo, rev)
 }
 
 // NextTsFlowPgWire drive timing execution plan, receive execution results

@@ -796,6 +796,11 @@ func (hjs *HashJoinerStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (hjs *HashJoinerStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (hjs *HashJoinerStats) StatsForQueryPlan() []string {
 	stats := hjs.LeftInputStats.StatsForQueryPlan("left ")

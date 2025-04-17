@@ -665,6 +665,10 @@ type PlanningCtx struct {
 
 	// isLocal is set to true if we're planning this query on a single node.
 	isLocal bool
+
+	// hasBatchLookUpJoin is set to true if the query has batchLookUpJoin node.
+	hasBatchLookUpJoin bool
+
 	planner *planner
 	// ignoreClose, when set to true, will prevent the closing of the planner's
 	// current plan. Only the top-level query needs to close it, but everything
@@ -2354,6 +2358,11 @@ func (dsp *DistSQLPlanner) createTSReaders(
 	}
 
 	planCtx.pTagAllNotSplit = pTagAllNotSplit
+
+	p.TotalEstimatedScannedRows += n.estimatedRowCount
+	if n.estimatedRowCount > p.MaxEstimatedRowCount {
+		p.MaxEstimatedRowCount = n.estimatedRowCount
+	}
 
 	// construct TSTagReaderSpec
 	// RelInfo is not nil only for multiple model processing
@@ -5094,6 +5103,7 @@ func (dsp *DistSQLPlanner) createPlanForJoin(
 func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 	planCtx *PlanningCtx, n *batchLookUpJoinNode,
 ) (PhysicalPlan, error) {
+	planCtx.hasBatchLookUpJoin = true
 	// Outline of the planning process for joins:
 	//
 	//  - We create PhysicalPlans for the left and right side. Each plan has a set

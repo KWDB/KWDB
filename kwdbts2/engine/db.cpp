@@ -22,8 +22,8 @@
 #include "lru_cache_manager.h"
 #include "st_config.h"
 #include "sys_utils.h"
+#include "ee_mempool.h"
 #include "st_tier.h"
-
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
 #endif
@@ -1346,6 +1346,17 @@ TSStatus TsGetTableVersion(TSEngine* engine, TSTableID table_id, uint32_t* versi
     return ToTsStatus("GetTableVersion Error!");
   }
   return kTsSuccess;
+}
+
+void TsMemPoolFree(void *data) {
+  kwdbts::EE_MemPoolFree(g_pstBufferPoolInfo, static_cast<k_char*>(data));
+}
+
+char* TsGetStringPtr(void *data, uint32_t offset,  uint16_t *len) {
+  char *ptr = static_cast<char*>(data) + offset;
+  *len = 0;
+  memcpy(len, ptr, sizeof(uint16_t));
+  return ptr + sizeof(uint16_t);
 }
 
 TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level) {

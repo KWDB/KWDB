@@ -719,8 +719,20 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	tableInfo.OriginalAccessMode = execinfrapb.TSTableReadMode(scan.AccessMode)
 	b.mem.MultimodelHelper.TableData.Store(scan.Table, tableInfo)
 
+	// Get the estimated row count from the statistics.
+	// Note: if this memo was originally created as part of a PREPARE
+	// statement or was stored in the query cache, the column stats would have
+	// been removed by DetachMemo. Update that function if the column stats are
+	// needed here in the future.
+	rowCount := scan.Relational().Stats.RowCount
+	if !scan.Relational().Stats.Available {
+		// When there are no statistics available, we construct a scan node with
+		// the estimated row count of zero rows.
+		rowCount = 0
+	}
+
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter)
+	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount)
 	if err != nil {
 		return execPlan{}, err
 	}

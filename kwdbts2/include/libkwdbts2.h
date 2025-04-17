@@ -131,6 +131,7 @@ typedef enum _EnMqType {
   MQ_TYPE_DML_NEXT,
   MQ_TYPE_DML_CLOSE,
   MQ_TYPE_DML_PG_RESULT,
+  MQ_TYPE_DML_VECTORIZE_NEXT,
   MQ_TYPE_DML_INIT,
   MQ_TYPE_MAX
 } EnMqType;
@@ -159,6 +160,31 @@ typedef struct {
 void __attribute__((weak)) goLock(uint64_t goMutux);
 void __attribute__((weak)) goUnLock(uint64_t goMutux);
 
+typedef struct _TsColumnInfo {
+  uint32_t fixed_len_;
+  int32_t return_type_;
+  int32_t storage_len_;
+  int32_t storage_type_;
+}TsColumnInfo;
+
+typedef struct _TsColumnData {
+  void *data_ptr_;
+  void *bitmap_ptr_;
+  void *offset_;
+}TsColumnData;
+
+typedef struct _DataInfo {
+  uint32_t column_num_;
+  TsColumnInfo *column_;
+  TsColumnData *column_data_;
+  uint32_t bitmap_size_;
+  uint32_t row_size_;
+  uint32_t data_count_;
+  uint32_t capacity_;
+  void *data_;
+  bool is_data_owner_;
+} DataInfo;
+
 typedef struct _QueryInfo {
   EnMqType tp;
   void* value;
@@ -175,6 +201,7 @@ typedef struct _QueryInfo {
   // when the switch is on and the server starts with single node mode.
   void* relBatchData;
   int32_t relRowCount;
+  DataInfo vectorize_data;
 } QueryInfo;
 
 typedef QueryInfo RespInfo;
@@ -453,6 +480,10 @@ TSStatus TSGetWaitThreadNum(TSEngine* engine, void* resp);
  * @return
  */
 TSStatus TsGetTableVersion(TSEngine* engine, TSTableID table_id, uint32_t* version);
+
+void TsMemPoolFree(void *data);
+
+char* TsGetStringPtr(void *data, uint32_t offset,  uint16_t *len);
 
 /**
  * @brief Get current wal level of ts engine

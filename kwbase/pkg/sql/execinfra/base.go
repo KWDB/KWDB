@@ -188,6 +188,7 @@ type RowSourcedProcessor interface {
 	Push(ctx context.Context, res []byte) error
 	NextPgWire() (val []byte, code int, err error)
 	IsShortCircuitForPgEncode() bool
+	SupportPgWire() bool
 	Start(ctx context.Context) context.Context
 }
 

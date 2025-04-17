@@ -172,6 +172,11 @@ func (ss *SorterStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (ss *SorterStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (ss *SorterStats) StatsForQueryPlan() []string {
 	stats := ss.InputStats.StatsForQueryPlan("" /* prefix */)

@@ -288,6 +288,11 @@ func (mjs *MergeJoinerStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (mjs *MergeJoinerStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (mjs *MergeJoinerStats) StatsForQueryPlan() []string {
 	stats := append(

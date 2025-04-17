@@ -108,6 +108,10 @@ k_bool DataChunk::Initialize() {
   return true;
 }
 
+char* DataChunk::GetBitmapPtr(k_uint32 col) {
+  return data_ + bitmap_offset_[col];
+}
+
 KStatus DataChunk::InsertData(k_uint32 row, k_uint32 col, DatumPtr value, k_uint16 len, bool set_not_null) {
   k_uint32 col_offset = row * col_info_[col].fixed_storage_len + col_offset_[col];
 
@@ -358,6 +362,10 @@ DatumPtr DataChunk::GetData(k_uint32 col) {
   return data_ + current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
 }
 
+DatumPtr DataChunk::GetDataPtr(k_uint32 col) {
+  return data_ + col_offset_[col];
+}
+
 bool DataChunk::IsNull(k_uint32 row, k_uint32 col) {
   if (!col_info_[col].allow_null) {
     return false;
@@ -367,7 +375,8 @@ bool DataChunk::IsNull(k_uint32 row, k_uint32 col) {
     return true;
   }
 
-  return (bitmap[row >> 3] & ((1 << 7) >> (row & 7))) != 0;  // (bitmap[row / 8] & ((1 << 7) >> (row % 8))) != 0;
+  // return (bitmap[row >> 3] & ((1 << 7) >> (row & 7))) != 0;  // (bitmap[row / 8] & ((1 << 7) >> (row % 8))) != 0;
+  return bitmap[row >> 3] & (1 << (row & 7));
 }
 
 bool DataChunk::IsNull(k_uint32 col) {
@@ -381,7 +390,8 @@ void DataChunk::SetNull(k_uint32 row, k_uint32 col) {
     return;
   }
 
-  bitmap[row >> 3] |= (1 << 7) >> (row & 7);  // bitmap[row / 8] |= (1 << 7) >> (row % 8);
+  // bitmap[row >> 3] |= (1 << 7) >> (row & 7);
+  bitmap[row >> 3] |= 1 << (row & 7);
 }
 
 void DataChunk::SetNotNull(k_uint32 row, k_uint32 col) {
@@ -390,10 +400,12 @@ void DataChunk::SetNotNull(k_uint32 row, k_uint32 col) {
     return;
   }
 
-  k_uint32 index = row >> 3;     // row / 8
-  unsigned int pos = 1 << 7;    // binary 1000 0000
-  unsigned int mask = pos >> (row & 7);     // pos >> (row % 8)
-  bitmap[index] &= ~mask;
+  // k_uint32 index = row >> 3;     // row / 8
+  // unsigned int pos = 1 << 7;    // binary 1000 0000
+  // unsigned int mask = pos >> (row & 7);     // pos >> (row % 8)
+  // bitmap[index] &= ~mask;
+
+  bitmap[row >> 3] &= ~(1 << (row & 7));
 }
 
 void DataChunk::SetAllNull() {
@@ -402,7 +414,7 @@ void DataChunk::SetAllNull() {
     if (bitmap == nullptr) {
       return;
     }
-    std::memset(bitmap, 0xff, bitmap_size_);
+    std::memset(bitmap, 0xFF, bitmap_size_);
   }
 }
 
@@ -454,15 +466,20 @@ KStatus DataChunk::Append(DataChunk* chunk, k_uint32 begin_row, k_uint32 end_row
 }
 
 // Encode datachunk
-KStatus DataChunk::Encoding(kwdbContext_p ctx, bool is_pg,
+KStatus DataChunk::Encoding(kwdbContext_p ctx, TsNextRetState nextState,
                             k_int64* command_limit,
                             std::atomic<k_int64>* count_for_limit) {
   KStatus st = KStatus::SUCCESS;
+
+  if (DML_VECTORIZE_NEXT == nextState) {
+    return st;
+  }
+
   EE_StringInfo msgBuffer = ee_makeStringInfo();
   if (msgBuffer == nullptr) {
     return KStatus::FAIL;
   }
-  if (is_pg) {
+  if (DML_PG_RESULT == nextState) {
     k_uint32 row = 0;
     for (; row < Count(); ++row) {
       if (*command_limit > 0) {
@@ -1087,6 +1104,85 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
   k_uint32 n32 = be32toh(info->len - temp_len - 1);
   memcpy(temp_addr, &n32, 4);
   Return(SUCCESS);
+}
+
+EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_info) {
+  EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
+  do {
+    TsColumnInfo *ColInfo = static_cast<TsColumnInfo *>(malloc(col_num_ * sizeof(TsColumnInfo)));
+    if (nullptr == ColInfo) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      break;
+    }
+
+    TsColumnData *ColData = static_cast<TsColumnData *>(malloc(col_num_ * sizeof(TsColumnData)));
+    if (nullptr == ColData) {
+      SafeFreePointer(ColInfo);
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      break;
+    }
+
+    for (k_int32 i = 0; i < col_num_; ++i) {
+      ColInfo[i].fixed_len_     = col_info_[i].fixed_storage_len;
+      ColInfo[i].return_type_   = col_info_[i].return_type;
+      ColInfo[i].storage_len_   = col_info_[i].storage_len;
+      ColInfo[i].storage_type_  = col_info_[i].storage_type;
+      ColData[i].data_ptr_      = GetDataPtr(i);
+      ColData[i].bitmap_ptr_    = GetBitmapPtr(i);
+      if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+        k_int32 *offset = static_cast<k_int32 *>(malloc((count_ + 1) * sizeof(k_int32)));
+        if (nullptr == offset) {
+          SafeFreePointer(ColInfo);
+          SafeFreePointer(ColData);
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+          break;
+        }
+        memset(offset, 0, count_ * sizeof(k_int32));
+        char *data_ptr = GetDataPtr(i);
+        k_int32 total_len = 0;
+        std::vector<k_uint16> vec_len;
+        vec_len.reserve(count_);
+        for (k_uint32 j = 0; j < count_; ++j) {
+          k_uint16 len = 0;
+          memcpy(&len, data_ptr + j * col_info_[i].fixed_storage_len, sizeof(k_uint16));
+          offset[j] = total_len;
+          total_len += len;
+          vec_len.push_back(len);
+        }
+        offset[count_] = total_len;
+        ColData[i].offset_ = offset;
+        char *ptr = static_cast<char*>(malloc(total_len));
+        if (nullptr == ptr) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+          SafeFreePointer(ColInfo);
+          SafeFreePointer(ColData);
+          SafeFreePointer(offset);
+          break;
+        }
+        memset(ptr, 0, total_len);
+        ColData[i].data_ptr_ = ptr;
+        for (k_uint32 j = 0; j < count_; ++j) {
+          memcpy(ptr + offset[j], data_ptr + j * col_info_[i].fixed_storage_len + sizeof(k_uint16), vec_len[j]);
+        }
+        ColData[i].data_ptr_ = ptr;
+      }
+    }
+
+    data_info->column_num_ = col_num_;
+    data_info->column_ = ColInfo;
+    data_info->column_data_ = ColData;
+    data_info->data_count_ = count_;
+    data_info->bitmap_size_ = bitmap_size_;
+    data_info->row_size_ = row_size_;
+    data_info->capacity_ = capacity_;
+    data_info->data_ = data_;
+    data_info->is_data_owner_ = is_data_owner_;
+
+    ret = EEIteratorErrCode::EE_OK;
+  } while (0);
+
+  return ret;
 }
 
 void DataChunk::AddRecordByRow(kwdbContext_p ctx, RowBatch* row_batch, k_uint32 col, Field* field) {

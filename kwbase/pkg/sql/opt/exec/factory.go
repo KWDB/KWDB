@@ -92,6 +92,7 @@ type Factory interface {
 		table cat.Table,
 		private *memo.TSScanPrivate,
 		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
+		rowCount float64,
 	) (Node, error)
 
 	// MakeTSSpans push down time to tsScanNode.

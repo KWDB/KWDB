@@ -108,6 +108,10 @@ func (sp *csvWriter) NextPgWire() (val []byte, code int, err error) {
 	return nil, 0, nil
 }
 
+func (sp *csvWriter) SupportPgWire() bool {
+	return false
+}
+
 func (sp *csvWriter) Start(ctx context.Context) context.Context {
 	return nil
 }
