@@ -303,7 +303,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     return KStatus::SUCCESS;
   }
 
-  static k_uint64 total_row_count = 0;  
+  static k_uint64 total_row_count = 0;
   *count = 0;
   KStatus ret;
 
@@ -395,15 +395,15 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
           default: {
             LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(scan_agg_types_[i]));
             return KStatus::FAIL;
-          } 
+          }
         }
       }
 
       res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
       res->col_num_ = kw_scan_cols_.size();
       *count = 1;
-      *is_finished = false;  
-      total_row_count = 0;   
+      *is_finished = false;
+      total_row_count = 0;
       return KStatus::SUCCESS;
     }
   }
