@@ -117,8 +117,7 @@ class TsMemSegmentScanner : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   KStatus Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS);
-  KStatus ScanAgg(uint32_t entity_id, ResultSet* res, k_uint32* count,
-                  timestamp64 ts, std::vector<Sumfunctype>& scan_agg_types);
+  KStatus ScanAgg(uint32_t entity_id, k_uint32* count, timestamp64 ts);
 };
 
 class TsLastSegmentIterator : public TsStorageIteratorV2Impl {
@@ -131,6 +130,7 @@ class TsLastSegmentIterator : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  KStatus NextAgg(k_uint32* count, bool* is_finished, timestamp64 ts);
  private:
   uint32_t entity_id_;
   std::shared_ptr<TsVGroupPartition> ts_partition_;
