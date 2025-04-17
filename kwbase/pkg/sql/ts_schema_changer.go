@@ -866,7 +866,13 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		}
 		newPlanNode = tsIns
 	case compress, deleteExpiredData, autonomy, vacuum:
-		log.Infof(ctx, "%s job start, jobID: %d", opType, sw.job.ID())
+		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
+		if d.Type == vacuum {
+			if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
+				log.Infof(ctx, "%s job skip, jobID: %d", opType, *sw.job.ID())
+				return nil
+			}
+		}
 		var desc []sqlbase.TableDescriptor
 		var allDesc []sqlbase.DescriptorProto
 		nodeList, err := api.GetHealthyNodeIDs(ctx)
