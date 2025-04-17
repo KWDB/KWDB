@@ -282,6 +282,7 @@ KStatus TsBlockSegmentBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlic
 
 char* TsBlockSegmentBlock::GetMetricColAddr(uint32_t col_idx, TsBitmap& bitmap) {
   assert(col_idx < column_blocks_.size() - 1);
+  bitmap = column_blocks_[col_idx + 1].bitmap;
   return column_blocks_[col_idx + 1].buffer.data();
 }
 
