@@ -130,14 +130,12 @@ class TsLastSegment {
   friend class TsLastSegmentEntityBlockIteratorBase;
 
  private:
-  uint32_t ver_;  // not the schema version;
-
+  uint32_t file_number_;
   std::unique_ptr<TsFile> file_;
 
  public:
-  explicit TsLastSegment(const std::string& path)
-      : ver_(0), file_(std::make_unique<TsMMapFile>(path, true)) {}
-  TsLastSegment(uint32_t ver, TsFile* file) : ver_(ver), file_(file) {}
+  explicit TsLastSegment(uint32_t file_number, const std::string& path)
+      : file_number_(file_number), file_(std::make_unique<TsMMapFile>(path, true)) {}
 
   ~TsLastSegment() = default;
 
@@ -145,7 +143,7 @@ class TsLastSegment {
     // just check the magic number;
     auto sz = file_->GetFileSize();
     if (sz < sizeof(TsLastSegmentFooter)) {
-      LOG_ERROR("lastsegment file corruption");
+      LOG_ERROR("lastsegment file corrupted");
       return FAIL;
     }
     uint64_t magic;
@@ -158,15 +156,9 @@ class TsLastSegment {
     return SUCCESS;
   }
 
-  KStatus Append(const TSSlice& data);
+  uint32_t GetVersion() const { return file_number_; }
 
-  KStatus Flush();
-
-  size_t GetFileSize() const;
-
-  TsFile* GetFilePtr() const;
-
-  uint32_t GetVersion() const;
+  void MarkDelete() { file_->MarkDelete(); }
 
   KStatus GetFooter(TsLastSegmentFooter* footer) const;
 

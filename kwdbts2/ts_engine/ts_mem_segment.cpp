@@ -113,7 +113,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockITemFilterParams& filter,
+KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                            std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
   blocks->clear();
   segment_lock_.lock();
@@ -220,7 +220,7 @@ bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
   return false;
 }
 
-bool TsMemSegment::GetEntityRows(const TsBlockITemFilterParams& filter, std::list<TSMemSegRowData*>* rows) {
+bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows) {
   rows->clear();
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
@@ -282,7 +282,7 @@ void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, boo
   }
 }
 
-KStatus TsMemSegment::GetBlockSpans(const TsBlockITemFilterParams& filter,
+KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                     std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
   blocks->clear();
   std::list<kwdbts::TSMemSegRowData*> row_datas;

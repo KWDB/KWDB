@@ -18,6 +18,7 @@
 #include "ts_block_segment.h"
 #include "ts_vgroup_partition.h"
 #include "ts_env.h"
+#include "ts_lastsegment.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_metric_block.h"
 
@@ -91,7 +92,8 @@ KStatus TsVGroupPartition::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segm
 }
 
 void TsVGroupPartition::PublicLastSegment(uint32_t file_number) {
-  last_segment_mgr_.OpenLastSegmentFile(file_number);
+  std::shared_ptr<TsLastSegment> file;
+  last_segment_mgr_.OpenLastSegmentFile(file_number, &file);
 }
 
 std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }

@@ -20,7 +20,7 @@ namespace kwdbts {
 
 class TsSegmentBase;
 // conditions used for flitering blockitem data.
-struct TsBlockITemFilterParams {
+struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
   TSEntityID entity_id;
@@ -50,8 +50,10 @@ class TsSegmentBlockSpan {
 class TsSegmentBase : public std::enable_shared_from_this<TsSegmentBase> {
  public:
   // filter blockspans that satisfied condition.
-  virtual KStatus GetBlockSpans(const TsBlockITemFilterParams& filter,
+  virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                                 std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) = 0;
+
+  virtual ~TsSegmentBase() {}
 };
 
 }  // namespace kwdbts

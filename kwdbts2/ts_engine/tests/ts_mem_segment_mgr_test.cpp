@@ -80,7 +80,7 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   ASSERT_TRUE(s == KStatus::SUCCESS);
   std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{tmp_data.database_id, tmp_data.table_id, tmp_data.entity_id, ts_span};
+  TsBlockItemFilterParams params{tmp_data.database_id, tmp_data.table_id, tmp_data.entity_id, ts_span};
   s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
@@ -113,7 +113,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   }
   std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_span};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
@@ -152,7 +152,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   
   std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_span};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
@@ -191,7 +191,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
   std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
   for (size_t j = 1; j <= entity_num; j++) {
     std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-    TsBlockITemFilterParams params{db_id, table_id, j, ts_span};
+    TsBlockItemFilterParams params{db_id, table_id, j, ts_span};
     auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), 1);
@@ -231,7 +231,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
   }
   std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_span};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), version_num);
@@ -279,7 +279,7 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
   for (size_t i = 0; i < table_num; i++) {
     std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
     std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-    TsBlockITemFilterParams params{db_id, table_id + i, entity_id, ts_span};
+    TsBlockItemFilterParams params{db_id, table_id + i, entity_id, ts_span};
     auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), version_num);

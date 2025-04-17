@@ -129,7 +129,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
 }
 
 void IteratorCheck(const std::string &filename, TSTableID table_id) {
-  TsLastSegment file{filename};
+  TsLastSegment file{0, filename};
   ASSERT_TRUE(file.Open() == kwdbts::SUCCESS);
 
   kwdbts::Arena arena;
@@ -304,7 +304,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   res.builder->Finalize();
   res.builder.reset();
 
-  TsLastSegment last_segment("last.ver-0000");
+  TsLastSegment last_segment(0, "last.ver-0000");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
@@ -402,7 +402,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   res.builder->Finalize();
   res.builder.reset();
 
-  TsLastSegment last_segment("last.ver-0000");
+  TsLastSegment last_segment(0, "last.ver-0000");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);

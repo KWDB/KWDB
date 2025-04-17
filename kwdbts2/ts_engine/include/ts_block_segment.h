@@ -171,7 +171,7 @@ class TsBlockSegmentMetaManager {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, TsBlockSegment* blk_segment,
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
                         std::list<std::shared_ptr<TsSegmentBlockSpan>>* block_spans);
 };
 
@@ -258,7 +258,7 @@ class TsBlockSegment : public TsSegmentBase {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter,
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                         std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) override;
 
   KStatus GetBlock(uint32_t table_id, const std::vector<AttributeInfo>& metric_schemas,

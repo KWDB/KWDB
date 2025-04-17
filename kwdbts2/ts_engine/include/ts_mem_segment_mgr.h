@@ -182,7 +182,7 @@ class TsMemSegment : public TsSegmentBase {
 
   bool AppendOneRow(TSMemSegRowData& row);
 
-  bool GetEntityRows(const TsBlockITemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
+  bool GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
 
   bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
 
@@ -204,7 +204,7 @@ class TsMemSegment : public TsSegmentBase {
     status_.store(MEM_SEGMENT_DELETING);
   }
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter,
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
           std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) override;
 };
 
@@ -299,7 +299,7 @@ class TsMemSegmentManager {
 
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks);
 };
 
 }  // namespace kwdbts

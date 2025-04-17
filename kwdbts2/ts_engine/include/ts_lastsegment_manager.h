@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -31,26 +32,22 @@ const uint32_t MAX_COMPACT_NUM = 10;
 class TsLastSegmentManager {
  private:
   std::filesystem::path dir_path_;
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
-  KRWLatch rw_latch_;
+  std::map<uint32_t, std::shared_ptr<TsLastSegment>> last_segments_;
 
-  std::atomic<uint32_t> ver_ = 0;
+  std::atomic<uint32_t> current_file_number_ = 0;
   std::atomic<uint32_t> n_lastsegment_ = 0;
 
-  int rdLock() { return RW_LATCH_S_LOCK(&rw_latch_); }
-  int wrLock() { return RW_LATCH_X_LOCK(&rw_latch_); }
-  int unLock() { return RW_LATCH_UNLOCK(&rw_latch_); }
+  std::shared_mutex s_mutex_;
 
   std::string LastSegmentFileName(uint32_t file_number) const;
 
  public:
-  explicit TsLastSegmentManager(const string& dir_path)
-      : dir_path_(dir_path), rw_latch_(RWLATCH_ID_LAST_SEGMENT_MANAGER_RWLOCK) {}
+  explicit TsLastSegmentManager(const string& dir_path) : dir_path_(dir_path) {}
 
   ~TsLastSegmentManager() {}
 
   KStatus NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment, uint32_t* ver);
-  KStatus OpenLastSegmentFile(uint32_t file_number);
+  KStatus OpenLastSegmentFile(uint32_t file_number, std::shared_ptr<TsLastSegment>* lastsegment);
 
   void GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);
 

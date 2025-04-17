@@ -18,7 +18,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,16 +39,6 @@
 namespace kwdbts {
 
 int TsLastSegment::kNRowPerBlock = 4096;
-
-KStatus TsLastSegment::Append(const TSSlice& data) { return file_->Append(data); }
-
-KStatus TsLastSegment::Flush() { return file_->Flush(); }
-
-size_t TsLastSegment::GetFileSize() const { return file_->GetFileSize(); }
-
-TsFile* TsLastSegment::GetFilePtr() const { return file_.get(); }
-
-uint32_t TsLastSegment::GetVersion() const { return ver_; }
 
 KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
   TSSlice result;
@@ -227,21 +219,44 @@ std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) cons
 
 KStatus TsLastSegmentManager::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
                                                  uint32_t* file_number) {
-  *file_number = ver_.fetch_add(1, std::memory_order_relaxed);
+  *file_number = current_file_number_.fetch_add(1, std::memory_order_relaxed);
   auto filename = LastSegmentFileName(*file_number);
   *last_segment = std::make_unique<TsMMapFile>(filename, false /*read_only*/);
   return KStatus::SUCCESS;
 }
 
-KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number) {
-  auto file = std::make_shared<TsLastSegment>(LastSegmentFileName(file_number));
+KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
+                                                  std::shared_ptr<TsLastSegment>* lastsegment) {
+  // 1. find from cache.
+  {
+    std::shared_lock lk{s_mutex_};
+    auto it = last_segments_.find(file_number);
+    if (it != last_segments_.end()) {
+      // found, assign and return
+      *lastsegment = it->second;
+      return SUCCESS;
+    }
+  }
+
+  // 2. open from disk.
+  auto file = std::make_shared<TsLastSegment>(file_number, LastSegmentFileName(file_number));
   auto s = file->Open();
   if (s == FAIL) {
     return FAIL;
   }
-  wrLock();
-  last_segments_.push_back(std::move(file));
-  unLock();
+  {
+    std::unique_lock lk{s_mutex_};
+    // find again before insert
+    auto it = last_segments_.find(file_number);
+    if(it != last_segments_.end()) {
+      *lastsegment = it->second;
+      return SUCCESS;
+    }
+
+    // now we can really insert it to cache
+    auto [iter, ok] = last_segments_.insert_or_assign(file_number, std::move(file));
+    assert(ok);
+  }
   n_lastsegment_.fetch_add(1, std::memory_order_relaxed);
   return SUCCESS;
 }
@@ -249,10 +264,15 @@ KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number) {
 // TODO(zzr) get last segments from VersionManager, this method must be atomic
 void TsLastSegmentManager::GetCompactLastSegments(
     std::vector<std::shared_ptr<TsLastSegment>>& result) {
-  rdLock();
-  size_t compact_num = std::min(last_segments_.size(), static_cast<size_t>(MAX_COMPACT_NUM));
-  result.assign(last_segments_.begin(), last_segments_.begin() + compact_num);
-  unLock();
+  {
+    std::shared_lock lk{s_mutex_};
+    size_t compact_num = std::min<size_t>(last_segments_.size(), MAX_COMPACT_NUM);
+    result.reserve(compact_num);
+    auto it = last_segments_.begin();
+    for (int i = 0; i < compact_num; ++i, ++it) {
+      result.push_back(it->second);
+    }
+  }
 }
 
 bool TsLastSegmentManager::NeedCompact() {
@@ -260,17 +280,19 @@ bool TsLastSegmentManager::NeedCompact() {
 }
 
 void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
-  wrLock();
-  for (auto it = last_segments_.begin(); it != last_segments_.end();) {
-    if ((*it)->GetVersion() <= ver) {
-      (*it)->GetFilePtr()->MarkDelete();
-      it = last_segments_.erase(it);
-      n_lastsegment_.fetch_sub(1, std::memory_order_relaxed);
-    } else {
-      ++it;
+  {
+    std::unique_lock lk{s_mutex_};
+    for (auto it = last_segments_.begin(); it != last_segments_.end();) {
+      assert(it->first == it->second->GetVersion());
+      if (it->second->GetVersion() <= ver) {
+        it->second->MarkDelete();
+        it = last_segments_.erase(it);
+        n_lastsegment_.fetch_sub(1, std::memory_order_relaxed);
+      } else {
+        ++it;
+      }
     }
   }
-  unLock();
 }
 
 std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> TsLastSegment::NewIterator() const {

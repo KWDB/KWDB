@@ -206,7 +206,7 @@ KStatus TsBlockSegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockITemFilterParams& filter, TsBlockSegment* blk_segment,
+KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
                                                  std::list<std::shared_ptr<TsSegmentBlockSpan>>* block_spans) {
   uint64_t last_blk_id;
   KStatus s = entity_meta_.GetEntityCurBlockId(filter.entity_id, last_blk_id);
@@ -516,7 +516,7 @@ KStatus TsBlockSegment::GetAllBlockItems(TSEntityID entity_id,
   return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
 }
 
-KStatus TsBlockSegment::GetBlockSpans(const TsBlockITemFilterParams& filter,
+KStatus TsBlockSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                       std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
   return meta_mgr_.GetBlockSpans(filter, this, blocks);
 }
