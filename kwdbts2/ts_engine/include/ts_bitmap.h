@@ -100,23 +100,6 @@ class TsBitmap {
     SetAll(DataFlags::kValid);
   }
 
-  
-#define	CLEAR_BIT(x, bit)	(x &= ~(1 << bit))
-  // todo(liangbo01) check if function correct.
-  bool SetRowBitmap(size_t idx, DataFlags flag) {
-    assert(idx < nrows_);
-    size_t bitidx = nbit_per_row * idx;
-    uint32_t charidx = (bitidx / 8);
-    uint8_t charoff = (bitidx % 8);
-    // first reset bitmap to 00
-    for (size_t i = 0; i < nbit_per_row; i++) {
-      CLEAR_BIT(rep_[charidx], (charoff + i));
-    }
-    // second add flag.
-    rep_[charidx] |= (flag << charoff);
-    return true;
-  }
-
   TSSlice GetData() { return {rep_.data(), rep_.size()}; }
 
   size_t GetCount() const { return nrows_; }

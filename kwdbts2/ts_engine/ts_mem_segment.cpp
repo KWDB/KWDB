@@ -161,7 +161,7 @@ KStatus TsMemSegBlockItemInfo::GetColAddr(uint32_t col_id, const std::vector<Att
   for (int i = 0; i < row_data_.size(); i++) {
     auto row = row_data_[i];
     if (parser_->IsColNull(row->row_data, col_id)) {
-      bitmap.SetRowBitmap(i, DataFlags::kNull);
+      bitmap[i] = DataFlags::kNull;
     } else {
       auto ok = parser_->GetColValueAddr(row->row_data, col_id, &value_slice);
       if (!ok) {
@@ -292,9 +292,10 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockITemFilterParams& filter,
     return KStatus::FAIL;
   }
   std::shared_ptr<TsMemSegBlockItemInfo> cur_blk_item = nullptr;
+  auto self = dynamic_pointer_cast<TsMemSegment>(shared_from_this());
   for (auto row : row_datas) {
     if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
-      cur_blk_item = std::make_shared<TsMemSegBlockItemInfo>(dynamic_pointer_cast<TsMemSegment>(filter.segment_));
+      cur_blk_item = std::make_shared<TsMemSegBlockItemInfo>(self);
       blocks->push_back(cur_blk_item);
       cur_blk_item->InsertRow(row);
     }

@@ -25,7 +25,7 @@ struct TsBlockITemFilterParams {
   TSTableID table_id;
   TSEntityID entity_id;
   std::vector<KwTsSpan>& ts_spans_;
-  std::shared_ptr<TsSegmentBase> segment_;
+  std::shared_ptr<TsSegmentBase> segment_;  // store shared_ptr to prevent deleted.
 };
 
 class TsSegmentBlockSpan {
@@ -44,12 +44,11 @@ class TsSegmentBlockSpan {
 };
 
 // base class for data segment
-class TsSegmentBase {
+class TsSegmentBase : public std::enable_shared_from_this<TsSegmentBase> {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockITemFilterParams& filter,
                                 std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) = 0;
-  
 };
 
 }  // namespace kwdbts
