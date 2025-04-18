@@ -11,7 +11,10 @@
 
 #pragma once
 
+#include <stdexcept>
+#include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_block.h"
 #include "ts_common.h"
 #include "data_type.h"
 #include "ts_bitmap.h"
@@ -50,8 +53,16 @@ class TsSegmentBlockSpan {
 class TsSegmentBase : public std::enable_shared_from_this<TsSegmentBase> {
  public:
   // filter blockspans that satisfied condition.
+  // DEPRECATE IT LATER
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                                 std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) = 0;
+
+  virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
+                                std::vector<TsBlockSpan>* spans) {
+    assert(false);
+    throw std::runtime_error("INPLEMENT IT");
+    return FAIL;
+  }
 
   virtual ~TsSegmentBase() {}
 };
