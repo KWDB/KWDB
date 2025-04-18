@@ -1876,7 +1876,13 @@ func (c *conn) writeRowDescription(
 		if log.V(2) {
 			log.Infof(ctx, "pgwire: writing column %s of type: %s", column.Name, column.Typ)
 		}
-		c.msgBuilder.writeTerminatedString(column.Name)
+		clientEncoding := c.res.conv.ClientEncoding
+		tmpbuf, err := ClientEncoding(clientEncoding, []byte(column.Name))
+		if err != nil {
+			c.setErr(err)
+			return err
+		}
+		c.msgBuilder.writeTerminatedString(string(tmpbuf))
 		typ := pgTypeForParserType(column.Typ)
 		c.msgBuilder.putInt32(int32(column.TableID))        // Table OID (optional).
 		c.msgBuilder.putInt16(int16(column.PGAttributeNum)) // Column attribute ID (optional).

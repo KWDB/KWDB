@@ -188,21 +188,19 @@ var varGen = map[string]sessionVar{
 			switch encoding {
 			case "utf8", "unicode", "cp65001":
 				m.data.ClientEncoding = encoding
-				return nil
 			case "gbk", "gb18030":
 				m.data.ClientEncoding = encoding
-				return nil
 			case "big5":
 				m.data.ClientEncoding = encoding
-				return nil
 			case "":
 				m.data.ClientEncoding = "UTF8"
-				return nil
 			default:
 				return unimplemented.NewWithIssueDetailf(35882,
 					"client_encoding "+encoding,
 					"unimplemented client encoding: %q", encoding)
 			}
+			m.paramStatusUpdater.AppendParamStatusUpdate("client_encoding", encoding)
+			return nil
 		},
 		Get:           func(evalCtx *extendedEvalContext) string { return evalCtx.SessionData.ClientEncoding },
 		GlobalDefault: func(_ *settings.Values) string { return "UTF8" },
