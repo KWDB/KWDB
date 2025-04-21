@@ -97,5 +97,10 @@ order by k_timestamp;
 ---------
       9
 (1 row)
+> select * from test.sjcx01 where t1_attribute = 'F6';
+           k_timestamp          |  a   | b  | c | d | t1_attribute
+--------------------------------+------+----+---+---+---------------
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | F6
+(1 row)
 > drop database test cascade;
 DROP DATABASE
