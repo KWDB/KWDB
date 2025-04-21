@@ -99,8 +99,8 @@ KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
     std::unordered_set<TsVGroupPartition*> seen;
     for (const auto& [idx, partition_ptr] : partitions) {
       if (!partition_ptr) continue;
-      int64_t p_start = partition_ptr->StartTs();
-      int64_t p_end = partition_ptr->EndTs();
+      timestamp64 p_start = convertSecondToPrecisionTS(partition_ptr->StartTs(), ts_col_type_);
+      timestamp64 p_end = convertSecondToPrecisionTS(partition_ptr->EndTs(), ts_col_type_);
       if (isTimestampInSpans(ts_spans_, p_start, p_end)) {
         if (seen.insert(partition_ptr.get()).second) {
           ts_partitions_.emplace_back(
