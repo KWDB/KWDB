@@ -41,7 +41,7 @@ KStatus TsBlockSegmentBlockFile::AppendBlock(const TSSlice& block, uint64_t* off
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentBlockFile::ReadBlock(uint64_t offset, char* buff, size_t len) {
+KStatus TsBlockSegmentBlockFile::ReadData(uint64_t offset, char* buff, size_t len) {
   RW_LATCH_S_LOCK(file_mtx_);
   TSSlice result;
   file_->Read(offset, len, &result, buff);

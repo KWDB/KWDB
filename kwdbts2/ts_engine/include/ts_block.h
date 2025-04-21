@@ -43,9 +43,9 @@ struct TsBlockSpan {
   std::shared_ptr<TsBlock> block;
   int start_row, nrow;
 
-  TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entitiy_id,
+  TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
               std::shared_ptr<TsBlock> block, int start, int nrow)
-      : entity_id(entitiy_id), block(block), start_row(start), nrow(nrow) {
+      : entity_id(entity_id), block(block), start_row(start), nrow(nrow) {
     assert(nrow >= 1);
   }
 

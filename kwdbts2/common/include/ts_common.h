@@ -524,6 +524,48 @@ inline bool CheckIfTsInSpan(timestamp64 ts, std::vector<KwTsSpan>& ts_spans) {
   return false;
 }
 
+inline int binaryGreaterThanEqualSearch(timestamp64* ts_vec, int len, timestamp64 target) {
+  if (len == 0) {
+    return -1;
+  }
+
+  int left = 0;
+  int right = len - 1;
+
+  while (left <= right) {
+    int mid = left + (right - left) / 2;
+
+    if (ts_vec[mid] >= target) {
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+
+  return (left < len && ts_vec[left] >= target) ? left : -1;
+}
+
+inline int binaryLessThanSearch(timestamp64* ts_vec, int len, timestamp64 target) {
+  if (len == 0) {
+    return -1;
+  }
+
+  int left = 0;
+  int right = len - 1;
+
+  while (left <= right) {
+    int mid = left + (right - left) / 2;
+
+    if (ts_vec[mid] <= target) {
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+
+  return (left < len && ts_vec[left] >= target) ? left : -1;
+}
+
 inline void getMaxAndMinTs(std::vector<KwTsSpan>& spans, timestamp64* min_ts,
                            timestamp64* max_ts) {
   for (int i = 0; i < spans.size(); ++i) {

@@ -32,6 +32,7 @@ public:
 };
 
 TEST_F(TsBlockSegmentTest, simpleInsert) {
+  kwdbts::MAX_ROWS_PER_BLOCK = 1000;
   using namespace roachpb;
   {
     System("rm -rf schema");
@@ -85,7 +86,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     for (int i = 0; i < 10; ++i) {
       std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
       TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
-      std::list<std::shared_ptr<TsSegmentBlockSpan>> block_spans;
+      std::list<std::shared_ptr<TsBlockSpan>> block_spans;
       s = block_segment->GetBlockSpans(filter, &block_spans);
       EXPECT_EQ(s, KStatus::SUCCESS);
       EXPECT_EQ(block_spans.size(), i);
@@ -93,21 +94,22 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
       while (!block_spans.empty()) {
         auto block_span = block_spans.front();
         block_spans.pop_front();
-        for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
-          EXPECT_EQ(block_span->GetTS(idx, metric_schema), 123 + row_idx + idx);
+        for (int idx = 0; idx < block_span->block->GetRowNum(); ++idx) {
+          EXPECT_EQ(block_span->block->GetTS(idx), 123 + row_idx + idx);
           TSSlice value;
-          block_span->GetValueSlice(idx, 1, metric_schema, value);
+          block_span->block->GetValueSlice(idx, 1, metric_schema, value);
           EXPECT_LE(*(int32_t *) value.data, 1024);
-          block_span->GetValueSlice(idx, 2, metric_schema, value);
+          block_span->block->GetValueSlice(idx, 2, metric_schema, value);
           EXPECT_LE(*(double *) value.data, 1024 * 1024);
-          block_span->GetValueSlice(idx, 3, metric_schema, value);
+          block_span->block->GetValueSlice(idx, 3, metric_schema, value);
           EXPECT_LE(*(double *) value.data, 10240);
-          block_span->GetValueSlice(idx, 4, metric_schema, value);
+          block_span->block->GetValueSlice(idx, 4, metric_schema, value);
           string str(value.data, 10);
           EXPECT_EQ(str, "varstring_");
         }
-        row_idx += block_span->GetRowNum();
+        row_idx += block_span->block->GetRowNum();
       }
+      EXPECT_EQ(row_idx, i * MAX_ROWS_PER_BLOCK);
     }
   }
 }
