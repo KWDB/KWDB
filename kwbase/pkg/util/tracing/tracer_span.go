@@ -76,7 +76,19 @@ const (
 	TagPrefix = "kwbase."
 	// StatTagPrefix is prefixed to all stats output in span tags.
 	StatTagPrefix = TagPrefix + "stat."
+
+	// SpanStatsTypeDefault default span statistic type
+	SpanStatsTypeDefault = 1 << 0
+	// SpanStatsTypeVector vector span statistic type
+	SpanStatsTypeVector = 1 << 1
+	// SpanStatsTypeTime time series span statistic type
+	SpanStatsTypeTime = 1 << 2
 )
+
+// CheckSpanStatsType check whether typ equal subTyp
+func CheckSpanStatsType(typ, subTyp int) bool {
+	return typ&subTyp > 0
+}
 
 // SpanStats are stats that can be added to a span.
 type SpanStats interface {
@@ -90,6 +102,9 @@ type SpanStats interface {
 	// from stat name to value to be added to span tags. The keys will be prefixed with
 	// StatTagPrefix In time series.
 	TsStats() map[int32]map[string]string
+
+	// GetSpanStatsType check type of spanStats
+	GetSpanStatsType() int
 }
 
 var _ opentracing.SpanContext = &spanContext{}
@@ -652,6 +667,17 @@ func SetSpanStats(os opentracing.Span, stats SpanStats) {
 	s.mu.Unlock()
 }
 
+// SetTsSpanStats sets the stats on a span. stats.Stats() will also be added to
+// the span tags.
+func SetTsSpanStats(os opentracing.Span, stats SpanStats) {
+	s := os.(*span)
+	s.mu.Lock()
+	for name, value := range stats.Stats() {
+		s.setTagInner(StatTagPrefix+name, value, true /* locked */)
+	}
+	s.mu.Unlock()
+}
+
 // Finish is part of the opentracing.Span interface.
 func (s *span) Finish() {
 	s.FinishWithOptions(opentracing.FinishOptions{})
@@ -744,7 +770,7 @@ func (s *span) setTagInner(key string, value interface{}, locked bool) opentraci
 	if s.mu.tags == nil {
 		s.mu.tags = make(opentracing.Tags)
 	}
-	if s.operation == "relation timeseries table reader" && s.mu.stats != nil {
+	if s.mu.stats != nil && CheckSpanStatsType(s.mu.stats.GetSpanStatsType(), SpanStatsTypeTime) {
 		s.setTsTags()
 	} else {
 		s.mu.tags[key] = value

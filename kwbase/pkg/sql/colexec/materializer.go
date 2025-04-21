@@ -26,6 +26,7 @@ package colexec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
@@ -71,6 +72,9 @@ type Materializer struct {
 	// closers is a slice of IdempotentClosers that should be Closed on
 	// termination.
 	closers []IdempotentCloser
+
+	// canShortCircuitForPgEncode is true, which is a necessary condition for short circuiting.
+	canShortCircuitForPgEncode bool
 }
 
 const materializerProcName = "materializer"
@@ -102,6 +106,13 @@ func NewMaterializer(
 		input:   input,
 		row:     make(sqlbase.EncDatumRow, len(typs)),
 		closers: toClose,
+	}
+	if post.Filter.Empty() && len(post.RenderExprs) == 0 && post.Limit == 0 {
+		if v, ok := m.input.(*noopOperator); ok {
+			if _, ok := v.input.(*tsReaderOp); ok {
+				m.canShortCircuitForPgEncode = true
+			}
+		}
 	}
 
 	if err := m.ProcessorBase.Init(
@@ -242,4 +253,19 @@ func (m *Materializer) ConsumerDone() {
 // ConsumerClosed is part of the execinfra.RowSource interface.
 func (m *Materializer) ConsumerClosed() {
 	m.InternalClose()
+}
+
+// NextPgWire get data from AE by short citcuit.
+func (m *Materializer) NextPgWire() (val []byte, code int, err error) {
+	if v, ok := m.input.(*noopOperator); ok {
+		if v1, ok := v.input.(*tsReaderOp); ok {
+			return v1.NextPgWire()
+		}
+	}
+	return nil, 0, errors.New("enter vector short-circuit error path")
+}
+
+// SupportPgWire determine whether the short circuit process can be followed
+func (m *Materializer) SupportPgWire() bool {
+	return m.canShortCircuitForPgEncode
 }

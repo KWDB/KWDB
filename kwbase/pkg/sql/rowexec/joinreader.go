@@ -670,6 +670,11 @@ func (jrs *JoinReaderStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (jrs *JoinReaderStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (jrs *JoinReaderStats) StatsForQueryPlan() []string {
 	is := append(

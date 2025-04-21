@@ -24,6 +24,7 @@ type Prepare struct {
 	Name      Name
 	Types     []*types.T
 	Statement Statement
+	Udv       *UserDefinedVar
 }
 
 // Format implements the NodeFormatter interface.
@@ -41,7 +42,11 @@ func (node *Prepare) Format(ctx *FmtCtx) {
 		ctx.WriteRune(')')
 	}
 	ctx.WriteString(" AS ")
-	ctx.FormatNode(node.Statement)
+	if node.Udv != nil {
+		ctx.WriteString(node.Udv.String())
+	} else {
+		ctx.FormatNode(node.Statement)
+	}
 }
 
 // CannedOptPlan is used as the AST for a PREPARE .. AS OPT PLAN statement.

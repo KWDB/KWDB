@@ -153,10 +153,13 @@ KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
         resp->handle = handle;
         break;
       case EnMqType::MQ_TYPE_DML_NEXT:
-        ret = handle->Next(ctx, id, false, resp);
+        ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
         break;
       case EnMqType::MQ_TYPE_DML_PG_RESULT:
-        ret = handle->Next(ctx, id, true, resp);
+        ret = handle->Next(ctx, id, TsNextRetState::DML_PG_RESULT, resp);
+        break;
+      case EnMqType::MQ_TYPE_DML_VECTORIZE_NEXT:
+        ret = handle->Next(ctx, id, TsNextRetState::DML_VECTORIZE_NEXT, resp);
         break;
       case EnMqType::MQ_TYPE_DML_PUSH:
         // push relational data from ME to AE for multiple model processing
@@ -179,6 +182,7 @@ KStatus DmlExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
                        k_int32 id, k_int32 uniqueID, RespInfo *resp) {
   KWDB_DURATION(StStatistics::Get().dml_setup);
   EnterFunc();
+  current_thd = thd_;
   KStatus ret = KStatus::FAIL;
   resp->tp = EnMqType::MQ_TYPE_DML_SETUP;
   resp->ret = 0;
@@ -250,7 +254,7 @@ void DmlExec::DisposeError(kwdbContext_p ctx, QueryInfo *return_info) {
   }
 }
 
-KStatus DmlExec::InnerNext(kwdbContext_p ctx, TsScan *tsScan, bool isPG,
+KStatus DmlExec::InnerNext(kwdbContext_p ctx, TsScan *tsScan, TsNextRetState nextState,
                            RespInfo *resp) {
   EnterFunc();
   KStatus ret = KStatus::FAIL;
@@ -277,7 +281,7 @@ KStatus DmlExec::InnerNext(kwdbContext_p ctx, TsScan *tsScan, bool isPG,
     // init operators.
     if (!tsScan->is_init_pr) {
       tsScan->is_init_pr = KTRUE;
-      ret = tsScan->processors->InitIterator(ctx, isPG);
+      ret = tsScan->processors->InitIterator(ctx, nextState);
       if (KStatus::SUCCESS != ret) {
         break;
       }
@@ -289,8 +293,14 @@ KStatus DmlExec::InnerNext(kwdbContext_p ctx, TsScan *tsScan, bool isPG,
     k_uint32 count = 0;
     k_uint32 length = 0;
     k_bool is_last_record = KFALSE;
+    if (DML_VECTORIZE_NEXT != nextState) {
     ret = tsScan->processors->RunWithEncoding(ctx, &result, &length, &count,
                                                 &is_last_record);
+    } else {
+    ret = tsScan->processors->RunWithVectorize(ctx, &result, &(resp->vectorize_data), &length,
+                                                                                &count, &is_last_record);
+    }
+
     if (ret != KStatus::SUCCESS) {
       break;
     }
@@ -316,13 +326,13 @@ KStatus DmlExec::InnerNext(kwdbContext_p ctx, TsScan *tsScan, bool isPG,
   Return(ret);
 }
 
-KStatus DmlExec::Next(kwdbContext_p ctx, k_int32 id, bool isPG, RespInfo *resp) {
+KStatus DmlExec::Next(kwdbContext_p ctx, k_int32 id, TsNextRetState nextState, RespInfo *resp) {
   KWDB_DURATION(StStatistics::Get().dml_next);
   EnterFunc();
   current_thd = thd_;
   TsScan *head = tsscan_head_;
   TsScan *prev = tsscan_head_;
-  if (!isPG) {
+  if (nextState != DML_PG_RESULT) {
     // search tsscan by id
     for (; head != nullptr; head = head->next) {
       if (id == head->id) {
@@ -334,7 +344,7 @@ KStatus DmlExec::Next(kwdbContext_p ctx, k_int32 id, bool isPG, RespInfo *resp) 
 
   KStatus ret = SUCCESS;
 
-  InnerNext(ctx, head, isPG, resp);
+  InnerNext(ctx, head, nextState, resp);
 
   if (TsScanRetState::TS_RT_ERROR == head->ret_state) {
     ClearTsScans(ctx);

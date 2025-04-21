@@ -158,3 +158,184 @@ CREATE TABLE
 (0 rows)
 > drop database db_digital_ent cascade;
 DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> use test;
+SET
+> CREATE TABLE sensor_data (
+                             ts TIMESTAMPTZ(3) NOT NULL,
+                             temperature FLOAT4 NULL,
+                             voltage FLOAT4 NULL,
+                             status VARCHAR(10) NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    location VARCHAR(10),
+    model VARCHAR(10) ) PRIMARY TAGS(device_id)
+    retentions 4320000s
+    activetime 1d
+    partition interval 10d;
+CREATE TABLE
+> insert into sensor_data values
+                            ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
+                            ('2025-04-02 02:20:00+00:00',25.200001,225,'normal',105,'zone_F','X200'),
+                            ('2025-04-02 02:15:00+00:00',25.9,225,'normal',104,'zone_E','X200'),
+                            ('2025-04-02 02:10:00+00:00',25.799999,225,'normal',103,'zone_A','X200'),
+                            ('2025-04-02 02:05:00+00:00',30.1,215.5,'warning',102,'zone_C','X300'),
+                            ('2025-04-02 02:00:00+00:00',28.5,220,'normal',101,'zone_B','X200');
+INSERT 6
+> delete from sensor_data where device_id=101;
+DELETE 1
+> delete from sensor_data where device_id=102;
+DELETE 1
+> delete from sensor_data where device_id=103;
+DELETE 1
+> SELECT * FROM sensor_data ORDER BY ts DESC LIMIT 10 OFFSET 1;
+             ts             | temperature | voltage | status | device_id | location | model
+----------------------------+-------------+---------+--------+-----------+----------+--------
+  2025-04-02 02:20:00+00:00 |   25.200001 |     225 | normal |       105 | zone_F   | X200
+  2025-04-02 02:15:00+00:00 |        25.9 |     225 | normal |       104 | zone_E   | X200
+(2 rows)
+> drop table sensor_data;
+DROP TABLE
+> CREATE TABLE sensor_data (
+                             ts TIMESTAMPTZ(3) NOT NULL,
+                             temperature FLOAT4 NULL,
+                             voltage FLOAT4 NULL,
+                             status VARCHAR(10) NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    location VARCHAR(10),
+    model VARCHAR(10) ) PRIMARY TAGS(device_id)
+    retentions 4320000s
+    activetime 1d
+    partition interval 10d;
+CREATE TABLE
+> insert into sensor_data values
+                            ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
+                            ('2025-04-02 02:20:00+00:00',25.200001,225,'normal',105,'zone_F','X200'),
+                            ('2025-04-02 02:15:00+00:00',25.9,225,'normal',104,'zone_E','X200'),
+                            ('2025-04-02 02:10:00+00:00',25.799999,225,'normal',103,'zone_A','X200'),
+                            ('2025-04-02 02:05:00+00:00',30.1,215.5,'warning',102,'zone_C','X300'),
+                            ('2025-04-02 02:00:00+00:00',28.5,220,'normal',101,'zone_B','X200');
+INSERT 6
+> delete from sensor_data where device_id=101;
+DELETE 1
+> delete from sensor_data where device_id=102;
+DELETE 1
+> delete from sensor_data where device_id=103;
+DELETE 1
+> SELECT * FROM sensor_data ORDER BY ts DESC LIMIT 10 OFFSET 1;
+             ts             | temperature | voltage | status | device_id | location | model
+----------------------------+-------------+---------+--------+-----------+----------+--------
+  2025-04-02 02:20:00+00:00 |   25.200001 |     225 | normal |       105 | zone_F   | X200
+  2025-04-02 02:15:00+00:00 |        25.9 |     225 | normal |       104 | zone_E   | X200
+(2 rows)
+> drop table sensor_data;
+DROP TABLE
+> CREATE TABLE sensor_data (
+                             ts TIMESTAMPTZ(3) NOT NULL,
+                             temperature FLOAT4 NULL,
+                             voltage FLOAT4 NULL,
+                             status VARCHAR(10) NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    location VARCHAR(10),
+    model VARCHAR(10) ) PRIMARY TAGS(device_id)
+    retentions 4320000s
+    activetime 1d
+    partition interval 10d;
+CREATE TABLE
+> insert into sensor_data values
+                            ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
+                            ('2025-04-02 02:20:00+00:00',25.200001,225,'normal',105,'zone_F','X200'),
+                            ('2025-04-02 02:15:00+00:00',25.9,225,'normal',104,'zone_E','X200'),
+                            ('2025-04-02 02:10:00+00:00',25.799999,225,'normal',103,'zone_A','X200'),
+                            ('2025-04-02 02:05:00+00:00',30.1,215.5,'warning',102,'zone_C','X300'),
+                            ('2025-04-02 02:00:00+00:00',28.5,220,'normal',101,'zone_B','X200');
+INSERT 6
+> delete from sensor_data where device_id=101;
+DELETE 1
+> delete from sensor_data where device_id=102;
+DELETE 1
+> delete from sensor_data where device_id=103;
+DELETE 1
+> SELECT * FROM sensor_data ORDER BY ts DESC LIMIT 10 OFFSET 1;
+             ts             | temperature | voltage | status | device_id | location | model
+----------------------------+-------------+---------+--------+-----------+----------+--------
+  2025-04-02 02:20:00+00:00 |   25.200001 |     225 | normal |       105 | zone_F   | X200
+  2025-04-02 02:15:00+00:00 |        25.9 |     225 | normal |       104 | zone_E   | X200
+(2 rows)
+> drop table sensor_data;
+DROP TABLE
+> CREATE TABLE sensor_data (
+                             ts TIMESTAMPTZ(3) NOT NULL,
+                             temperature FLOAT4 NULL,
+                             voltage FLOAT4 NULL,
+                             status VARCHAR(10) NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    location VARCHAR(10),
+    model VARCHAR(10) ) PRIMARY TAGS(device_id)
+    retentions 4320000s
+    activetime 1d
+    partition interval 10d;
+CREATE TABLE
+> insert into sensor_data values
+                            ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
+                            ('2025-04-02 02:20:00+00:00',25.200001,225,'normal',105,'zone_F','X200'),
+                            ('2025-04-02 02:15:00+00:00',25.9,225,'normal',104,'zone_E','X200'),
+                            ('2025-04-02 02:10:00+00:00',25.799999,225,'normal',103,'zone_A','X200'),
+                            ('2025-04-02 02:05:00+00:00',30.1,215.5,'warning',102,'zone_C','X300'),
+                            ('2025-04-02 02:00:00+00:00',28.5,220,'normal',101,'zone_B','X200');
+INSERT 6
+> delete from sensor_data where device_id=101;
+DELETE 1
+> delete from sensor_data where device_id=102;
+DELETE 1
+> delete from sensor_data where device_id=103;
+DELETE 1
+> SELECT * FROM sensor_data ORDER BY ts DESC LIMIT 10 OFFSET 1;
+             ts             | temperature | voltage | status | device_id | location | model
+----------------------------+-------------+---------+--------+-----------+----------+--------
+  2025-04-02 02:20:00+00:00 |   25.200001 |     225 | normal |       105 | zone_F   | X200
+  2025-04-02 02:15:00+00:00 |        25.9 |     225 | normal |       104 | zone_E   | X200
+(2 rows)
+> drop table sensor_data;
+DROP TABLE
+> CREATE TABLE sensor_data (
+                             ts TIMESTAMPTZ(3) NOT NULL,
+                             temperature FLOAT4 NULL,
+                             voltage FLOAT4 NULL,
+                             status VARCHAR(10) NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    location VARCHAR(10),
+    model VARCHAR(10) ) PRIMARY TAGS(device_id)
+    retentions 4320000s
+    activetime 1d
+    partition interval 10d;
+CREATE TABLE
+> insert into sensor_data values
+                            ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
+                            ('2025-04-02 02:20:00+00:00',25.200001,225,'normal',105,'zone_F','X200'),
+                            ('2025-04-02 02:15:00+00:00',25.9,225,'normal',104,'zone_E','X200'),
+                            ('2025-04-02 02:10:00+00:00',25.799999,225,'normal',103,'zone_A','X200'),
+                            ('2025-04-02 02:05:00+00:00',30.1,215.5,'warning',102,'zone_C','X300'),
+                            ('2025-04-02 02:00:00+00:00',28.5,220,'normal',101,'zone_B','X200');
+INSERT 6
+> delete from sensor_data where device_id=101;
+DELETE 1
+> delete from sensor_data where device_id=102;
+DELETE 1
+> delete from sensor_data where device_id=103;
+DELETE 1
+> SELECT * FROM sensor_data ORDER BY ts DESC LIMIT 10 OFFSET 1;
+             ts             | temperature | voltage | status | device_id | location | model
+----------------------------+-------------+---------+--------+-----------+----------+--------
+  2025-04-02 02:20:00+00:00 |   25.200001 |     225 | normal |       105 | zone_F   | X200
+  2025-04-02 02:15:00+00:00 |        25.9 |     225 | normal |       104 | zone_E   | X200
+(2 rows)
+> drop table sensor_data;
+DROP TABLE
+> drop database test cascade;
+DROP DATABASE

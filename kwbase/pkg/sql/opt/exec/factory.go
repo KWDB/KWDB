@@ -92,6 +92,7 @@ type Factory interface {
 		table cat.Table,
 		private *memo.TSScanPrivate,
 		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
+		rowCount float64,
 	) (Node, error)
 
 	// MakeTSSpans push down time to tsScanNode.
@@ -574,6 +575,9 @@ type Factory interface {
 	// ConstructAlterTableSplit creates a node that implements ALTER TABLE/INDEX
 	// SPLIT AT.
 	ConstructAlterTableSplit(index cat.Index, input Node, expiration tree.TypedExpr) (Node, error)
+
+	// ConstructSelectInto creates a node that implements SELECT INTO.
+	ConstructSelectInto(input Node, vars opt.VarNames) (Node, error)
 
 	// ConstructAlterTableUnsplit creates a node that implements ALTER TABLE/INDEX
 	// UNSPLIT AT.

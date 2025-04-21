@@ -158,6 +158,9 @@ type SessionData struct {
 	// NeedControlIndideOut is set when statistical information is inaccurate and then
 	// need adjust output rows of groupby in inside out case.
 	NeedControlIndideOut bool
+
+	// UserDefinedVars stores variables defined by user
+	UserDefinedVars map[string]interface{}
 }
 
 // DataConversionConfig contains the parameters that influence

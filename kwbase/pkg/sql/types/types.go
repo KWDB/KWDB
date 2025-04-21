@@ -270,6 +270,16 @@ var (
 	Name = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_name, Locale: &emptyLocale}}
 
+	// Clob is a type-alias for String with a different OID (T_clob). It is
+	// reported as CLOB in SHOW CREATE.
+	Clob = &T{InternalType: InternalType{
+		Family: StringFamily, Oid: T_clob, Locale: &emptyLocale}}
+
+	// Blob is a type-alias for Bytes with a different OID (T_blob). It is
+	// reported as BLOB in SHOW CREATE.
+	Blob = &T{InternalType: InternalType{
+		Family: BytesFamily, Oid: T_blob, Locale: &emptyLocale}}
+
 	// Bytes is the type of a list of raw byte values.
 	Bytes = &T{InternalType: InternalType{
 		Family: BytesFamily, Oid: oid.T_bytea, Locale: &emptyLocale}}
@@ -543,6 +553,10 @@ const (
 
 	visibleGEOMETRY = 16
 
+	visibleCLOB = 17
+
+	visibleBLOB = 18
+
 	// OID returned for the unknown[] array type. PG has no OID for this case.
 	unknownArrayOid = 0
 )
@@ -813,7 +827,7 @@ func MakeQChar(width int32) *T {
 //	VARCHAR(20) => VARCHAR(20) COLLATE EN
 func MakeCollatedString(strType *T, locale string) *T {
 	switch strType.Oid() {
-	case oid.T_text, oid.T_varchar, oid.T_bpchar, oid.T_char, oid.T_name, T_nchar, T_nvarchar:
+	case oid.T_text, oid.T_varchar, oid.T_bpchar, oid.T_char, oid.T_name, T_nchar, T_nvarchar, T_clob:
 		return &T{InternalType: InternalType{
 			Family: CollatedStringFamily, Oid: strType.Oid(), Width: strType.Width(), Locale: &locale}}
 	}
@@ -1180,6 +1194,8 @@ func (t *T) Name() string {
 			return "bytes"
 		case T_varbytea:
 			return "varbytes"
+		case T_blob:
+			return "blob"
 		}
 		panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 	case DateFamily:
@@ -1235,6 +1251,8 @@ func (t *T) Name() string {
 			return "nvarchar"
 		case oid.T_name:
 			return "name"
+		case T_clob:
+			return "clob"
 		}
 		panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 	case TimeFamily:
@@ -1358,6 +1376,8 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 			return "bytea"
 		case T_varbytea:
 			return "varbytea"
+		case T_blob:
+			return "blob"
 		default:
 			panic(errors.AssertionFailedf("unexpected Oid: %v", errors.Safe(t.Oid())))
 		}
@@ -1454,6 +1474,8 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 			return "name"
 		case T_geometry:
 			buf.WriteString("geometry")
+		case T_clob:
+			buf.WriteString("clob")
 		default:
 			panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 		}
@@ -1529,6 +1551,8 @@ func (t *T) SQLString() string {
 			typName = "BYTES"
 		case T_varbytea:
 			typName = "VARBYTES"
+		case T_blob:
+			typName = "BLOB"
 		}
 		if t.Width() > 0 {
 			typName = fmt.Sprintf("%s(%d)", typName, t.Width())
@@ -1911,6 +1935,8 @@ func (t *T) upgradeType() error {
 			t.InternalType.Oid = oid.T_char
 		case visibleNONE:
 			t.InternalType.Oid = oid.T_text
+		case visibleCLOB:
+			t.InternalType.Oid = T_clob
 		default:
 			return errors.AssertionFailedf("unexpected visible type: %d", t.InternalType.VisibleType)
 		}
@@ -2056,6 +2082,8 @@ func (t *T) downgradeType() error {
 			t.InternalType.VisibleType = visibleBYTES
 		case T_varbytea:
 			t.InternalType.VisibleType = visibleVARBYTES
+		case T_blob:
+			t.InternalType.VisibleType = visibleBLOB
 		default:
 			return errors.AssertionFailedf("unexpected Oid: %d", t.Oid())
 		}
@@ -2074,6 +2102,8 @@ func (t *T) downgradeType() error {
 			t.InternalType.VisibleType = visibleCHAR
 		case T_nchar:
 			t.InternalType.VisibleType = visibleNCHAR
+		case T_clob:
+			t.InternalType.VisibleType = visibleCLOB
 		case oid.T_char:
 			t.InternalType.VisibleType = visibleQCHAR
 		case oid.T_name:
@@ -2212,7 +2242,7 @@ func IsStringType(t *T) bool {
 // the issue number should be included in the error report to inform the user.
 func IsValidArrayElementType(t *T) (valid bool, issueNum int) {
 	switch t.InternalType.Oid {
-	case T_nvarchar, T_nchar, T_int1, T_varbytea, T_geometry:
+	case T_nvarchar, T_nchar, T_int1, T_varbytea, T_geometry, T_clob, T_blob:
 		return false, 0
 	}
 	switch t.Family() {
@@ -2312,6 +2342,8 @@ func (t *T) stringTypeSQL() string {
 		typName = `"char"`
 	case oid.T_name:
 		typName = "NAME"
+	case T_clob:
+		typName = "CLOB"
 	}
 
 	// In general, if there is a specified width we want to print it next to the
@@ -2433,6 +2465,10 @@ const (
 	T__varbytea = oid.Oid(91007)
 	T_geometry  = oid.Oid(91008)
 	T__geometry = oid.Oid(91009)
+	T_clob      = oid.Oid(91010)
+	T__clob     = oid.Oid(91011)
+	T_blob      = oid.Oid(91012)
+	T__blob     = oid.Oid(91013)
 )
 
 // ExtensionTypeName returns a mapping from extension oids
@@ -2448,6 +2484,10 @@ var ExtensionTypeName = map[oid.Oid]string{
 	T__varbytea: "_VARBYTES",
 	T_geometry:  "GEOMETRY",
 	T__geometry: "_GEOMETRY",
+	T_clob:      "CLOB",
+	T__clob:     "_CLOB",
+	T_blob:      "BLOB",
+	T__blob:     "_BLOB",
 }
 
 // CsvOptionCharset is used for IMPORT/EXPORT

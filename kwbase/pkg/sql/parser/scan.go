@@ -80,6 +80,7 @@ type Shortinsert struct {
 	Prepareplaceholder int
 	PrepareMode        bool
 	isValues           bool
+	Customize          bool
 }
 
 var intervalUnit = map[string]struct{}{
@@ -391,6 +392,10 @@ func (s *scanner) scan(lval *sqlSymType) {
 			s.pos++
 			lval.id = TYPECAST
 			return
+		case '=': // :=
+			s.pos++
+			lval.id = ASSIGN
+			return
 		}
 		return
 
@@ -422,6 +427,9 @@ func (s *scanner) scan(lval *sqlSymType) {
 		return
 
 	case '@':
+		if s.shortinsert.isValues && s.shortinsert.isTsTable {
+			s.shortinsert.Customize = true
+		}
 		switch s.peek() {
 		case '>': // @>
 			s.pos++

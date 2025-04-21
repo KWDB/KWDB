@@ -173,7 +173,7 @@ func TestMakeTableDescColumns(t *testing.T) {
 		},
 		{
 			"BLOB",
-			types.MakeBytes(0, types.RELATIONAL.Mask()),
+			types.Blob,
 			true,
 		},
 		{

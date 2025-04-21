@@ -72,6 +72,7 @@ func (f *stubFactory) ConstructTSScan(
 	table cat.Table,
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
+	rowCount float64,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }
@@ -445,6 +446,10 @@ func (f *stubFactory) ConstructOpaque(metadata opt.OpaqueMetadata) (exec.Node, e
 func (f *stubFactory) ConstructAlterTableSplit(
 	index cat.Index, input exec.Node, expiration tree.TypedExpr,
 ) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructSelectInto(input exec.Node, vars opt.VarNames) (exec.Node, error) {
 	return struct{}{}, nil
 }
 

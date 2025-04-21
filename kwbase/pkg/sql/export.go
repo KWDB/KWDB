@@ -170,8 +170,23 @@ func (ef *execFactory) ConstructExport(
 			return nil, err
 		}
 	}
+	export, ok := ef.planner.stmt.AST.(*tree.Export)
+	if !ok {
+		return nil, errors.Errorf("planner's statement is not Export")
+	}
+	if !tableSelect && export.FileFormat == "SQL" {
+		return nil, errors.Errorf("Exporting SQL only supports single table queries")
+	}
 
+	if colName {
+		if export.FileFormat == "SQL" {
+			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with colname")
+		}
+	}
 	if override, ok := optVals[exportOptionDelimiter]; ok {
+		if export.FileFormat == "SQL" {
+			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with specified delimiter")
+		}
 		csvOpts.Comma, err = util.GetSingleRune(override)
 		if err != nil {
 			return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid delimiter value")
@@ -184,6 +199,9 @@ func (ef *execFactory) ConstructExport(
 	}
 
 	if override, ok := optVals[exportOptionEnclosed]; ok {
+		if export.FileFormat == "SQL" {
+			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with specified enclosed")
+		}
 		csvOpts.Enclosed, err = util.GetSingleRune(override)
 		if err != nil {
 			return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid enclosed value")
@@ -195,6 +213,9 @@ func (ef *execFactory) ConstructExport(
 		csvOpts.Enclosed = '"'
 	}
 	if override, ok := optVals[exportOptionEscaped]; ok {
+		if export.FileFormat == "SQL" {
+			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with specified escaped")
+		}
 		csvOpts.Escaped, err = util.GetSingleRune(override)
 		if err != nil {
 			return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid enclosed value")
@@ -219,11 +240,17 @@ func (ef *execFactory) ConstructExport(
 		return nil, err
 	}
 	if override, ok := optVals[exportOptionNullAs]; ok {
+		if export.FileFormat == "SQL" {
+			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with nullas")
+		}
 		csvOpts.NullEncoding = &override
 	}
 
 	chunkSize := ExportChunkSizeDefault
 	if override, ok := optVals[exportOptionChunkSize]; ok {
+		if export.FileFormat == "SQL" {
+			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with chunk sizes")
+		}
 		chunkSize, err = strconv.Atoi(override)
 		if err != nil {
 			return nil, pgerror.New(pgcode.InvalidParameterValue, err.Error())
@@ -233,20 +260,22 @@ func (ef *execFactory) ConstructExport(
 		}
 	}
 	var queryName string
-	export, ok := ef.planner.stmt.AST.(*tree.Export)
-	if !ok {
-		return nil, errors.Errorf("planner's statement is not Export")
-	}
 	if export.Query.Select == nil {
 		return nil, errors.Errorf("cannot export nil or strange select")
 	}
 	queryName = export.Query.Select.String()
+	databaseName := ef.planner.tableName.Catalog()
+	schemaName := ef.planner.tableName.Schema()
+	tableName := ef.planner.tableName.Table()
+	tablePrefix := databaseName + "." + schemaName + "." + tableName
 	expOpts := exportOptions{
-		csvOpts:   csvOpts,
-		chunkSize: chunkSize,
-		onlyMeta:  onlyMeta,
-		onlyData:  onlyData,
-		colName:   colName,
+		csvOpts:     csvOpts,
+		chunkSize:   chunkSize,
+		onlyMeta:    onlyMeta,
+		onlyData:    onlyData,
+		colName:     colName,
+		fileFormat:  export.FileFormat,
+		tablePrefix: tablePrefix,
 	}
 	return &exportNode{
 		source:    input.(planNode),

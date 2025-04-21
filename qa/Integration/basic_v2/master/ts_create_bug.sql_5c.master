@@ -246,11 +246,8 @@ SQLSTATE: 42809
 ERROR: column e1: unsupported column type string in timeseries table
 SQLSTATE: 42809
 > create table db1.t1 (k_timestamp timestamptz not null,e1 CLOB)attributes(code1 int not null)PRIMARY TAGS(code1);
-ERROR: at or near "clob": syntax error: type does not exist
-SQLSTATE: 42601
-DETAIL: source SQL:
-create table db1.t1 (k_timestamp timestamptz not null,e1 CLOB)attributes(code1 int not null)PRIMARY TAGS(code1)
-                                                         ^
+ERROR: column e1: unsupported column type clob in timeseries table
+SQLSTATE: 42809
 > create table db1.t1 (k_timestamp timestamptz not null,e1 DECIMAL)attributes(code1 int not null)PRIMARY TAGS(code1);
 ERROR: column e1: unsupported column type decimal in timeseries table
 SQLSTATE: 42809
@@ -261,7 +258,7 @@ DROP DATABASE
 > create ts database db1;
 CREATE TS DATABASE
 > create table db1.t1 (k_timestamp timestamptz not null,e1 BLOB)attributes(code1 int not null)PRIMARY TAGS(code1);
-ERROR: column e1: unsupported column type bytes in timeseries table
+ERROR: column e1: unsupported column type blob in timeseries table
 SQLSTATE: 42809
 > create table db1.t2 (k_timestamp timestamptz not null,e1 BYTEA)attributes(code1 int not null)PRIMARY TAGS(code1);
 ERROR: column e1: unsupported column type bytes in timeseries table

@@ -264,6 +264,14 @@ func (b *Builder) analyzeExtraArgument(
 	// If the expression does not refer to an alias, deal with
 	// column ordinals.
 	if idx == -1 {
+		if t, ok := expr.(*tree.UserDefinedVar); ok {
+			d, err := t.Eval(b.evalCtx)
+			if err != nil {
+				panic(err)
+			}
+			expr = d
+		}
+
 		idx = colIndex(len(projectionsScope.cols), expr, inScope.context.String())
 	}
 

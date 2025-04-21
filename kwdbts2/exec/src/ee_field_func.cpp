@@ -992,10 +992,15 @@ k_int64 FieldFuncDateTrunc::ValInt() {
   if (nullptr != ptr) {
     return FieldFunc::ValInt(ptr);
   } else {
+    if (!is_unit_const_) {
+      unit_ = replaceTimeUnit(
+          {args_[0]->ValStr().getptr(), args_[0]->ValStr().length_});
+      getTimeFieldType(args_[1]->get_storage_type(), unit_, &time_diff_,
+                       &type_scale_, &type_scale_multi_or_divde_);
+    }
     k_int64 original_timestamp = args_[1]->ValInt();
     CKTime ck_time =
-        getCKTime(args_[1]->ValInt(), args_[1]->get_storage_type(), time_zone_);
-    // k_int64 ti = args_[1]->ValInt();
+        getCKTime(original_timestamp, args_[1]->get_storage_type(), time_zone_);
     struct tm ltm;
     if (this->return_type_ == KWDBTypeFamily::TimestampTZFamily) {
       ck_time.t_timespec.tv_sec += ck_time.t_abbv;
@@ -1069,6 +1074,8 @@ k_int64 FieldFuncDateTrunc::ValInt() {
       } else if (unit_ == "millennium") {
         ltm.tm_year -= ltm.tm_year % 1000;
       } else {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
+                                        "unsupported timespan");
         return 0;
       }
       break;
@@ -1094,6 +1101,19 @@ Field *FieldFuncDateTrunc::field_to_copy() {
   FieldFuncDateTrunc *field = new FieldFuncDateTrunc(*this);
 
   return field;
+}
+
+k_bool FieldFuncDateTrunc::is_nullable() {
+  if (is_null_value_) {
+    return true;
+  }
+  if (!is_unit_const_ && args_[0]->is_nullable()) {
+    return true;
+  }
+  if (args_[1]->is_nullable()) {
+    return true;
+  }
+  return false;
 }
 
 k_int64 FieldFuncExtract::ValInt() { return ValReal(); }

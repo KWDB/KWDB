@@ -35,6 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -199,6 +200,12 @@ func (dsp *DistSQLPlanner) setupFlows(
 			// vectorized. If any of them can't, turn off the setting.
 			// TODO(yuzefovich): this is a safe but quite inefficient way of setting
 			// up vectorized flows since the flows will effectively be planned twice.
+			var tmpClusterID *base.ClusterIDContainer
+			if dsp.rpcCtx != nil {
+				tmpClusterID = &dsp.rpcCtx.ClusterID
+			} else {
+				tmpClusterID = nil
+			}
 			for _, spec := range flows {
 				if _, err := colflow.SupportsVectorized(
 					ctx, &execinfra.FlowCtx{
@@ -206,11 +213,11 @@ func (dsp *DistSQLPlanner) setupFlows(
 						Cfg: &execinfra.ServerConfig{
 							DiskMonitor:    &mon.BytesMonitor{},
 							Settings:       dsp.st,
-							ClusterID:      &dsp.rpcCtx.ClusterID,
+							ClusterID:      tmpClusterID,
 							VecFDSemaphore: dsp.distSQLSrv.VecFDSemaphore,
 						},
 						NodeID: -1,
-					}, spec.Processors, fuseOpt, recv,
+					}, spec.Processors, spec.TsProcessors, fuseOpt, recv,
 				); err != nil {
 					// Vectorization attempt failed with an error.
 					returnVectorizationSetupError := false
@@ -420,7 +427,8 @@ func (dsp *DistSQLPlanner) Run(
 	recv.outputTypes = plan.ResultTypes
 	recv.resultToStreamColMap = plan.PlanToStreamColMap
 
-	vectorizedThresholdMet := plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold
+	vectorizedThresholdMet := !planCtx.hasBatchLookUpJoin &&
+		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold
 
 	if len(flows) == 1 {
 		// We ended up planning everything locally, regardless of whether we

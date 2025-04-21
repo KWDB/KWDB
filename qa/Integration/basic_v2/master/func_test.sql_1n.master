@@ -52,5 +52,16 @@ INSERT 1
 ------------
          9
 (1 row)
+> select pg_catalog.date_trunc(cast(case when e1 is NULL then cast(null as text) else cast(null as text) end
+as text),cast(cast(null as "timestamp") as "timestamp")) from test_function_3.t1;
+  date_trunc
+--------------
+  NULL
+(1 row)
+> select pg_catalog.date_trunc('ms', k_timestamp) from test_function_3.t1;
+          date_trunc
+-------------------------------
+  2001-12-09 09:48:12.3+00:00
+(1 row)
 > drop database test_function_3 cascade;
 DROP DATABASE

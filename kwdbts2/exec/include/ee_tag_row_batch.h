@@ -151,6 +151,19 @@ class TagRowBatch : public RowBatch {
   void SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree);
   KStatus GetEntities(std::vector<EntityResultIndex> *entities);
   bool isAllDistributed();
+
+  inline bool EntityLessThan(TagSelection &a, TagSelection &b) {
+    EntityResultIndex &x = entity_indexs_[a.entity_];
+    EntityResultIndex &y = entity_indexs_[b.entity_];
+    if (x.entityGroupId == y.entityGroupId) {
+      if (x.subGroupId == y.subGroupId) {
+        return x.entityId < y.entityId;
+      }
+      return x.subGroupId < y.subGroupId;
+    }
+    return x.subGroupId < y.subGroupId;
+  }
+  KStatus SortByEntityIndex();
 };
 
 };  // namespace kwdbts

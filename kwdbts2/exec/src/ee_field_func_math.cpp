@@ -168,6 +168,26 @@ k_double64 klog2(k_double64 v, k_double64 base) {
     return b / a;
   }
 }
+
+k_double64 kround(k_double64 v) {
+  // Round to even algorithm: round up for odd .5, round down for even .5
+  k_double64 intPart;
+  k_double64 fracPart = modf(v, &intPart);  // Separate integer part and fractional part
+
+  if (fabs(fracPart) < 0.5) {
+    return intPart;  // Fractional part is less than 0.5, return integer part directly
+  } else if (fabs(fracPart) > 0.5) {
+    return (v >= 0) ? intPart + 1 : intPart - 1;  // Fractional part is greater than 0.5, round
+  } else {
+    // Fractional part equals 0.5, check the parity of the integer part
+    if (fmod(intPart, 2.0) == 0.0) {
+      return intPart;  // Even, round down
+    } else {
+      return (v >= 0) ? intPart + 1 : intPart - 1;  // Odd, round up
+    }
+  }
+}
+
 k_double64 kround(k_double64 v, k_double64 bits) {
   k_double64 number = v;
   stringstream ss;
@@ -230,7 +250,7 @@ k_double64 sqrtFunc(Field **args, k_int32 arg_count) {
   return doubleMathFunc1(args, sqrt);
 }
 k_double64 roundFunc1(Field **args, k_int32 arg_count) {
-  return doubleMathFunc1(args, round);
+  return doubleMathFunc1(args, kround);
 }
 k_double64 roundFunc2(Field **args, k_int32 arg_count) {
   return doubleMathFunc2(args, kround);

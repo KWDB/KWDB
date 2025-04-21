@@ -36,7 +36,7 @@ query TTT
 EXPLAIN SELECT count(*) from small
 ----
 ·          distributed  true
-·          vectorized   false
+·          vectorized   true
 group      ·            ·
  │         aggregate 0  count_rows()
  │         scalar       ·
@@ -79,7 +79,7 @@ query TTT
 EXPLAIN SELECT count(*) from small
 ----
 ·          distributed  true
-·          vectorized   false
+·          vectorized   true
 group      ·            ·
  │         aggregate 0  count_rows()
  │         scalar       ·
@@ -108,7 +108,7 @@ query TTT
 EXPLAIN SELECT count(*) from large
 ----
 ·          distributed  true
-·          vectorized   false
+·          vectorized   true
 group      ·            ·
  │         aggregate 0  count_rows()
  │         scalar       ·
@@ -142,7 +142,7 @@ query TTT
 EXPLAIN SELECT * FROM small INNER MERGE JOIN large ON small.a = large.a
 ----
 ·           distributed         true
-·           vectorized          false
+·           vectorized          true
 merge-join  ·                   ·
  │          type                inner
  │          equality            (a) = (a)

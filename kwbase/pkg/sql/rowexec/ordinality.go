@@ -140,6 +140,11 @@ func (os *OrdinalityStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (os *OrdinalityStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (os *OrdinalityStats) StatsForQueryPlan() []string {
 	return os.InputStats.StatsForQueryPlan("")
