@@ -298,7 +298,7 @@ SQLSTATE: 2201F
       0
     -99
      57
-      1
+      0
 (5 rows)
 > SELECT round(e5) FROM ts_db.t1;
   round
