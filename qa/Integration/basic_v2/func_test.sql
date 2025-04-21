@@ -38,4 +38,7 @@ INSERT INTO test_function_3.t1 VALUES('2001-12-9 09:48:12.30',9,null,null,null,n
 SELECT ifnull(e1,10) FROM test_function_3.t1 WHERE e5 is unknown ORDER BY k_timestamp;
 SELECT ifnull(e1,NULL) FROM test_function_3.t1 WHERE e5 is unknown ORDER BY k_timestamp;
 SELECT ifnull(id,10) FROM test_function_3.t1 WHERE e5 is unknown ORDER BY k_timestamp;
+select pg_catalog.date_trunc(cast(case when e1 is NULL then cast(null as text) else cast(null as text) end
+as text),cast(cast(null as "timestamp") as "timestamp")) from test_function_3.t1;
+select pg_catalog.date_trunc('ms', k_timestamp) from test_function_3.t1;
 drop database test_function_3 cascade;

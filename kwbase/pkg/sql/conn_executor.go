@@ -654,6 +654,9 @@ func (s *Server) populateMinimalSessionData(sd *sessiondata.SessionData) {
 	if len(sd.SearchPath.GetPathArray()) == 0 {
 		sd.SearchPath = sqlbase.DefaultSearchPath
 	}
+	if sd.UserDefinedVars == nil {
+		sd.UserDefinedVars = make(map[string]interface{})
+	}
 }
 
 type sdResetOption bool
@@ -2375,6 +2378,7 @@ func (ex *connExecutor) resetPlanner(
 	p.semaCtx = tree.MakeSemaContext()
 	p.semaCtx.Location = &ex.sessionData.DataConversion.Location
 	p.semaCtx.SearchPath = ex.sessionData.SearchPath
+	p.semaCtx.UserDefinedVars = ex.sessionData.UserDefinedVars
 	p.semaCtx.AsOfTimestamp = nil
 	p.semaCtx.Annotations = nil
 

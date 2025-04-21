@@ -178,6 +178,13 @@ func (ep *DummySessionAccessor) GetSessionVar(
 	return false, "", errors.WithStack(errEvalSessionVar)
 }
 
+// GetUserDefinedVar is part of the tree.EvalSessionAccessor interface.
+func (ep *DummySessionAccessor) GetUserDefinedVar(
+	_ context.Context, _ string, _ bool,
+) (bool, interface{}, error) {
+	return false, nil, errors.WithStack(errEvalSessionVar)
+}
+
 // SetSessionVar is part of the tree.EvalSessionAccessor interface.
 func (ep *DummySessionAccessor) SetSessionVar(_ context.Context, _, _ string) error {
 	return errors.WithStack(errEvalSessionVar)

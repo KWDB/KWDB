@@ -129,7 +129,7 @@ void Processors::Reset() {
   }
 }
 
-KStatus Processors::InitIterator(kwdbContext_p ctx, bool isPG) {
+KStatus Processors::InitIterator(kwdbContext_p ctx, TsNextRetState nextState) {
   EnterFunc();
   if (!b_init_) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR, "Can't init operators again");
@@ -138,7 +138,7 @@ KStatus Processors::InitIterator(kwdbContext_p ctx, bool isPG) {
   AssertNotNull(root_iterator_);
   EEPgErrorInfo::ResetPgErrorInfo();
   KWThdContext * thd = current_thd;
-  thd->SetPgEncode(isPG);
+  thd->SetPgEncode(nextState);
   thd->SetCommandLimit(&command_limit_);
   thd->SetCountForLimit(&count_for_limit_);
   // Init operators
@@ -239,8 +239,8 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
     break;
   } while (true);
 
+  collection_.GetAnalyse(ctx);
   if (ret == EEIteratorErrCode::EE_OK) {
-    collection_.GetAnalyse(ctx);
     Return(KStatus::SUCCESS);
   } else if (ret == EEIteratorErrCode::EE_END_OF_RECORD) {
     *is_last_record = KTRUE;
@@ -255,6 +255,63 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
   } else {
     Return(KStatus::FAIL);
   }
+}
+
+KStatus Processors::RunWithVectorize(kwdbContext_p ctx, char **value, void *buffer, k_uint32 *length,
+                                                              k_uint32 *count, k_bool *is_last_record) {
+  EnterFunc();
+  AssertNotNull(root_iterator_);
+
+  DataInfo *info = nullptr;
+  *count = 0;
+  EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
+  do {
+    DataChunkPtr chunk = nullptr;
+    EEPgErrorInfo::ResetPgErrorInfo();
+    ret = root_iterator_->Next(ctx, chunk);
+
+    if (EEPgErrorInfo::IsError() || CheckCancel(ctx) != SUCCESS) {
+      ret = EEIteratorErrCode::EE_ERROR;
+      break;
+    }
+
+    if (ret != EEIteratorErrCode::EE_OK) {
+      break;
+    }
+
+    if (chunk == nullptr || chunk->Count() == 0) {
+      continue;
+    }
+
+    *count = *count + chunk->Count();
+    info = static_cast<DataInfo*>(buffer);
+    if (nullptr == info) {
+      ret = EEIteratorErrCode::EE_ERROR;
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      break;
+    }
+    ret = chunk->VectorizeData(ctx, info);
+    chunk.release();
+  } while (0);
+  collection_.GetAnalyse(ctx);
+  if (ret != EEIteratorErrCode::EE_OK) {
+    *is_last_record = KTRUE;
+    KStatus st = CloseIterator(ctx);
+    if (st != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to close operator.");
+      ret = EEIteratorErrCode::EE_ERROR;
+    }
+    if (ret == EEIteratorErrCode::EE_ERROR) {
+      Return(KStatus::FAIL);
+    }
+  }
+
+  if (info) {
+    *value = reinterpret_cast<char *>(info);
+    *length = sizeof(info);
+  }
+
+  Return(KStatus::SUCCESS);
 }
 
 }  // namespace kwdbts

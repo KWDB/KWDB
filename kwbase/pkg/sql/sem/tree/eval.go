@@ -2909,6 +2909,9 @@ type EvalSessionAccessor interface {
 
 	// HasAdminRole returns true iff the current session user has the admin role.
 	HasAdminRole(ctx context.Context) (bool, error)
+
+	// GetUserDefinedVar retrieves the current value of a user defined variable.
+	GetUserDefinedVar(_ context.Context, varName string, missingOk bool) (bool, interface{}, error)
 }
 
 // ClientNoticeSender is a limited interface to send notices to the
@@ -3418,6 +3421,27 @@ func (ctx *EvalContext) Ctx() context.Context {
 
 func (ctx *EvalContext) getTmpDec() *apd.Decimal {
 	return &ctx.tmpDec
+}
+
+// Eval implements the TypedExpr interface.
+func (expr *AssignmentExpr) Eval(ctx *EvalContext) (Datum, error) {
+	right, err := expr.Right.(TypedExpr).Eval(ctx)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.ToLower(expr.Left.String())
+	if ctx.SessionData.UserDefinedVars == nil {
+		ctx.SessionData.UserDefinedVars = make(map[string]interface{})
+	}
+	if val, ok := ctx.SessionData.UserDefinedVars[name]; ok {
+		oldType := val.(Datum).ResolvedType()
+		if oldType.String() != right.ResolvedType().String() {
+			return nil, pgerror.Newf(pgcode.DatatypeMismatch, "new value of %s (type %s) does not match previous type %s", expr.Left.String(), right.ResolvedType().SQLString(), oldType.SQLString())
+		}
+	}
+	ctx.SessionData.UserDefinedVars[name] = right
+
+	return right, nil
 }
 
 // Eval implements the TypedExpr interface.
@@ -4465,6 +4489,11 @@ func (expr *FuncExpr) Eval(ctx *EvalContext) (Datum, error) {
 		return DNull, err
 	}
 
+	if expr.fn.Fn == nil {
+		// This expression evaluator cannot run functions that are not "normal"
+		// builtins; that is, not aggregate or window functions.
+		return nil, pgerror.Newf(pgcode.FeatureNotSupported, "cannot evaluate function in this context")
+	}
 	res, err := expr.fn.Fn(ctx, args)
 	if err != nil {
 		// If we are facing an explicit error, propagate it unchanged.
@@ -4685,6 +4714,15 @@ func (expr *TupleStar) Eval(ctx *EvalContext) (Datum, error) {
 // Eval implements the TypedExpr interface.
 func (expr *ColumnItem) Eval(ctx *EvalContext) (Datum, error) {
 	return nil, errors.AssertionFailedf("unhandled type %T", expr)
+}
+
+// Eval implements the TypedExpr interface.
+func (expr *UserDefinedVar) Eval(ctx *EvalContext) (Datum, error) {
+	varName := strings.ToLower(expr.VarName)
+	if ctx.SessionData.UserDefinedVars[varName] == nil {
+		return nil, pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", expr.VarName)
+	}
+	return ctx.SessionData.UserDefinedVars[expr.VarName].(Datum), nil
 }
 
 // Eval implements the TypedExpr interface.

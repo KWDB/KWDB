@@ -94,6 +94,8 @@ type Flow interface {
 
 	// SetPushDown is used to tell if there is time-series flow bounded to the local flow.
 	SetPushDown(bool)
+	// SetVectorized is used to tell if there is vec flow.
+	SetVectorized(bool)
 	// SetFormat is used to tell if there is time-series flow bounded to the local flow.
 	SetFormat(bool)
 	// SetCloses is part of the Flow interface
@@ -187,6 +189,7 @@ type FlowBase struct {
 	isTimeSeries bool
 	AllPush      bool
 	Format       bool
+	isVectorized bool
 	closes       int
 
 	// inboundStreams are streams that receive data from other hosts; this map
@@ -268,6 +271,11 @@ func (f *FlowBase) SetTS(t bool) {
 	f.isTimeSeries = t
 }
 
+// SetVectorized is part of the Flow interface
+func (f *FlowBase) SetVectorized(t bool) {
+	f.isVectorized = t
+}
+
 // SetPushDown is part of the Flow interface
 func (f *FlowBase) SetPushDown(allPush bool) {
 	f.AllPush = allPush
@@ -298,6 +306,41 @@ func (f *FlowBase) IsShortCircuitForPgEncode() bool {
 		return true
 	}
 	return false
+}
+
+// VecIsShortCircuitForPgEncode is part of the Flow interface.
+func (f *FlowBase) VecIsShortCircuitForPgEncode(ctx context.Context) (canShortCircuit bool) {
+	// f.AllPush: Push other operators down to noop.
+	// f.Format: The flag for service output encoding format, true:FormatBinary, false:FormatText.
+	// The relational operator only has noop, and noop has no filtering conditions or output column pruning.
+	if pgEncodeShortCircuitEnabled.Get(&f.Cfg.Settings.SV) && len(f.processors) <= 1 &&
+		f.AllPush && !f.Format {
+		canShortCircuit = true
+	} else {
+		canShortCircuit = false
+	}
+	return f.processors[0].SupportPgWire()
+}
+
+// VecShortCircuitForPgEncode is part of the Flow interface.
+func (f *FlowBase) VecShortCircuitForPgEncode(ctx context.Context) error {
+	m := f.processors[0]
+	m.Start(ctx)
+	for {
+		rev, code, err := m.NextPgWire()
+		if err != nil {
+			return err
+		}
+
+		if code == -1 {
+			return nil
+		}
+
+		err = m.Push(ctx, rev)
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // ConcurrentExecution is part of the Flow interface.
@@ -512,6 +555,12 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
 	otherProcs := f.processors[:len(f.processors)-1]
 	if f.isTimeSeries {
+		if f.isVectorized {
+			if f.IsLocal() && f.VecIsShortCircuitForPgEncode(ctx) {
+				err := f.VecShortCircuitForPgEncode(ctx)
+				return err
+			}
+		}
 		if f.IsShortCircuitForPgEncode() {
 			// Output encoding optimization.
 			var closed int
@@ -536,7 +585,6 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 				}
 			}
 		}
-
 		if f.syncFlowConsumer == nil {
 			return nil
 		}
@@ -579,6 +627,7 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 		}
 
 		//f.ReceiveMessageQueue(ctx)
+		f.startedGoroutines = f.startedGoroutines || len(f.startables) > 0 || len(otherProcs) > 0 || !f.IsLocal()
 		f.rowStats = headProc.Run(ctx)
 		return nil
 	}

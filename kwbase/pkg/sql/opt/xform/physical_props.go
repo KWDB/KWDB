@@ -77,6 +77,8 @@ func BuildChildPhysicalProps(
 		childProps.Presentation = parent.(*memo.ExplainExpr).Props.Presentation
 	case opt.AlterTableSplitOp:
 		childProps.Presentation = parent.(*memo.AlterTableSplitExpr).Props.Presentation
+	case opt.SelectIntoOp:
+		childProps.Presentation = parent.(*memo.SelectIntoExpr).Props.Presentation
 	case opt.AlterTableUnsplitOp:
 		childProps.Presentation = parent.(*memo.AlterTableUnsplitExpr).Props.Presentation
 	case opt.AlterTableRelocateOp:

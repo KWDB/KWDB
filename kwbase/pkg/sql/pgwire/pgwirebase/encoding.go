@@ -270,7 +270,7 @@ func DecodeOidDatum(
 				return nil, pgerror.Newf(pgcode.Syntax, "could not parse string %q as decimal", b)
 			}
 			return d, nil
-		case oid.T_bytea, oid.T_varbytea:
+		case oid.T_bytea, oid.T_varbytea, types.T_blob:
 			res, err := lex.DecodeRawBytesToByteArrayAuto(b)
 			if err != nil {
 				return nil, err
@@ -569,7 +569,7 @@ func DecodeOidDatum(
 			}
 
 			return &alloc.dd, nil
-		case oid.T_bytea, oid.T_varbytea:
+		case oid.T_bytea, oid.T_varbytea, types.T_blob:
 			return tree.NewDBytes(tree.DBytes(b)), nil
 		case oid.T_timestamp:
 			if len(b) < 8 {
@@ -685,7 +685,7 @@ func DecodeOidDatum(
 
 	// Types with identical text/binary handling.
 	switch id {
-	case oid.T_text, oid.T_varchar, oid.T_bpchar, types.T_nchar, types.T_nvarchar, types.T_geometry:
+	case oid.T_text, oid.T_varchar, oid.T_bpchar, types.T_nchar, types.T_nvarchar, types.T_geometry, types.T_clob:
 		if !utf8.Valid(b) {
 			return nil, invalidUTF8Error
 		}

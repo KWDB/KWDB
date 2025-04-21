@@ -278,6 +278,7 @@ func newInternalPlanner(
 		DataConversion: sessiondata.DataConversionConfig{
 			Location: time.UTC,
 		},
+		UserDefinedVars: make(map[string]interface{}),
 	}
 	// The table collection used by the internal planner does not rely on the
 	// databaseCache and there are no subscribers to the databaseCache, so we can
@@ -315,6 +316,7 @@ func newInternalPlanner(
 	p.semaCtx = tree.MakeSemaContext()
 	p.semaCtx.Location = &sd.DataConversion.Location
 	p.semaCtx.SearchPath = sd.SearchPath
+	p.semaCtx.UserDefinedVars = sd.UserDefinedVars
 
 	plannerMon := mon.MakeUnlimitedMonitor(ctx,
 		fmt.Sprintf("internal-planner.%s.%s", user, opName),

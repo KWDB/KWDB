@@ -71,7 +71,12 @@ func (vs *VectorizedStats) Stats() map[string]string {
 
 // TsStats is stats of analyse in time series
 func (vs *VectorizedStats) TsStats() map[int32]map[string]string {
-	return nil
+	return vs.TsInputStats.TsStats()
+}
+
+// GetSpanStatsType check type of spanStats
+func (vs *VectorizedStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeVector + vs.TsInputStats.GetSpanStatsType()
 }
 
 const (
@@ -117,5 +122,5 @@ func (vs *VectorizedStats) StatsForQueryPlan() []string {
 
 // TsStatsForQueryPlan key is processorid, value is list of statistics in time series
 func (vs *VectorizedStats) TsStatsForQueryPlan() map[int32][]string {
-	return nil
+	return vs.TsInputStats.TsStatsForQueryPlan()
 }

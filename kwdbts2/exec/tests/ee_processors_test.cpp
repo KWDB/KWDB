@@ -42,7 +42,7 @@ TEST_F(TestProcessors, TestProcessFlow) {
   char* result{nullptr};
   Processors* processors = new Processors();
   ASSERT_EQ(processors->Init(ctx_, flow_), SUCCESS);
-  ASSERT_EQ(processors->InitIterator(ctx_, false), SUCCESS);
+  ASSERT_EQ(processors->InitIterator(ctx_, TsNextRetState::DML_NEXT), SUCCESS);
   k_uint32 count;
   k_uint32 size;
   k_bool is_last;

@@ -1,6 +1,7 @@
 set cluster setting sql.stats.ts_automatic_collection.enabled = false;
 set cluster setting sql.stats.tag_automatic_collection.enabled = false;
 set cluster setting ts.ordered_table.enabled = true;
+SET vectorize_row_count_threshold = 100000000;
 
 create ts database test_ts;
 use test_ts;
@@ -131,3 +132,4 @@ drop database test_ts cascade;
 reset cluster setting sql.stats.ts_automatic_collection.enabled;
 reset cluster setting sql.stats.tag_automatic_collection.enabled;
 reset cluster setting ts.ordered_table.enabled;
+SET vectorize_row_count_threshold = 1000;

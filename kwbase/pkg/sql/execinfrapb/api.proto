@@ -94,6 +94,14 @@ message EvalContext {
   optional int32 vectorize = 12 [(gogoproto.nullable) = false];
   optional int64 CommandLimit = 16 [(gogoproto.nullable) = false];
   optional bool OutFormats = 17 [(gogoproto.nullable) = false];
+  repeated UserDefinedVar UserDefinedVars = 18 [(gogoproto.nullable) = false];
+}
+
+// UserDefinedVar is used to marshall user defined variable.
+message UserDefinedVar {
+  required string VarName = 1 [(gogoproto.nullable) = false];
+  required string VarValue = 2 [(gogoproto.nullable) = false];
+  required bytes VarType = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
 // BytesEncodeFormat is the configuration for bytes to string conversions.

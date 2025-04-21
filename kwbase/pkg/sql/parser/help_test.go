@@ -165,6 +165,7 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE SCHEMA IF NOT ??`, `CREATE SCHEMA`},
 		{`CREATE SCHEMA bli ??`, `CREATE SCHEMA`},
 		{`COMPRESS ??`, `COMPRESS`},
+		{`SELECT INTO ??`, `SELECT INTO`},
 
 		/* {`CREATE NODE_CHOICE_INFO ??`, `CREATE NODE_CHOICE_INFO`},
 		   {`CREATE NODE_INFO ??`, `CREATE NODE_INFO`},

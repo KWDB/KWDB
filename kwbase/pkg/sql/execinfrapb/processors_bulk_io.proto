@@ -36,6 +36,7 @@ option go_package = "execinfrapb";
 import "jobs/jobspb/jobs.proto";
 import "roachpb/io-formats.proto";
 import "sql/sqlbase/structured.proto";
+import "sql/types/types.proto";
 import "sql/execinfrapb/processors_base.proto";
 import "util/hlc/timestamp.proto";
 import "gogoproto/gogo.proto";
@@ -140,6 +141,9 @@ message CSVWriterSpec {
   optional bool isTS = 8 [(gogoproto.nullable) = false];
   repeated string colNames = 9;
   optional int64 colsNum = 10 [(gogoproto.nullable) = false];
+  optional string fileFormat = 11 [(gogoproto.nullable) = false];
+  optional string tablePrefix = 12 [(gogoproto.nullable) = false];
+  repeated kwbase.sql.sem.types.Family columnTypes = 13;
 }
 
 // BulkRowWriterSpec is the specification for a processor that consumes rows and

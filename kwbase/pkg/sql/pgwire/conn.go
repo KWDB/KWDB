@@ -896,7 +896,7 @@ func (c *conn) handleSimpleQuery(
 
 			var di sql.DirectInsert
 			// Check whether the inserted value and the number of columns match.
-			if matchCnt := sql.NumofInsertDirect(ins, &dit.ColsDesc, stmts, &di); matchCnt != di.RowNum*di.ColNum {
+			if matchCnt := sql.NumofInsertDirect(ins, &dit.ColsDesc, stmts, &di); matchCnt != di.RowNum*di.ColNum || c.parser.Customize {
 				c.parser.IsShortcircuit = false
 				if stmts, err = c.parser.ParseWithInt(query, unqualifiedIntSize, c.sv); err != nil {
 					return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
@@ -1883,7 +1883,13 @@ func (c *conn) writeRowDescription(
 		if log.V(2) {
 			log.Infof(ctx, "pgwire: writing column %s of type: %s", column.Name, column.Typ)
 		}
-		c.msgBuilder.writeTerminatedString(column.Name)
+		clientEncoding := c.res.conv.ClientEncoding
+		tmpbuf, err := ClientEncoding(clientEncoding, []byte(column.Name))
+		if err != nil {
+			c.setErr(err)
+			return err
+		}
+		c.msgBuilder.writeTerminatedString(string(tmpbuf))
 		typ := pgTypeForParserType(column.Typ)
 		c.msgBuilder.putInt32(int32(column.TableID))        // Table OID (optional).
 		c.msgBuilder.putInt16(int16(column.PGAttributeNum)) // Column attribute ID (optional).

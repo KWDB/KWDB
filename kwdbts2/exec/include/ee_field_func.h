@@ -350,9 +350,20 @@ class FieldFuncDateTrunc : public FieldFunc {
  public:
   FieldFuncDateTrunc(Field *a, Field *b, k_int8 tz) : FieldFunc(a, b) {
     type_ = FIELD_ARITHMETIC;
-    unit_ = replaceTimeUnit({a->ValStr().getptr(), a->ValStr().length_});
-    sql_type_ = getTimeFieldType(b->get_storage_type(), unit_, &time_diff_,
-                                  &type_scale_, &type_scale_multi_or_divde_);
+    time_diff_ = tz;
+    if (a->get_field_type() == FIELD_CONSTANT) {
+      if (a->is_nullable()) {
+        is_null_value_ = true;
+      } else {
+        is_unit_const_ = true;
+        unit_ = replaceTimeUnit({a->ValStr().getptr(), a->ValStr().length_});
+        sql_type_ = getTimeFieldType(b->get_storage_type(), unit_, &time_diff_,
+                                     &type_scale_, &type_scale_multi_or_divde_);
+      }
+    } else {
+      sql_type_ = b->get_storage_type();
+    }
+
     storage_type_ = sql_type_;
 
     storage_len_ = b->get_storage_length();
@@ -363,7 +374,7 @@ class FieldFuncDateTrunc : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  k_bool is_nullable() override;
   Field *field_to_copy() override;
   KString unit_;
   // for the first arg, type_scale_multi_or_divde means muiltply or divide the scale. true is muiltply and false is divide.
@@ -371,6 +382,8 @@ class FieldFuncDateTrunc : public FieldFunc {
   k_bool type_scale_multi_or_divde_{true};
   k_int64 time_diff_;
   k_int8 time_zone_;
+  k_bool is_unit_const_{false};
+  k_bool is_null_value_{false};
 };
 
 class FieldFuncExtract : public FieldFunc {

@@ -1542,7 +1542,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 	case *GroupByExpr:
 		input := source.Input
 		if source.IsInsideOut {
-			m.SetFlag(opt.IsInsideOut)
+			m.SetFlag(opt.IsApplyMultiOpt)
 		}
 		sortExpr, ok := (*src).Child(0).(*SortExpr)
 		if ok {
@@ -1555,7 +1555,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		}
 		m.dealWithGroupBy(source, input, &retAgg)
 		if ok {
-			if retAgg.commonRet.execInTSEngine || m.CheckFlag(opt.IsInsideOut) {
+			if retAgg.commonRet.execInTSEngine || m.CheckFlag(opt.IsApplyMultiOpt) {
 				// swap the positions of GroupByExpr and OrderExpr, when GroupByExpr exec
 				// in ts engine and there is the OrderGroupBy.
 				source.Input = sortExpr.Input
@@ -1618,6 +1618,9 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		return m.checkOtherJoin(source)
 	case *LookupJoinExpr:
 		return m.checkLookupJoin(source)
+	case *BatchLookUpJoinExpr:
+		m.SetFlag(opt.IsApplyMultiOpt)
+		return m.checkOtherJoinChildExpr(source.Left, source.Right)
 	case *DistinctOnExpr:
 		sortExpr, ok := (*src).Child(0).(*SortExpr)
 		if ok {
@@ -2192,8 +2195,6 @@ func (m *Memo) checkOtherJoin(source RelExpr) (ret CrossEngCheckResults) {
 	case *AntiJoinExpr:
 		ret = m.checkOtherJoinChildExpr(s.Left, s.Right)
 	case *AntiJoinApplyExpr:
-		ret = m.checkOtherJoinChildExpr(s.Left, s.Right)
-	case *BatchLookUpJoinExpr:
 		ret = m.checkOtherJoinChildExpr(s.Left, s.Right)
 	}
 	if ret.err != nil {

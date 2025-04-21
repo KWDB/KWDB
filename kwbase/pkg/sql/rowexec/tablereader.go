@@ -267,6 +267,11 @@ func (trs *TableReaderStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (trs *TableReaderStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (trs *TableReaderStats) StatsForQueryPlan() []string {
 	return append(

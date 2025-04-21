@@ -665,6 +665,10 @@ type PlanningCtx struct {
 
 	// isLocal is set to true if we're planning this query on a single node.
 	isLocal bool
+
+	// hasBatchLookUpJoin is set to true if the query has batchLookUpJoin node.
+	hasBatchLookUpJoin bool
+
 	planner *planner
 	// ignoreClose, when set to true, will prevent the closing of the planner's
 	// current plan. Only the top-level query needs to close it, but everything
@@ -2354,6 +2358,11 @@ func (dsp *DistSQLPlanner) createTSReaders(
 	}
 
 	planCtx.pTagAllNotSplit = pTagAllNotSplit
+
+	p.TotalEstimatedScannedRows += n.estimatedRowCount
+	if n.estimatedRowCount > p.MaxEstimatedRowCount {
+		p.MaxEstimatedRowCount = n.estimatedRowCount
+	}
 
 	// construct TSTagReaderSpec
 	// RelInfo is not nil only for multiple model processing
@@ -5094,6 +5103,7 @@ func (dsp *DistSQLPlanner) createPlanForJoin(
 func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 	planCtx *PlanningCtx, n *batchLookUpJoinNode,
 ) (PhysicalPlan, error) {
+	planCtx.hasBatchLookUpJoin = true
 	// Outline of the planning process for joins:
 	//
 	//  - We create PhysicalPlans for the left and right side. Each plan has a set
@@ -6491,9 +6501,13 @@ func (dsp *DistSQLPlanner) createPlanForExport(
 	if value, ok := n.source.(*renderNode); ok {
 		colsNum = int64(len(value.columns))
 	}
+	NamePattern := exportFilePatternDefault
+	if n.expOpts.fileFormat == "SQL" {
+		NamePattern = exportFilePatternSQL
+	}
 	core := execinfrapb.ProcessorCoreUnion{CSVWriter: &execinfrapb.CSVWriterSpec{
 		Destination: n.fileName,
-		NamePattern: exportFilePatternDefault,
+		NamePattern: NamePattern,
 		Options:     n.expOpts.csvOpts,
 		ChunkRows:   int64(n.expOpts.chunkSize),
 		QueryName:   n.queryName,
@@ -6501,6 +6515,8 @@ func (dsp *DistSQLPlanner) createPlanForExport(
 		OnlyData:    n.expOpts.onlyData,
 		IsTS:        n.isTS,
 		ColsNum:     colsNum,
+		FileFormat:  n.expOpts.fileFormat,
+		TablePrefix: n.expOpts.tablePrefix,
 	}}
 	var resTypes []types.T
 	if n.isTS {
@@ -6520,27 +6536,56 @@ func (dsp *DistSQLPlanner) createPlanForExport(
 	maybeScan := n.source
 	switch sc := maybeScan.(type) {
 	case *scanNode:
-		if n.expOpts.colName {
+		if n.expOpts.fileFormat == "SQL" {
+			for _, col := range sc.resultColumns {
+				if col.Typ.Family() == types.BytesFamily {
+					return PhysicalPlan{}, errors.Errorf("Exporting SQL cannot supports BytesFamily")
+				}
+			}
+		}
+		if n.expOpts.colName || n.expOpts.fileFormat == "SQL" {
 			colNames := make([]string, len(sc.resultColumns))
+			colTypes := make([]types.Family, len(sc.resultColumns))
 			for id, col := range sc.resultColumns {
 				colNames[id] = col.Name
+				colTypes[id] = col.Typ.Family()
 			}
 			core.CSVWriter.ColNames = colNames
+			core.CSVWriter.ColumnTypes = colTypes
 		}
 	case *synchronizerNode:
-		if n.expOpts.colName {
+		if n.expOpts.fileFormat == "SQL" {
+			for _, col := range sc.columns {
+				if col.Typ.Family() == types.BytesFamily {
+					return PhysicalPlan{}, errors.Errorf("Exporting SQL cannot supports BytesFamily")
+				}
+			}
+		}
+		if n.expOpts.colName || n.expOpts.fileFormat == "SQL" {
 			colNames := make([]string, len(sc.columns))
+			colTypes := make([]types.Family, len(sc.columns))
 			for id, col := range sc.columns {
 				colNames[id] = col.Name
+				colTypes[id] = col.Typ.Family()
 			}
 			core.CSVWriter.ColNames = colNames
+			core.CSVWriter.ColumnTypes = colTypes
 		}
 	case *renderNode:
-
-		if n.expOpts.colName {
+		if n.expOpts.fileFormat == "SQL" {
+			for _, col := range sc.columns {
+				if col.Typ.Family() == types.BytesFamily {
+					return PhysicalPlan{}, errors.Errorf("Exporting SQL cannot supports BytesFamily")
+				}
+			}
+		}
+		if n.expOpts.colName || n.expOpts.fileFormat == "SQL" {
 			colNames := make([]string, len(sc.columns))
+			colTypes := make([]types.Family, len(sc.columns))
 			for id, col := range sc.columns {
 				colNames[id] = col.Name
+				colTypes[id] = col.Typ.Family()
+				core.CSVWriter.ColumnTypes = colTypes
 			}
 			core.CSVWriter.ColNames = colNames
 		}

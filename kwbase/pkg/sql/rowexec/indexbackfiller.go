@@ -65,6 +65,10 @@ func (ib *indexBackfiller) NextPgWire() (val []byte, code int, err error) {
 	return nil, 0, nil
 }
 
+func (ib *indexBackfiller) SupportPgWire() bool {
+	return false
+}
+
 func (ib *indexBackfiller) Start(ctx context.Context) context.Context {
 	return nil
 }

@@ -179,7 +179,7 @@ func NewTSFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfra
 
 // Start is part of the RowSource interface.
 func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
-	ttr.StartInternal(ctx, tsTableReaderProcName)
+	ctx = ttr.StartInternal(ctx, tsTableReaderProcName)
 
 	var tsSpecs = ttr.tsProcessorSpecs
 	var randomNumber int
@@ -232,7 +232,6 @@ func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 		}
 		ttr.tsHandle = respInfo.Handle
 	}
-	ctx = ttr.StartInternal(ctx, sqlbase.TsTableReaderProcName)
 	return ctx
 }
 
@@ -259,52 +258,6 @@ func (ttr *TsTableReader) IsShortCircuitForPgEncode() bool {
 	return false
 }
 
-// name of processor in time series
-const (
-	tsUnknownName int8 = iota
-	tsTableReaderName
-	tsAggregatorName
-	tsNoopName
-	tsSorterName
-	tsStatisticReaderName
-	tsSynchronizerName
-	tsSamplerName
-	tsTagReaderName
-	tsDistinctName
-)
-
-// tsGetNameValue get name of tsProcessor.
-func tsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
-	if this.TableReader != nil {
-		return tsTableReaderName
-	}
-	if this.Aggregator != nil {
-		return tsAggregatorName
-	}
-	if this.Noop != nil {
-		return tsNoopName
-	}
-	if this.Sorter != nil {
-		return tsSorterName
-	}
-	if this.StatisticReader != nil {
-		return tsStatisticReaderName
-	}
-	if this.Synchronizer != nil {
-		return tsSynchronizerName
-	}
-	if this.Sampler != nil {
-		return tsSamplerName
-	}
-	if this.TagReader != nil {
-		return tsTagReaderName
-	}
-	if this.Distinct != nil {
-		return tsDistinctName
-	}
-	return tsUnknownName
-}
-
 // Next is part of the RowSource interface.
 func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
 	for ttr.State == execinfra.StateRunning {
@@ -324,7 +277,7 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 				tsQueryInfo.Fetcher.Mu = &ttr.fetMu
 				if ttr.statsList == nil || len(ttr.statsList) <= 0 {
 					for j := len(ttr.tsProcessorSpecs) - 1; j >= 0; j-- {
-						rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: ttr.tsProcessorSpecs[j].ProcessorID, ProcessorName: tsGetNameValue(&ttr.tsProcessorSpecs[j].Core)}
+						rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: ttr.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&ttr.tsProcessorSpecs[j].Core)}
 						ttr.statsList = append(ttr.statsList, rowNumFetcherStats)
 					}
 				}
@@ -416,7 +369,7 @@ func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 			tsQueryInfo.Fetcher.Mu = &ttr.fetMu
 			if ttr.statsList == nil || len(ttr.statsList) <= 0 {
 				for j := len(ttr.tsProcessorSpecs) - 1; j >= 0; j-- {
-					rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: ttr.tsProcessorSpecs[j].ProcessorID, ProcessorName: tsGetNameValue(&ttr.tsProcessorSpecs[j].Core)}
+					rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: ttr.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&ttr.tsProcessorSpecs[j].Core)}
 					ttr.statsList = append(ttr.statsList, rowNumFetcherStats)
 				}
 			}
@@ -465,6 +418,11 @@ func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 	return nil, -1, nil
 }
 
+// SupportPgWire is part of the processor interface
+func (ttr *TsTableReader) SupportPgWire() bool {
+	return false
+}
+
 // ConsumerClosed is part of the RowSource interface.
 func (ttr *TsTableReader) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
@@ -477,7 +435,7 @@ func (ttr *TsTableReader) ConsumerClosed() {
 func (ttr *TsTableReader) outputStatsToTrace() {
 	var tsi TsInputStats
 	for _, stats := range ttr.statsList {
-		tsi.setTsInputStats(stats)
+		tsi.SetTsInputStats(stats)
 	}
 
 	sp := opentracing.SpanFromContext(ttr.PbCtx())
@@ -512,6 +470,14 @@ func (tsi *TsInputStats) TsStats() map[int32]map[string]string {
 	return resultMap
 }
 
+// GetSpanStatsType check type of spanStats
+func (tsi *TsInputStats) GetSpanStatsType() int {
+	if tsi.TsTableReaderStatss != nil || tsi.TsAggregatorStatss != nil || tsi.TsSorterStatss != nil {
+		return tracing.SpanStatsTypeTime
+	}
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (tsi *TsInputStats) StatsForQueryPlan() []string {
 	res := make([]string, 0)
@@ -535,15 +501,15 @@ func (tsi *TsInputStats) TsStatsForQueryPlan() map[int32][]string {
 	return resultMap
 }
 
-// setTsInputStats set value to TsInputStats.
-func (tsi *TsInputStats) setTsInputStats(stats tse.TsFetcherStats) {
+// SetTsInputStats set value to TsInputStats.
+func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
 	is := InputStats{
 		NumRows:   stats.RowNum,
 		StallTime: time.Duration(stats.StallTime),
 		BuildTime: time.Duration(stats.BuildTime),
 	}
 	switch stats.ProcessorName {
-	case tsTableReaderName, tsTagReaderName, tsStatisticReaderName:
+	case tse.TsTableReaderName, tse.TsTagReaderName, tse.TsStatisticReaderName:
 		ts := TsTableReaderStats{
 			InputStats: TableReaderStats{
 				InputStats: is,
@@ -552,7 +518,7 @@ func (tsi *TsInputStats) setTsInputStats(stats tse.TsFetcherStats) {
 			PorcessorId: stats.ProcessorID,
 		}
 		tsi.TsTableReaderStatss = append(tsi.TsTableReaderStatss, ts)
-	case tsAggregatorName, tsDistinctName:
+	case tse.TsAggregatorName, tse.TsDistinctName:
 		ts := TsAggregatorStats{
 			InputStats: AggregatorStats{
 				InputStats:      is,
@@ -562,7 +528,7 @@ func (tsi *TsInputStats) setTsInputStats(stats tse.TsFetcherStats) {
 			PorcessorId: stats.ProcessorID,
 		}
 		tsi.TsAggregatorStatss = append(tsi.TsAggregatorStatss, ts)
-	case tsSorterName:
+	case tse.TsSorterName:
 		ts := TsSorterStats{
 			InputStats: SorterStats{
 				InputStats:       is,

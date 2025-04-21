@@ -255,7 +255,7 @@ const VectorizeClusterSettingName = "sql.defaults.vectorize"
 var VectorizeClusterMode = settings.RegisterEnumSetting(
 	VectorizeClusterSettingName,
 	"default vectorize mode",
-	"off",
+	"auto",
 	map[int64]string{
 		int64(sessiondata.VectorizeOff):  "off",
 		int64(sessiondata.VectorizeAuto): "auto",
@@ -2027,6 +2027,21 @@ func (m *sessionDataMutator) SetApplicationName(appName string) {
 // SetAvoidBuffering sets avoid buffering option.
 func (m *sessionDataMutator) SetAvoidBuffering(b bool) {
 	m.data.AvoidBuffering = b
+}
+
+// SetUserDefinedVar sets user defined var.
+func (m *sessionDataMutator) SetUserDefinedVar(name string, v tree.Datum) error {
+	if m.data.UserDefinedVars == nil {
+		m.data.UserDefinedVars = make(map[string]interface{})
+	}
+	if val, ok := m.data.UserDefinedVars[name]; ok {
+		oldType := val.(tree.Datum).ResolvedType()
+		if oldType.SQLString() != v.ResolvedType().SQLString() {
+			return pgerror.Newf(pgcode.DatatypeMismatch, "new value of %s (type %s) does not match previous type %s", name, v.ResolvedType().SQLString(), oldType.SQLString())
+		}
+	}
+	m.data.UserDefinedVars[name] = v
+	return nil
 }
 
 func (m *sessionDataMutator) SetBytesEncodeFormat(val sessiondata.BytesEncodeFormat) {

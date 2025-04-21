@@ -485,6 +485,11 @@ func (os *OutboxStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (os *OutboxStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (os *OutboxStats) StatsForQueryPlan() []string {
 	return []string{fmt.Sprintf("bytes sent: %s", humanizeutil.IBytes(os.BytesSent))}

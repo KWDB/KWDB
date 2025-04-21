@@ -1513,6 +1513,16 @@ func checkInputForTSInsert(
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type relation \"%s\" (column %s)", v.String(), column.Name)
 			case *tree.BinaryExpr:
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type BinaryOperator")
+			case *tree.UserDefinedVar:
+				val, ok := ctx.UserDefinedVars[v.VarName].(tree.Datum)
+				if !ok {
+					return nil, pgerror.Newf(pgcode.Syntax, "%s is not defined", v.VarName)
+				}
+				texpr, err := val.TypeCheck(ctx, &column.Type)
+				if err != nil {
+					return nil, err
+				}
+				inputValues[i][ord] = texpr
 			default:
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type %T", v)
 			}

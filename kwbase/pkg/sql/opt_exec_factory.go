@@ -150,6 +150,7 @@ func (ef *execFactory) ConstructTSScan(
 	table cat.Table,
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
+	rowCount float64,
 ) (exec.Node, error) {
 	// Create a tsScanNode.
 	tsScan := ef.planner.TSScan()
@@ -206,6 +207,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.orderedType = private.OrderedScanType
 	tsScan.ScanAggArray = private.ScanAggs
 	tsScan.TableMetaID = private.Table
+	tsScan.estimatedRowCount = uint64(rowCount)
 
 	// bind tag filter and primary filter to tsScanNode.
 	bindFilter := func(filters []tree.TypedExpr, primaryTag bool, tagIndex bool) bool {
@@ -2232,6 +2234,15 @@ func (ef *execFactory) ConstructAlterTableSplit(
 		index:          index.(*optIndex).desc,
 		rows:           input.(planNode),
 		expirationTime: expirationTime,
+	}, nil
+}
+
+// ConstructSelectInto is part of the exec.Factory interface.
+func (ef *execFactory) ConstructSelectInto(input exec.Node, vars opt.VarNames) (exec.Node, error) {
+
+	return &selectIntoNode{
+		rows: input.(planNode),
+		vars: vars,
 	}, nil
 }
 

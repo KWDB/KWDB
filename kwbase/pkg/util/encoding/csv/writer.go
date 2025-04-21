@@ -52,6 +52,7 @@ type Writer struct {
 	Enclosed rune
 	Escaped  rune
 	Nullas   string
+	IsSQL    bool // True to use '' as the line terminator
 }
 
 // NewWriter returns a new Writer that writes to w.
@@ -67,6 +68,31 @@ func NewWriter(w io.Writer) *Writer {
 // GetBufio Return a bufio.Writer
 func (w *Writer) GetBufio() *bufio.Writer {
 	return w.w
+}
+
+// WriteSQL writes a single SQL record to w along with any necessary quoting.
+// A record is a slice of strings with each string being one field.
+func (w *Writer) WriteSQL(record []string, nilMap map[int]struct{}) error {
+	for n, field := range record {
+		if n > 0 {
+			if _, err := w.w.WriteRune(','); err != nil {
+				return err
+			}
+		}
+		if nilMap != nil {
+			// this means filed is a null value, continue this filed.
+			if _, ok := nilMap[n]; ok {
+				if _, err := w.w.WriteString("NULL"); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+		if _, err := w.w.WriteString(field); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Writer writes a single CSV record to w along with any necessary quoting.
@@ -148,6 +174,9 @@ func (w *Writer) Write(record []string, nilMap map[int]struct{}) error {
 		}
 	}
 	var err error
+	if w.IsSQL {
+		return err
+	}
 	if w.UseCRLF {
 		_, err = w.w.WriteString("\r\n")
 	} else {

@@ -30,8 +30,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/execerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/execpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
+	"github.com/opentracing/opentracing-go"
 )
 
 // VectorizedStatsCollector collects VectorizedStats on Operators.
@@ -133,5 +135,21 @@ func (vsc *VectorizedStatsCollector) FinalizeStats() {
 	for _, diskMon := range vsc.diskMonitors {
 		vsc.MaxAllocatedDisk += diskMon.MaximumBytes()
 	}
+}
 
+// FinalizeTsStats records the time measured by the stop watch into the ts stats.
+func (vsc *VectorizedStatsCollector) FinalizeTsStats(span opentracing.Span) rowexec.TsInputStats {
+	if noop, ok := vsc.Operator.(*noopOperator); ok {
+		if vecStats, ok1 := noop.input.(*VectorizedStatsCollector); ok1 {
+			if tsReader, ok2 := vecStats.Operator.(*tsReaderOp); ok2 {
+				var tsi rowexec.TsInputStats
+				for _, stats := range tsReader.statsList {
+					tsi.SetTsInputStats(stats)
+				}
+				return tsi
+				// tracing.SetSpanStats(span, &vsc.VectorizedStats)
+			}
+		}
+	}
+	return rowexec.TsInputStats{}
 }

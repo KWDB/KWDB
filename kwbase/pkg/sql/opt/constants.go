@@ -188,8 +188,8 @@ const (
 	// CanApplyOutsideIn is set when the plan can use outside-in.
 	CanApplyOutsideIn = 1 << 12
 
-	// IsInsideOut is set when the plan uses inside-out.
-	IsInsideOut = 1 << 13
+	// IsApplyMultiOpt is set when the plan applies inside-out or outside-in.
+	IsApplyMultiOpt = 1 << 13
 )
 
 // OrderedTableType TSScanOrderedType

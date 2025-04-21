@@ -196,3 +196,6 @@ func DelTsProperty(prop int, flag int) int {
 func CheckTsProperty(prop int, flag int) bool {
 	return prop&flag > 0
 }
+
+// VarNames is an array of user defined variables.
+type VarNames []string
