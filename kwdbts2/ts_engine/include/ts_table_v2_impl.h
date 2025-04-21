@@ -53,6 +53,15 @@ class TsTableV2Impl : public TsTable {
                           std::vector<uint32_t> scan_tags,
                           const vector<uint32_t> hps,
                           BaseEntityIterator** iter, k_uint32 table_version) override;
+
+  KStatus GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+                          const std::vector<uint64_t/*index_id*/> &tags_index_id,
+                          const std::vector<void*> tags,
+                          TSTagOpType op_type,
+                          const std::vector<uint32_t>& scan_tags,
+                          std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
+                          uint32_t table_version = 1) override;
+
   KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                             std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
                             std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
