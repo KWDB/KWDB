@@ -634,5 +634,108 @@ KStatus TsLastSegmentIterator::ScanAgg(k_uint32* count, timestamp64 ts) {
   return KStatus::SUCCESS;
 }
 
+TsBlockSegmentIterator::TsBlockSegmentIterator(std::shared_ptr<TsVGroup>& vgroup,
+                                              std::shared_ptr<TsVGroupPartition> ts_partition,
+                                              uint32_t entity_id,
+                                              std::vector<KwTsSpan>& ts_spans,
+                                              DATATYPE ts_col_type,
+                                              std::vector<k_uint32>& kw_scan_cols,
+                                              std::vector<k_uint32>& ts_scan_cols,
+                                              std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                              uint32_t table_version) {
+  vgroup_ = vgroup;
+  ts_partition_ = ts_partition;
+  entity_id_ = entity_id;
+  ts_spans_ = ts_spans;
+  kw_scan_cols_ = kw_scan_cols;
+  ts_scan_cols_ = ts_scan_cols;
+  table_schema_mgr_ = table_schema_mgr;
+  table_version_ = table_version;
+}
+
+TsBlockSegmentIterator::~TsBlockSegmentIterator() {
+}
+
+KStatus TsBlockSegmentIterator::Init(bool is_reversed) {
+  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+  ts_partition_->GetBlockSegment()->GetBlockSpans(block_item_filter, ts_blocks_);
+  block_iterator_index_ = 0;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+  if (block_iterator_index_ >= ts_blocks_.size()) {
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
+  *count = ts_blocks_[block_iterator_index_]->GetRowNum();
+  KStatus ret;
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_int32 col_idx = ts_scan_cols_[i];
+    Batch* batch;
+    if (col_idx >= 0 && col_idx < attrs_.size()) {
+      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
+      if (bitmap == nullptr) {
+        return KStatus::FAIL;
+      }
+      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
+      TSSlice col_data;
+      if (!isVarLenType(attrs_[col_idx].type)) {
+        char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
+        int row = 0;
+        for (int i = 0; i < entity_block->GetRowNum(); ++i) {
+          if (entity_block->IsColNull(i, col_idx, attrs_)) {
+            set_null_bitmap(bitmap, i);
+          } else {
+            ret = entity_block->GetValueSlice(i, col_idx, attrs_, col_data);
+            if (ret != KStatus::SUCCESS) {
+              return ret;
+            }
+            memcpy(value + row * attrs_[col_idx].size,
+                    col_data.data,
+                    attrs_[col_idx].size);
+          }
+          ++row;
+        }
+        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+      } else {
+        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
+        for (int i = 0; i < entity_block->GetRowNum(); ++i) {
+          if (entity_block->IsColNull(i, col_idx, attrs_)) {
+            set_null_bitmap(bitmap, i);
+            batch->push_back(nullptr);
+          } else {
+            ret = entity_block->GetValueSlice(i, col_idx, attrs_, col_data);
+            if (ret != KStatus::SUCCESS) {
+              return ret;
+            }
+            char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
+            KUint16(buffer) = col_data.len;
+            memcpy(buffer + 2, col_data.data, col_data.len);
+            *(buffer + col_data.len + 2) = 0;
+            std::shared_ptr<void> ptr(buffer, free);
+            batch->push_back(ptr);
+          }
+        }
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+      }
+    } else {
+      void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
+      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
+    }
+    res->push_back(i, batch);
+  }
+  res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
+  ++block_iterator_index_;
+
+  return KStatus::SUCCESS;
+}
 
 }  //  namespace kwdbts
