@@ -869,6 +869,8 @@ int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const s
 int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t index_id) {
   LOG_INFO("DropHashIndex index_id:%d, new_version:%d", index_id, new_version)
   uint32_t cur_ver = 1;
+  // drop the soft link first and then drop the index file.
+  MMapNTagHashIndex* index_file = nullptr;
   while (cur_ver <= new_version) {
     TagVersionObject *tag_ver_obj = m_version_mgr_->GetVersionObject(cur_ver);
     if (tag_ver_obj == nullptr) {
@@ -887,15 +889,11 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
     part_table->NtagIndexRWMutexXLock();
     std::vector<MMapNTagHashIndex *> &mmap_ntag_index = part_table->getMmapNTagHashIndex();
     for (auto pos = mmap_ntag_index.begin(); pos < mmap_ntag_index.end(); pos++) {
-      if (pos.operator*() && pos.operator*()->getIndexID() == index_id) {
+      if ((*pos) && (*pos)->getIndexID() == index_id) {
         if (isSoftLink(m_db_path_ + part_table->m_db_name_ + index_name)) {
           unlink((m_db_path_ + part_table->m_db_name_ + index_name).c_str());
         } else {
-          if (pos.operator*()->clear() < 0) {
-            part_table->NtagIndexRWMutexUnLock();
-            LOG_ERROR("TagHashIndex remove failed.");
-            return -1;
-          }
+          index_file = *pos;
         }
         mmap_ntag_index.erase(pos);
         break;
@@ -909,6 +907,15 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
     part_table->NtagIndexRWMutexUnLock();
     cur_ver++;
   }
+  if (index_file != nullptr) {
+      if (index_file->clear() < 0) {
+          LOG_ERROR("TagHashIndex remove failed.");
+          return -1;
+      }
+  } else {
+      LOG_ERROR("TagHashIndex remove failed. Not find index file");
+  }
+
   return 0;
 }
 
@@ -1125,12 +1132,16 @@ int TagTable::CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint
         return -1;
     }
 
-    for (MMapNTagHashIndex* index : GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_)->getMmapNTagHashIndex()) {
+    TagPartitionTable* tag_part = GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_);
+    tag_part->NtagIndexRWMutexSLock();
+    for (MMapNTagHashIndex* index : tag_part->getMmapNTagHashIndex()) {
         if (index->getIndexID() == index_id) {
             LOG_ERROR("Normal hash index already exists, index_id:%d", index_id)
+            tag_part->NtagIndexRWMutexUnLock();
             return -1;
         }
     }
+    tag_part->NtagIndexRWMutexUnLock();
 
     auto cur_schema = cur_obj->getIncludeDroppedSchemaInfos();
     // 1 for create hash index
@@ -1216,17 +1227,20 @@ int TagTable::DropHashIndex(uint32_t index_id,  const uint32_t cur_version,
       return -1;
     }
 
-    auto ntag_index = GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_)->
-            getMmapNTagHashIndex();
+    TagPartitionTable* tag_part = GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_);
+    tag_part->NtagIndexRWMutexSLock();
+    auto ntag_index = tag_part->getMmapNTagHashIndex();
     for (int i = 0; i < ntag_index.size(); i++) {
       if (ntag_index[i]->getIndexID() == index_id) {
         break;
       }
       if (i == ntag_index.size() - 1) {
         LOG_ERROR("Normal hash index doesn't exist, index_id:%d", index_id)
+        tag_part->NtagIndexRWMutexUnLock();
         return -1;
       }
     }
+    tag_part->NtagIndexRWMutexUnLock();
 
     auto cur_schema = cur_obj->getIncludeDroppedSchemaInfos();
     // 1 for create hash index
