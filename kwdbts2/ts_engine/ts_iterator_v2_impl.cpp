@@ -127,6 +127,19 @@ KStatus TsRawDataIteratorV2Impl::InitializeLastSegmentIterator() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsRawDataIteratorV2Impl::InitializeBlockSegmentIterator() {
+  if (cur_partition_index_ < ts_partitions_.size()) {
+    block_segment_iterator_ = std::make_unique<TsBlockSegmentIterator>(vgroup_, ts_partitions_[cur_partition_index_],
+                                                                     entity_ids_[cur_entity_index_], ts_spans_,
+                                                                     ts_col_type_, kw_scan_cols_, ts_scan_cols_,
+                                                                     table_schema_mgr_, table_version_);
+    return block_segment_iterator_->Init(is_reversed_);
+  } else {
+    block_segment_iterator_ = nullptr;
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   if (cur_entity_index_ >= entity_ids_.size()) {
     *count = 0;
@@ -160,6 +173,12 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
           if (cur_partition_index_ >= ts_partitions_.size()) {
             status_ = STORAGE_SCAN_STATUS::SCAN_BLOCK_SEGMENT;
             cur_partition_index_ = 0;
+            ret = InitializeBlockSegmentIterator();
+            if (ret != KStatus::SUCCESS) {
+              LOG_ERROR("Failed to initialize block segment iterator of current partition(%d) for current entity(%d).",
+                        cur_partition_index_, entity_ids_[cur_entity_index_]);
+              return KStatus::FAIL;
+            }
           } else {
             // Scan last segment of current partition
             bool is_done = false;
@@ -192,7 +211,21 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
             }
           } else {
             // Scan block segment of current partition
-            ++cur_partition_index_;
+            bool is_done = false;
+            ret = block_segment_iterator_->Next(res, count, &is_done, ts);
+            if (ret != KStatus::SUCCESS) {
+              LOG_ERROR("Failed to scan partition(%d).", cur_partition_index_);
+              return KStatus::FAIL;
+            }
+            if (is_done) {
+              ++cur_partition_index_;
+              ret = InitializeBlockSegmentIterator();
+              if (ret != KStatus::SUCCESS) {
+                LOG_ERROR("Failed to initialize block segment iterator of current partition(%d) for current entity(%d).",
+                          cur_partition_index_, entity_ids_[cur_entity_index_]);
+                return KStatus::FAIL;
+              }
+            }
           }
         }
         break;
@@ -400,7 +433,7 @@ KStatus TsMemSegmentScanner::Init(bool is_reversed) {
 KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
-  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
+  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableId(), entity_id, ts_spans_};
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
@@ -483,7 +516,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
 KStatus TsMemSegmentScanner::ScanAgg(uint32_t entity_id, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
-  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
+  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableId(), entity_id, ts_spans_};
 
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
@@ -528,7 +561,7 @@ KStatus TsLastSegmentIterator::Init(bool is_reversed) {
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
   ts_partition_->GetLastSegmentMgr()->GetCompactLastSegments(last_segments);
   for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
-    last_segment_block_iterators_.push_back(last_segment->NewIterator(table_schema_mgr_->GetTableID(),
+    last_segment_block_iterators_.push_back(last_segment->NewIterator(table_schema_mgr_->GetTableId(),
                                             entity_id_, ts_spans_));
   }
   last_segment_block_iterator_index_ = 0;
@@ -661,18 +694,19 @@ KStatus TsBlockSegmentIterator::Init(bool is_reversed) {
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
-  ts_partition_->GetBlockSegment()->GetBlockSpans(block_item_filter, ts_blocks_);
-  block_iterator_index_ = 0;
+  TsBlockITemFilterParams filter{0, table_schema_mgr_->GetTableId(), entity_id_, ts_spans_};
+  ts_partition_->GetBlockSegment()->GetBlockSpans(filter, &ts_blocks_);
   return KStatus::SUCCESS;
 }
 
 KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  if (block_iterator_index_ >= ts_blocks_.size()) {
+  if (ts_blocks_.empty()) {
     *is_finished = true;
     return KStatus::SUCCESS;
   }
-  *count = ts_blocks_[block_iterator_index_]->GetRowNum();
+  std::shared_ptr<TsBlockSpanInfo> ts_block = ts_blocks_.front();
+  ts_blocks_.pop_front();
+  *count = ts_block->GetRowNum();
   KStatus ret;
   for (int i = 0; i < kw_scan_cols_.size(); ++i) {
     k_int32 col_idx = ts_scan_cols_[i];
@@ -687,11 +721,11 @@ KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_f
       if (!isVarLenType(attrs_[col_idx].type)) {
         char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
         int row = 0;
-        for (int i = 0; i < entity_block->GetRowNum(); ++i) {
-          if (entity_block->IsColNull(i, col_idx, attrs_)) {
+        for (int i = 0; i < ts_block->GetRowNum(); ++i) {
+          if (ts_block->IsColNull(i, col_idx, attrs_)) {
             set_null_bitmap(bitmap, i);
           } else {
-            ret = entity_block->GetValueSlice(i, col_idx, attrs_, col_data);
+            ret = ts_block->GetValueSlice(i, col_idx, attrs_, col_data);
             if (ret != KStatus::SUCCESS) {
               return ret;
             }
@@ -706,12 +740,12 @@ KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_f
         batch->need_free_bitmap = true;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
-        for (int i = 0; i < entity_block->GetRowNum(); ++i) {
-          if (entity_block->IsColNull(i, col_idx, attrs_)) {
+        for (int i = 0; i < ts_block->GetRowNum(); ++i) {
+          if (ts_block->IsColNull(i, col_idx, attrs_)) {
             set_null_bitmap(bitmap, i);
             batch->push_back(nullptr);
           } else {
-            ret = entity_block->GetValueSlice(i, col_idx, attrs_, col_data);
+            ret = ts_block->GetValueSlice(i, col_idx, attrs_, col_data);
             if (ret != KStatus::SUCCESS) {
               return ret;
             }
@@ -733,7 +767,6 @@ KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_f
     res->push_back(i, batch);
   }
   res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
-  ++block_iterator_index_;
 
   return KStatus::SUCCESS;
 }
