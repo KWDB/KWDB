@@ -26,9 +26,6 @@
 
 namespace kwdbts {
 
-const uint32_t MAX_LAST_SEGMENT_NUM = 2;
-const uint32_t MAX_COMPACT_NUM = 10;
-
 class TsLastSegmentManager {
  private:
   std::filesystem::path dir_path_;

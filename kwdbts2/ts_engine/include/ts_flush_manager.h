@@ -20,7 +20,6 @@
 #include <utility>
 #include "ts_common.h"
 #include "ts_vgroup.h"
-#include "ts_instance_params.h"
 
 namespace kwdbts {
 
@@ -57,7 +56,7 @@ class TsLSNFlushManager {
     auto total_size = mem_total_size_.fetch_add(data_size);
     mem_size_.fetch_add(data_size);
     auto now_size = mem_size_.load();
-    if (now_size > TsEngineInstanceParams::mem_segment_max_size) {
+    if (now_size > EngineOptions::mem_segment_max_size) {
       if (mem_size_.compare_exchange_strong(now_size, 0)) {
         FlashMemSegment(total_size);
       }

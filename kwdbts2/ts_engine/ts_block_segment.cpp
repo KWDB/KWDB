@@ -22,9 +22,6 @@ const char entity_item_meta_file_name[] = "header.e";
 const char block_item_meta_file_name[] = "header.b";
 const char block_data_file_name[] = "block";
 
-size_t MAX_ROWS_PER_BLOCK = 4096;
-size_t MIN_ROWS_PER_BLOCK = 1000;
-
 KStatus TsBlockSegmentEntityItemFile::Open() {
   TSSlice result;
   KStatus s = file_->Read(0, sizeof(TsEntityItemFileHeader), &result, reinterpret_cast<char *>(&header_));
@@ -267,10 +264,10 @@ TsBlockSegmentBlock::TsBlockSegmentBlock(uint32_t table_id, uint32_t table_versi
   column_blocks_.resize(n_cols_);
   for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
     TsBlockSegmentColumnBlock& column_block = column_blocks_[col_idx];
-    column_block.bitmap.Reset(MAX_ROWS_PER_BLOCK);
+    column_block.bitmap.Reset(EngineOptions::max_rows_per_block);
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     if (isVarLenType(d_type)) {
-      column_block.buffer.resize((MAX_ROWS_PER_BLOCK + 1) * sizeof(uint32_t));
+      column_block.buffer.resize((EngineOptions::max_rows_per_block + 1) * sizeof(uint32_t));
     }
   }
   block_info_.col_block_offset.resize(n_cols_ + 1);
@@ -332,8 +329,8 @@ KStatus TsBlockSegmentBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_id
 }
 
 KStatus TsBlockSegmentBlock::Append(TsLastSegmentBlockSpan& span, bool& is_full) {
-  size_t end_row = span.end_row - span.start_row + n_rows_ > MAX_ROWS_PER_BLOCK ?
-                   span.start_row + MAX_ROWS_PER_BLOCK - n_rows_ : span.end_row;
+  size_t end_row = span.end_row - span.start_row + n_rows_ > EngineOptions::max_rows_per_block ?
+                   span.start_row + EngineOptions::max_rows_per_block - n_rows_ : span.end_row;
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
@@ -366,7 +363,7 @@ KStatus TsBlockSegmentBlock::Append(TsLastSegmentBlockSpan& span, bool& is_full)
   }
   n_rows_ += end_row - span.start_row;
   span.start_row = end_row;
-  is_full = n_rows_ == MAX_ROWS_PER_BLOCK;
+  is_full = n_rows_ == EngineOptions::max_rows_per_block;
   return KStatus::SUCCESS;
 }
 
@@ -631,11 +628,11 @@ void TsBlockSegmentBlock::Clear() {
   n_rows_ = 0;
   for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
     TsBlockSegmentColumnBlock& column_block = column_blocks_[col_idx];
-    column_block.bitmap.Reset(MAX_ROWS_PER_BLOCK);
+    column_block.bitmap.Reset(EngineOptions::max_rows_per_block);
     column_block.buffer.clear();
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     if (isVarLenType(d_type)) {
-      column_block.buffer.resize((MAX_ROWS_PER_BLOCK + 1) * sizeof(uint32_t));
+      column_block.buffer.resize((EngineOptions::max_rows_per_block + 1) * sizeof(uint32_t));
     }
   }
   block_info_.col_block_offset.clear();
@@ -766,7 +763,7 @@ KStatus TsBlockSegmentBuilder::BuildAndFlush() {
     TsEntityKey cur_entity_key = {block_span.table_id, block_span.table_version, block_span.entity_id};
     if (entity_key != cur_entity_key) {
       if (block && block->HasData()) {
-        if (block->GetRowNum() >= MIN_ROWS_PER_BLOCK) {
+        if (block->GetRowNum() >= EngineOptions::min_rows_per_block) {
           s = block->Flush(partition_);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("TsBlockSegmentBuilder::BuildAndFlush failed, flush block failed.")

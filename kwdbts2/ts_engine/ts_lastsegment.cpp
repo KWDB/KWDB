@@ -363,7 +363,7 @@ void TsLastSegmentManager::GetCompactLastSegments(
     std::vector<std::shared_ptr<TsLastSegment>>& result) {
   {
     std::shared_lock lk{s_mutex_};
-    size_t compact_num = std::min<size_t>(last_segments_.size(), MAX_COMPACT_NUM);
+    size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
     result.reserve(compact_num);
     auto it = last_segments_.begin();
     for (int i = 0; i < compact_num; ++i, ++it) {
@@ -373,7 +373,7 @@ void TsLastSegmentManager::GetCompactLastSegments(
 }
 
 bool TsLastSegmentManager::NeedCompact() {
-  return n_lastsegment_.load(std::memory_order_relaxed) > MAX_LAST_SEGMENT_NUM;
+  return n_lastsegment_.load(std::memory_order_relaxed) > EngineOptions::max_last_segment_num;
 }
 
 void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {

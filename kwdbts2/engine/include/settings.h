@@ -86,6 +86,17 @@ struct EngineOptions {
   static int64_t max_anon_memory_size() {return max_anon_memory_size_;}
   static const string & home() { return home_; }
   static bool isSingleNode() {return is_single_node_;}
+
+  // V2
+  static int vgroup_max_num;
+  static DedupRule g_dedup_rule;
+  static size_t mem_segment_max_size;
+  static int32_t mem_segment_max_height;
+  static uint32_t max_last_segment_num;
+  static uint32_t max_compact_num;
+  static size_t max_rows_per_block;
+  static size_t min_rows_per_block;
+
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 

@@ -32,7 +32,7 @@ public:
 };
 
 TEST_F(TsBlockSegmentTest, simpleInsert) {
-  kwdbts::MAX_ROWS_PER_BLOCK = 1000;
+  EngineOptions::max_rows_per_block = 1000;
   using namespace roachpb;
   {
     System("rm -rf schema");
@@ -173,7 +173,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
           }
           row_idx += block_span->block->GetRowNum();
         }
-        EXPECT_EQ(row_idx, i * MAX_ROWS_PER_BLOCK);
+        EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
       }
     }
   }

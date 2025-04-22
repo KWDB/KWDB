@@ -26,9 +26,6 @@
 
 namespace kwdbts {
 
-extern size_t MAX_ROWS_PER_BLOCK;
-extern size_t MIN_ROWS_PER_BLOCK;
-
 struct TsBlockSegmentBlockItem {
   uint64_t block_id = 0;          // block item id
   uint64_t entity_id = 0;

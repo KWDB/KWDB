@@ -124,7 +124,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   TSEngineV2Impl* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = ts_engine->GetTsVGroups();
   for (auto& vgroup_iter : vgroup_ids) {
-    if (vgroup_iter.first >= storage_engine_vgroup_max_num) {
+    if (vgroup_iter.first >= EngineOptions::vgroup_max_num) {
       LOG_ERROR("Invalid vgroup id.[%u]", vgroup_iter.first);
       return s;
     }

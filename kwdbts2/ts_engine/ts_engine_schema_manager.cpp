@@ -124,7 +124,7 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
   }
   // TODO(qinlipeng) lock tag
   // [1, 3]
-  std::uniform_int_distribution<int> distrib(1, storage_engine_vgroup_max_num);
+  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
   *vgroup_id = distrib(gen);
   *new_tag = true;
   return KStatus::SUCCESS;
