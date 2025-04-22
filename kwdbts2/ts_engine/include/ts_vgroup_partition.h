@@ -62,7 +62,7 @@ class TsVGroupPartition {
 
   TsBlockSegment* GetBlockSegment() { return blk_segment_.get(); }
 
-  TsLastSegmentManager* GetLastSegmentMgr();
+  TsLastSegmentManager* GetLastSegmentMgr() { return &last_segment_mgr_; }
 
   KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
                                uint32_t col_num, uint32_t row_num, timestamp64 max_ts, timestamp64 min_ts,
