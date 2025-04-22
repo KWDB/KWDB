@@ -292,7 +292,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     return KStatus::FAIL;
   }
   std::shared_ptr<TsMemSegBlockItemInfo> cur_blk_item = nullptr;
-  auto self = dynamic_pointer_cast<TsMemSegment>(shared_from_this());
+  auto self = shared_from_this();
   for (auto row : row_datas) {
     if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
       cur_blk_item = std::make_shared<TsMemSegBlockItemInfo>(self);

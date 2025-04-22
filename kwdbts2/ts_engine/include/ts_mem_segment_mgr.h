@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "ts_env.h"
 #include "libkwdbts2.h"
 #include "ts_payload.h"
 #include "inlineskiplist.h"
@@ -147,7 +146,7 @@ struct TSRowDataComparator {
   }
 };
 
-class TsMemSegment : public TsSegmentBase {
+class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
  private:
   std::atomic<uint32_t> cur_size_{0};
   std::atomic<uint32_t> intent_row_num_{0};

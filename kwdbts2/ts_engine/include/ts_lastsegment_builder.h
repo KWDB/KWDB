@@ -137,7 +137,7 @@ class TsLastSegmentBuilder {
   KStatus PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
                      std::vector<TSSlice> col_data);
 
-  uint32_t GetFileNumber() const {return file_number_;};
+  uint32_t GetFileNumber() const {return file_number_;}
 
   bool ConsistentWith(TSTableID table_id, uint32_t version) const {
     return table_id == table_id_ && version_ == version;

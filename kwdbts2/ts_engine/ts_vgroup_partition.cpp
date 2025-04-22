@@ -17,10 +17,8 @@
 
 #include "ts_block_segment.h"
 #include "ts_vgroup_partition.h"
-#include "ts_env.h"
 #include "ts_lastsegment.h"
 #include "ts_lastsegment_manager.h"
-#include "ts_metric_block.h"
 
 namespace kwdbts {
 

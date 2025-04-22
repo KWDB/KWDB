@@ -11,10 +11,16 @@
 
 #pragma once
 
-#include "libkwdbts2.h"
-#include "ts_common.h"
+#include <list>
+#include <memory>
+#include <stdexcept>
+#include <vector>
+
 #include "data_type.h"
+#include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_block.h"
 
 namespace kwdbts {
 
@@ -24,9 +30,10 @@ struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
   TSEntityID entity_id;
-  std::vector<KwTsSpan>& ts_spans_;
+  const std::vector<KwTsSpan>& ts_spans_;
 };
 
+// DEPRECATE in future
 class TsSegmentBlockSpan {
  public:
   virtual TSEntityID GetEntityId() = 0;
@@ -43,15 +50,23 @@ class TsSegmentBlockSpan {
 };
 
 // base class for data segment
-
-// TsSegmentBase derives from std::enable_shared_from_this because TsSegmentBlockSpan may reference
-// it to prevent deallocation during queries. This inheritance might be removed after TsVersion is
-// implemented.
-class TsSegmentBase : public std::enable_shared_from_this<TsSegmentBase> {
+class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
+  // DEPRECATE IT AFTER REFACTORING
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) = 0;
+                                std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
+    assert(false);
+    throw std::runtime_error("INPLEMENT IT");
+    return FAIL;
+  }
+
+  virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
+                                std::vector<TsBlockSpan>* spans) {
+    assert(false);
+    throw std::runtime_error("INPLEMENT IT");
+    return FAIL;
+  }
 
   virtual ~TsSegmentBase() {}
 };

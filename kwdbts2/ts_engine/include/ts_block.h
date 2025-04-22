@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -49,6 +50,7 @@ struct TsBlockSpan {
     assert(nrow >= 1);
   }
 
+  TSEntityID GetEntityID() const { return entity_id; }
   TSTableID GetTableID() const { return block->GetTableId(); }
   TSTableID GetTableVersion() const { return block->GetTableVersion(); }
 

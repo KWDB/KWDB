@@ -515,7 +515,7 @@ inline bool isTimestampWithinSpans(const std::vector<KwTsSpan>& spans,
   return false;
 }
 
-inline bool CheckIfTsInSpan(timestamp64 ts, std::vector<KwTsSpan>& ts_spans) {
+inline bool CheckIfTsInSpan(timestamp64 ts, const std::vector<KwTsSpan>& ts_spans) {
   for (auto& ts_span : ts_spans) {
     if (ts >= ts_span.begin && ts <= ts_span.end) {
       return true;

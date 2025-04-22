@@ -25,8 +25,8 @@
 #include "libkwdbts2.h"
 #include "ts_arena.h"
 #include "ts_bitmap.h"
-#include "ts_segment.h"
 #include "ts_io.h"
+#include "ts_segment.h"
 
 namespace kwdbts {
 
@@ -123,19 +123,25 @@ struct TsLastSegmentBlock {
 
 class TsLastSegmentBlockIterator;
 class TsLastSegmentEntityBlockIteratorBase;
-class TsLastSegment {
+class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<TsLastSegment> {
  public:
   static int kNRowPerBlock;
   friend class TsLastSegmentBlockIterator;
   friend class TsLastSegmentEntityBlockIteratorBase;
+  friend class TsLastBlock;
 
  private:
   uint32_t file_number_;
   std::unique_ptr<TsFile> file_;
 
- public:
   explicit TsLastSegment(uint32_t file_number, const std::string& path)
       : file_number_(file_number), file_(std::make_unique<TsMMapFile>(path, true)) {}
+
+ public:
+  template <class... Args>
+  static std::shared_ptr<TsLastSegment> Create(Args&&... args) {
+    return std::shared_ptr<TsLastSegment>(new TsLastSegment(std::forward<Args>(args)...));
+  }
 
   ~TsLastSegment() = default;
 
@@ -162,19 +168,24 @@ class TsLastSegment {
 
   KStatus GetFooter(TsLastSegmentFooter* footer) const;
 
-  KStatus GetAllBlockIndex(TsLastSegmentFooter& footer,
-                           std::vector<TsLastSegmentBlockIndex>* block_indexes);
-
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
   KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, TsLastSegmentBlockInfo* block_info);
 
   KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
 
+  KStatus GetBlockSpans(std::vector<TsBlockSpan>* spans);
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
+                        std::vector<TsBlockSpan>* spans) override;
+
   std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator() const;
 
   std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator(
       TSTableID table_id, TSEntityID entity_id, const std::vector<KwTsSpan>& spans) const;
+
+ private:
+  KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
 };
 
 class TsLastSegmentEntityBlockIteratorBase {
@@ -264,7 +275,8 @@ class TsLastSegmentEntityBlockIteratorBase {
                           TSSlice& value) override;
     timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
-    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value, TsBitmap& bitmap) override;
+    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value,
+                       TsBitmap& bitmap) override;
   };
 
   void Invalidate() { valid_ = false; }
@@ -398,8 +410,8 @@ class TsLastSegmentsMergeIterator {
   }
 
  public:
-  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments) :
-    last_segments_(last_segments) {}
+  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments)
+      : last_segments_(last_segments) {}
   ~TsLastSegmentsMergeIterator() {
     for (int i = 0; i < cur_blocks_.size(); ++i) {
       if (cur_blocks_[i]) {
