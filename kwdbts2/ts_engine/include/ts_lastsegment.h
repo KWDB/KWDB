@@ -164,6 +164,8 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
 
   uint32_t GetVersion() const { return file_number_; }
 
+  std::string GetFilePath() const { return file_->GetFilePath(); }
+
   void MarkDelete() { file_->MarkDelete(); }
 
   KStatus GetFooter(TsLastSegmentFooter* footer) const;

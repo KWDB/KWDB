@@ -337,6 +337,7 @@ KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
   auto file = TsLastSegment::Create(file_number, LastSegmentFileName(file_number));
   auto s = file->Open();
   if (s == FAIL) {
+    LOG_ERROR("can not open file %s", LastSegmentFileName(file_number).c_str());
     return FAIL;
   }
   {
@@ -349,6 +350,7 @@ KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
     }
 
     // now we can really insert it to cache
+    *lastsegment = file;
     auto [iter, ok] = last_segments_.insert_or_assign(file_number, std::move(file));
     assert(ok);
   }
