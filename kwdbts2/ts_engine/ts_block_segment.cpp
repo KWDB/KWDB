@@ -530,7 +530,7 @@ KStatus TsBlockSegmentBlock::LoadAllData(const std::vector<AttributeInfo>& metri
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentBlock::GetRowSpans(std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans) {
+KStatus TsBlockSegmentBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans) {
   if (!HasColumnData(0)) {
     KStatus s = block_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
@@ -538,10 +538,6 @@ KStatus TsBlockSegmentBlock::GetRowSpans(std::vector<KwTsSpan>& ts_spans, std::v
       return s;
     }
   }
-
-  std::sort(ts_spans.begin(), ts_spans.end(), [](const KwTsSpan& a, const KwTsSpan& b) {
-    return a.begin < b.begin;
-  });
 
   timestamp64* ts_col = reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data());
   timestamp64 max_ts = ts_col[n_rows_ - 1];
@@ -553,13 +549,15 @@ KStatus TsBlockSegmentBlock::GetRowSpans(std::vector<KwTsSpan>& ts_spans, std::v
     }
     int begin_offset = 0, end_offset = 0;
     if (span.begin > ts_col[start_idx]) {
-      begin_offset = binaryGreaterThanEqualSearch(&ts_col[start_idx], n_cols_ - start_idx, span.begin);
+      timestamp64* ts = lower_bound(ts_col + start_idx, ts_col + n_rows_, span.begin);
+      begin_offset = distance(ts_col + start_idx, ts);
     }
     start_idx += begin_offset;
     if (span.end >= max_ts) {
       end_offset = n_rows_ - start_idx - 1;
     } else {
-      end_offset = binaryLessThanSearch(&ts_col[start_idx], n_rows_ - start_idx, span.end);
+      timestamp64* ts = upper_bound(ts_col + start_idx, ts_col + n_rows_, span.end);
+      end_offset = distance(ts_col + start_idx, ts) - 1;
     }
     row_spans.push_back({start_idx, end_offset + 1});
     start_idx += end_offset;

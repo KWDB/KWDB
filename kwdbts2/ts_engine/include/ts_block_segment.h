@@ -261,7 +261,7 @@ class TsBlockSegmentBlock : public TsBlock {
 
   KStatus LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
-  KStatus GetRowSpans(std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans);
+  KStatus GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans);
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                      char** value);
