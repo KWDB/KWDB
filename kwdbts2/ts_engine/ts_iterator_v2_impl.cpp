@@ -450,12 +450,12 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
         for (auto block : blocks) {
-          for (int i = 0; i < block->GetRowNum(); ++i) {
-            if (block->IsColNull(i, col_idx, attrs_)) {
-              set_null_bitmap(bitmap, i);
+          for (int row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
+            if (block->IsColNull(row_idx, col_idx, attrs_)) {
+              set_null_bitmap(bitmap, row_idx);
               batch->push_back(nullptr);
             } else {
-              ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+              ret = block->GetValueSlice(row_idx, col_idx, attrs_, col_data);
               if (ret != KStatus::SUCCESS) {
                 return ret;
               }
