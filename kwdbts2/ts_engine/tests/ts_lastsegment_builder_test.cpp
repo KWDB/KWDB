@@ -43,7 +43,8 @@ class LastSegmentReadWriteTest : public testing::Test {
   }
 };
 
-void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &filename) {
+void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
+  std::string filename;
   {
     System("rm -rf schema");
     CreateTsTable meta;
@@ -66,6 +67,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
     std::unique_ptr<TsFile> last_segment;
     uint32_t file_number;
     last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
+    ASSERT_EQ(file_number, 0);
     TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), file_number);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
@@ -77,6 +79,11 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
     }
     builder.Finalize();
     free(payload.data);
+
+    std::shared_ptr<TsLastSegment> lastseg;
+    s = last_segment_mgr.OpenLastSegmentFile(0, &lastseg);
+    EXPECT_EQ(s, SUCCESS);
+    filename = lastseg->GetFilePath();
   }
 
   auto file = std::make_unique<TsMMapFile>(filename, true);
@@ -129,8 +136,10 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
   }
 }
 
-void IteratorCheck(const std::string &filename, TSTableID table_id) {
-  auto file = TsLastSegment::Create(0, filename);
+void IteratorCheck(TSTableID table_id) {
+  TsLastSegmentManager manager("./");
+  std::shared_ptr<TsLastSegment> file;
+  manager.OpenLastSegmentFile(0, &file);
   ASSERT_TRUE(file->Open() == kwdbts::SUCCESS);
 
   std::vector<TsBlockSpan> spans;
@@ -142,23 +151,24 @@ void IteratorCheck(const std::string &filename, TSTableID table_id) {
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead1) {
-  BuilderWithBasicCheck(13, 1, "last.ver-000000000000");
-  IteratorCheck("last.ver-000000000000", 13);
+  BuilderWithBasicCheck(13, 1);
+  IteratorCheck(13);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead2) {
-  BuilderWithBasicCheck(14, 12345, "last.ver-000000000000");
-  IteratorCheck("last.ver-000000000000", 14);
+  BuilderWithBasicCheck(14, 12345);
+  IteratorCheck(14);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
-  BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock, "last.ver-000000000000");
-  IteratorCheck("last.ver-000000000000", 15);
+  BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock);
+  IteratorCheck(15);
 }
 
 struct R {
   std::unique_ptr<TsLastSegmentBuilder> builder;
   std::unique_ptr<TsEngineSchemaManager> schema_mgr;
+  std::unique_ptr<TsLastSegmentManager> last_mgr;
   std::vector<AttributeInfo> metric_schema;
   std::vector<TagInfo> tag_schema;
 };
@@ -176,16 +186,18 @@ R GenBuilders(TSTableID table_id) {
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
-  TsLastSegmentManager last_segment_mgr("./");
+  auto last_segment_mgr = std::make_unique<TsLastSegmentManager>("./");
   std::unique_ptr<TsFile> last_segment;
   uint32_t file_number;
-  last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
+  last_segment_mgr->NewLastSegmentFile(&last_segment, &file_number);
+  EXPECT_EQ(file_number, 0);
   R res;
   res.builder =
       std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), file_number);
   res.metric_schema = std::move(metric_schema);
   res.tag_schema = std::move(tag_schema);
   res.schema_mgr = std::move(mgr);
+  res.last_mgr = std::move(last_segment_mgr);
   return res;
 }
 
@@ -303,7 +315,8 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   res.builder->Finalize();
   res.builder.reset();
 
-  auto last_segment = TsLastSegment::Create(0, "last.ver-000000000000");
+  std::shared_ptr<TsLastSegment> last_segment;
+  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
@@ -387,7 +400,8 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   res.builder->Finalize();
   res.builder.reset();
 
-  auto last_segment = TsLastSegment::Create(0, "last.ver-000000000000");
+  std::shared_ptr<TsLastSegment> last_segment;
+  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);
