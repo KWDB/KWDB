@@ -19,6 +19,7 @@
 #include "me_metadata.pb.h"
 #include "test_util.h"
 #include "ts_arena.h"
+#include "ts_block.h"
 #include "ts_coding.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_io.h"
@@ -129,16 +130,14 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
 }
 
 void IteratorCheck(const std::string &filename, TSTableID table_id) {
-  TsLastSegment file{0, filename};
-  ASSERT_TRUE(file.Open() == kwdbts::SUCCESS);
+  auto file = TsLastSegment::Create(0, filename);
+  ASSERT_TRUE(file->Open() == kwdbts::SUCCESS);
 
-  kwdbts::Arena arena;
-  auto iter = file.NewIterator();
-  while (iter->Valid()) {
-    auto entity_block = iter->GetEntityBlock();
-    EXPECT_EQ(entity_block->GetEntityId(), 1);
-    EXPECT_EQ(entity_block->GetTableId(), table_id);
-    iter->NextEntityBlock();
+  std::vector<TsBlockSpan> spans;
+  ASSERT_EQ(file->GetBlockSpans(&spans), SUCCESS);
+  for (const auto &span : spans) {
+    EXPECT_EQ(span.GetEntityID(), 1);
+    EXPECT_EQ(span.GetTableID(), table_id);
   }
 }
 
@@ -304,42 +303,31 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   res.builder->Finalize();
   res.builder.reset();
 
-  TsLastSegment last_segment(0, "last.ver-0000");
+  auto last_segment = TsLastSegment::Create(0, "last.ver-0000");
   TsLastSegmentFooter footer;
-  ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
+  ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
 
-  auto iter = last_segment.NewIterator();
-
+  std::vector<TsBlockSpan> spans;
+  last_segment->GetBlockSpans(&spans);
+  ASSERT_EQ(spans.size(), dev_ids.size());
   auto dev_iter = dev_ids.begin();
-  while (iter->Valid()) {
+  for (const auto &span : spans) {
     checker_funcs[DataType::TIMESTAMP] = TimestampChecker(start_ts, interval);
-    auto entity_block = iter->GetEntityBlock();
-    EXPECT_EQ(entity_block->GetTableId(), table_id);
+    EXPECT_EQ(span.GetTableID(), table_id);
     ASSERT_NE(dev_iter, dev_ids.end());
-    EXPECT_EQ(entity_block->GetEntityId(), *dev_iter);
-    EXPECT_EQ(entity_block->GetRowNum(), nrow_per_block / 2);
-    EXPECT_EQ(entity_block->GetTableVersion(), table_version);
-
-    TSSlice val;
-    for (int icol = 0; icol < dtypes.size(); ++icol) {
-      for (int i = 0; i < entity_block->GetRowNum(); ++i) {
-        entity_block->GetValueSlice(i, icol, res.metric_schema, val);
-        checker_funcs[dtypes[icol]](val);
-      }
-    }
-    iter->NextEntityBlock();
+    EXPECT_EQ(span.GetEntityID(), *dev_iter);
+    EXPECT_EQ(span.nrow, nrow_per_block / 2);
+    EXPECT_EQ(span.GetTableVersion(), table_version);
     dev_iter++;
   }
-  EXPECT_EQ(dev_iter, dev_ids.end());
 
   // scan for specific table & entity;
-  iter = last_segment.NewIterator(table_id, 3, {{INT64_MIN, INT64_MAX}});
-  ASSERT_TRUE(iter->Valid());
-  EXPECT_EQ(iter->GetEntityBlock()->GetEntityId(), 3);
-  EXPECT_EQ(iter->GetEntityBlock()->GetRowNum(), 2048);
-  iter->NextEntityBlock();
-  ASSERT_FALSE(iter->Valid());
+
+  last_segment->GetBlockSpans({1, table_id, 3, {{INT64_MIN, INT64_MAX}}}, &spans);
+  ASSERT_EQ(spans.size(), 1);
+  EXPECT_EQ(spans[0].GetEntityID(), 3);
+  EXPECT_EQ(spans[0].nrow, 2048);
 
   struct TestCases {
     timestamp64 min_ts, max_ts;
@@ -352,29 +340,26 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
        start_ts + 9 * interval}};
 
   for (auto c : cases) {
-    iter = last_segment.NewIterator(table_id, 3, {{c.min_ts, c.max_ts}});
-    ASSERT_TRUE(iter->Valid());
-    auto entityblock = iter->GetEntityBlock();
-    EXPECT_EQ(entityblock->GetRowNum(), c.expect_row);
+    auto s = last_segment->GetBlockSpans({0, table_id, 3, {{c.min_ts, c.max_ts}}}, &spans);
+    ASSERT_EQ(s, SUCCESS);
+    ASSERT_EQ(spans.size(), 1);
+    EXPECT_EQ(spans[0].nrow, c.expect_row);
     timestamp64 l, r;
-    entityblock->GetTSRange(&l, &r);
+    spans[0].GetTSRange(&l, &r);
     EXPECT_EQ(l, c.expect_min);
     EXPECT_EQ(r, c.expect_max);
-    iter->NextEntityBlock();
-    ASSERT_FALSE(iter->Valid());
   }
-  iter = last_segment.NewIterator(table_id, 3, {{1000, 0}});
-  ASSERT_FALSE(iter->Valid());
 
-  iter = last_segment.NewIterator(table_id, 3, {{-100, 0}});
-  ASSERT_FALSE(iter->Valid());
+  last_segment->GetBlockSpans({0, table_id, 3, {{1000, 0}}}, &spans);
+  ASSERT_EQ(spans.size(), 0);
 
-  iter = last_segment.NewIterator(table_id, 3, {{123, 2000}, {3000, 6000}});
-  ASSERT_TRUE(iter->Valid());
-  auto entityblocks = iter->GetAllEntityBlocks();
-  ASSERT_EQ(entityblocks.size(), 2);
-  EXPECT_EQ(entityblocks[0]->GetRowNum(), 2);
-  EXPECT_EQ(entityblocks[1]->GetRowNum(), 3);
+  last_segment->GetBlockSpans({0, table_id, 3, {{-100, 0}}}, &spans);
+  ASSERT_EQ(spans.size(), 0);
+
+  last_segment->GetBlockSpans({0, table_id, 3, {{123, 2000}, {3000, 6000}}}, &spans);
+  ASSERT_EQ(spans.size(), 2);
+  EXPECT_EQ(spans[0].nrow, 2);
+  EXPECT_EQ(spans[1].nrow, 3);
 }
 
 TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
@@ -402,23 +387,22 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   res.builder->Finalize();
   res.builder.reset();
 
-  TsLastSegment last_segment(0, "last.ver-0000");
+  auto last_segment = TsLastSegment::Create(0, "last.ver-0000");
   TsLastSegmentFooter footer;
-  ASSERT_EQ(last_segment.GetFooter(&footer), SUCCESS);
+  ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);
   ASSERT_EQ(footer.n_data_block, (total + nrow_per_block - 1) / nrow_per_block);
 
-  kwdbts::Arena arena;
-  auto iter = last_segment.NewIterator();
+  std::vector<TsBlockSpan> result_spans;
+  last_segment->GetBlockSpans(&result_spans);
 
   int idx = 0;
   int sum = 0;
   checker_funcs[roachpb::DataType::TIMESTAMP] = TimestampChecker(start_ts, interval);
-  while (iter->Valid()) {
-    auto entity_block = iter->GetEntityBlock();
-    EXPECT_EQ(entity_block->GetTableVersion(), table_version);
-    EXPECT_EQ(entity_block->GetTableId(), table_id);
-    if (entity_block->GetEntityId() != dev_ids[idx]) {
+  for (auto &s : result_spans) {
+    EXPECT_EQ(s.GetTableVersion(), table_version);
+    EXPECT_EQ(s.GetTableID(), table_id);
+    if (s.GetEntityID() != dev_ids[idx]) {
       EXPECT_EQ(sum, nrows[idx]);
       ++idx;
       sum = 0;
@@ -426,18 +410,16 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     }
 
     ASSERT_LT(idx, dev_ids.size());
-    EXPECT_EQ(entity_block->GetEntityId(), dev_ids[idx]);
-    sum += entity_block->GetRowNum();
+    EXPECT_EQ(s.GetEntityID(), dev_ids[idx]);
+    sum += s.nrow;
 
     TSSlice val;
     for (int icol = 0; icol < dtypes.size(); ++icol) {
-      for (int i = 0; i < entity_block->GetRowNum(); ++i) {
-        entity_block->GetValueSlice(i, icol, res.metric_schema, val);
+      for (int i = 0; i < s.nrow; ++i) {
+        s.block->GetValueSlice(i + s.start_row, icol, res.metric_schema, val);
         checker_funcs[dtypes[icol]](val);
       }
     }
-
-    iter->NextEntityBlock();
   }
   EXPECT_EQ(idx + 1, dev_ids.size());
 
@@ -466,20 +448,19 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     }
   }
 
-  auto blocks = iter->GetAllEntityBlocks();
-  ASSERT_EQ(blocks.size(), expected_rows.size());
+  last_segment->GetBlockSpans(&result_spans);
+  ASSERT_EQ(result_spans.size(), expected_rows.size());
   for (int i = 0; i < expected_rows.size(); ++i) {
-    EXPECT_EQ(blocks[i]->GetRowNum(), expected_rows[i]);
-    EXPECT_EQ(blocks[i]->GetEntityId(), expected_dev[i]);
+    EXPECT_EQ(result_spans[i].nrow, expected_rows[i]);
+    EXPECT_EQ(result_spans[i].GetEntityID(), expected_dev[i]);
   }
 
-  iter = last_segment.NewIterator(table_id, 9913, {{INT64_MIN, INT64_MAX}});
-  blocks = iter->GetAllEntityBlocks();
-  ASSERT_EQ(blocks.size(), 4);
-  for (int i = 0; i < blocks.size(); ++i) {
-    EXPECT_EQ(blocks[i]->GetEntityId(), 9913);
+  last_segment->GetBlockSpans({0, table_id, 9913, {{INT64_MIN, INT64_MAX}}}, &result_spans);
+  ASSERT_EQ(result_spans.size(), 4);
+  for (int i = 0; i < result_spans.size(); ++i) {
+    EXPECT_EQ(result_spans[i].GetEntityID(), 9913);
     auto expn = std::vector<int>{2084, 4096, 4096, 2059}[i];
-    EXPECT_EQ(blocks[i]->GetRowNum(), expn);
+    EXPECT_EQ(result_spans[i].nrow, expn);
   }
 
   std::vector<KwTsSpan> spans{
@@ -487,9 +468,8 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
       {start_ts + interval * 2080, start_ts + interval * 4096},
       {start_ts + interval * 5000, start_ts + interval * (2084 + 4096)},
   };
-  iter = last_segment.NewIterator(table_id, 9913, spans);
-  blocks = iter->GetAllEntityBlocks();
-  ASSERT_EQ(blocks.size(), 5);
+  last_segment->GetBlockSpans({0, table_id, 9913, spans}, &result_spans);
+  ASSERT_EQ(result_spans.size(), 5);
   std::vector<std::pair<int, int>> expected_minmax = {
       {start_ts, start_ts + interval * 2000},
       {start_ts + interval * 2080, start_ts + interval * 2083},
@@ -497,12 +477,12 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
       {start_ts + interval * 5000, start_ts + interval * (2084 + 4096 - 1)},
       {start_ts + interval * (2084 + 4096), start_ts + interval * (2084 + 4096)},
   };
-  for (int i = 0; i < blocks.size(); ++i) {
-    EXPECT_EQ(blocks[i]->GetEntityId(), 9913);
+  for (int i = 0; i < result_spans.size(); ++i) {
+    EXPECT_EQ(result_spans[i].GetEntityID(), 9913);
     auto expn = std::vector<int>{2001, 4, 2013, 1180, 1}[i];
-    EXPECT_EQ(blocks[i]->GetRowNum(), expn);
+    EXPECT_EQ(result_spans[i].nrow, expn);
     timestamp64 min_ts, max_ts;
-    blocks[i]->GetTSRange(&min_ts, &max_ts);
+    result_spans[i].GetTSRange(&min_ts, &max_ts);
     EXPECT_EQ(min_ts, expected_minmax[i].first);
     EXPECT_EQ(max_ts, expected_minmax[i].second);
   }

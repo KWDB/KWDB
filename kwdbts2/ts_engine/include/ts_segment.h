@@ -27,7 +27,7 @@ struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
   TSEntityID entity_id;
-  std::vector<KwTsSpan>& ts_spans_;
+  const std::vector<KwTsSpan>& ts_spans_;
 };
 
 class TsSegmentBlockSpan {
@@ -50,13 +50,18 @@ class TsSegmentBlockSpan {
 // TsSegmentBase derives from std::enable_shared_from_this because TsSegmentBlockSpan may reference
 // it to prevent deallocation during queries. This inheritance might be removed after TsVersion is
 // implemented.
-class TsSegmentBase : public std::enable_shared_from_this<TsSegmentBase> {
+class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
-  // DEPRECATE IT LATER
+  // DEPRECATE IT AFTER REFACTORING
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) = 0;
+                                std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
+    assert(false);
+    throw std::runtime_error("INPLEMENT IT");
+    return FAIL;
+  }
 
+  // filter can be null
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                                 std::vector<TsBlockSpan>* spans) {
     assert(false);
