@@ -379,6 +379,13 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		// Build the final insert statement, including any returned expressions.
 		if mb.tab.GetTableType() != tree.RelationalTable {
 			mb.buildTSInsertSelect(selectRelationalTableNum, selectTimeSeriesTableNum, ins, b)
+			// case: ts insert select with order by clause.
+			if mb.outScope.ordering != nil {
+				insert, ok := mb.outScope.expr.(*memo.TSInsertSelectExpr)
+				if ok {
+					insert.TSInsertSelectPrivate.NeedProvideCols = true
+				}
+			}
 		} else {
 			mb.buildInsert(returning)
 		}
