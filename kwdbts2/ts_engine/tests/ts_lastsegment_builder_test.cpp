@@ -35,11 +35,11 @@ class LastSegmentReadWriteTest : public testing::Test {
  protected:
   void SetUp() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-0000");
+    std::filesystem::remove("last.ver-000000000000");
   }
   void TearDown() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-0000");
+    std::filesystem::remove("last.ver-000000000000");
   }
 };
 
@@ -142,18 +142,18 @@ void IteratorCheck(const std::string &filename, TSTableID table_id) {
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead1) {
-  BuilderWithBasicCheck(13, 1, "last.ver-0000");
-  IteratorCheck("last.ver-0000", 13);
+  BuilderWithBasicCheck(13, 1, "last.ver-000000000000");
+  IteratorCheck("last.ver-000000000000", 13);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead2) {
-  BuilderWithBasicCheck(14, 12345, "last.ver-0000");
-  IteratorCheck("last.ver-0000", 14);
+  BuilderWithBasicCheck(14, 12345, "last.ver-000000000000");
+  IteratorCheck("last.ver-000000000000", 14);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
-  BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock, "last.ver-0000");
-  IteratorCheck("last.ver-0000", 15);
+  BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock, "last.ver-000000000000");
+  IteratorCheck("last.ver-000000000000", 15);
 }
 
 struct R {
@@ -303,7 +303,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   res.builder->Finalize();
   res.builder.reset();
 
-  auto last_segment = TsLastSegment::Create(0, "last.ver-0000");
+  auto last_segment = TsLastSegment::Create(0, "last.ver-000000000000");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
@@ -387,7 +387,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   res.builder->Finalize();
   res.builder.reset();
 
-  auto last_segment = TsLastSegment::Create(0, "last.ver-0000");
+  auto last_segment = TsLastSegment::Create(0, "last.ver-000000000000");
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);

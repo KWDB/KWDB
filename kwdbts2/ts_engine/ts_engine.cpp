@@ -15,7 +15,6 @@
 #include <filesystem>
 #include <memory>
 #include <utility>
-#include "ts_env.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
@@ -64,11 +63,6 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     }
     vgroups_.push_back(std::move(vgroup));
   }
-
-  // Compressor
-  auto compressor = TsEnvInstance::GetInstance().Compressor();
-  compressor->Init();
-  compressor->ResetPolicy(LIGHT_COMRESS);
 
   return KStatus::SUCCESS;
 }

@@ -307,7 +307,7 @@ KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmen
 
 std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) const {
   char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "last.ver-%04u", file_number);
+  std::snprintf(buffer, sizeof(buffer), "last.ver-%012u", file_number);
   auto filename = dir_path_ / buffer;
   return filename;
 }
@@ -474,10 +474,10 @@ class TsLastBlock : public TsBlock {
  public:
   TsLastBlock(std::shared_ptr<TsLastSegment> lastseg, int block_id,
               TsLastSegmentBlockIndex block_index, TsLastSegmentBlockInfo block_info)
-      : lastsegment_(lastseg),
+      : lastsegment_(std::move(lastseg)),
         block_id_(block_id),
         block_index_(block_index),
-        block_info_(block_info),
+        block_info_(std::move(block_info)),
         column_cache_(std::make_unique<ColumnBlockCacheV2>()) {}
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }
@@ -1008,8 +1008,9 @@ void TsLastSegmentPartialEntityBlockIterator::LocateToSpan(const KwTsSpan& span)
     const auto& cur_block = block_indices_[i];
     if (cur_block.table_id == table_id_ && cur_block.min_entity_id <= entity_id_ &&
         cur_block.max_entity_id >= entity_id_ &&
-        !(max_ts < cur_block.min_ts && min_ts > cur_block.max_ts))
+        !(max_ts < cur_block.min_ts && min_ts > cur_block.max_ts)) {
       break;
+    }
   }
   if (i == block_indices_.size()) {
     Invalidate();

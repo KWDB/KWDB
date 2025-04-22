@@ -15,13 +15,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <shared_mutex>
 #include <string>
 #include <vector>
 
 #include "kwdb_type.h"
-#include "lt_rw_latch.h"
 #include "ts_lastsegment.h"
 
 namespace kwdbts {

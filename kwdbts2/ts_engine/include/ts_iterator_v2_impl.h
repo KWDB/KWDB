@@ -10,14 +10,14 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <vector>
 #include <memory>
-#include <unordered_map>
-#include <unordered_set>
-#include "ts_common.h"
+#include <vector>
+
 #include "iterator.h"
-#include "ts_table_schema_manager.h"
+#include "ts_common.h"
 #include "ts_lastsegment.h"
+#include "ts_table_schema_manager.h"
+#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
@@ -69,8 +69,8 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;
-  std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_{nullptr};
-  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
+  std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_ = nullptr;
+  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_ = nullptr;
 };
 
 class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -102,8 +102,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  protected:
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;
-  std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_{nullptr};
-  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
+  std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_ = nullptr;
+  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_ = nullptr;
   std::vector<Sumfunctype> scan_agg_types_;
 };
 

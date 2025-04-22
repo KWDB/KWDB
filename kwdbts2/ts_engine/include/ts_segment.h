@@ -11,13 +11,16 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
 #include <stdexcept>
+#include <vector>
+
+#include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-#include "ts_block.h"
-#include "ts_common.h"
-#include "data_type.h"
 #include "ts_bitmap.h"
+#include "ts_block.h"
 
 namespace kwdbts {
 

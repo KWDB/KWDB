@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "ts_env.h"
 #include "libkwdbts2.h"
 #include "ts_payload.h"
 #include "inlineskiplist.h"

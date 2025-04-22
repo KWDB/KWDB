@@ -25,8 +25,8 @@
 #include "libkwdbts2.h"
 #include "ts_arena.h"
 #include "ts_bitmap.h"
-#include "ts_segment.h"
 #include "ts_io.h"
+#include "ts_segment.h"
 
 namespace kwdbts {
 
@@ -184,8 +184,8 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
   std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator(
       TSTableID table_id, TSEntityID entity_id, const std::vector<KwTsSpan>& spans) const;
 
-  private:
-   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex> *) const;
+ private:
+  KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
 };
 
 class TsLastSegmentEntityBlockIteratorBase {
@@ -275,7 +275,8 @@ class TsLastSegmentEntityBlockIteratorBase {
                           TSSlice& value) override;
     timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
-    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value, TsBitmap& bitmap) override;
+    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value,
+                       TsBitmap& bitmap) override;
   };
 
   void Invalidate() { valid_ = false; }
@@ -409,8 +410,8 @@ class TsLastSegmentsMergeIterator {
   }
 
  public:
-  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments) :
-    last_segments_(last_segments) {}
+  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments)
+      : last_segments_(last_segments) {}
   ~TsLastSegmentsMergeIterator() {
     for (int i = 0; i < cur_blocks_.size(); ++i) {
       if (cur_blocks_[i]) {

@@ -221,8 +221,8 @@ KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& 
       return s;
     }
     if (isTimestampInSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
-      std::shared_ptr<TsSegmentBlockSpan> block_span = std::make_shared<TsBlockSegmentBlockSpan>(blk_segment, filter.table_id,
-                                                                                              cur_blk_item);
+      std::shared_ptr<TsSegmentBlockSpan> block_span =
+          std::make_shared<TsBlockSegmentBlockSpan>(blk_segment, filter.table_id, cur_blk_item);
       block_spans->push_front(block_span);
     }
     last_blk_id = cur_blk_item.prev_block_id;
