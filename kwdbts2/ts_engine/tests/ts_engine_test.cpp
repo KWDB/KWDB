@@ -75,10 +75,10 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  s = schema_mgr->GetMetricAttr(metric_schema, 1);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
-  s = schema_mgr->GetTagMeta(1, tag_schema);
+  s = schema_mgr->GetTagAttr(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema.size(), metric_type.size());
   timestamp64 start_ts = 10086000;
@@ -104,10 +104,10 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  s = schema_mgr->GetMetricAttr(metric_schema, 1);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
-  s = schema_mgr->GetTagMeta(1, tag_schema);
+  s = schema_mgr->GetTagAttr(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema.size(), metric_type.size());
   uint16_t inc_entity_cnt;
@@ -136,10 +136,10 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  s = schema_mgr->GetMetricAttr(metric_schema, 1);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
-  s = schema_mgr->GetTagMeta(1, tag_schema);
+  s = schema_mgr->GetTagAttr(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema.size(), metric_type.size());
   uint16_t inc_entity_cnt;

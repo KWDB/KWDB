@@ -37,7 +37,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   // TODO(Yongyan): initialization
-  KStatus ret = table_schema_mgr_->GetColumnsIncludeDropped(attrs_, table_version_);
+  KStatus ret = table_schema_mgr_->GetMetricAttr(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
@@ -448,8 +448,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
   if (*count == 0) {
     return KStatus::SUCCESS;
   }
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    k_int32 col_idx = ts_scan_cols_[i];
+  for (auto col_idx : kw_scan_cols_) {
     Batch* batch;
     if (col_idx >= 0 && col_idx < attrs_.size()) {
       unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
@@ -508,7 +507,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
-    res->push_back(i, batch);
+    res->push_back(col_idx, batch);
   }
 
   res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
@@ -581,8 +580,7 @@ KStatus TsLastSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_fi
     auto entity_block = last_segment_block_iterators_[last_segment_block_iterator_index_]->GetEntityBlock();
     *count = entity_block->GetRowNum();
     KStatus ret;
-    for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-      k_int32 col_idx = ts_scan_cols_[i];
+    for (auto col_idx : kw_scan_cols_) {
       Batch* batch;
       if (col_idx >= 0 && col_idx < attrs_.size()) {
         unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
@@ -637,7 +635,7 @@ KStatus TsLastSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_fi
         void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
         batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
       }
-      res->push_back(i, batch);
+      res->push_back(col_idx, batch);
     }
     res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
 
@@ -711,8 +709,7 @@ KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_f
   ts_blocks_.pop_front();
   *count = ts_block->GetRowNum();
   KStatus ret;
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    k_int32 col_idx = ts_scan_cols_[i];
+  for (auto col_idx : kw_scan_cols_) {
     Batch* batch;
     if (col_idx >= 0 && col_idx < attrs_.size()) {
       unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
@@ -767,7 +764,7 @@ KStatus TsBlockSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_f
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
-    res->push_back(i, batch);
+    res->push_back(col_idx, batch);
   }
   res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
 

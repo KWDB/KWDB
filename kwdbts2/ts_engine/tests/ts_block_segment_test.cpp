@@ -49,10 +49,10 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    s = schema_mgr->GetMetricAttr(metric_schema, 1);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
+    s = schema_mgr->GetTagAttr(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::filesystem::path path = "db001-123";

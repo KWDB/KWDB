@@ -122,13 +122,9 @@ class TsTableSchemaManager {
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
-  KStatus GetColumnsExcludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
+  KStatus GetMetricAttr(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
 
-  KStatus GetColumnsIncludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
-
-  KStatus GetMetricMeta(uint32_t version, std::vector<AttributeInfo>& info);
-
-  KStatus GetTagMeta(uint32_t version, std::vector<TagInfo>& info);
+  KStatus GetTagAttr(uint32_t version, std::vector<TagInfo>& info);
 
   KStatus GetMetricSchema(kwdbContext_p ctx, uint32_t version, std::shared_ptr<MMapMetricsTable>* schema);
 

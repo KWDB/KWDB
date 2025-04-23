@@ -68,11 +68,11 @@ TEST_F(TestV2Iterator, basic) {
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    s = table_schema_mgr->GetMetricAttr(metric_schema, 1);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
-    s = table_schema_mgr->GetTagMeta(1, tag_schema);
+    s = table_schema_mgr->GetTagAttr(1, tag_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     timestamp64 start_ts = 3600;

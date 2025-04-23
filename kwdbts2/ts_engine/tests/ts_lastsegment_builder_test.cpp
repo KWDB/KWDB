@@ -55,10 +55,10 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow, const std::string &file
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    s = schema_mgr->GetMetricAttr(metric_schema, 1);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
+    s = schema_mgr->GetTagAttr(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     TsLastSegmentManager last_segment_mgr("./");
@@ -177,9 +177,9 @@ R GenBuilders(TSTableID table_id) {
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 
   std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  s = schema_mgr->GetMetricAttr(metric_schema, 1);
   std::vector<TagInfo> tag_schema;
-  s = schema_mgr->GetTagMeta(1, tag_schema);
+  s = schema_mgr->GetTagAttr(1, tag_schema);
 
   TsLastSegmentManager last_segment_mgr("./");
   std::unique_ptr<TsLastSegment> last_segment;
