@@ -39,7 +39,7 @@ class TsBlock {
 };
 
 struct TsBlockSpan {
-  const TSEntityID entity_id;
+  TSEntityID entity_id;
 
   std::shared_ptr<TsBlock> block;
   int start_row, nrow;

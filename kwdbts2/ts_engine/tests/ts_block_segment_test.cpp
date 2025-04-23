@@ -88,28 +88,27 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         // scan [500, INT64_MAX]
         std::vector<KwTsSpan> spans{{500, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
-        std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+        std::vector<TsBlockSpan> block_spans;
         s = block_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
-        while (!block_spans.empty()) {
-          auto block_span = block_spans.front();
-          block_spans.pop_front();
-          for (int idx = 0; idx < block_span->nrow; ++idx) {
-            EXPECT_EQ(block_span->block->GetTS(block_span->start_row + idx), 500 + row_idx + idx);
+        for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
+          auto block_span = block_spans[span_id];
+          for (int idx = 0; idx < block_span.nrow; ++idx) {
+            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 500 + row_idx + idx);
             TSSlice value;
-            block_span->block->GetValueSlice(block_span->start_row + idx, 1, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
             EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 2, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
             EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 3, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
             EXPECT_LE(*(double *) value.data, 10240);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 4, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
             string str(value.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span->nrow;
+          row_idx += block_span.nrow;
         }
         if (i >= 1) {
           EXPECT_EQ(row_idx, (i - 1) * 1000 + 623);
@@ -121,28 +120,27 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         // scan [INT64_MIN, 622]
         std::vector<KwTsSpan> spans{{INT64_MIN, 622}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
-        std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+        std::vector<TsBlockSpan> block_spans;
         s = block_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
-        while (!block_spans.empty()) {
-          auto block_span = block_spans.front();
-          block_spans.pop_front();
-          for (int idx = 0; idx < block_span->nrow; ++idx) {
-            EXPECT_EQ(block_span->block->GetTS(block_span->start_row + idx), 123 + row_idx + idx);
+        for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
+          auto block_span = block_spans[span_id];
+          for (int idx = 0; idx < block_span.nrow; ++idx) {
+            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
             TSSlice value;
-            block_span->block->GetValueSlice(block_span->start_row + idx, 1, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
             EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 2, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
             EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 3, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
             EXPECT_LE(*(double *) value.data, 10240);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 4, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
             string str(value.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span->nrow;
+          row_idx += block_span.nrow;
         }
         EXPECT_EQ(row_idx, i > 0 ? 500 : 0);
       }
@@ -150,28 +148,27 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         // scan [INT64_MIN, INT64_MAX]
         std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
-        std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+        std::vector<TsBlockSpan> block_spans;
         s = block_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
-        while (!block_spans.empty()) {
-          auto block_span = block_spans.front();
-          block_spans.pop_front();
-          for (int idx = 0; idx < block_span->nrow; ++idx) {
-            EXPECT_EQ(block_span->block->GetTS(block_span->start_row + idx), 123 + row_idx + idx);
+        for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
+          auto block_span = block_spans[span_id];
+          for (int idx = 0; idx < block_span.nrow; ++idx) {
+            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
             TSSlice value;
-            block_span->block->GetValueSlice(block_span->start_row + idx, 1, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
             EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 2, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
             EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 3, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
             EXPECT_LE(*(double *) value.data, 10240);
-            block_span->block->GetValueSlice(block_span->start_row + idx, 4, metric_schema, value);
+            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
             string str(value.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span->block->GetRowNum();
+          row_idx += block_span.block->GetRowNum();
         }
         EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
       }

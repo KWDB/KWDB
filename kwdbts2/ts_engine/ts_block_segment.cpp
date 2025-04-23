@@ -207,7 +207,7 @@ KStatus TsBlockSegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
-                                                 std::list<std::shared_ptr<TsBlockSpan>>* block_spans) {
+                                                 std::vector<TsBlockSpan>* block_spans) {
   uint64_t last_blk_id;
   KStatus s = entity_meta_.GetEntityCurBlockId(filter.entity_id, last_blk_id);
   if (s != KStatus::SUCCESS) {
@@ -231,10 +231,9 @@ KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& 
         return s;
       }
       for (int i = row_spans.size() - 1; i >= 0; --i) {
-        std::shared_ptr<TsBlockSpan> block_span = std::make_shared<TsBlockSpan>(filter.table_id, cur_blk_item.table_version,
-                                                                                filter.entity_id, block,
-                                                                                row_spans[i].first, row_spans[i].second);
-        block_spans->push_front(block_span);
+        TsBlockSpan block_span(filter.table_id, cur_blk_item.table_version, filter.entity_id, block,
+                               row_spans[i].first, row_spans[i].second);
+        block_spans->insert(block_spans->begin(), block_span);
       }
     }
     last_blk_id = cur_blk_item.prev_block_id;
@@ -684,7 +683,7 @@ KStatus TsBlockSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 }
 
 KStatus TsBlockSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                      std::list<std::shared_ptr<TsBlockSpan>>* blocks) {
+                                      std::vector<TsBlockSpan>* blocks) {
   return meta_mgr_.GetBlockSpans(filter, this, blocks);
 }
 
