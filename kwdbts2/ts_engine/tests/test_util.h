@@ -145,13 +145,14 @@ std::vector<ZTableColumnMeta> g_all_col_types({
   // {roachpb::DataType::SDEVARCHAR, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple},
 });
 
-void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id) {
+void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uint32_t db_id = 1) {
   // create table :  TIMESTAMP | INT | DOUBLE
   roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
   table->set_table_name("tbl_" + std::to_string(table_id));
   table->set_partition_interval(86400);
   table->set_ts_version(1);
+  table->set_database_id(db_id);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;

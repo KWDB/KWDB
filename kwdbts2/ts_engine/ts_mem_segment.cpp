@@ -214,24 +214,42 @@ bool TsMemSegment::GetEntityRows(const TsBlockITemFilterParams& filter, std::lis
   rows->clear();
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
-  TSMemSegRowData* begin = new(key +TSMemSegRowData::GetKeyLen()) TSMemSegRowData
-                            (filter.db_id, filter.table_id, 0, filter.entity_id);
-  begin->SetData(0, 0, {nullptr, 0});
-  begin->GenKey(key);
-  iter.Seek(reinterpret_cast<char*>(&key));
-  while (iter.Valid()) {
-    auto cur_row = TSRowDataComparator::decode_key(iter.key());
-    assert(cur_row != nullptr);
-    if (!cur_row->SameTableId(begin)) {
+  uint32_t cur_version = 1;
+  while (true) {
+    TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
+                            (filter.db_id, filter.table_id, cur_version, filter.entity_id);
+    begin->SetData(0, 0, {nullptr, 0});
+    begin->GenKey(key);
+    iter.Seek(reinterpret_cast<char*>(&key));
+    bool scan_over = false;
+    while (iter.Valid()) {
+      auto cur_row = TSRowDataComparator::decode_key(iter.key());
+      assert(cur_row != nullptr);
+      if (!cur_row->SameTableId(begin)) {
+        scan_over = true;
+        break;
+      }
+      if (cur_row->entity_id > filter.entity_id) {
+        cur_version = cur_row->table_version + 1;
+        break;
+      }
+      if (cur_row->entity_id < filter.entity_id) {
+        cur_version = cur_row->table_version;
+        break;
+      }
+      if (CheckIfTsInSpan(cur_row->ts, filter.ts_spans_)) {
+        rows->push_back(cur_row);
+      }
+      iter.Next();
+    }
+    if (scan_over || !iter.Valid()) {
       break;
     }
-    if (cur_row->entity_id == filter.entity_id && CheckIfTsInSpan(cur_row->ts, filter.ts_spans_)) {
-      rows->push_back(cur_row);
-    }
-    iter.Next();
   }
+
   return true;
 }
+
 
 bool TsMemSegment::GetAllEntityRows(std::list<TSMemSegRowData*>* rows) {
   rows->clear();

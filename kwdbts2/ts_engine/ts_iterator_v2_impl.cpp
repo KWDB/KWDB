@@ -433,7 +433,9 @@ KStatus TsMemSegmentScanner::Init(bool is_reversed) {
 KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
-  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableId(), entity_id, ts_spans_};
+  auto table_id = table_schema_mgr_->GetTableId();
+  auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_spans_};
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
@@ -481,12 +483,12 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
         for (auto block : blocks) {
-          for (int i = 0; i < block->GetRowNum(); ++i) {
-            if (block->IsColNull(i, col_idx, attrs_)) {
-              set_null_bitmap(bitmap, i);
+          for (int row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
+            if (block->IsColNull(row_idx, col_idx, attrs_)) {
+              set_null_bitmap(bitmap, row_idx);
               batch->push_back(nullptr);
             } else {
-              ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+              ret = block->GetValueSlice(row_idx, col_idx, attrs_, col_data);
               if (ret != KStatus::SUCCESS) {
                 return ret;
               }
@@ -516,8 +518,9 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
 KStatus TsMemSegmentScanner::ScanAgg(uint32_t entity_id, k_uint32* count, timestamp64 ts) {
   KStatus ret;
   std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
-  TsBlockITemFilterParams params{0, table_schema_mgr_->GetTableId(), entity_id, ts_spans_};
-
+  auto table_id = table_schema_mgr_->GetTableId();
+  auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_spans_};
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
     return ret;
