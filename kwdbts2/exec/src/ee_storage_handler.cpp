@@ -481,6 +481,12 @@ EEIteratorErrCode StorageHandler::GetNextTagData(kwdbContext_p ctx, ScanRowBatch
 }
 
 inline bool EntityLessThan(EntityResultIndex& x, EntityResultIndex& y) {
+  if (x.entityGroupId == y.entityGroupId) {
+    if (x.subGroupId == y.subGroupId) {
+      return x.entityId < y.entityId;
+    }
+    return x.subGroupId < y.subGroupId;
+  }
   return x.subGroupId < y.subGroupId;
 }
 
