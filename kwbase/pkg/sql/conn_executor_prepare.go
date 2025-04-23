@@ -64,6 +64,18 @@ func (ex *connExecutor) execPrepare(
 		ex.deletePreparedStmt(ctx, "")
 	}
 
+	// build SelectInto statement when subquery as value in setting user defined variables
+	if astSetVar, ok := parseCmd.Statement.AST.(*tree.SetVar); ok && len(astSetVar.Name) > 0 && astSetVar.Name[0] == '@' && len(astSetVar.Values) == 1 {
+		if sub, ok := astSetVar.Values[0].(*tree.Subquery); ok {
+			sel := tree.Select{Select: sub.Select}
+			selInto := tree.SelectInto{
+				Names:  tree.UserDefinedVars{tree.UserDefinedVar{VarName: astSetVar.Name}},
+				Values: &sel,
+			}
+			parseCmd.Statement.AST = &selInto
+		}
+	}
+
 	ps, err := ex.addPreparedStmt(
 		ctx,
 		parseCmd.Name,
@@ -466,6 +478,37 @@ func (ex *connExecutor) execPreparedirectBind(
 			"unknown prepared statement %q", bindCmd.PreparedStatementName))
 	}
 
+	numQArgs := uint16(len(ps.InferredTypes))
+	if bindCmd.internalArgs != nil {
+		if len(bindCmd.internalArgs) != int(numQArgs) {
+			return retErr(
+				pgwirebase.NewProtocolViolationErrorf(
+					"expected %d arguments, got %d", numQArgs, len(bindCmd.internalArgs)))
+		}
+	} else {
+		qArgFormatCodes := bindCmd.ArgFormatCodes
+		if len(qArgFormatCodes) != 1 && len(qArgFormatCodes) != int(numQArgs) {
+			return retErr(pgwirebase.NewProtocolViolationErrorf(
+				"wrong number of format codes specified: %d for %d arguments",
+				len(qArgFormatCodes), numQArgs))
+		}
+
+		if len(qArgFormatCodes) == 1 && numQArgs > 1 {
+			fmtCode := qArgFormatCodes[0]
+			qArgFormatCodes = make([]pgwirebase.FormatCode, numQArgs)
+			for i := range qArgFormatCodes {
+				qArgFormatCodes[i] = fmtCode
+			}
+			bindCmd.ArgFormatCodes = qArgFormatCodes
+		}
+
+		if len(bindCmd.Args) != int(numQArgs) {
+			return retErr(
+				pgwirebase.NewProtocolViolationErrorf(
+					"expected %d arguments, got %d", numQArgs, len(bindCmd.Args)))
+		}
+	}
+
 	if ins, ok := ps.PrepareMetadata.Statement.AST.(*tree.Insert); ok {
 		var di DirectInsert
 		copy(ins.Columns, ps.PrepareInsertDirect.Dit.Desc)
@@ -479,8 +522,11 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			flags := tree.ObjectLookupFlags{}
 			table, err := tables.GetTableVersion(ctx, txn, ps.PrepareInsertDirect.Dit.Tname, flags)
-			if table == nil || err != nil {
+			if err != nil {
 				return err
+			}
+			if table == nil {
+				return pgerror.Newf(pgcode.Syntax, "table is being dropped")
 			}
 			var sd sessiondata.SessionData
 			EvalContext := tree.EvalContext{

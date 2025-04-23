@@ -138,6 +138,9 @@ func TryDelegate(
 	case *tree.ShowVar:
 		return d.delegateShowVar(t)
 
+	case *tree.ShowUdvVar:
+		return d.delegateShowUdvVar(t)
+
 	case *tree.ShowZoneConfig:
 		return d.delegateShowZoneConfig(t)
 

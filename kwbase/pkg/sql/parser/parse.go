@@ -124,6 +124,7 @@ type Parser struct {
 	Dudgetstable   func(dbName *string, tableName string) bool
 	IsShortcircuit bool
 	TsSupportBatch bool
+	Customize      bool
 }
 
 // INT8 is the historical interpretation of INT. This should be left
@@ -351,9 +352,11 @@ func (p *Parser) parseWithDepth(depth int, sql string, nakedIntType *types.T) (S
 	defer p.scanner.cleanup()
 	for {
 		p.scanner.shortinsert.isValues, p.scanner.shortinsert.isInsert = false, false
+		p.scanner.shortinsert.Customize = false
 		// loop parse sql
 		sql, tokens, done := p.scanOneStmt()
 		if p.scanner.shortinsert.isInsert && p.scanner.shortinsert.isTsTable {
+			p.Customize = p.scanner.shortinsert.Customize
 			var NoScheNameList tree.NoSchemaNameList
 			stmt := makeDirectStmt(p, NoScheNameList, sql)
 			if sql != "" {

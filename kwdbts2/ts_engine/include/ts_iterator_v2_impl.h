@@ -12,6 +12,7 @@
 
 #include <vector>
 #include <memory>
+#include <list>
 #include <unordered_map>
 #include <unordered_set>
 #include "ts_common.h"
@@ -34,6 +35,7 @@ typedef enum {
 class TsVGroup;
 class TsMemSegmentScanner;
 class TsLastSegmentIterator;
+class TsBlockSegmentIterator;
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
@@ -66,11 +68,13 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus InitializeLastSegmentIterator();
+  KStatus InitializeBlockSegmentIterator();
 
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;
   std::unique_ptr<TsMemSegmentScanner> mem_segment_scanner_{nullptr};
   std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
+  std::unique_ptr<TsBlockSegmentIterator> block_segment_iterator_{nullptr};
 };
 
 class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -136,6 +140,23 @@ class TsLastSegmentIterator : public TsStorageIteratorV2Impl {
   std::shared_ptr<TsVGroupPartition> ts_partition_;
   std::vector<std::shared_ptr<TsLastSegmentEntityBlockIteratorBase>> last_segment_block_iterators_;
   uint32_t last_segment_block_iterator_index_;
+};
+
+class TsBlockSegmentIterator : public TsStorageIteratorV2Impl {
+ public:
+  TsBlockSegmentIterator(std::shared_ptr<TsVGroup>& vgroup, std::shared_ptr<TsVGroupPartition> ts_partition,
+                         uint32_t entity_id, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
+                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
+  ~TsBlockSegmentIterator();
+
+  KStatus Init(bool is_reversed) override;
+  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  KStatus ScanAgg(k_uint32* count, timestamp64 ts);
+ private:
+  uint32_t entity_id_;
+  std::shared_ptr<TsVGroupPartition> ts_partition_;
+  std::list<std::shared_ptr<TsBlockSpanInfo>> ts_blocks_;
 };
 
 }  //  namespace kwdbts

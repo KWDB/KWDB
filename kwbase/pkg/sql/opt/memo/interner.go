@@ -749,6 +749,12 @@ func (h *hasher) HashTSGroupOptType(val opt.GroupOptType) {
 	h.HashUint64(uint64(val))
 }
 
+func (h *hasher) HashVarNames(val opt.VarNames) {
+	for _, name := range val {
+		h.HashString(name)
+	}
+}
+
 // ----------------------------------------------------------------------
 //
 // Equality functions
@@ -1262,6 +1268,18 @@ func (h *hasher) IsTSOrderedScanTypeEqual(l, r opt.OrderedTableType) bool {
 func (h *hasher) IsTSGroupOptTypeEqual(l, r opt.GroupOptType) bool {
 	if l != r {
 		return false
+	}
+	return true
+}
+
+func (h *hasher) IsVarNamesEqual(l, r opt.VarNames) bool {
+	if len(l) != len(r) {
+		return false
+	}
+	for i := range l {
+		if l[i] != r[i] {
+			return false
+		}
 	}
 	return true
 }

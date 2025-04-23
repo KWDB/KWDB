@@ -222,6 +222,22 @@ func (b *Builder) buildAlterTableSplit(split *memo.AlterTableSplitExpr) (execPla
 	return ep, nil
 }
 
+// buildSelectInto constructs select into exec plan.
+func (b *Builder) buildSelectInto(sel *memo.SelectIntoExpr) (execPlan, error) {
+	input, err := b.buildRelational(sel.Input)
+	if err != nil {
+		return execPlan{}, err
+	}
+
+	node, err := b.factory.ConstructSelectInto(input.root, sel.SelectIntoPrivate.Vars)
+	if err != nil {
+		return execPlan{}, err
+	}
+	ep := execPlan{root: node}
+
+	return ep, nil
+}
+
 func (b *Builder) buildAlterTableUnsplit(unsplit *memo.AlterTableUnsplitExpr) (execPlan, error) {
 	input, err := b.buildRelational(unsplit.Input)
 	if err != nil {

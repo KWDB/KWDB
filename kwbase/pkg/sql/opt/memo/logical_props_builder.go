@@ -1011,6 +1011,10 @@ func (b *logicalPropsBuilder) buildAlterTableSplitProps(
 	b.buildBasicProps(split, split.Columns, rel)
 }
 
+func (b *logicalPropsBuilder) buildSelectIntoProps(sel *SelectIntoExpr, rel *props.Relational) {
+	BuildSharedProps(sel, &rel.Shared)
+}
+
 func (b *logicalPropsBuilder) buildAlterTableUnsplitProps(
 	unsplit *AlterTableUnsplitExpr, rel *props.Relational,
 ) {

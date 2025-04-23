@@ -260,6 +260,17 @@ func (ex *connExecutor) execStmt(
 				ev, payload, err = ex.execStmtInOpenState(ctx, stmt, res, pinfo)
 			})
 		} else {
+			// build SelectInto statement when subquery as value in setting user defined variables
+			if astSetVar, ok := stmt.AST.(*tree.SetVar); ok && len(astSetVar.Name) > 0 && astSetVar.Name[0] == '@' && len(astSetVar.Values) == 1 {
+				if sub, ok := astSetVar.Values[0].(*tree.Subquery); ok {
+					sel := tree.Select{Select: sub.Select}
+					selInto := tree.SelectInto{
+						Names:  tree.UserDefinedVars{tree.UserDefinedVar{VarName: astSetVar.Name}},
+						Values: &sel,
+					}
+					stmt.AST = &selInto
+				}
+			}
 			ev, payload, err = ex.execStmtInOpenState(ctx, stmt, res, pinfo)
 		}
 		switch ev.(type) {
@@ -571,6 +582,23 @@ func (ex *connExecutor) execStmtInOpenState(
 			}
 			typeHints = make(tree.PlaceholderTypes, stmt.NumPlaceholders)
 			copy(typeHints, s.Types)
+		}
+
+		// get and parse prepared statement when user defined variable as sql
+		if s.Udv != nil && s.Statement == nil {
+			varName := strings.ToLower(s.Udv.String())
+			varStr := ex.sessionData.UserDefinedVars[varName]
+			if stmtStr, ok := varStr.(*tree.DString); ok {
+				resStmt, err := parser.ParseOne(string(*stmtStr))
+				if err != nil {
+					err := pgerror.Newf(pgcode.Syntax, "invalid syntax of query")
+					return makeErrEvent(err)
+				}
+				s.Statement = resStmt.AST
+			} else {
+				err := pgerror.Newf(pgcode.Syntax, "invalid syntax of query")
+				return makeErrEvent(err)
+			}
 		}
 		if _, err := ex.addPreparedStmt(
 			ctx, name,

@@ -27,6 +27,7 @@ package optbuilder
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
@@ -255,7 +256,15 @@ func (b *Builder) buildScalar(
 		} else {
 			out.SetConstDeductionEnabled(false)
 		}
-
+	case *tree.AssignmentExpr:
+		leftRes := b.buildScalar(t.Left.(tree.TypedExpr), inScope, nil, nil, colRefs)
+		rightRes := b.buildScalar(t.Right.(tree.TypedExpr), inScope, nil, nil, colRefs)
+		out = b.factory.ConstructAssignment(leftRes, rightRes)
+		if out.CheckConstDeductionEnabled() {
+			out = b.setConstDeductionEnabled(out, true)
+		} else {
+			out.SetConstDeductionEnabled(false)
+		}
 	case *tree.BinaryExpr:
 		// It's possible for an overload to be selected that expects different
 		// types than the TypedExpr arguments return:
@@ -530,6 +539,16 @@ func (b *Builder) buildScalar(
 	// Datum.
 	case tree.Datum:
 		out = b.factory.ConstructConstVal(t, t.ResolvedType())
+		out = b.setConstDeductionEnabled(out, true)
+
+	case *tree.UserDefinedVar:
+		b.DisableMemoReuse = true
+		varName := strings.ToLower(t.VarName)
+		if b.evalCtx.SessionData.UserDefinedVars[varName] == nil {
+			panic(pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", t.VarName))
+		}
+		d := b.evalCtx.SessionData.UserDefinedVars[varName].(tree.Datum)
+		out = b.factory.ConstructConstVal(d, d.ResolvedType())
 		out = b.setConstDeductionEnabled(out, true)
 
 	default:

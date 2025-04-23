@@ -303,6 +303,11 @@ func (n *NoopStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (n *NoopStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (n *NoopStats) StatsForQueryPlan() []string {
 	return n.InputStats.StatsForQueryPlan("")

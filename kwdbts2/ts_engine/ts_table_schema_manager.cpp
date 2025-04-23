@@ -704,7 +704,7 @@ const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_
   return Get(table_version, false)->getIdxForValidCols();
 }
 
-TSTableID TsTableSchemaManager::GetTableID() {
+TSTableID TsTableSchemaManager::GetTableId() {
   return table_id_;
 }
 

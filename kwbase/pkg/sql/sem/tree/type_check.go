@@ -78,6 +78,9 @@ type SemaContext struct {
 	AsOfTimestamp *hlc.Timestamp
 
 	Properties SemaProperties
+
+	// UserDefinedVars stores variables defined by user
+	UserDefinedVars map[string]interface{}
 }
 
 // SemaProperties is a holder for required and derived properties
@@ -310,6 +313,24 @@ func (expr *AndExpr) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, e
 	}
 	expr.Left, expr.Right = leftTyped, rightTyped
 	expr.typ = types.Bool
+	return expr, nil
+}
+
+// TypeCheck implements the Expr interface.
+func (expr *AssignmentExpr) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, error) {
+	if _, ok := expr.Left.(*UserDefinedVar); !ok {
+		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "argument of ':=' must be a user defiend var")
+	}
+	_, err := expr.Left.TypeCheck(ctx, desired)
+	if err != nil {
+		return nil, err
+	}
+	rightTyped, err := expr.Right.TypeCheck(ctx, desired)
+	if err != nil {
+		return nil, err
+	}
+	expr.Right = rightTyped
+	expr.typ = rightTyped.ResolvedType()
 	return expr, nil
 }
 

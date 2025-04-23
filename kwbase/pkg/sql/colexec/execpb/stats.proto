@@ -28,6 +28,7 @@ option go_package = "execpb";
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
+import "sql/rowexec/stats.proto";
 
 // VectorizedStats represents the stats collected from an operator.
 message VectorizedStats {
@@ -40,4 +41,5 @@ message VectorizedStats {
   bool stall = 5;
   int64 max_allocated_mem = 6;
   int64 max_allocated_disk = 7;
+  kwbase.sql.distsqlrun.TsInputStats tsInputStats =8 [(gogoproto.nullable) = false];
 }

@@ -68,7 +68,7 @@ class Processors {
    */
   KStatus Init(kwdbContext_p ctx, const TSFlowSpec *fspec);
 
-  KStatus InitIterator(kwdbContext_p ctx, bool isPG);
+  KStatus InitIterator(kwdbContext_p ctx, TsNextRetState nextState);
   KStatus CloseIterator(kwdbContext_p ctx);
   /**
    * @brief Execute processors and encode
@@ -79,6 +79,9 @@ class Processors {
    */
   KStatus RunWithEncoding(kwdbContext_p ctx, char **buffer, k_uint32 *length,
                           k_uint32 *count, k_bool *is_last_record);
+  KStatus RunWithVectorize(kwdbContext_p ctx, char **value, void *buffer, k_uint32 *length,
+                          k_uint32 *count, k_bool *is_last_record);
+
 
   BaseOperator *GetRootIterator() { return root_iterator_; }
 

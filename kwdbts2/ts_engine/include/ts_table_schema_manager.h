@@ -112,9 +112,7 @@ class TsTableSchemaManager {
     return cur_schema_version_;
   }
 
-  TSTableID GetTableId() {
-    return table_id_;
-  }
+  TSTableID GetTableId();
 
   KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
                             ErrorInfo& err_info, uint32_t cur_version = 0);
@@ -188,8 +186,6 @@ class TsTableSchemaManager {
    * @return Returns index information for the actual column.
    */
   const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
-
-  TSTableID GetTableID();
 };
 
 }  // namespace kwdbts

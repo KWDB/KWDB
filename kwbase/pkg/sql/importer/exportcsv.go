@@ -108,6 +108,10 @@ func (sp *csvWriter) NextPgWire() (val []byte, code int, err error) {
 	return nil, 0, nil
 }
 
+func (sp *csvWriter) SupportPgWire() bool {
+	return false
+}
+
 func (sp *csvWriter) Start(ctx context.Context) context.Context {
 	return nil
 }
@@ -155,6 +159,10 @@ func (sp *csvWriter) csvNewWriter() (*csv.Writer, *bytes.Buffer) {
 	if sp.spec.Options.Escaped != 0 {
 		writer.Escaped = sp.spec.Options.Escaped
 	}
+	if sp.spec.FileFormat == "SQL" {
+		nullsAs = "NULL"
+		writer.IsSQL = true
+	}
 	if nullsAs != "" {
 		writer.Nullas = nullsAs
 	}
@@ -193,6 +201,12 @@ func (sp *csvWriter) csvColumnNameWriter() (*csv.Writer, *bytes.Buffer) {
 		return colNameWriter, colNameBuf
 	}
 	return nil, nil
+}
+
+// makeSQLData assemble data, tables, and column names into SQL statements
+func makeSQLData(line []byte, colName []byte, prefix string) ([]byte, error) {
+	insert := "INSERT INTO " + prefix + "(" + string(colName) + ")" + " VALUES (" + string(line) + ");\n"
+	return []byte(insert), nil
 }
 
 // transferCharset transfer CSV	from UTF8 charset to GBK/GB18030/BIG5
@@ -246,6 +260,9 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 			nullsAs = *sp.spec.Options.NullEncoding
 		}
 		pattern := exportFilePatternDefault
+		if sp.spec.FileFormat == "SQL" {
+			pattern = exportFilePatternSQL
+		}
 		if sp.spec.NamePattern != "" {
 			pattern = sp.spec.NamePattern
 		}
@@ -280,7 +297,7 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 		}
 		// first write column name
 		cwf.Lock()
-		if colNameBuf != nil {
+		if colNameBuf != nil && sp.spec.FileFormat != "SQL" {
 			if err := es.AppendWrite(ctx, filename, bytes.NewReader(colNameBuf.Bytes())); err != nil {
 				cwf.Unlock()
 				return errors.Wrapf(err, "write file %s", filename)
@@ -292,6 +309,7 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 		process := func(ctx context.Context) error {
 			// write data buf
 			writer, buf := sp.csvNewWriter()
+			_, bufSQL := sp.csvNewWriter()
 
 			alloc := &sqlbase.DatumAlloc{}
 			f := tree.NewFmtCtx(tree.FmtExport)
@@ -318,14 +336,41 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 							return err
 						}
 						ed.Datum.Format(f)
-						csvRow[i] = f.String()
+						if sp.spec.FileFormat == "SQL" {
+							if sp.spec.ColumnTypes[i] == types.TimestampTZFamily ||
+								sp.spec.ColumnTypes[i] == types.StringFamily ||
+								sp.spec.ColumnTypes[i] == types.TimestampFamily ||
+								sp.spec.ColumnTypes[i] == types.TimeFamily ||
+								sp.spec.ColumnTypes[i] == types.TimeTZFamily {
+								csvRow[i] = fieldSQLResolve(f.String())
+							} else {
+								csvRow[i] = f.String()
+							}
+						} else {
+							csvRow[i] = f.String()
+						}
 						f.Reset()
 					}
-					if err := writer.Write(csvRow, nilMap); err != nil {
-						return err
+					if sp.spec.FileFormat == "SQL" {
+						if err := writer.WriteSQL(csvRow, nilMap); err != nil {
+							return err
+						}
+					} else {
+						if err := writer.Write(csvRow, nilMap); err != nil {
+							return err
+						}
+					}
+					if sp.spec.FileFormat == "SQL" {
+						writer.Flush()
+						line, _ := makeSQLData(buf.Bytes(), colNameBuf.Bytes(), sp.spec.TablePrefix)
+						bufSQL.Write(line)
+						buf.Reset()
 					}
 				}
 				writer.Flush()
+				if sp.spec.FileFormat == "SQL" {
+					buf.Write(bufSQL.Bytes())
+				}
 				// transfer data charset
 				if sp.spec.Options.Charset != "UTF-8" && sp.spec.Options.Charset != "" {
 					line, err := sp.transferCharset(ctx, buf.Bytes())
@@ -434,6 +479,105 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 	execinfra.DrainAndClose(
 		ctx, sp.output, err, func(context.Context) {} /* pushTrailingMeta */, sp.input)
 	return execinfra.RowStats{}
+}
+
+// fieldSQLResolve used to handle special column contents when exporting SQL files
+func fieldSQLResolve(field string) string {
+	/*
+					  _________________________________________________________________
+				  	|           data                |              quote            |
+				  	|-------------------------------|-------------------------------|
+				  	|     end_enclose\n_qwe         |       'end_enclose\n_qwe'     |
+				    |     end_enclose
+				  	      _qwe                      |       E'end_enclose\n_qwe'    |
+				  	|     end_enclose\n_qwe         |       'end_enclose\n_qwe'     |
+						|     basic_string基础测试       |       'basic_string基础测试'   |
+						|     "begin_enclose前          |       '"begin_enclose前'      |
+						|     middle_enclose"中         |       'middle_enclose"中'     |
+						|     end_enclose后"            |       'end_enclose后"'        |
+						|     'begin_enclose前          |       E'\'begin_enclose前'    |
+						|     middle_enclose'中         |       E'middle_enclose\'中'   |
+						|     end_enclose后'            |       E'end_enclose后\''      |
+						|     end_enclose
+			            跨行                      |    E'end_enclose\n跨行'        |
+						|     seprator,分隔符basic测试   |     'seprator,分隔符basic测试' |
+						|     ,seprator分隔符前          |       ',seprator分隔符前'      |
+						|     seprator,分隔符中          |       'seprator,分隔符中'      |
+						|     seprator分隔符后,          |       'seprator分隔符后,'      |
+						|     \escape基础测试            |       '\escape基础测试'        |
+						|     escape基础\测试中           |       'escape基础\测试中'     |
+						|     escape测试后\              |       'escape测试后\'         |
+						|     end_'enclose
+			            跨行                       |    'E'end_\'enclose\n跨行''  |
+						|     end_'enclose
+			            跨'asda
+			            asd                        | E'end_\'enclose\n跨\'asda\nasd'|
+						|     end_'enclose
+			            跨行                        |       E'end_\'enclose\r跨行'   |
+		        |     end_enclose\n跨行           |       'end_enclose\n跨行'      |
+
+	*/
+	field, hasLineBreakN := checkAndHandleLineBreakN(field)
+	field, hasLineBreakR := checkAndHandleLineBreakR(field)
+	field, hasSingleQuota := checkAndHandleSingleQuota(field)
+	if hasLineBreakN || hasLineBreakR || hasSingleQuota {
+		return "E'" + field + "'"
+	}
+	return "'" + field + "'"
+}
+
+// checkAndHandleLineBreakN Determine if there is a \n line break and process it
+func checkAndHandleLineBreakN(field string) (string, bool) {
+	var str string
+	for {
+		if strings.ContainsAny(field, "\n") {
+			index := strings.IndexAny(field, "\n")
+			str += field[:index] + "\\n"
+			field = field[index+1:]
+		} else {
+			break
+		}
+	}
+	if str == "" {
+		return field, false
+	}
+	return str + field, true
+}
+
+// checkAndHandleLineBreakR Determine if there is a \r line break and process it
+func checkAndHandleLineBreakR(field string) (string, bool) {
+	var str string
+	for {
+		if strings.ContainsAny(field, "\r") {
+			index := strings.IndexAny(field, "\r")
+			str += field[:index] + "\\r"
+			field = field[index+1:]
+		} else {
+			break
+		}
+	}
+	if str == "" {
+		return field, false
+	}
+	return str + field, true
+}
+
+// checkAndHandleSingleQuota return whether there are single quotes and the processed string with single quotes
+func checkAndHandleSingleQuota(field string) (string, bool) {
+	var str string
+	for {
+		if strings.ContainsAny(field, "'") {
+			index := strings.IndexAny(field, "'")
+			str += field[:index] + "\\" + field[index:index+1]
+			field = field[index+1:]
+		} else {
+			break
+		}
+	}
+	if str == "" {
+		return field, false
+	}
+	return str + field, true
 }
 
 // sendResult is used to return the record of csv file for print

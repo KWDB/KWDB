@@ -948,6 +948,11 @@ func (ws *WindowerStats) TsStats() map[int32]map[string]string {
 	return nil
 }
 
+// GetSpanStatsType check type of spanStats
+func (ws *WindowerStats) GetSpanStatsType() int {
+	return tracing.SpanStatsTypeDefault
+}
+
 // StatsForQueryPlan implements the DistSQLSpanStats interface.
 func (ws *WindowerStats) StatsForQueryPlan() []string {
 	stats := ws.InputStats.StatsForQueryPlan("" /* prefix */)

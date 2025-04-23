@@ -188,21 +188,19 @@ var varGen = map[string]sessionVar{
 			switch encoding {
 			case "utf8", "unicode", "cp65001":
 				m.data.ClientEncoding = encoding
-				return nil
 			case "gbk", "gb18030":
 				m.data.ClientEncoding = encoding
-				return nil
 			case "big5":
 				m.data.ClientEncoding = encoding
-				return nil
 			case "":
 				m.data.ClientEncoding = "UTF8"
-				return nil
 			default:
 				return unimplemented.NewWithIssueDetailf(35882,
 					"client_encoding "+encoding,
 					"unimplemented client encoding: %q", encoding)
 			}
+			m.paramStatusUpdater.AppendParamStatusUpdate("client_encoding", encoding)
+			return nil
 		},
 		Get:           func(evalCtx *extendedEvalContext) string { return evalCtx.SessionData.ClientEncoding },
 		GlobalDefault: func(_ *settings.Values) string { return "UTF8" },
@@ -1339,6 +1337,17 @@ func (p *planner) GetSessionVar(
 	}
 
 	return true, v.Get(&p.extendedEvalCtx), nil
+}
+
+// GetUserDefinedVar implements the EvalSessionAccessor interface.
+func (p *planner) GetUserDefinedVar(
+	_ context.Context, varName string, missingOk bool,
+) (bool, interface{}, error) {
+	name := strings.ToLower(varName)
+	if p.extendedEvalCtx.SessionData.UserDefinedVars[varName] == nil {
+		return false, nil, nil
+	}
+	return true, p.extendedEvalCtx.SessionData.UserDefinedVars[name], nil
 }
 
 // SetSessionVar implements the EvalSessionAccessor interface.

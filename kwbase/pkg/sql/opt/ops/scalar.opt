@@ -105,6 +105,17 @@ define Const {
     Typ Type
 }
 
+# Const is a typed scalar constant value. The Value field is a tree.Datum value
+# having any datum type that's legal in the expression's context.
+[Scalar]
+define UserDefinedVar {
+    Name string
+
+    # Typ is the type of the UserDefinedVar. It is necessary because
+    # Value.ResolvedType() loses information in some cases.
+    Typ Type
+}
+
 # Null is the constant SQL null value that has "unknown value" semantics. If
 # the Typ field is not types.Unknown, then the value is known to be in the
 # domain of that type. This is important for preserving correct types in
@@ -264,6 +275,13 @@ define Zip {
 define ZipItem {
     Fn ScalarExpr
     Cols ColList
+}
+
+# Assignment is the assignment expr
+[Scalar]
+define Assignment {
+    Left ScalarExpr
+    Right ScalarExpr
 }
 
 # And is the boolean conjunction operator that evalutes to true only if both of

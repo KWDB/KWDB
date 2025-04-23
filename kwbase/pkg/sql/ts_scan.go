@@ -93,6 +93,11 @@ type tsScanNode struct {
 
 	// ts table id
 	TableMetaID opt.TableID
+
+	// estimatedRowCount is the estimated number of rows that this tsScanNode will
+	// output. When there are no statistics to make the estimation, it will be
+	// set to zero.
+	estimatedRowCount uint64
 }
 
 // RelationalInfo contains relational information from the other side of

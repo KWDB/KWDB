@@ -115,7 +115,7 @@ func (n *explainVecNode) startExec(params runParams) error {
 		if flow.nodeID == thisNodeID && !willDistributePlan {
 			fuseOpt = flowinfra.FuseAggressively
 		}
-		opChains, err := colflow.SupportsVectorized(params.ctx, flowCtx, flow.flow.Processors, fuseOpt, nil /* output */)
+		opChains, err := colflow.SupportsVectorized(params.ctx, flowCtx, flow.flow.Processors, flow.flow.TsProcessors, fuseOpt, nil /* output */)
 		if err != nil {
 			return err
 		}

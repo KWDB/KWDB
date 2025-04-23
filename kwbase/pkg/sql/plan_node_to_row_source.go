@@ -186,8 +186,15 @@ func (p *planNodeToRowSource) Next() (sqlbase.EncDatumRow, *execinfrapb.Producer
 			// If we have no fast path to trigger, fall back to counting the rows
 			// by Nexting our source until exhaustion.
 			next, err := p.node.Next(p.params)
+			if _, ok := p.node.(*selectIntoNode); ok && err != nil {
+				p.MoveToDraining(err)
+				return nil, p.DrainHelper()
+			}
 			for ; next; next, err = p.node.Next(p.params) {
 				count++
+			}
+			if sel, ok := p.node.(*selectIntoNode); ok {
+				count = len(sel.vars)
 			}
 			if err != nil {
 				p.MoveToDraining(err)

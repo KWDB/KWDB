@@ -110,4 +110,6 @@ var NotAllowedTypeName = map[oid.Oid]string{
 	types.T__nvarchar: "_NVARCHAR",
 	types.T__varbytea: "_VARBYTES",
 	types.T__geometry: "_GEOMETRY",
+	types.T__clob:     "_CLOB",
+	types.T__blob:     "_BLOB",
 }

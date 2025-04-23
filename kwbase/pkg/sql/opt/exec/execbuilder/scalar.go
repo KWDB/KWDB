@@ -75,8 +75,10 @@ func init() {
 		opt.AggregationsItemOp: (*Builder).buildItem,
 
 		// Subquery operators.
-		opt.ExistsOp:   (*Builder).buildExistsSubquery,
-		opt.SubqueryOp: (*Builder).buildSubquery,
+		opt.ExistsOp:         (*Builder).buildExistsSubquery,
+		opt.SubqueryOp:       (*Builder).buildSubquery,
+		opt.UserDefinedVarOp: (*Builder).buildUserDefinedVar,
+		opt.AssignmentOp:     (*Builder).buildAssignment,
 	}
 
 	for _, op := range opt.BoolOperators {
@@ -247,6 +249,21 @@ func (b *Builder) buildUnary(ctx *buildScalarCtx, scalar opt.ScalarExpr) (tree.T
 	}
 	operator := opt.UnaryOpReverseMap[scalar.Op()]
 	return tree.NewTypedUnaryExpr(operator, input, scalar.DataType()), nil
+}
+
+func (b *Builder) buildAssignment(
+	ctx *buildScalarCtx, scalar opt.ScalarExpr,
+) (tree.TypedExpr, error) {
+	left, err := b.buildScalar(ctx, scalar.Child(0).(opt.ScalarExpr))
+	if err != nil {
+		return nil, err
+	}
+	right, err := b.buildScalar(ctx, scalar.Child(1).(opt.ScalarExpr))
+	if err != nil {
+		return nil, err
+	}
+
+	return tree.NewTypedAssignmentExpr(left, right, scalar.DataType()), nil
 }
 
 func (b *Builder) buildBinary(ctx *buildScalarCtx, scalar opt.ScalarExpr) (tree.TypedExpr, error) {
@@ -560,6 +577,13 @@ func (b *Builder) buildSubquery(
 	}
 
 	return b.addSubquery(exec.SubqueryOneRow, subquery.Typ, plan.root, subquery.OriginalExpr), nil
+}
+
+func (b *Builder) buildUserDefinedVar(
+	ctx *buildScalarCtx, scalar opt.ScalarExpr,
+) (tree.TypedExpr, error) {
+	udv := scalar.(*memo.UserDefinedVarExpr)
+	return tree.NewUserDefinedVarExpr(udv.Name, udv.DataType()), nil
 }
 
 // addSubquery adds an entry to b.subqueries and creates a tree.Subquery

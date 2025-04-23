@@ -214,6 +214,7 @@ func init() {
 	typingFuncMap[opt.ImputationOp] = typeAsFirstArg
 	typingFuncMap[opt.WindowFromOffsetOp] = typeAsFirstArg
 	typingFuncMap[opt.WindowToOffsetOp] = typeAsFirstArg
+	typingFuncMap[opt.AssignmentOp] = typeAsSecondArg
 
 	for _, op := range opt.BinaryOperators {
 		typingFuncMap[op] = typeAsBinary
@@ -246,6 +247,10 @@ func typeVariable(mem *Memo, e opt.ScalarExpr) *types.T {
 		panic(errors.AssertionFailedf("column %d does not have type", log.Safe(variable.Col)))
 	}
 	return typ
+}
+
+func typeAny(e opt.ScalarExpr) *types.T {
+	return types.Any
 }
 
 // typeArrayAgg returns an array type with element type equal to the type of the
@@ -286,6 +291,11 @@ func typeIfErr(e opt.ScalarExpr) *types.T {
 // typeAsFirstArg returns the type of the expression's 0th argument.
 func typeAsFirstArg(e opt.ScalarExpr) *types.T {
 	return e.Child(0).(opt.ScalarExpr).DataType()
+}
+
+// typeAsSecondArg returns the type of the expression's 1st argument.
+func typeAsSecondArg(e opt.ScalarExpr) *types.T {
+	return e.Child(1).(opt.ScalarExpr).DataType()
 }
 
 // typeAsTypedExpr returns the resolved type of the private field, with the

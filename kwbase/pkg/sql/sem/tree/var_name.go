@@ -25,6 +25,10 @@
 package tree
 
 import (
+	"strings"
+
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"github.com/cockroachdb/errors"
 )
@@ -201,4 +205,48 @@ func MakeColumnItem(tn *TableName, colName Name) ColumnItem {
 		}
 	}
 	return c
+}
+
+// UserDefinedVar corresponds to the name of a column in an expression.
+type UserDefinedVar struct {
+	VarName string
+
+	typeAnnotation
+}
+
+func (c *UserDefinedVar) String() string { return c.VarName }
+
+// Format implements the NodeFormatter interface.
+func (c *UserDefinedVar) Format(ctx *FmtCtx) {
+	ctx.WriteString(c.VarName)
+}
+
+// Walk implements the Expr interface.
+func (c *UserDefinedVar) Walk(_ Visitor) Expr {
+	return c
+}
+
+// TypeCheck implements the Expr interface.  This function has a valid
+// implementation only for testing within this package. During query
+// execution, ColumnItems are replaced to IndexedVars prior to type
+// checking.
+func (c *UserDefinedVar) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, error) {
+	if ctx == nil || ctx.UserDefinedVars == nil {
+		return nil, pgerror.New(pgcode.Warning, "user defined var type check error")
+	}
+	varName := strings.ToLower(c.VarName)
+	if val, ok := ctx.UserDefinedVars[varName]; ok {
+		c.typ = val.(Datum).ResolvedType()
+	} else {
+		return nil, pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", c.VarName)
+	}
+	return c, nil
+}
+
+// NewUserDefinedVarExpr returns a new UserDefinedVar that is well-typed.
+func NewUserDefinedVarExpr(varName string, typ *types.T) *UserDefinedVar {
+	node := &UserDefinedVar{}
+	node.VarName = varName
+	node.typ = typ
+	return node
 }

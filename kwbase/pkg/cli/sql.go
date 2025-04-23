@@ -808,15 +808,36 @@ func (c *cliState) refreshDatabaseName() string {
 		return unknownDbName
 	}
 
+	var clientEncoding string
+
 	if dbVal == "" {
 		// Attempt to be helpful to new users.
 		fmt.Fprintln(stderr, "warning: no current database set."+
 			" Use SET database = <dbname> to change, CREATE DATABASE to make a new database.")
 	}
 
+	d, hasVal := c.conn.getServerValue("client encoding", `SHOW CLIENT_ENCODING`)
+	if !hasVal {
+		clientEncoding = ""
+	}
+
+	clientEncoding = formatVal(d,
+		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
+	if clientEncoding == "" {
+		// Attempt to be helpful to new users.
+		fmt.Fprintln(stderr, "warning: no client encoding set.")
+	}
+
+	if clientEncoding == "gbk" || clientEncoding == "gb18030" {
+		dbName := formatVal(dbVal,
+			false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
+		// Preserve the current database name in case of reconnects.
+		c.conn.dbName = dbName
+
+		return dbName
+	}
 	dbName := formatVal(dbVal.(string),
 		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
-
 	// Preserve the current database name in case of reconnects.
 	c.conn.dbName = dbName
 
