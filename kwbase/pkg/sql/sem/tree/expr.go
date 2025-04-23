@@ -1211,6 +1211,29 @@ func (node *BinaryExpr) Format(ctx *FmtCtx) {
 	binExprFmtWithParen(ctx, node.Left, node.Operator.String(), node.Right, node.Operator.isPadded())
 }
 
+// AssignmentExpr represents a user defined variables expression.
+type AssignmentExpr struct {
+	Left, Right Expr
+
+	typeAnnotation
+}
+
+func (*AssignmentExpr) operatorExpr() {}
+
+// Format implements the NodeFormatter interface.
+func (node *AssignmentExpr) Format(ctx *FmtCtx) {
+	ctx.FormatNode(node.Left)
+	ctx.WriteString(":=")
+	ctx.FormatNode(node.Right)
+}
+
+// NewTypedAssignmentExpr returns a new AssignmentExpr that is well-typed.
+func NewTypedAssignmentExpr(left, right TypedExpr, typ *types.T) *AssignmentExpr {
+	node := &AssignmentExpr{Left: left, Right: right}
+	node.typ = typ
+	return node
+}
+
 // UnaryOperator represents a unary operator.
 type UnaryOperator int
 
@@ -1790,6 +1813,7 @@ func (node *ParenTableExpr) String() string   { return AsString(node) }
 func (node *JoinTableExpr) String() string    { return AsString(node) }
 func (node *AndExpr) String() string          { return AsString(node) }
 func (node *Array) String() string            { return AsString(node) }
+func (node *AssignmentExpr) String() string   { return AsString(node) }
 func (node *BinaryExpr) String() string       { return AsString(node) }
 func (node *CaseExpr) String() string         { return AsString(node) }
 func (node *CastExpr) String() string         { return AsString(node) }

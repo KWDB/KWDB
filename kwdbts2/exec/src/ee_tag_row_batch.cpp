@@ -430,4 +430,20 @@ void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
     }
   }
 }
+
+KStatus TagRowBatch::SortByEntityIndex() {
+  ResetLine();
+  if (!isFilter_) {
+    for (k_uint32 i = 0; i < count_; ++i) {
+      AddSelection();
+      NextLine();
+    }
+    ResetLine();
+  }
+  auto bound_cmp = std::bind(&TagRowBatch::EntityLessThan, this,
+                             std::placeholders::_1, std::placeholders::_2);
+  std::sort(selection_.begin(), selection_.end(), bound_cmp);
+  return SUCCESS;
+}
+
 }  // namespace kwdbts

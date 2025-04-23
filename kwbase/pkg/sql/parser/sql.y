@@ -164,6 +164,15 @@ func (u *sqlSymUnion) shardedIndexDef() *tree.ShardedIndexDef {
 func (u *sqlSymUnion) nameList() tree.NameList {
     return u.val.(tree.NameList)
 }
+func (u *sqlSymUnion) UserDefinedVars() tree.UserDefinedVars {
+    return u.val.(tree.UserDefinedVars)
+}
+func (u *sqlSymUnion) UserDefinedVar() tree.UserDefinedVar {
+		if name, ok := u.val.(*tree.UserDefinedVar); ok {
+    		return *name
+    }
+    return tree.UserDefinedVar{}
+}
 func (u *sqlSymUnion) columnIDList() tree.ColumnIDList {
     return u.val.(tree.ColumnIDList)
 }
@@ -220,6 +229,9 @@ func (u *sqlSymUnion) slct() *tree.Select {
 }
 func (u *sqlSymUnion) selectStmt() tree.SelectStatement {
     return u.val.(tree.SelectStatement)
+}
+func (u *sqlSymUnion) selectInto() tree.SelectInto {
+    return u.val.(tree.SelectInto)
 }
 func (u *sqlSymUnion) colDef() *tree.ColumnTableDef {
     return u.val.(*tree.ColumnTableDef)
@@ -629,7 +641,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACTION ADD ADMIN AGGREGATE AUDIT AUDITS
 %token <str> ALL ALTER ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE APPLICATIONS ARRAY AS ASC
-%token <str> ASYMMETRIC AT ATTRIBUTE ATTRIBUTES AUTHORIZATION AUTOMATIC
+%token <str> ASYMMETRIC ASSIGN AT ATTRIBUTE ATTRIBUTES AUTHORIZATION AUTOMATIC
 
 %token <str> STMT_HINT ACCESS_HINT NO_ACCESS_HINT TABLE_SCAN IGNORE_TABLE_SCAN USE_INDEX_SCAN IGNORE_INDEX_SCAN  LEADING_HINT
 %token <str> USE_INDEX_ONLY IGNORE_INDEX_ONLY CAR_HINT JOIN_HINT NO_JOIN_HINT ORDER_JOIN HASH_JOIN MERGE_JOIN GROUP_HINT
@@ -641,7 +653,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %token <str> CACHE CANCEL CASCADE CASE CAST CAST_CHECK CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK
-%token <str> CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMIT
+%token <str> CLOB CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMIT
 %token <str> COMMITTED COMPACT COMPLETE COMPRESS CONCAT CONCURRENTLY CONFIG CONFIGS CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONSTRAINT CONSTRAINTS CONTAINS CONVERSION COPY COVERING CREATE CREATEROLE CREATE_TIME
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
@@ -959,6 +971,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %type <*tree.Select> select_no_parens
 %type <tree.SelectStatement> select_clause select_with_parens simple_select values_clause table_clause simple_select_clause
+%type <tree.SelectInto> simple_select_into_clause
 %type <tree.LockingClause> for_locking_clause opt_for_locking_clause for_locking_items
 %type <*tree.LockingItem> for_locking_item
 %type <tree.LockingStrength> for_locking_strength
@@ -1049,6 +1062,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.IndexElemList> index_params create_as_params
 %type <tree.NameList> name_list operation_list operations operators opt_audit_operation opt_audit_operators
 %type <tree.NameList> privilege_list opt_tag_name_list
+%type <tree.UserDefinedVars> udv_exprs
 %type <tree.ColumnIDList> column_id_list opt_stats_columnids
 %type <[]int32> opt_array_bounds
 %type <tree.From> from_clause
@@ -1191,6 +1205,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %type <tree.Expr> func_application func_expr_common_subexpr special_function
 %type <tree.Expr> func_expr func_expr_windowless
+%type <tree.Expr> udv_expr
 %type <empty> opt_with
 %type <*tree.With> with_clause opt_with_clause
 %type <[]*tree.CTE> cte_list
@@ -1232,6 +1247,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 
 // Precedence: lowest to highest
+%right		 ASSIGN
 %nonassoc  VALUES              // see value_clause
 %nonassoc  SET                 // see table_expr_opt_alias_idx
 %nonassoc  ACTIVETIME VALID INTERPOLATE LINEAR PREV NEXT
@@ -3212,6 +3228,7 @@ preparable_stmt:
 | truncate_stmt     // EXTEND WITH HELP: TRUNCATE
 | update_stmt       // EXTEND WITH HELP: UPDATE
 | upsert_stmt       // EXTEND WITH HELP: UPSERT
+| simple_select_into_clause // EXTEND WITH HELP: SELECT INTO
 
 
 
@@ -3259,6 +3276,16 @@ prepare_stmt:
       Name: tree.Name($2),
       Types: $3.colTypes(),
       Statement: &tree.CannedOptPlan{Plan: $7},
+    }
+  }
+| PREPARE table_alias_name prep_type_clause AS udv_expr
+  {
+    /* SKIP DOC */
+    udv := $5.UserDefinedVar()
+    $$.val = &tree.Prepare{
+      Name: tree.Name($2),
+      Types: $3.colTypes(),
+      Udv: &udv,
     }
   }
 | PREPARE error // SHOW HELP: PREPARE
@@ -3628,6 +3655,24 @@ generic_set:
       $$.val = &tree.SetVar{Name: strings.Join($1.strs(), "."), Values: $3.exprs()}
     }
   }
+| udv_expr ASSIGN var_value
+	{
+		varName := $1.expr().String()
+		$$.val = &tree.SetVar{
+			Name: varName,
+			Values: tree.Exprs{$3.expr()},
+			IsUserDefined: true,
+		}
+	}
+| udv_expr to_or_eq var_value
+	{
+		varName := $1.expr().String()
+		$$.val = &tree.SetVar{
+			Name: varName,
+			Values: tree.Exprs{$3.expr()},
+			IsUserDefined: true,
+		}
+	}
 
 set_rest_more:
 // Generic SET syntaxes:
@@ -3863,6 +3908,7 @@ reindex_stmt:
 show_session_stmt:
   SHOW session_var         { $$.val = &tree.ShowVar{Name: $2} }
 | SHOW SESSION session_var { $$.val = &tree.ShowVar{Name: $3} }
+| SHOW udv_expr            { $$.val = &tree.ShowUdvVar{Name: $2.expr().String()} }
 | SHOW SESSION error // SHOW HELP: SHOW SESSION
 
 session_var:
@@ -7799,6 +7845,110 @@ simple_select_clause:
   }
 | SELECT error // SHOW HELP: SELECT
 
+// %Help: SELECT INTO - retrieve rows from a data source and compute a result
+// %Category: DML
+// %Text:
+// SELECT [DISTINCT [ <expr> [ , ... ] ] ]
+//        { <expr> [[AS] <name>] | [ [<dbname>.] <tablename>. ] * } [, ...]
+//        [ FROM <source> ]
+//        [ WHERE <expr> ]
+//        [ GROUP BY <expr> [ , ... ] ]
+//        [ HAVING <expr> ]
+//        [ WINDOW <name> AS ( <definition> ) ]
+//        [ { UNION | INTERSECT | EXCEPT } [ ALL | DISTINCT ] <selectclause> ]
+//        [ ORDER BY <expr> [ ASC | DESC ] [, ...] ]
+//        [ LIMIT { <expr> | ALL } ]
+//        [ OFFSET <expr> [ ROW | ROWS ] ]
+// %SeeAlso: SHOW TABLES
+simple_select_into_clause:
+  SELECT select_hint_set opt_all_clause target_list INTO udv_exprs
+    from_clause opt_where_clause
+    group_clause having_clause window_clause opt_sort_clause select_limit
+  {
+    selClause := &tree.SelectClause{
+      HintSet: $2.hintset(),
+      Exprs:   $4.selExprs(),
+      From:    $7.from(),
+      Where:   tree.NewWhere(tree.AstWhere, $8.expr()),
+      GroupBy: $9.groupBy(),
+      Having:  tree.NewWhere(tree.AstHaving, $10.expr()),
+      Window:  $11.window(),
+    }
+    sel := &tree.Select{Select: selClause, OrderBy: $12.orderBy(), Limit: $13.limit()}
+    $$.val = &tree.SelectInto{
+    	Names:  $6.UserDefinedVars(),
+    	Values: sel,
+    }
+  }
+| SELECT select_hint_set opt_all_clause target_list INTO udv_exprs
+    from_clause opt_where_clause
+    group_clause having_clause window_clause opt_sort_clause
+  {
+    selClause := &tree.SelectClause{
+      HintSet: $2.hintset(),
+      Exprs:   $4.selExprs(),
+      From:    $7.from(),
+      Where:   tree.NewWhere(tree.AstWhere, $8.expr()),
+      GroupBy: $9.groupBy(),
+      Having:  tree.NewWhere(tree.AstHaving, $10.expr()),
+      Window:  $11.window(),
+    }
+    sel := &tree.Select{Select: selClause, OrderBy: $12.orderBy()}
+    $$.val = &tree.SelectInto{
+    	Names:  $6.UserDefinedVars(),
+    	Values: sel,
+    }
+  }
+| SELECT distinct_clause target_list INTO udv_exprs
+    from_clause opt_where_clause
+    group_clause having_clause window_clause opt_sort_clause select_limit
+  {
+    selClause := &tree.SelectClause{
+      Distinct: $2.bool(),
+      Exprs:    $3.selExprs(),
+      From:     $6.from(),
+      Where:    tree.NewWhere(tree.AstWhere, $7.expr()),
+      GroupBy:  $8.groupBy(),
+      Having:   tree.NewWhere(tree.AstHaving, $9.expr()),
+      Window:   $10.window(),
+    }
+    sel := &tree.Select{Select: selClause, OrderBy: $11.orderBy(), Limit: $12.limit()}
+    $$.val = &tree.SelectInto{
+    	Names:  $5.UserDefinedVars(),
+    	Values: sel,
+    }
+  }
+| SELECT distinct_clause target_list INTO udv_exprs
+    from_clause opt_where_clause
+    group_clause having_clause window_clause opt_sort_clause
+  {
+    selClause := &tree.SelectClause{
+      Distinct: $2.bool(),
+      Exprs:    $3.selExprs(),
+      From:     $6.from(),
+      Where:    tree.NewWhere(tree.AstWhere, $7.expr()),
+      GroupBy:  $8.groupBy(),
+      Having:   tree.NewWhere(tree.AstHaving, $9.expr()),
+      Window:   $10.window(),
+    }
+    sel := &tree.Select{Select: selClause, OrderBy: $11.orderBy()}
+    $$.val = &tree.SelectInto{
+    	Names:  $5.UserDefinedVars(),
+    	Values: sel,
+    }
+  }
+| SELECT INTO error // SHOW HELP: SELECT INTO
+
+udv_exprs:
+	udv_expr
+	{
+		$$.val = tree.UserDefinedVars{$1.UserDefinedVar()}
+	}
+| udv_exprs ',' udv_expr
+	{
+		$$.val = append($1.UserDefinedVars(), $3.UserDefinedVar())
+	}
+
 set_operation:
   select_clause UNION all_or_distinct select_clause
   {
@@ -9065,7 +9215,11 @@ const_typename:
   }
 | BLOB
   {
-    $$.val = types.MakeBytes(0, types.RELATIONAL.Mask())
+    $$.val = types.Blob
+  }
+| CLOB
+  {
+    $$.val = types.Clob
   }
 | BYTES
   {
@@ -10262,6 +10416,7 @@ d_expr:
   {
     $$.val = tree.DNull
   }
+| udv_expr
 | column_path_with_star
   {
     $$.val = tree.Expr($1.unresolvedName())
@@ -10322,6 +10477,12 @@ d_expr:
     $$.val = $2.expr()
   }
 | GROUPING '(' expr_list ')' { return unimplemented(sqllex, "d_expr grouping") }
+
+udv_expr:
+ '@' name
+  {
+    $$.val = tree.Expr(&tree.UserDefinedVar{VarName: "@"+$2})
+  }
 
 interval_unit:
 	MICROSECOND
@@ -11898,6 +12059,7 @@ unreserved_keyword:
 | CANCEL
 | CASCADE
 | CHANGEFEED
+| CLOB
 | CLUSTER
 | COLUMNS
 | COMMENT
@@ -12331,6 +12493,7 @@ reserved_keyword:
 | ARRAY
 | AS
 | ASC
+| ASSIGN
 | ASYMMETRIC
 |	ATTRIBUTE
 | ATTRIBUTES

@@ -179,7 +179,7 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
   KStatus GetBlockSpans(std::vector<TsBlockSpan>* spans);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                        std::vector<TsBlockSpan>* spans) override;
+                        std::list<TsBlockSpan>* spans) override;
 
   std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator() const;
 

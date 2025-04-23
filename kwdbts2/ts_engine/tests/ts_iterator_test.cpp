@@ -115,3 +115,138 @@ TEST_F(TestV2Iterator, basic) {
         delete ts_iter;
     }
 }
+
+TEST_F(TestV2Iterator, mulitEntity) {
+    TSTableID table_id = 999;
+    roachpb::CreateTsTable pb_meta;
+    ConstructRoachpbTable(&pb_meta, table_id);
+    auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+
+    std::shared_ptr<TsTable> ts_table;
+    s = engine_->GetTsTable(ctx_, table_id, ts_table);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+
+    std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+    s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+    ASSERT_EQ(s , KStatus::SUCCESS);
+
+    std::vector<AttributeInfo> metric_schema;
+    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    ASSERT_EQ(s , KStatus::SUCCESS);
+
+    std::vector<TagInfo> tag_schema;
+    s = table_schema_mgr->GetTagMeta(1, tag_schema);
+    ASSERT_EQ(s , KStatus::SUCCESS);
+
+    timestamp64 start_ts = 3600;
+    KTimestamp interval = 100L;
+    int entity_num = 30;
+    int entity_row_num = 3;
+    uint16_t inc_entity_cnt;
+    uint32_t inc_unordered_cnt;
+    DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+    for (size_t i = 0; i < entity_num; i++) {
+      auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(pay_load.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+    }
+    std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+    for (const auto& vgroup : *ts_vgroups) {
+      TsStorageIterator* ts_iter;
+      KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+      DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
+      std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
+      std::vector<Sumfunctype> scan_agg_types;
+      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+                          scan_cols, scan_cols, scan_agg_types, table_schema_mgr,
+                          1, &ts_iter, vgroup, {}, false, false);
+        ASSERT_EQ(s, KStatus::SUCCESS);
+        ResultSet res{(k_uint32) scan_cols.size()};
+        k_uint32 count;
+        bool is_finished = false;
+        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+        ASSERT_EQ(count, entity_row_num);
+        ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 16) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
+        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+        ASSERT_EQ(count, 0);
+        delete ts_iter;
+      }
+    }
+}
+
+TEST_F(TestV2Iterator, multiDBAndEntity) {
+    TSTableID table_id = 999;
+    int db_num = 3;
+    for (size_t i = 1; i <= db_num; i++) {
+      roachpb::CreateTsTable pb_meta;
+      ConstructRoachpbTable(&pb_meta, table_id, i);
+      auto s = engine_->CreateTsTable(ctx_, table_id + i - 1, &pb_meta);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+    }
+    std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+    auto s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+    ASSERT_EQ(s , KStatus::SUCCESS);
+
+    std::vector<AttributeInfo> metric_schema;
+    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    ASSERT_EQ(s , KStatus::SUCCESS);
+
+    std::vector<TagInfo> tag_schema;
+    s = table_schema_mgr->GetTagMeta(1, tag_schema);
+    ASSERT_EQ(s , KStatus::SUCCESS);
+
+    timestamp64 start_ts = 3600;
+    KTimestamp interval = 100L;
+    int entity_num = db_num * 10;
+    int entity_row_num = 3;
+    uint16_t inc_entity_cnt;
+    uint32_t inc_unordered_cnt;
+    DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+    for (size_t i = 0; i < entity_num; i++) {
+      auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(pay_load.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+    }
+    std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+    int entity_result_num = 0;
+    for (const auto& vgroup : *ts_vgroups) {
+      TsStorageIterator* ts_iter;
+      KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+      DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
+      std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
+      std::vector<Sumfunctype> scan_agg_types;
+      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+        bool found = false;
+        for (size_t db_id = 1; db_id <= db_num; db_id++) {
+          s = engine_->GetTableSchemaMgr(ctx_, table_id + db_id - 1, table_schema_mgr);
+          ASSERT_EQ(s , KStatus::SUCCESS);
+          s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+                          scan_cols, scan_cols, scan_agg_types, table_schema_mgr,
+                          1, &ts_iter, vgroup, {}, false, false);
+          ASSERT_EQ(s, KStatus::SUCCESS);
+          ResultSet res{(k_uint32) scan_cols.size()};
+          k_uint32 count;
+          bool is_finished = false;
+          ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+          if (count > 0) {
+            ASSERT_EQ(count, entity_row_num);
+            ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 16) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
+            ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+            ASSERT_EQ(count, 0);
+            entity_result_num++;
+            found = true;
+          }
+          delete ts_iter;
+          if (found) {
+            break;
+          }
+        }
+        ASSERT_TRUE(found);
+      }
+    }
+    ASSERT_EQ(entity_result_num, entity_num);
+}

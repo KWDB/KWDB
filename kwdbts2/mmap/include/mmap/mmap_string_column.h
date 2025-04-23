@@ -75,6 +75,8 @@ class MMapStringColumn {
 
   int remove() { return str_file_.remove(); }
 
+  int munmap() { return str_file_.munmap(); }
+
   int reserve(size_t new_row_num, int str_len);
 
   int reserve(size_t old_row_size, size_t new_row_size, int max_len);

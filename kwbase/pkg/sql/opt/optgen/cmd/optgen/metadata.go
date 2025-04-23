@@ -260,6 +260,7 @@ func newMetadata(compiled *lang.CompiledExpr, pkg string) *metadata {
 		"TSOrderedScanType": {fullName: "opt.OrderedTableType", passByVal: true},
 		"TSGroupOptType":    {fullName: "opt.GroupOptType", passByVal: true},
 		"TagIndexInfo":      {fullName: "memo.TagIndexInfo", passByVal: true},
+		"VarNames":          {fullName: "opt.VarNames", passByVal: true},
 	}
 
 	// Add types of generated op and private structs.

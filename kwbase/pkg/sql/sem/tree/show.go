@@ -50,6 +50,17 @@ func (node *ShowVar) Format(ctx *FmtCtx) {
 	})
 }
 
+// ShowUdvVar represents a SHOW UDV statement.
+type ShowUdvVar struct {
+	Name string
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowUdvVar) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW ")
+	ctx.WriteString(node.Name)
+}
+
 // ShowClusterSetting represents a SHOW CLUSTER SETTING statement.
 type ShowClusterSetting struct {
 	Name string

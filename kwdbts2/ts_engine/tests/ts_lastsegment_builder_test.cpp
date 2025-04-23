@@ -336,11 +336,11 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   }
 
   // scan for specific table & entity;
-
-  last_segment->GetBlockSpans({1, table_id, 3, {{INT64_MIN, INT64_MAX}}}, &spans);
-  ASSERT_EQ(spans.size(), 1);
-  EXPECT_EQ(spans[0].GetEntityID(), 3);
-  EXPECT_EQ(spans[0].nrow, 2048);
+  std::list<TsBlockSpan> spans_list;
+  last_segment->GetBlockSpans({1, table_id, 3, {{INT64_MIN, INT64_MAX}}}, &spans_list);
+  ASSERT_EQ(spans_list.size(), 1);
+  EXPECT_EQ(spans_list.front().GetEntityID(), 3);
+  EXPECT_EQ(spans_list.front().nrow, 2048);
 
   struct TestCases {
     timestamp64 min_ts, max_ts;
@@ -353,26 +353,27 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
        start_ts + 9 * interval}};
 
   for (auto c : cases) {
+    std::list<TsBlockSpan> spans;
     auto s = last_segment->GetBlockSpans({0, table_id, 3, {{c.min_ts, c.max_ts}}}, &spans);
     ASSERT_EQ(s, SUCCESS);
     ASSERT_EQ(spans.size(), 1);
-    EXPECT_EQ(spans[0].nrow, c.expect_row);
+    EXPECT_EQ(spans.front().nrow, c.expect_row);
     timestamp64 l, r;
-    spans[0].GetTSRange(&l, &r);
+    spans.front().GetTSRange(&l, &r);
     EXPECT_EQ(l, c.expect_min);
     EXPECT_EQ(r, c.expect_max);
   }
 
-  last_segment->GetBlockSpans({0, table_id, 3, {{1000, 0}}}, &spans);
-  ASSERT_EQ(spans.size(), 0);
+  last_segment->GetBlockSpans({0, table_id, 3, {{1000, 0}}}, &spans_list);
+  ASSERT_EQ(spans_list.size(), 0);
 
-  last_segment->GetBlockSpans({0, table_id, 3, {{-100, 0}}}, &spans);
-  ASSERT_EQ(spans.size(), 0);
+  last_segment->GetBlockSpans({0, table_id, 3, {{-100, 0}}}, &spans_list);
+  ASSERT_EQ(spans_list.size(), 0);
 
-  last_segment->GetBlockSpans({0, table_id, 3, {{123, 2000}, {3000, 6000}}}, &spans);
-  ASSERT_EQ(spans.size(), 2);
-  EXPECT_EQ(spans[0].nrow, 2);
-  EXPECT_EQ(spans[1].nrow, 3);
+  last_segment->GetBlockSpans({0, table_id, 3, {{123, 2000}, {3000, 6000}}}, &spans_list);
+  ASSERT_EQ(spans_list.size(), 2);
+  EXPECT_EQ(spans_list.front().nrow, 2);
+  EXPECT_EQ(spans_list.front().nrow, 3);
 }
 
 TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
@@ -465,16 +466,20 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   last_segment->GetBlockSpans(&result_spans);
   ASSERT_EQ(result_spans.size(), expected_rows.size());
   for (int i = 0; i < expected_rows.size(); ++i) {
-    EXPECT_EQ(result_spans[i].nrow, expected_rows[i]);
-    EXPECT_EQ(result_spans[i].GetEntityID(), expected_dev[i]);
+    auto cur_span = result_spans[i];
+    EXPECT_EQ(cur_span.nrow, expected_rows[i]);
+    EXPECT_EQ(cur_span.GetEntityID(), expected_dev[i]);
   }
 
-  last_segment->GetBlockSpans({0, table_id, 9913, {{INT64_MIN, INT64_MAX}}}, &result_spans);
-  ASSERT_EQ(result_spans.size(), 4);
-  for (int i = 0; i < result_spans.size(); ++i) {
-    EXPECT_EQ(result_spans[i].GetEntityID(), 9913);
+  std::list<TsBlockSpan> result_spans_list;
+  last_segment->GetBlockSpans({0, table_id, 9913, {{INT64_MIN, INT64_MAX}}}, &result_spans_list);
+  ASSERT_EQ(result_spans_list.size(), 4);
+  for (int i = 0; i < result_spans_list.size(); ++i) {
+    auto cur_span = result_spans_list.front();
+    result_spans_list.pop_front();
+    EXPECT_EQ(cur_span.GetEntityID(), 9913);
     auto expn = std::vector<int>{2084, 4096, 4096, 2059}[i];
-    EXPECT_EQ(result_spans[i].nrow, expn);
+    EXPECT_EQ(cur_span.nrow, expn);
   }
 
   std::vector<KwTsSpan> spans{
@@ -482,8 +487,8 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
       {start_ts + interval * 2080, start_ts + interval * 4096},
       {start_ts + interval * 5000, start_ts + interval * (2084 + 4096)},
   };
-  last_segment->GetBlockSpans({0, table_id, 9913, spans}, &result_spans);
-  ASSERT_EQ(result_spans.size(), 5);
+  last_segment->GetBlockSpans({0, table_id, 9913, spans}, &result_spans_list);
+  ASSERT_EQ(result_spans_list.size(), 5);
   std::vector<std::pair<int, int>> expected_minmax = {
       {start_ts, start_ts + interval * 2000},
       {start_ts + interval * 2080, start_ts + interval * 2083},
@@ -491,12 +496,14 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
       {start_ts + interval * 5000, start_ts + interval * (2084 + 4096 - 1)},
       {start_ts + interval * (2084 + 4096), start_ts + interval * (2084 + 4096)},
   };
-  for (int i = 0; i < result_spans.size(); ++i) {
-    EXPECT_EQ(result_spans[i].GetEntityID(), 9913);
+  for (int i = 0; i < result_spans_list.size(); ++i) {
+    auto cur_span = result_spans_list.front();
+    result_spans_list.pop_front();
+    EXPECT_EQ(cur_span.GetEntityID(), 9913);
     auto expn = std::vector<int>{2001, 4, 2013, 1180, 1}[i];
-    EXPECT_EQ(result_spans[i].nrow, expn);
+    EXPECT_EQ(cur_span.nrow, expn);
     timestamp64 min_ts, max_ts;
-    result_spans[i].GetTSRange(&min_ts, &max_ts);
+    cur_span.GetTSRange(&min_ts, &max_ts);
     EXPECT_EQ(min_ts, expected_minmax[i].first);
     EXPECT_EQ(max_ts, expected_minmax[i].second);
   }

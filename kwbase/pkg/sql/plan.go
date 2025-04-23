@@ -245,6 +245,7 @@ var _ planNode = &showFingerprintsNode{}
 var _ planNode = &showTraceNode{}
 var _ planNode = &sortNode{}
 var _ planNode = &splitNode{}
+var _ planNode = &selectIntoNode{}
 var _ planNode = &tsDDLNode{}
 
 // var _ planNode = &replicationControlNode{}

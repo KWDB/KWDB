@@ -42,6 +42,8 @@ type exportOptions struct {
 	colName        bool
 	withComment    bool
 	withPrivileges bool
+	fileFormat     string
+	tablePrefix    string
 }
 
 // checkBeforeExport is used to check some roles of export before running, such as privilege and options.
@@ -78,8 +80,13 @@ func checkBeforeExport(
 		res.SetError(err)
 		return expOpts, err
 	}
-	expOpts, err = checkExportOptions(exp, res, opts)
+	expOpts, err = checkExportOptions(exp, planner, res, opts)
 	if err != nil {
+		res.SetError(err)
+		return expOpts, err
+	}
+	if expOpts.colName && exp.FileFormat == "SQL" {
+		err := errors.Wrapf(err, "Exporting cannot use both 'SQL' and 'column name' simultaneously")
 		res.SetError(err)
 		return expOpts, err
 	}
@@ -389,7 +396,7 @@ func getTablesNameByDBWithFindComment(
 
 // checkExportOptions is used to check whether the export options is legal.
 func checkExportOptions(
-	exp *tree.Export, res RestrictedCommandResult, opts map[string]string,
+	exp *tree.Export, p *planner, res RestrictedCommandResult, opts map[string]string,
 ) (exportOptions, error) {
 	delimiter := ','
 	var expOpts exportOptions
@@ -397,6 +404,9 @@ func checkExportOptions(
 	var err error
 	override, hasDelimiter := opts[exportOptionDelimiter]
 	if hasDelimiter {
+		if exp.FileFormat == "SQL" {
+			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with delimiter")
+		}
 		delimiter, err = util.GetSingleRune(override)
 		if err != nil {
 			return expOpts, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid delimiter value")
@@ -411,11 +421,19 @@ func checkExportOptions(
 	_, onlyData := opts[exportOptionOnlyData]
 	_, onlyMeta := opts[exportOptionOnlyMeta]
 	_, colName := opts[exportOptionColumnsName]
+	if colName {
+		if exp.FileFormat == "SQL" {
+			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with colname")
+		}
+	}
 	if onlyMeta && onlyData {
 		return expOpts, errors.Errorf("can't use meta_only and data_only at the same time")
 	}
 	override, hasChunkSize := opts[exportOptionChunkSize]
 	if hasChunkSize {
+		if exp.FileFormat == "SQL" {
+			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with chunk rows")
+		}
 		chunkSize, err = strconv.Atoi(override)
 		if err != nil {
 			return expOpts, pgerror.New(pgcode.InvalidParameterValue, err.Error())
@@ -431,6 +449,9 @@ func checkExportOptions(
 	}
 	NullEncoding := ""
 	if override, ok := opts[exportOptionNullAs]; ok {
+		if exp.FileFormat == "SQL" {
+			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with nullas")
+		}
 		if err := ImpExpCheckNullOpt(override); err != nil {
 			return expOpts, err
 		}
@@ -439,6 +460,9 @@ func checkExportOptions(
 	Enclosed := '"'
 	override, hasEnclosed := opts[exportOptionEnclosed]
 	if hasEnclosed {
+		if exp.FileFormat == "SQL" {
+			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with enclosed")
+		}
 		Enclosed, err = util.GetSingleRune(override)
 		if err != nil {
 			return expOpts, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid enclosed value")
@@ -454,6 +478,9 @@ func checkExportOptions(
 	Escaped := '"'
 	override, hasEscaped := opts[exportOptionEscaped]
 	if hasEscaped {
+		if exp.FileFormat == "SQL" {
+			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with escaped")
+		}
 		Escaped, err = util.GetSingleRune(override)
 		if err != nil {
 			return expOpts, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid escaped value")
@@ -497,6 +524,10 @@ func checkExportOptions(
 	if err := CheckImpExpInfoConflict(optInfo); err != nil {
 		return expOpts, err
 	}
+	databaseName := p.tableName.Catalog()
+	schemaName := p.tableName.Schema()
+	tableName := p.tableName.Table()
+	tablePrefix := databaseName + "." + schemaName + "." + tableName
 	expOpts = exportOptions{
 		optInfo,
 		chunkSize,
@@ -505,6 +536,8 @@ func checkExportOptions(
 		colName,
 		comment,
 		privileges,
+		exp.FileFormat,
+		tablePrefix,
 	}
 	return expOpts, nil
 }

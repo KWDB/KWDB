@@ -926,7 +926,7 @@ func (v *fastIsConstVisitor) run(expr Expr) bool {
 // evaluated as part of query execution, eg. DEFAULT expressions.
 func isVar(evalCtx *EvalContext, expr Expr, allowConstPlaceholders bool) bool {
 	switch expr.(type) {
-	case VariableExpr:
+	case VariableExpr, *UserDefinedVar:
 		return true
 	case *Placeholder:
 		if allowConstPlaceholders {

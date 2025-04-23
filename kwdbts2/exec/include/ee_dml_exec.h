@@ -65,8 +65,8 @@ class DmlExec {
   KStatus Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
                        k_int32 id, k_int32 uniqueID, RespInfo *resp);
   // execute include init ,exec and encode
-  KStatus InnerNext(kwdbContext_p ctx, TsScan *tsScan, bool isPG, RespInfo *resp);
-  KStatus Next(kwdbContext_p ctx, k_int32 id, bool isPG, RespInfo *resp);
+  KStatus InnerNext(kwdbContext_p ctx, TsScan *tsScan, TsNextRetState nextState, RespInfo *resp);
+  KStatus Next(kwdbContext_p ctx, k_int32 id, TsNextRetState nextState, RespInfo *resp);
   KStatus VirtualNext(kwdbContext_p ctx, k_int32 id, bool isPG, RespInfo *resp);
   // new thd
   KStatus Init();

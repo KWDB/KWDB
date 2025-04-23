@@ -250,11 +250,21 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
                                       &tag_rowbatch->res_, &tag_rowbatch->count_, table_->table_version_);
   if (KStatus::FAIL == ret) {
     LOG_ERROR("TsTable::GetTagList() Failed\n");
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
+                                  "get tag list fail");
     code = EEIteratorErrCode::EE_ERROR;
     Return(code);
   }
   row_batch->tag_rowbatch_ = tag_rowbatch;
-  tag_rowbatch->GetTagData(&(row_batch->tagdata_), &(row_batch->tag_bitmap_), row_batch->res_.entity_index.index);
+  ret = tag_rowbatch->GetTagData(&(row_batch->tagdata_), &(row_batch->tag_bitmap_), row_batch->res_.entity_index.index);
+  if (KStatus::FAIL == ret) {
+    LOG_ERROR("GetTagData Failed\n");
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
+                                  "scanning tag data fail");
+    code = EEIteratorErrCode::EE_ERROR;
+    Return(code);
+  }
+
   row_batch->ResetLine();
 
   Return(code);
@@ -633,6 +643,11 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
     } else if (0 == tag_rowbatch_->count_) {
       code = EEIteratorErrCode::EE_END_OF_RECORD;
       break;
+    }
+
+    if (tag_rowbatch_->Count() > 1) {
+      // sort by entityIndex
+      tag_rowbatch_->SortByEntityIndex();
     }
     tag_rowbatch_->SetPipeEntityNum(ctx, current_thd->GetDegree());
     code = EEIteratorErrCode::EE_OK;

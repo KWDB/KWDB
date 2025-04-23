@@ -259,3 +259,22 @@ define ExportPrivate {
     # Columns stores the column IDs for the statement result columns.
     Columns ColList
 }
+
+# SelectInto represents an `SELECT .. INTO ..` statement.
+[Relational, Mutation]
+define SelectInto {
+    # The input expression provides values for the user defined variables.
+    Input RelExpr
+
+    _ SelectIntoPrivate
+}
+
+[Private]
+define SelectIntoPrivate {
+    # Props stores the required physical properties for the input
+    # expression.
+    Props PhysProps
+
+    # Vars stores names of the user defined variables.
+    Vars VarNames
+}

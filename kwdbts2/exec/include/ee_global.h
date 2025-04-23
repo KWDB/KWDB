@@ -97,6 +97,8 @@ struct EEPgErrorInfo {
 
 extern thread_local EEPgErrorInfo g_pg_error_info;
 
+enum TsNextRetState {  DML_NEXT, DML_VECTORIZE_NEXT, DML_PG_RESULT };
+
 #define OPERATOR_DIRECT_ENCODING(ctx, output_encoding, thd, chunk)                                       \
   if (output_encoding) {                                                \
     KStatus ret =                                                        \

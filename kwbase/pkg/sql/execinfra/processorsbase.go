@@ -57,6 +57,7 @@ type Processor interface {
 	RunTS(ctx context.Context)
 	Push(ctx context.Context, res []byte) error
 	NextPgWire() (val []byte, code int, err error)
+	SupportPgWire() bool
 	IsShortCircuitForPgEncode() bool
 	Start(ctx context.Context) context.Context
 }
@@ -850,6 +851,11 @@ func (pb *ProcessorBase) Push(ctx context.Context, res []byte) error {
 // NextPgWire is part of the processor interface.
 func (pb *ProcessorBase) NextPgWire() (val []byte, code int, err error) {
 	return nil, 0, nil
+}
+
+// SupportPgWire is part of the processor interface
+func (pb *ProcessorBase) SupportPgWire() bool {
+	return false
 }
 
 // IsShortCircuitForPgEncode is part of the processor interface.

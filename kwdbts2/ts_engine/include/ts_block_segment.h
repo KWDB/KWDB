@@ -37,7 +37,12 @@ struct TsBlockSegmentBlockItem {
   uint32_t n_rows = 0;
   timestamp64 min_ts = INT64_MAX;
   timestamp64 max_ts = INT64_MIN;
-  char reserved[64] = {0};      // reserved for user-defined information.
+  uint64_t agg_offset = 0;
+  uint32_t agg_len = 0;
+  uint16_t non_null_row_count = 0;  // the number of non-null rows
+  bool is_overflow = false;
+  bool is_agg_res_available = false;  //  agg for block is valid.
+  char reserved[48] = {0};      // reserved for user-defined information.
 };
 static_assert(sizeof(TsBlockSegmentBlockItem) == 128,
               "wrong size of TsBlockSegmentBlockItem, please check compatibility.");
@@ -171,7 +176,7 @@ class TsBlockSegmentMetaManager {
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
-                        std::vector<TsBlockSpan>* block_spans);
+                        std::list<TsBlockSpan>* block_spans);
 };
 
 struct TsBlockSegmentBlockInfo {
@@ -181,6 +186,7 @@ struct TsBlockSegmentBlockInfo {
 struct TsBlockSegmentColumnBlock {
   TsBitmap bitmap;
   std::string buffer;
+  std::vector<std::string> var_rows;
 };
 
 class TsVGroupPartition;
@@ -281,6 +287,7 @@ class TsBlockSegment : public TsSegmentBase {
   string dir_path_;
   TsBlockSegmentMetaManager meta_mgr_;
   TsBlockSegmentBlockFile block_file_;
+  TsBlockSegmentAggFile agg_file_;
 
  public:
   TsBlockSegment() = delete;
@@ -295,7 +302,7 @@ class TsBlockSegment : public TsSegmentBase {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::vector<TsBlockSpan>* blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 
   KStatus GetColumnBlock(uint32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsBlockSegmentBlock* block);

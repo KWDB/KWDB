@@ -641,6 +641,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 	case *relocateNode:
 		n.rows = v.visit(n.rows)
 
+	case *selectIntoNode:
+		n.rows = v.visit(n.rows)
+
 	case *tsInsertSelectNode:
 		v.observer.attr(name, "into", n.TableName)
 		n.plan = v.visit(n.plan)
@@ -1126,6 +1129,7 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&splitNode{}):                "split",
 	reflect.TypeOf(&unsplitNode{}):              "unsplit",
 	reflect.TypeOf(&unsplitAllNode{}):           "unsplit all",
+	reflect.TypeOf(&selectIntoNode{}):           "select into",
 	reflect.TypeOf(&spoolNode{}):                "spool",
 	reflect.TypeOf(&truncateNode{}):             "truncate",
 	reflect.TypeOf(&unaryNode{}):                "emptyrow",

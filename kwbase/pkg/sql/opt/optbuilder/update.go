@@ -689,6 +689,13 @@ func (mb *mutationBuilder) addTSUpdateCols(
 		if _, ok := expr.(tree.DefaultVal); ok {
 			expr = mb.parseDefaultOrComputedExpr(targetColID)
 		}
+		if udv, ok := expr.(*tree.UserDefinedVar); ok {
+			d, err := udv.Eval(mb.b.evalCtx)
+			if err != nil {
+				return err
+			}
+			expr = d
+		}
 
 		// Add new column to the projections scope.
 		desiredType := mb.md.ColumnMeta(targetColID).Type

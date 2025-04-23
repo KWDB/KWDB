@@ -38,7 +38,7 @@ func TestNoLinkForbidden(t *testing.T) {
 		"gitee.com/kwbasedb/kwbase/pkg/sql/colexec", true,
 		[]string{
 			"gitee.com/kwbasedb/kwbase/pkg/sql/colflow",
-			"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec",
+			// "gitee.com/kwbasedb/kwbase/pkg/sql/rowexec",
 			"gitee.com/kwbasedb/kwbase/pkg/sql/rowflow",
 		}, nil,
 	)

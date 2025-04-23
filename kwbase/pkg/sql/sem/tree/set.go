@@ -35,8 +35,9 @@ package tree
 
 // SetVar represents a SET or RESET statement.
 type SetVar struct {
-	Name   string
-	Values Exprs
+	Name          string
+	Values        Exprs
+	IsUserDefined bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -118,4 +119,62 @@ type SetTracing struct {
 func (node *SetTracing) Format(ctx *FmtCtx) {
 	ctx.WriteString("SET TRACING = ")
 	ctx.FormatNode(&node.Values)
+}
+
+// SelectInto represents a SELECT INTO statement.
+type SelectInto struct {
+	Names  UserDefinedVars
+	Values *Select
+}
+
+// UserDefinedVars corresponds to an array of user defined variables in an expression.
+type UserDefinedVars []UserDefinedVar
+
+// Format implements the NodeFormatter interface.
+func (node *SelectInto) Format(ctx *FmtCtx) {
+	ctx.WriteString("SELECT ")
+	if selClause, ok := node.Values.Select.(*SelectClause); ok {
+		if selClause.Distinct {
+			if selClause.DistinctOn != nil {
+				ctx.FormatNode(&selClause.DistinctOn)
+				ctx.WriteByte(' ')
+			} else {
+				ctx.WriteString("DISTINCT ")
+			}
+		}
+		ctx.FormatNode(&selClause.Exprs)
+		ctx.WriteString(" INTO")
+		for i := range node.Names {
+			ctx.WriteString(" ")
+			ctx.FormatNode(&node.Names[i])
+		}
+		if len(selClause.From.Tables) > 0 {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(&selClause.From)
+		}
+		if selClause.Where != nil {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(selClause.Where)
+		}
+		if len(selClause.GroupBy) > 0 {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(&selClause.GroupBy)
+		}
+		if selClause.Having != nil {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(selClause.Having)
+		}
+		if len(selClause.Window) > 0 {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(&selClause.Window)
+		}
+	}
+	if len(node.Values.OrderBy) > 0 {
+		ctx.WriteByte(' ')
+		ctx.FormatNode(&node.Values.OrderBy)
+	}
+	if node.Values.Limit != nil {
+		ctx.WriteByte(' ')
+		ctx.FormatNode(node.Values.Limit)
+	}
 }

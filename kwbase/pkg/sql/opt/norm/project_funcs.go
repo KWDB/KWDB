@@ -72,10 +72,9 @@ func (c *CustomFuncs) MergeProjections(
 // in the final Values operator, and Project synthesized columns are added to
 // it. Any unreferenced Values columns are discarded. For example:
 //
-//   SELECT column1, 3 FROM (VALUES (1, 2))
-//   =>
-//   (VALUES (1, 3))
-//
+//	SELECT column1, 3 FROM (VALUES (1, 2))
+//	=>
+//	(VALUES (1, 3))
 func (c *CustomFuncs) MergeProjectWithValues(
 	projections memo.ProjectionsExpr, passthrough opt.ColSet, input memo.RelExpr,
 ) memo.RelExpr {

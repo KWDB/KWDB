@@ -1205,9 +1205,13 @@ func extractStatsFromSpans(
 			if err != nil {
 				continue
 			}
-			if span.Operation == sqlbase.TsTableReaderProcName {
+			// if spans is VectorizedStats, wo should add spans of time series and spans of vector
+			if tracing.CheckSpanStatsType(dss.GetSpanStatsType(), tracing.SpanStatsTypeTime) {
 				for k, v := range dss.TsStatsForQueryPlan() {
 					stats[int(k)] = v
+				}
+				if tracing.CheckSpanStatsType(dss.GetSpanStatsType(), tracing.SpanStatsTypeVector) {
+					stats[i] = append(stats[i], dss.StatsForQueryPlan()...)
 				}
 			} else {
 				stats[i] = append(stats[i], dss.StatsForQueryPlan()...)

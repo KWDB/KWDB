@@ -88,13 +88,14 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         // scan [500, INT64_MAX]
         std::vector<KwTsSpan> spans{{500, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
-        std::vector<TsBlockSpan> block_spans;
+        std::list<TsBlockSpan> block_spans;
         s = block_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
         for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
-          auto block_span = block_spans[span_id];
+          auto block_span = block_spans.front();
+          block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
             EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 500 + row_idx + idx);
             TSSlice value;
@@ -120,13 +121,14 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         // scan [INT64_MIN, 622]
         std::vector<KwTsSpan> spans{{INT64_MIN, 622}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
-        std::vector<TsBlockSpan> block_spans;
+        std::list<TsBlockSpan> block_spans;
         s = block_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
         for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
-          auto block_span = block_spans[span_id];
+          auto block_span = block_spans.front();
+          block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
             EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
             TSSlice value;
@@ -148,13 +150,14 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         // scan [INT64_MIN, INT64_MAX]
         std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
-        std::vector<TsBlockSpan> block_spans;
+        std::list<TsBlockSpan> block_spans;
         s = block_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
         for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
-          auto block_span = block_spans[span_id];
+          auto block_span = block_spans.front();
+          block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
             EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
             TSSlice value;

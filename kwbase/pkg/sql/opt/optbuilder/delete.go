@@ -154,7 +154,7 @@ func checkDeleteFilter(expr tree.Expr) error {
 		if err := checkDeleteFilter(exp.Expr); err != nil {
 			return err
 		}
-	case *tree.UnresolvedName, *tree.NumVal, *tree.StrVal, *tree.DBool, *tree.Placeholder, *tree.Tuple:
+	case *tree.UnresolvedName, *tree.NumVal, *tree.StrVal, *tree.DBool, *tree.Placeholder, *tree.Tuple, *tree.UserDefinedVar:
 	default:
 		return sqlbase.UnsupportedDeleteConditionError("unsupported filter expression")
 	}
@@ -384,6 +384,20 @@ func checkTSDeleteFilter(
 		if f.Operator > tree.NotIn {
 			*typ = unsupportedType
 			return nil
+		}
+		if udv, ok := f.Left.(*tree.UserDefinedVar); ok {
+			exp, err := udv.Eval(evalCtx)
+			if err != nil {
+				panic(err)
+			}
+			f.Left = exp
+		}
+		if udv, ok := f.Right.(*tree.UserDefinedVar); ok {
+			exp, err := udv.Eval(evalCtx)
+			if err != nil {
+				panic(err)
+			}
+			f.Right = exp
 		}
 		spans = checkComExpr(evalCtx, f.Left, f.Right, exprs, typ, primaryTagIDs, f.Operator, meta, spans)
 	case *tree.DBool:

@@ -352,7 +352,7 @@ SQLSTATE: 42809
 ERROR: tag a3: unsupported tag type bytes in timeseries table
 SQLSTATE: 42809
 > alter table test_alter.t2 add tag a4 blob;
-ERROR: tag a4: unsupported tag type bytes in timeseries table
+ERROR: tag a4: unsupported tag type blob in timeseries table
 SQLSTATE: 42809
 > alter table test_alter.t2 add tag a5 string;
 ERROR: tag a5: unsupported tag type string in timeseries table

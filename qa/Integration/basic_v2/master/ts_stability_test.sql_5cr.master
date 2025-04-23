@@ -4,6 +4,8 @@ SET CLUSTER SETTING
 SET CLUSTER SETTING
 > set cluster setting ts.ordered_table.enabled = true;
 SET CLUSTER SETTING
+> SET vectorize_row_count_threshold = 100000000;
+SET
 > create ts database test_ts;
 CREATE TS DATABASE
 > use test_ts;
@@ -593,3 +595,5 @@ SET CLUSTER SETTING
 SET CLUSTER SETTING
 > reset cluster setting ts.ordered_table.enabled;
 SET CLUSTER SETTING
+> SET vectorize_row_count_threshold = 1000;
+SET

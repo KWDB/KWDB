@@ -68,6 +68,19 @@ func (expr *AnnotateTypeExpr) Walk(v Visitor) Expr {
 }
 
 // Walk implements the Expr interface.
+func (expr *AssignmentExpr) Walk(v Visitor) Expr {
+	left, changedL := WalkExpr(v, expr.Left)
+	right, changedR := WalkExpr(v, expr.Right)
+	if changedL || changedR {
+		exprCopy := *expr
+		exprCopy.Left = left
+		exprCopy.Right = right
+		return &exprCopy
+	}
+	return expr
+}
+
+// Walk implements the Expr interface.
 func (expr *BinaryExpr) Walk(v Visitor) Expr {
 	left, changedL := WalkExpr(v, expr.Left)
 	right, changedR := WalkExpr(v, expr.Right)

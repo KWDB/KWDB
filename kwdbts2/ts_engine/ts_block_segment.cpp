@@ -15,12 +15,14 @@
 #include "ts_timsort.h"
 #include "ts_vgroup_partition.h"
 #include "ts_compressor.h"
+#include "ts_agg.h"
 
 namespace kwdbts {
 
 const char entity_item_meta_file_name[] = "header.e";
 const char block_item_meta_file_name[] = "header.b";
 const char block_data_file_name[] = "block";
+const char block_agg_file_name[] = "agg";
 
 KStatus TsBlockSegmentEntityItemFile::Open() {
   TSSlice result;
@@ -207,7 +209,7 @@ KStatus TsBlockSegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
-                                                 std::vector<TsBlockSpan>* block_spans) {
+                                                 std::list<TsBlockSpan>* block_spans) {
   uint64_t last_blk_id;
   KStatus s = entity_meta_.GetEntityCurBlockId(filter.entity_id, last_blk_id);
   if (s != KStatus::SUCCESS) {
@@ -349,6 +351,7 @@ KStatus TsBlockSegmentBlock::Append(TsLastSegmentBlockSpan& span, bool& is_full)
         uint32_t var_offset = block.buffer.size();
         memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
         block.buffer.append(value.data, value.len);
+        block.var_rows.emplace_back(value.data, value.len);
       }
       row_idx_in_block++;
     }
@@ -372,6 +375,9 @@ KStatus TsBlockSegmentBlock::Flush(TsVGroupPartition* partition) {
   // init col offsets to buffer
   string buffer;
   buffer.resize((n_cols_ + 1) * sizeof(uint32_t));
+  // init col offsets to agg buffer, exclude seq no col
+  string agg_buffer;
+  agg_buffer.resize((n_cols_ - 1) * sizeof(uint32_t));
   // write column block data to buffer
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
@@ -409,6 +415,55 @@ KStatus TsBlockSegmentBlock::Flush(TsVGroupPartition* partition) {
       buffer.push_back(static_cast<char>(GenCompAlg::kPlain));
       buffer.append(block.buffer);
     }
+    // calculate aggregate
+    if (0 == col_idx) {
+      continue;
+    }
+    string col_agg;
+    if (!is_var_col) {
+      TsBitmap* bitmap = nullptr;
+      if (has_bitmap) {
+        bitmap = &block.bitmap;
+      }
+      uint16_t count = 0;
+      string max, min, sum;
+      max.resize(metric_schema_[col_idx - 1].size, '\0');
+      min.resize(metric_schema_[col_idx - 1].size, '\0');
+      if (DATATYPE(metric_schema_[col_idx - 1].type) == DATATYPE::TIMESTAMP64_LSN) {
+        sum.resize(8, '\0');
+      } else {
+        sum.resize(metric_schema_[col_idx - 1].size, '\0');
+      }
+
+      AggCalculatorV2 aggCalc(block.buffer.data(), bitmap, DATATYPE(metric_schema_[col_idx - 1].type),
+                              metric_schema_[col_idx - 1].size, n_rows_);
+      aggCalc.CalcAllAgg(count, max.data(), min.data(), sum.data());
+      if (0 == count) {
+        continue;
+      }
+      col_agg.resize(sizeof(uint16_t) + 3 * metric_schema_[col_idx - 1].size, '\0');
+      col_agg.append(reinterpret_cast<char *>(&count), sizeof(uint16_t));
+      col_agg.append(max);
+      col_agg.append(min);
+      col_agg.append(sum);
+    } else {
+      VarColAggCalculatorV2 aggCalc(block.var_rows);
+      string max;
+      string min;
+      uint16_t count = 0;
+      aggCalc.CalcAllAgg(max, min, count);
+      if (0 == count) {
+        continue;
+      }
+      col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
+      col_agg.append(max);
+      col_agg.append(min);
+      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
+      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
+    }
+    uint32_t offset = agg_buffer.size();
+    memcpy(agg_buffer.data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
+    agg_buffer.append(col_agg);
   }
 
   // record col offset
@@ -422,7 +477,7 @@ KStatus TsBlockSegmentBlock::Flush(TsVGroupPartition* partition) {
   timestamp64 min_ts = GetTimestamp(0);
   timestamp64 max_ts = GetTimestamp(n_rows_ - 1);
   KStatus s = partition->AppendToBlockSegment(table_id_, entity_id_, table_version_, n_cols_, n_rows_, max_ts, min_ts,
-                                              {buffer.data(), buffer.size()}, {});
+                                              {buffer.data(), buffer.size()}, {agg_buffer.data(), agg_buffer.size()});
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -639,7 +694,8 @@ void TsBlockSegmentBlock::Clear() {
 }
 
 TsBlockSegment::TsBlockSegment(const std::filesystem::path& root)
-    : dir_path_(root), meta_mgr_(root), block_file_(root / block_data_file_name) {
+  : dir_path_(root), meta_mgr_(root), block_file_(root / block_data_file_name),
+    agg_file_(root / block_agg_file_name) {
   Open();
 }
 
@@ -649,6 +705,10 @@ KStatus TsBlockSegment::Open() {
     return s;
   }
   s = block_file_.Open();
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  s = agg_file_.Open();
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -662,8 +722,16 @@ KStatus TsBlockSegment::AppendBlockData(TsBlockSegmentBlockItem& blk_item, const
     LOG_ERROR("append to block file failed. data len: %lu.", data.len);
     return s;
   }
+  uint64_t agg_offset = 0;
+  s = agg_file_.AppendAggBlock(agg, &agg_offset);
+  if (s != SUCCESS) {
+    LOG_ERROR("append to agg file failed. agg len: %lu.", agg.len);
+    return s;
+  }
   blk_item.block_offset = blk_offset;
   blk_item.block_len = data.len;
+  blk_item.agg_offset = agg_offset;
+  blk_item.agg_len = agg.len;
   s = meta_mgr_.AppendBlockItem(blk_item);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("append to meta file failed. data len: %lu.", data.len);
@@ -678,7 +746,7 @@ KStatus TsBlockSegment::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsBlockSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                      std::vector<TsBlockSpan>* blocks) {
+                                      std::list<TsBlockSpan>* blocks) {
   return meta_mgr_.GetBlockSpans(filter, this, blocks);
 }
 

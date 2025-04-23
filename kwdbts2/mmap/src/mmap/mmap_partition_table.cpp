@@ -794,7 +794,6 @@ TsTimePartition::WriteVacuumData(TsTimePartition* dest_pt, uint32_t entity_id, R
   vector<uint32_t> cols_idx = dest_segment->getIdxForValidCols();
   vector<AttributeInfo> cols_info = dest_segment->GetColsInfoWithoutHidden();
   for (int i = 0; i < cols_idx.size(); ++i) {
-    uint32_t batch_row_idx = 0;
     const Batch* batch = res->data[i][0];
     bool is_col_not_null = cols_info[i].isFlag(AINFO_NOT_NULL);
     bool has_null = false;
@@ -803,6 +802,7 @@ TsTimePartition::WriteVacuumData(TsTimePartition* dest_pt, uint32_t entity_id, R
     }
     if (!isVarLenType(cols_info[i].type)) {
       // fixed length
+      uint32_t batch_row_idx = 0;
       uint32_t total_row = 0;
       for (BlockSpan block_span : dst_spans) {
         MetricRowID row_id{block_span.block_item->block_id, block_span.start_row + 1};
@@ -827,22 +827,34 @@ TsTimePartition::WriteVacuumData(TsTimePartition* dest_pt, uint32_t entity_id, R
     } else {
       int block_span_idx = 0;
       size_t loc = 0;
-      int count = 0;
+      int processed_count = 0;  // The number of rows that have been written to the current block span
+      uint32_t cur_block_row_id = dst_spans[block_span_idx].start_row;
       // var length data, write one by one
-      uint32_t cur_block_row = dst_spans[block_span_idx].start_row;
-      for (uint32_t row_idx = 0; row_idx < row_count; ++row_idx, ++cur_block_row) {
+      for (uint32_t batch_row_idx = 0 ; batch_row_idx < row_count; ++batch_row_idx) {
+        Defer defer{
+          [&]() {
+            ++processed_count;
+            ++cur_block_row_id;
+            if (processed_count >= dst_spans[block_span_idx].row_num) {
+              ++block_span_idx;  // the current block is full, switch to next block
+              if (block_span_idx < dst_spans.size()) {
+                processed_count = 0;
+                cur_block_row_id = dst_spans[block_span_idx].start_row;
+              }
+            }
+          }
+        };
         if (has_null) {
           bool is_null = false;
           batch->isNull(batch_row_idx, &is_null);
-          batch_row_idx++;
           if (is_null) {
-            MetricRowID row_id{dst_spans[block_span_idx].block_item->block_id, cur_block_row + 1};
+            MetricRowID row_id{dst_spans[block_span_idx].block_item->block_id, cur_block_row_id + 1};
             dest_segment->setNullBitmap(row_id, cols_idx[i]);
             continue;
           }
         }
-        char* var_addr = (char*)batch->getVarColData(row_idx);
-        uint16_t var_c_len = batch->getVarColDataLen(row_idx);
+        char* var_addr = (char*)batch->getVarColData(batch_row_idx);
+        uint16_t var_c_len = batch->getVarColDataLen(batch_row_idx);
         MMapStringColumn* dest_str_file = dest_segment->GetStringFile();
         // check string file size
         if (var_c_len + dest_str_file->size() >= dest_str_file->fileLen()) {
@@ -868,15 +880,9 @@ TsTimePartition::WriteVacuumData(TsTimePartition* dest_pt, uint32_t entity_id, R
           LOG_ERROR("StringFile push bach failed.");
           return FAIL;
         }
-        if (dst_spans[block_span_idx].row_num == count) {
-          ++block_span_idx;
-          count = 0;
-          cur_block_row = dst_spans[block_span_idx].start_row;
-        }
         // write string location to column file
-        MetricRowID row_id{dst_spans[block_span_idx].block_item->block_id, cur_block_row + 1};
+        MetricRowID row_id{dst_spans[block_span_idx].block_item->block_id, cur_block_row_id + 1};
         memcpy(dest_segment->columnAddr(row_id, cols_idx[i]), &loc, cols_info[i].size);
-        ++count;
       }
     }
   }
@@ -1585,6 +1591,8 @@ int TsTimePartition::UndoDelete(uint32_t entity_id, kwdbts::TS_LSN lsn,
 }
 
 int TsTimePartition::UndoDeleteEntity(uint32_t entity_id, kwdbts::TS_LSN lsn, uint64_t* count, ErrorInfo& err_info) {
+  MUTEX_LOCK(vacuum_delete_lock_);
+  Defer defer{[&]() { MUTEX_UNLOCK(vacuum_delete_lock_); }};
   int err_code = 0;
   EntityItem* entity_item = getEntityItem(entity_id);
   entity_item->is_deleted = false;
@@ -1741,6 +1749,8 @@ int TsTimePartition::RedoPut(kwdbts::kwdbContext_p ctx, uint32_t entity_id, kwdb
 
 int TsTimePartition::RedoDelete(uint32_t entity_id, kwdbts::TS_LSN lsn,
                                 const vector<DelRowSpan>* rows, ErrorInfo& err_info) {
+  MUTEX_LOCK(vacuum_delete_lock_);
+  Defer defer{[&]() { MUTEX_UNLOCK(vacuum_delete_lock_); }};
   for (auto row_span : *rows) {
     // Retrieve the block item based on its ID
     BlockItem* block_item = GetBlockItem(row_span.blockitem_id);
@@ -2655,7 +2665,8 @@ int TsTimePartition::GetAllBlockSpans(uint32_t entity_id, std::vector<KwTsSpan>&
 
   for (auto it : block_items) {
     vector<BlockItem*> blocks = it.second;
-    if (blocks.size() == 1 && !blocks[0]->unordered_flag) {
+    if (blocks.size() == 1 && !blocks[0]->unordered_flag &&
+        !hasDeleted(blocks[0]->rows_delete_flags, 1, blocks[0]->publish_row_count)) {
       BlockSpan block_span = BlockSpan{blocks[0], 0, blocks[0]->publish_row_count};
       reverse ? block_spans.push_front(block_span) : block_spans.push_back(block_span);
       count += block_span.row_num;
@@ -2755,6 +2766,20 @@ int TsTimePartition::DropSegmentDir(const std::vector<BLOCK_ID>& segment_ids) {
     BLOCK_ID key;
     bool ret = data_segments_.Seek(segment_id, key, segment_table);
     if (ret) {
+      // try umount segment
+      int error_code = segment_table->try_umount();
+      if (error_code < 0) {
+        LOG_ERROR("try umount segment[%s] failed", segment_table->GetPath().c_str());
+        return error_code;
+      }
+      LOG_INFO("try umount segment[%s] succeed", segment_table->GetPath().c_str());
+    }
+  }
+  for (unsigned int segment_id : segment_ids) {
+    std::shared_ptr<MMapSegmentTable> segment_table;
+    BLOCK_ID key;
+    bool ret = data_segments_.Seek(segment_id, key, segment_table);
+    if (ret) {
       // set all blockitem in segment invalid.
       auto block_id = segment_id;
       while (true) {
@@ -2774,7 +2799,7 @@ int TsTimePartition::DropSegmentDir(const std::vector<BLOCK_ID>& segment_ids) {
           break;
         }
       }
-      // delete segment directory
+      // remove segment
       int error_code = segment_table->remove();
       if (error_code < 0) {
         LOG_ERROR("remove segment[%s] failed", segment_table->GetPath().c_str());

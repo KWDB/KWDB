@@ -45,7 +45,8 @@ type setVarNode struct {
 	name string
 	v    sessionVar
 	// typedValues == nil means RESET.
-	typedValues []tree.TypedExpr
+	typedValues   []tree.TypedExpr
+	isUserDefined bool
 }
 
 // SetVar sets session variables.
@@ -61,6 +62,16 @@ func (p *planner) SetVar(ctx context.Context, n *tree.SetVar) (planNode, error) 
 	}
 
 	name := strings.ToLower(n.Name)
+	if n.IsUserDefined {
+		if len(n.Values) != 1 {
+			return nil, newSingleArgVarError(name)
+		}
+		typedVal, err := n.Values[0].TypeCheck(&p.semaCtx, types.Any)
+		if err != nil {
+			return nil, err
+		}
+		return &setVarNode{name: name, isUserDefined: n.IsUserDefined, typedValues: []tree.TypedExpr{typedVal}}, nil
+	}
 	_, v, err := getSessionVar(name, false /* missingOk */)
 	if err != nil {
 		return nil, err
@@ -122,6 +133,13 @@ func unresolvedNameToStrVal(expr tree.Expr) tree.Expr {
 func (n *setVarNode) startExec(params runParams) error {
 	var strVal string
 	var operation target.OperationType = target.Set
+	if n.isUserDefined {
+		val, err := n.typedValues[0].Eval(params.EvalContext())
+		if err != nil {
+			return err
+		}
+		return params.p.sessionDataMutator.SetUserDefinedVar(n.name, val)
+	}
 	if n.typedValues != nil {
 		operation = target.Set
 		for i, v := range n.typedValues {

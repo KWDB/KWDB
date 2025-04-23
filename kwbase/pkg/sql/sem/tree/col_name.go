@@ -173,6 +173,12 @@ func ComputeColNameInternal(sp sessiondata.SearchPath, target Expr) (int, string
 	case *ColumnAccessExpr:
 		return 2, e.ColName, nil
 
+	case *UserDefinedVar:
+		return 2, e.VarName, nil
+
+	case *AssignmentExpr:
+		return 2, e.String(), nil
+
 	case *DBool:
 		// PostgreSQL implements the "true" and "false" literals
 		// by generating the expressions 't'::BOOL and 'f'::BOOL, so

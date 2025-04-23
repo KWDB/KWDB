@@ -129,7 +129,7 @@ func CanWriteData(stmt Statement) bool {
 	case *CopyFrom, *Import, *Restore:
 		return true
 	// CockroachDB extensions.
-	case *Split, *Unsplit, *Relocate, *Scatter:
+	case *Split, *Unsplit, *Relocate, *Scatter, *SelectInto:
 		return true
 	}
 	return false
@@ -1393,6 +1393,18 @@ func (*ShowVar) StatementTag() string { return "SHOW" }
 func (*ShowVar) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowUdvVar) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowUdvVar) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ShowUdvVar) StatementTag() string { return "SHOW" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowUdvVar) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowClusterSetting) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -1927,6 +1939,18 @@ func (*Unsplit) StatementTag() string { return "UNSPLIT" }
 func (*Unsplit) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*SelectInto) StatementType() StatementType { return RowsAffected }
+
+// StatOp implements the StatOp interface.
+func (*SelectInto) StatOp() string { return "SELECT" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*SelectInto) StatementTag() string { return "SET" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*SelectInto) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*Truncate) StatementType() StatementType { return Ack }
 
 // StatOp implements the StatOp interface.
@@ -2110,11 +2134,13 @@ func (n *ShowTraceForSession) String() string            { return AsString(n) }
 func (n *ShowTransactionStatus) String() string          { return AsString(n) }
 func (n *ShowUsers) String() string                      { return AsString(n) }
 func (n *ShowVar) String() string                        { return AsString(n) }
+func (n *ShowUdvVar) String() string                     { return AsString(n) }
 func (n *ShowZoneConfig) String() string                 { return AsString(n) }
 func (n *ShowFingerprints) String() string               { return AsString(n) }
 func (n *ShowAudits) String() string                     { return AsString(n) }
 func (n *Split) String() string                          { return AsString(n) }
 func (n *Unsplit) String() string                        { return AsString(n) }
+func (n *SelectInto) String() string                     { return AsString(n) }
 func (n *Truncate) String() string                       { return AsString(n) }
 func (n *UnionClause) String() string                    { return AsString(n) }
 func (n *Update) String() string                         { return AsString(n) }

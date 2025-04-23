@@ -203,7 +203,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     status_.store(MEM_SEGMENT_DELETING);
   }
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::vector<TsBlockSpan>* blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 };
 
 class TsMemSegBlock : public TsBlock {

@@ -151,6 +151,10 @@ func (cp *readImportDataProcessor) NextPgWire() (val []byte, code int, err error
 	return nil, 0, nil
 }
 
+func (cp *readImportDataProcessor) SupportPgWire() bool {
+	return false
+}
+
 func (cp *readImportDataProcessor) Start(ctx context.Context) context.Context {
 	return nil
 }

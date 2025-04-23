@@ -66,3 +66,19 @@ func (d *delegator) delegateShowVar(n *tree.ShowVar) (tree.Statement, error) {
 		nm.String(), varName,
 	))
 }
+
+// Show a user defined variable name and type.
+func (d *delegator) delegateShowUdvVar(n *tree.ShowUdvVar) (tree.Statement, error) {
+	var name, typ string
+	varName := strings.ToLower(n.Name)
+	if varValue, ok := d.evalCtx.SessionData.UserDefinedVars[varName]; ok {
+		name = n.Name
+		typ = varValue.(tree.Datum).ResolvedType().SQLString()
+	} else {
+		return nil, pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", varName)
+	}
+	return parse(fmt.Sprintf(
+		`SELECT '%[1]s' AS var_name, '%[2]s' AS var_type `,
+		name, typ,
+	))
+}

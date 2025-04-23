@@ -79,15 +79,25 @@ class DataChunk : public IChunk {
 
   [[nodiscard]] inline k_uint32 RowSize() const { return row_size_; }
 
+  [[nodiscard]] inline k_uint32 BitmapSize() const { return bitmap_size_; }
+
   [[nodiscard]] inline char* GetData() const { return data_; }
 
   ColumnInfo* GetColumnInfo() override { return col_info_; }
+
+  k_uint32* GetColumnOffset() { return col_offset_; }
+
+  k_uint32* GetBitmapOffset() { return bitmap_offset_; }
+
+  char* GetBitmapPtr(k_uint32 col);
 
   [[nodiscard]] inline k_uint32 Capacity() const { return capacity_; }
 
   [[nodiscard]] bool isDisorder() const { return disorder_; }
 
   void setDisorder(bool disorder) { disorder_ = disorder; }
+
+  bool IsDataOwner() const { return is_data_owner_; }
 
   void SetCount(k_uint32 count) { count_ = count; }
 
@@ -98,6 +108,8 @@ class DataChunk : public IChunk {
 
   /* override methods */
   DatumPtr GetData(k_uint32 row, k_uint32 col) override;
+
+  DatumPtr GetDataPtr(k_uint32 col);
 
   DatumPtr GetData(k_uint32 col) override;
 
@@ -285,7 +297,7 @@ class DataChunk : public IChunk {
                           Field** renders, bool batch_copy = false);
 
   ////////////////   Encoding func  ///////////////////
-  KStatus Encoding(kwdbContext_p ctx, bool is_pg, k_int64* command_limit,
+  KStatus Encoding(kwdbContext_p ctx, TsNextRetState nextState, k_int64* command_limit,
                    std::atomic<k_int64>* count_for_limit);
   /**
    * @brief Encode data at coordinate location (row, col) using kwbase protocol.
@@ -305,6 +317,8 @@ class DataChunk : public IChunk {
    */
   KStatus PgResultData(kwdbContext_p ctx, k_uint32 row,
                        const EE_StringInfo& info);
+
+  EEIteratorErrCode VectorizeData(kwdbContext_p ctx, DataInfo *data_info);
 
   void ResetDataPtr(char *data_ptr, k_int32 data_count) {
     data_ = data_ptr;

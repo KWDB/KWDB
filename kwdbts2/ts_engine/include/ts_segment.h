@@ -38,7 +38,7 @@ class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::vector<TsBlockSpan>* spans) {
+                                std::list<TsBlockSpan>* spans) {
     assert(false);
     throw std::runtime_error("INPLEMENT IT");
     return FAIL;

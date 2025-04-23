@@ -53,6 +53,44 @@ KStatus TsBlockSegmentBlockFile::ReadData(uint64_t offset, char* buff, size_t le
   return KStatus::SUCCESS;
 }
 
+TsBlockSegmentAggFile::TsBlockSegmentAggFile(const string& file_path)
+        : file_path_(file_path) {
+  file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
+  agg_file_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_BLOCK_AGG_RWLOCK);
+  memset(&header_, 0, sizeof(TsAggFileHeader));
+}
+
+KStatus TsBlockSegmentAggFile::Open() {
+  TSSlice result;
+  auto s = file_->Read(0, sizeof(TsAggFileHeader), &result, reinterpret_cast<char *>(&header_));
+  if (header_.status != TsFileStatus::READY) {
+    file_->Reset();
+    header_.magic = TS_BLOCK_SEGMENT_BLOCK_FILE_MAGIC;
+    header_.status = TsFileStatus::READY;
+    s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsAggFileHeader)});
+  }
+  return s;
+}
+
+KStatus TsBlockSegmentAggFile::AppendAggBlock(const TSSlice& agg, uint64_t* offset) {
+  RW_LATCH_X_LOCK(agg_file_mtx_);
+  *offset = file_->GetFileSize();
+  file_->Append(agg);
+  RW_LATCH_UNLOCK(agg_file_mtx_);
+  return SUCCESS;
+}
+
+KStatus TsBlockSegmentAggFile::ReadAggBlock(uint64_t offset, char* buff, size_t len) {
+  RW_LATCH_S_LOCK(agg_file_mtx_);
+  TSSlice result;
+  file_->Read(offset, len, &result, buff);
+  if (result.len != len) {
+    LOG_ERROR("TsBlockSegmentAggFile read agg block failed, offset=%lu, len=%zu", offset, len)
+    return FAIL;
+  }
+  RW_LATCH_UNLOCK(agg_file_mtx_);
+  return SUCCESS;
+}
 
 }  //  namespace kwdbts
 

@@ -1035,6 +1035,36 @@ int MMapSegmentTable::remove() {
   return err_info.errcode;
 }
 
+int MMapSegmentTable::try_umount() {
+  mutexLock();
+  Defer defer([&](){
+    mutexUnlock();
+  });
+
+  ErrorInfo err_info;
+
+  status_ = OBJ_INVALID;
+  if (m_str_file_) {
+    m_str_file_->munmap();
+    delete m_str_file_;
+    m_str_file_ = nullptr;
+  }
+
+  for (auto it = col_files_.begin() ; it != col_files_.end() ; ++it) {
+    auto& file = *it;
+    if (LIKELY(file != nullptr)) {
+      file->munmap();
+      delete file;
+      file = nullptr;
+    }
+  }
+
+  TsTableObject::close();
+  // try umount sqfs file
+  umount(db_path_, tbl_sub_path_, err_info);
+  return err_info.errcode;
+}
+
 int MMapSegmentTable::addColumn(AttributeInfo& col_info,
                                 ErrorInfo& err_info) {
   return err_info.setError(KWEPERM, "cannot support to add column " + quoteString(name()));

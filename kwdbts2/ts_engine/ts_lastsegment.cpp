@@ -696,7 +696,7 @@ KStatus TsLastSegment::GetBlockSpans(std::vector<TsBlockSpan>* spans) {
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::vector<TsBlockSpan>* spans) {
+                                     std::list<TsBlockSpan>* spans) {
   spans->clear();
   if (filter.ts_spans_.empty()) {
     return SUCCESS;
