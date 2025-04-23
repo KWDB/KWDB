@@ -316,11 +316,16 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
     ret = InitializeLastSegmentIterator();
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize last segment iterator of current partition(%d) for current entity(%d).",
+      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
     ret = last_segment_iterator_->ScanAgg(count);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to scan last segment for partition(%d) of entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return ret;
+    }
     total_row_count += *count;
 
     // Initialize and scan block segment
