@@ -777,6 +777,17 @@ KStatus TsEntityGroup::TierMigrate() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsEntityGroup::Count(kwdbContext_p ctx, ErrorInfo &err_info) {
+  RW_LATCH_S_LOCK(drop_mutex_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
+  ebt_manager_->Count(ctx, err_info);
+  if (err_info.errcode < 0) {
+    LOG_ERROR("TsEntityGroup::Count error : %s", err_info.errmsg.c_str());
+    return FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsEntityGroup::GetIterator(kwdbContext_p ctx, SubGroupID sub_group_id, vector<uint32_t> entity_ids,
                                    std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
                                    std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
@@ -1956,6 +1967,36 @@ KStatus TsTable::TierMigrate() {
   }
   entity_bt_manager_->ResetMigrateStatus();
   return KStatus::SUCCESS;
+}
+
+KStatus TsTable::Count(kwdbContext_p ctx, ErrorInfo& err_info) {
+  if (entity_bt_manager_ == nullptr) {
+    LOG_ERROR("TsTable not created : %s", tbl_sub_path_.c_str());
+    err_info.setError(KWENOOBJ, "table not created");
+    return KStatus::FAIL;
+  }
+  KStatus s = KStatus::SUCCESS;
+  std::vector<std::shared_ptr<TsEntityGroup>> count_entity_groups;
+  {
+    RW_LATCH_S_LOCK(entity_groups_mtx_);
+    Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+    // get all entity groups
+    for (auto& [fst, snd] : entity_groups_) {
+      count_entity_groups.push_back(snd);
+    }
+  }
+
+  for (auto& entity_group : count_entity_groups) {
+    if (!entity_group) {
+      continue;
+    }
+    s = entity_group->Count(ctx, err_info);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsTableRange count failed : %s", tbl_sub_path_.c_str());
+      break;
+    }
+  }
+  return s;
 }
 
 KStatus TsTable::GetEntityIndex(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,

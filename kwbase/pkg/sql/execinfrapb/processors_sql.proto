@@ -181,6 +181,7 @@ enum OperatorType {
   TsCreateTagIndex = 23;
   TsDropTagIndex = 24;
   TsAlterTagIndex = 25;
+  TsCount = 26;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert

@@ -248,6 +248,15 @@ class TsTable {
    */
   virtual KStatus TierMigrate();
 
+  /**
+   * @brief Count the segment in the time series entity group
+   * @param[in] ctx Database Context
+   * @param[out] err_info error info
+   *
+   * @return KStatus
+   */
+  virtual KStatus Count(kwdbContext_p ctx, ErrorInfo& err_info);
+
   std::string GetStoreDirectory() {
     return db_path_ + tbl_sub_path_;
   }
@@ -644,6 +653,15 @@ class TsEntityGroup {
    * @return success or fail
    */
   virtual KStatus TierMigrate();
+
+  /**
+   * @brief Count the segment in the time series entity group
+   * @param[in] ctx Database Context
+   * @param[out] err_info error info
+   *
+   * @return KStatus
+   */
+  virtual KStatus Count(kwdbContext_p ctx, ErrorInfo& err_info);
 
   /**
    * @brief Write entity tags values and support tag value modification.

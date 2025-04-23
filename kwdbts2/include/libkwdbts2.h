@@ -492,6 +492,8 @@ char* TsGetStringPtr(void *data, uint32_t offset,  uint16_t *len);
  */
 TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level);
 
+TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id);
+
 bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 
 int __attribute__((weak)) goPrepareFlush();

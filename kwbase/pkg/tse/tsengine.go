@@ -1509,6 +1509,15 @@ func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
 	return nil
 }
 
+// CountTsTable count calculate table
+func (r *TsEngine) CountTsTable(tableID uint64) error {
+	status := C.TSCountTsTable(r.tdb, C.TSTableID(tableID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to count ts table")
+	}
+	return nil
+}
+
 // DeleteExpiredData delete expired data from time partitions that fall completely within the [min_int64, end) interval
 func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
 	r.checkOrWaitForOpen()

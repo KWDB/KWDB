@@ -956,47 +956,97 @@ KStatus TsAggIterator::findFirstLastData(ResultSet* res, k_uint32* count, timest
 }
 
 KStatus TsAggIterator::countDataUseStatistics(ResultSet* res, k_uint32* count, timestamp64 ts) {
+  KWDB_DURATION(StStatistics::Get().agg_blocks);
   *count = 0;
+  k_uint64 total_count = 0;
   partition_table_iter_->Reset();
-  block_item_queue_.clear();
-  cur_block_item_ = nullptr;
-  std::vector<timestamp64> partition_need_traverse;
-  while (partition_table_iter_->Valid()) {
-    KStatus s = partition_table_iter_->Next(&cur_partition_table_);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("countDataUseStatistics failed. next partition at entitygroup [%lu]", entity_group_id_);
-      return KStatus::FAIL;
-    }
-    if (cur_partition_table_ == nullptr) {
-      // all partition table scan over.
+  while (true) {
+    TsTimePartition* cur_pt = nullptr;
+    partition_table_iter_->Next(&cur_pt);
+    block_item_queue_.clear();
+    if (cur_pt == nullptr) {
+      // all partition scan over.
       break;
     }
-    if (!isTimestampWithinSpans(ts_spans_,
-                                convertSecondToPrecisionTS(cur_partition_table_->minTimestamp(), ts_col_type_),
-                                convertSecondToPrecisionTS(cur_partition_table_->maxTimestamp(), ts_col_type_))) {
-      partition_need_traverse.push_back(cur_partition_table_->minTimestamp());
-    } else {
-      auto entity_item = cur_partition_table_->getEntityItem(entity_ids_[cur_entity_idx_]);
-      auto* b = new AggBatch(malloc(sizeof(k_uint64)), 1, nullptr);
-      b->is_new = true;
-      *static_cast<k_uint64*>(b->mem) = entity_item->row_written;
-      res->push_back(0, b);
+    if (ts != INVALID_TS) {
+      if (!is_reversed_ && convertSecondToPrecisionTS(cur_pt->minTimestamp(), ts_col_type_) > ts) {
+        break;
+      } else if (is_reversed_ && convertSecondToPrecisionTS(cur_pt->maxTimestamp(), ts_col_type_) < ts) {
+        break;
+      }
     }
-  }
-  KStatus s = KStatus::SUCCESS;
-  if (partition_need_traverse.size() > 0) {
-    ErrorInfo err_info;
-    auto sub_grp = entity_group_->GetSubEntityGroupManager()->GetSubGroup(subgroup_id_, err_info);
-    partition_table_iter_ = std::make_shared<TsSubGroupPTIterator>(sub_grp, partition_need_traverse);
-    do {
-      s = traverseAllBlocks(res, count, ts);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("countDataUseStatitics failed at traverseAllBlocks. [%lu]", entity_group_id_);
+
+    EntityItem* entity_item = cur_pt->getEntityItem(entity_ids_[cur_entity_idx_]);
+    if (isTimestampWithinSpans(ts_spans_,
+                               convertSecondToPrecisionTS(cur_pt->minTimestamp(), ts_col_type_),
+                               convertSecondToPrecisionTS(cur_pt->maxTimestamp(), ts_col_type_)) &&
+        entity_item->count_block_id != 0) {
+      cur_pt->GetCountBlockItems(entity_ids_[cur_entity_idx_], entity_item->count_block_id, block_item_queue_);
+      total_count += entity_item->row_written;
+    } else {
+      cur_pt->GetAllBlockItems(entity_ids_[cur_entity_idx_], block_item_queue_);
+    }
+    // Obtain the minimum timestamp for the current query entity.
+    // Once a record's timestamp is traversed to be equal to it,
+    // it indicates that the query result has been found and no additional data needs to be traversed.
+    timestamp64 min_entity_ts = entity_item->min_ts;
+    while (!block_item_queue_.empty()) {
+      BlockItem* block_item = block_item_queue_.front();
+      cur_block_item_ = block_item;
+      block_item_queue_.pop_front();
+      if (!block_item || !block_item->publish_row_count) {
+        continue;
+      }
+      // all rows in block is deleted.
+      if (block_item->isBlockEmpty()) {
+        continue;
+      }
+      std::shared_ptr<MMapSegmentTable> segment_tbl = cur_pt->getSegmentTable(block_item->block_id);
+      if (segment_tbl == nullptr) {
+        LOG_ERROR("Can not find segment use block [%u], in path [%s]", block_item->block_id, cur_pt->GetPath().c_str());
         return KStatus::FAIL;
       }
-    } while (*count != 0);
+      timestamp64 min_ts, max_ts;
+      TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
+      // If the time range of the BlockItem is not within the ts_span range, continue traversing the next BlockItem.
+      if (!isTimestampInSpans(ts_spans_, min_ts, max_ts)) {
+        continue;
+      }
+      if (isTimestampWithinSpans(ts_spans_, min_ts, max_ts)) {
+        total_count += block_item->getNonNullRowCount();
+      } else {
+        // Traverse all data of this BlockItem
+        uint32_t cur_row_offset = 1;
+        while (cur_row_offset <= block_item->publish_row_count) {
+          bool is_deleted = !segment_tbl->IsRowVaild(block_item, cur_row_offset);
+          if (is_deleted) {
+            ++cur_row_offset;
+            continue;
+          }
+          // If the data in the cur_row_offset row is not within the ts_span range or has been deleted,
+          // continue to verify the data in the next row.
+          MetricRowID real_row = block_item->getRowID(cur_row_offset);
+          timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddr(real_row, 0));
+          if (!checkIfTsInSpan(cur_ts)) {
+            ++cur_row_offset;
+            continue;
+          }
+          ++cur_row_offset;
+          ++total_count;
+        }
+      }
+    }
   }
-  return s;
+
+  if (total_count != 0) {
+    Batch* b = new AggBatch(malloc(sizeof(uint64_t)), 1, nullptr);
+    *static_cast<uint64_t*>(b->mem) = total_count;
+    b->is_new = true;
+    res->push_back(0, b);
+    res->entity_index = {entity_group_id_, entity_ids_[cur_entity_idx_], subgroup_id_};
+    *count = 1;
+  }
+  return SUCCESS;
 }
 
 KStatus TsAggIterator::countDataAllBlocks(ResultSet* res, k_uint32* count, timestamp64 ts) {
@@ -1458,7 +1508,7 @@ KStatus TsAggIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished, 
     return s;
   }
   if (only_count_ts_) {
-    s = countDataAllBlocks(res, count, ts);
+    s = countDataUseStatistics(res, count, ts);
     reset();
     return s;
   }

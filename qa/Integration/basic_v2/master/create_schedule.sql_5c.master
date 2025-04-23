@@ -31,18 +31,20 @@ CREATE SCHEDULE
 -----------------------------
   s1
   scheduled_table_compress
+  scheduled_table_count
   scheduled_table_retention
   scheduled_table_vacuum
-(4 rows)
+(5 rows)
 > drop schedule s1;
 DROP SCHEDULE 1
 > select name from [show schedules] order by name;
             name
 -----------------------------
   scheduled_table_compress
+  scheduled_table_count
   scheduled_table_retention
   scheduled_table_vacuum
-(3 rows)
+(4 rows)
 > create schedule s1 for sql 'insert into tsdb.t2 values(1,1)' recurring '@hourly';
 ERROR: insert (row 1) has more target columns than expressions, 2 expressions for 3 targets
 SQLSTATE: 42601

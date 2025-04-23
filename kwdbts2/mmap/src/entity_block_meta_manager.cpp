@@ -184,6 +184,32 @@ int EntityBlockMetaManager::GetAllBlockItems(uint32_t entity_id, std::deque<Bloc
   return 0;
 }
 
+int EntityBlockMetaManager::GetCountBlockItems(uint32_t entity_id, BLOCK_ID block_id, std::deque<BlockItem*>& block_items) {
+  EntityItem* entity_item = getEntityItem(entity_id);
+  if (entity_item->is_deleted) {
+    return 0;
+  }
+  BLOCK_ID block_item_id = entity_item->cur_block_id;
+  while (block_item_id != 0) {
+    BlockItem* block_item = GetBlockItem(block_item_id);
+    if (block_item == nullptr) {
+      LOG_ERROR("GetBlockItem error: block item is nullptr, entity id[%u], block id[%u]", entity_id, block_item_id)
+      return KWENOOBJ;
+    }
+    if (block_item->entity_id != entity_id) {
+      LOG_ERROR("entity id in block item is inconsistent: entity_id[%u], block_item->entity_id[%u]",
+                entity_id, block_item->entity_id)
+      return KWENOOBJ;
+    }
+    if (block_item_id <= block_id) {
+      break;
+    }
+    block_items.push_front(block_item);
+    block_item_id = block_item->prev_block_id;
+  }
+  return 0;
+}
+
 // delete meta files and structs in memory.
 int EntityBlockMetaManager::remove() {
   int error_code = 0;
@@ -211,20 +237,17 @@ int EntityBlockMetaManager::MarkSpaceDeleted(uint32_t entity_id, BlockSpan* span
   std::lock_guard<std::shared_mutex> lk(entity_block_item_mutex_);
   BlockItem* block_item = span->block_item;
   assert(block_item != nullptr);
-  EntityItem* entity_item = getEntityItem(entity_id);
   if (hasDeleted(block_item->rows_delete_flags, span->start_row + 1, span->row_num)) {
     for (int i = 0; i < span->row_num; i++) {
       bool is_deleted = false;
       if (block_item->isDeleted(span->start_row + i + 1, &is_deleted) == 0) {
         if (!is_deleted) {
           block_item->setDeleted(span->start_row + i + 1);
-          entity_item->row_written--;
         }
       }
     }
   } else {
     setBatchDeleted(block_item->rows_delete_flags, span->start_row + 1, span->row_num);
-    entity_item->row_written -= span->row_num;
   }
   return 0;
 }

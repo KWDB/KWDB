@@ -1372,3 +1372,27 @@ TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level) {
   }
   return kTsSuccess;
 }
+
+TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  LOG_DEBUG("count table[%lu] start", table_id);
+  std::shared_ptr<TsTable> table;
+  s = engine->GetTsTable(ctx_p, table_id, table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("The current node does not have the table[%lu], skip count", table_id);
+    return kTsSuccess;
+  }
+  ErrorInfo err_info;
+  s = table->Count(ctx_p, err_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("count table[%lu] failed", table_id);
+    return ToTsStatus("CountTsTable Error!");
+  }
+  LOG_DEBUG("count table[%lu] end", table_id);
+  return kTsSuccess;
+}

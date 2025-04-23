@@ -46,6 +46,8 @@ const (
 	ScheduleAutonomy = "scheduled_table_autonomy"
 	// ScheduleVacuum is the name of scheduled_table_vacuum
 	ScheduleVacuum = "scheduled_table_vacuum"
+	// ScheduleCount is the name of scheduled_table_count
+	ScheduleCount = "scheduled_table_count"
 )
 
 var scheduledBackupOptionExpectValues = map[string]KVStringOptValidate{
