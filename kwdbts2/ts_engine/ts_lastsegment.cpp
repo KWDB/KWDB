@@ -845,8 +845,7 @@ KStatus TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetValueSlice(
   return SUCCESS;
 }
 
-timestamp64 TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetTS(
-    int row_num, const std::vector<AttributeInfo>& schema) {
+timestamp64 TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetTS(int row_num) {
   parent_iter_->LoadColumnToCache(current_.GetRowStart(), 2);
   timestamp64* ptr = reinterpret_cast<timestamp64*>(
       parent_iter_->cache_.GetColumnBlock(current_.block_id, 2)->data->data());

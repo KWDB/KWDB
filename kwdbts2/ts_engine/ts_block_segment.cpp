@@ -678,11 +678,6 @@ KStatus TsBlockSegment::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsBlockSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                      std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) {
-  return KStatus::SUCCESS;
-}
-
-KStatus TsBlockSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                       std::vector<TsBlockSpan>* blocks) {
   return meta_mgr_.GetBlockSpans(filter, this, blocks);
 }

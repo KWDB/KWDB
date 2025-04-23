@@ -399,7 +399,7 @@ KStatus TsMemSegmentScanner::Init(bool is_reversed) {
 
 KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* count, timestamp64 ts) {
   KStatus ret;
-  std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
+  std::list<TsBlockSpan> blocks;
   TsBlockItemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
@@ -408,7 +408,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
 
   *count = 0;
   for (auto block : blocks) {
-    *count += block->GetRowNum();
+    *count += block.block->GetRowNum();
   }
   if (*count == 0) {
     return KStatus::SUCCESS;
@@ -427,11 +427,11 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
         char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
         int row = 0;
         for (auto block : blocks) {
-          for (int i = 0; i < block->GetRowNum(); ++i) {
-            if (block->IsColNull(i, col_idx, attrs_)) {
+          for (int i = 0; i < block.block->GetRowNum(); ++i) {
+            if (block.block->IsColNull(i, col_idx, attrs_)) {
               set_null_bitmap(bitmap, i);
             } else {
-              ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+              ret = block.block->GetValueSlice(i, col_idx, attrs_, col_data);
               if (ret != KStatus::SUCCESS) {
                 return ret;
               }
@@ -448,12 +448,12 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
         for (auto block : blocks) {
-          for (int i = 0; i < block->GetRowNum(); ++i) {
-            if (block->IsColNull(i, col_idx, attrs_)) {
+          for (int i = 0; i < block.block->GetRowNum(); ++i) {
+            if (block.block->IsColNull(i, col_idx, attrs_)) {
               set_null_bitmap(bitmap, i);
               batch->push_back(nullptr);
             } else {
-              ret = block->GetValueSlice(i, col_idx, attrs_, col_data);
+              ret = block.block->GetValueSlice(i, col_idx, attrs_, col_data);
               if (ret != KStatus::SUCCESS) {
                 return ret;
               }
@@ -482,7 +482,7 @@ KStatus TsMemSegmentScanner::Scan(uint32_t entity_id, ResultSet* res, k_uint32* 
 
 KStatus TsMemSegmentScanner::ScanAgg(uint32_t entity_id, k_uint32* count, timestamp64 ts) {
   KStatus ret;
-  std::list<std::shared_ptr<TsSegmentBlockSpan>> blocks;
+  std::list<TsBlockSpan> blocks;
   TsBlockItemFilterParams params{0, table_schema_mgr_->GetTableID(), entity_id, ts_spans_};
   ret = vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &blocks);
   if (ret != KStatus::SUCCESS) {
@@ -491,7 +491,7 @@ KStatus TsMemSegmentScanner::ScanAgg(uint32_t entity_id, k_uint32* count, timest
 
   *count = 0;
   for (const auto& block : blocks) {
-    *count += block->GetRowNum();
+    *count += block.block->GetRowNum();
   }
 
   return KStatus::SUCCESS;

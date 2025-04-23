@@ -255,7 +255,7 @@ class TsLastSegmentEntityBlockIteratorBase {
     }
   } cache_;
 
-  class EntityBlock : public TsSegmentBlockSpan {
+  class EntityBlock : public TsBlock {
    private:
     TsLastSegmentEntityBlockIteratorBase* parent_iter_;
     const CurrentBlock current_;
@@ -264,21 +264,27 @@ class TsLastSegmentEntityBlockIteratorBase {
     explicit EntityBlock(TsLastSegmentEntityBlockIteratorBase* piter)
         : parent_iter_(piter), current_(parent_iter_->current_) {}
     ~EntityBlock() {}
-    TSEntityID GetEntityId() override { return current_.GetEntityID(); }
+    TSEntityID GetEntityId() { return current_.GetEntityID(); }
     TSTableID GetTableId() override {
       return parent_iter_->block_indices_[current_.block_id].table_id;
     }
     uint32_t GetTableVersion() override {
       return parent_iter_->block_indices_[current_.block_id].table_version;
     }
-    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override;
+    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
     size_t GetRowNum() override { return current_.GetRowCount(); }
     KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                           TSSlice& value) override;
-    timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
+    timestamp64 GetTS(int row_num) override;
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
     KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value,
-                       TsBitmap& bitmap) override;
+                       TsBitmap& bitmap);
+
+    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                             char** value) override {return KStatus::FAIL; }
+    KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                               TsBitmap& bitmap) override {return KStatus::FAIL; }
+                       
   };
 
   void Invalidate() { valid_ = false; }

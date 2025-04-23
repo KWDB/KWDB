@@ -295,9 +295,6 @@ class TsBlockSegment : public TsSegmentBase {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                        std::list<std::shared_ptr<TsSegmentBlockSpan>>* blocks) override;
-
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::vector<TsBlockSpan>* blocks) override;
 
   KStatus GetColumnBlock(uint32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
