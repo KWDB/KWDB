@@ -1758,36 +1758,6 @@ void* AggCalculator::GetMin(void* base, bool need_to_new) {
   return min;
 }
 
-template<class T>
-bool AddAggInteger(T& a, T b) {
-  T c;
-  if (__builtin_add_overflow(a, b, &c)) {
-    return true;
-  }
-  a = a + b;
-  return false;
-}
-
-template<class T1, class T2>
-bool AddAggInteger(T1& a, T2 b) {
-  T1 c;
-  if (__builtin_add_overflow(a, b, &c)) {
-    return true;
-  }
-  a = a + b;
-  return false;
-}
-
-template<class T1, class T2>
-void AddAggFloat(T1& a, T2 b) {
-  a = a + b;
-}
-
-template<class T>
-void SubAgg(T& a, T b) {
-  a = a - b;
-}
-
 void* AggCalculator::changeBaseType(void* base) {
   void* sum_base = malloc(sizeof(double));
   memset(sum_base, 0, sizeof(double));

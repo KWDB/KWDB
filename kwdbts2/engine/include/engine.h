@@ -914,4 +914,34 @@ class VarColAggCalculator {
   uint16_t count_;
 };
 
+template<class T>
+bool AddAggInteger(T& a, T b) {
+  T c;
+  if (__builtin_add_overflow(a, b, &c)) {
+    return true;
+  }
+  a = a + b;
+  return false;
+}
+
+template<class T1, class T2>
+bool AddAggInteger(T1& a, T2 b) {
+  T1 c;
+  if (__builtin_add_overflow(a, b, &c)) {
+    return true;
+  }
+  a = a + b;
+  return false;
+}
+
+template<class T1, class T2>
+void AddAggFloat(T1& a, T2 b) {
+  a = a + b;
+}
+
+template<class T>
+void SubAgg(T& a, T b) {
+  a = a - b;
+}
+
 }  //  namespace kwdbts

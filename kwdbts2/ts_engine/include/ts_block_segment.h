@@ -38,7 +38,12 @@ struct TsBlockSegmentBlockItem {
   uint32_t n_rows = 0;
   timestamp64 min_ts = INT64_MAX;
   timestamp64 max_ts = INT64_MIN;
-  char reserved[64] = {0};      // reserved for user-defined information.
+  uint64_t agg_offset = 0;
+  uint32_t agg_len = 0;
+  uint16_t non_null_row_count = 0;  // the number of non-null rows
+  bool is_overflow = false;
+  bool is_agg_res_available = false;  //  agg for block is valid.
+  char reserved[48] = {0};      // reserved for user-defined information.
 };
 static_assert(sizeof(TsBlockSegmentBlockItem) == 128,
               "wrong size of TsBlockSegmentBlockItem, please check compatibility.");
@@ -182,6 +187,7 @@ struct TsBlockSegmentBlockInfo {
 struct TsBlockSegmentColumnBlock {
   TsBitmap bitmap;
   std::string buffer;
+  std::vector<std::string> var_rows;
 };
 
 class TsVGroupPartition;
@@ -244,6 +250,7 @@ class TsBlockSegment {
   string dir_path_;
   TsBlockSegmentMetaManager meta_mgr_;
   TsBlockSegmentBlockFile block_file_;
+  TsBlockSegmentAggFile agg_file_;
 
  public:
   TsBlockSegment() = delete;
