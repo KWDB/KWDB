@@ -322,7 +322,23 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     }
     ret = last_segment_iterator_->ScanAgg(count);
     total_row_count += *count;
-    // block segment
+
+    // Initialize and scan block segment
+    ret = InitializeBlockSegmentIterator();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return ret;
+    }
+
+    k_uint32 block_seg_count = 0;
+    ret = block_segment_iterator_->ScanCount(&block_seg_count);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to scan block segment for partition(%d) of entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return ret;
+    }
+    total_row_count += block_seg_count;
   }
 
   if (total_row_count > 0) {
