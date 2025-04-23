@@ -25,6 +25,7 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "sys_utils.h"
+#include "ts_io.h"
 #include "ts_iterator_v2_impl.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_vgroup_partition.h"
@@ -456,7 +457,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
     auto it = builders.find(partition);
     if (it == builders.end()) {
-      std::unique_ptr<TsFile> last_segment;
+      std::unique_ptr<TsAppendOnlyFile> last_segment;
       uint32_t file_number;
       partition->NewLastSegmentFile(&last_segment, &file_number);
       auto result = builders.insert(

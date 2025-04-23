@@ -18,6 +18,7 @@
 
 #include "ts_entity_segment.h"
 #include "ts_vgroup_partition.h"
+#include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_lastsegment_manager.h"
 
@@ -104,7 +105,7 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroupPartition::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
+KStatus TsVGroupPartition::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* last_segment,
                                               uint32_t* ver) {
   return last_segment_mgr_.NewLastSegmentFile(last_segment, ver);
 }

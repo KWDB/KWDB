@@ -17,6 +17,7 @@
 #include <cstdio>
 
 #include "ts_entity_segment.h"
+#include "ts_io.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_engine_schema_manager.h"
 
@@ -47,7 +48,7 @@ class TsVGroupPartition {
 
   bool NeedCompact();
 
-  KStatus NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment, uint32_t *ver);
+  KStatus NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* last_segment, uint32_t *ver);
   void PublicLastSegment(uint32_t file_number);
 
   std::filesystem::path GetPath() const;

@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "kwdb_type.h"
+#include "ts_io.h"
 #include "ts_lastsegment.h"
 
 namespace kwdbts {
@@ -43,7 +44,7 @@ class TsLastSegmentManager {
 
   ~TsLastSegmentManager() {}
 
-  KStatus NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment, uint32_t* ver);
+  KStatus NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* last_segment, uint32_t* ver);
   KStatus OpenLastSegmentFile(uint32_t file_number, std::shared_ptr<TsLastSegment>* lastsegment);
 
   KStatus GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);

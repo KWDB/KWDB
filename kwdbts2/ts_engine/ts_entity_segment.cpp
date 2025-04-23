@@ -14,6 +14,7 @@
 #include "libkwdbts2.h"
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_coding.h"
+#include "ts_io.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_timsort.h"
 #include "ts_vgroup_partition.h"
@@ -1015,8 +1016,14 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
   TsEngineSchemaManager* schema_mgr = partition_->GetSchemaMgr();
-  // 2. new last segment
-  std::unique_ptr<TsFile> last_segment = nullptr;
+  // 2. Create a new last segment
+  std::unique_ptr<TsAppendOnlyFile> last_segment;
+  uint32_t file_number;
+  s = partition_->NewLastSegmentFile(&last_segment, &file_number);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, new last segment failed.")
+    return s;
+  }
   std::unique_ptr<TsLastSegmentBuilder> builder = nullptr;
   // 3. Traverse the last segment data and write the data to the block segment
   std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;

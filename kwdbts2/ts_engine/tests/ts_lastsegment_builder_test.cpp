@@ -67,7 +67,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     TsLastSegmentManager last_segment_mgr("./");
-    std::unique_ptr<TsFile> last_segment;
+    std::unique_ptr<TsAppendOnlyFile> last_segment;
     uint32_t file_number;
     last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
     ASSERT_EQ(file_number, 0);
@@ -190,7 +190,7 @@ R GenBuilders(TSTableID table_id) {
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
   auto last_segment_mgr = std::make_unique<TsLastSegmentManager>("./");
-  std::unique_ptr<TsFile> last_segment;
+  std::unique_ptr<TsAppendOnlyFile> last_segment;
   uint32_t file_number;
   last_segment_mgr->NewLastSegmentFile(&last_segment, &file_number);
   EXPECT_EQ(file_number, 0);

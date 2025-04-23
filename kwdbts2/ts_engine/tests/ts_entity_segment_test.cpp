@@ -19,6 +19,7 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_hash_latch.h"
+#include "ts_io.h"
 #include "ts_lastsegment_builder.h"
 
 using namespace kwdbts;  // NOLINT
@@ -63,7 +64,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     partition->Open();
 
     for (int i = 0; i < 10; ++i) {
-      std::unique_ptr<TsFile> last_segment;
+      std::unique_ptr<TsAppendOnlyFile> last_segment;
       uint32_t file_number;
       partition->NewLastSegmentFile(&last_segment, &file_number);
       TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), file_number);

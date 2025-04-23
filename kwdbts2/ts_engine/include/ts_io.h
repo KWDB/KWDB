@@ -24,7 +24,9 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
+#include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
 
@@ -246,5 +248,130 @@ class TsMMapFile final : public TsFile {
   KStatus Flush() override { return KStatus::SUCCESS; }
 
   size_t GetFileSize() const override { return size_; }
+};
+
+
+// Prepare for TsVersion
+
+class TsAppendOnlyFile {
+ protected:
+  const std::string path_;
+
+ public:
+  explicit TsAppendOnlyFile(const std::string& path) : path_(path) {}
+  virtual ~TsAppendOnlyFile() {}
+
+  virtual KStatus Append(std::string_view) = 0;
+  virtual KStatus Append(TSSlice slice) {
+    return this->Append(std::string_view{slice.data, slice.len});
+  }
+
+  virtual size_t GetFileSize() const = 0;
+  std::string GetFilePath() const { return path_; }
+
+  virtual KStatus Sync() = 0;
+  virtual KStatus Flush() = 0;
+
+  virtual KStatus Close() = 0;
+};
+
+class TsRandomReadFile {
+ protected:
+  bool delete_after_free = false;
+  const std::string path_;
+
+ public:
+  explicit TsRandomReadFile(const std::string& path) : path_(path) {}
+  virtual ~TsRandomReadFile() {
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
+  }
+
+  virtual KStatus Prefetch(size_t offset, size_t n) = 0;
+  virtual KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) const = 0;
+
+  virtual size_t GetFileSize() const = 0;
+  std::string GetFilePath() const { return path_; }
+
+  void MarkDelete() { delete_after_free = true; }
+};
+
+class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
+ private:
+  int fd_;
+
+  char* mmap_start_ = nullptr;
+  char* mmap_end_ = nullptr;
+  char* dest_ = nullptr;
+  char* synced_ = nullptr; // address before synced_ are synced by msync
+
+  const size_t page_size_;
+  size_t mmap_size_;
+  size_t file_size_;
+
+  KStatus UnmapCurrent();
+  KStatus MMapNew();
+
+ public:
+  TsMMapAppendOnlyFile(const std::string& path, int fd, size_t offset /*append from offset*/)
+      : TsAppendOnlyFile(path),
+        fd_(fd),
+        page_size_(getpagesize()),
+        mmap_size_(16 * page_size_),
+        file_size_(offset) {}
+  ~TsMMapAppendOnlyFile();
+
+  KStatus Append(std::string_view data) override;
+  size_t GetFileSize() const override { return file_size_; }
+  KStatus Sync() override;
+  KStatus Flush() override { return SUCCESS; }
+
+  KStatus Close() override;
+};
+
+class TsMMapRandomReadFile : public TsRandomReadFile {
+  int fd_;
+  char* mmap_start_;
+  size_t file_size_;
+  size_t page_size_;
+
+ public:
+  TsMMapRandomReadFile(const std::string& path, int fd, char* addr, size_t filesize)
+      : TsRandomReadFile(path),
+        fd_(fd),
+        mmap_start_(addr),
+        file_size_(filesize),
+        page_size_(getpagesize()) {
+    assert(mmap_start_);
+    assert(file_size_ > 0);
+  }
+  ~TsMMapRandomReadFile() {
+    munmap(mmap_start_, file_size_);
+  }
+  KStatus Prefetch(size_t offset, size_t n) override;
+  KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) const override;
+
+  size_t GetFileSize() const override { return file_size_; }
+};
+
+class TsIOEnv {
+ public:
+  virtual ~TsIOEnv() {}
+  virtual KStatus NewAppendOnlyFile(const std::string& filepath,
+                                    std::unique_ptr<TsAppendOnlyFile>* file, bool overwrite = true,
+                                    size_t offset = -1) = 0;
+  virtual KStatus NewRandomReadFile(const std::string& filepath,
+                                    std::unique_ptr<TsRandomReadFile>* file,
+                                    size_t file_size = -1) = 0;
+};
+
+class TsMMapIOEnv : public TsIOEnv {
+ public:
+  static TsIOEnv& GetInstance();
+  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                            bool overrite = true, size_t offset = -1) override;
+  KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                            size_t file_size = -1) override;
 };
 }  // namespace kwdbts
