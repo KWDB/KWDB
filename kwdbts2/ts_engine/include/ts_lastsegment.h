@@ -172,11 +172,7 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
-  KStatus GetBlockInfo(TsLastSegmentBlockIndex& block_index, TsLastSegmentBlockInfo* block_info);
-
-  KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
-
-  KStatus GetBlockSpans(std::vector<TsBlockSpan>* spans);
+  KStatus GetBlockSpans(std::list<TsBlockSpan>* spans);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                         std::list<TsBlockSpan>* spans) override;
@@ -276,6 +272,7 @@ class TsLastSegmentEntityBlockIteratorBase {
     KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                           TSSlice& value) override;
     timestamp64 GetTS(int row_num) override;
+    uint64_t* GetSeqNoAddr(int row_num) override;
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
     KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value,
                        TsBitmap& bitmap);
@@ -343,182 +340,4 @@ class TsLastSegmentPartialEntityBlockIterator : public TsLastSegmentEntityBlockI
   void NextEntityBlock() override;
 };
 
-struct TsLastSegmentBlockSpan {
-  TsLastSegmentBlock* block = nullptr;
-  uint32_t table_id = 0;
-  uint32_t table_version = 0;
-  uint64_t entity_id = 0;
-
-  uint32_t start_row = 0;
-  uint32_t end_row = 0;
-};
-
-class TsLastSegmentsMergeIterator {
- private:
-  struct TsIteratorRowInfo {
-    uint64_t entity_id;
-    timestamp64 ts;
-    uint64_t seq_no;
-
-    uint64_t last_segment_idx;
-    uint64_t block_idx;
-    uint32_t row_idx;
-
-    inline bool operator<(const TsIteratorRowInfo& other) const {
-      return entity_id != other.entity_id ? entity_id < other.entity_id
-                                          : ts != other.ts ? ts < other.ts : seq_no > other.seq_no;
-    }
-  };
-
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
-  std::vector<std::vector<TsLastSegmentBlockIndex>> block_indexes_;
-  std::vector<std::vector<TsLastSegmentBlockInfo>> block_infos_;
-
-  std::vector<uint64_t> block_idx_in_last_seg_;
-
-  std::vector<TsLastSegmentBlock*> prev_blocks_;
-  std::vector<TsLastSegmentBlock*> cur_blocks_;
-  std::list<TsIteratorRowInfo> row_infos_;
-
-  void insertRowInfo(uint64_t last_segment_idx, uint64_t block_idx, uint32_t row_idx) {
-    uint64_t entity_id = cur_blocks_[last_segment_idx]->GetEntityId(row_idx);
-    timestamp64 ts = cur_blocks_[last_segment_idx]->GetTimestamp(row_idx);
-    uint64_t seq_no = cur_blocks_[last_segment_idx]->GetSeqNo(row_idx);
-    TsIteratorRowInfo row_info = {entity_id, ts, seq_no, last_segment_idx, block_idx, row_idx};
-    insertRowInfo(row_info);
-  }
-
-  void insertRowInfo(TsIteratorRowInfo& row_info) {
-    auto it = row_infos_.begin();
-    while (it != row_infos_.end() && *it < row_info) {
-      ++it;
-    }
-    row_infos_.insert(it, row_info);
-  }
-
-  KStatus nextBlock(size_t segment_idx) {
-    uint64_t block_idx = block_idx_in_last_seg_[segment_idx]++;
-    if (prev_blocks_[segment_idx]) {
-      delete prev_blocks_[segment_idx];
-      prev_blocks_[segment_idx] = nullptr;
-    }
-    if (cur_blocks_[segment_idx]) {
-      prev_blocks_[segment_idx] = cur_blocks_[segment_idx];
-      cur_blocks_[segment_idx] = nullptr;
-    }
-    if (block_idx >= block_infos_[segment_idx].size()) {
-      return KStatus::SUCCESS;
-    }
-    if (!cur_blocks_[segment_idx]) {
-      cur_blocks_[segment_idx] = new TsLastSegmentBlock();
-    }
-    return last_segments_[segment_idx]->GetBlock(block_infos_[segment_idx][block_idx],
-                                                 cur_blocks_[segment_idx]);
-  }
-
- public:
-  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments)
-      : last_segments_(last_segments) {}
-  ~TsLastSegmentsMergeIterator() {
-    for (int i = 0; i < cur_blocks_.size(); ++i) {
-      if (cur_blocks_[i]) {
-        delete cur_blocks_[i];
-        cur_blocks_[i] = nullptr;
-      }
-      if (prev_blocks_[i]) {
-        delete prev_blocks_[i];
-        prev_blocks_[i] = nullptr;
-      }
-    }
-  }
-
-  KStatus Init() {
-    block_indexes_.resize(last_segments_.size());
-    block_infos_.resize(last_segments_.size());
-    for (size_t i = 0; i < last_segments_.size(); ++i) {
-      KStatus s = last_segments_[i]->GetAllBlockIndex(&block_indexes_[i]);
-      if (s == KStatus::FAIL) {
-        return s;
-      }
-      block_infos_[i].resize(block_indexes_[i].size());
-      for (size_t j = 0; j < block_indexes_[i].size(); ++j) {
-        s = last_segments_[i]->GetBlockInfo(block_indexes_[i][j], &(block_infos_[i][j]));
-        if (s == KStatus::FAIL) {
-          return s;
-        }
-      }
-    }
-
-    cur_blocks_.resize(last_segments_.size());
-    prev_blocks_.resize(last_segments_.size());
-    block_idx_in_last_seg_.resize(last_segments_.size());
-    for (size_t i = 0; i < last_segments_.size(); ++i) {
-      KStatus s = nextBlock(i);
-      if (s == KStatus::FAIL) {
-        return s;
-      }
-      if (cur_blocks_[i]) {
-        insertRowInfo(i, block_idx_in_last_seg_[i] - 1, 0);
-      }
-    }
-    return KStatus::SUCCESS;
-  }
-
-  KStatus Next(TsLastSegmentBlockSpan* block_span, bool& is_finished) {
-    if (row_infos_.empty()) {
-      is_finished = true;
-      return KStatus::SUCCESS;
-    }
-
-    TsIteratorRowInfo first_row_info = row_infos_.front();
-    row_infos_.pop_front();
-    TsIteratorRowInfo second_row_info{UINT64_MAX, INT64_MAX, UINT64_MAX};
-    if (!row_infos_.empty()) {
-      second_row_info = row_infos_.front();
-    }
-
-    uint32_t n_rows_in_block =
-        block_infos_[first_row_info.last_segment_idx][first_row_info.block_idx].nrow;
-    uint32_t row_idx = first_row_info.row_idx;
-    TsLastSegmentBlock* block = cur_blocks_[first_row_info.last_segment_idx];
-    for (; row_idx < n_rows_in_block; ++row_idx) {
-      TsIteratorRowInfo new_row_info = {block->GetEntityId(row_idx), block->GetTimestamp(row_idx),
-                                        block->GetSeqNo(row_idx)};
-      if (second_row_info < new_row_info) {
-        new_row_info.last_segment_idx = first_row_info.last_segment_idx;
-        new_row_info.block_idx = first_row_info.block_idx;
-        new_row_info.row_idx = row_idx;
-        insertRowInfo(new_row_info);
-        break;
-      }
-    }
-
-    TsLastSegmentBlockIndex block_index =
-        block_indexes_[first_row_info.last_segment_idx][first_row_info.block_idx];
-    block_span->block = block;
-    block_span->table_id = block_index.table_id;
-    block_span->table_version = block_index.table_version;
-    block_span->entity_id = first_row_info.entity_id;
-    block_span->start_row = first_row_info.row_idx;
-    block_span->end_row = row_idx;
-
-    if (row_idx == n_rows_in_block) {
-      KStatus s = nextBlock(first_row_info.last_segment_idx);
-      if (s == KStatus::FAIL) {
-        return s;
-      }
-      uint64_t last_seg_idx = first_row_info.last_segment_idx;
-      if (cur_blocks_[last_seg_idx]) {
-        insertRowInfo(last_seg_idx, block_idx_in_last_seg_[last_seg_idx] - 1, 0);
-      }
-    }
-    return KStatus::SUCCESS;
-  }
-};
-
-struct TsLastSegmentSlice {
-  TsLastSegment* last_seg_;
-  uint32_t offset;
-  uint32_t count;
-};
 }  // namespace kwdbts

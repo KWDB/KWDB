@@ -142,7 +142,7 @@ void IteratorCheck(TSTableID table_id) {
   manager.OpenLastSegmentFile(0, &file);
   ASSERT_TRUE(file->Open() == kwdbts::SUCCESS);
 
-  std::vector<TsBlockSpan> spans;
+  std::list<TsBlockSpan> spans;
   ASSERT_EQ(file->GetBlockSpans(&spans), SUCCESS);
   for (const auto &span : spans) {
     EXPECT_EQ(span.GetEntityID(), 1);
@@ -321,7 +321,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
 
-  std::vector<TsBlockSpan> spans;
+  std::list<TsBlockSpan> spans;
   last_segment->GetBlockSpans(&spans);
   ASSERT_EQ(spans.size(), dev_ids.size());
   auto dev_iter = dev_ids.begin();
@@ -409,7 +409,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);
   ASSERT_EQ(footer.n_data_block, (total + nrow_per_block - 1) / nrow_per_block);
 
-  std::vector<TsBlockSpan> result_spans;
+  std::list<TsBlockSpan> result_spans;
   last_segment->GetBlockSpans(&result_spans);
 
   int idx = 0;
@@ -467,7 +467,8 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   last_segment->GetBlockSpans(&result_spans);
   ASSERT_EQ(result_spans.size(), expected_rows.size());
   for (int i = 0; i < expected_rows.size(); ++i) {
-    auto cur_span = result_spans[i];
+    auto cur_span = result_spans.front();
+    result_spans.pop_front();
     EXPECT_EQ(cur_span.nrow, expected_rows[i]);
     EXPECT_EQ(cur_span.GetEntityID(), expected_dev[i]);
   }
