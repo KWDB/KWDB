@@ -316,7 +316,8 @@ char* TsBlockSegmentBlock::GetMetricColAddr(uint32_t col_idx) {
 KStatus TsBlockSegmentBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value) {
   assert(col_idx < column_blocks_.size() - 1);
   assert(row_idx < n_rows_);
-  if (isVarLenType(metric_schema_[col_idx].type)) {
+
+  if (!metric_schema_.empty() && isVarLenType(metric_schema_[col_idx].type)) {
     char* ptr = column_blocks_[col_idx + 1].buffer.data();
     uint32_t offset = *reinterpret_cast<uint32_t*>(ptr + row_idx * sizeof(uint32_t));
     uint32_t next_row_offset = *reinterpret_cast<uint32_t*>(ptr + (row_idx + 1) * sizeof(uint32_t));

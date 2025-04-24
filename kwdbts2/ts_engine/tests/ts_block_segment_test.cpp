@@ -97,8 +97,10 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 500 + row_idx + idx);
             TSSlice value;
+            block_span.block->GetValueSlice(block_span.start_row + idx, 0, metric_schema, value);
+            EXPECT_EQ(*(timestamp64*)value.data, 500 + row_idx + idx);
+            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 500 + row_idx + idx);
             block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
             EXPECT_LE(*(int32_t *) value.data, 1024);
             block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
