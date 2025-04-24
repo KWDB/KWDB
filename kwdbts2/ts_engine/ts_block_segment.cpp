@@ -235,7 +235,7 @@ KStatus TsBlockSegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& 
       for (int i = row_spans.size() - 1; i >= 0; --i) {
         TsBlockSpan block_span(filter.table_id, cur_blk_item.table_version, filter.entity_id, block,
                                row_spans[i].first, row_spans[i].second);
-        block_spans->insert(block_spans->begin(), block_span);
+        block_spans->push_front(block_span);
       }
     }
     last_blk_id = cur_blk_item.prev_block_id;

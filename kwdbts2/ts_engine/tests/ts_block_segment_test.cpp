@@ -93,7 +93,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
-        for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
+        while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
@@ -126,7 +126,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
-        for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
+        while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
@@ -155,7 +155,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
-        for (int span_id = 0; span_id < block_spans.size(); ++span_id) {
+        while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
