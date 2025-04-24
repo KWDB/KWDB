@@ -80,7 +80,7 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, int64_t acceptable_ts) {
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   std::vector<AttributeInfo> schema;
@@ -100,9 +100,15 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   auto cur_mem_seg = cur_mem_seg_;
   cur_mem_seg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
+    auto row_ts = pd.GetTS(i);
+    if (row_ts < acceptable_ts) {
+      // TODO(qinlipeng): add reject row_num
+      cur_mem_seg->AllocRowNum(-1);
+      continue;
+    }
     // todo(liangbo01) add lsn of wal.
     // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(pd.GetTS(i), lsn, pd.GetRowData(i));
+    row_data.SetData(row_ts, lsn, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);

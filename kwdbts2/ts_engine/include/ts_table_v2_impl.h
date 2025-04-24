@@ -72,6 +72,14 @@ class TsTableV2Impl : public TsTable {
                      uint32_t cur_version, uint32_t new_version, string& msg) override;
 
   KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) override;
+
+  uint64_t GetLifeTime() {
+    return table_schema_mgr_->GetLifeTime();
+  }
+
+  void SetLifeTime(uint64_t ts) {
+    table_schema_mgr_->SetLifeTime(ts);
+  }
 };
 
 }  // namespace kwdbts

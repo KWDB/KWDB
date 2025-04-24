@@ -85,7 +85,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 }
 
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
-                          TSEntityID entity_id, TSSlice* payload) {
+                          TSEntityID entity_id, TSSlice* payload, int64_t acceptable_ts) {
   TS_LSN current_lsn = 1;
   if (engine_options_.wal_level != WALMode::OFF) {
     TS_LSN entry_lsn = 0;
@@ -105,7 +105,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
       return KStatus::FAIL;
     }
   }
-  return mem_segment_mgr_.PutData(*payload, entity_id, current_lsn);
+  return mem_segment_mgr_.PutData(*payload, entity_id, current_lsn, acceptable_ts);
 }
 
 std::filesystem::path TsVGroup::GetPath() const {

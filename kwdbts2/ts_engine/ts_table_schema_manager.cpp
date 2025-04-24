@@ -284,6 +284,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     return FAIL;
   }
   tmp_bt->metaData()->schema_version_of_latest_data = ts_version;
+  // Set lifetime(ms)
+  tmp_bt->SetLifeTime(meta->ts_table().life_time() * 1000);
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({ts_version, tmp_bt});
@@ -352,6 +354,9 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
   } else {
     tmp_bt->metaData()->schema_version_of_latest_data = new_version;
   }
+
+  // The current version must already exist.
+  tmp_bt->SetLifeTime(metric_schemas_[cur_version]->GetLifeTime());
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({new_version, tmp_bt});
@@ -452,10 +457,14 @@ void TsTableSchemaManager::GetAllVersions(std::vector<uint32_t> *table_versions)
   }
 }
 
-uint32_t TsTableSchemaManager::GetCurrentVersion() const {
-  return cur_schema_version_;
+uint64_t TsTableSchemaManager::GetLifeTime() const {
+  return cur_metric_schema_->GetLifeTime();
 }
 
+void TsTableSchemaManager::SetLifeTime(uint64_t life_time) const {
+  // convert s to ms
+  cur_metric_schema_->SetLifeTime(life_time * 1000);
+}
 uint64_t TsTableSchemaManager::GetPartitionInterval() const {
   return partition_interval_;
 }
