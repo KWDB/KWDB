@@ -581,7 +581,8 @@ KStatus TsBlockSegmentBlock::LoadAllData(const std::vector<AttributeInfo>& metri
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSegmentBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans) {
+KStatus TsBlockSegmentBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans,
+                      std::vector<std::pair<int, int>>& row_spans) {
   if (!HasColumnData(0)) {
     KStatus s = block_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {

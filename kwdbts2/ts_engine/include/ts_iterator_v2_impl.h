@@ -17,7 +17,6 @@
 #include <unordered_set>
 #include "ts_common.h"
 #include "iterator.h"
-#include "ts_common.h"
 #include "ts_lastsegment.h"
 #include "ts_table_schema_manager.h"
 #include "ts_vgroup_partition.h"

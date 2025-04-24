@@ -284,7 +284,6 @@ class TsLastSegmentEntityBlockIteratorBase {
                              char** value) override {return KStatus::FAIL; }
     KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                                TsBitmap& bitmap) override {return KStatus::FAIL; }
-                       
   };
 
   void Invalidate() { valid_ = false; }

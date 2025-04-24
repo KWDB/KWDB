@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 #include "ts_block.h"
 #include "ts_block_segment_data.h"
 #include "ts_compressor.h"
