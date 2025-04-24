@@ -16,13 +16,13 @@
 #include <unordered_map>
 #include <atomic>
 #include <deque>
+#include <utility>
 #include <vector>
 
-#include "ts_env.h"
 #include "libkwdbts2.h"
 #include "ts_payload.h"
 #include "inlineskiplist.h"
-#include "ts_block_span_info.h"
+#include "ts_segment.h"
 #include "ts_arena.h"
 
 namespace kwdbts {
@@ -146,7 +146,7 @@ struct TSRowDataComparator {
   }
 };
 
-class TsMemSegment {
+class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
  private:
   std::atomic<uint32_t> cur_size_{0};
   std::atomic<uint32_t> intent_row_num_{0};
@@ -156,10 +156,14 @@ class TsMemSegment {
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_;
 
- public:
   explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
-  ~TsMemSegment() {
+
+ public:
+  template <class... Args>
+  static std::shared_ptr<TsMemSegment> Create(Args&&... args) {
+    return std::shared_ptr<TsMemSegment>(new TsMemSegment(std::forward<Args>(args)...));
   }
+  ~TsMemSegment() {}
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
 
@@ -177,7 +181,7 @@ class TsMemSegment {
 
   bool AppendOneRow(TSMemSegRowData& row);
 
-  bool GetEntityRows(const TsBlockITemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
+  bool GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
 
   bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
 
@@ -198,9 +202,11 @@ class TsMemSegment {
   inline void SetDeleting() {
     status_.store(MEM_SEGMENT_DELETING);
   }
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 };
 
-class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
+class TsMemSegBlock : public TsBlock {
  private:
   std::shared_ptr<TsMemSegment> mem_seg_;
   std::vector<TSMemSegRowData*> row_data_;
@@ -210,16 +216,16 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   std::list<char*> col_based_mems_;
 
  public:
-  explicit TsMemSegBlockItemInfo(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}
+  explicit TsMemSegBlock(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}
 
-  ~TsMemSegBlockItemInfo() {
+  ~TsMemSegBlock() {
     for (auto& mem : col_based_mems_) {
       free(mem);
     }
     col_based_mems_.clear();
   }
 
-  TSEntityID GetEntityId() override {
+  TSEntityID GetEntityId() {
     assert(row_data_.size() > 0);
     return row_data_[0]->entity_id;
   }
@@ -231,7 +237,7 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
     assert(row_data_.size() > 0);
     return row_data_[0]->table_version;
   }
-  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override {
+  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
     *min_ts = min_ts_;
     *max_ts = max_ts_;
   }
@@ -240,12 +246,14 @@ class TsMemSegBlockItemInfo : public TsBlockSpanInfo {
   inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
 
   // if just get timestamp , this function return fast.
-  timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override {
+  timestamp64 GetTS(int row_num) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->ts;
   }
 
-  char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override;
+
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
 
   bool InsertRow(TSMemSegRowData* row) {
     bool can_insert = true;
@@ -291,7 +299,7 @@ class TsMemSegmentManager {
 
   bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks);
 };
 
 }  // namespace kwdbts

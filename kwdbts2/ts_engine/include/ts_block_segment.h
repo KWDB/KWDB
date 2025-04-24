@@ -16,6 +16,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
+#include "ts_block.h"
 #include "ts_block_segment_data.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
@@ -24,8 +26,6 @@
 
 
 namespace kwdbts {
-
-const size_t MAX_ROWS_PER_BLOCK = 1000;
 
 struct TsBlockSegmentBlockItem {
   uint64_t block_id = 0;          // block item id
@@ -176,8 +176,8 @@ class TsBlockSegmentMetaManager {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, TsBlockSegment* blk_segment,
-                        std::list<std::shared_ptr<TsBlockSpanInfo>>* block_spans);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
+                        std::list<TsBlockSpan>* block_spans);
 };
 
 struct TsBlockSegmentBlockInfo {
@@ -191,7 +191,7 @@ struct TsBlockSegmentColumnBlock {
 };
 
 class TsVGroupPartition;
-class TsBlockSegmentBlock {
+class TsBlockSegmentBlock : public TsBlock {
  private:
   uint32_t table_id_ = 0;
   uint32_t table_version_ = 0;
@@ -204,8 +204,16 @@ class TsBlockSegmentBlock {
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
 
+  uint64_t block_offset_ = 0;
+  uint32_t block_length_ = 0;
+
+  TsBlockSegment* block_segment_ = nullptr;
+
  public:
-  TsBlockSegmentBlock() {}
+  TsBlockSegmentBlock() = delete;
+  // for read
+  TsBlockSegmentBlock(uint32_t table_id, const TsBlockSegmentBlockItem& block_item, TsBlockSegment* block_segment);
+  // for write
   TsBlockSegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
                       std::vector<AttributeInfo>& metric_schema);
   TsBlockSegmentBlock(const TsBlockSegmentBlock& other);
@@ -213,15 +221,27 @@ class TsBlockSegmentBlock {
 
   bool HasData() { return n_rows_ > 0; }
 
-  uint32_t GetNRows() const { return n_rows_; }
+  size_t GetRowNum() { return n_rows_; }
 
-  uint32_t GetTableId() const { return table_id_; }
+  uint32_t GetNCols() { return n_cols_; }
 
-  uint32_t GetTableVersion() const { return table_version_; }
+  TSTableID GetTableId() { return table_id_; }
 
-  uint64_t GetEntityId() const { return entity_id_; }
+  uint32_t GetTableVersion() { return table_version_; }
+
+  uint64_t GetEntityId() { return entity_id_; }
 
   std::vector<AttributeInfo> GetMetricSchema() { return metric_schema_; }
+
+  const TsBlockSegmentBlockInfo& GetBlockInfo() const { return block_info_; }
+
+  uint64_t GetBlockOffset() const { return block_offset_; }
+
+  uint32_t GetBlockLength() const { return block_length_; }
+
+  inline bool HasColumnData(uint32_t col_idx) {
+    return n_cols_ > 0 && column_blocks_.size() == n_cols_ && !column_blocks_[col_idx + 1].buffer.empty();
+  }
 
   uint64_t GetSeqNo(uint32_t row_idx);
 
@@ -233,19 +253,37 @@ class TsBlockSegmentBlock {
 
   KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
 
-  bool IsColNull(uint32_t row_idx, uint32_t col_idx);
-
   KStatus Append(TsLastSegmentBlockSpan& span, bool& is_full);
 
   KStatus Flush(TsVGroupPartition* partition);
 
-  KStatus LoadData(uint32_t table_id, const std::vector<AttributeInfo>& metric_schemas,
-                   const TsBlockSegmentBlockItem& blk_item, TSSlice buffer);
+  KStatus LoadSeqNo(TSSlice buffer);
+
+  KStatus LoadColData(uint32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
+
+  KStatus LoadBlockInfo(TSSlice buffer);
+
+  KStatus LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
+
+  KStatus GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans);
+
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                     char** value);
+
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                       TsBitmap& bitmap);
+
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
+                        TSSlice& value);
+
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema);
+
+  timestamp64 GetTS(int row_num);
 
   void Clear();
 };
 
-class TsBlockSegment {
+class TsBlockSegment : public TsSegmentBase {
  private:
   string dir_path_;
   TsBlockSegmentMetaManager meta_mgr_;
@@ -265,41 +303,10 @@ class TsBlockSegment {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockITemFilterParams& filter, std::list<std::shared_ptr<TsBlockSpanInfo>>* blocks);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 
-  KStatus GetBlock(uint32_t table_id, const std::vector<AttributeInfo>& metric_schemas,
-                   const TsBlockSegmentBlockItem& blk_item, TsBlockSegmentBlock* block);
-};
-
-
-class TsBlockSegmentBlockSpan : public TsBlockSpanInfo {
- private:
-  TsBlockSegment* block_segment_;
-  TSTableID table_id_;
-  TsBlockSegmentBlockItem block_item_;
-
-  TsBlockSegmentBlock block_;
-
-  std::atomic<bool> is_initialized_;
-  KLatch latch_;
-
-  KStatus loadBlockData(const std::vector<AttributeInfo>& schema);
-
- public:
-  TsBlockSegmentBlockSpan(TsBlockSegment* block_segment, TSTableID table_id, TsBlockSegmentBlockItem& block_item) :
-    block_segment_(block_segment), table_id_(table_id), block_item_(block_item), is_initialized_(false),
-    latch_(LATCH_ID_BLOCK_SEGMENT_BLOCK_SPAN_MUTEX) {}
-
-  TSEntityID GetEntityId() override { return block_item_.entity_id; }
-  TSTableID GetTableId() override { return table_id_; }
-  uint32_t GetTableVersion() override { return block_item_.table_version; }
-  size_t GetRowNum() override { return block_item_.n_rows; }
-
-  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override;
-  char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
-  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
-  timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
+  KStatus GetColumnBlock(uint32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
+                         TsBlockSegmentBlock* block);
 };
 
 class TsBlockSegmentBuilder {

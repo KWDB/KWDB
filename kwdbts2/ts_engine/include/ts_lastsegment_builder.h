@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,7 +24,7 @@
 
 namespace kwdbts {
 class TsLastSegmentBuilder {
-  std::unique_ptr<TsLastSegment> last_segment_;
+  std::unique_ptr<TsFile> last_segment_;
 
   struct BlockInfo;
   class MetricBlockBuilder;  // Helper for build DataBlock
@@ -38,6 +39,7 @@ class TsLastSegmentBuilder {
 
   TSTableID table_id_ = -1;  // INVALID ID
   uint32_t version_ = -1;    // INVALID ID
+  uint32_t file_number_;
 
   size_t nblock_ = 0;
   struct EntityPayload {
@@ -117,16 +119,16 @@ class TsLastSegmentBuilder {
   KStatus FlushColDataBuffer();
 
  public:
-  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr,
-                       std::unique_ptr<TsLastSegment>& last_segment)
+  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsFile>&& last_segment,
+                       uint32_t file_number)
       : last_segment_(std::move(last_segment)),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
         info_handle_(std::make_unique<InfoHandle>()),
         index_handle_(std::make_unique<IndexHandle>()),
+        file_number_(file_number),
         schema_mgr_(schema_mgr) {}
 
   KStatus FlushBuffer();
-  KStatus Flush() { return last_segment_->Flush(); }
 
   KStatus Finalize();
   KStatus PutRowData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
@@ -135,10 +137,11 @@ class TsLastSegmentBuilder {
   KStatus PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
                      std::vector<TSSlice> col_data);
 
+  uint32_t GetFileNumber() const {return file_number_;}
+
   bool ConsistentWith(TSTableID table_id, uint32_t version) const {
     return table_id == table_id_ && version_ == version;
   }
-  std::unique_ptr<TsLastSegment> Finish();
 };
 
 struct TsLastSegmentBuilder::BlockInfo {
@@ -264,7 +267,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
       dsize_ = getDataTypeSize(dtype);
     }
   }
-  __attribute__((visibility("hidden"))) void Add(const TSSlice& col_data) noexcept;
+  void Add(const TSSlice& col_data) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {

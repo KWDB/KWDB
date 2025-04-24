@@ -41,7 +41,7 @@ class TsBlockSegmentBlockFile {
 
   KStatus Open();
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
-  KStatus ReadBlock(uint64_t offset, char* buff, size_t len);
+  KStatus ReadData(uint64_t offset, char* buff, size_t len);
 };
 
 /*

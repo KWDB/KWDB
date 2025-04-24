@@ -25,8 +25,8 @@
 #include "libkwdbts2.h"
 #include "ts_arena.h"
 #include "ts_bitmap.h"
-#include "ts_block_span_info.h"
 #include "ts_io.h"
+#include "ts_segment.h"
 
 namespace kwdbts {
 
@@ -123,21 +123,25 @@ struct TsLastSegmentBlock {
 
 class TsLastSegmentBlockIterator;
 class TsLastSegmentEntityBlockIteratorBase;
-class TsLastSegment {
+class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<TsLastSegment> {
  public:
   static int kNRowPerBlock;
   friend class TsLastSegmentBlockIterator;
   friend class TsLastSegmentEntityBlockIteratorBase;
+  friend class TsLastBlock;
 
  private:
-  uint32_t ver_;  // not the schema version;
-
+  uint32_t file_number_;
   std::unique_ptr<TsFile> file_;
 
+  explicit TsLastSegment(uint32_t file_number, const std::string& path)
+      : file_number_(file_number), file_(std::make_unique<TsMMapFile>(path, true)) {}
+
  public:
-  explicit TsLastSegment(const std::string& path)
-      : ver_(0), file_(std::make_unique<TsMMapFile>(path, true)) {}
-  TsLastSegment(uint32_t ver, TsFile* file) : ver_(ver), file_(file) {}
+  template <class... Args>
+  static std::shared_ptr<TsLastSegment> Create(Args&&... args) {
+    return std::shared_ptr<TsLastSegment>(new TsLastSegment(std::forward<Args>(args)...));
+  }
 
   ~TsLastSegment() = default;
 
@@ -145,34 +149,26 @@ class TsLastSegment {
     // just check the magic number;
     auto sz = file_->GetFileSize();
     if (sz < sizeof(TsLastSegmentFooter)) {
-      LOG_ERROR("lastsegment file corruption");
+      LOG_ERROR("lastsegment file corrupted");
       return FAIL;
     }
-    char buf[8];
+    uint64_t magic;
     TSSlice result;
-    file_->Read(sz - 8, sz, &result, buf);
-    int c = std::memcmp(buf, &FOOTER_MAGIC, 8);
-    if (c != 0) {
-      LOG_ERROR("magic mismatch")
+    file_->Read(sz - 8, sz, &result, reinterpret_cast<char*>(&magic));
+    if (magic != FOOTER_MAGIC) {
+      LOG_ERROR("magic mismatch, expect: %lx, found: %lx", FOOTER_MAGIC, magic);
       return FAIL;
     }
     return SUCCESS;
   }
 
-  KStatus Append(const TSSlice& data);
+  uint32_t GetVersion() const { return file_number_; }
 
-  KStatus Flush();
+  std::string GetFilePath() const { return file_->GetFilePath(); }
 
-  size_t GetFileSize() const;
-
-  TsFile* GetFilePtr() const;
-
-  uint32_t GetVersion() const;
+  void MarkDelete() { file_->MarkDelete(); }
 
   KStatus GetFooter(TsLastSegmentFooter* footer) const;
-
-  KStatus GetAllBlockIndex(TsLastSegmentFooter& footer,
-                           std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
@@ -180,10 +176,18 @@ class TsLastSegment {
 
   KStatus GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block);
 
+  KStatus GetBlockSpans(std::vector<TsBlockSpan>* spans);
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
+                        std::list<TsBlockSpan>* spans) override;
+
   std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator() const;
 
   std::unique_ptr<TsLastSegmentEntityBlockIteratorBase> NewIterator(
       TSTableID table_id, TSEntityID entity_id, const std::vector<KwTsSpan>& spans) const;
+
+ private:
+  KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
 };
 
 class TsLastSegmentEntityBlockIteratorBase {
@@ -251,7 +255,7 @@ class TsLastSegmentEntityBlockIteratorBase {
     }
   } cache_;
 
-  class EntityBlock : public TsBlockSpanInfo {
+  class EntityBlock : public TsBlock {
    private:
     TsLastSegmentEntityBlockIteratorBase* parent_iter_;
     const CurrentBlock current_;
@@ -260,20 +264,26 @@ class TsLastSegmentEntityBlockIteratorBase {
     explicit EntityBlock(TsLastSegmentEntityBlockIteratorBase* piter)
         : parent_iter_(piter), current_(parent_iter_->current_) {}
     ~EntityBlock() {}
-    TSEntityID GetEntityId() override { return current_.GetEntityID(); }
+    TSEntityID GetEntityId() { return current_.GetEntityID(); }
     TSTableID GetTableId() override {
       return parent_iter_->block_indices_[current_.block_id].table_id;
     }
     uint32_t GetTableVersion() override {
       return parent_iter_->block_indices_[current_.block_id].table_version;
     }
-    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) override;
+    void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
     size_t GetRowNum() override { return current_.GetRowCount(); }
     KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                           TSSlice& value) override;
-    timestamp64 GetTS(int row_num, const std::vector<AttributeInfo>& schema) override;
+    timestamp64 GetTS(int row_num) override;
     bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
-    char* GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema) override;
+    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value,
+                       TsBitmap& bitmap);
+
+    KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                             char** value) override {return KStatus::FAIL; }
+    KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                               TsBitmap& bitmap) override {return KStatus::FAIL; }
   };
 
   void Invalidate() { valid_ = false; }
@@ -407,8 +417,8 @@ class TsLastSegmentsMergeIterator {
   }
 
  public:
-  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments) :
-    last_segments_(last_segments) {}
+  explicit TsLastSegmentsMergeIterator(std::vector<std::shared_ptr<TsLastSegment>>& last_segments)
+      : last_segments_(last_segments) {}
   ~TsLastSegmentsMergeIterator() {
     for (int i = 0; i < cur_blocks_.size(); ++i) {
       if (cur_blocks_[i]) {

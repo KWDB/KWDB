@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -16,9 +17,8 @@
 
 #include "ts_block_segment.h"
 #include "ts_vgroup_partition.h"
-#include "ts_env.h"
+#include "ts_lastsegment.h"
 #include "ts_lastsegment_manager.h"
-#include "ts_metric_block.h"
 
 namespace kwdbts {
 
@@ -84,16 +84,14 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   return KStatus::SUCCESS;
 }
 
-TsLastSegmentManager* TsVGroupPartition::GetLastSegmentMgr() {
-  return &last_segment_mgr_;
+KStatus TsVGroupPartition::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
+                                              uint32_t* ver) {
+  return last_segment_mgr_.NewLastSegmentFile(last_segment, ver);
 }
 
-KStatus TsVGroupPartition::NewLastSegment(std::unique_ptr<TsLastSegment>* last_segment) {
-  return last_segment_mgr_.NewLastSegment(last_segment);
-}
-
-void TsVGroupPartition::PublicLastSegment(std::unique_ptr<TsLastSegment>&& last_segment) {
-  last_segment_mgr_.TakeLastSegmentOwnership(std::move(last_segment));
+void TsVGroupPartition::PublicLastSegment(uint32_t file_number) {
+  std::shared_ptr<TsLastSegment> file;
+  last_segment_mgr_.OpenLastSegmentFile(file_number, &file);
 }
 
 std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }

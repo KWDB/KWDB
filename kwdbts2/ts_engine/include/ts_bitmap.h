@@ -94,6 +94,12 @@ class TsBitmap {
 
   void SetData(TSSlice rep) { rep_.assign(rep.data, rep.len); }
 
+  void SetCount(size_t count) {
+    nrows_ = count;
+    Reset(nrows_);
+    SetAll(DataFlags::kValid);
+  }
+
   TSSlice GetData() { return {rep_.data(), rep_.size()}; }
 
   size_t GetCount() const { return nrows_; }
