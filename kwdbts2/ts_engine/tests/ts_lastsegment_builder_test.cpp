@@ -373,6 +373,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   last_segment->GetBlockSpans({0, table_id, 3, {{123, 2000}, {3000, 6000}}}, &spans_list);
   ASSERT_EQ(spans_list.size(), 2);
   EXPECT_EQ(spans_list.front().nrow, 2);
+  spans_list.pop_front();
   EXPECT_EQ(spans_list.front().nrow, 3);
 }
 
