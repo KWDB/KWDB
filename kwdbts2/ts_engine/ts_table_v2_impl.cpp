@@ -146,7 +146,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   TSEngineV2Impl* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = ts_engine->GetTsVGroups();
   for (auto& vgroup_iter : vgroup_ids) {
-    if (vgroup_iter.first >= storage_engine_vgroup_max_num) {
+    if (vgroup_iter.first >= EngineOptions::vgroup_max_num) {
       LOG_ERROR("Invalid vgroup id.[%u]", vgroup_iter.first);
       return s;
     }
@@ -187,7 +187,7 @@ KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableK
   size_t data_len = 0;
   char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
   if (error != nullptr) {
-    LOG_ERROR(error);
+    LOG_ERROR("getTableMetaByVersion failed. msg: %s", error);
     return KStatus::FAIL;
   }
   roachpb::CreateTsTable meta;

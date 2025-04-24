@@ -410,7 +410,7 @@ KStatus TsSegmentIterator::Init() {
   return table_schema_mgr_->GetMetricAttr(attrs_, table_version_);
 }
 
-inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlockSpanInfo> ts_block, ResultSet* res, k_uint32* count) {
+inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlock> ts_block, ResultSet* res, k_uint32* count) {
   *count = ts_block->GetRowNum();
   KStatus ret;
   for (auto col_idx : kw_scan_cols_) {
@@ -473,20 +473,83 @@ inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlockSpanInfo> 
   return KStatus::SUCCESS;
 }
 
+KStatus TsSegmentIterator::AddBlockSpanData(const TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count) {
+  *count = ts_blk_span.nrow;
+  KStatus ret;
+  for (auto col_idx : kw_scan_cols_) {
+    Batch* batch;
+    if (col_idx >= 0 && col_idx < attrs_.size()) {
+      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
+      if (bitmap == nullptr) {
+        return KStatus::FAIL;
+      }
+      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
+      TSSlice col_data;
+      if (!isVarLenType(attrs_[col_idx].type)) {
+        char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
+        for (int row_idx = 0; row_idx < *count; ++row_idx) {
+          if (ts_blk_span.block->IsColNull(ts_blk_span.start_row + row_idx, col_idx, attrs_)) {
+            set_null_bitmap(bitmap, row_idx);
+          } else {
+            ret = ts_blk_span.block->GetValueSlice(ts_blk_span.start_row + row_idx, col_idx, attrs_, col_data);
+            if (ret != KStatus::SUCCESS) {
+              return ret;
+            }
+            memcpy(value + row_idx * attrs_[col_idx].size,
+                    col_data.data,
+                    attrs_[col_idx].size);
+          }
+        }
+        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+      } else {
+        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
+        for (int row_idx = 0; row_idx < *count; ++row_idx) {
+          if (ts_blk_span.block->IsColNull(ts_blk_span.start_row + row_idx, col_idx, attrs_)) {
+            set_null_bitmap(bitmap, row_idx);
+            batch->push_back(nullptr);
+          } else {
+            ret = ts_blk_span.block->GetValueSlice(ts_blk_span.start_row + row_idx, col_idx, attrs_, col_data);
+            if (ret != KStatus::SUCCESS) {
+              return ret;
+            }
+            char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
+            KUint16(buffer) = col_data.len;
+            memcpy(buffer + 2, col_data.data, col_data.len);
+            *(buffer + col_data.len + 2) = 0;
+            std::shared_ptr<void> ptr(buffer, free);
+            batch->push_back(ptr);
+          }
+        }
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+      }
+    } else {
+      void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
+      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
+    }
+    res->push_back(col_idx, batch);
+  }
+  res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
+
+  return KStatus::SUCCESS;
+}
+
 KStatus TsSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished) {
   if (ts_block_spans_.empty()) {
     *is_finished = true;
     return KStatus::SUCCESS;
   }
-  std::shared_ptr<TsBlockSpanInfo> ts_block = ts_block_spans_.front();
+  TsBlockSpan ts_block = ts_block_spans_.front();
   ts_block_spans_.pop_front();
-  return AddBlockData(ts_block, res, count);
+  return AddBlockSpanData(ts_block, res, count);
 }
 
 KStatus TsSegmentIterator::ScanCount(k_uint32* count) {
   *count = 0;
   for (const auto& block : ts_block_spans_) {
-    *count += block->GetRowNum();
+    *count += block.nrow;
   }
 
   return KStatus::SUCCESS;
@@ -515,7 +578,7 @@ KStatus TsMemSegmentIterator::Init() {
   }
   auto table_id = table_schema_mgr_->GetTableId();
   auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
-  TsBlockITemFilterParams params{db_id, table_id, entity_id_, ts_spans_};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id_, ts_spans_};
   return vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &ts_block_spans_);
 }
 
@@ -559,7 +622,7 @@ KStatus TsLastSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_fi
   *count = 0;
   if (last_segment_block_iterators_[last_segment_block_iterator_index_]->Valid()) {
     auto entity_block = last_segment_block_iterators_[last_segment_block_iterator_index_]->GetEntityBlock();
-    std::shared_ptr<TsBlockSpanInfo> ts_block = std::move(entity_block);
+    std::shared_ptr<TsBlock> ts_block = std::move(entity_block);
     AddBlockData(ts_block, res, count);
     last_segment_block_iterators_[last_segment_block_iterator_index_]->NextEntityBlock();
   } else {
@@ -612,7 +675,9 @@ KStatus TsBlockSegmentIterator::Init() {
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  TsBlockITemFilterParams filter{0, table_schema_mgr_->GetTableId(), entity_id_, ts_spans_};
+  auto table_id = table_schema_mgr_->GetTableId();
+  auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  TsBlockItemFilterParams filter{db_id, table_id, entity_id_, ts_spans_};
   return ts_partition_->GetBlockSegment()->GetBlockSpans(filter, &ts_block_spans_);
 }
 

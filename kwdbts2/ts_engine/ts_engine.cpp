@@ -15,14 +15,21 @@
 #include <filesystem>
 #include <memory>
 #include <utility>
-#include "ts_env.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
 #include "ts_table_v2_impl.h"
-#include "ts_instance_params.h"
 
-extern int storage_engine_vgroup_max_num = 6;
+// V2
+int EngineOptions::vgroup_max_num = 6;
+DedupRule EngineOptions::g_dedup_rule = DedupRule::KEEP;
+size_t EngineOptions::mem_segment_max_size = 64 << 20;
+int32_t EngineOptions::mem_segment_max_height = 12;
+uint32_t EngineOptions::max_last_segment_num = 2;
+uint32_t EngineOptions::max_compact_num = 10;
+size_t EngineOptions::max_rows_per_block = 4096;
+size_t EngineOptions::min_rows_per_block = 1000;
+
 namespace kwdbts {
 
 const char schema_directory[]= "schema";
@@ -33,7 +40,43 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(e
   char* vgroup_num = getenv("KW_VGROUP_NUM");
   if (vgroup_num != nullptr) {
     char *endptr;
-    storage_engine_vgroup_max_num = strtol(vgroup_num, &endptr, 10);
+    EngineOptions::vgroup_max_num = strtol(vgroup_num, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  char* mem_segment_max_size = getenv("KW_MAX_SEGMENT_MAX_SIZE");
+  if (mem_segment_max_size != nullptr) {
+    char *endptr;
+    EngineOptions::mem_segment_max_size = strtol(mem_segment_max_size, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  char* mem_segment_max_height = getenv("KW_MAX_SEGMENT_MAX_HEIGHT");
+  if (mem_segment_max_height != nullptr) {
+    char *endptr;
+    EngineOptions::mem_segment_max_height = strtol(mem_segment_max_height, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  char* max_last_segment_num = getenv("KW_MAX_LAST_SEGMENT_NUM");
+  if (max_last_segment_num != nullptr) {
+    char *endptr;
+    EngineOptions::max_last_segment_num = strtol(max_last_segment_num, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  char* max_compact_num = getenv("KW_MAX_COMPACT_NUM");
+  if (max_compact_num != nullptr) {
+    char *endptr;
+    EngineOptions::max_compact_num = strtol(max_compact_num, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  char* max_rows_per_block = getenv("KW_MAX_ROWS_PER_BLOCK");
+  if (max_rows_per_block != nullptr) {
+    char *endptr;
+    EngineOptions::max_rows_per_block = strtol(max_rows_per_block, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  char* min_rows_per_block = getenv("KW_MIN_ROWS_PER_BLOCK");
+  if (min_rows_per_block != nullptr) {
+    char *endptr;
+    EngineOptions::min_rows_per_block = strtol(min_rows_per_block, &endptr, 10);
     assert(*endptr == '\0');
   }
 }
@@ -56,7 +99,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
 
   vgroups_.clear();
-  for (size_t i = 0; i < storage_engine_vgroup_max_num; i++) {
+  for (size_t i = 0; i < EngineOptions::vgroup_max_num; i++) {
     auto vgroup = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
@@ -65,16 +108,11 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     vgroups_.push_back(std::move(vgroup));
   }
 
-  // Compressor
-  auto compressor = TsEnvInstance::GetInstance().Compressor();
-  compressor->Init();
-  compressor->ResetPolicy(LIGHT_COMRESS);
-
   return KStatus::SUCCESS;
 }
 
 TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
-  assert(storage_engine_vgroup_max_num >= vgroup_id);
+  assert(EngineOptions::vgroup_max_num >= vgroup_id);
   return vgroups_[vgroup_id - 1].get();
 }
 
@@ -141,7 +179,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   TSEntityID entity_id;
   size_t payload_size = 0;
   dedup_result->payload_num = payload_num;
-  dedup_result->dedup_rule = static_cast<int>(TsEngineInstanceParams::g_dedup_rule);
+  dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
   for (size_t i = 0; i < payload_num; i++) {
     TsRawPayload p{payload_data[i]};
     TSSlice primary_key = p.GetPrimaryTag();

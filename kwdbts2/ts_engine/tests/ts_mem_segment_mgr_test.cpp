@@ -20,7 +20,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   uint32_t row_num = 1;
   segment_lock_.lock();
   if (segment_.size() == 0) {
-    segment_.push_front(std::make_shared<TsMemSegment>(12));
+    segment_.push_front(TsMemSegment::Create(12));
   }
   std::shared_ptr<TsMemSegment> cur_mem_seg = segment_.front();
   cur_mem_seg->AllocRowNum(row_num);
@@ -29,7 +29,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegBlockItemInfo::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) {
+KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) {
   value = row_data_[row_num]->row_data;
   return KStatus::SUCCESS;
 }
@@ -78,20 +78,20 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   tmp_data.SetData(10086, 1009, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
   auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
   ASSERT_TRUE(s == KStatus::SUCCESS);
-  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  std::list<TsBlockSpan> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{tmp_data.database_id, tmp_data.table_id, tmp_data.entity_id, ts_span};
+  TsBlockItemFilterParams params{tmp_data.database_id, tmp_data.table_id, tmp_data.entity_id, ts_span};
   s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
-  ASSERT_EQ(block->GetEntityId(), tmp_data.entity_id);
-  ASSERT_EQ(block->GetRowNum(), 1);
-  ASSERT_EQ(block->GetTableId(), tmp_data.table_id);
+  ASSERT_EQ(block.GetEntityID(), tmp_data.entity_id);
+  ASSERT_EQ(block.block->GetRowNum(), 1);
+  ASSERT_EQ(block.block->GetTableId(), tmp_data.table_id);
   std::vector<AttributeInfo> schema;
-  ASSERT_EQ(block->GetTS(0, schema), tmp_data.ts);
+  ASSERT_EQ(block.block->GetTS(0), tmp_data.ts);
   TSSlice value;
-  s = block->GetValueSlice(0, 0, schema, value);
+  s = block.block->GetValueSlice(0, 0, schema, value);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(KUint64(value.data), row_value);
 }
@@ -111,21 +111,21 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
-  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  std::list<TsBlockSpan> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_span};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
-  ASSERT_EQ(block->GetEntityId(), entity_id);
-  ASSERT_EQ(block->GetTableId(), table_id);
-  ASSERT_EQ(block->GetRowNum(), row_num);
+  ASSERT_EQ(block.GetEntityID(), entity_id);
+  ASSERT_EQ(block.block->GetTableId(), table_id);
+  ASSERT_EQ(block.block->GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
   for (size_t i = 0; i < row_num; i++) {
-    ASSERT_EQ(block->GetTS(i, schema), 10086 + i);
+    ASSERT_EQ(block.block->GetTS(i), 10086 + i);
     TSSlice value;
-    s = block->GetValueSlice(i, 0, schema, value);
+    s = block.block->GetValueSlice(i, 0, schema, value);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(KUint64(value.data), row_value + i);
   }
@@ -150,21 +150,21 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   
-  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  std::list<TsBlockSpan> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_span};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
-  ASSERT_EQ(block->GetEntityId(), entity_id);
-  ASSERT_EQ(block->GetTableId(), table_id);
-  ASSERT_EQ(block->GetRowNum(), row_num);
+  ASSERT_EQ(block.GetEntityID(), entity_id);
+  ASSERT_EQ(block.block->GetTableId(), table_id);
+  ASSERT_EQ(block.block->GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
   for (size_t i = 0; i < row_num; i++) {
-    ASSERT_EQ(block->GetTS(i, schema), 10086);
+    ASSERT_EQ(block.block->GetTS(i), 10086);
     TSSlice value;
-    s = block->GetValueSlice(i, 0, schema, value);
+    s = block.block->GetValueSlice(i, 0, schema, value);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(KUint64(value.data), row_value + i);
   }
@@ -188,22 +188,22 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
-  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  std::list<TsBlockSpan> blocks;
   for (size_t j = 1; j <= entity_num; j++) {
     std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-    TsBlockITemFilterParams params{db_id, table_id, j, ts_span};
+    TsBlockItemFilterParams params{db_id, table_id, j, ts_span};
     auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), 1);
     auto block = blocks.front();
-    ASSERT_EQ(block->GetEntityId(), j);
-    ASSERT_EQ(block->GetTableId(), table_id);
-    ASSERT_EQ(block->GetRowNum(), row_num / entity_num);
+    ASSERT_EQ(block.GetEntityID(), j);
+    ASSERT_EQ(block.block->GetTableId(), table_id);
+    ASSERT_EQ(block.block->GetRowNum(), row_num / entity_num);
     std::vector<AttributeInfo> schema;
-    for (size_t i = 0; i < block->GetRowNum(); i++) {
-      ASSERT_EQ(block->GetTS(i, schema), 10086 + i * 10 + j - 1);
+    for (size_t i = 0; i < block.block->GetRowNum(); i++) {
+      ASSERT_EQ(block.block->GetTS(i), 10086 + i * 10 + j - 1);
       TSSlice value;
-      s = block->GetValueSlice(i, 0, schema, value);
+      s = block.block->GetValueSlice(i, 0, schema, value);
       ASSERT_TRUE(s == KStatus::SUCCESS);
       ASSERT_EQ(KUint64(value.data), row_value + i * 10 + j - 1);
     }
@@ -229,22 +229,22 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
-  std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+  std::list<TsBlockSpan> blocks;
   std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-  TsBlockITemFilterParams params{db_id, table_id, entity_id, ts_span};
+  TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), version_num);
   int j = 0;
   for (auto block : blocks) {
-    ASSERT_EQ(block->GetEntityId(), entity_id);
-    ASSERT_EQ(block->GetTableId(), table_id);
-    ASSERT_EQ(block->GetRowNum(), row_num / version_num);
+    ASSERT_EQ(block.GetEntityID(), entity_id);
+    ASSERT_EQ(block.block->GetTableId(), table_id);
+    ASSERT_EQ(block.block->GetRowNum(), row_num / version_num);
     std::vector<AttributeInfo> schema;
     for (size_t i = 0; i < row_num / version_num; i++) {
-      ASSERT_EQ(block->GetTS(i, schema), 10086 + i * version_num + j);
+      ASSERT_EQ(block.block->GetTS(i), 10086 + i * version_num + j);
       TSSlice value;
-      s = block->GetValueSlice(i, 0, schema, value);
+      s = block.block->GetValueSlice(i, 0, schema, value);
       ASSERT_TRUE(s == KStatus::SUCCESS);
       ASSERT_EQ(KUint64(value.data), row_value + i * version_num + j);
     }
@@ -277,16 +277,16 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
     }
   }
   for (size_t i = 0; i < table_num; i++) {
-    std::list<std::shared_ptr<TsBlockSpanInfo>> blocks;
+    std::list<TsBlockSpan> blocks;
     std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
-    TsBlockITemFilterParams params{db_id, table_id + i, entity_id, ts_span};
+    TsBlockItemFilterParams params{db_id, table_id + i, entity_id, ts_span};
     auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), version_num);
     for (auto block : blocks) {
-      ASSERT_EQ(block->GetEntityId(), entity_id);
-      ASSERT_EQ(block->GetTableId(), table_id + i);
-      ASSERT_EQ(block->GetRowNum(), row_num / version_num / table_num);
+      ASSERT_EQ(block.GetEntityID(), entity_id);
+      ASSERT_EQ(block.block->GetTableId(), table_id + i);
+      ASSERT_EQ(block.block->GetRowNum(), row_num / version_num / table_num);
     }
   }
   for (auto v : values) {

@@ -10,15 +10,16 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 #include <list>
 #include <unordered_map>
 #include <unordered_set>
 #include "ts_common.h"
 #include "iterator.h"
-#include "ts_table_schema_manager.h"
 #include "ts_lastsegment.h"
+#include "ts_table_schema_manager.h"
+#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
@@ -119,8 +120,11 @@ class TsSegmentIterator {
   virtual KStatus ScanCount(k_uint32* count);
 
  protected:
-  KStatus AddBlockData(std::shared_ptr<TsBlockSpanInfo> ts_block, ResultSet* res, k_uint32* count);
-  std::list<std::shared_ptr<TsBlockSpanInfo>> ts_block_spans_;
+  KStatus AddBlockData(std::shared_ptr<TsBlock> ts_block, ResultSet* res, k_uint32* count);
+
+  KStatus AddBlockSpanData(const TsBlockSpan& ts_block, ResultSet* res, k_uint32* count);
+
+  std::list<TsBlockSpan> ts_block_spans_;
   uint32_t entity_id_;
   std::shared_ptr<TsVGroupPartition> ts_partition_{nullptr};
 
