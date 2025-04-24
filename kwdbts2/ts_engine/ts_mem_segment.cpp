@@ -71,7 +71,7 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
     LOG_ERROR("cannot found table [%lu] schema manager.", table_id);
     return false;
   }
-  s = schema_mgr->GetColumnsExcludeDropped(schema, version);
+  s = schema_mgr->GetMetricAttr(schema, version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
     return false;
