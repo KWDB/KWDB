@@ -14,6 +14,7 @@ package sql
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -481,7 +482,9 @@ func BuildpriTagValMap(di DirectInsert) map[string][]int {
 		builder.Reset()
 		var priVal string
 		for _, col := range di.PrimaryTagCols {
-			builder.WriteString(sqlbase.DatumToString(di.InputValues[i][di.ColIndexs[int(col.ID)]]))
+			vString := sqlbase.DatumToString(di.InputValues[i][di.ColIndexs[int(col.ID)]])
+			// Distinguish aa + bb = a + abb
+			builder.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 		}
 		priVal = builder.String()
 		priTagValMap[priVal] = append(priTagValMap[priVal], i)
@@ -1316,7 +1319,9 @@ func getSingleRowBytes(
 
 		// Build primary tag key
 		if i < pTagNum {
-			buf.WriteString(sqlbase.DatumToString(datum))
+			vString := sqlbase.DatumToString(datum)
+			// Distinguish aa + bb = a + abb
+			buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 		}
 	}
 

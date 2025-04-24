@@ -469,3 +469,30 @@ delete from test_insert2.t1 where ts > '2022-02-02 11:11:15+00';
 select * from test_insert2.t1 order by ts;
 drop table test_insert2.t1;
 drop database if exists test_insert2 cascade;
+
+-- primary tag: tag1 + tag2 + tag3
+-- input1: tag1:'aa', tag2:'bb', tag3:'cc'
+-- input2: tag1:'a', tag2:'abb', tag3:'cc'
+-- input3: tag1:'a', tag2:'a', tag3:'bbcc'
+-- old primary group: input1,input2,input3 -> 'aabbcc'
+-- fixed primary group:
+    --input1-> '2:aa2:bb2:cc'
+    --input2-> '1:a3:abb2:cc'
+    --input3-> '1:a1:a4:bbcc'
+drop database if exists test_insert2 cascade;
+create ts database test_insert2;
+CREATE TABLE test_insert2.t1(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ id INT NOT NULL)
+ATTRIBUTES (
+ code1 INT2 NOT NULL,
+ code8 VARCHAR(128) NOT NULL,
+ code14 CHAR(1023) NOT NULL,
+ code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+insert into test_insert2.t1 (k_timestamp,id,code1,code8,code14,code16) values
+ (0,1,1,'aa','bb','cc'),
+ (1000,1,1,'a','abb','cc'),
+ (2000,1,1,'a','a','bbcc');
+select k_timestamp,id,code1,code8,code14,code16 from test_insert2.t1 order by k_timestamp;
+drop database if exists test_insert2 cascade;
