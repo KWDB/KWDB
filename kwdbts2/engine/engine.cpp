@@ -427,7 +427,7 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, 
     return s;
   }
   // Use data schema and tag schema to construct meta.
-  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info);
+  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("generateMetaSchema failed during GetMetaData, table id is %ld.", table_id)
     return s;

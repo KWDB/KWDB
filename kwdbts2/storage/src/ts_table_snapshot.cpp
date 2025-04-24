@@ -113,7 +113,7 @@ KStatus TsSnapshotProductor::getSchemaInfo(kwdbContext_p ctx, uint32_t schema_ve
   }
 #endif
   // Use data schema and tag schema to construct meta.
-  s = snapshot_info_.table->GenerateMetaSchema(ctx, &meta, data_schema, tag_schema_info);
+  s = snapshot_info_.table->GenerateMetaSchema(ctx, &meta, data_schema, tag_schema_info, schema_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("generateMetaSchema failed during getSchemaInfo.%s.", Print().c_str());
     return s;

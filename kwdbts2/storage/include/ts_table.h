@@ -96,7 +96,7 @@ class TsTable {
 
   // convert schema info to protobuf
   KStatus GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
-                             std::vector<TagInfo>& tag_schema);
+                             std::vector<TagInfo>& tag_schema, uint32_t schema_version);
   /**
    * @brief get table id
    *
@@ -478,7 +478,7 @@ class TsTable {
 
   virtual std::vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
-  virtual std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs();
+  virtual std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t schema_version);
 
   virtual KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                                      const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id);

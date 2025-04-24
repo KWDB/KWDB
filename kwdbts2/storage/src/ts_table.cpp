@@ -1509,7 +1509,8 @@ KStatus TsTable::GetTagSchemaIncludeDropped(kwdbContext_p ctx, RangeGroup range,
 
 KStatus TsTable::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
                                          std::vector<AttributeInfo>& metric_schema,
-                                         std::vector<TagInfo>& tag_schema) {
+                                         std::vector<TagInfo>& tag_schema,
+                                         uint32_t schema_version) {
   EnterFunc()
   // Traverse metric schema and use attribute info to construct metric column info of meta.
   for (auto col_var : metric_schema) {
@@ -1538,7 +1539,7 @@ KStatus TsTable::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* m
     }
   }
 
-  auto tag_infos = GetAllNTagIndexs();
+  auto tag_infos = GetAllNTagIndexs(schema_version);
   for (auto tag_info : tag_infos) {
       roachpb::NTagIndexInfo* idx_info = meta->add_index_info();
       idx_info->set_index_id(tag_info.first);
@@ -3422,11 +3423,11 @@ std::vector<uint32_t> TsTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t in
   return std::vector<uint32_t>();
 }
 
-std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndexs() {
+std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndexs(uint32_t schema_version) {
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (auto& entity_group : entity_groups_) {
-    auto ret = entity_group.second->GetAllNTagIndexs(GetCurrentTableVersion());
+    auto ret = entity_group.second->GetAllNTagIndexs(schema_version);
     return ret;
   }
   return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
