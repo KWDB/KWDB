@@ -96,7 +96,6 @@ struct EngineOptions {
   static uint32_t max_compact_num;
   static size_t max_rows_per_block;
   static size_t min_rows_per_block;
-
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 
