@@ -60,35 +60,33 @@ class TsBlockSpanSortIterator {
       return KStatus::SUCCESS;
     }
     TsBlockSpan& cur_block_span = block_spans_.front();
-    TsIteratorRowInfo first_row_info{cur_block_span.entity_id, cur_block_span.block->GetTS(cur_block_span.start_row),
-                                     *cur_block_span.block->GetSeqNoAddr(cur_block_span.start_row)};
-    TsIteratorRowInfo second_row_info{UINT64_MAX, INT64_MAX, UINT64_MAX};
+    TsIteratorRowInfo next_span_row_info{UINT64_MAX, INT64_MAX, UINT64_MAX};
     if (block_spans_.size() > 1) {
       auto iter = block_spans_.begin();
       iter++;
-      second_row_info = {iter->entity_id, iter->block->GetTS(cur_block_span.start_row),
-                         *iter->block->GetSeqNoAddr(cur_block_span.start_row)};
+      next_span_row_info = {iter->entity_id, iter->block->GetTS(cur_block_span.start_row),
+                            *iter->block->GetSeqNoAddr(cur_block_span.start_row)};
     }
 
     int end_row_idx = cur_block_span.start_row + cur_block_span.nrow - 1;
-    TsIteratorRowInfo new_row_info = {cur_block_span.entity_id, cur_block_span.block->GetTS(end_row_idx),
-                                      *cur_block_span.block->GetSeqNoAddr(end_row_idx)};
+    TsIteratorRowInfo cur_span_row_info = {cur_block_span.entity_id, cur_block_span.block->GetTS(end_row_idx),
+                                           *cur_block_span.block->GetSeqNoAddr(end_row_idx)};
     int row_idx = cur_block_span.start_row;
-    if (new_row_info <= second_row_info) {
+    if (cur_span_row_info <= next_span_row_info) {
       row_idx = cur_block_span.start_row + cur_block_span.nrow;
     } else {
       for (; row_idx < cur_block_span.start_row + cur_block_span.nrow; ++row_idx) {
-        new_row_info = {cur_block_span.entity_id, cur_block_span.block->GetTS(row_idx),
-                        *(cur_block_span.block->GetSeqNoAddr(row_idx))};
-        if (second_row_info < new_row_info) {
+        cur_span_row_info = {cur_block_span.entity_id, cur_block_span.block->GetTS(row_idx),
+                             *(cur_block_span.block->GetSeqNoAddr(row_idx))};
+        if (next_span_row_info < cur_span_row_info) {
           break;
         }
       }
     }
 
-    block_span->entity_id = cur_block_span.GetEntityID();
-    block_span->start_row = first_row_info.row_idx;
-    block_span->nrow = row_idx - first_row_info.row_idx;
+    block_span->entity_id = cur_block_span.entity_id;
+    block_span->start_row = cur_block_span.start_row;
+    block_span->nrow = row_idx - cur_block_span.start_row;
     block_span->block = cur_block_span.block;
     *is_finished = false;
 
@@ -203,28 +201,28 @@ class TsSegmentsBlockSpanSortIterator {
       return KStatus::SUCCESS;
     }
 
-    TsIteratorRowInfo first_row_info = row_infos_.front();
+    TsIteratorRowInfo cur_span_row_info = row_infos_.front();
     row_infos_.pop_front();
-    TsIteratorRowInfo second_row_info{UINT64_MAX, INT64_MAX, UINT64_MAX};
+    TsIteratorRowInfo next_span_row_info{UINT64_MAX, INT64_MAX, UINT64_MAX};
     if (!row_infos_.empty()) {
-      second_row_info = row_infos_.front();
+      next_span_row_info = row_infos_.front();
     }
 
-    TsBlockSpan& cur_block_span = cur_block_spans_[first_row_info.iterator_idx];
+    TsBlockSpan& cur_block_span = cur_block_spans_[cur_span_row_info.iterator_idx];
     uint32_t n_rows = cur_block_span.nrow;
-    uint32_t row_idx = first_row_info.row_idx;
+    uint32_t row_idx = cur_span_row_info.row_idx;
     std::shared_ptr<TsBlock>& block = cur_block_span.block;
-    TsIteratorRowInfo new_row_info = {cur_block_spans_[first_row_info.iterator_idx].GetEntityID(),
+    TsIteratorRowInfo new_row_info = {cur_block_spans_[cur_span_row_info.iterator_idx].GetEntityID(),
                                       block->GetTS(cur_block_span.start_row + n_rows - 1),
                                       *(block->GetSeqNoAddr(cur_block_span.start_row + n_rows - 1))};
-    if (new_row_info <= second_row_info) {
+    if (new_row_info <= next_span_row_info) {
       row_idx = cur_block_span.start_row + n_rows;
     } else {
       for (; row_idx < cur_block_span.start_row + n_rows; ++row_idx) {
-        new_row_info = {cur_block_spans_[first_row_info.iterator_idx].GetEntityID(),
+        new_row_info = {cur_block_spans_[cur_span_row_info.iterator_idx].GetEntityID(),
                         block->GetTS(row_idx), *(block->GetSeqNoAddr(row_idx))};
-        if (second_row_info < new_row_info) {
-          new_row_info.iterator_idx = first_row_info.iterator_idx;
+        if (next_span_row_info < new_row_info) {
+          new_row_info.iterator_idx = cur_span_row_info.iterator_idx;
           new_row_info.row_idx = row_idx;
           insertRowInfo(new_row_info);
           break;
@@ -233,13 +231,13 @@ class TsSegmentsBlockSpanSortIterator {
     }
 
     block_span->entity_id = cur_block_span.GetEntityID();
-    block_span->start_row = first_row_info.row_idx;
-    block_span->nrow = row_idx - first_row_info.row_idx;
+    block_span->start_row = cur_span_row_info.row_idx;
+    block_span->nrow = row_idx - cur_span_row_info.row_idx;
     block_span->block = cur_block_span.block;
     *is_finished = false;
 
     if (row_idx == cur_block_span.start_row + n_rows) {
-      auto iter_idx = first_row_info.iterator_idx;
+      auto iter_idx = cur_span_row_info.iterator_idx;
       bool iter_is_finished = false;
       KStatus s = block_span_iterators_[iter_idx]->Next(&cur_block_spans_[iter_idx], &iter_is_finished);
       if (s == KStatus::FAIL) {
