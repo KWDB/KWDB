@@ -239,7 +239,8 @@ class TsBlockSegmentBlock : public TsBlock {
 
   uint32_t GetBlockLength() const { return block_length_; }
 
-  inline bool HasColumnData(uint32_t col_idx) {
+  inline bool HasColumnData(int32_t col_idx) {
+    assert(col_idx >= -1);
     return n_cols_ > 0 && column_blocks_.size() == n_cols_ && !column_blocks_[col_idx + 1].buffer.empty();
   }
 
@@ -253,13 +254,13 @@ class TsBlockSegmentBlock : public TsBlock {
 
   KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
 
-  KStatus Append(TsLastSegmentBlockSpan& span, bool& is_full);
+  KStatus Append(TsBlockSpan& span, bool& is_full);
 
   KStatus Flush(TsVGroupPartition* partition);
 
   KStatus LoadSeqNo(TSSlice buffer);
 
-  KStatus LoadColData(uint32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
+  KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
   KStatus LoadBlockInfo(TSSlice buffer);
 
@@ -279,6 +280,8 @@ class TsBlockSegmentBlock : public TsBlock {
   bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema);
 
   timestamp64 GetTS(int row_num);
+
+  uint64_t* GetSeqNoAddr(int row_num);
 
   void Clear();
 };
@@ -305,14 +308,14 @@ class TsBlockSegment : public TsSegmentBase {
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 
-  KStatus GetColumnBlock(uint32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
+  KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsBlockSegmentBlock* block);
 };
 
 class TsBlockSegmentBuilder {
  private:
   struct TsEntityKey {
-    uint32_t table_id = 0;
+    TSTableID table_id = 0;
     uint32_t table_version = 0;
     uint64_t entity_id = 0;
 

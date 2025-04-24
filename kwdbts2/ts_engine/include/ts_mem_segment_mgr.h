@@ -50,6 +50,9 @@ struct TSMemSegRowData {
     table_version = tbl_version;
     entity_id = en_id;
   }
+  inline bool operator<(const TSMemSegRowData& b) const {
+    return Compare(b) < 0;
+  }
   void SetData(timestamp64 cts, TS_LSN clsn, const TSSlice& crow_data) {
     ts = cts;
     lsn = clsn;
@@ -84,8 +87,8 @@ struct TSMemSegRowData {
     return this->table_id == b->table_id;
   }
 
-  int Compare(TSMemSegRowData* b) {
-    auto ret = memcmp(skip_list_key_, b->skip_list_key_, GetKeyLen());
+  int Compare(const TSMemSegRowData& b) const {
+    auto ret = memcmp(skip_list_key_, b.skip_list_key_, GetKeyLen());
     // auto ret_1 = 0;
     // while (true) {
     //   if (database_id != b->database_id) {
@@ -251,6 +254,11 @@ class TsMemSegBlock : public TsBlock {
     return row_data_[row_num]->ts;
   }
 
+  uint64_t* GetSeqNoAddr(int row_num) override {
+    assert(row_data_.size() > row_num);
+    return &row_data_[row_num]->lsn;
+  }
+
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override;
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
@@ -273,6 +281,10 @@ class TsMemSegBlock : public TsBlock {
       }
     }
     return can_insert;
+  }
+
+  void Sort() {
+    std::stable_sort(row_data_.begin(), row_data_.end());
   }
 };
 

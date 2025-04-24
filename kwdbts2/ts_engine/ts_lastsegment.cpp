@@ -176,135 +176,6 @@ KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
   return KStatus::SUCCESS;
 }
 
-KStatus TsLastSegment::GetBlockInfo(TsLastSegmentBlockIndex& block_index,
-                                    TsLastSegmentBlockInfo* block_info) {
-  TSSlice result;
-  // block info header
-  auto buf = std::make_unique<char[]>(block_index.length);
-  file_->Read(block_index.offset, block_index.length, &result, buf.get());
-  if (result.len != block_index.length) {
-    LOG_ERROR(
-        "last segment[%s] GetBlockInfo failed, read header failed. "
-        "table id: %lu, table version: %u, block info offset: %lu.",
-        file_->GetFilePath().c_str(), block_index.table_id, block_index.table_version,
-        block_index.offset);
-    return KStatus::FAIL;
-  }
-  const char* ptr = buf.get();
-  // TODO(zzr): endian problems
-  memcpy(block_info, ptr, LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE);
-  ptr += LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE;
-
-  // block info column offset
-  block_info->col_infos.resize(block_info->ncol);
-  for (size_t col_idx = 0; col_idx < block_info->ncol; ++col_idx) {
-    block_info->col_infos[col_idx].offset = DecodeFixed32(ptr);
-    ptr += 4;
-    block_info->col_infos[col_idx].bitmap_len = DecodeFixed16(ptr);
-    ptr += 2;
-    block_info->col_infos[col_idx].data_len = DecodeFixed32(ptr);
-    ptr += 4;
-  }
-  assert(ptr == result.data + result.len);
-  return KStatus::SUCCESS;
-}
-
-KStatus TsLastSegment::GetBlock(TsLastSegmentBlockInfo& block_info, TsLastSegmentBlock* block) {
-  block->column_blocks.resize(block_info.ncol);
-  // column block
-  TSSlice result;
-  size_t offset = block_info.block_offset;
-  for (uint32_t i = 0; i < block_info.ncol; ++i) {
-    size_t col_block_len = block_info.col_infos[i].bitmap_len + block_info.col_infos[i].data_len;
-    // read col block data
-    auto col_block_buf = std::make_unique<char[]>(col_block_len);
-    file_->Read(offset, col_block_len, &result, col_block_buf.get());
-    if (result.len != col_block_len) {
-      LOG_ERROR("last segment[%s] GetBlock failed, read column block[%u] failed.",
-                file_->GetFilePath().c_str(), i);
-      return KStatus::FAIL;
-    }
-
-    // Decompress:
-
-    // parse TsBitmap;
-    const TsBitmap* p_bitmap = nullptr;
-    TsBitmap tmp;
-    bool has_bitmap = block_info.col_infos[i].bitmap_len != 0;
-    if (has_bitmap) {
-      // TODO(zzr) decompress bitmap first, compression for bitmap is not implemented yet.
-      BitmapCompAlg comp_type = static_cast<BitmapCompAlg>(*col_block_buf.get());
-      if (comp_type == BitmapCompAlg::kPlain) {
-        size_t raw_bitmap_len = block_info.col_infos[i].bitmap_len - 1;
-        TSSlice raw_bitmap{col_block_buf.get() + 1, raw_bitmap_len};
-        tmp.Map(raw_bitmap, block_info.nrow);
-        p_bitmap = &tmp;
-      } else {
-        assert(false);  // bitmap compression not implemented
-      }
-    }
-
-    // parse Data
-    char* ptr = col_block_buf.get() + block_info.col_infos[i].bitmap_len;
-    TsCompAlg first = static_cast<TsCompAlg>(*ptr);
-    ptr++;
-    GenCompAlg second = static_cast<GenCompAlg>(*ptr);
-    ptr++;
-    assert(first < TsCompAlg::TS_COMP_ALG_LAST && second < GenCompAlg::GEN_COMP_ALG_LAST);
-    auto compressor = CompressorManager::GetInstance().GetCompressor(first, second);
-
-    std::string_view plain_sv{ptr, block_info.col_infos[i].data_len - 2};
-    std::string plain;
-    if (compressor.IsPlain()) {
-    } else {
-      bool ok = compressor.Decompress({ptr, plain_sv.size()}, p_bitmap, block_info.nrow, &plain);
-      if (!ok) {
-        LOG_ERROR("last segment[%s] GetBlock failed, decode column block[%u] failed.",
-                  file_->GetFilePath().c_str(), i);
-        return KStatus::FAIL;
-      }
-      plain_sv = plain;
-    }
-
-    // save decompressed col block data
-    block->column_blocks[i].buffer.assign(plain_sv);
-    if (has_bitmap) {
-      block->column_blocks[i].bitmap = *p_bitmap;  // copy
-    }
-    offset += col_block_len;
-  }
-  // read var data
-  char* var_buf = new char[block_info.var_len];
-  file_->Read(offset, block_info.var_len, &result, var_buf);
-  if (result.len != block_info.var_len) {
-    delete[] var_buf;
-    LOG_ERROR("last segment[%s] GetBlock failed, read var data failed.",
-              file_->GetFilePath().c_str());
-    return KStatus::FAIL;
-  }
-
-  char* ptr = var_buf;
-  GenCompAlg alg = static_cast<GenCompAlg>(*ptr);
-  ptr++;
-  const auto& snappy = SnappyString::GetInstance();
-  std::string tmp;
-  std::string out;
-  if (alg == GenCompAlg::kSnappy) {
-    if (snappy.Decompress({ptr, block_info.var_len - 1}, 0, &out)) {
-      tmp.append(out);
-    } else {
-      assert(false);
-    }
-  } else {
-    tmp.append({ptr, block_info.var_len - 1});
-  }
-  // save var data
-  block->var_buffer.assign(tmp);
-  delete[] var_buf;
-
-  return KStatus::SUCCESS;
-}
-
 std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) const {
   char buffer[64];
   std::snprintf(buffer, sizeof(buffer), "last.ver-%012u", file_number);
@@ -564,6 +435,12 @@ class TsLastBlock : public TsBlock {
     return ts[row_num];
   }
 
+  uint64_t* GetSeqNoAddr(int row_num) override {
+    assert(block_info_.ncol > 2);
+    auto seq_nos = GetSeqNos();
+    return const_cast<uint64_t*>(&seq_nos[row_num]);
+  }
+
   int GetBlockID() const { return block_id_; }
 
  private:
@@ -614,6 +491,13 @@ class TsLastBlock : public TsBlock {
     return entities;
   }
 
+  const uint64_t* GetSeqNos() {
+    LoadAllDataToCache(1);
+    const std::string& data = *column_cache_->GetColumnBlock(1)->data;
+    const uint64_t* seq_nos = reinterpret_cast<const uint64_t*>(data.data());
+    return seq_nos;
+  }
+
   const timestamp64* GetTimestamps() {
     LoadAllDataToCache(2);
     const std::string& data = *column_cache_->GetColumnBlock(2)->data;
@@ -661,7 +545,7 @@ int FindLowerBound(const Element_& target, const TSEntityID* entities, const tim
   return r;
 }
 
-KStatus TsLastSegment::GetBlockSpans(std::vector<TsBlockSpan>* spans) {
+KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
   std::vector<TsLastSegmentBlockIndex> block_indices;
   auto s = GetAllBlockIndex(&block_indices);
   if (s == FAIL) {
@@ -684,10 +568,10 @@ KStatus TsLastSegment::GetBlockSpans(std::vector<TsBlockSpan>* spans) {
     auto ts = block->GetTimestamps();
     while (prev_end < info.nrow) {
       int start = prev_end;
-      auto current_eneity = entities[start];
+      auto current_entity = entities[start];
       auto upper_bound =
-          FindUpperBound({current_eneity, INT64_MAX}, entities, ts, start, info.nrow);
-      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), current_eneity, block,
+          FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
+      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), current_entity, block,
                           start, upper_bound - start);
       prev_end = upper_bound;
     }
@@ -850,6 +734,10 @@ timestamp64 TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetTS(int row_num
   timestamp64* ptr = reinterpret_cast<timestamp64*>(
       parent_iter_->cache_.GetColumnBlock(current_.block_id, 2)->data->data());
   return ptr[row_num + current_.GetRowStart()];
+}
+
+uint64_t* TsLastSegmentEntityBlockIteratorBase::EntityBlock::GetSeqNoAddr(int row_num) {
+  return nullptr;
 }
 
 bool TsLastSegmentEntityBlockIteratorBase::EntityBlock::IsColNull(

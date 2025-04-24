@@ -36,13 +36,17 @@ class TsBlock {
   virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) = 0;
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
+
+  virtual uint64_t* GetSeqNoAddr(int row_num) = 0;
 };
 
 struct TsBlockSpan {
-  TSEntityID entity_id;
+  TSEntityID entity_id = 0;
 
-  std::shared_ptr<TsBlock> block;
-  int start_row, nrow;
+  std::shared_ptr<TsBlock> block = nullptr;
+  int start_row = 0, nrow = 0;
+
+  TsBlockSpan() = default;
 
   TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
               std::shared_ptr<TsBlock> block, int start, int nrow)
@@ -50,9 +54,25 @@ struct TsBlockSpan {
     assert(nrow >= 1);
   }
 
+  inline bool operator<(const TsBlockSpan& other) const {
+    if (entity_id != other.entity_id) {
+      return entity_id < other.entity_id;
+    } else {
+      timestamp64 ts = block->GetTS(start_row);
+      timestamp64 other_ts = other.block->GetTS(other.start_row);
+      if (ts != other_ts) {
+        return ts < other_ts;
+      } else {
+        uint64_t seq_no = *block->GetSeqNoAddr(start_row);
+        uint64_t other_seq_no = *other.block->GetSeqNoAddr(other.start_row);
+        return seq_no > other_seq_no;
+      }
+    }
+  }
+
   TSEntityID GetEntityID() const { return entity_id; }
   TSTableID GetTableID() const { return block->GetTableId(); }
-  TSTableID GetTableVersion() const { return block->GetTableVersion(); }
+  uint32_t GetTableVersion() const { return block->GetTableVersion(); }
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {

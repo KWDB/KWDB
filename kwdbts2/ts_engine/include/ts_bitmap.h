@@ -100,6 +100,15 @@ class TsBitmap {
     SetAll(DataFlags::kValid);
   }
 
+  void Truncate(size_t count) {
+    nrows_ = count;
+    rep_.resize(GetBitmapLen(nrows_));
+    nvalid_ = 0;
+    for (int i = 0; i < nrows_; ++i) {
+      nvalid_ += ((*this)[i] == kValid);
+    }
+  }
+
   TSSlice GetData() { return {rep_.data(), rep_.size()}; }
 
   size_t GetCount() const { return nrows_; }
