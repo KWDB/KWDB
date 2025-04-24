@@ -420,9 +420,8 @@ KStatus TsBlockSegmentBlock::Flush(TsVGroupPartition* partition) {
     // compress
     // compress bitmap
     if (has_bitmap) {
+      block.bitmap.Truncate(n_rows_);
       TSSlice bitmap_data = block.bitmap.GetData();
-      bitmap_data.len = TsBitmap::GetBitmapLen(n_rows_);
-      block.bitmap.Map(bitmap_data, n_rows_);
       // TODO(limeng04): compress bitmap
       char bitmap_compress_type = 0;
       buffer.append(&bitmap_compress_type);
