@@ -320,7 +320,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
-    ret = last_segment_iterator_->ScanAgg(count);
+    ret = last_segment_iterator_->ScanCount(count);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to scan last segment for partition(%d) of entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
@@ -578,8 +578,8 @@ KStatus TsMemSegmentIterator::Init() {
   }
   auto table_id = table_schema_mgr_->GetTableId();
   auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
-  TsBlockItemFilterParams params{db_id, table_id, entity_id_, ts_spans_};
-  return vgroup_->GetMemSegmentMgr()->GetBlockSpans(params, &ts_block_spans_);
+  TsBlockItemFilterParams filter{db_id, table_id, entity_id_, ts_spans_};
+  return vgroup_->GetMemSegmentMgr()->GetBlockSpans(filter, &ts_block_spans_);
 }
 
 TsLastSegmentIterator::TsLastSegmentIterator(std::shared_ptr<TsVGroup>& vgroup,
@@ -606,50 +606,12 @@ KStatus TsLastSegmentIterator::Init() {
   }
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
   ts_partition_->GetLastSegmentMgr()->GetCompactLastSegments(last_segments);
+  auto table_id = table_schema_mgr_->GetTableId();
+  auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  TsBlockItemFilterParams filter{db_id, table_id, entity_id_, ts_spans_};
   for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
-    last_segment_block_iterators_.push_back(last_segment->NewIterator(table_schema_mgr_->GetTableId(),
-                                            entity_id_, ts_spans_));
+    last_segment->GetBlockSpans(filter, &ts_block_spans_);
   }
-  last_segment_block_iterator_index_ = 0;
-  return KStatus::SUCCESS;
-}
-
-KStatus TsLastSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished) {
-  if (last_segment_block_iterator_index_ >= last_segment_block_iterators_.size()) {
-    *is_finished = true;
-    return KStatus::SUCCESS;
-  }
-  *count = 0;
-  if (last_segment_block_iterators_[last_segment_block_iterator_index_]->Valid()) {
-    auto entity_block = last_segment_block_iterators_[last_segment_block_iterator_index_]->GetEntityBlock();
-    std::shared_ptr<TsBlock> ts_block = std::move(entity_block);
-    AddBlockData(ts_block, res, count);
-    last_segment_block_iterators_[last_segment_block_iterator_index_]->NextEntityBlock();
-  } else {
-    ++last_segment_block_iterator_index_;
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsLastSegmentIterator::ScanAgg(k_uint32* count) {
-  if (last_segment_block_iterator_index_ >= last_segment_block_iterators_.size()) {
-    return KStatus::SUCCESS;
-  }
-
-  *count = 0;
-  for (size_t i = 0; i < last_segment_block_iterators_.size(); ++i) {
-    auto& block_iter = last_segment_block_iterators_[last_segment_block_iterator_index_];
-
-    while (block_iter->Valid()) {
-      auto entity_block = block_iter->GetEntityBlock();
-      *count += entity_block->GetRowNum();
-
-      block_iter->NextEntityBlock();
-    }
-
-    ++last_segment_block_iterator_index_;
-  }
-
   return KStatus::SUCCESS;
 }
 

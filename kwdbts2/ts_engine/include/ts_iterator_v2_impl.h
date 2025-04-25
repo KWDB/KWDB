@@ -164,11 +164,6 @@ class TsLastSegmentIterator : public TsSegmentIterator {
   ~TsLastSegmentIterator();
 
   KStatus Init() override;
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished) override;
-  KStatus ScanAgg(k_uint32* count);
- private:
-  std::vector<std::shared_ptr<TsLastSegmentEntityBlockIteratorBase>> last_segment_block_iterators_;
-  uint32_t last_segment_block_iterator_index_;
 };
 
 class TsBlockSegmentIterator : public TsSegmentIterator {
