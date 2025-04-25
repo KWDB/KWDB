@@ -516,6 +516,10 @@ FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
       func_ = stringToString;
       break;
     default:
+      KString msg =
+        "invalid type " + field_->get_storage_type();
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
+                                  msg.c_str());
       break;
   }
 }
