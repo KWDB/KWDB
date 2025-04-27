@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -364,12 +365,15 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
     EXPECT_EQ(r, c.expect_max);
   }
 
+  spans_list.clear();
   last_segment->GetBlockSpans({0, table_id, 3, {{1000, 0}}}, &spans_list);
   ASSERT_EQ(spans_list.size(), 0);
 
+  spans_list.clear();
   last_segment->GetBlockSpans({0, table_id, 3, {{-100, 0}}}, &spans_list);
   ASSERT_EQ(spans_list.size(), 0);
 
+  spans_list.clear();
   last_segment->GetBlockSpans({0, table_id, 3, {{123, 2000}, {3000, 6000}}}, &spans_list);
   ASSERT_EQ(spans_list.size(), 2);
   EXPECT_EQ(spans_list.front().nrow, 2);
@@ -464,6 +468,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     }
   }
 
+  result_spans.clear();
   last_segment->GetBlockSpans(&result_spans);
   ASSERT_EQ(result_spans.size(), expected_rows.size());
   for (int i = 0; i < expected_rows.size(); ++i) {
@@ -489,6 +494,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
       {start_ts + interval * 2080, start_ts + interval * 4096},
       {start_ts + interval * 5000, start_ts + interval * (2084 + 4096)},
   };
+  result_spans_list.clear();
   last_segment->GetBlockSpans({0, table_id, 9913, spans}, &result_spans_list);
   ASSERT_EQ(result_spans_list.size(), 5);
   std::vector<std::pair<int, int>> expected_minmax = {
@@ -509,4 +515,40 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     EXPECT_EQ(min_ts, expected_minmax[i].first);
     EXPECT_EQ(max_ts, expected_minmax[i].second);
   }
+}
+
+// this may very slow in debug mode, disabled as default
+TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
+  TSTableID table_id = 312;
+  uint32_t table_version = 1;
+  int interval = 1000;
+  int start_ts = 1234567;
+
+  auto res = GenBuilders(table_id);
+  int nrow_per_block = TsLastSegment::kNRowPerBlock = 4096;
+  ASSERT_EQ(nrow_per_block % 2, 0);
+
+  int max_entity_id = 10;
+  auto nrow = 100000;
+  std::vector<FOO<decltype(GenRowPayloadWrapper)>::type> payloads;
+  for (int dev_id = 0; dev_id < max_entity_id; ++dev_id) {
+    auto payload = GenRowPayloadWrapper(res.metric_schema, res.tag_schema, table_id, table_version,
+                                        dev_id, nrow, start_ts, interval);
+    PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
+    payloads.push_back(std::move(payload));
+  }
+  res.builder->Finalize();
+  res.builder.reset();
+
+  std::shared_ptr<TsLastSegment> last_segment;
+  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  int sum = 0;
+  for (size_t eid = 0; eid < max_entity_id; ++eid) {
+    std::list<TsBlockSpan> result_spans_list;
+    last_segment->GetBlockSpans({0, table_id, eid, {{INT64_MIN, INT64_MAX}}}, &result_spans_list);
+    for (auto &span : result_spans_list) {
+      sum += span.nrow;
+    }
+  }
+  EXPECT_EQ(max_entity_id * nrow, sum);
 }
