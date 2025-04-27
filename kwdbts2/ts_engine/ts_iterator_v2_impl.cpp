@@ -604,8 +604,8 @@ KStatus TsLastSegmentIterator::Init() {
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
-  ts_partition_->GetLastSegmentMgr()->GetCompactLastSegments(last_segments);
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments =
+      ts_partition_->GetLastSegmentMgr()->GetAllLastSegments();
   auto table_id = table_schema_mgr_->GetTableId();
   auto db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
   TsBlockItemFilterParams filter{db_id, table_id, entity_id_, ts_spans_};

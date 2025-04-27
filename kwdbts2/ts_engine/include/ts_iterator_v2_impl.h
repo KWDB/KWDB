@@ -56,9 +56,9 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;
-  std::unique_ptr<TsMemSegmentIterator> mem_segment_iterator_{nullptr};
-  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
-  std::unique_ptr<TsBlockSegmentIterator> block_segment_iterator_{nullptr};
+  std::unique_ptr<TsMemSegmentIterator> mem_segment_iterator_;
+  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_;
+  std::unique_ptr<TsBlockSegmentIterator> block_segment_iterator_;
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;

@@ -11,8 +11,10 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <iostream>
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
+#include "ts_block.h"
 #include "ts_engine.h"
 #include "sys_utils.h"
 #include "test_util.h"
@@ -79,10 +81,11 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
       free(payload.data);
     }
 
-    //partition->Compact();
+    // partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
 
     TsBlockSegment* block_segment = partition->GetBlockSegment();
+    int sum = 0;
     for (int i = 0; i < 10; ++i) {
       {
         // scan [500, INT64_MAX]
@@ -159,6 +162,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         int row_idx = 0;
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
+          sum += block_span.nrow;
           block_spans.pop_front();
           for (int idx = 0; idx < block_span.nrow; ++idx) {
             EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
@@ -178,5 +182,20 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
         EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
       }
     }
+    std::vector<std::shared_ptr<TsLastSegment>> result;
+    partition->GetLastSegmentMgr()->GetCompactLastSegments(result);
+    ASSERT_EQ(result.size(), 1);
+    for (int j = 0; j < result.size(); ++j) {
+      for (int i = 0; i < 10; ++i) {
+        std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
+        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        std::list<TsBlockSpan> block_span;
+        result[0]->GetBlockSpans(filter, &block_span);
+        for (auto block : block_span) {
+          sum += block.nrow;
+        }
+      }
+    }
+    std::cout << sum << std::endl;
   }
 }

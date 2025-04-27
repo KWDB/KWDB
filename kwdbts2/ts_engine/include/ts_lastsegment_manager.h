@@ -34,7 +34,7 @@ class TsLastSegmentManager {
   std::atomic<uint32_t> current_file_number_ = 0;
   std::atomic<uint32_t> n_lastsegment_ = 0;
 
-  std::shared_mutex s_mutex_;
+  mutable std::shared_mutex s_mutex_;
 
   std::string LastSegmentFileName(uint32_t file_number) const;
 
@@ -47,6 +47,7 @@ class TsLastSegmentManager {
   KStatus OpenLastSegmentFile(uint32_t file_number, std::shared_ptr<TsLastSegment>* lastsegment);
 
   void GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);
+  std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const;
 
   bool NeedCompact();
 

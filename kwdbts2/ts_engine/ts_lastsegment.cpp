@@ -243,6 +243,16 @@ void TsLastSegmentManager::GetCompactLastSegments(
   }
 }
 
+std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetAllLastSegments() const {
+  std::shared_lock lk{s_mutex_};
+  std::vector<std::shared_ptr<TsLastSegment>> result;
+  result.reserve(last_segments_.size());
+  for (auto i : last_segments_) {
+    result.push_back(i.second);
+  }
+  return result;
+}
+
 bool TsLastSegmentManager::NeedCompact() {
   return n_lastsegment_.load(std::memory_order_relaxed) > EngineOptions::max_last_segment_num;
 }
@@ -581,7 +591,7 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<TsBlockSpan>* spans) {
-  spans->clear();
+  // spans->clear();
   if (filter.ts_spans_.empty()) {
     return SUCCESS;
   }

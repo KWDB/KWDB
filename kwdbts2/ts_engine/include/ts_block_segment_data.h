@@ -82,8 +82,8 @@ class TsBlockSegmentBlockFile {
  */
 class TsBlockSegmentAggFile {
   string file_path_;
-  std::unique_ptr<TsFile> file_ = nullptr;
-  std::unique_ptr<KRWLatch> agg_file_mtx_{nullptr};
+  std::unique_ptr<TsFile> file_;
+  std::unique_ptr<KRWLatch> agg_file_mtx_;
 
   struct TsAggFileHeader {
     uint64_t magic;               // Magic number for block.e file.
