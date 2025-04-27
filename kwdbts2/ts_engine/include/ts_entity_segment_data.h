@@ -18,9 +18,9 @@
 #include "ts_io.h"
 
 namespace kwdbts {
-static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_FILE_MAGIC = 0xcb2ffe9321847274;
+static constexpr uint64_t TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC = 0xcb2ffe9321847274;
 
-class TsBlockSegmentBlockFile {
+class TsEntitySegmentBlockFile {
  private:
   string file_path_;
   std::unique_ptr<TsFile> file_ = nullptr;
@@ -35,9 +35,9 @@ class TsBlockSegmentBlockFile {
   TsBlockFileHeader header_;
 
  public:
-  explicit TsBlockSegmentBlockFile(const string& file_path);
+  explicit TsEntitySegmentBlockFile(const string& file_path);
 
-  ~TsBlockSegmentBlockFile();
+  ~TsEntitySegmentBlockFile();
 
   KStatus Open();
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
@@ -80,7 +80,7 @@ class TsBlockSegmentBlockFile {
  * - max_str: Actual string length
  * - min_str: Actual string length
  */
-class TsBlockSegmentAggFile {
+class TsEntitySegmentAggFile {
   string file_path_;
   std::unique_ptr<TsFile> file_;
   std::unique_ptr<KRWLatch> agg_file_mtx_;
@@ -94,9 +94,9 @@ class TsBlockSegmentAggFile {
   TsAggFileHeader header_;
 
  public:
-  explicit TsBlockSegmentAggFile(const string& file_path);
+  explicit TsEntitySegmentAggFile(const string& file_path);
 
-  ~TsBlockSegmentAggFile() {}
+  ~TsEntitySegmentAggFile() {}
 
   KStatus Open();
   KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);

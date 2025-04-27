@@ -24,16 +24,16 @@
 using namespace kwdbts;  // NOLINT
 
 
-class TsBlockSegmentTest : public ::testing::Test {
+class TsEntitySegmentTest : public ::testing::Test {
 public:
-  TsBlockSegmentTest() {}
+  TsEntitySegmentTest() {}
 
-  ~TsBlockSegmentTest() {
+  ~TsEntitySegmentTest() {
     KWDBDynamicThreadPool::GetThreadPool().Stop();
   }
 };
 
-TEST_F(TsBlockSegmentTest, simpleInsert) {
+TEST_F(TsEntitySegmentTest, simpleInsert) {
   EngineOptions::max_rows_per_block = 1000;
   using namespace roachpb;
   {
@@ -84,7 +84,7 @@ TEST_F(TsBlockSegmentTest, simpleInsert) {
     // partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
 
-    TsBlockSegment* block_segment = partition->GetBlockSegment();
+    TsEntitySegment* block_segment = partition->GetBlockSegment();
     int sum = 0;
     for (int i = 0; i < 10; ++i) {
       {

@@ -97,12 +97,12 @@ inline KStatus TsStorageIteratorV2Impl::InitializeLastSegmentIterator() {
 
 inline KStatus TsStorageIteratorV2Impl::InitializeBlockSegmentIterator() {
   if (cur_partition_index_ < ts_partitions_.size()) {
-    block_segment_iterator_ = std::make_unique<TsBlockSegmentIterator>(vgroup_, ts_partitions_[cur_partition_index_],
+    block_segment_iterator_ = std::make_unique<TsEntitySegmentIterator>(vgroup_, ts_partitions_[cur_partition_index_],
                                                                      entity_ids_[cur_entity_index_], ts_spans_,
                                                                      ts_col_type_, kw_scan_cols_, ts_scan_cols_,
                                                                      table_schema_mgr_, table_version_);
     if (block_segment_iterator_ == nullptr) {
-      LOG_ERROR("Failed to create TsBlockSegmentIterator.");
+      LOG_ERROR("Failed to create TsEntitySegmentIterator.");
       return KStatus::FAIL;
     }
     return block_segment_iterator_->Init();
@@ -615,7 +615,7 @@ KStatus TsLastSegmentIterator::Init() {
   return KStatus::SUCCESS;
 }
 
-TsBlockSegmentIterator::TsBlockSegmentIterator(std::shared_ptr<TsVGroup>& vgroup,
+TsEntitySegmentIterator::TsEntitySegmentIterator(std::shared_ptr<TsVGroup>& vgroup,
                                               std::shared_ptr<TsVGroupPartition> ts_partition,
                                               uint32_t entity_id,
                                               std::vector<KwTsSpan>& ts_spans,
@@ -629,10 +629,10 @@ TsBlockSegmentIterator::TsBlockSegmentIterator(std::shared_ptr<TsVGroup>& vgroup
                                                         table_version) {
 }
 
-TsBlockSegmentIterator::~TsBlockSegmentIterator() {
+TsEntitySegmentIterator::~TsEntitySegmentIterator() {
 }
 
-KStatus TsBlockSegmentIterator::Init() {
+KStatus TsEntitySegmentIterator::Init() {
   KStatus ret = TsSegmentIterator::Init();
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;

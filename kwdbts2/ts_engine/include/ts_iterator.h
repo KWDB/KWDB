@@ -40,7 +40,7 @@ struct TsIteratorParams {
 };
 
 struct TsMetricBatchRefer {
-  TsBlockSegmentBlockItem blk_item;
+  TsEntitySegmentBlockItem blk_item;
   bool all_block_data;
   std::list<uint32_t> metric_idx;
 };

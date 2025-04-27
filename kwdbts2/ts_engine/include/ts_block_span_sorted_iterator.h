@@ -143,11 +143,11 @@ class TsLastSegmentBlockSpanSortIterator : public TsBlockSpanSortIterator {
  private:
 };
 
-class TsBlockSegmentBlockSpanSortIterator : public TsBlockSpanSortIterator {
+class TsEntitySegmentBlockSpanSortIterator : public TsBlockSpanSortIterator {
  public:
-  explicit TsBlockSegmentBlockSpanSortIterator(std::list<TsBlockSpan>& block_spans) :
+  explicit TsEntitySegmentBlockSpanSortIterator(std::list<TsBlockSpan>& block_spans) :
     TsBlockSpanSortIterator(block_spans) {}
-  ~TsBlockSegmentBlockSpanSortIterator() {}
+  ~TsEntitySegmentBlockSpanSortIterator() {}
 
   KStatus Init() override {
     block_spans_.sort();
