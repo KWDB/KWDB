@@ -534,6 +534,15 @@ class TsTable {
     return entity_bt_manager_;
   }
 
+  struct SubgroupEntities{
+    uint64_t entity_group_id;
+    uint32_t subgroup_id;
+    std::vector<uint32_t> entity_ids;
+  };
+
+  KStatus SplitEntityBySubgroup(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_results,
+                                std::vector<SubgroupEntities>* subgroups);
+
  protected:
   string db_path_;
   KTableKey table_id_;

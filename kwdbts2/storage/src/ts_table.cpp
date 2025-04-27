@@ -2511,28 +2511,25 @@ KStatus TsTable::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityRe
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
   DATATYPE ts_col_type = GetRootTableManager()->GetTsColDataType();
-  std::map<uint64_t, std::map<SubGroupID, std::vector<EntityID>>> group_ids;
-  for (auto& entity : entity_ids) {
-    group_ids[entity.entityGroupId][entity.subGroupId].push_back(entity.entityId);
-  }
+  std::vector<SubgroupEntities> subgroups;
+  s = SplitEntityBySubgroup(ctx, entity_ids, &subgroups);
   std::shared_ptr<TsEntityGroup> entity_group;
-  for (auto& group_iter : group_ids) {
-    s = GetEntityGroup(ctx, group_iter.first, &entity_group);
+  for (auto& subgroup : subgroups) {
+    s = GetEntityGroup(ctx, subgroup.entity_group_id, &entity_group);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("can not found entitygroup [%lu].", group_iter.first);
+      LOG_ERROR("can not found entitygroup [%lu].", subgroup.entity_group_id);
       return s;
     }
-    for (auto& sub_group_iter : group_iter.second) {
-      TsStorageIterator* ts_iter;
-      s = entity_group->GetIterator(ctx, sub_group_iter.first, sub_group_iter.second, ts_spans, ts_col_type,
-                                    scan_cols, ts_scan_cols, scan_agg_types, table_version,
-                                    &ts_iter, entity_group, ts_points, reverse, sorted);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot create iterator for entitygroup[%lu], subgroup[%u]", group_iter.first, sub_group_iter.first);
-        return s;
-      }
-      ts_table_iterator->AddEntityIterator(ts_iter);
+    TsStorageIterator* ts_iter;
+    s = entity_group->GetIterator(ctx, subgroup.subgroup_id, subgroup.entity_ids, ts_spans, ts_col_type,
+                                  scan_cols, ts_scan_cols, scan_agg_types, table_version,
+                                  &ts_iter, entity_group, ts_points, reverse, sorted);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("cannot create iterator for entitygroup[%lu], subgroup[%u]",
+                subgroup.entity_group_id, subgroup.subgroup_id);
+      return s;
     }
+    ts_table_iterator->AddEntityIterator(ts_iter);
   }
   LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
               scan_agg_types.size(), ts_table_iterator->GetIterNumber());
@@ -3461,6 +3458,24 @@ KStatus TsTable::AlterNormalTagIndex(kwdbContext_p ctx, const uint64_t index_id,
                                      const uint32_t old_version, const uint32_t new_version,
                                      const vector<uint32_t> &new_index_schema) {
     return SUCCESS;
+}
+
+KStatus TsTable::SplitEntityBySubgroup(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_results,
+                                       std::vector<SubgroupEntities>* subgroups) {
+  std::vector<uint32_t> entity_ids;
+  uint64_t entity_group_id = entity_results[0].entityGroupId;
+  uint32_t subgroup_id = entity_results[0].subGroupId;
+  for (auto& entity : entity_results) {
+    if (entity_group_id != entity.entityGroupId || subgroup_id != entity.subGroupId) {
+      subgroups->push_back({entity_group_id, subgroup_id, entity_ids});
+      entity_ids.clear();
+      entity_group_id = entity.entityGroupId;
+      subgroup_id = entity.subGroupId;
+    }
+    entity_ids.push_back(entity.entityId);
+  }
+  subgroups->push_back({entity_group_id, subgroup_id, entity_ids});
+  return SUCCESS;
 }
 
 KStatus TsEntityGroup::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,

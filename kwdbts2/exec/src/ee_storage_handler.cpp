@@ -461,6 +461,10 @@ EEIteratorErrCode StorageHandler::TagNext(kwdbContext_p ctx, Field *tag_filter) 
       break;
     }
   }
+  if (tag_rowbatch_->Count() > 1) {
+    // sort by entityIndex
+    tag_rowbatch_->SortByEntityIndex();
+  }
   tag_rowbatch_->SetPipeEntityNum(ctx, current_thd->GetDegree());
   thd->SetRowBatch(ptr);
   Return(code);
