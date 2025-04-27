@@ -114,7 +114,18 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
     return ToTsStatus("unsquashfs is not installed, please install squashfs-tools");
   }
 
-  InitCompressInfo(opts.db_path);
+  // mount cnt
+  cmd = "cat /proc/mounts | grep " + opts.db_path + " | wc -l";
+  string result;
+  int ret = executeShell(cmd, result);
+  if (ret != -1) {
+    int mount_cnt = atoi(result.c_str());
+    if (mount_cnt > 0) {
+      g_cur_mount_cnt_ = mount_cnt;
+    }
+  }
+
+  InitCompressInfo();
 
   TSEngine* ts_engine;
   s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
@@ -753,7 +764,9 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
         type = kwdbts::CompressionType::GZIP;
       }
     }
-    g_compression = g_mk_squashfs_option.compressions.find(type)->second;
+    if (g_mk_squashfs_option.compressions.find(type) != g_mk_squashfs_option.compressions.end()) {
+      g_compression = g_mk_squashfs_option.compressions.find(type)->second;
+    }
   } else if ("ts.compression.level" == key) {
     kwdbts::CompressionLevel level = kwdbts::CompressionLevel::MIDDLE;
     if ("low" == value) {
@@ -806,6 +819,7 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
 }
 
 void TSSetClusterSetting(TSSlice key, TSSlice value) {
+  InitCompressInfo();
   std::string key_set;
   std::string value_set;
 
