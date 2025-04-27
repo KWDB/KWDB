@@ -36,7 +36,7 @@ typedef enum {
 class TsVGroup;
 class TsMemSegmentIterator;
 class TsLastSegmentIterator;
-class TsBlockSegmentIterator;
+class TsEntitySegmentIterator;
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
@@ -58,7 +58,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   k_uint32 cur_partition_index_;
   std::unique_ptr<TsMemSegmentIterator> mem_segment_iterator_{nullptr};
   std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
-  std::unique_ptr<TsBlockSegmentIterator> block_segment_iterator_{nullptr};
+  std::unique_ptr<TsEntitySegmentIterator> block_segment_iterator_{nullptr};
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
@@ -171,13 +171,13 @@ class TsLastSegmentIterator : public TsSegmentIterator {
   uint32_t last_segment_block_iterator_index_;
 };
 
-class TsBlockSegmentIterator : public TsSegmentIterator {
+class TsEntitySegmentIterator : public TsSegmentIterator {
  public:
-  TsBlockSegmentIterator(std::shared_ptr<TsVGroup>& vgroup, std::shared_ptr<TsVGroupPartition> ts_partition,
+  TsEntitySegmentIterator(std::shared_ptr<TsVGroup>& vgroup, std::shared_ptr<TsVGroupPartition> ts_partition,
                          uint32_t entity_id, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsBlockSegmentIterator();
+  ~TsEntitySegmentIterator();
 
   KStatus Init() override;
 };

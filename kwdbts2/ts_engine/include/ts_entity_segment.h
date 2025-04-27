@@ -18,7 +18,7 @@
 #include <vector>
 #include <utility>
 #include "ts_block.h"
-#include "ts_block_segment_data.h"
+#include "ts_entity_segment_data.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment_manager.h"
@@ -27,7 +27,7 @@
 
 namespace kwdbts {
 
-struct TsBlockSegmentBlockItem {
+struct TsEntitySegmentBlockItem {
   uint64_t block_id = 0;          // block item id
   uint64_t entity_id = 0;
   uint64_t prev_block_id = 0;     // pre block item id
@@ -45,17 +45,17 @@ struct TsBlockSegmentBlockItem {
   bool is_agg_res_available = false;  //  agg for block is valid.
   char reserved[48] = {0};      // reserved for user-defined information.
 };
-static_assert(sizeof(TsBlockSegmentBlockItem) == 128,
-              "wrong size of TsBlockSegmentBlockItem, please check compatibility.");
+static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
+              "wrong size of TsEntitySegmentBlockItem, please check compatibility.");
 
 static constexpr uint64_t TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
 static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
 
 /**
- * TsBlockSegmentEntityItemFile used for managing entity_item file.
+ * TsEntitySegmentEntityItemFile used for managing entity_item file.
  * index of block items.
  */
-class TsBlockSegmentEntityItemFile {
+class TsEntitySegmentEntityItemFile {
  private:
   struct TsEntityItemFileHeader {
     uint64_t magic;               // Magic number for block.e file.
@@ -84,13 +84,13 @@ class TsBlockSegmentEntityItemFile {
   TsEntityItemFileHeader header_;
 
  public:
-  explicit TsBlockSegmentEntityItemFile(const string& file_path) :
+  explicit TsEntitySegmentEntityItemFile(const string& file_path) :
            file_path_(file_path), rw_latch_(RWLATCH_ID_ENTITY_ITEM_RWLOCK) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
     memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
 
-  ~TsBlockSegmentEntityItemFile() {}
+  ~TsEntitySegmentEntityItemFile() {}
 
   KStatus Open();
 
@@ -100,12 +100,12 @@ class TsBlockSegmentEntityItemFile {
 
   void UnLock();
 
-  KStatus UpdateEntityItem(uint64_t entity_id, const TsBlockSegmentBlockItem& block_item_info, bool lock = true);
+  KStatus UpdateEntityItem(uint64_t entity_id, const TsEntitySegmentBlockItem& block_item_info, bool lock = true);
 
   KStatus GetEntityCurBlockId(uint64_t entity_id, uint64_t& cur_block_id, bool lock = true);
 };
 
-class TsBlockSegmentBlockItemFile {
+class TsEntitySegmentBlockItemFile {
  private:
   string file_path_;
   std::unique_ptr<TsFile> file_;
@@ -125,13 +125,13 @@ class TsBlockSegmentBlockItemFile {
   TsBlockItemFileHeader header_;
 
  public:
-  explicit TsBlockSegmentBlockItemFile(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentBlockItemFile(const string& file_path) : file_path_(file_path) {
     file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
     block_item_mtx_ = new KRWLatch(RWLATCH_ID_MMAP_BLOCK_META_RWLOCK);
     memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
-  ~TsBlockSegmentBlockItemFile() {
+  ~TsEntitySegmentBlockItemFile() {
     if (block_item_mtx_) {
       delete block_item_mtx_;
       block_item_mtx_ = nullptr;
@@ -148,9 +148,9 @@ class TsBlockSegmentBlockItemFile {
 
   KStatus Open();
 
-  KStatus AllocateBlockItem(uint64_t entity_id, TsBlockSegmentBlockItem& block_item_info);
+  KStatus AllocateBlockItem(uint64_t entity_id, TsEntitySegmentBlockItem& block_item_info);
 
-  KStatus GetBlockItem(uint64_t entity_id, uint64_t blk_offset, TsBlockSegmentBlockItem& blk_item);
+  KStatus GetBlockItem(uint64_t entity_id, uint64_t blk_offset, TsEntitySegmentBlockItem& blk_item);
 
  protected:
   KStatus readFileHeader(TsBlockItemFileHeader& block_meta);
@@ -158,48 +158,48 @@ class TsBlockSegmentBlockItemFile {
   KStatus writeFileMeta(TsBlockItemFileHeader& block_meta);
 };
 
-class TsBlockSegment;
-class TsBlockSegmentMetaManager {
+class TsEntitySegment;
+class TsEntitySegmentMetaManager {
  private:
   string path_;
-  TsBlockSegmentEntityItemFile entity_meta_;
-  TsBlockSegmentBlockItemFile block_meta_;
+  TsEntitySegmentEntityItemFile entity_meta_;
+  TsEntitySegmentBlockItemFile block_meta_;
 
  public:
-  explicit TsBlockSegmentMetaManager(const string& path);
+  explicit TsEntitySegmentMetaManager(const string& path);
 
-  ~TsBlockSegmentMetaManager() {}
+  ~TsEntitySegmentMetaManager() {}
 
   KStatus Open();
 
-  KStatus AppendBlockItem(TsBlockSegmentBlockItem& blk_item);
+  KStatus AppendBlockItem(TsEntitySegmentBlockItem& blk_item);
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsBlockSegment* blk_segment,
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
                         std::list<TsBlockSpan>* block_spans);
 };
 
-struct TsBlockSegmentBlockInfo {
+struct TsEntitySegmentBlockInfo {
   std::vector<uint32_t> col_block_offset;
 };
 
-struct TsBlockSegmentColumnBlock {
+struct TsEntitySegmentColumnBlock {
   TsBitmap bitmap;
   std::string buffer;
   std::vector<std::string> var_rows;
 };
 
 class TsVGroupPartition;
-class TsBlockSegmentBlock : public TsBlock {
+class TsEntitySegmentBlock : public TsBlock {
  private:
   uint32_t table_id_ = 0;
   uint32_t table_version_ = 0;
   uint64_t entity_id_ = 0;
   std::vector<AttributeInfo> metric_schema_;
 
-  TsBlockSegmentBlockInfo block_info_;
-  std::vector<TsBlockSegmentColumnBlock> column_blocks_;
+  TsEntitySegmentBlockInfo block_info_;
+  std::vector<TsEntitySegmentColumnBlock> column_blocks_;
 
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
@@ -207,17 +207,17 @@ class TsBlockSegmentBlock : public TsBlock {
   uint64_t block_offset_ = 0;
   uint32_t block_length_ = 0;
 
-  TsBlockSegment* block_segment_ = nullptr;
+  TsEntitySegment* block_segment_ = nullptr;
 
  public:
-  TsBlockSegmentBlock() = delete;
+  TsEntitySegmentBlock() = delete;
   // for read
-  TsBlockSegmentBlock(uint32_t table_id, const TsBlockSegmentBlockItem& block_item, TsBlockSegment* block_segment);
+  TsEntitySegmentBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item, TsEntitySegment* block_segment);
   // for write
-  TsBlockSegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
+  TsEntitySegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
                       std::vector<AttributeInfo>& metric_schema);
-  TsBlockSegmentBlock(const TsBlockSegmentBlock& other);
-  ~TsBlockSegmentBlock() {}
+  TsEntitySegmentBlock(const TsEntitySegmentBlock& other);
+  ~TsEntitySegmentBlock() {}
 
   bool HasData() { return n_rows_ > 0; }
 
@@ -233,7 +233,7 @@ class TsBlockSegmentBlock : public TsBlock {
 
   std::vector<AttributeInfo> GetMetricSchema() { return metric_schema_; }
 
-  const TsBlockSegmentBlockInfo& GetBlockInfo() const { return block_info_; }
+  const TsEntitySegmentBlockInfo& GetBlockInfo() const { return block_info_; }
 
   uint64_t GetBlockOffset() const { return block_offset_; }
 
@@ -286,33 +286,33 @@ class TsBlockSegmentBlock : public TsBlock {
   void Clear();
 };
 
-class TsBlockSegment : public TsSegmentBase {
+class TsEntitySegment : public TsSegmentBase {
  private:
   string dir_path_;
-  TsBlockSegmentMetaManager meta_mgr_;
-  TsBlockSegmentBlockFile block_file_;
-  TsBlockSegmentAggFile agg_file_;
+  TsEntitySegmentMetaManager meta_mgr_;
+  TsEntitySegmentBlockFile block_file_;
+  TsEntitySegmentAggFile agg_file_;
 
  public:
-  TsBlockSegment() = delete;
+  TsEntitySegment() = delete;
 
-  explicit TsBlockSegment(const std::filesystem::path& root);
+  explicit TsEntitySegment(const std::filesystem::path& root);
 
-  ~TsBlockSegment() {}
+  ~TsEntitySegment() {}
 
   KStatus Open();
 
-  KStatus AppendBlockData(TsBlockSegmentBlockItem& blk_item, const TSSlice& data, const TSSlice& agg);
+  KStatus AppendBlockData(TsEntitySegmentBlockItem& blk_item, const TSSlice& data, const TSSlice& agg);
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsBlockSegmentBlockItem>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
-                         TsBlockSegmentBlock* block);
+                         TsEntitySegmentBlock* block);
 };
 
-class TsBlockSegmentBuilder {
+class TsEntitySegmentBuilder {
  private:
   struct TsEntityKey {
     TSTableID table_id = 0;
@@ -340,10 +340,10 @@ class TsBlockSegmentBuilder {
   TsVGroupPartition* partition_;
 
  public:
-  explicit TsBlockSegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
+  explicit TsEntitySegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
                                  TsVGroupPartition* partition = nullptr) :
                                  last_segments_(last_segments), partition_(partition) {}
-  ~TsBlockSegmentBuilder() {}
+  ~TsEntitySegmentBuilder() {}
 
   KStatus BuildAndFlush();
 };

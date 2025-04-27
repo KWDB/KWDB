@@ -15,7 +15,7 @@
 #include <memory>
 #include <utility>
 
-#include "ts_block_segment.h"
+#include "ts_entity_segment.h"
 #include "ts_vgroup_partition.h"
 #include "ts_lastsegment.h"
 #include "ts_lastsegment_manager.h"
@@ -37,7 +37,7 @@ TsVGroupPartition::~TsVGroupPartition() {}
 
 KStatus TsVGroupPartition::Open() {
   std::filesystem::create_directories(path_);
-  blk_segment_ = std::make_unique<TsBlockSegment>(path_);
+  blk_segment_ = std::make_unique<TsEntitySegment>(path_);
   return KStatus::SUCCESS;
 }
 
@@ -52,7 +52,7 @@ KStatus TsVGroupPartition::Compact() {
     return KStatus::SUCCESS;
   }
   // 2. Build the column block.
-  TsBlockSegmentBuilder builder(last_segments, this);
+  TsEntitySegmentBuilder builder(last_segments, this);
   KStatus s = builder.BuildAndFlush();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("partition[%s] compact failed", path_.c_str());
@@ -67,7 +67,7 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
                                                 uint32_t col_num, uint32_t row_num, timestamp64 max_ts, timestamp64 min_ts,
                                                 TSSlice block_data, TSSlice block_agg) {
   // generating new block item info ,and append to block segment.
-  TsBlockSegmentBlockItem blk_item;
+  TsEntitySegmentBlockItem blk_item;
   blk_item.entity_id = entity_id;
   blk_item.table_version = table_version;
   blk_item.n_cols = col_num;

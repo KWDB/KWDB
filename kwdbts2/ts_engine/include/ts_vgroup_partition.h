@@ -16,7 +16,7 @@
 #include <string>
 #include <cstdio>
 
-#include "ts_block_segment.h"
+#include "ts_entity_segment.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_engine_schema_manager.h"
 
@@ -29,7 +29,7 @@ class TsVGroupPartition {
 
   std::filesystem::path path_;
 
-  std::unique_ptr<TsBlockSegment> blk_segment_;
+  std::unique_ptr<TsEntitySegment> blk_segment_;
   TsLastSegmentManager last_segment_mgr_;
   std::unique_ptr<KRWLatch> partition_mtx_;
 
@@ -60,7 +60,7 @@ class TsVGroupPartition {
 
   TsEngineSchemaManager* GetSchemaMgr() { return schema_mgr_; }
 
-  TsBlockSegment* GetBlockSegment() { return blk_segment_.get(); }
+  TsEntitySegment* GetBlockSegment() { return blk_segment_.get(); }
 
   TsLastSegmentManager* GetLastSegmentMgr() { return &last_segment_mgr_; }
 
