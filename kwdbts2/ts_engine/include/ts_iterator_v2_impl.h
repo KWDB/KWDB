@@ -56,9 +56,9 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
   k_uint32 cur_entity_index_;
   k_uint32 cur_partition_index_;
-  std::unique_ptr<TsMemSegmentIterator> mem_segment_iterator_{nullptr};
-  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
-  std::unique_ptr<TsBlockSegmentIterator> block_segment_iterator_{nullptr};
+  std::unique_ptr<TsMemSegmentIterator> mem_segment_iterator_;
+  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_;
+  std::unique_ptr<TsBlockSegmentIterator> block_segment_iterator_;
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
@@ -164,11 +164,6 @@ class TsLastSegmentIterator : public TsSegmentIterator {
   ~TsLastSegmentIterator();
 
   KStatus Init() override;
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished) override;
-  KStatus ScanAgg(k_uint32* count);
- private:
-  std::vector<std::shared_ptr<TsLastSegmentEntityBlockIteratorBase>> last_segment_block_iterators_;
-  uint32_t last_segment_block_iterator_index_;
 };
 
 class TsBlockSegmentIterator : public TsSegmentIterator {
