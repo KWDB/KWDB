@@ -387,7 +387,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }};
   // 1. read chk log from chk file.
-  wal_mgr_->ReadWALLog(logs, 0, wal_mgr_->FetchCurrentLSN());
+  wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN());
 
   // 2. read wal log from all vgroup
   for (const auto &vgrp: vgroups_) {
@@ -465,7 +465,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
 
   // 1. get engine chk wal log.
   std::vector<LogEntry*> logs;
-  KStatus s = wal_mgr_->ReadWALLog(logs, 0, wal_mgr_->FetchCurrentLSN());
+  KStatus s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN());
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadWALLog from chk file while recovering.")
     return KStatus::FAIL;
