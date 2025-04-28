@@ -745,7 +745,7 @@ bool WALMgr::NeedCheckpoint() {
 KStatus WALMgr::SwitchNextFile() {
   // todo rename cur to chk
   if (std::filesystem::exists(file_mgr_->getFilePath())) {
-    if (-1 == rename(file_mgr_->getFilePath().c_str(), chk_file_name.c_str())) {
+    if (-1 == rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
       return KStatus::FAIL;
     }
