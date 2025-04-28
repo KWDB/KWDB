@@ -867,7 +867,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   TsEntityKey entity_key;
   std::shared_ptr<TsEntitySegmentBlock> block = nullptr;
   while (true) {
-    if (block_span.nrow == 0) {
+    if (block_span.GetRowNum() == 0) {
       s = iter.Next(&block_span, &is_finished);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, iterate last segments failed.")
@@ -877,7 +877,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
         break;
       }
     }
-    TsEntityKey cur_entity_key = {block_span.GetTableID(), block_span.GetTableVersion(), block_span.entity_id};
+    TsEntityKey cur_entity_key = {block_span.GetTableID(), block_span.GetTableVersion(), block_span.GetEntityID()};
     if (entity_key != cur_entity_key) {
       if (block && block->HasData()) {
         if (block->GetRowNum() >= EngineOptions::min_rows_per_block) {

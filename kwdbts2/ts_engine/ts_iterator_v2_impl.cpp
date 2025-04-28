@@ -549,7 +549,7 @@ KStatus TsSegmentIterator::Next(ResultSet* res, k_uint32* count, bool* is_finish
 KStatus TsSegmentIterator::ScanCount(k_uint32* count) {
   *count = 0;
   for (const auto& block : ts_block_spans_) {
-    *count += block.nrow;
+    *count += block.GetRowNum();
   }
 
   return KStatus::SUCCESS;

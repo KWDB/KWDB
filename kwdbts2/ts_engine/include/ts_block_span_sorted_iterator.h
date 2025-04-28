@@ -184,8 +184,8 @@ class TsSegmentsBlockSpanSortIterator {
       }
       if (!is_finished) {
         uint64_t entity_id = cur_block_spans_[i].GetEntityID();
-        timestamp64 ts = cur_block_spans_[i].block->GetTS(cur_block_spans_[i].start_row);
-        uint64_t seq_no = *(cur_block_spans_[i].block->GetSeqNoAddr(cur_block_spans_[i].start_row));
+        timestamp64 ts = cur_block_spans_[i]->GetTS(0);
+        uint64_t seq_no = *(cur_block_spans_[i]->GetSeqNoAddr(0));
         TsIteratorRowInfo row_info{entity_id, ts, seq_no, i, cur_block_spans_[i].start_row};
         insertRowInfo(row_info);
       }
