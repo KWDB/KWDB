@@ -586,7 +586,7 @@ KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LS
 
 KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, true);
+  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, 0, true);
   if (status == KStatus::FAIL) {
     LOG_ERROR("Failed to read the WAL log.")
     file_mgr_->Unlock();
