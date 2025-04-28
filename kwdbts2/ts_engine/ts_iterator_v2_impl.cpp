@@ -37,7 +37,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   KStatus ret;
-  ret = table_schema_mgr_->GetMetricAttr(attrs_, table_version_);
+  ret = table_schema_mgr_->GetMetricMeta(table_version_, attrs_);
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
@@ -407,13 +407,14 @@ TsSegmentIterator::~TsSegmentIterator() {
 }
 
 KStatus TsSegmentIterator::Init() {
-  return table_schema_mgr_->GetMetricAttr(attrs_, table_version_);
+  return table_schema_mgr_->GetMetricMeta(table_version_, attrs_);
 }
 
 inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlock> ts_block, ResultSet* res, k_uint32* count) {
   *count = ts_block->GetRowNum();
   KStatus ret;
-  for (auto col_idx : kw_scan_cols_) {
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_int32 col_idx = ts_scan_cols_[i];
     Batch* batch;
     if (col_idx >= 0 && col_idx < attrs_.size()) {
       unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
@@ -466,7 +467,7 @@ inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlock> ts_block
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
-    res->push_back(col_idx, batch);
+    res->push_back(i, batch);
   }
   res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
 
@@ -476,7 +477,8 @@ inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlock> ts_block
 KStatus TsSegmentIterator::AddBlockSpanData(const TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count) {
   *count = ts_blk_span.nrow;
   KStatus ret;
-  for (auto col_idx : kw_scan_cols_) {
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_int32 col_idx = ts_scan_cols_[i];
     Batch* batch;
     if (col_idx >= 0 && col_idx < attrs_.size()) {
       unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
@@ -529,7 +531,7 @@ KStatus TsSegmentIterator::AddBlockSpanData(const TsBlockSpan& ts_blk_span, Resu
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
-    res->push_back(col_idx, batch);
+    res->push_back(i, batch);
   }
   res->entity_index = {1, entity_id_, vgroup_->GetVGroupID()};
 

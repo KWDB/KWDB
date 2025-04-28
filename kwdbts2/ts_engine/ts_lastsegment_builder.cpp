@@ -73,7 +73,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
   auto s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   std::vector<AttributeInfo> data_schema;
-  table_mgr->GetMetricAttr(data_schema);
+  table_mgr->GetColumnsExcludeDropped(data_schema);
 
   int left = cols_data_buffer_.buffer.size();
   data_block_builder_->Reset(table_id_, version_);
@@ -112,7 +112,7 @@ KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, T
       return FAIL;
     }
     std::vector<AttributeInfo> data_schema;
-    s = table_mgr->GetMetricAttr(data_schema, version);
+    s = table_mgr->GetColumnsExcludeDropped(data_schema, version);
     if (s == FAIL) {
       LOG_ERROR("can not get schema, table id: %lu, version: %u", table_id, version);
       return FAIL;
