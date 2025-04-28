@@ -250,7 +250,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
   }
   // rename cur to chk.
 
-
   this->Unlock();
   return KStatus::SUCCESS;
 }
