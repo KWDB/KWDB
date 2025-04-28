@@ -37,7 +37,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   KStatus ret;
-  ret = table_schema_mgr_->GetMetricAttr(attrs_, table_version_);
+  ret = table_schema_mgr_->GetMetricMeta(table_version_, attrs_);
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
