@@ -252,6 +252,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
 
 
   this->Unlock();
+  return KStatus::SUCCESS;
 }
 
 KStatus WALMgr::Flush(kwdbContext_p ctx) {
