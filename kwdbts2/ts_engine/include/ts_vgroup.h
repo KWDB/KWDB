@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "data_type.h"
 #include "kwdb_type.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_vgroup_partition.h"
@@ -53,23 +54,21 @@ class TsVGroup;
 class PartitionManager {
  private:
   std::unordered_map<int, std::shared_ptr<TsVGroupPartition>> partitions_;
-  KRWLatch partitions_latch_;
+  std::shared_mutex mu_;
   TsVGroup* vgroup_;
   int database_id_;
   int64_t interval_;
 
  public:
   PartitionManager(TsVGroup* vgroup, int database_id, int64_t interval)
-      : partitions_latch_(RWLATCH_ID_VGROUP_PARTITION_MGR_RWLOCK), vgroup_(vgroup),
-        database_id_(database_id), interval_(interval) {}
+      : vgroup_(vgroup), database_id_(database_id), interval_(interval) {}
   std::shared_ptr<TsVGroupPartition> Get(int64_t timestamp, bool create_if_not_exist);
   std::vector<std::shared_ptr<TsVGroupPartition>> GetAllPartitions();
   std::vector<std::shared_ptr<TsVGroupPartition>> GetCompactPartitions();
   void SetInterval(int64_t interval) { interval_ = interval; }
 
   void GetPartitions(std::unordered_map<int, std::shared_ptr<TsVGroupPartition>>* map) {
-    RW_LATCH_S_LOCK(&partitions_latch_);
-    Defer defer{[&]{ RW_LATCH_UNLOCK(&partitions_latch_); }};
+    std::shared_lock lk{mu_};
     *map = partitions_;
   }
 };
@@ -85,7 +84,7 @@ class TsVGroup {
   TsEngineSchemaManager* schema_mgr_{nullptr};
   //  <database_id, Manager>
   std::map<uint32_t, std::unique_ptr<PartitionManager>> partitions_;
-  KRWLatch partitions_latch_;
+  std::shared_mutex s_mu_;
 
   TsMemSegmentManager mem_segment_mgr_;
 

@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <memory>
 #include <regex>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -37,9 +38,12 @@ static const uint64_t interval = 3600 * 24 * 30;  // 30 days.
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
                    TsEngineSchemaManager* schema_mgr, bool enable_compact_thread)
-    : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), partitions_latch_(RWLATCH_ID_VGROUP_PARTITIONS_RWLOCK),
-      mem_segment_mgr_(this), path_(engine_options.db_path + "/" + GetFileName()),
-      entity_counter_(0), engine_options_(engine_options),
+    : vgroup_id_(vgroup_id),
+      schema_mgr_(schema_mgr),
+      mem_segment_mgr_(this),
+      path_(engine_options.db_path + "/" + GetFileName()),
+      entity_counter_(0),
+      engine_options_(engine_options),
       enable_compact_thread_(enable_compact_thread) {
   initCompactThread();
 }
@@ -263,18 +267,20 @@ TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() {
   return &mem_segment_mgr_;
 }
 
-std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
-  RW_LATCH_S_LOCK(&partitions_latch_);
-  auto partition_manager = partitions_[database_id].get();
-  RW_LATCH_UNLOCK(&partitions_latch_);
+std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id,
+                                                          timestamp64 p_time) {
+  PartitionManager* partition_manager = nullptr;
+  {
+    std::shared_lock lk{s_mu_};
+    auto partition_manager = partitions_[database_id].get();
+  }
   if (partition_manager == nullptr) {
     // TODO(zzr): interval should be fetched form global setting;
-    RW_LATCH_X_LOCK(&partitions_latch_);
+    std::unique_lock lk{s_mu_};
     if (partitions_[database_id].get() == nullptr) {
       partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
     }
     partition_manager = partitions_[database_id].get();
-    RW_LATCH_UNLOCK(&partitions_latch_);
   }
   return partition_manager->Get(p_time, true);
 }
@@ -386,12 +392,13 @@ inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& x, std::shared
 
 KStatus TsVGroup::Compact(int thread_num) {
   std::vector<std::shared_ptr<TsVGroupPartition>> vgroup_partitions;
-  RW_LATCH_S_LOCK(&partitions_latch_);
-  for (auto& partition : partitions_) {
-    std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetCompactPartitions();
-    vgroup_partitions.insert(vgroup_partitions.end(), v.begin(), v.end());
+  {
+    std::shared_lock s_lk{s_mu_};
+    for (auto& partition : partitions_) {
+      std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetCompactPartitions();
+      vgroup_partitions.insert(vgroup_partitions.end(), v.begin(), v.end());
+    }
   }
-  RW_LATCH_UNLOCK(&partitions_latch_);
   // Prioritize the latest partition
   std::sort(vgroup_partitions.begin(), vgroup_partitions.end(), PartitionLessThan);
   // Compact partitions
@@ -877,52 +884,51 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
 
 std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
   int idx = timestamp / interval_;
-  RW_LATCH_S_LOCK(&partitions_latch_);
-  auto it = partitions_.find(idx);
-  if (it == partitions_.end()) {
-    RW_LATCH_UNLOCK(&partitions_latch_);
-    if (!create_if_not_exist) {
-      return nullptr;
-    }
-
-    int64_t start = idx * interval_;
-    int64_t end = start + interval_;
-    auto root = vgroup_->GetPath();
-    RW_LATCH_X_LOCK(&partitions_latch_);
-    it = partitions_.find(idx);
-    if (it == partitions_.end()) {
-      auto partition = std::make_shared<TsVGroupPartition>(root, database_id_, vgroup_->GetSchemaMgr(), start, end);
-      partition->Open();
-      partitions_[idx] = partition;
-      RW_LATCH_UNLOCK(&partitions_latch_);
-      return partition;
+  {
+    std::shared_lock s_lk{mu_};
+    auto it = partitions_.find(idx);
+    if (it != partitions_.end()) {
+      return it->second;
     }
   }
-  RW_LATCH_UNLOCK(&partitions_latch_);
-  return it->second;
+  if (!create_if_not_exist) {
+    return nullptr;
+  }
+
+  int64_t start = idx * interval_;
+  int64_t end = start + interval_;
+  auto root = vgroup_->GetPath();
+  auto partition =
+      std::make_shared<TsVGroupPartition>(root, database_id_, vgroup_->GetSchemaMgr(), start, end);
+  std::unique_lock u_lk{mu_};
+  auto it = partitions_.find(idx);
+  if (it != partitions_.end()) {
+    return it->second;
+  }
+  partition->Open();
+  partitions_[idx] = partition;
+  return partition;
 }
 
 std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetAllPartitions() {
   std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
-  RW_LATCH_S_LOCK(&partitions_latch_);
+  std::shared_lock s_lk{mu_};
   for (auto& kv : partitions_) {
     if (kv.second != nullptr) {
       partitions.push_back(kv.second);
     }
   }
-  RW_LATCH_UNLOCK(&partitions_latch_);
   return partitions;
 }
 
 std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetCompactPartitions() {
   std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
-  RW_LATCH_S_LOCK(&partitions_latch_);
+  std::shared_lock s_lk{mu_};
   for (auto& kv : partitions_) {
     if (kv.second != nullptr && kv.second->NeedCompact()) {
       partitions.push_back(kv.second);
     }
   }
-  RW_LATCH_UNLOCK(&partitions_latch_);
   return partitions;
 }
 

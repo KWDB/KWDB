@@ -17,6 +17,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
+#include <system_error>
 
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -232,6 +234,39 @@ KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath,
     return FAIL;
   }
   file->reset(new TsMMapRandomReadFile(filepath, fd, static_cast<char*>(ptr), file_size));
+  return SUCCESS;
+}
+
+KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
+  std::error_code ec;
+  bool ok = std::filesystem::create_directory(path, ec);
+  if (!ok) {
+    if (std::filesystem::exists(path)) {
+      return SUCCESS;
+    }
+    LOG_ERROR("create directory %s failed, reason: %s", path.c_str(), ec.message().c_str());
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsMMapIOEnv::DeleteDir(const std::string& path) {
+  std::error_code ec;
+  uintmax_t n_removed = std::filesystem::remove_all(path, ec);
+  if (n_removed == -1) {
+    LOG_ERROR("cannot delete directory %s, reason: %s", path.c_str(), ec.message().c_str());
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsMMapIOEnv::DeleteFile(const std::string& path) {
+  std::error_code ec;
+  bool ok = std::filesystem::remove(path, ec);
+  if (!ok) {
+    LOG_ERROR("cannot delete directory %s, reason: %s", path.c_str(), ec.message().c_str());
+    return FAIL;
+  }
   return SUCCESS;
 }
 

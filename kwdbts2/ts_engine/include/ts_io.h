@@ -277,7 +277,7 @@ class TsAppendOnlyFile {
 
 class TsRandomReadFile {
  protected:
-  bool delete_after_free = false;
+  bool delete_after_free = false;  // remove it later
   const std::string path_;
 
  public:
@@ -295,6 +295,23 @@ class TsRandomReadFile {
   std::string GetFilePath() const { return path_; }
 
   void MarkDelete() { delete_after_free = true; }
+};
+
+class TsSequentialReadFile {
+ protected:
+  bool delete_after_free = false;  // remove it later
+  const std::string path_;
+
+ public:
+  explicit TsSequentialReadFile(const std::string& path) : path_(path) {}
+  virtual ~TsSequentialReadFile() {
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
+  }
+
+  virtual KStatus Read(size_t n, TSSlice* slice, char* buf) = 0;
+  virtual KStatus Skip(size_t n) = 0;
 };
 
 class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
@@ -364,6 +381,9 @@ class TsIOEnv {
   virtual KStatus NewRandomReadFile(const std::string& filepath,
                                     std::unique_ptr<TsRandomReadFile>* file,
                                     size_t file_size = -1) = 0;
+  virtual KStatus NewDirectory(const std::string& path) = 0;
+  virtual KStatus DeleteDir(const std::string& path) = 0;
+  virtual KStatus DeleteFile(const std::string& path) = 0;
 };
 
 class TsMMapIOEnv : public TsIOEnv {
@@ -373,5 +393,8 @@ class TsMMapIOEnv : public TsIOEnv {
                             bool overrite = true, size_t offset = -1) override;
   KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                             size_t file_size = -1) override;
+  KStatus NewDirectory(const std::string& path) override;
+  KStatus DeleteFile(const std::string& path) override;
+  KStatus DeleteDir(const std::string& path) override;
 };
 }  // namespace kwdbts
