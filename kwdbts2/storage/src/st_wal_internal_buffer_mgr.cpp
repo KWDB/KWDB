@@ -656,6 +656,8 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
   TS_LSN old_lsn = 0;
+  TS_LSN v_lsn = current_offset;
+
   KStatus status;
 
   status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn) + sizeof(WALTableType),
@@ -670,10 +672,6 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   memcpy(&vgrp_id, read_buf + sizeof(x_id), sizeof(vgrp_id));
   memcpy(&old_lsn, read_buf + sizeof(vgrp_id), sizeof(old_lsn));
   memcpy(&tbl_typ, read_buf + sizeof(old_lsn), sizeof(tbl_typ));
-
-  if (for_chk) {
-    old_lsn = current_offset + sizeof(x_id) + sizeof(vgrp_id);
-  }
 
   delete[] read_buf;
   read_buf = nullptr;
@@ -718,6 +716,9 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       if (txn_id == 0 || txn_id == x_id) {
         InsertLogTagsEntry* insert_tags = nullptr;
         try {
+          if (for_chk) {
+            old_lsn = v_lsn;
+          }
           insert_tags = KNEW InsertLogTagsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ, time_partition,
                                                       offset, length, read_buf, vgrp_id, old_lsn);
         } catch (exception &e) {
@@ -773,6 +774,9 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       }
 
       if (txn_id == 0 || txn_id == x_id) {
+        if (for_chk) {
+          old_lsn = v_lsn;
+        }
         auto* insert_metrics = KNEW InsertLogMetricsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ,
                                                           time_partition, offset, length, p_tag_len, read_buf, vgrp_id,
                                                           old_lsn);
