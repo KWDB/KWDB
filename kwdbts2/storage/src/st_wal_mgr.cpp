@@ -324,8 +324,8 @@ void WALMgr::Unlock() {
 KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
                                size_t offset, TSSlice prepared_payload, uint64_t vgrp_id) {
   size_t log_len = InsertLogTagsEntry::fixed_length + prepared_payload.len;
-  auto* wal_log = InsertLogTagsEntry::construct(WALLogType::INSERT, x_id, WALTableType::TAG, time_partition, offset,
-                                                prepared_payload.len, prepared_payload.data, vgrp_id);
+  auto* wal_log = InsertLogTagsEntry::construct(WALLogType::INSERT, x_id, vgrp_id, 0, WALTableType::TAG, time_partition, offset,
+                                                prepared_payload.len, prepared_payload.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -338,9 +338,9 @@ KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 
 KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
                                size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn, uint64_t vgrp_id) {
-  auto* wal_log = InsertLogMetricsEntry::construct(WALLogType::INSERT, x_id, WALTableType::DATA, time_partition, offset,
+  auto* wal_log = InsertLogMetricsEntry::construct(WALLogType::INSERT, x_id, vgrp_id, 0, WALTableType::DATA, time_partition, offset,
                                                    prepared_payload.len, prepared_payload.data, primary_tag.len,
-                                                   primary_tag.data, vgrp_id);
+                                                   primary_tag.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -353,9 +353,9 @@ KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 }
 
 KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                               size_t offset, TSSlice new_payload, TSSlice old_payload) {
+                               size_t offset, TSSlice new_payload, TSSlice old_payload, uint64_t vgrp_id) {
   size_t log_len = UpdateLogTagsEntry::fixed_length + new_payload.len+ old_payload.len;
-  auto* wal_log = UpdateLogTagsEntry::construct(WALLogType::UPDATE, x_id, WALTableType::TAG, time_partition, offset,
+  auto* wal_log = UpdateLogTagsEntry::construct(WALLogType::UPDATE, x_id, vgrp_id, 0, WALTableType::TAG, time_partition, offset,
                                                 new_payload.len, old_payload.len, new_payload.data, old_payload.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
@@ -368,8 +368,8 @@ KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 }
 
 KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                                      const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans) {
-  auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, WALTableType::DATA, primary_tag.length(),
+                                      const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans, uint64_t vgrp_id) {
+  auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA, primary_tag.length(),
                                                    0, 0, row_spans.size(), primary_tag.data(), row_spans.data());
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
@@ -383,8 +383,8 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
 }
 
 KStatus WALMgr::WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                                  uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack) {
-  auto* wal_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, x_id, WALTableType::TAG, sub_group_id, entity_id,
+                                  uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id) {
+  auto* wal_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::TAG, sub_group_id, entity_id,
                                                 primary_tag.length(), primary_tag.data(), tag_pack.len, tag_pack.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")

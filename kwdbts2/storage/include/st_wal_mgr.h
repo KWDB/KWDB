@@ -122,7 +122,7 @@ class WALMgr {
    * @return
    */
   KStatus WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                         size_t offset, TSSlice new_payload, TSSlice old_payload);
+                         size_t offset, TSSlice new_payload, TSSlice old_payload, uint64_t vgrp_id = 0);
 
   /**
    * Construct the log entry for the INSERT Metrics operation.
@@ -147,7 +147,7 @@ class WALMgr {
    * @return
    */
   KStatus WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                                const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans);
+                                const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans, uint64_t vgrp_id = 0);
 
   /**
    * Construct the log entry for the DELETE Tag operation.
@@ -160,7 +160,7 @@ class WALMgr {
    * @return
    */
   KStatus WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                            uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack);
+                            uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id = 0);
 
   /**
    * Construct the log entry for the CREATE INDEX operation.

@@ -92,7 +92,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     // lock current lsn: Lock the current LSN until the log is written to the cache
     wal_manager_->Lock();
     TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
-    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn);
+    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn, vgroup_id_);
     if (s == KStatus::FAIL) {
       wal_manager_->Unlock();
       return s;
