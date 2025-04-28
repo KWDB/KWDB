@@ -217,7 +217,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override { return KStatus::SUCCESS; }
 
-  KStatus Recover(kwdbContext_p ctx, const std::map<uint64_t, uint64_t>& applied_indexes);
+  KStatus Recover(kwdbContext_p ctx) override;
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      uint64_t range_id, uint64_t index, uint64_t& mtr_id) override { return KStatus::SUCCESS; }

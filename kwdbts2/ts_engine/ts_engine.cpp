@@ -448,7 +448,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   return wal_mgr_->CreateCheckpoint(ctx);
 }
 
-KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx, const std::map<uint64_t, uint64_t>& applied_indexes) {
+KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   //todo recover logic
   /*
    * 1. get engine chk wal log.
@@ -512,7 +512,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx, const std::map<uint64_t, uint
   for (auto& it : incomplete) {
     TS_LSN mtr_id = it.first;
     auto log_entry = it.second;
-    uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), applied_indexes);
+    uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
       s = tsx_mgr_->MtrCommit(ctx, mtr_id);
       if (s == FAIL) return s;
