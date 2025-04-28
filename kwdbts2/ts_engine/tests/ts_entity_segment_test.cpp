@@ -84,7 +84,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     // partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
 
-    TsEntitySegment* block_segment = partition->GetBlockSegment();
+    TsEntitySegment* block_segment = partition->GetEntitySegment();
     int sum = 0;
     for (int i = 0; i < 10; ++i) {
       {
