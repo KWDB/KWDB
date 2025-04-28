@@ -158,7 +158,8 @@ struct EntityItem {
   int64_t min_ts;                   // min ts of current entity in this Partition
   bool is_deleted;                  // entity delete flag.
   bool is_disordered = false;
-  char user_defined[32];  // reserved for user-defined information.
+  BLOCK_ID count_block_id = 0;  // block should to calculate count.
+  char user_defined[28];  // reserved for user-defined information.
 
   ostream& to_string(ostream& os) {
     os << " entity_id:" << entity_id

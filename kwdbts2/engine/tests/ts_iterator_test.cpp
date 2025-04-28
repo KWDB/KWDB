@@ -364,7 +364,7 @@ TEST_F(TestIterator, aggregation1) {
   is_finished = false;
   ASSERT_EQ(iter2->Next(&res2, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
-  ASSERT_EQ(KTimestamp(res2.data[0][0]->mem), 
+  ASSERT_EQ(KTimestamp(res2.data[0][0]->mem),
             convertMSToPrecisionTS(10000 * 1000 + row_num_ - 1, ts_type));
   ASSERT_EQ(KInt16(res2.data[1][0]->mem), block_item_row_max + 3 * row_num_);
   ASSERT_EQ(KInt16(res2.data[2][0]->mem), block_item_row_max + 3 * row_num_);
@@ -1747,7 +1747,7 @@ TEST_F(TestIterator, multi_thread) {
   ASSERT_EQ(ts_table->DropAll(ctx_), KStatus::SUCCESS);
 }
 
-// 乱序数据count测试
+// disorder data count test
 TEST_F(TestIterator, disorderCount) {
   roachpb::CreateTsTable meta;
   CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 10;
@@ -1767,12 +1767,11 @@ TEST_F(TestIterator, disorderCount) {
   ASSERT_EQ(ts_table->GetEntityGroup(ctx_, kTestRange.range_group_id, &tbl_range), KStatus::SUCCESS);
 
   int write_count = 200;
-  // 交叉写入乱序数据
+  // writer disorder data
   for (int i = 0; i < write_count; ++i) {
     if (i % 2 == 0) {
       data_value = GenSomePayloadData(ctx_, 1, p_len, start_ts + i, &meta);
     } else {
-      // 写入乱序数据
       data_value = GenSomePayloadData(ctx_, 1, p_len, disorder_ts + i, &meta);
     }
     TSSlice payload{data_value, p_len};
@@ -1798,7 +1797,7 @@ TEST_F(TestIterator, disorderCount) {
   ASSERT_EQ(iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   ASSERT_EQ(KInt16(res.data[0][0]->mem), write_count / 2);
-  // 迭代器数据读取完成
+  // Iterator data read completed
   res.clear();
   is_finished = false;
   ASSERT_EQ(iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -1814,18 +1813,55 @@ TEST_F(TestIterator, disorderCount) {
   ASSERT_EQ(iter2->Next(&res, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   ASSERT_EQ(KInt16(res.data[0][0]->mem), write_count);
-  // 迭代器数据读取完成
+  // Iterator data read completed
   res.clear();
   is_finished = false;
   ASSERT_EQ(iter2->Next(&res, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 0);
   delete iter2;
+
+  // update the row_written of entity_item
+  ErrorInfo err_info;
+  ASSERT_EQ(tbl_range->Count(ctx_, err_info), KStatus::SUCCESS);
+  ts_span = {start_ts, start_ts + write_count * 10};
+  ts_span = ConvertMsToPrecision(ts_span, ts_type);
+  TsStorageIterator* iter3;
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+                                   scanaggtypes, 1, &iter3, tbl_range, {}, false, true), KStatus::SUCCESS);
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter3->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(KInt16(res.data[0][0]->mem), write_count / 2);
+  // Iterator data read completed
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter3->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter3;
+
+  ts_span = {0, INT64_MAX};
+  ts_span = ConvertMsToPrecision(ts_span, ts_type);
+  TsStorageIterator* iter4;
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+                                   scanaggtypes, 1, &iter4, tbl_range, {}, false, true), KStatus::SUCCESS);
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter4->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(KInt16(res.data[0][0]->mem), write_count);
+  // Iterator data read completed
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter4->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter4;
   ASSERT_EQ(ts_table->DropAll(ctx_), KStatus::SUCCESS);
 }
 
-// 跨分区count测试
+// multi partition count test
 TEST_F(TestIterator, aggCount) {
-  // 调小分区时间
+  // decrease the interval of partition
   kwdbts::EngineOptions::iot_interval = 10;
   roachpb::CreateTsTable meta;
   CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 10;
@@ -1851,7 +1887,7 @@ TEST_F(TestIterator, aggCount) {
   delete[] data_value;
   data_value = nullptr;
 
-  // 读取全部范围数据
+  // scan all data
   k_uint32 entity_id = 1;
   KwTsSpan ts_span = {start_ts, start_ts + write_count * 10};
   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
@@ -1870,14 +1906,14 @@ TEST_F(TestIterator, aggCount) {
   ASSERT_EQ(iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   ASSERT_EQ(KInt16(res.data[0][0]->mem), write_count);
-  // 迭代器数据读取完成
+  // Iterator data read completed
   res.clear();
   is_finished = false;
   ASSERT_EQ(iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 0);
   delete iter;
 
-  // 读取部分范围数据
+  // scan partial data
   ts_span = {start_ts + 100 * 10, start_ts + 2500 * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   TsStorageIterator* iter2;
@@ -1885,11 +1921,108 @@ TEST_F(TestIterator, aggCount) {
                                    scanaggtypes, 1, &iter2, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;
-  k_uint32 total_count = 0;
   ASSERT_EQ(iter2->Next(&res, &count, &is_finished), KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   ASSERT_EQ(KInt16(res.data[0][0]->mem), 2401);
-  // 迭代器数据读取完成
+  // Iterator data read completed
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter2->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter2;
+
+  // update the row_written of entity_item
+  ErrorInfo err_info;
+  ASSERT_EQ(tbl_range->Count(ctx_, err_info), KStatus::SUCCESS);
+  // scan partial data
+  TsStorageIterator* iter3;
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+                                   scanaggtypes, 1, &iter3, tbl_range, {}, false, true), KStatus::SUCCESS);
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter3->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(KInt16(res.data[0][0]->mem), 2401);
+  // Iterator data read completed
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter3->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter3;
+  ASSERT_EQ(ts_table->DropAll(ctx_), KStatus::SUCCESS);
+}
+
+// compress partition count test
+TEST_F(TestIterator, compressCount) {
+  // decrease the interval of partition
+  kwdbts::EngineOptions::iot_interval = 10;
+  roachpb::CreateTsTable meta;
+  CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 10;
+  CLUSTER_SETTING_COUNT_USE_STATISTICS = true;
+  KTableKey cur_table_id = 1011;
+  ConstructRoachpbTable(&meta, "test_table", cur_table_id);
+
+  std::vector<RangeGroup> ranges{kTestRange};
+  ASSERT_EQ(ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges), KStatus::SUCCESS);
+
+  char* data_value;
+  k_uint32 p_len = 0;
+  KTimestamp start_ts = 10000 * 1000;
+  std::shared_ptr<TsTable> ts_table;
+  ASSERT_EQ(ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table), KStatus::SUCCESS);
+  std::shared_ptr<TsEntityGroup> tbl_range;
+  ASSERT_EQ(ts_table->GetEntityGroup(ctx_, kTestRange.range_group_id, &tbl_range), KStatus::SUCCESS);
+
+  int write_count = 1893;
+  data_value = GenSomePayloadData(ctx_, write_count, p_len, start_ts, &meta);
+  TSSlice payload{data_value, p_len};
+  ASSERT_EQ(tbl_range->PutData(ctx_, payload), KStatus::SUCCESS);
+  delete[] data_value;
+  data_value = nullptr;
+
+  // update the row_written of entity_item
+  ErrorInfo err_info;
+  uint32_t compressed_num = 0;
+  auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
+  ASSERT_EQ(tbl_range->Compress(ctx_, INT64_MAX, compressed_num, err_info), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range->Count(ctx_, err_info), KStatus::SUCCESS);
+  // scan all data
+  k_uint32 entity_id = 1;
+  KwTsSpan ts_span = {0, INT64_MAX};
+  ts_span = ConvertMsToPrecision(ts_span, ts_type);
+  std::vector<k_uint32> scancols = {0};
+  std::vector<Sumfunctype> scanaggtypes = {Sumfunctype::COUNT};
+  TsStorageIterator* iter;
+
+  SubGroupID group_id = 1;
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+                                   scanaggtypes, 1, &iter, tbl_range, {}, false, true), KStatus::SUCCESS);
+
+  k_uint32 count;
+  ResultSet res{(k_uint32) scancols.size()};
+  bool is_finished = false;
+  ASSERT_EQ(iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(KInt16(res.data[0][0]->mem), write_count);
+  // Iterator data read completed
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter;
+
+  // scan partial data
+  ts_span = {start_ts + 100 * 10, start_ts + 1500 * 10};
+  ts_span = ConvertMsToPrecision(ts_span, ts_type);
+  TsStorageIterator* iter2;
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+                                   scanaggtypes, 1, &iter2, tbl_range, {}, false, true), KStatus::SUCCESS);
+  res.clear();
+  is_finished = false;
+  ASSERT_EQ(iter2->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(KInt16(res.data[0][0]->mem), 1401);
+  // Iterator data read completed
   res.clear();
   is_finished = false;
   ASSERT_EQ(iter2->Next(&res, &count, &is_finished), KStatus::SUCCESS);

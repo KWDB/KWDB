@@ -309,17 +309,16 @@ func (f *FlowBase) IsShortCircuitForPgEncode() bool {
 }
 
 // VecIsShortCircuitForPgEncode is part of the Flow interface.
-func (f *FlowBase) VecIsShortCircuitForPgEncode(ctx context.Context) (canShortCircuit bool) {
+func (f *FlowBase) VecIsShortCircuitForPgEncode(ctx context.Context) bool {
+	canShortCircuit := false
 	// f.AllPush: Push other operators down to noop.
 	// f.Format: The flag for service output encoding format, true:FormatBinary, false:FormatText.
 	// The relational operator only has noop, and noop has no filtering conditions or output column pruning.
 	if pgEncodeShortCircuitEnabled.Get(&f.Cfg.Settings.SV) && len(f.processors) <= 1 &&
 		f.AllPush && !f.Format {
 		canShortCircuit = true
-	} else {
-		canShortCircuit = false
 	}
-	return f.processors[0].SupportPgWire()
+	return canShortCircuit && f.processors[0].SupportPgWire()
 }
 
 // VecShortCircuitForPgEncode is part of the Flow interface.

@@ -117,7 +117,7 @@ TEST_F(TestPartitionBigTable, insert) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   initData2(ctx_, mt_table, entity_id, ts_now, row_num, &dedup_result);
   // Validate that the inserted rows match the expected count for entity ID 1.
-  ASSERT_EQ(mt_table->size(entity_id), row_num);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num);
   // Further validations on block items and their contents follow, ensuring correct data storage and aggregation.
   // Repeat the insertion process for a different entity ID (2), this time with 17 rows,
   // and validate the stored data integrity as before.
@@ -125,7 +125,7 @@ TEST_F(TestPartitionBigTable, insert) {
   row_num = 17;
   ts_now = time(nullptr) * 1000;
   initData2(ctx_, mt_table, entity_id, ts_now, row_num, &dedup_result);
-  ASSERT_EQ(mt_table->size(entity_id), 17);
+  ASSERT_EQ(countRecords(mt_table, entity_id), 17);
   // Additional checks to confirm the second batch of data was correctly handled.
 
   // Clean up allocated resources.
@@ -163,7 +163,7 @@ TEST_F(TestPartitionBigTable, disorder) {
   initData2(ctx_, mt_table, entity_id, ts_now, row_num, &dedup_result);  // Insert ordered data
 
   // Validate the number of rows inserted for the given entity ID
-  EXPECT_EQ(mt_table->size(entity_id), row_num);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num);
   // Retrieve and validate properties of the first block item
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, row_num);
@@ -178,7 +178,7 @@ TEST_F(TestPartitionBigTable, disorder) {
   // Insert a single out-of-order data point and revalidate expectations
   ts_now = time(nullptr) * 1000;
   initData2(ctx_, mt_table, entity_id, ts_now, 1, &dedup_result);
-  EXPECT_EQ(mt_table->size(entity_id), row_num + 1);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num + 1);
   ASSERT_EQ(block_item->min_ts_in_block, ts_now);
 
   // Clean up allocated resources
@@ -215,7 +215,7 @@ TEST_F(TestPartitionBigTable, override) {
   initData2(ctx_, mt_table, entity_id, current_time_ms, row_count, &dedup_result, kwdbts::DedupRule::OVERRIDE);
 
   // Validate the size of data for the entity and block item details
-  EXPECT_EQ(mt_table->size(entity_id), row_count);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_count);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, row_count);
 
@@ -240,7 +240,7 @@ TEST_F(TestPartitionBigTable, override) {
     block_item->isDeleted(i + 1, &is_deleted);
     ASSERT_TRUE(is_deleted);
   }
-  ASSERT_EQ(mt_table->size(entity_id), row_count);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_count);
   ASSERT_EQ(block_item->min_ts_in_block, current_time_ms);
   // Also verify aggregation result on a specific column
   ASSERT_EQ(KInt16(segment_table->columnAggAddr(1, 0, kwdbts::Sumfunctype::COUNT)), 20);
@@ -287,7 +287,7 @@ TEST_F(TestPartitionBigTable, reject) {
   ASSERT_EQ(dedup_result.dedup_rows, 0);  // No rows were de-duplicated yet
   ASSERT_EQ(dedup_result.discard_bitmap.len, 0);  // Discard bitmap is empty
   ASSERT_EQ(dedup_result.discard_bitmap.data, nullptr);  // Bitmap pointer is null
-  EXPECT_EQ(mt_table->size(entity_id), row_num);  // Correct number of rows inserted
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num);  // Correct number of rows inserted
 
   // Further validations on block structure and content
   auto block_item = mt_table->GetBlockItem(1);
@@ -318,7 +318,7 @@ TEST_F(TestPartitionBigTable, reject) {
   ASSERT_EQ(dedup_result.dedup_rows, 10);  // Rows rejected due to duplicates
   ASSERT_EQ(dedup_result.discard_bitmap.len, 0);
   ASSERT_EQ(dedup_result.discard_bitmap.data, nullptr);
-  ASSERT_EQ(mt_table->size(entity_id), 2 * row_num);  // Total rows as expected
+  ASSERT_EQ(countRecords(mt_table, entity_id), 2 * row_num);  // Total rows as expected
   ASSERT_EQ(block_item->min_ts_in_block, ts_now);  // Timestamp consistency
 
   // Clean up resources
@@ -361,7 +361,7 @@ TEST_F(TestPartitionBigTable, discard) {
   ASSERT_EQ(dedup_result.discard_bitmap.data, nullptr);
 
   // Validate table size and block item details post-insertion
-  EXPECT_EQ(mt_table->size(entity_id), row_num);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, row_num);
 
@@ -408,7 +408,7 @@ TEST_F(TestPartitionBigTable, merge) {
   initData2(ctx_, mt_table, entity_id, ts_now, row_num, &dedup_result, kwdbts::DedupRule::MERGE);
 
   // Validate that the table size matches the number of inserted rows for the given entity ID.
-  EXPECT_EQ(mt_table->size(entity_id), row_num);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, row_num);
 
@@ -427,7 +427,7 @@ TEST_F(TestPartitionBigTable, merge) {
     MetricRowID row{1, i+1};
     ASSERT_EQ(KInt64(segment_tbl->columnAddr(row, 1)), 11);
   }
-  ASSERT_EQ(mt_table->size(entity_id), row_num);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num);
   ASSERT_EQ(block_item->min_ts_in_block, ts_now);
   ASSERT_EQ(KInt16(segment_tbl->columnAggAddr(1, 0, kwdbts::Sumfunctype::COUNT)), 20);
 
@@ -463,7 +463,7 @@ TEST_F(TestPartitionBigTable, varColumnMerge) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   initData2(ctx_, mt_table, entity_id, ts_now, row_num, &dedup_result, kwdbts::DedupRule::MERGE);
 
-  EXPECT_EQ(mt_table->size(entity_id), row_num);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, row_num);
 
@@ -517,7 +517,7 @@ TEST_F(TestPartitionBigTable, keepToMerge) {
     initData2(ctx_, mt_table, entity_id, ts_now, 1, &dedup_result, kwdbts::DedupRule::KEEP, i * row_num);
   }
   // Validate that 10 rows have been written for the specified entity ID
-  EXPECT_EQ(mt_table->size(entity_id), row_num);
+  EXPECT_EQ(countRecords(mt_table, entity_id), row_num);
   // Retrieve block information and validate its publish row count
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, row_num);
@@ -534,7 +534,7 @@ TEST_F(TestPartitionBigTable, keepToMerge) {
   MetricRowID row{1, row_num + 1};
   ASSERT_EQ(KInt64(segment_tbl->columnAddr(row, 1)), row_num * (row_num - 1));
   // Validate the total row count after merging
-  ASSERT_EQ(mt_table->size(entity_id), 1);
+  ASSERT_EQ(countRecords(mt_table, entity_id), 1);
   // Ensure the minimum timestamp remains unchanged after merge
   ASSERT_EQ(block_item->min_ts_in_block, ts_now);
   delete mt_table;
@@ -568,7 +568,7 @@ TEST_F(TestPartitionBigTable, bigdata) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   initData2(ctx_, mt_table, entity_id, ts_now, count, &dedup_result);
 
-  EXPECT_EQ(mt_table->size(entity_id), count);
+  EXPECT_EQ(countRecords(mt_table, entity_id), count);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, 1000);
   ASSERT_EQ(block_item->is_agg_res_available, true);
@@ -624,7 +624,7 @@ TEST_F(TestPartitionBigTable, undoPut) {
   mt_table->publish_payload_space(cur_alloc_spans, to_del_rows, entity_id, true);
 
   // Verify whether the data is written correctly
-  ASSERT_EQ(mt_table->size(entity_id), row_num + 100);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num + 100);
   auto entity_item = mt_table->getEntityItem(entity_id);
   auto block_item = mt_table->GetBlockItem(entity_item->cur_block_id);
 
@@ -644,14 +644,14 @@ TEST_F(TestPartitionBigTable, undoPut) {
   err_info.errcode = mt_table->RedoPut(ctx_, entity_id, lsn, 0, pd.GetRowCount(), &pd, &cur_alloc_spans,
                                        &to_deleted_real_rows, &partition_ts_map, 0, err_info);
   // Verify whether the data is written correctly
-  ASSERT_EQ(mt_table->size(entity_id), row_num + 100);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num + 100);
   ASSERT_EQ(block_item->publish_row_count, row_num + 100);
   ASSERT_EQ(block_item->min_ts_in_block, ts_now);
 
   err_info.errcode = mt_table->UndoPut(entity_id, lsn, 0, pd.GetRowCount(), &pd, err_info);
   ASSERT_EQ(err_info.errcode, 0);
   // Verify whether the data can be undone
-  ASSERT_EQ(mt_table->size(entity_id), 100);
+  ASSERT_EQ(countRecords(mt_table, entity_id), 100);
   ASSERT_EQ(block_item->publish_row_count, row_num + 100);
 
   ASSERT_EQ(KInt64(segment_tbl->columnAddr(MetricRowID{1, 1}, 1)), 11);
@@ -659,7 +659,7 @@ TEST_F(TestPartitionBigTable, undoPut) {
 
   // Continue to write data
   initData2(ctx_, mt_table, entity_id, ts_now + 100000, 100, &dedup_result);
-  ASSERT_EQ(mt_table->size(entity_id), 200);
+  ASSERT_EQ(countRecords(mt_table, entity_id), 200);
 
   delete[]data;
   delete mt_table;
@@ -704,7 +704,7 @@ TEST_F(TestPartitionBigTable, redoPut) {
   if (err_info.errcode >= 0) {
     mt_table->publish_payload_space(cur_alloc_spans, to_del_rows, entity_id, true);
   }
-  ASSERT_EQ(mt_table->size(entity_id), row_num + 100);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num + 100);
   auto entity_item = mt_table->getEntityItem(entity_id);
   auto block_item = mt_table->GetBlockItem(entity_item->cur_block_id);
 
@@ -722,7 +722,7 @@ TEST_F(TestPartitionBigTable, redoPut) {
   std::unordered_map<KTimestamp, MetricRowID> partition_ts_map;
   err_info.errcode = mt_table->RedoPut(ctx_, entity_id, lsn, 0, pd.GetRowCount(), &pd, &cur_alloc_spans,
                                        &to_deleted_real_rows, &partition_ts_map, 0, err_info);
-  ASSERT_EQ(mt_table->size(entity_id), row_num + 100);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num + 100);
   ASSERT_EQ(block_item->publish_row_count, row_num + 100);
   ASSERT_EQ(block_item->min_ts_in_block, ts_now);
 
@@ -731,7 +731,7 @@ TEST_F(TestPartitionBigTable, redoPut) {
   ASSERT_EQ(KInt16(segment_tbl->columnAggAddr(1, 0, kwdbts::Sumfunctype::COUNT)), 110);
 
   initData2(ctx_, mt_table, entity_id, ts_now + 100000, 100, &dedup_result);
-  ASSERT_EQ(mt_table->size(entity_id), 210);
+  ASSERT_EQ(countRecords(mt_table, entity_id), 210);
 
   delete[]data;
   delete mt_table;
@@ -764,7 +764,7 @@ TEST_F(TestPartitionBigTable, aggUpdate) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   initData2(ctx_, mt_table, entity_id, ts_now, count, &dedup_result, kwdbts::DedupRule::OVERRIDE);
 
-  EXPECT_EQ(mt_table->size(entity_id), count);
+  EXPECT_EQ(countRecords(mt_table, entity_id), count);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, 100);
   ASSERT_EQ(block_item->is_agg_res_available, false);
@@ -780,7 +780,7 @@ TEST_F(TestPartitionBigTable, aggUpdate) {
     block_item->isDeleted(i + 1, &is_deleted);
     ASSERT_TRUE(is_deleted);
   }
-  EXPECT_EQ(mt_table->size(entity_id), count * 10);
+  EXPECT_EQ(countRecords(mt_table, entity_id), count * 10);
   ASSERT_EQ(block_item->publish_row_count, 1000);
   ASSERT_EQ(block_item->is_agg_res_available, true);
   ASSERT_EQ(KInt16(segment_tbl->columnAggAddr(1, 0, kwdbts::Sumfunctype::COUNT)), 900);
@@ -839,7 +839,7 @@ TEST_F(TestPartitionBigTable, disorderPut) {
       mt_table->publish_payload_space(cur_alloc_spans, to_del_rows, entity_id, true);
     }
   }
-  ASSERT_EQ(mt_table->size(entity_id), row_num * 2);
+  ASSERT_EQ(countRecords(mt_table, entity_id), row_num * 2);
   auto entity_item = mt_table->getEntityItem(entity_id);
   ASSERT_FALSE(entity_item->is_disordered);
   // insert disorder data
@@ -887,7 +887,7 @@ TEST_F(TestPartitionBigTable, aggUpdateNull) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   initDataWithNull(ctx_, mt_table, entity_id, ts_now, count, &dedup_result, kwdbts::DedupRule::OVERRIDE);
 
-  EXPECT_EQ(mt_table->size(entity_id), count);
+  EXPECT_EQ(countRecords(mt_table, entity_id), count);
   auto block_item = mt_table->GetBlockItem(1);
   ASSERT_EQ(block_item->publish_row_count, 10);
   ASSERT_EQ(block_item->is_agg_res_available, false);
@@ -902,7 +902,7 @@ TEST_F(TestPartitionBigTable, aggUpdateNull) {
     block_item->isDeleted(i + 1, &is_deleted);
     ASSERT_TRUE(is_deleted);
   }
-  EXPECT_EQ(mt_table->size(entity_id), count);
+  EXPECT_EQ(countRecords(mt_table, entity_id), count);
   ASSERT_EQ(block_item->publish_row_count, 10);
   ASSERT_EQ(block_item->is_agg_res_available, false);
 

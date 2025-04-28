@@ -79,11 +79,13 @@ func (fn *ResolvableFunctionReference) Resolve(
 // WrapFunction creates a new ResolvableFunctionReference
 // holding a pre-resolved function. Helper for grammar rules.
 func WrapFunction(n string) ResolvableFunctionReference {
-	fd, ok := FunDefs[n]
-	if !ok {
-		panic(errors.AssertionFailedf("function %s() not defined", log.Safe(n)))
+	if fd, ok := FunDefs[n]; ok {
+		return ResolvableFunctionReference{fd}
 	}
-	return ResolvableFunctionReference{fd}
+	if fd, isUdf := ConcurrentFunDefs.LookupFunc(n); isUdf {
+		return ResolvableFunctionReference{fd}
+	}
+	panic(errors.AssertionFailedf("function %s() not defined", log.Safe(n)))
 }
 
 // FunctionReference is the common interface to UnresolvedName and QualifiedFunctionName.
