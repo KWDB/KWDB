@@ -59,6 +59,32 @@ INSERT 1
   NULL | 11
     12 | 13
 (9 rows)
+> select A from test.sjcx01 order by k_timestamp;
+   a
+--------
+     1
+     2
+     3
+     4
+     5
+  NULL
+     8
+  NULL
+    12
+(9 rows)
+> select C from test.sjcx01 order by k_timestamp;
+   c
+--------
+  A
+  B
+  C
+  D
+  E
+  NULL
+  G
+  H
+  NULL
+(9 rows)
 > select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
            k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
 --------------------------------+------+----+------+----------+---------------

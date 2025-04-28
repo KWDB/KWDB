@@ -108,7 +108,8 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(const TsBlockSpan& 
                                                               ResultSet* res, k_uint32* count) {
   *count = ts_blk_span.nrow;
   KStatus ret;
-  for (auto col_idx : kw_scan_cols_) {
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    k_uint32 col_idx = kw_scan_cols_[i];
     Batch* batch;
     if (col_idx >= 0 && col_idx < attrs_.size()) {
       unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
@@ -161,7 +162,7 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(const TsBlockSpan& 
       void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
-    res->push_back(col_idx, batch);
+    res->push_back(i, batch);
   }
   res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
 
