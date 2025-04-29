@@ -388,6 +388,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN());
+  std::cout<< "read chk logs count: " << logs.size() << std::endl;
+  for (auto log : logs) {
+    std::cout<< "read logs type: " << log->getType() << std::endl;
+  }
 
   // 2. read wal log from all vgroup
   for (const auto &vgrp: vgroups_) {
