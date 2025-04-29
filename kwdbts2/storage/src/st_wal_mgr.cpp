@@ -36,7 +36,7 @@ WALMgr::WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity
 WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt, bool chk_wal) :
       db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt) {
   wal_path_ = db_path_ + "/wal/" + vgrp_name + "/";
-  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt, chk);
+  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt, chk_wal);
   buffer_mgr_ = KNEW WALBufferMgr(opt, file_mgr_);
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
 }
