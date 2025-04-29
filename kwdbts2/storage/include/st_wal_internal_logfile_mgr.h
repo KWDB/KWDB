@@ -30,7 +30,7 @@ class WALFileMgr {
  public:
   WALFileMgr() = delete;
 
-  WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt);
+  WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt, bool chk_wal = false);
 
   ~WALFileMgr();
 
@@ -116,6 +116,7 @@ class WALFileMgr {
 
   KTableKey table_id_;
   string wal_path_;
+  bool chk_wal_;
 
   std::fstream file_;
 

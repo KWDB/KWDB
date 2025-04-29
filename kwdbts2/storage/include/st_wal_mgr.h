@@ -33,7 +33,7 @@ class WALMgr {
  public:
   WALMgr(const string& db_path, const KTableKey& table_id, uint64_t tbl_grp_id, EngineOptions* opt);
 
-  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt);
+  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt, bool chk_wal = false);
 
   ~WALMgr();
 
