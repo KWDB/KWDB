@@ -476,7 +476,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   wal_mgr_->RemoveChkFile(ctx);
 
   // after checkpoint, engine wal mgr meta sync?
-  return wal_mgr_->CreateCheckpoint(ctx);
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
