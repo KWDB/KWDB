@@ -34,7 +34,12 @@ WALFileMgr::~WALFileMgr() {
 }
 
 KStatus WALFileMgr::Open() {
-  string path = getFilePath();
+  string path;
+  if (chk_wal_) {
+    path = getChkFilePath();
+  } else {
+    path = getFilePath();
+  }
   if (IsExists(path)) {
     if (file_.is_open()) {
       header_block_ = readHeaderBlock();
