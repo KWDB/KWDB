@@ -397,7 +397,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       LOG_ERROR("Failed to CreateCheckpointInternal for vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
     }
-    vgrp_lsn[vgrp->GetVGroupID()] = lsn;
+    vgrp_lsn.emplace(vgrp->GetVGroupID(), lsn);
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
 
@@ -447,7 +447,14 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   //    b). trig all vgroup write checkpoint wal.
   //    c). remove vgroup wal file.
   for (const auto &vgrp: vgroups_) {
-    TS_LSN  lsn = vgrp_lsn[vgrp->GetVGroupID()];
+    TS_LSN lsn = 0;
+    auto it = vgrp_lsn.find(vgrp->GetVGroupID());
+    if (it != vgrp_lsn.end()) {
+      lsn = it->second;
+    } else {
+      LOG_ERROR("Failed to find vgroup lsn from map.")
+      return KStatus::FAIL;
+    }
     vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
   }
 
