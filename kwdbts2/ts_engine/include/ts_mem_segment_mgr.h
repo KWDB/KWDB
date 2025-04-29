@@ -282,10 +282,6 @@ class TsMemSegBlock : public TsBlock {
     }
     return can_insert;
   }
-
-  void Sort() {
-    std::stable_sort(row_data_.begin(), row_data_.end());
-  }
 };
 
 class TsMemSegmentManager {

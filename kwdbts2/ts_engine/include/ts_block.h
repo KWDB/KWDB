@@ -68,7 +68,7 @@ struct TsBlockSpan {
   TSTableID GetTableID() const;
   uint32_t GetTableVersion() const;
   timestamp64 GetTS(uint32_t row_idx) const;
-  uint64_t* GetSeqNoAddr(int row_num) const;
+  uint64_t* GetSeqNoAddr(int row_idx) const;
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
@@ -84,6 +84,10 @@ struct TsBlockSpan {
     std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 
   void SplitFront(int row_num, TsBlockSpan* front_span);
+
+  void SplitBack(int row_num, TsBlockSpan* back_span);
+
+  void Truncate(int row_num);
 
 };
 }  // namespace kwdbts

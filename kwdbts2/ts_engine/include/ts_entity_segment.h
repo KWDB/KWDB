@@ -191,7 +191,7 @@ struct TsEntitySegmentColumnBlock {
 };
 
 class TsVGroupPartition;
-class TsEntitySegmentBlock : public TsBlock {
+class TsEntityBlock : public TsBlock {
  private:
   uint32_t table_id_ = 0;
   uint32_t table_version_ = 0;
@@ -210,14 +210,14 @@ class TsEntitySegmentBlock : public TsBlock {
   TsEntitySegment* block_segment_ = nullptr;
 
  public:
-  TsEntitySegmentBlock() = delete;
+  TsEntityBlock() = delete;
   // for read
-  TsEntitySegmentBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item, TsEntitySegment* block_segment);
+  TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item, TsEntitySegment* block_segment);
   // for write
-  TsEntitySegmentBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
-                      std::vector<AttributeInfo>& metric_schema);
-  TsEntitySegmentBlock(const TsEntitySegmentBlock& other);
-  ~TsEntitySegmentBlock() {}
+  TsEntityBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
+                std::vector<AttributeInfo>& metric_schema);
+  TsEntityBlock(const TsEntityBlock& other);
+  ~TsEntityBlock() {}
 
   bool HasData() { return n_rows_ > 0; }
 
@@ -286,7 +286,7 @@ class TsEntitySegmentBlock : public TsBlock {
   void Clear();
 };
 
-class TsEntitySegment : public TsSegmentBase {
+class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
  private:
   string dir_path_;
   TsEntitySegmentMetaManager meta_mgr_;
@@ -309,7 +309,7 @@ class TsEntitySegment : public TsSegmentBase {
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
-                         TsEntitySegmentBlock* block);
+                         TsEntityBlock* block);
 };
 
 class TsEntitySegmentBuilder {

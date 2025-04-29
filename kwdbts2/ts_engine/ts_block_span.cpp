@@ -134,4 +134,19 @@ void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
   nrow_ -= row_num;
 }
 
+void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
+  assert(row_num < nrow_);
+  back_span->block_ = block_;
+  back_span->entity_id_ = entity_id_;
+  back_span->start_row_ = start_row_ + nrow_ - row_num;
+  back_span->nrow_ = row_num;
+  // change current span info
+  nrow_ -= row_num;
+}
+
+void TsBlockSpan::Truncate(int row_num) {
+  start_row_ += row_num;
+  nrow_ -= row_num;
+}
+
 }  // namespace kwdbts
