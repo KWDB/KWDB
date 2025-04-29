@@ -108,7 +108,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     vgroups_.push_back(std::move(vgroup));
   }
 
-  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_, true);
+  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   auto res = wal_mgr_->Init(ctx);
   if (res == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize WAL manager")
