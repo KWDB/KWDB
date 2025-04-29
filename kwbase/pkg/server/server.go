@@ -2287,6 +2287,11 @@ func (s *Server) Start(ctx context.Context) error {
 		func() (jobs.ScheduledJobExecutor, error) {
 			return &sql.ScheduledVacuumExecutor{}, nil
 		})
+	jobs.RegisterScheduledJobExecutorFactory(
+		sql.CountExecutorName,
+		func() (jobs.ScheduledJobExecutor, error) {
+			return &sql.ScheduledCountExecutor{}, nil
+		})
 	// Start scheduled jobs daemon.
 	jobs.StartJobSchedulerDaemon(
 		ctx,

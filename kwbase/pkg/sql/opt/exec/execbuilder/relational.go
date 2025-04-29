@@ -1045,24 +1045,24 @@ func transformAggInfos(aggInfos []exec.AggInfo, indices []int, indices2 []int) [
 }
 
 // buildTsInsertSelect build tsInsertSelectNode
-func (b *Builder) buildTsInsertSelect(scan *memo.TSInsertSelectExpr) (execPlan, error) {
+func (b *Builder) buildTsInsertSelect(insert *memo.TSInsertSelectExpr) (execPlan, error) {
 	b.PhysType = tree.TS
-	tableDesc := b.mem.Metadata().Table(scan.STable)
+	tableDesc := b.mem.Metadata().Table(insert.STable)
 	tableName := string(tableDesc.Name())
 	insTableID := uint64(tableDesc.ID())
 	tableType := tree.TimeseriesTable
 	// if scanCTable and InstName exist, table is child table or super table
-	if scan.CTable > 0 && len(scan.CName) > 0 {
+	if insert.CTable > 0 && len(insert.CName) > 0 {
 		tableType = tree.InstanceTable
-		if scan.CTable == scan.STable {
+		if insert.CTable == insert.STable {
 			tableType = tree.TemplateTable
 		}
-		tableName = scan.CName
-		insTableID = uint64(scan.CTable)
+		tableName = insert.CName
+		insTableID = uint64(insert.CTable)
 	}
 
 	// build planNode of subExpr
-	input, err := b.buildRelational(scan.Input)
+	input, err := b.buildRelational(insert.Input)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -1072,8 +1072,8 @@ func (b *Builder) buildTsInsertSelect(scan *memo.TSInsertSelectExpr) (execPlan, 
 		input.root,
 		insTableID,
 		uint64(tableDesc.GetParentID()),
-		scan.Cols,
-		scan.ColIdxs,
+		insert.Cols,
+		insert.ColIdxs,
 		tableName,
 		int32(tableType),
 	)
@@ -1081,7 +1081,13 @@ func (b *Builder) buildTsInsertSelect(scan *memo.TSInsertSelectExpr) (execPlan, 
 		return execPlan{}, err
 	}
 
-	return execPlan{root: root}, nil
+	res := execPlan{root: root}
+
+	// need to provide the cols to construct sort node.
+	if insert.NeedProvideCols {
+		res.outputCols = input.outputCols
+	}
+	return res, nil
 }
 
 // buildSynchronizer build SynchronizerNode
@@ -2606,10 +2612,18 @@ func (b *Builder) buildSort(sort *memo.SortExpr) (execPlan, error) {
 		return input, nil
 	}
 
-	node, err := b.factory.ConstructSort(input.root, input.sqlOrdering(ordering), alreadyOrderedPrefix, sort.IsTSEngine())
-	if err != nil {
-		return execPlan{}, err
+	// Swap the positions of sortNode and tsInsertSelectNode.
+	node, ok := b.factory.ProcessTSInsertWithSort(input.root, &input.outputCols, input.sqlOrdering(ordering), alreadyOrderedPrefix, sort.IsTSEngine())
+	if ok {
+		// if ok, it means the TSInsertSelect is at the top level and there's no need the RequiredPhysical.
+		sort.ClearRequiredPhysical()
+	} else {
+		node, err = b.factory.ConstructSort(input.root, input.sqlOrdering(ordering), alreadyOrderedPrefix, sort.IsTSEngine())
+		if err != nil {
+			return execPlan{}, err
+		}
 	}
+
 	return execPlan{root: node, outputCols: input.outputCols}, nil
 }
 

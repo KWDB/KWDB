@@ -292,7 +292,8 @@ KStatus Processors::RunWithVectorize(kwdbContext_p ctx, char **value, void *buff
     }
     ret = chunk->VectorizeData(ctx, info);
     chunk.release();
-  } while (0);
+    break;
+  } while (true);
   collection_.GetAnalyse(ctx);
   if (ret != EEIteratorErrCode::EE_OK) {
     *is_last_record = KTRUE;

@@ -680,3 +680,40 @@ drop database tsdb CASCADE;
 drop database rdb CASCADE;
 --  ZDP-44832 END --
 
+-- bug
+create ts database test;
+CREATE TABLE test.test1 (
+    timest TIMESTAMPTZ NOT NULL,
+    column1 FLOAT8 NOT NULL,
+    column2 VARCHAR(10) NOT NULL
+) TAGS (
+    fcid INT4 NOT NULL,
+    fctype VARCHAR(30) 
+) PRIMARY TAGS(fcid);
+CREATE TABLE test.test2 (
+    timest TIMESTAMPTZ NOT NULL,
+    column1 FLOAT8 NOT NULL,
+    loadtime TIMESTAMPTZ
+) TAGS (
+    fcid INT4 NOT NULL,
+    fctype VARCHAR(30) 
+) PRIMARY TAGS(fcid);
+
+WITH time_ranges AS (
+    SELECT 
+        DATE_TRUNC('hour', CURRENT_TIMESTAMP) + 
+        (FLOOR(EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) / 15) * 15) * INTERVAL '1 minute' - INTERVAL '15 minutes' AS start_time,
+        DATE_TRUNC('hour', CURRENT_TIMESTAMP) + 
+        (FLOOR(EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) / 15) * 15) * INTERVAL '1 minute' AS end_time
+)
+INSERT INTO test.test2 
+SELECT time_bucket_gapfill(timest, '15m') AS tt, 
+       interpolate(avg(column1),PREV),
+       current_timestamp,
+       fcid,
+       fctype  
+FROM test.test1, time_ranges
+WHERE timest >= start_time AND timest < end_time
+GROUP BY tt,fcid,fctype 
+ORDER BY tt,fctype;
+drop database test CASCADE;

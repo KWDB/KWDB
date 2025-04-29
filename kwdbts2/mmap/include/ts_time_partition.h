@@ -501,6 +501,8 @@ class TsTimePartition : public TSObject {
 
   int GetAllBlockItems(uint32_t entity_id, std::deque<BlockItem*>& block_items, bool reverse = false);
 
+  int GetCountBlockItems(uint32_t entity_id, BLOCK_ID block_id, std::deque<BlockItem*>& block_items);
+
   int GetAllBlockSpans(uint32_t entity_id, std::vector<KwTsSpan>& ts_spans, std::deque<BlockSpan>& block_spans,
                        uint32_t max_block_id = INT32_MAX, bool reverse = false);
 
@@ -679,9 +681,19 @@ class TsTimePartition : public TSObject {
     cancel_vacuum_ = true;
   }
 
-  inline void SetDeleted() {
+  inline void SetDeleted(uint32_t entity_id) {
     meta_manager_.getEntityHeader()->data_deleted = true;
     cancel_vacuum_ = true;
+    ResetRowWritten(entity_id);
+  }
+
+  inline void ResetRowWritten(uint entity_id) {
+    TsHashLatch* entity_item_latch = GetEntityItemLatch();
+    entity_item_latch->Lock(entity_id);
+    EntityItem* entity_item= meta_manager_.getEntityItem(entity_id);
+    entity_item->row_written = 0;
+    entity_item->count_block_id = 0;
+    entity_item_latch->Unlock(entity_id);
   }
 
   inline void ResetVacuumFlags() {
@@ -781,6 +793,12 @@ class TsTimePartition : public TSObject {
    * @return
    */
   KStatus WriteVacuumData(TsTimePartition* dest_pt, uint32_t entity_id, ResultSet* res, uint32_t row_count);
+
+  /**
+   * count the number of data records in this partition.
+   * @return KStatus
+   */
+  KStatus Count();
 
   // Modify segment status
   void ChangeSegmentStatus();

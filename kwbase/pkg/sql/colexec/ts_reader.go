@@ -274,7 +274,7 @@ func (tro *tsReaderOp) Next(ctx context.Context) coldata.Batch {
 			readRow = RemRow
 		}
 
-		for i := 0; i < tro.internalBatch.Width(); i++ {
+		for i := 0; i < len(tro.types); i++ {
 			vec := tro.internalBatch.ColVecs()[i]
 			var args coldata.SliceArgs
 			args.ColType = vec.Type()

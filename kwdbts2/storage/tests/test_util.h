@@ -534,4 +534,23 @@ class TestBigTableInstance : public ::testing::Test {
       fprintf(stdout, "\n");
     }
   }
+
+  static int countRecords(TsTimePartition* bt, uint32_t entity_id) {
+    int count = 0;
+    std::deque<BlockItem*> block_item_queue;
+    bt->GetAllBlockItems(entity_id, block_item_queue);
+    while (!block_item_queue.empty()) {
+      BlockItem* block_item = block_item_queue.front();
+      block_item_queue.pop_front();
+      if (!block_item || !block_item->publish_row_count) {
+        continue;
+      }
+      // all rows in block is deleted.
+      if (block_item->isBlockEmpty()) {
+        continue;
+      }
+      count += block_item->getNonNullRowCount();
+    }
+    return count;
+  }
 };
