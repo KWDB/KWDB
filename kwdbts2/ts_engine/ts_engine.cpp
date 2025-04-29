@@ -428,7 +428,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
     if (!skip) {
-      rewrite.emplace_back(log);
+      if (log->getType() == WALLogType::INSERT || log->getType() == WALLogType::DELETE ||
+          log->getType() == WALLogType::UPDATE) {
+        rewrite.emplace_back(log);
+      }
     }
   }
 
