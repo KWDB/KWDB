@@ -61,10 +61,12 @@ struct TsBlockSpan {
   TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
               std::shared_ptr<TsBlock> block, int start, int nrow);
 
-  inline bool operator<(const TsBlockSpan& other) const;
+  bool operator<(const TsBlockSpan& other) const;
 
   TSEntityID GetEntityID() const;
   int GetRowNum() const;
+  int GetStartRow() const;
+  std::shared_ptr<TsBlock> GetTsBlock() const;
   TSTableID GetTableID() const;
   uint32_t GetTableVersion() const;
   timestamp64 GetTS(uint32_t row_idx) const;

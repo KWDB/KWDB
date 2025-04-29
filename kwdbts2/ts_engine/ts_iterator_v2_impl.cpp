@@ -474,7 +474,7 @@ inline KStatus TsSegmentIterator::AddBlockData(std::shared_ptr<TsBlock> ts_block
 }
 
 KStatus TsSegmentIterator::AddBlockSpanData(const TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count) {
-  *count = ts_blk_span.nrow;
+  *count = ts_blk_span.GetRowNum();
   KStatus ret;
   for (auto col_idx : kw_scan_cols_) {
     Batch* batch;
@@ -488,10 +488,10 @@ KStatus TsSegmentIterator::AddBlockSpanData(const TsBlockSpan& ts_blk_span, Resu
       if (!isVarLenType(attrs_[col_idx].type)) {
         char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_blk_span.block->IsColNull(ts_blk_span.start_row + row_idx, col_idx, attrs_)) {
+          if (ts_blk_span.GetTsBlock()->IsColNull(ts_blk_span.GetStartRow() + row_idx, col_idx, attrs_)) {
             set_null_bitmap(bitmap, row_idx);
           } else {
-            ret = ts_blk_span.block->GetValueSlice(ts_blk_span.start_row + row_idx, col_idx, attrs_, col_data);
+            ret = ts_blk_span.GetTsBlock()->GetValueSlice(ts_blk_span.GetStartRow() + row_idx, col_idx, attrs_, col_data);
             if (ret != KStatus::SUCCESS) {
               return ret;
             }
@@ -506,11 +506,11 @@ KStatus TsSegmentIterator::AddBlockSpanData(const TsBlockSpan& ts_blk_span, Resu
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_blk_span.block->IsColNull(ts_blk_span.start_row + row_idx, col_idx, attrs_)) {
+          if (ts_blk_span.GetTsBlock()->IsColNull(ts_blk_span.GetStartRow() + row_idx, col_idx, attrs_)) {
             set_null_bitmap(bitmap, row_idx);
             batch->push_back(nullptr);
           } else {
-            ret = ts_blk_span.block->GetValueSlice(ts_blk_span.start_row + row_idx, col_idx, attrs_, col_data);
+            ret = ts_blk_span.GetTsBlock()->GetValueSlice(ts_blk_span.GetStartRow() + row_idx, col_idx, attrs_, col_data);
             if (ret != KStatus::SUCCESS) {
               return ret;
             }

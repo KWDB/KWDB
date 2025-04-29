@@ -22,6 +22,12 @@
 
 namespace kwdbts {
 
+TSBlkSpanDataTypeConvert::TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span)
+  : block_(blk_span.block_.get()),
+    start_row_idx_(blk_span.start_row_),
+    row_num_(blk_span.nrow_) {
+}
+
 // copyed from TsTimePartition::ConvertDataTypeToMem
 int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_size, void* old_mem,
                                              std::shared_ptr<void> old_var_mem, std::shared_ptr<void>* new_mem) {

@@ -23,6 +23,7 @@
 namespace kwdbts {
 
 class TsBlockSpan;
+class TsBlock;
 
 // notice: make sure block_ no free, while TSBlkSpanDataTypeConvert exists.
 class TSBlkSpanDataTypeConvert {
@@ -33,8 +34,9 @@ class TSBlkSpanDataTypeConvert {
   std::list<char*> alloc_mems_;
 
  public:
-  TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span) :
-   block_(blk_span.block_.get()), start_row_idx_(blk_span.start_row_), row_num_(blk_span.nrow_) {}
+  TSBlkSpanDataTypeConvert() = default;
+
+  TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span);
 
   TSBlkSpanDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num) :
    block_(block), start_row_idx_(row_idx), row_num_(row_num) {}

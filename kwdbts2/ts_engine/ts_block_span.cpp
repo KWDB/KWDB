@@ -85,6 +85,14 @@ int TsBlockSpan::GetRowNum() const {
   return nrow_;
 }
 
+int TsBlockSpan::GetStartRow() const {
+  return start_row_;
+}
+
+std::shared_ptr<TsBlock> TsBlockSpan::GetTsBlock() const {
+  return block_;
+}
+
 TSTableID TsBlockSpan::GetTableID() const {
   return block_->GetTableId();
 }
