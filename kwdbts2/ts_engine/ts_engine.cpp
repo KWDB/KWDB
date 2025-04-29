@@ -377,7 +377,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
    */
   std::vector<LogEntry*> logs;
   std::vector<LogEntry *> rewrite;
-  std::unordered_map<uint64_t, uint64_t>  vgrp_lsn;
+  std::unordered_map<uint32_t, uint64_t>  vgrp_lsn;
   Defer defer{[&]() {
     for (auto& log : logs) {
       delete log;
