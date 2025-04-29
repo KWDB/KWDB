@@ -119,7 +119,7 @@ class TsBlockSpanSortedIterator {
       end_row_idx = 0;
     }
     TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
-                                            *cur_block_span->GetSeqNoAddr(end_row_idx)};
+                                                *cur_block_span->GetSeqNoAddr(end_row_idx)};
     row_idx = span_row_infos_.begin()->row_idx;
     if (!is_reverse_) {
       if (cur_span_end_row_info <= next_span_row_info) {
@@ -161,9 +161,13 @@ class TsBlockSpanSortedIterator {
     }
     span_row_infos_.pop_front();
     if (row_idx != end_row_idx) {
-      TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(row_idx),
-                                           *(cur_block_span->GetSeqNoAddr(row_idx)),
-                                           cur_block_span, row_idx};
+      int start_row_idx = 0;
+      if (is_reverse_) {
+        start_row_idx = cur_block_span->GetRowNum() - 1;
+      }
+      TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(start_row_idx),
+                                           *(cur_block_span->GetSeqNoAddr(start_row_idx)),
+                                           cur_block_span, start_row_idx};
       insertRowInfo(next_row_info);
     }
     return KStatus::SUCCESS;
