@@ -668,10 +668,16 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
     LOG_ERROR("Failed to parse the WAL log.")
     return FAIL;
   }
+
+  int read_offset = 0;
+
   memcpy(&x_id, read_buf, sizeof(x_id));
-  memcpy(&vgrp_id, read_buf + sizeof(x_id), sizeof(vgrp_id));
-  memcpy(&old_lsn, read_buf + sizeof(vgrp_id), sizeof(old_lsn));
-  memcpy(&tbl_typ, read_buf + sizeof(old_lsn), sizeof(tbl_typ));
+  read_offset += sizeof(x_id);
+  memcpy(&vgrp_id, read_buf + read_offset, sizeof(vgrp_id));
+  read_offset += sizeof(vgrp_id);
+  memcpy(&old_lsn, read_buf + read_offset, sizeof(old_lsn));
+  read_offset += sizeof(old_lsn);
+  memcpy(&tbl_typ, read_buf + read_offset, sizeof(tbl_typ));
 
   delete[] read_buf;
   read_buf = nullptr;
@@ -814,10 +820,14 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
     LOG_ERROR("Failed to parse the WAL log.")
     return FAIL;
   }
+  int read_offset = 0;
   memcpy(&x_id, read_buf, sizeof(x_id));
-  memcpy(&vgrp_id, read_buf + sizeof(x_id), sizeof(vgrp_id));
-  memcpy(&old_lsn, read_buf + sizeof(vgrp_id), sizeof(old_lsn));
-  memcpy(&tbl_typ, read_buf + sizeof(old_lsn), sizeof(tbl_typ));
+  read_offset += sizeof(x_id);
+  memcpy(&vgrp_id, read_buf + read_offset, sizeof(vgrp_id));
+  read_offset += sizeof(vgrp_id);
+  memcpy(&old_lsn, read_buf + read_offset, sizeof(old_lsn));
+  read_offset += sizeof(old_lsn);
+  memcpy(&tbl_typ, read_buf + read_offset, sizeof(tbl_typ));
 
   if (for_chk) {
     old_lsn = current_offset + sizeof(x_id) + sizeof(vgrp_id);
@@ -909,9 +919,12 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
     return FAIL;
   }
 
+  int read_offset = 0;
   memcpy(&x_id, res, sizeof(x_id));
-  memcpy(&vgrp_id, res + sizeof(x_id), sizeof(vgrp_id));
-  memcpy(&old_lsn, res + sizeof(vgrp_id), sizeof(old_lsn));
+  read_offset += sizeof(x_id);
+  memcpy(&vgrp_id, res + read_offset, sizeof(vgrp_id));
+  read_offset += sizeof(vgrp_id);
+  memcpy(&old_lsn, res + read_offset, sizeof(old_lsn));
   if (for_chk) {
     old_lsn = current_offset + sizeof(x_id) + sizeof(vgrp_id);
   }
