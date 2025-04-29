@@ -108,6 +108,8 @@ extern Compression g_compression;
 
 extern MkSquashfsOption g_mk_squashfs_option;
 
+extern bool g_compress_info_initialized;
+
 extern MountOption g_mount_option;
 
 bool compress(const string& db_path, const string& tbl_sub_path, const string& dir_name, int nthreads, ErrorInfo& err_info);
@@ -125,6 +127,6 @@ bool isMounted(const string& dir_path);
 
 int executeShell(const std::string& cmd, std::string &result);
 
-void InitCompressInfo(const string& db_path);
+void InitCompressInfo();
 
 } // namespace kwdbts

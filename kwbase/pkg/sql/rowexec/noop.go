@@ -189,7 +189,7 @@ func (n *noopProcessor) handleMetaForTs(meta *execinfrapb.ProducerMetadata) (Nee
 		}
 	case execinfrapb.OperatorType_TsDropTsTable, execinfrapb.OperatorType_TsDropDeleteEntities,
 		execinfrapb.OperatorType_TsDeleteExpiredData, execinfrapb.OperatorType_TsCompressTsTable,
-		execinfrapb.OperatorType_TsVacuum:
+		execinfrapb.OperatorType_TsVacuum, execinfrapb.OperatorType_TsCount:
 		// n.InputNum > 1: Collect multi node information.
 		if n.InputNum > 1 {
 			if meta.TsPro != nil {

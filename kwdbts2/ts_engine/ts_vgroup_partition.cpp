@@ -37,7 +37,7 @@ TsVGroupPartition::~TsVGroupPartition() {}
 
 KStatus TsVGroupPartition::Open() {
   std::filesystem::create_directories(path_);
-  blk_segment_ = std::make_unique<TsEntitySegment>(path_);
+  entity_segment_ = std::make_unique<TsEntitySegment>(path_);
   return KStatus::SUCCESS;
 }
 
@@ -75,7 +75,7 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   blk_item.max_ts = max_ts;
   blk_item.min_ts = min_ts;
 
-  KStatus s = blk_segment_->AppendBlockData(blk_item, block_data, block_agg);
+  KStatus s = entity_segment_->AppendBlockData(blk_item, block_data, block_agg);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("insert into block segment of partition[%s] failed.", path_.c_str());
     return s;

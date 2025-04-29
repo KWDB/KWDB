@@ -117,6 +117,17 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
     return ToTsStatus("unsquashfs is not installed, please install squashfs-tools");
   }
 
+  // mount cnt
+  cmd = "cat /proc/mounts | grep " + opts.db_path + " | wc -l";
+  string result;
+  int ret = executeShell(cmd, result);
+  if (ret != -1) {
+    int mount_cnt = atoi(result.c_str());
+    if (mount_cnt > 0) {
+      g_cur_mount_cnt_ = mount_cnt;
+    }
+  }
+
   TSEngine* ts_engine;
   if (strcmp(options.engine_version, "2") == 0) {
     g_engine_version = 2;
@@ -128,7 +139,7 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
     LOG_INFO("TSEngineV2Impl created success.");
     ts_engine = engine;
   } else {
-    InitCompressInfo(opts.db_path);
+    InitCompressInfo();
     s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
     if (s == KStatus::FAIL) {
       return ToTsStatus("OpenTSEngine Internal Error!");
@@ -779,7 +790,9 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
         type = kwdbts::CompressionType::GZIP;
       }
     }
-    g_compression = g_mk_squashfs_option.compressions.find(type)->second;
+    if (g_mk_squashfs_option.compressions.find(type) != g_mk_squashfs_option.compressions.end()) {
+      g_compression = g_mk_squashfs_option.compressions.find(type)->second;
+    }
   } else if ("ts.compression.level" == key) {
     kwdbts::CompressionLevel level = kwdbts::CompressionLevel::MIDDLE;
     if ("low" == value) {
@@ -832,6 +845,7 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
 }
 
 void TSSetClusterSetting(TSSlice key, TSSlice value) {
+  InitCompressInfo();
   std::string key_set;
   std::string value_set;
 
@@ -1411,5 +1425,29 @@ TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetWalLevel Error!");
   }
+  return kTsSuccess;
+}
+
+TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  LOG_DEBUG("count table[%lu] start", table_id);
+  std::shared_ptr<TsTable> table;
+  s = engine->GetTsTable(ctx_p, table_id, table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("The current node does not have the table[%lu], skip count", table_id);
+    return kTsSuccess;
+  }
+  ErrorInfo err_info;
+  s = table->Count(ctx_p, err_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("count table[%lu] failed", table_id);
+    return ToTsStatus("CountTsTable Error!");
+  }
+  LOG_DEBUG("count table[%lu] end", table_id);
   return kTsSuccess;
 }

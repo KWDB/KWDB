@@ -30,7 +30,7 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
   KStatus s = file_->Read(0, sizeof(TsEntityItemFileHeader), &result, reinterpret_cast<char *>(&header_));
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
-    header_.magic = TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
+    header_.magic = TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
     header_.status = TsFileStatus::READY;
     s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsEntityItemFileHeader)});
   }
@@ -100,7 +100,7 @@ KStatus TsEntitySegmentBlockItemFile::Open() {
   if (header_.status != TsFileStatus::READY) {
     file_->Reset();
     header_.status = TsFileStatus::READY;
-    header_.magic = TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC;
+    header_.magic = TS_ENTITY_SEGMENT_BLOCK_ITEM_FILE_MAGIC;
     s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsBlockItemFileHeader)});
   }
   return s;
@@ -253,7 +253,7 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& 
   n_cols_ = block_item.n_cols;
   block_offset_ = block_item.block_offset;
   block_length_ = block_item.block_len;
-  block_segment_ = block_segment;
+  entity_segment_ = block_segment;
   // column blocks
   column_blocks_.resize(block_item.n_cols);
 }
@@ -612,7 +612,7 @@ KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>& metric_sche
 KStatus TsEntityBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans,
                       std::vector<std::pair<int, int>>& row_spans) {
   if (!HasColumnData(0)) {
-    KStatus s = block_segment_->GetColumnBlock(0, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[0] data load failed");
       return s;
@@ -648,7 +648,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans,
 KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                      char** value) {
   if (!HasColumnData(col_id)) {
-    KStatus s = block_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -661,7 +661,7 @@ KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                                           TsBitmap& bitmap) {
   if (!HasColumnData(col_id)) {
-    KStatus s = block_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -674,7 +674,7 @@ KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
 KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                                            TSSlice& value) {
   if (!HasColumnData(col_id)) {
-    KStatus s = block_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -685,7 +685,7 @@ KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<
 
 bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) {
   if (!HasColumnData(col_id)) {
-    KStatus s = block_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -698,7 +698,7 @@ bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<Attribu
 
 timestamp64 TsEntityBlock::GetTS(int row_num) {
   if (!HasColumnData(0)) {
-    KStatus s = block_segment_->GetColumnBlock(0, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[0] data load failed");
       return s;
@@ -709,7 +709,7 @@ timestamp64 TsEntityBlock::GetTS(int row_num) {
 
 uint64_t* TsEntityBlock::GetSeqNoAddr(int row_num) {
   if (!HasColumnData(-1)) {
-    KStatus s = block_segment_->GetColumnBlock(-1, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[seq no] data load failed");
       return nullptr;

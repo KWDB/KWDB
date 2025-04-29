@@ -436,4 +436,32 @@ void SubEntityGroupManager::TierMigrate() {
     subgroup.second->PartitionsTierMigrate();
   }
 }
+
+void SubEntityGroupManager::Count(kwdbContext_p ctx, ErrorInfo& err_info) {
+  std::unordered_map<TsTimePartition*, TsSubEntityGroup*> count_tables;
+  rdLock();
+  for (auto& [fst, snd] : subgroups_) {
+    vector<TsTimePartition*> p_tables = snd->GetPartitionTables({INT64_MIN, INT64_MAX}, err_info);
+    if (err_info.errcode < 0) {
+      LOG_ERROR("SubEntityGroupManager GetPartitionTable error : %s", err_info.errmsg.c_str());
+      break;
+    }
+    for (auto p_table : p_tables) {
+      count_tables.insert({p_table, snd});
+    }
+  }
+  unLock();
+
+  bool count_error = false;
+  for (auto it = count_tables.begin(); it != count_tables.end();) {
+    TsTimePartition* p_table = it->first;
+    if (p_table != nullptr && !count_error) {
+      p_table->Count();
+    }
+    ReleaseTable(p_table);
+    // Call partition table lru cache to eliminate after compression
+    it->second->PartitionCacheEvict();
+    ++it;
+  }
+}
 }  // namespace kwdbts

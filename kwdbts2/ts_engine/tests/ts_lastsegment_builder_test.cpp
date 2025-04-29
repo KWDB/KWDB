@@ -8,6 +8,9 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <functional>
+#include <initializer_list>
+#include <iostream>
 #include <memory>
 #include <numeric>
 #include <random>
@@ -19,7 +22,6 @@
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "test_util.h"
-#include "ts_arena.h"
 #include "ts_block.h"
 #include "ts_coding.h"
 #include "ts_engine_schema_manager.h"
@@ -58,10 +60,10 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricAttr(metric_schema, 1);
+    s = schema_mgr->GetMetricMeta(1, metric_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagAttr(1, tag_schema);
+    s = schema_mgr->GetTagMeta(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     TsLastSegmentManager last_segment_mgr("./");
@@ -183,9 +185,9 @@ R GenBuilders(TSTableID table_id) {
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 
   std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricAttr(metric_schema, 1);
+  s = schema_mgr->GetMetricMeta(1, metric_schema);
   std::vector<TagInfo> tag_schema;
-  s = schema_mgr->GetTagAttr(1, tag_schema);
+  s = schema_mgr->GetTagMeta(1, tag_schema);
 
   auto last_segment_mgr = std::make_unique<TsLastSegmentManager>("./");
   std::unique_ptr<TsFile> last_segment;
@@ -318,6 +320,28 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
 
   std::shared_ptr<TsLastSegment> last_segment;
   res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  {  // test bloom filter....
+    std::set<TSEntityID> eids{dev_ids.begin(), dev_ids.end()};
+    for (auto eid : dev_ids) {
+      EXPECT_TRUE(last_segment->MayExistEntity(eid));
+    }
+    auto [min_e, max_e] = std::minmax_element(dev_ids.begin(), dev_ids.end());
+    for (int eid = *max_e + 1; eid < *max_e + 10000; ++eid) {
+      EXPECT_FALSE(last_segment->MayExistEntity(eid));
+    }
+
+    int sum = 0;
+    int false_positive = 0;
+    for (int eid = *min_e; eid < *max_e; ++eid) {
+      if (eids.find(eid) != eids.end()) {
+        continue;
+      }
+      sum++;
+      false_positive += last_segment->MayExistEntity(eid);
+    }
+    std::printf("\033[32mfalse positive = %d in total %d sum querys\033[0m\n", false_positive, sum);
+    EXPECT_LT(false_positive, sum * 0.001 * 10);
+  }
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   ASSERT_EQ(footer.n_data_block, 3);
@@ -408,6 +432,28 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
 
   std::shared_ptr<TsLastSegment> last_segment;
   res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  {  // test bloom filter....
+    std::set<TSEntityID> eids{dev_ids.begin(), dev_ids.end()};
+    for (auto eid : dev_ids) {
+      EXPECT_TRUE(last_segment->MayExistEntity(eid));
+    }
+    auto [min_e, max_e] = std::minmax_element(dev_ids.begin(), dev_ids.end());
+    for (int eid = *max_e + 1; eid < *max_e + 10000; ++eid) {
+      EXPECT_FALSE(last_segment->MayExistEntity(eid));
+    }
+
+    int sum = 0;
+    int false_positive = 0;
+    for (int eid = *min_e; eid < *max_e; ++eid) {
+      if (eids.find(eid) != eids.end()) {
+        continue;
+      }
+      sum++;
+      false_positive += last_segment->MayExistEntity(eid);
+    }
+    std::printf("\033[32mfalse positive = %d in total %d sum querys\033[0m\n", false_positive, sum);
+    EXPECT_LT(false_positive, sum * 0.001 * 10);
+  }
   TsLastSegmentFooter footer;
   ASSERT_EQ(last_segment->GetFooter(&footer), SUCCESS);
   int total = std::accumulate(nrows.begin(), nrows.end(), 0);

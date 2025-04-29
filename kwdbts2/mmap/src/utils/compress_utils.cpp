@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <linux/magic.h>
+#include "lt_latch.h"
 #include "utils/compress_utils.h"
 #include "sys_utils.h"
 
@@ -29,6 +30,10 @@ int64_t g_compress_interval = 3600;
 Compression g_compression = {kwdbts::CompressionType::GZIP, kwdbts::CompressionLevel::MIDDLE, true, false};
 
 MkSquashfsOption g_mk_squashfs_option;
+
+bool g_compress_info_initialized = false;
+
+KLatch g_compress_info_mutex(LATCH_ID_COMPRESS_INFO_INIT_MUTEX);
 
 MountOption g_mount_option;
 
@@ -287,19 +292,18 @@ int executeShell(const std::string& cmd, std::string &result) {
   return ret;
 }
 
-void InitCompressInfo(const string& db_path) {
-  // mount cnt
-  string cmd = "cat /proc/mounts | grep " + db_path + " | wc -l";
-  string result;
-  int ret = executeShell(cmd, result);
-  if (ret != -1) {
-    int mount_cnt = atoi(result.c_str());
-    if (mount_cnt > 0) {
-      g_cur_mount_cnt_ = mount_cnt;
-    }
+void InitCompressInfo() {
+  if (g_compress_info_initialized) {
+    return;
+  }
+  MUTEX_LOCK(&g_compress_info_mutex);
+  if (g_compress_info_initialized) {
+    MUTEX_UNLOCK(&g_compress_info_mutex);
+    return;
   }
   // Check whether the mksquashfs supports the `-mem` command
-  cmd = "strings `which mksquashfs` | grep 'mem <size>' | wc -l";
+  string result;
+  string cmd = "strings `which mksquashfs` | grep 'mem <size>' | wc -l";
   if (executeShell(cmd, result) != -1 && atoi(result.c_str()) > 0) {
     g_mk_squashfs_option.has_mem_option = true;
   }
@@ -341,6 +345,9 @@ void InitCompressInfo(const string& db_path) {
   }
 
   g_compression = g_mk_squashfs_option.compressions[GZIP];
+
+  g_compress_info_initialized = true;
+  MUTEX_UNLOCK(&g_compress_info_mutex);
 }
 
 } // namespace kwdbts

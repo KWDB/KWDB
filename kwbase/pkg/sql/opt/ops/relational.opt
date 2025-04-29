@@ -1124,6 +1124,9 @@ define TSInsertSelectPrivate {
   Cols ColList
   # index of cols
   ColIdxs ColIdxs
+
+  # NeedProvideCols is setted when use order by clause in ts insert select.
+  NeedProvideCols bool
 }
 
 # TSInsertSelect is an expression for INSERT SELECT ts table.

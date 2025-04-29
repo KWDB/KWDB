@@ -48,8 +48,8 @@ struct TsEntitySegmentBlockItem {
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");
 
-static constexpr uint64_t TS_BLOCK_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
-static constexpr uint64_t TS_BLOCK_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
+static constexpr uint64_t TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
+static constexpr uint64_t TS_ENTITY_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
 
 /**
  * TsEntitySegmentEntityItemFile used for managing entity_item file.
@@ -207,7 +207,7 @@ class TsEntityBlock : public TsBlock {
   uint64_t block_offset_ = 0;
   uint32_t block_length_ = 0;
 
-  TsEntitySegment* block_segment_ = nullptr;
+  TsEntitySegment* entity_segment_ = nullptr;
 
  public:
   TsEntityBlock() = delete;
