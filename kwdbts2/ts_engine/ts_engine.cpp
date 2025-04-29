@@ -445,7 +445,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   //    b). trig all vgroup write checkpoint wal.
   //    c). remove vgroup wal file.
   for (const auto &vgrp: vgroups_) {
-    vgrp->WriteCheckpointWALAndUpdateLSN(ctx, vgrp_lsn[vgrp->GetVGroupID()]);
+    TS_LSN  lsn = vgrp_lsn[vgrp->GetVGroupID()];
+    vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
   }
 
   // 8. remove vgroup wal file and old chk file
