@@ -473,9 +473,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 8. remove vgroup wal file and old chk file
-  for (auto vgrp : vgroups_) {
-    vgrp->GetWALManager()->RemoveChkFile(ctx);
-  }
   wal_mgr_->RemoveChkFile(ctx);
 
   // after checkpoint, engine wal mgr meta sync?
