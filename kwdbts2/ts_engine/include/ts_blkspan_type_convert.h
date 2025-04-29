@@ -24,13 +24,20 @@ namespace kwdbts {
 
 class TsBlockSpan;
 
+// notice: make sure block_ no free, while TSBlkSpanDataTypeConvert exists.
 class TSBlkSpanDataTypeConvert {
  private:
-  const TsBlockSpan& blk_span_;
+  TsBlock* block_ = nullptr;
+  uint32_t start_row_idx_ = 0;
+  uint32_t row_num_ = 0;
   std::list<char*> alloc_mems_;
 
  public:
-  TSBlkSpanDataTypeConvert(const TsBlockSpan& blk_span) : blk_span_(blk_span) {}
+  TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span) :
+   block_(blk_span.block_.get()), start_row_idx_(blk_span.start_row_), row_num_(blk_span.nrow_) {}
+
+  TSBlkSpanDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num) :
+   block_(block), start_row_idx_(row_idx), row_num_(row_num) {}
 
   ~TSBlkSpanDataTypeConvert() {
     for (auto mem : alloc_mems_) {
@@ -45,27 +52,7 @@ class TSBlkSpanDataTypeConvert {
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& desc_type, DataFlags& flag, TSSlice& data);
-
-  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type,
-    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 };
-
-class TSBlkSpanDataAgg {
- private:
-  const TsBlockSpan& blk_span_;
-  std::list<char*> alloc_mems_;
-
- public:
-  TSBlkSpanDataAgg(const TsBlockSpan& blk_span) : blk_span_(blk_span) {}
-
-  // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type,
-                             char** value, TsBitmap& bitmap);
-  // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& desc_type, DataFlags& flag, TSSlice& data);
-};
-
 
 
 }  // namespace kwdbts

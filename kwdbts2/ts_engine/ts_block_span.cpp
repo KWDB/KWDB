@@ -14,6 +14,47 @@
 
 namespace kwdbts {
 
+
+KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
+const std::vector<AttributeInfo>& schema,
+const AttributeInfo& desc_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
+  TSBlkSpanDataTypeConvert convert(this, begin_row_idx, row_num);
+  // char* value;
+  // TsBitmap bitmap;
+  // agg_data.resize(agg_types.size());
+  // if (!isVarLenType(desc_type.type)) {
+  //   char* allc_mem = reinterpret_cast<char*>(malloc((agg_types.size()) * desc_type.size) + 16);
+  //   auto s = GetFixLenColAddr(col_id, schema, desc_type, &value, bitmap);
+  //   if (s != KStatus::SUCCESS) {
+  //     LOG_ERROR("GetFixLenColAddr failed.");
+  //     return s;
+  //   }
+  //   for (size_t i = 0; i < agg_types.size(); i++) {
+  //     switch (agg_types[i]) {
+  //       case Sumfunctype::MAX:
+  //         /* code */
+  //         break;
+  //       case Sumfunctype::MIN:
+  //         break;
+  //       case Sumfunctype::SUM:
+  //         break;
+  //       case Sumfunctype::COUNT:
+  //         break;
+  //       default:
+  //         break;
+  //     }
+  //   }
+  //   AggCalculatorV2 v2((void*)value, &bitmap, desc_type.type, desc_type.size, row_num_);
+  //   bool overflow = v2.CalcAllAgg(*(reinterpret_cast<uint16_t*>(allc_mem)), allc_mem + 8, allc_mem + 16, allc_mem + 24);
+  //   assert(!overflow);
+    
+  // } else {
+  //   // VarColAggCalculatorV2 v2()
+  // }
+  return KStatus::SUCCESS;
+}
+
+
 TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
             std::shared_ptr<TsBlock> block, int start, int nrow_)
     : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {
@@ -79,7 +120,18 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, co
 
 KStatus TsBlockSpan::GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& desc_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
-  return convert_.GetAggResult(col_id, schema, desc_type, agg_types, agg_data);
+  return block_->GetAggResult(start_row_, nrow_, col_id, schema, desc_type, agg_types, agg_data);
+}
+
+void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
+  assert(row_num < nrow_);
+  front_span->block_ = block_;
+  front_span->entity_id_ = entity_id_;
+  front_span->start_row_ = start_row_;
+  front_span->nrow_ = row_num;
+  // change current span info
+  start_row_ += row_num;
+  nrow_ -= row_num;
 }
 
 }  // namespace kwdbts

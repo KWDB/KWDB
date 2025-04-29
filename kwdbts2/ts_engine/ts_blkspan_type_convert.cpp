@@ -80,39 +80,39 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
   assert(!isVarLenType(desc_type.type));
   assert(col_id < schema.size());
   TsBitmap blk_bitmap;
-  auto s = blk_span_.block_->GetColBitmap(col_id, schema, blk_bitmap);
+  auto s = block_->GetColBitmap(col_id, schema, blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", col_id);
     return s;
   }
   char* blk_value;
-  s = blk_span_.block_->GetColAddr(col_id, schema, &blk_value);
+  s = block_->GetColAddr(col_id, schema, &blk_value);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColAddr failed. col id [%u]", col_id);
     return s;
   }
-  bitmap.SetCount(blk_span_.nrow_);
+  bitmap.SetCount(row_num_);
   if (schema[col_id].type == desc_type.type) {
-    for (size_t i = 0; i < blk_span_.nrow_; i++) {
-      bitmap[i] = blk_bitmap[blk_span_.start_row_+ i];
+    for (size_t i = 0; i < row_num_; i++) {
+      bitmap[i] = blk_bitmap[start_row_idx_+ i];
     }
-    *value = blk_value + desc_type.size * blk_span_.start_row_;
+    *value = blk_value + desc_type.size * start_row_idx_;
   } else {
-    char* allc_mem = reinterpret_cast<char*>(malloc(desc_type.size * blk_span_.nrow_));
+    char* allc_mem = reinterpret_cast<char*>(malloc(desc_type.size * row_num_));
     if (allc_mem == nullptr) {
-      LOG_ERROR("malloc failed. alloc size: %u", desc_type.size * blk_span_.nrow_);
+      LOG_ERROR("malloc failed. alloc size: %u", desc_type.size * row_num_);
       return KStatus::SUCCESS;
     }
     alloc_mems_.push_back(allc_mem);
-    for (size_t i = 0; i < blk_span_.nrow_; i++) {
-      bitmap[i] == blk_bitmap[blk_span_.start_row_+ i];
+    for (size_t i = 0; i < row_num_; i++) {
+      bitmap[i] == blk_bitmap[start_row_idx_+ i];
       if (bitmap[i] != DataFlags::kValid) {
         continue;
       }
       void* old_mem = nullptr;
       std::shared_ptr<void> old_var_mem = nullptr;
       if (!isVarLenType(schema[col_id].type)) {
-        old_mem = blk_value + schema[col_id].size * (blk_span_.start_row_+ i);
+        old_mem = blk_value + schema[col_id].size * (start_row_idx_+ i);
       } else {
         // old_var_mem = segment_tbl->varColumnAddr(real_row, ts_col);
         LOG_ERROR("no implementtion");
@@ -139,21 +139,21 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
 KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& desc_type, DataFlags& flag, TSSlice& data) {
   assert(isVarLenType(desc_type.type));
-  assert(row_idx < blk_span_.nrow_);
+  assert(row_idx < row_num_);
   assert(col_idx < schema.size());
   TsBitmap blk_bitmap;
-  auto s = blk_span_.block_->GetColBitmap(col_idx, schema, blk_bitmap);
+  auto s = block_->GetColBitmap(col_idx, schema, blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", col_idx);
     return s;
   }
-  flag = blk_bitmap[blk_span_.start_row_+ row_idx];
+  flag = blk_bitmap[start_row_idx_+ row_idx];
   if (flag != DataFlags::kValid) {
     data = {nullptr, 0};
     return KStatus::SUCCESS;
   }
   TSSlice orig_value;
-  s = blk_span_.block_->GetValueSlice(row_idx, col_idx, schema, orig_value);
+  s = block_->GetValueSlice(row_idx, col_idx, schema, orig_value);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, col_idx);
     return s;
@@ -182,49 +182,5 @@ KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_
   }
   return KStatus::SUCCESS;
 }
-
-
-void getFixedMinMaxSumAgg() {
-
-}
-
-KStatus TSBlkSpanDataTypeConvert::GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type,
-    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
-  
-  // char* value;
-  // TsBitmap bitmap;
-  // agg_data.resize(agg_types.size());
-  // if (!isVarLenType(desc_type.type)) {
-  //   char* allc_mem = reinterpret_cast<char*>(malloc((agg_types.size()) * desc_type.size) + 16);
-  //   auto s = GetFixLenColAddr(col_id, schema, desc_type, &value, bitmap);
-  //   if (s != KStatus::SUCCESS) {
-  //     LOG_ERROR("GetFixLenColAddr failed.");
-  //     return s;
-  //   }
-  //   for (size_t i = 0; i < agg_types.size(); i++) {
-  //     switch (agg_types[i]) {
-  //       case Sumfunctype::MAX:
-  //         /* code */
-  //         break;
-  //       case Sumfunctype::MIN:
-  //         break;
-  //       case Sumfunctype::SUM:
-  //         break;
-  //       case Sumfunctype::COUNT:
-  //         break;
-  //       default:
-  //         break;
-  //     }
-  //   }
-  //   AggCalculatorV2 v2((void*)value, &bitmap, desc_type.type, desc_type.size, blk_span_.nrow_);
-  //   bool overflow = v2.CalcAllAgg(*(reinterpret_cast<uint16_t*>(allc_mem)), allc_mem + 8, allc_mem + 16, allc_mem + 24);
-  //   assert(!overflow);
-    
-  // } else {
-  //   // VarColAggCalculatorV2 v2()
-  // }
-  return KStatus::FAIL;
-}
-
 
 }  // namespace kwdbts
