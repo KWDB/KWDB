@@ -387,7 +387,12 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }};
   // 1. read chk log from chk file.
-  wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN());
+  bool end_chk = false;
+  wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
+  if (!end_chk) {
+    LOG_ERROR("Failed to detect the expected end checkpoint wal;skipping this file's content.")
+    logs.clear();
+  }
   wal_mgr_->SwitchNextFile();
   std::cout<< "read chk logs count: " << logs.size() << std::endl;
   for (auto log : logs) {
@@ -433,8 +438,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
     if (!skip) {
-      if (log->getType() == WALLogType::INSERT || log->getType() == WALLogType::DELETE ||
-          log->getType() == WALLogType::UPDATE) {
+      if (log->getType() != WALLogType::CHECKPOINT) {
         rewrite.emplace_back(log);
       }
     }
@@ -449,11 +453,11 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 5. trig all vgroup flush
   for (const auto &vgrp: vgroups_) {
-//    todo vgrp.Sync();
+    vgrp->Flush();
   }
 
   // 6.write EndWAL to chk file
-  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, 0);
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
   wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
 
   // 7. a). update checkpoint LSN .
@@ -489,10 +493,15 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
 
   // 1. get engine chk wal log.
   std::vector<LogEntry*> logs;
-  KStatus s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN());
+  bool end_chk = false;
+  KStatus s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadWALLog from chk file while recovering.")
     return KStatus::FAIL;
+  }
+  if (!end_chk) {
+    LOG_ERROR("Failed to detect the expected end checkpoint wal;skipping this file's content.")
+    logs.clear();
   }
 
   // 2. get all vgroup wal log

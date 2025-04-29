@@ -187,8 +187,9 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   // 1. read chk wal log
   // 2. switch new file
   wal_manager_->Lock();
+  bool ignore;
   KStatus  s = wal_manager_->ReadWALLogAndSwitchFile(logs, wal_manager_->FetchCheckpointLSN(),
-                                                     wal_manager_->FetchCurrentLSN());
+                                                     wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
   wal_manager_->Unlock();
   if (s == KStatus::FAIL) {
@@ -200,8 +201,9 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
 KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
   // 1. read chk wal log
   wal_manager_->Lock();
+  bool ignore = false;
   KStatus  s = wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(),
-                                                     wal_manager_->FetchCurrentLSN());
+                                                     wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
   wal_manager_->Unlock();
   if (s == KStatus::FAIL) {
@@ -211,7 +213,8 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
 }
 
 KStatus TsVGroup::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs) {
-  return wal_manager_->ReadWALLogForMtr(mtr_trans_id, logs);
+  bool ignore = false;
+  return wal_manager_->ReadWALLogForMtr(mtr_trans_id, logs, ignore);
 }
 
 KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) {

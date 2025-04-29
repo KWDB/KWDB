@@ -71,7 +71,7 @@ void WALBufferMgr::ResetMeta() {
 }
 
 KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
-                                  TS_LSN start_lsn, TS_LSN end_lsn, uint64_t txn_id, bool for_chk) {
+                                  TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk, uint64_t txn_id, bool for_chk) {
   if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
     return SUCCESS;
   }
@@ -386,6 +386,9 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
           LOG_ERROR("Failed to parse the PARTITION_TIER_CHANGE WAL log.")
         }
         break;
+      }
+      case WALLogType::END_CHECKPOINT: {
+        end_chk = true;
       }
       case DB_SETTING:
 //        break;

@@ -1121,32 +1121,19 @@ class DropIndexEntry : public LogEntry {
 
 class EndCheckpointEntry : public LogEntry {
  public:
-  EndCheckpointEntry(TS_LSN lsn, WALLogType type);
+  EndCheckpointEntry(TS_LSN lsn, uint64_t x_id);
 
-  ~EndCheckpointEntry() override;
+  ~EndCheckpointEntry() override = default;
 
   char* encode() override {
-    return construct(type_, x_id_, checkpoint_no_);
+    return construct(type_, x_id_);
   }
 
-  size_t getLen() override;
-
-  void prettyPrint() override;
-
- private:
-  uint32_t checkpoint_no_{};
-
-  size_t partition_len_{};
-
  public:
-  static const size_t header_length = sizeof(x_id_) +
-                                      sizeof(checkpoint_no_);
 
-  static const size_t fixed_length = sizeof(type_) +
-                                     sizeof(x_id_) +
-                                     sizeof(checkpoint_no_);
+  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_);
 
-  static char* construct(const WALLogType type, const uint64_t x_id, const uint32_t checkpoint_no) {
+  static char* construct(const WALLogType type, const uint64_t x_id) {
     uint64_t len = fixed_length;
 
     char* log_ptr = KNEW char[len];
@@ -1155,8 +1142,6 @@ class EndCheckpointEntry : public LogEntry {
     memcpy(log_ptr, &type, sizeof(type_));
     location += sizeof(type_);
     memcpy(log_ptr + location, &x_id, sizeof(x_id_));
-    location += sizeof(x_id_);
-    memcpy(log_ptr + location, &checkpoint_no, sizeof(checkpoint_no_));
 
     return log_ptr;
   }

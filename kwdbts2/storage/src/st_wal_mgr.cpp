@@ -577,16 +577,16 @@ KStatus WALMgr::WriteTSxWAL(kwdbContext_p ctx, uint64_t x_id, const char* ts_tra
   return status;
 }
 
-KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn) {
+KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn);
+  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk);
   file_mgr_->Unlock();
   return status;
 }
 
-KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn) {
+KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, 0, true);
+  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk, 0, true);
   if (status == KStatus::FAIL) {
     LOG_ERROR("Failed to read the WAL log.")
     file_mgr_->Unlock();
@@ -601,9 +601,9 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN sta
   return status;
 }
 
-KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs) {
+KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, bool& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, mtr_trans_id, meta_.current_lsn, mtr_trans_id);
+  KStatus status = buffer_mgr_->readWALLogs(logs, mtr_trans_id, meta_.current_lsn, end_chk, mtr_trans_id);
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)

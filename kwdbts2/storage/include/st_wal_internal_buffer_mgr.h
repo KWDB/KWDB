@@ -83,8 +83,8 @@ class WALBufferMgr {
    * @param txn_id Only the log entries of this txn_id are read. The default value is 0, that is, all logs are read.
    * @return
    */
-  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn, uint64_t txn_id = 0,
-                      bool for_chk = false);
+  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk,
+                      uint64_t txn_id = 0, bool for_chk = false);
 
   /**
    * Cache specified length bytes from current EntryBlock.
@@ -185,6 +185,9 @@ class WALBufferMgr {
 
   KStatus readPartitionTierChangeLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn,
                               TS_LSN txn_id, TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+
+  KStatus readEndCheckPointLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn,
+                               TS_LSN txn_id, TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
 
   void Lock() {
     MUTEX_LOCK(buf_mutex_);
