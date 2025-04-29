@@ -151,6 +151,11 @@ func importPlanHook(
 			return nil, nil, nil, false, err
 		}
 	}
+	if !importStmt.Users && !importStmt.Settings {
+		if fileFormat.Format != roachpb.IOFileFormat_CSV {
+			return nil, nil, nil, false, errors.Errorf("Import regular data only supports CSV format")
+		}
+	}
 	_, hasComment := opts[optionComment]
 	_, withPrivileges := opts[optionPrivileges]
 	_, writeWAL := opts[optionWriteWAL]
