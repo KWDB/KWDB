@@ -375,9 +375,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
    * 7. trig all vgroup write checkpoint wal and update checkpoint LSN
    * 8. remove vgroup wal file and old chk file
    */
-  std::vector<LogEntry*> logs;
-  std::vector<LogEntry *> rewrite;
-  std::unordered_map<uint32_t, uint64_t>  vgrp_lsn(vgroup_max_num_);
+  std::vector<LogEntry*> logs = {};
+  std::vector<LogEntry *> rewrite = {};
+  std::unordered_map<uint32_t, uint64_t> vgrp_lsn = {};
   Defer defer{[&]() {
     for (auto& log : logs) {
       delete log;
