@@ -33,10 +33,10 @@ WALMgr::WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
 }
 
-WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt, bool chk_wal) :
+WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt) :
       db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt) {
   wal_path_ = db_path_ + "/wal/" + vgrp_name + "/";
-  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt, chk_wal);
+  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt);
   buffer_mgr_ = KNEW WALBufferMgr(opt, file_mgr_);
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
 }
@@ -686,7 +686,7 @@ void WALMgr::CleanUp(kwdbContext_p ctx) {
 }
 
 KStatus WALMgr::RemoveChkFile(kwdbContext_p ctx) {
-  return Remove(file_mgr_->getChkFilePath()) ? KStatus::SUCCESS : KStatus::FAIL;
+  return Remove(file_mgr_->getFilePath()) ? KStatus::SUCCESS : KStatus::FAIL;
 }
 
 KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {

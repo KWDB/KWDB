@@ -18,8 +18,8 @@ extern int g_engine_version;
 
 namespace kwdbts {
 
-WALFileMgr::WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt, bool chk_wal)
-    : wal_path_(std::move(wal_path)), table_id_(table_id), opt_(opt), chk_wal_(chk_wal) {
+WALFileMgr::WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt)
+    : wal_path_(std::move(wal_path)), table_id_(table_id), opt_(opt) {
   file_mutex_ = new WALFileMgrFileLatch(LATCH_ID_WALFILEMGR_FILE_MUTEX);
 }
 
@@ -34,12 +34,7 @@ WALFileMgr::~WALFileMgr() {
 }
 
 KStatus WALFileMgr::Open() {
-  string path;
-  if (chk_wal_) {
-    path = getChkFilePath();
-  } else {
-    path = getFilePath();
-  }
+  string path = getFilePath();
   if (IsExists(path)) {
     if (file_.is_open()) {
       header_block_ = readHeaderBlock();
@@ -77,13 +72,7 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header) {
     MakeDirectory(wal_path_);
   }
 
-  string path;
-  if (chk_wal_) {
-    path = getChkFilePath();
-  } else {
-    path = getFilePath();
-  }
-
+  string path = getFilePath();
   if (file_.is_open()) {
     // current log file is full. flush and close it.
     file_.close();
