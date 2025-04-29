@@ -12,6 +12,8 @@ insert into test.sjcx01 values (1681111110008,12,13,null,'G', 'G7');
 select * from test.sjcx01 order by k_timestamp;
 select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
 select A, B from test.sjcx01 order by k_timestamp;
+select A from test.sjcx01 order by k_timestamp;
+select C from test.sjcx01 order by k_timestamp;
 select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
 select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
 select * from test.sjcx01

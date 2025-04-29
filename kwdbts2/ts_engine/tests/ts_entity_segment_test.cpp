@@ -84,7 +84,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     // partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
 
-    TsEntitySegment* block_segment = partition->GetBlockSegment();
+    TsEntitySegment* entity_segment = partition->GetEntitySegment();
     int sum = 0;
     for (int i = 0; i < 10; ++i) {
       {
@@ -92,7 +92,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{500, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
-        s = block_segment->GetBlockSpans(filter, &block_spans);
+        s = entity_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -127,7 +127,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, 622}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
-        s = block_segment->GetBlockSpans(filter, &block_spans);
+        s = entity_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
@@ -156,7 +156,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
-        s = block_segment->GetBlockSpans(filter, &block_spans);
+        s = entity_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;

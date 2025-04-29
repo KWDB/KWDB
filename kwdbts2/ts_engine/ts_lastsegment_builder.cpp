@@ -10,9 +10,12 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_lastsegment_builder.h"
+#include <algorithm>
+#include <cstdint>
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
@@ -121,6 +124,7 @@ KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, T
   }
   table_id_ = table_id;
   version_ = version;
+  bloom_filter_->Add(entity_id);
   payload_buffer_.push_back({seq_no, entity_id, row_data});
   return KStatus::SUCCESS;
 }
@@ -133,6 +137,7 @@ KStatus TsLastSegmentBuilder::PutColData(TSTableID table_id, uint32_t version, T
   }
   table_id_ = table_id;
   version_ = version;
+  bloom_filter_->Add(entity_id);
   cols_data_buffer_.push_back({seq_no, entity_id, std::move(col_data)});
   return KStatus::SUCCESS;
 }
@@ -198,23 +203,42 @@ KStatus TsLastSegmentBuilder::Finalize() {
          nblock_ * sizeof(TsLastSegmentBlockIndex));
 
   // TODO(zzr) meta block API
-  size_t meta_block_offset = last_segment_->GetFileSize();
-  size_t meta_index_offset = meta_block_offset;
+  int nmeta = meta_blocks_.size();
+  std::vector<uint64_t> meta_offset(nmeta);
+  std::vector<uint64_t> meta_len(nmeta);
+
+  for (int i = 0; i < nmeta; ++i) {
+    meta_offset[i] = last_segment_->GetFileSize();
+    std::string serialized;
+    meta_blocks_[i]->Serialize(&serialized);
+    last_segment_->Append(serialized);
+    meta_len[i] = serialized.size();
+  }
+  size_t meta_index_offset = last_segment_->GetFileSize();
+  std::string meta_idx_data;
+  meta_idx_data.reserve(nmeta * 16);
+  for (int i = 0; i < nmeta; ++i) {
+    PutFixed64(&meta_idx_data, meta_offset[i]);
+    PutFixed64(&meta_idx_data, meta_len[i]);
+  }
+  s = last_segment_->Append(meta_idx_data);
+  if (s == FAIL) {
+    return s;
+  }
 
   TsLastSegmentFooter footer;
   footer.block_info_idx_offset = index_block_offset;
   footer.n_data_block = nblock_;
   footer.meta_block_idx_offset = meta_index_offset;
-  footer.n_meta_block = 0;
+  footer.n_meta_block = nmeta;
   footer.file_version = 1;
-  auto ss =
-      last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
-  if (ss != KStatus::SUCCESS) {
+  s = last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
+  if (s != KStatus::SUCCESS) {
     LOG_ERROR("IO error when write lastsegment.");
     return FAIL;
   }
-  ss = last_segment_->Flush();
-  if (ss == FAIL) {
+  s = last_segment_->Flush();
+  if (s == FAIL) {
     LOG_ERROR("IO error when flush lastsegment.");
     return FAIL;
   }
