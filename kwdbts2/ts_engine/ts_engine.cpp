@@ -400,6 +400,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     vgrp_lsn[vgrp->GetVGroupID()] = lsn;
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
+
+  std::cout<< "read logs count: " << logs.size() << std::endl;
   // 3. merge chk log and wal log
   std::vector<uint64_t> commit;
 
