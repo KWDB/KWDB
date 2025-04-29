@@ -179,20 +179,37 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
     // construct entry char*
     switch (log->getType()) {
       case WALLogType::INSERT: {
-//        if
-        auto wal_log = reinterpret_cast<InsertLogMetricsEntry *>(log);
+        auto wal_log = reinterpret_cast<InsertLogEntry *>(log);
+        switch (wal_log->getTableType()) {
+          case WALTableType::DATA : {
+            wal_log =  reinterpret_cast<InsertLogMetricsEntry *>(log);
+            break;
+          }
+          case WALTableType::TAG : {
+            wal_log =  reinterpret_cast<InsertLogTagsEntry *>(log);
+            break;
+          }
+        }
         writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
       }
         break;
       case UPDATE: {
-//        if
-        auto wal_log = reinterpret_cast<UpdateLogEntry *>(log);
+        auto wal_log = reinterpret_cast<UpdateLogTagsEntry *>(log);
         writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
       }
         break;
       case DELETE: {
-        // if
         auto wal_log = reinterpret_cast<DeleteLogEntry *>(log);
+        switch (wal_log->getTableType()) {
+          case WALTableType::DATA : {
+            wal_log =  reinterpret_cast<DeleteLogMetricsEntry *>(log);
+            break;
+          }
+          case WALTableType::TAG : {
+            wal_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
+            break;
+          }
+        }
         writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
 
       }
@@ -248,8 +265,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         break;
     }
   }
-  // rename cur to chk.
-
   this->Unlock();
   return KStatus::SUCCESS;
 }

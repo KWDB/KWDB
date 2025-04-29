@@ -390,7 +390,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   bool end_chk = false;
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   if (!end_chk) {
-    LOG_ERROR("Failed to detect the expected end checkpoint wal;skipping this file's content.")
+    LOG_INFO("Failed to detect the expected end checkpoint wal;skipping this file's content.")
     logs.clear();
   }
   wal_mgr_->SwitchNextFile();
@@ -453,7 +453,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 5. trig all vgroup flush
   for (const auto &vgrp: vgroups_) {
-    vgrp->Flush();
+//    vgrp->Flush();
   }
 
   // 6.write EndWAL to chk file
@@ -500,7 +500,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     return KStatus::FAIL;
   }
   if (!end_chk) {
-    LOG_ERROR("Failed to detect the expected end checkpoint wal;skipping this file's content.")
+    LOG_INFO("Failed to detect the expected end checkpoint wal;skipping this file's content.")
     logs.clear();
   }
 
