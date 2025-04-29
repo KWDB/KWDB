@@ -403,6 +403,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   std::cout<< "read logs count: " << logs.size() << std::endl;
+  for (auto log : logs) {
+    std::cout<< "read logs type: " << log->getType() << std::endl;
+  }
   // 3. merge chk log and wal log
   std::vector<uint64_t> commit;
 
