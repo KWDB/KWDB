@@ -821,10 +821,9 @@ func (c intCustomizer) getBinOpAssignFunc() assignFunc {
 		// The int64 customizer handles binOps with integers of different widths (in
 		// addition to handling int64-only arithmetic), so we must cast to int64 in
 		// this case.
-		if c.width == 64 {
-			args["Left"] = fmt.Sprintf("int64(%s)", l)
-			args["Right"] = fmt.Sprintf("int64(%s)", r)
-		}
+		args["Left"] = fmt.Sprintf("int64(%s)", l)
+		args["Right"] = fmt.Sprintf("int64(%s)", r)
+
 		buf := strings.Builder{}
 		var t *template.Template
 
@@ -1309,8 +1308,8 @@ func registerTypeCustomizers() {
 	}
 	// Use a customizer of appropriate width when widths are the same.
 	registerTypeCustomizer(coltypePair{coltypes.Float64, coltypes.Float64}, floatCustomizer{width: 64})
-	registerTypeCustomizer(coltypePair{coltypes.Int16, coltypes.Int16}, intCustomizer{width: 16})
-	registerTypeCustomizer(coltypePair{coltypes.Int32, coltypes.Int32}, intCustomizer{width: 32})
+	registerTypeCustomizer(coltypePair{coltypes.Int16, coltypes.Int16}, intCustomizer{width: 64})
+	registerTypeCustomizer(coltypePair{coltypes.Int32, coltypes.Int32}, intCustomizer{width: 64})
 	registerTypeCustomizer(coltypePair{coltypes.Int64, coltypes.Int64}, intCustomizer{width: 64})
 
 	for _, rightFloatType := range coltypes.FloatTypes {
@@ -1364,8 +1363,8 @@ func registerBinOpOutputTypes() {
 		binOpOutputTypes[binOp][coltypePair{coltypes.Float64, coltypes.Float64}] = coltypes.Float64
 		// Note: keep output type of binary operations on integers of different
 		// widths in line with planning in colexec/execplan.go.
-		binOpOutputTypes[binOp][coltypePair{coltypes.Int16, coltypes.Int16}] = coltypes.Int16
-		binOpOutputTypes[binOp][coltypePair{coltypes.Int32, coltypes.Int32}] = coltypes.Int32
+		binOpOutputTypes[binOp][coltypePair{coltypes.Int16, coltypes.Int16}] = coltypes.Int64
+		binOpOutputTypes[binOp][coltypePair{coltypes.Int32, coltypes.Int32}] = coltypes.Int64
 		binOpOutputTypes[binOp][coltypePair{coltypes.Int64, coltypes.Int64}] = coltypes.Int64
 		for _, intType := range coltypes.IntTypes {
 			binOpOutputTypes[binOp][coltypePair{coltypes.Decimal, intType}] = coltypes.Decimal

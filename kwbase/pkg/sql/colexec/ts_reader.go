@@ -246,7 +246,7 @@ func (tro *tsReaderOp) Next(ctx context.Context) coldata.Batch {
 				if tro.collected {
 					tro.MoveToDraining(nil)
 					meta := tro.DrainHelper()
-					if meta.Err != nil {
+					if meta != nil && meta.Err != nil {
 						return coldata.ZeroBatch
 					}
 				}
