@@ -47,7 +47,6 @@ const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<
   //   AggCalculatorV2 v2((void*)value, &bitmap, dest_type.type, dest_type.size, row_num_);
   //   bool overflow = v2.CalcAllAgg(*(reinterpret_cast<uint16_t*>(allc_mem)), allc_mem + 8, allc_mem + 16, allc_mem + 24);
   //   assert(!overflow);
-    
   // } else {
   //   // VarColAggCalculatorV2 v2()
   // }
@@ -132,22 +131,26 @@ KStatus TsBlockSpan::GetAggResult(uint32_t col_id, const std::vector<AttributeIn
 }
 
 void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
-  assert(row_num < nrow_);
+  assert(row_num <= nrow_);
   front_span->block_ = block_;
   front_span->entity_id_ = entity_id_;
   front_span->start_row_ = start_row_;
   front_span->nrow_ = row_num;
+  front_span->convert_ = {*front_span};
+  convert_ = {*this};
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
 }
 
 void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
-  assert(row_num < nrow_);
+  assert(row_num <= nrow_);
   back_span->block_ = block_;
   back_span->entity_id_ = entity_id_;
   back_span->start_row_ = start_row_ + nrow_ - row_num;
   back_span->nrow_ = row_num;
+  back_span->convert_ = {*back_span};
+  convert_ = {*this};
   // change current span info
   nrow_ -= row_num;
 }
@@ -155,6 +158,15 @@ void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
 void TsBlockSpan::Truncate(int row_num) {
   start_row_ += row_num;
   nrow_ -= row_num;
+  convert_ = {*this};
+}
+
+void TsBlockSpan::Clear() {
+  block_ = nullptr;
+  entity_id_ = 0;
+  start_row_ = 0;
+  nrow_ = 0;
+  convert_ = {};
 }
 
 }  // namespace kwdbts

@@ -91,5 +91,6 @@ struct TsBlockSpan {
 
   void Truncate(int row_num);
 
+  void Clear();
 };
 }  // namespace kwdbts
