@@ -115,20 +115,8 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   }
 
   // Metric
-  assert(result.len >= 2);
-  auto first = static_cast<TsCompAlg>(result.data[0]);
-  auto second = static_cast<GenCompAlg>(result.data[1]);
-  assert(first < TsCompAlg::TS_COMP_ALG_LAST && second < GenCompAlg::GEN_COMP_ALG_LAST);
-  const auto& compressor = CompressorManager::GetInstance().GetCompressor(first, second);
-  RemovePrefix(&result, 2);
-  bool ok = true;
-  col_data->clear();
-  if (compressor.IsPlain()) {
-    col_data->assign(result.data, result.len);
-  } else {
-    ok = compressor.Decompress(result, bitmap->get(), info.nrow, col_data);
-  }
-
+  const auto& mgr = CompressorManager::GetInstance();
+  bool ok = mgr.DecompressData(result, bitmap->get(), info.nrow, col_data);
   return ok ? SUCCESS : FAIL;
 }
 

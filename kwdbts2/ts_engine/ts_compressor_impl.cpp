@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "data_type.h"
+#include "ee_field_common.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
@@ -481,7 +482,10 @@ static inline T Restore(uint64_t n, int width) {
 
 template <typename T>
 bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
-  out->reserve(sizeof(T) * count * 8);
+  if (data.len % 8 != 0) {
+    return false;
+  }
+  out->reserve(sizeof(T) * count);
   const char *cursor = data.data;
   while (cursor < data.data + data.len) {
     uint64_t batch = *reinterpret_cast<const uint64_t *>(cursor);
@@ -525,7 +529,6 @@ bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string
 bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmap *bitmap,
                                                      uint32_t count, std::string *out) const {
   if (IsPlain()) return false;
-  out->clear();
   std::string buf;
   TSSlice data;
   bool ok = true;
@@ -629,6 +632,49 @@ auto CompressorManager::GetDefaultAlgorithm(DATATYPE dtype) const
 auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCompressor {
   auto [first, second] = GetDefaultAlgorithm(dtype);
   return GetCompressor(first, second);
+}
+
+bool CompressorManager::CompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
+                                     std::string *output, TsCompAlg first,
+                                     GenCompAlg second) const {
+  static_assert(sizeof(first) == sizeof(uint16_t));
+  static_assert(sizeof(second) == sizeof(uint16_t));
+  auto compressor = GetCompressor(first, second);
+  std::string tmp;
+  bool ok = compressor.Compress(input, bitmap, count, &tmp);
+  if (!ok) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
+  }
+  PutFixed16(output, static_cast<uint16_t>(first));
+  PutFixed16(output, static_cast<uint16_t>(second));
+  if (ok) {
+    output->append(tmp);
+  } else {
+    output->append(input.data, input.len);
+  }
+  return true;
+}
+
+bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
+                                       std::string *output) const {
+  if (input.len < 4) {
+    return false;
+  }
+  uint16_t v;
+  GetFixed16(&input, &v);
+  TsCompAlg first = static_cast<TsCompAlg>(v);
+  GetFixed16(&input, &v);
+  GenCompAlg second = static_cast<GenCompAlg>(v);
+  if (first >= TsCompAlg::TS_COMP_ALG_LAST || second >= GenCompAlg::GEN_COMP_ALG_LAST) {
+    return false;
+  }
+  if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {
+    output->assign(input.data, input.len);
+    return true;
+  }
+  auto compressor = GetCompressor(first, second);
+  return compressor.Decompress(input, bitmap, count, output);
 }
 
 }  // namespace kwdbts

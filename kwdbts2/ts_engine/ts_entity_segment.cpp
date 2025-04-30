@@ -11,7 +11,9 @@
 
 #include "ts_entity_segment.h"
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "ts_block_span_sorted_iterator.h"
+#include "ts_coding.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_timsort.h"
 #include "ts_vgroup_partition.h"
@@ -427,22 +429,13 @@ KStatus TsEntitySegmentBlock::Flush(TsVGroupPartition* partition) {
       buffer.append(&bitmap_compress_type);
       buffer.append(bitmap_data.data, bitmap_data.len);
     }
+    TsBitmap* b = has_bitmap ? &block.bitmap : nullptr;
     // compress col data & write to buffer
     std::string compressed;
-    auto compressor = mgr.GetDefaultCompressor(d_type);
-    TSSlice plain{const_cast<char *>(block.buffer.data()), block.buffer.size()};
-    TsBitmap* b = has_bitmap ? &block.bitmap : nullptr;
-    bool ok = compressor.Compress(plain, b, n_rows_, &compressed);
-    if (ok) {
-      auto [first, second] = compressor.GetAlgorithms();
-      buffer.push_back(static_cast<char>(first));
-      buffer.push_back(static_cast<char>(second));
-      buffer.append(compressed);
-    } else {
-      buffer.push_back(static_cast<char>(TsCompAlg::kPlain));
-      buffer.push_back(static_cast<char>(GenCompAlg::kPlain));
-      buffer.append(block.buffer);
-    }
+    auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
+    TSSlice plain{block.buffer.data(), block.buffer.size()};
+    mgr.CompressData(plain, b, n_rows_, &compressed, first, second);
+    buffer.append(compressed);
     // calculate aggregate
     if (0 == col_idx) {
       continue;
@@ -515,69 +508,51 @@ KStatus TsEntitySegmentBlock::Flush(TsVGroupPartition* partition) {
 KStatus TsEntitySegmentBlock::LoadSeqNo(TSSlice buffer) {
   assert(block_info_.col_block_offset.size() == n_cols_ + 1);
   assert(column_blocks_.size() == n_cols_);
-  char* ptr = buffer.data;
-  TsCompAlg first = static_cast<TsCompAlg>(*ptr);
-  ptr++;
-  GenCompAlg second = static_cast<GenCompAlg>(*ptr);
-  ptr++;
-  assert(first < TsCompAlg::TS_COMP_ALG_LAST && second < GenCompAlg::GEN_COMP_ALG_LAST);
-  auto compressor = CompressorManager::GetInstance().GetCompressor(first, second);
-  // decompress
   uint32_t start_offset = block_info_.col_block_offset[0];
   uint32_t end_offset = block_info_.col_block_offset[1];
-  std::string_view plain_sv{ptr, end_offset - start_offset - 2};
+  // decompress
+  TSSlice data{buffer.data, end_offset - start_offset};
   std::string plain;
-  if (compressor.IsPlain()) {
-  } else {
-    bool ok = compressor.Decompress({ptr, plain_sv.size()}, nullptr, n_rows_, &plain);
-    if (!ok) {
-      LOG_ERROR("block segment column[0] data decompress failed");
-      return KStatus::FAIL;
-    }
-    plain_sv = plain;
+  const auto& mgr = CompressorManager::GetInstance();
+  bool ok = mgr.DecompressData(data, nullptr, n_rows_, &plain);
+  if (!ok) {
+    LOG_ERROR("block segment column[0] data decompress failed");
+    return KStatus::FAIL;
   }
   // save decompressed col block data
-  column_blocks_[0].buffer.assign(plain_sv);
+  column_blocks_[0].buffer = std::move(plain);
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentBlock::LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
-                                         TSSlice buffer) {
+KStatus TsEntitySegmentBlock::LoadColData(int32_t col_idx,
+                                          const std::vector<AttributeInfo>& metric_schema,
+                                          TSSlice buffer) {
   assert(block_info_.col_block_offset.size() == n_cols_ + 1);
   assert(column_blocks_.size() == n_cols_);
   assert(column_blocks_.size() > col_idx + 1);
+  const auto& mgr = CompressorManager::GetInstance();
   if (metric_schema_.empty()) {
     metric_schema_ = metric_schema;
   }
+  uint32_t start_offset = block_info_.col_block_offset[col_idx + 1];
+  uint32_t end_offset = block_info_.col_block_offset[col_idx + 2];
+  assert(buffer.len == end_offset - start_offset);
 
+  TSSlice data{buffer.data, end_offset - start_offset};
   size_t bitmap_len = 0;
   if (col_idx >= 0) {
     bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
-    column_blocks_[col_idx + 1].bitmap.Map({buffer.data, bitmap_len}, n_rows_);
+    column_blocks_[col_idx + 1].bitmap.Map({data.data, bitmap_len}, n_rows_);
   }
-  char* ptr = buffer.data + bitmap_len;
-  TsCompAlg first = static_cast<TsCompAlg>(*ptr);
-  ptr++;
-  GenCompAlg second = static_cast<GenCompAlg>(*ptr);
-  ptr++;
-  assert(first < TsCompAlg::TS_COMP_ALG_LAST && second < GenCompAlg::GEN_COMP_ALG_LAST);
-  auto compressor = CompressorManager::GetInstance().GetCompressor(first, second);
-  // decompress
-  uint32_t start_offset = block_info_.col_block_offset[col_idx + 1];
-  uint32_t end_offset = block_info_.col_block_offset[col_idx + 2];
-  std::string_view plain_sv{ptr, end_offset - start_offset - bitmap_len - 2};
+  RemovePrefix(&data, bitmap_len);
   std::string plain;
-  if (compressor.IsPlain()) {
-  } else {
-    bool ok = compressor.Decompress({ptr, plain_sv.size()}, &column_blocks_[col_idx + 1].bitmap, n_rows_, &plain);
-    if (!ok) {
-      LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
-      return KStatus::FAIL;
-    }
-    plain_sv = plain;
+  bool ok = mgr.DecompressData(data, &column_blocks_[col_idx + 1].bitmap, n_rows_, &plain);
+  if (!ok) {
+    LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
+    return KStatus::FAIL;
   }
   // save decompressed col block data
-  column_blocks_[col_idx + 1].buffer.assign(plain_sv);
+  column_blocks_[col_idx + 1].buffer = std::move(plain);
   return KStatus::SUCCESS;
 }
 
