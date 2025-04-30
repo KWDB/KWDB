@@ -71,7 +71,12 @@ KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> s
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  TagIteratorV2Impl* tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags);
+  TagIteratorV2Impl* tag_iter;
+  if (!EngineOptions::isSingleNode()) {
+    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags, hps);
+  } else {
+    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags);
+  }
   if (KStatus::SUCCESS != tag_iter->Init()) {
     delete tag_iter;
     tag_iter = nullptr;

@@ -21,44 +21,107 @@ INSERT 1
 > insert into test.sjcx01 values (1681111110008,12,13,null,'G', 'G7');
 INSERT 1
 > select * from test.sjcx01 order by k_timestamp;
-  k_timestamp | a | b | c | d | t1_attribute
---------------+---+---+---+---+---------------
-(0 rows)
+           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
+--------------------------------+------+----+------+----------+---------------
+  2023-04-10 07:18:30+00:00     |    1 |  1 | A    | DFFDARG  | qqq
+  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
+  2023-04-10 07:18:30.003+00:00 |    4 |  4 | D    | B        | B2
+  2023-04-10 07:18:30.004+00:00 |    5 |  5 | E    | C        | C3
+  2023-04-10 07:18:30.005+00:00 | NULL |  7 | NULL | D        | D4
+  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
+  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
+(9 rows)
 > select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
-  k_timestamp | a | b
---------------+---+----
-(0 rows)
+           k_timestamp          |  a   | b
+--------------------------------+------+-----
+  2023-04-10 07:18:30+00:00     |    1 |  1
+  2023-04-10 07:18:30.001+00:00 |    2 |  2
+  2023-04-10 07:18:30.002+00:00 |    3 |  3
+  2023-04-10 07:18:30.003+00:00 |    4 |  4
+  2023-04-10 07:18:30.004+00:00 |    5 |  5
+  2023-04-10 07:18:30.005+00:00 | NULL |  7
+  2023-04-10 07:18:30.006+00:00 |    8 |  9
+  2023-04-10 07:18:30.007+00:00 | NULL | 11
+  2023-04-10 07:18:30.008+00:00 |   12 | 13
+(9 rows)
 > select A, B from test.sjcx01 order by k_timestamp;
-  a | b
-----+----
-(0 rows)
+   a   | b
+-------+-----
+     1 |  1
+     2 |  2
+     3 |  3
+     4 |  4
+     5 |  5
+  NULL |  7
+     8 |  9
+  NULL | 11
+    12 | 13
+(9 rows)
 > select A from test.sjcx01 order by k_timestamp;
-  a
------
-(0 rows)
+   a
+--------
+     1
+     2
+     3
+     4
+     5
+  NULL
+     8
+  NULL
+    12
+(9 rows)
 > select C from test.sjcx01 order by k_timestamp;
-  c
------
-(0 rows)
+   c
+--------
+  A
+  B
+  C
+  D
+  E
+  NULL
+  G
+  H
+  NULL
+(9 rows)
 > select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
-  k_timestamp | a | b | c | d | t1_attribute
---------------+---+---+---+---+---------------
-(0 rows)
+           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
+--------------------------------+------+----+------+----------+---------------
+  2023-04-10 07:18:30+00:00     |    1 |  1 | A    | DFFDARG  | qqq
+  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
+  2023-04-10 07:18:30.003+00:00 |    4 |  4 | D    | B        | B2
+  2023-04-10 07:18:30.004+00:00 |    5 |  5 | E    | C        | C3
+  2023-04-10 07:18:30.005+00:00 | NULL |  7 | NULL | D        | D4
+  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
+  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
+(9 rows)
 > select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
-  k_timestamp | a | b | c | d | t1_attribute
---------------+---+---+---+---+---------------
-(0 rows)
+           k_timestamp          |  a   | b |  c   | d | t1_attribute
+--------------------------------+------+---+------+---+---------------
+  2023-04-10 07:18:30.003+00:00 |    4 | 4 | D    | B | B2
+  2023-04-10 07:18:30.004+00:00 |    5 | 5 | E    | C | C3
+  2023-04-10 07:18:30.005+00:00 | NULL | 7 | NULL | D | D4
+  2023-04-10 07:18:30.006+00:00 |    8 | 9 | G    | E | E5
+(4 rows)
 > select * from test.sjcx01
 where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
-  k_timestamp | a | b | c | d | t1_attribute
---------------+---+---+---+---+---------------
-(0 rows)
+           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
+--------------------------------+------+----+------+----------+---------------
+  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
+  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
+  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
+(5 rows)
 > select count(*) from test.sjcx01;
   count
 ---------
-      0
+      9
 (1 row)
 > select * from test.sjcx01 where t1_attribute = 'F6';
            k_timestamp          |  a   | b  | c | d | t1_attribute
@@ -82,13 +145,17 @@ ALTER TABLE
 > insert into test_alter.t2 values(1672531211015, 65536, 65539,  'test时间精度！！！@TEST2', 1);
 INSERT 1
 > select * from test_alter.t2 order by ts,attr;
-  ts | a | b | c | attr
------+---+---+---+-------
-(0 rows)
+               ts               |   a   |   b   |            c             | attr
+--------------------------------+-------+-------+--------------------------+-------
+  2023-01-01 00:00:11.005+00:00 |   100 |   200 | 300                      |    1
+  2023-01-01 00:00:11.015+00:00 | 65536 | 65539 | test时间精度！！！@TEST2 |    1
+(2 rows)
 > select a, b from test_alter.t2 order by ts,attr;
-  a | b
-----+----
-(0 rows)
+    a   |   b
+--------+--------
+    100 |   200
+  65536 | 65539
+(2 rows)
 > create table test_alter.t9(ts timestamp not null, a char, b nchar(64)) tags(attr int not null) primary tags(attr);
 CREATE TABLE
 > insert into test_alter.t9 values(1672531211005,  't',  'test时间精度通用查询测试！！！@TEST3', 1);
@@ -100,12 +167,16 @@ ALTER TABLE
 > insert into test_alter.t9 values(1672531211015,  'test时间精度！！！@TEST2',  'test时间精度通用查询测试！！！@TEST3', 1);
 INSERT 1
 > select * from test_alter.t9 order by ts,attr;
-  ts | a | b | attr
------+---+---+-------
-(0 rows)
+               ts               |            a             |                  b                   | attr
+--------------------------------+--------------------------+--------------------------------------+-------
+  2023-01-01 00:00:11.005+00:00 | t                        | test时间精度通用查询测试！！！@TEST3 |    1
+  2023-01-01 00:00:11.015+00:00 | test时间精度！！！@TEST2 | test时间精度通用查询测试！！！@TEST3 |    1
+(2 rows)
 > select a, b from test_alter.t9 order by ts,attr;
-  a | b
-----+----
-(0 rows)
+             a             |                  b
+---------------------------+---------------------------------------
+  t                        | test时间精度通用查询测试！！！@TEST3
+  test时间精度！！！@TEST2 | test时间精度通用查询测试！！！@TEST3
+(2 rows)
 > drop database if exists test_alter cascade;
 DROP DATABASE
