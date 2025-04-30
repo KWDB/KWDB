@@ -392,7 +392,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
   wal_mgr_->SwitchNextFile();
   std::cout<< "read chk logs count: " << logs.size() << std::endl;
-  if (logs.empty()) {
+  if (logs.empty() && end_chk) {
     std::cout<< "read chk logs count 0. " << std::endl;
   }
   for (auto log : logs) {
