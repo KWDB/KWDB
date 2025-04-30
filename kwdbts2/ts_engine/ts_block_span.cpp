@@ -47,7 +47,6 @@ const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<
   //   AggCalculatorV2 v2((void*)value, &bitmap, dest_type.type, dest_type.size, row_num_);
   //   bool overflow = v2.CalcAllAgg(*(reinterpret_cast<uint16_t*>(allc_mem)), allc_mem + 8, allc_mem + 16, allc_mem + 24);
   //   assert(!overflow);
-    
   // } else {
   //   // VarColAggCalculatorV2 v2()
   // }

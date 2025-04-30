@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <vector>

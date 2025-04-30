@@ -17,6 +17,7 @@
 #include <cstring>
 #include <string>
 #include <list>
+#include <vector>
 #include "mmap/mmap_segment_table_iterator.h"
 #include "ts_bitmap.h"
 
@@ -39,7 +40,7 @@ class TSBlkSpanDataTypeConvert {
   TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span);
 
   TSBlkSpanDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num) :
-   block_(block), start_row_idx_(row_idx), row_num_(row_num) {}
+      block_(block), start_row_idx_(row_idx), row_num_(row_num) {}
 
   ~TSBlkSpanDataTypeConvert() {
     for (auto mem : alloc_mems_) {

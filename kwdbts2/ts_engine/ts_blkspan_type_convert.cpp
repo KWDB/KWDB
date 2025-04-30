@@ -37,9 +37,11 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
     memset(temp_new_mem, 0, new_type_size + 1);
     if (!isVarLenType(old_type)) {
       if (new_type == DATATYPE::CHAR || new_type == DATATYPE::BINARY) {
-        err_info.errcode = convertFixedToStr(old_type, (char*)old_mem, (char*)temp_new_mem, err_info);
+        err_info.errcode = convertFixedToStr(old_type, reinterpret_cast<char*>(old_mem),
+                                             reinterpret_cast<char*>(temp_new_mem), err_info);
       } else {
-        err_info.errcode = convertFixedToNum(old_type, new_type, (char*) old_mem, (char*) temp_new_mem, err_info);
+        err_info.errcode = convertFixedToNum(old_type, new_type, reinterpret_cast<char*>(old_mem),
+                                             reinterpret_cast<char*>(temp_new_mem), err_info);
       }
       if (err_info.errcode < 0) {
         free(temp_new_mem);
@@ -47,14 +49,14 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
       }
     } else {
       uint16_t var_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-      std::string var_value((char*)old_var_mem.get() + MMapStringColumn::kStringLenLen);
-      convertStrToFixed(var_value, new_type, (char*) temp_new_mem, var_len, err_info);
+      std::string var_value(reinterpret_cast<char*>(old_var_mem.get()) + MMapStringColumn::kStringLenLen);
+      convertStrToFixed(var_value, new_type, reinterpret_cast<char*>(temp_new_mem), var_len, err_info);
     }
     std::shared_ptr<void> ptr(temp_new_mem, free);
     *new_mem = ptr;
   } else {
     if (!isVarLenType(old_type)) {
-      auto cur_var_data = convertFixedToVar(old_type, new_type, (char*)old_mem, err_info);
+      auto cur_var_data = convertFixedToVar(old_type, new_type, reinterpret_cast<char*>(old_mem), err_info);
       *new_mem = cur_var_data;
     } else {
       if (old_type == VARSTRING) {
@@ -63,7 +65,7 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
         memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen);
         *reinterpret_cast<uint16_t*>(var_data) = old_len;
         memcpy(var_data + MMapStringColumn::kStringLenLen,
-               (char*) old_var_mem.get() + MMapStringColumn::kStringLenLen, old_len);
+               reinterpret_cast<char*>(old_var_mem.get()) + MMapStringColumn::kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       } else {
@@ -72,7 +74,7 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
         memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen + 1);
         *reinterpret_cast<uint16_t*>(var_data) = old_len + 1;
         memcpy(var_data + MMapStringColumn::kStringLenLen,
-               (char*) old_var_mem.get() + MMapStringColumn::kStringLenLen, old_len);
+               reinterpret_cast<char*>(old_var_mem.get()) + MMapStringColumn::kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       }
@@ -142,8 +144,10 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
   return KStatus::SUCCESS;
 }
 
-KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data) {
+KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx,
+                                                       const std::vector<AttributeInfo>& schema,
+                                                       const AttributeInfo& dest_type, DataFlags& flag,
+                                                       TSSlice& data) {
   assert(isVarLenType(dest_type.type));
   assert(row_idx < row_num_);
   assert(col_idx < schema.size());
