@@ -53,7 +53,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus AddMemSegmentBlockSpans();
   KStatus AddLastSegmentBlockSpans();
   KStatus AddEntitySegmentBlockSpans();
-  KStatus ConvertBlockSpanToResultSet(const TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
+  KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
