@@ -43,7 +43,7 @@ class TsBlock {
 
   virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
    const std::vector<AttributeInfo>& schema,
-   const AttributeInfo& desc_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+   const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 };
 
 struct TsBlockSpan {
@@ -76,13 +76,13 @@ struct TsBlockSpan {
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type,
+  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
                              char** value, TsBitmap& bitmap);
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& desc_type, DataFlags& flag, TSSlice& data);
+    const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
 
-  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type,
+  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
     std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 
   void SplitFront(int row_num, TsBlockSpan* front_span);

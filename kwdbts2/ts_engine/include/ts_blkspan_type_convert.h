@@ -49,11 +49,11 @@ class TSBlkSpanDataTypeConvert {
   }
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type,
+  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
                              char** value, TsBitmap& bitmap);
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& desc_type, DataFlags& flag, TSSlice& data);
+    const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
 };
 
 
