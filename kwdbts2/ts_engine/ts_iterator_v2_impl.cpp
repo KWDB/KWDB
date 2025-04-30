@@ -120,19 +120,22 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
   for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
     if (!blk_version_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
       bool found = false;
-      for (size_t j = 0; j < blk_version_valid.size(); j++) {
+      size_t j = 0;
+      for (; j < blk_version_valid.size(); j++) {
         if (blk_version_valid[j] == ts_scan_cols_[i]) {
           found = true;
           break;
         }
-        if (!found) {
-          LOG_ERROR("cannot found blk col index for col id[%u].", ts_scan_cols_[i]);
-          return KStatus::FAIL;
-        }
+      }
+      if (!found) {
+        blk_scan_cols[i] = UINT32_MAX;
+        LOG_INFO("not found blk col index for col id[%u].", ts_scan_cols_[i]);
+      } else {
         blk_scan_cols[i] = j;
       }
-    }else {
+    } else {
       // column is dropped at block version.
+      LOG_INFO("column is dropped at[%u] index for col id[%u].", ts_blk_span.GetTableVersion(), ts_scan_cols_[i]);
       blk_scan_cols[i] = UINT32_MAX;
     }
   }
