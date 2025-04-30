@@ -82,8 +82,8 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
 }
 
 KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& desc_type, char** value, TsBitmap& bitmap) {
-  assert(!isVarLenType(desc_type.type));
+ const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
+  assert(!isVarLenType(dest_type.type));
   assert(col_id < schema.size());
   TsBitmap blk_bitmap;
   auto s = block_->GetColBitmap(col_id, schema, blk_bitmap);
@@ -98,15 +98,15 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
     return s;
   }
   bitmap.SetCount(row_num_);
-  if (schema[col_id].type == desc_type.type) {
+  if (isSameType(schema[col_id], dest_type)) {
     for (size_t i = 0; i < row_num_; i++) {
       bitmap[i] = blk_bitmap[start_row_idx_+ i];
     }
-    *value = blk_value + desc_type.size * start_row_idx_;
+    *value = blk_value + dest_type.size * start_row_idx_;
   } else {
-    char* allc_mem = reinterpret_cast<char*>(malloc(desc_type.size * row_num_));
+    char* allc_mem = reinterpret_cast<char*>(malloc(dest_type.size * row_num_));
     if (allc_mem == nullptr) {
-      LOG_ERROR("malloc failed. alloc size: %u", desc_type.size * row_num_);
+      LOG_ERROR("malloc failed. alloc size: %u", dest_type.size * row_num_);
       return KStatus::SUCCESS;
     }
     alloc_mems_.push_back(allc_mem);
@@ -127,14 +127,14 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
       // table altered. column type changes.
       std::shared_ptr<void> new_mem;
       int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[col_id].type),
-                                                static_cast<DATATYPE>(desc_type.type),
-                                                desc_type.size, old_mem, old_var_mem, &new_mem);
+                                                static_cast<DATATYPE>(dest_type.type),
+                                                dest_type.size, old_mem, old_var_mem, &new_mem);
       if (err_code < 0) {
-        LOG_WARN("failed ConvertDataType from %u to %u", schema[col_id].type, desc_type.type);
+        LOG_WARN("failed ConvertDataType from %u to %u", schema[col_id].type, dest_type.type);
         // todo(liangbo01) make sure if convert failed. value is null.
         bitmap[i] = DataFlags::kNull;
       } else {
-        memcpy(allc_mem + desc_type.size * i, new_mem.get(), desc_type.size);
+        memcpy(allc_mem + dest_type.size * i, new_mem.get(), dest_type.size);
       }
     }
     *value = allc_mem;
@@ -143,8 +143,8 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
 }
 
 KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& desc_type, DataFlags& flag, TSSlice& data) {
-  assert(isVarLenType(desc_type.type));
+ const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data) {
+  assert(isVarLenType(dest_type.type));
   assert(row_idx < row_num_);
   assert(col_idx < schema.size());
   TsBitmap blk_bitmap;
@@ -164,17 +164,17 @@ KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_
     LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, col_idx);
     return s;
   }
-  if (schema[col_idx].type == desc_type.type) {
+  if (isSameType(schema[col_idx], dest_type)) {
     data = orig_value;
   } else {
     assert(!isVarLenType(schema[col_idx].type));
     // table altered. column type changes.
     std::shared_ptr<void> new_mem;
     int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[col_idx].type),
-                                              static_cast<DATATYPE>(desc_type.type),
-                                              desc_type.size, orig_value.data, nullptr, &new_mem);
+                                              static_cast<DATATYPE>(dest_type.type),
+                                              dest_type.size, orig_value.data, nullptr, &new_mem);
     if (err_code < 0) {
-      LOG_WARN("failed ConvertDataType from %u to %u", schema[col_idx].type, desc_type.type);
+      LOG_WARN("failed ConvertDataType from %u to %u", schema[col_idx].type, dest_type.type);
       // todo(liangbo01) make sure if convert failed. value is null.
       flag = DataFlags::kNull;
     } else {

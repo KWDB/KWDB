@@ -51,11 +51,8 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 }
 
 
-KStatus TsBlockSpan::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& desc_type, char** value, TsBitmap& bitmap) {
+KStatus TsBlockSpan::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
   auto s = block_->GetColAddr(col_id, schema, value);
-  if (s == KStatus::SUCCESS) {
-    s = block_->GetColBitmap(CLONE_CHILD_SETTID, schema, bitmap);
-  }
   return s;
 }
 
@@ -153,10 +150,10 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   ASSERT_EQ(block.GetTableID(), table_id);
   ASSERT_EQ(block.GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
-  AttributeInfo desc_type;
+  AttributeInfo dest_type;
   char* value;
   TsBitmap bitmap;
-  s = block.GetFixLenColAddr(0, schema, desc_type, &value, bitmap);
+  s = block.GetFixLenColAddr(0, schema, dest_type, &value, bitmap);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   for (size_t i = 0; i < row_num; i++) {
     ASSERT_EQ(block.GetTS(i), 10086 + i);
@@ -234,10 +231,10 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     ASSERT_EQ(block.GetTableID(), table_id);
     ASSERT_EQ(block.GetRowNum(), row_num / entity_num);
     std::vector<AttributeInfo> schema;
-    AttributeInfo desc_type;
+    AttributeInfo dest_type;
     char* value;
     TsBitmap bitmap;
-    s = block.GetFixLenColAddr(0, schema, desc_type, &value, bitmap);
+    s = block.GetFixLenColAddr(0, schema, dest_type, &value, bitmap);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     for (size_t i = 0; i < block.GetRowNum(); i++) {
       ASSERT_EQ(block.GetTS(i), 10086 + i * 10 + j - 1);
@@ -277,10 +274,10 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     ASSERT_EQ(block.GetTableID(), table_id);
     ASSERT_EQ(block.GetRowNum(), row_num / version_num);
     std::vector<AttributeInfo> schema;
-    AttributeInfo desc_type;
+    AttributeInfo dest_type;
     char* value;
     TsBitmap bitmap;
-    s = block.GetFixLenColAddr(0, schema, desc_type, &value, bitmap);
+    s = block.GetFixLenColAddr(0, schema, dest_type, &value, bitmap);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     for (size_t i = 0; i < row_num / version_num; i++) {
       ASSERT_EQ(block.GetTS(i), 10086 + i * version_num + j);
