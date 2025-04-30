@@ -382,9 +382,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     for (auto& log : logs) {
       delete log;
     }
-    for (auto& log : rewrite) {
-      delete log;
-    }
   }};
   // 1. read chk log from chk file.
   bool end_chk = false;
