@@ -87,6 +87,7 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
  const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
   assert(!isVarLenType(dest_type.type));
   assert(col_id < schema.size());
+  uint32_t dest_type_size = col_id == 0 ? 8 : dest_type.size;
   TsBitmap blk_bitmap;
   auto s = block_->GetColBitmap(col_id, schema, blk_bitmap);
   if (s != KStatus::SUCCESS) {
@@ -104,11 +105,11 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
     for (size_t i = 0; i < row_num_; i++) {
       bitmap[i] = blk_bitmap[start_row_idx_+ i];
     }
-    *value = blk_value + dest_type.size * start_row_idx_;
+    *value = blk_value + dest_type_size * start_row_idx_;
   } else {
-    char* allc_mem = reinterpret_cast<char*>(malloc(dest_type.size * row_num_));
+    char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * row_num_));
     if (allc_mem == nullptr) {
-      LOG_ERROR("malloc failed. alloc size: %u", dest_type.size * row_num_);
+      LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * row_num_);
       return KStatus::SUCCESS;
     }
     alloc_mems_.push_back(allc_mem);
@@ -130,13 +131,13 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
       std::shared_ptr<void> new_mem;
       int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[col_id].type),
                                                 static_cast<DATATYPE>(dest_type.type),
-                                                dest_type.size, old_mem, old_var_mem, &new_mem);
+                                                dest_type_size, old_mem, old_var_mem, &new_mem);
       if (err_code < 0) {
         LOG_WARN("failed ConvertDataType from %u to %u", schema[col_id].type, dest_type.type);
         // todo(liangbo01) make sure if convert failed. value is null.
         bitmap[i] = DataFlags::kNull;
       } else {
-        memcpy(allc_mem + dest_type.size * i, new_mem.get(), dest_type.size);
+        memcpy(allc_mem + dest_type_size * i, new_mem.get(), dest_type_size);
       }
     }
     *value = allc_mem;
