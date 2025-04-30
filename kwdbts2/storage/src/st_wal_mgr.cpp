@@ -191,7 +191,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
           }
         }
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 1" << std::endl;
+        std::cout << "rewrite wal 1\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -204,7 +204,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         if (t_type == WALTableType::TAG) {
           auto wal_log = reinterpret_cast<UpdateLogTagsEntry *>(log);
           s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-          std::cout << "rewrite wal 2" << std::endl;
+          std::cout << "rewrite wal 2\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << std::endl;
           if (s == KStatus::FAIL) {
             LOG_ERROR("Failed to writeWALInternal.")
             return s;
@@ -225,7 +225,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
           }
         }
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 3" << std::endl;
+        std::cout << "rewrite wal 3\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
