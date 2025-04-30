@@ -977,7 +977,7 @@ KStatus TsEntityGroup::UndoAlterTableTag(kwdbContext_p ctx, uint32_t cur_version
     LOG_ERROR("getTagTable error ");
     return KStatus::FAIL;
   }
-  if (new_tag_bt_->undoAlterTagTable(cur_version, new_version, err_info) < 0) {
+  if (new_tag_bt_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
     LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
     return KStatus::FAIL;
   }
@@ -3057,7 +3057,8 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   for (int i = 0; i < meta->index_info_size(); i++) {
     idx_info.emplace_back(meta->index_info(i));
   }
-  s = AddTagSchemaVersion(tag_schema, upper_version);
+  // Note:: "idx_info" is the index that exists in the current version.
+  s = AddTagSchemaVersion(tag_schema, upper_version, idx_info);
   return s;
 }
 

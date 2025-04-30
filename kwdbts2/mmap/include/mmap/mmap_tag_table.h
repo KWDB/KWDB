@@ -42,10 +42,16 @@ class TagPartitionTableManager;
 class TagTable {
  private:
   KLatch*   m_mutex_;
+  // for create/drop/undoCreate/undoDrop index and alter tag.
+  KLatch*   m_version_mutex_;
 
   int mutexLock() {return MUTEX_LOCK(m_mutex_);}
 
   int mutexUnlock() {return MUTEX_UNLOCK(m_mutex_);}
+
+  int versionMutexLock() {return MUTEX_LOCK(m_version_mutex_);}
+
+  int versionMutexUnlock() {return MUTEX_UNLOCK(m_version_mutex_);}
 
  protected:
   TagTableVersionManager*        m_version_mgr_{nullptr};
@@ -132,7 +138,7 @@ class TagTable {
 
   TagTuplePack* GenTagPack(const char* primarytag, int len);
 
-  int undoAlterTagTable(uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
+  int UndoAlterTagTable(uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
   int InsertForUndo(uint32_t group_id, uint32_t entity_id,
 		    const TSSlice& primary_tag);
@@ -155,7 +161,7 @@ class TagTable {
 
   enum class HashIndex : int { Create = 1, Drop = 2, None = 0 };
 
-  int AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
+  int addNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                              const std::vector<uint32_t> &tags = {}, uint32_t index_id = 0,
                              HashIndex idx_flag = HashIndex::None);
 
@@ -168,6 +174,10 @@ class TagTable {
 */
   int AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                                        const std::vector<roachpb::NTagIndexInfo>& idx_info);
+
+  int cleanPartition(uint32_t version, const uint32_t drop_index_id, ErrorInfo &err_info);
+
+  int cleanPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo, ErrorInfo &err_info);
 
   int createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,
                       uint32_t index_id);
