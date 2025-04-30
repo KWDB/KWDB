@@ -136,8 +136,8 @@ void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
   front_span->entity_id_ = entity_id_;
   front_span->start_row_ = start_row_;
   front_span->nrow_ = row_num;
-  front_span->convert_ = {*front_span};
-  convert_ = {*this};
+  front_span->convert_ = TSBlkSpanDataTypeConvert(*front_span);
+  convert_ = TSBlkSpanDataTypeConvert(*this);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -149,8 +149,8 @@ void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
   back_span->entity_id_ = entity_id_;
   back_span->start_row_ = start_row_ + nrow_ - row_num;
   back_span->nrow_ = row_num;
-  back_span->convert_ = {*back_span};
-  convert_ = {*this};
+  back_span->convert_ = TSBlkSpanDataTypeConvert(*back_span);
+  convert_ = TSBlkSpanDataTypeConvert(*this);
   // change current span info
   nrow_ -= row_num;
 }
@@ -158,7 +158,7 @@ void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
 void TsBlockSpan::Truncate(int row_num) {
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_ = {*this};
+  convert_ = TSBlkSpanDataTypeConvert(*this);
 }
 
 void TsBlockSpan::Clear() {
