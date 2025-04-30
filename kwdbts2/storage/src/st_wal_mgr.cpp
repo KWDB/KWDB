@@ -190,12 +190,24 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
             break;
           }
         }
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case UPDATE: {
-        auto wal_log = reinterpret_cast<UpdateLogTagsEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        auto update_log = reinterpret_cast<UpdateLogEntry*>(log);
+        WALTableType t_type = update_log->getTableType();
+        if (t_type == WALTableType::TAG) {
+          auto wal_log = reinterpret_cast<UpdateLogTagsEntry *>(log);
+          s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+          if (s == KStatus::FAIL) {
+            LOG_ERROR("Failed to writeWALInternal.")
+            return s;
+          }
+        }
       }
         break;
       case DELETE: {
@@ -210,53 +222,92 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
             break;
           }
         }
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case CHECKPOINT: {
         auto wal_log = reinterpret_cast<CheckpointEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case MTR_BEGIN: {
         auto wal_log = reinterpret_cast<MTRBeginEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case MTR_COMMIT: {
         auto wal_log = reinterpret_cast<MTREntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case MTR_ROLLBACK: {
         auto wal_log = reinterpret_cast<MTREntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case RANGE_SNAPSHOT: {
         auto wal_log = reinterpret_cast<SnapshotEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case SNAPSHOT_TMP_DIRCTORY: {
         auto wal_log = reinterpret_cast<SnapshotEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case PARTITION_TIER_CHANGE: {
         auto wal_log = reinterpret_cast<PartitionTierChangeEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case CREATE_INDEX: {
         auto wal_log = reinterpret_cast<CreateIndexEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case DROP_INDEX: {
         auto wal_log = reinterpret_cast<DropIndexEntry *>(log);
-        writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
       }
         break;
       case DB_SETTING:
