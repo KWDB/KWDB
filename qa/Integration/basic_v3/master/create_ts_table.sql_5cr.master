@@ -1,8 +1,132 @@
 > create ts database test;
 CREATE TS DATABASE
-> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 null,B INT4 not null,C VARCHAR(10) null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
 > insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq');
 INSERT 1
 > insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD', 'qqq1');
 INSERT 1
+> insert into test.sjcx01 values (1681111110002,3,3,'C','A', 'A1');
+INSERT 1
+> insert into test.sjcx01 values (1681111110003,4,4,'D','B', 'B2');
+INSERT 1
+> insert into test.sjcx01 values (1681111110004,5,5,'E','C', 'C3');
+INSERT 1
+> insert into test.sjcx01 values (1681111110005,null,7,null,'D', 'D4');
+INSERT 1
+> insert into test.sjcx01 values (1681111110006,8,9,'G','E', 'E5');
+INSERT 1
+> insert into test.sjcx01 values (1681111110007,null,11,'H','F', 'F6');
+INSERT 1
+> insert into test.sjcx01 values (1681111110008,12,13,null,'G', 'G7');
+INSERT 1
+> select * from test.sjcx01 order by k_timestamp;
+           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
+--------------------------------+------+----+------+----------+---------------
+  2023-04-10 07:18:30+00:00     |    1 |  1 | A    | DFFDARG  | qqq
+  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
+  2023-04-10 07:18:30.003+00:00 |    4 |  4 | D    | B        | B2
+  2023-04-10 07:18:30.004+00:00 |    5 |  5 | E    | C        | C3
+  2023-04-10 07:18:30.005+00:00 | NULL |  7 | NULL | D        | D4
+  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
+  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
+(9 rows)
+> select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
+           k_timestamp          |  a   | b
+--------------------------------+------+-----
+  2023-04-10 07:18:30+00:00     |    1 |  1
+  2023-04-10 07:18:30.001+00:00 |    2 |  2
+  2023-04-10 07:18:30.002+00:00 |    3 |  3
+  2023-04-10 07:18:30.003+00:00 |    4 |  4
+  2023-04-10 07:18:30.004+00:00 |    5 |  5
+  2023-04-10 07:18:30.005+00:00 | NULL |  7
+  2023-04-10 07:18:30.006+00:00 |    8 |  9
+  2023-04-10 07:18:30.007+00:00 | NULL | 11
+  2023-04-10 07:18:30.008+00:00 |   12 | 13
+(9 rows)
+> select A, B from test.sjcx01 order by k_timestamp;
+   a   | b
+-------+-----
+     1 |  1
+     2 |  2
+     3 |  3
+     4 |  4
+     5 |  5
+  NULL |  7
+     8 |  9
+  NULL | 11
+    12 | 13
+(9 rows)
+> select A from test.sjcx01 order by k_timestamp;
+   a
+--------
+     1
+     2
+     3
+     4
+     5
+  NULL
+     8
+  NULL
+    12
+(9 rows)
+> select C from test.sjcx01 order by k_timestamp;
+   c
+--------
+  A
+  B
+  C
+  D
+  E
+  NULL
+  G
+  H
+  NULL
+(9 rows)
+> select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
+           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
+--------------------------------+------+----+------+----------+---------------
+  2023-04-10 07:18:30+00:00     |    1 |  1 | A    | DFFDARG  | qqq
+  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
+  2023-04-10 07:18:30.003+00:00 |    4 |  4 | D    | B        | B2
+  2023-04-10 07:18:30.004+00:00 |    5 |  5 | E    | C        | C3
+  2023-04-10 07:18:30.005+00:00 | NULL |  7 | NULL | D        | D4
+  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
+  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
+(9 rows)
+> select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
+           k_timestamp          |  a   | b |  c   | d | t1_attribute
+--------------------------------+------+---+------+---+---------------
+  2023-04-10 07:18:30.003+00:00 |    4 | 4 | D    | B | B2
+  2023-04-10 07:18:30.004+00:00 |    5 | 5 | E    | C | C3
+  2023-04-10 07:18:30.005+00:00 | NULL | 7 | NULL | D | D4
+  2023-04-10 07:18:30.006+00:00 |    8 | 9 | G    | E | E5
+(4 rows)
+> select * from test.sjcx01
+where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
+   or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
+order by k_timestamp;
+           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
+--------------------------------+------+----+------+----------+---------------
+  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
+  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
+  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
+  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
+(5 rows)
+> select count(*) from test.sjcx01;
+  count
+---------
+      9
+(1 row)
+> select * from test.sjcx01 where t1_attribute = 'F6';
+           k_timestamp          |  a   | b  | c | d | t1_attribute
+--------------------------------+------+----+---+---+---------------
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | F6
+(1 row)
+> drop database test cascade;
+DROP DATABASE
