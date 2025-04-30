@@ -188,6 +188,8 @@ ifdef NCPUS
 MAKEFLAGS += -j$(NCPUS)
 $(info Running make with -j$(NCPUS))
 endif
+else
+$(info Running make with -j$(shell ps -o args= $$PPID | grep -oE '(-j)[1-9]+' | sed 's/-j//'))
 endif
 
 help: ## Print help for targets with comments.
