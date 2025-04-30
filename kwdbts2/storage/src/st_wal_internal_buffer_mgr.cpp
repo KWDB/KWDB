@@ -389,7 +389,9 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
       }
       case WALLogType::END_CHECKPOINT: {
         end_chk = true;
+        status = KStatus::SUCCESS;
       }
+        break;
       case DB_SETTING:
 //        break;
       default:
