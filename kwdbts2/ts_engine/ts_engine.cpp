@@ -412,7 +412,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     std::cout<< "add id: " << vgrp_id << "\t lsn:" << lsn << std::endl;
 
     for (auto it = vgrp_lsn.begin(); it != vgrp_lsn.end(); it++) {
-      std::cout<< "READ ALL MAP: add id: " << it->first << "\t lsn:" << it->second << std::endl;
+//      std::cout<< "READ ALL MAP: add id: " << it->first << "\t lsn:" << it->second << std::endl;
     }
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
