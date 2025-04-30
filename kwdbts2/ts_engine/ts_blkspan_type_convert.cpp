@@ -103,7 +103,8 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
   bitmap.SetCount(row_num_);
   if (isSameType(schema[col_id], dest_type)) {
     for (size_t i = 0; i < row_num_; i++) {
-      bitmap[i] = blk_bitmap[start_row_idx_+ i];
+      DataFlags flag = blk_bitmap[start_row_idx_+ i];
+      bitmap[i] = flag;
     }
     *value = blk_value + dest_type_size * start_row_idx_;
   } else {
@@ -114,7 +115,7 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
     }
     alloc_mems_.push_back(allc_mem);
     for (size_t i = 0; i < row_num_; i++) {
-      bitmap[i] == blk_bitmap[start_row_idx_+ i];
+      bitmap[i] = blk_bitmap[start_row_idx_+ i];
       if (bitmap[i] != DataFlags::kValid) {
         continue;
       }

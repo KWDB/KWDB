@@ -130,3 +130,53 @@ order by k_timestamp;
 (1 row)
 > drop database test cascade;
 DROP DATABASE
+> create ts database test_alter;
+CREATE TS DATABASE
+> create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
+CREATE TABLE
+> insert into test_alter.t2 values(1672531211005, 100, 200, 300, 1);
+INSERT 1
+> alter table test_alter.t2 alter column a type int;
+ALTER TABLE
+> alter table test_alter.t2 alter column b type bigint;
+ALTER TABLE
+> alter table test_alter.t2 alter column c type varchar(120);
+ALTER TABLE
+> insert into test_alter.t2 values(1672531211015, 65536, 65539,  'test时间精度！！！@TEST2', 1);
+INSERT 1
+> select * from test_alter.t2 order by ts,attr;
+               ts               |   a   |   b   |            c             | attr
+--------------------------------+-------+-------+--------------------------+-------
+  2023-01-01 00:00:11.005+00:00 |   100 |   200 | 300                      |    1
+  2023-01-01 00:00:11.015+00:00 | 65536 | 65539 | test时间精度！！！@TEST2 |    1
+(2 rows)
+> select a, b from test_alter.t2 order by ts,attr;
+    a   |   b
+--------+--------
+    100 |   200
+  65536 | 65539
+(2 rows)
+> create table test_alter.t9(ts timestamp not null, a char, b nchar(64)) tags(attr int not null) primary tags(attr);
+CREATE TABLE
+> insert into test_alter.t9 values(1672531211005,  't',  'test时间精度通用查询测试！！！@TEST3', 1);
+INSERT 1
+> alter table test_alter.t9 alter column a type char(128);
+ALTER TABLE
+> alter table test_alter.t9 alter column b type nchar(128);
+ALTER TABLE
+> insert into test_alter.t9 values(1672531211015,  'test时间精度！！！@TEST2',  'test时间精度通用查询测试！！！@TEST3', 1);
+INSERT 1
+> select * from test_alter.t9 order by ts,attr;
+               ts               |            a             |                  b                   | attr
+--------------------------------+--------------------------+--------------------------------------+-------
+  2023-01-01 00:00:11.005+00:00 | t                        | test时间精度通用查询测试！！！@TEST3 |    1
+  2023-01-01 00:00:11.015+00:00 | test时间精度！！！@TEST2 | test时间精度通用查询测试！！！@TEST3 |    1
+(2 rows)
+> select a, b from test_alter.t9 order by ts,attr;
+             a             |                  b
+---------------------------+---------------------------------------
+  t                        | test时间精度通用查询测试！！！@TEST3
+  test时间精度！！！@TEST2 | test时间精度通用查询测试！！！@TEST3
+(2 rows)
+> drop database if exists test_alter cascade;
+DROP DATABASE
