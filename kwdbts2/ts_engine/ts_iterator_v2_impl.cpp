@@ -177,7 +177,8 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
         DataFlags bitmap_var;
         TSSlice var_data;
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          ret = ts_blk_span.GetVarLenTypeColAddr(row_idx, blk_col_idx, blk_version_schema_valid, attrs_[col_idx], bitmap_var, var_data);
+          ret = ts_blk_span.GetVarLenTypeColAddr(
+            row_idx, blk_col_idx, blk_version_schema_valid, attrs_[col_idx], bitmap_var, var_data);
           if (bitmap_var != DataFlags::kValid) {
             set_null_bitmap(bitmap, row_idx);
             batch->push_back(nullptr);

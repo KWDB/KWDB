@@ -55,8 +55,8 @@ const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<
 
 
 TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-            std::shared_ptr<TsBlock> block, int start, int nrow_)
-    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {
+            std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
+    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {  // NOLINT(runtime/init)
   assert(nrow_ >= 1);
 }
 

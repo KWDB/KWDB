@@ -37,7 +37,7 @@ class TSBlkSpanDataTypeConvert {
  public:
   TSBlkSpanDataTypeConvert() = default;
 
-  TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span);
+  explicit TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span);
 
   TSBlkSpanDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num) :
       block_(block), start_row_idx_(row_idx), row_num_(row_num) {}
