@@ -15,8 +15,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -575,6 +578,17 @@ std::tuple<TsCompAlg, GenCompAlg> CompressorManager::TwoLevelCompressor::GetAlgo
 }
 
 CompressorManager::CompressorManager() {
+  const char *twolevelenv = getenv("KW_TWOLEVEL_COMPRESS");
+  bool twolevel = false;
+  if (twolevelenv) {
+    std::string config;
+    std::transform(twolevelenv, twolevelenv + std::strlen(twolevelenv), std::back_inserter(config),
+                   [](char c) { return std::tolower(c); });
+    if (config == "on" || config == "true") {
+      twolevel = true;
+    }
+  }
+  GenCompAlg second = twolevel ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
   const std::vector<DATATYPE> timestamp_type{
       DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
       DATATYPE::TIMESTAMP64_LSN, DATATYPE::TIMESTAMP64_LSN_MICRO, DATATYPE::TIMESTAMP64_LSN_NANO};
@@ -592,20 +606,23 @@ CompressorManager::CompressorManager() {
   ts_comp_[TsCompAlg::kSimple8B_u32] = &ConcreateTsCompressor<Simple8BInt<uint32_t>>::GetInstance();
   ts_comp_[TsCompAlg::kSimple8B_u64] = &ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
 
-  default_algs_[DATATYPE::INT16] = {TsCompAlg::kSimple8B_s16, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::INT32] = {TsCompAlg::kSimple8B_s32, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::INT64] = {TsCompAlg::kSimple8B_s64, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::INT16] = {TsCompAlg::kSimple8B_s16, second};
+  default_algs_[DATATYPE::INT32] = {TsCompAlg::kSimple8B_s32, second};
+  default_algs_[DATATYPE::INT64] = {TsCompAlg::kSimple8B_s64, second};
 
   // Float
   ts_comp_[TsCompAlg::kChimp_32] = &ConcreateTsCompressor<Chimp<float>>::GetInstance();
   ts_comp_[TsCompAlg::kChimp_64] = &ConcreateTsCompressor<Chimp<double>>::GetInstance();
-  default_algs_[DATATYPE::FLOAT] = {TsCompAlg::kChimp_32, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::DOUBLE] = {TsCompAlg::kChimp_64, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::FLOAT] = {TsCompAlg::kChimp_32, second};
+  default_algs_[DATATYPE::DOUBLE] = {TsCompAlg::kChimp_64, second};
 
   general_compressor_[GenCompAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
 
-  // Varchar..
+  // varchar varstring
+  default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
   default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
+  default_algs_[DATATYPE::CHAR] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
+  default_algs_[DATATYPE::BINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
 }
 auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
     -> TwoLevelCompressor {
