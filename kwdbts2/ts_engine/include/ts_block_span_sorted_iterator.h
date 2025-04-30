@@ -169,13 +169,8 @@ class TsBlockSpanSortedIterator {
     }
     *is_finished = false;
 
-    if (!is_reverse_) {
-      end_row_idx = cur_block_span->GetRowNum();
-    } else {
-      end_row_idx = -1;
-    }
     span_row_infos_.pop_front();
-    if (row_idx != end_row_idx) {
+    if (cur_block_span->GetRowNum() != 0) {
       int start_row_idx = 0;
       if (is_reverse_) {
         start_row_idx = cur_block_span->GetRowNum() - 1;
@@ -184,6 +179,8 @@ class TsBlockSpanSortedIterator {
                                            *(cur_block_span->GetSeqNoAddr(start_row_idx)),
                                            cur_block_span, start_row_idx};
       insertRowInfo(next_row_info);
+    } else {
+      cur_block_span->Clear();
     }
     return KStatus::SUCCESS;
   }
