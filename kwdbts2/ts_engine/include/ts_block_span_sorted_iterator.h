@@ -62,6 +62,39 @@ class TsBlockSpanSortedIterator {
     span_row_infos_.insert(it, row_info);
   }
 
+  inline void binarySearch(TsBlockSpanRowInfo& target_row_info, TsBlockSpan* block_span, int& row_idx) {
+    int left = 0;
+    int right = block_span->GetRowNum() - 1;
+    int result;
+    if (!is_reverse_) {
+      result = block_span->GetRowNum();
+    } else {
+      result = -1;
+    }
+
+    while (left <= right) {
+      int mid = left + (right - left) / 2;
+      TsBlockSpanRowInfo cur_row_info = {block_span->GetEntityID(), block_span->GetTS(mid),
+                                         *(block_span->GetSeqNoAddr(mid))};
+      if (!is_reverse_) {
+        if (cur_row_info > target_row_info) {
+          result = mid;
+          right = mid - 1;
+        } else {
+          left = mid + 1;
+        }
+      } else {
+        if (cur_row_info < target_row_info) {
+          result = mid;
+          left = mid + 1;
+        } else {
+          right = mid - 1;
+        }
+      }
+    }
+    row_idx = result;
+  }
+
  public:
   explicit TsBlockSpanSortedIterator(std::list<TsBlockSpan>& block_spans, bool is_reverse = false) :
                           block_spans_(block_spans), is_reverse_(is_reverse) {}
@@ -121,30 +154,12 @@ class TsBlockSpanSortedIterator {
     TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
                                                 *cur_block_span->GetSeqNoAddr(end_row_idx)};
     row_idx = span_row_infos_.begin()->row_idx;
-    if (!is_reverse_) {
-      if (cur_span_end_row_info <= next_span_row_info) {
-        row_idx = cur_block_span->GetRowNum();
-      } else {
-        for (; row_idx < cur_block_span->GetRowNum(); ++row_idx) {
-          cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(row_idx),
-                                   *(cur_block_span->GetSeqNoAddr(row_idx))};
-          if (next_span_row_info < cur_span_end_row_info) {
-            break;
-          }
-        }
-      }
+    if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
+      row_idx = cur_block_span->GetRowNum();
+    } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
+      row_idx = -1;
     } else {
-      if (cur_span_end_row_info >= next_span_row_info) {
-        row_idx = -1;
-      } else {
-        for (; row_idx > 0; --row_idx) {
-          cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(row_idx),
-                                   *(cur_block_span->GetSeqNoAddr(row_idx))};
-          if (next_span_row_info > cur_span_end_row_info) {
-            break;
-          }
-        }
-      }
+      binarySearch(next_span_row_info, cur_block_span, row_idx);
     }
 
     if (!is_reverse_) {
