@@ -169,7 +169,8 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
           }
         }
         // Temporary workaround for timestamp column alignment:
-        if (col_idx == 0) {
+        if (col_idx == 0 &&
+          (status_ == STORAGE_SCAN_STATUS::SCAN_ENTITY_SEGMENT || status_ == STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT)) {
           int actual_row_size = 8;
           for (int i = 0; i < *count; ++i) {
             memcpy(res_value + i * attrs_[col_idx].size, value + i * actual_row_size, actual_row_size);
