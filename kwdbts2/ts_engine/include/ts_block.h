@@ -19,6 +19,8 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_blkspan_type_convert.h"
+
 namespace kwdbts {
 class TsBlock {
  public:
@@ -38,46 +40,57 @@ class TsBlock {
   virtual timestamp64 GetTS(int row_num) = 0;
 
   virtual uint64_t* GetSeqNoAddr(int row_num) = 0;
+
+  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
+   const std::vector<AttributeInfo>& schema,
+   const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 };
 
 struct TsBlockSpan {
-  TSEntityID entity_id = 0;
+ private:
+  std::shared_ptr<TsBlock> block_ = nullptr;
+  TSEntityID entity_id_ = 0;
+  int start_row_ = 0, nrow_ = 0;
+  TSBlkSpanDataTypeConvert convert_;
 
-  std::shared_ptr<TsBlock> block = nullptr;
-  int start_row = 0, nrow = 0;
+  friend TSBlkSpanDataTypeConvert;
 
+ public:
   TsBlockSpan() = default;
 
   TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-              std::shared_ptr<TsBlock> block, int start, int nrow)
-      : entity_id(entity_id), block(block), start_row(start), nrow(nrow) {
-    assert(nrow >= 1);
-  }
+              std::shared_ptr<TsBlock> block, int start, int nrow);
 
-  inline bool operator<(const TsBlockSpan& other) const {
-    if (entity_id != other.entity_id) {
-      return entity_id < other.entity_id;
-    } else {
-      timestamp64 ts = block->GetTS(start_row);
-      timestamp64 other_ts = other.block->GetTS(other.start_row);
-      if (ts != other_ts) {
-        return ts < other_ts;
-      } else {
-        uint64_t seq_no = *block->GetSeqNoAddr(start_row);
-        uint64_t other_seq_no = *other.block->GetSeqNoAddr(other.start_row);
-        return seq_no > other_seq_no;
-      }
-    }
-  }
+  bool operator<(const TsBlockSpan& other) const;
 
-  TSEntityID GetEntityID() const { return entity_id; }
-  TSTableID GetTableID() const { return block->GetTableId(); }
-  uint32_t GetTableVersion() const { return block->GetTableVersion(); }
+  TSEntityID GetEntityID() const;
+  int GetRowNum() const;
+  int GetStartRow() const;
+  std::shared_ptr<TsBlock> GetTsBlock() const;
+  TSTableID GetTableID() const;
+  uint32_t GetTableVersion() const;
+  timestamp64 GetTS(uint32_t row_idx) const;
+  uint64_t* GetSeqNoAddr(int row_idx) const;
 
   // if just get timestamp, these function return fast.
-  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
-    *min_ts = block->GetTS(start_row);
-    *max_ts = block->GetTS(start_row + nrow - 1);
-  }
+  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
+
+  // dest type is fixed len datatype.
+  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+                             char** value, TsBitmap& bitmap);
+  // dest type is varlen datatype.
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
+    const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
+
+  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+
+  void SplitFront(int row_num, TsBlockSpan* front_span);
+
+  void SplitBack(int row_num, TsBlockSpan* back_span);
+
+  void Truncate(int row_num);
+
+  void Clear();
 };
 }  // namespace kwdbts

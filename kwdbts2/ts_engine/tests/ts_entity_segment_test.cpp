@@ -99,22 +99,28 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          for (int idx = 0; idx < block_span.nrow; ++idx) {
-            TSSlice value;
-            block_span.block->GetValueSlice(block_span.start_row + idx, 0, metric_schema, value);
-            EXPECT_EQ(*(timestamp64*)value.data, 500 + row_idx + idx);
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 500 + row_idx + idx);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
-            EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 10240);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
-            string str(value.data, 10);
+          TsBitmap bitmap;
+          std::vector<char*> col_values;
+          col_values.resize(3);
+          s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
+            EXPECT_EQ(block_span.GetTS(idx), 500 + row_idx + idx);
+            EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+            EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+            EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+            kwdbts::DataFlags flag;
+            TSSlice data;
+            s = block_span.GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span.nrow;
+          row_idx += block_span.GetRowNum();
         }
         if (i >= 1) {
           EXPECT_EQ(row_idx, (i - 1) * 1000 + 623);
@@ -134,20 +140,28 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          for (int idx = 0; idx < block_span.nrow; ++idx) {
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
-            TSSlice value;
-            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
-            EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 10240);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
-            string str(value.data, 10);
+          TsBitmap bitmap;
+          std::vector<char*> col_values;
+          col_values.resize(3);
+          s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
+            EXPECT_EQ(block_span.GetTS(idx), 123 + row_idx + idx);
+            EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+            EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+            EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+            kwdbts::DataFlags flag;
+            TSSlice data;
+            s = block_span.GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span.nrow;
+          row_idx += block_span.GetRowNum();
         }
         EXPECT_EQ(row_idx, i > 0 ? 500 : 0);
       }
@@ -162,22 +176,30 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         int row_idx = 0;
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
-          sum += block_span.nrow;
+          sum += block_span.GetRowNum();
           block_spans.pop_front();
-          for (int idx = 0; idx < block_span.nrow; ++idx) {
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
-            TSSlice value;
-            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
-            EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 10240);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
-            string str(value.data, 10);
+          TsBitmap bitmap;
+          std::vector<char*> col_values;
+          col_values.resize(3);
+          s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
+            EXPECT_EQ(block_span.GetTS(idx), 123 + row_idx + idx);
+            EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+            EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+            EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+            kwdbts::DataFlags flag;
+            TSSlice data;
+            s = block_span.GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span.block->GetRowNum();
+          row_idx += block_span.GetRowNum();
         }
         EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
       }
@@ -192,7 +214,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::list<TsBlockSpan> block_span;
         result[0]->GetBlockSpans(filter, &block_span);
         for (auto block : block_span) {
-          sum += block.nrow;
+          sum += block.GetRowNum();
         }
       }
     }

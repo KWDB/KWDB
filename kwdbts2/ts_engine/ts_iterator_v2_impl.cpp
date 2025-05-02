@@ -37,7 +37,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   KStatus ret;
-  ret = table_schema_mgr_->GetMetricMeta(table_version_, attrs_);
+  ret = table_schema_mgr_->GetColumnsIncludeDropped(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
@@ -46,25 +46,22 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
 
   cur_entity_index_ = 0;
 
-  auto schema_mgr = vgroup_->GetEngineSchemaMgr();
   auto& partition_managers = vgroup_->GetPartitionManagers();
   auto it = partition_managers.find(db_id_);
 
   if (it != partition_managers.end() && it->second) {
     auto* partition_manager = it->second.get();
-    const auto& partitions = partition_manager->GetPartitions();
+    std::unordered_map<int, std::shared_ptr<TsVGroupPartition>> partitions;
+    partition_manager->GetPartitions(&partitions);
 
+    ts_partitions_.clear();
     if (!partitions.empty()) {
-      std::unordered_set<TsVGroupPartition*> seen;
       for (const auto& [idx, partition_ptr] : partitions) {
         if (!partition_ptr) continue;
         timestamp64 p_start = convertSecondToPrecisionTS(partition_ptr->StartTs(), ts_col_type_);
         timestamp64 p_end = convertSecondToPrecisionTS(partition_ptr->EndTs(), ts_col_type_);
         if (isTimestampInSpans(ts_spans_, p_start, p_end)) {
-          if (seen.insert(partition_ptr.get()).second) {
-            ts_partitions_.emplace_back(
-              std::shared_ptr<TsVGroupPartition>(partition_ptr.get(), [](TsVGroupPartition*) {}));
-          }
+          ts_partitions_.emplace_back(partition_ptr);
         }
       }
     }
@@ -104,53 +101,101 @@ inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(const TsBlockSpan& ts_blk_span,
+KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span,
                                                               ResultSet* res, k_uint32* count) {
-  *count = ts_blk_span.nrow;
+  *count = ts_blk_span.GetRowNum();
   KStatus ret;
+  std::shared_ptr<MMapMetricsTable> blk_version;
+  ret = table_schema_mgr_->GetMetricSchema(nullptr, ts_blk_span.GetTableVersion(), &blk_version);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("GetMetricSchema faile. table version [%u]", ts_blk_span.GetTableVersion());
+    return ret;
+  }
+  auto& blk_version_schema_all = blk_version->getSchemaInfoIncludeDropped();
+  auto& blk_version_schema_valid = blk_version->getSchemaInfoExcludeDropped();
+  auto blk_version_valid = blk_version->getIdxForValidCols();
+  // calculate columns in current tsblock need to scan.
+  std::vector<uint32_t> blk_scan_cols;
+  blk_scan_cols.resize(ts_scan_cols_.size());
+  for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
+    if (!blk_version_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
+      bool found = false;
+      size_t j = 0;
+      for (; j < blk_version_valid.size(); j++) {
+        if (blk_version_valid[j] == ts_scan_cols_[i]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        blk_scan_cols[i] = UINT32_MAX;
+        LOG_INFO("not found blk col index for col id[%u].", ts_scan_cols_[i]);
+      } else {
+        blk_scan_cols[i] = j;
+      }
+    } else {
+      // column is dropped at block version.
+      LOG_INFO("column is dropped at[%u] index for col id[%u].", ts_blk_span.GetTableVersion(), ts_scan_cols_[i]);
+      blk_scan_cols[i] = UINT32_MAX;
+    }
+  }
+
   for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    k_uint32 col_idx = kw_scan_cols_[i];
+    k_uint32 col_idx = ts_scan_cols_[i];
+    auto blk_col_idx = blk_scan_cols[i];
     Batch* batch;
-    if (col_idx >= 0 && col_idx < attrs_.size()) {
+    if (blk_col_idx == UINT32_MAX) {
+      // column is dropped at block version.
+      void* bitmap = nullptr;
+      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
+    } else {
       unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
       if (bitmap == nullptr) {
         return KStatus::FAIL;
       }
       memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
-      TSSlice col_data;
       if (!isVarLenType(attrs_[col_idx].type)) {
-        char* value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
+        TsBitmap ts_bitmap;
+        char* value;
+        char* res_value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
+        ret = ts_blk_span.GetFixLenColAddr(blk_col_idx, blk_version_schema_valid, attrs_[col_idx], &value, ts_bitmap);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return ret;
+        }
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_blk_span.block->IsColNull(ts_blk_span.start_row + row_idx, col_idx, attrs_)) {
+          if (ts_bitmap[row_idx] != DataFlags::kValid) {
             set_null_bitmap(bitmap, row_idx);
-          } else {
-            ret = ts_blk_span.block->GetValueSlice(ts_blk_span.start_row + row_idx, col_idx, attrs_, col_data);
-            if (ret != KStatus::SUCCESS) {
-              return ret;
-            }
-            memcpy(value + row_idx * attrs_[col_idx].size,
-                    col_data.data,
-                    attrs_[col_idx].size);
           }
         }
-        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
+        // Temporary workaround for timestamp column alignment:
+        if (col_idx == 0 &&
+          (status_ == STORAGE_SCAN_STATUS::SCAN_ENTITY_SEGMENT || status_ == STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT)) {
+          int actual_row_size = 8;
+          for (int i = 0; i < *count; ++i) {
+            memcpy(res_value + i * attrs_[col_idx].size, value + i * actual_row_size, actual_row_size);
+          }
+        } else {
+          memcpy(res_value, value, attrs_[col_idx].size * (*count));
+        }
+        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
         batch->is_new = true;
         batch->need_free_bitmap = true;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
+        DataFlags bitmap_var;
+        TSSlice var_data;
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_blk_span.block->IsColNull(ts_blk_span.start_row + row_idx, col_idx, attrs_)) {
+          ret = ts_blk_span.GetVarLenTypeColAddr(
+            row_idx, blk_col_idx, blk_version_schema_valid, attrs_[col_idx], bitmap_var, var_data);
+          if (bitmap_var != DataFlags::kValid) {
             set_null_bitmap(bitmap, row_idx);
             batch->push_back(nullptr);
           } else {
-            ret = ts_blk_span.block->GetValueSlice(ts_blk_span.start_row + row_idx, col_idx, attrs_, col_data);
-            if (ret != KStatus::SUCCESS) {
-              return ret;
-            }
-            char* buffer = static_cast<char*>(malloc(col_data.len + 2 + 1));
-            KUint16(buffer) = col_data.len;
-            memcpy(buffer + 2, col_data.data, col_data.len);
-            *(buffer + col_data.len + 2) = 0;
+            char* buffer = static_cast<char*>(malloc(var_data.len + 2 + 1));
+            KUint16(buffer) = var_data.len;
+            memcpy(buffer + 2, var_data.data, var_data.len);
+            *(buffer + var_data.len + 2) = 0;
             std::shared_ptr<void> ptr(buffer, free);
             batch->push_back(ptr);
           }
@@ -158,9 +203,6 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(const TsBlockSpan& 
         batch->is_new = true;
         batch->need_free_bitmap = true;
       }
-    } else {
-      void* bitmap = nullptr;  // column not exist in segment table. so return nullptr.
-      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     }
     res->push_back(i, batch);
   }
@@ -380,7 +422,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   k_uint64 total_row_count = 0;
   for (const auto& block : ts_block_spans_) {
-    total_row_count += block.nrow;
+    total_row_count += block.GetRowNum();
   }
 
   if (total_row_count > 0) {

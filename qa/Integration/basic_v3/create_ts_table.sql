@@ -23,3 +23,23 @@ order by k_timestamp;
 select count(*) from test.sjcx01;
 select * from test.sjcx01 where t1_attribute = 'F6';
 drop database test cascade;
+
+
+create ts database test_alter;
+create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
+insert into test_alter.t2 values(1672531211005, 100, 200, 300, 1);
+alter table test_alter.t2 alter column a type int;
+alter table test_alter.t2 alter column b type bigint;
+alter table test_alter.t2 alter column c type varchar(120);
+insert into test_alter.t2 values(1672531211015, 65536, 65539,  'test时间精度！！！@TEST2', 1);
+select * from test_alter.t2 order by ts,attr;
+select a, b from test_alter.t2 order by ts,attr;
+
+create table test_alter.t9(ts timestamp not null, a char, b nchar(64)) tags(attr int not null) primary tags(attr);
+insert into test_alter.t9 values(1672531211005,  't',  'test时间精度通用查询测试！！！@TEST3', 1);
+alter table test_alter.t9 alter column a type char(128);
+alter table test_alter.t9 alter column b type nchar(128);
+insert into test_alter.t9 values(1672531211015,  'test时间精度！！！@TEST2',  'test时间精度通用查询测试！！！@TEST3', 1);
+select * from test_alter.t9 order by ts,attr;
+select a, b from test_alter.t9 order by ts,attr;
+drop database if exists test_alter cascade;
