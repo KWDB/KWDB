@@ -168,7 +168,15 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
             set_null_bitmap(bitmap, row_idx);
           }
         }
-        memcpy(res_value, value, attrs_[col_idx].size * (*count));
+        // Temporary workaround for timestamp column alignment:
+        if (col_idx == 0) {
+          int actual_row_size = 8;
+          for (int i = 0; i < *count; ++i) {
+            memcpy(res_value + i * attrs_[col_idx].size, value + i * actual_row_size, actual_row_size);
+          }
+        } else {
+          memcpy(res_value, value, attrs_[col_idx].size * (*count));
+        }
         batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
         batch->is_new = true;
         batch->need_free_bitmap = true;
