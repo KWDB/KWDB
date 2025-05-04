@@ -29,6 +29,33 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
+KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) {
+  auto col_based_len = row_data_[0]->row_data.len * row_data_.size();
+  char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
+  if (col_based_mem == nullptr) {
+    LOG_ERROR("malloc memroy failed.");
+    return KStatus::FAIL;
+  }
+  col_based_mems_.push_back(col_based_mem);
+
+  TSSlice value_slice;
+  char* cur_offset = col_based_mem;
+  for (int i = 0; i < row_data_.size(); i++) {
+    auto row = row_data_[i];
+    auto col_len = row->row_data.len;
+    memcpy(cur_offset, row->row_data.data, col_len);
+    cur_offset += col_len;
+  }
+  *value = col_based_mem;
+  return KStatus::SUCCESS;
+}
+
+
+KStatus TsBlockSpan::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
+  auto s = block_->GetColAddr(col_id, schema, value);
+  return s;
+}
+
 KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) {
   value = row_data_[row_num]->row_data;
   return KStatus::SUCCESS;
@@ -86,14 +113,15 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
   ASSERT_EQ(block.GetEntityID(), tmp_data.entity_id);
-  ASSERT_EQ(block.block->GetRowNum(), 1);
-  ASSERT_EQ(block.block->GetTableId(), tmp_data.table_id);
+  ASSERT_EQ(block.GetRowNum(), 1);
+  ASSERT_EQ(block.GetTableID(), tmp_data.table_id);
   std::vector<AttributeInfo> schema;
-  ASSERT_EQ(block.block->GetTS(0), tmp_data.ts);
-  TSSlice value;
-  s = block.block->GetValueSlice(0, 0, schema, value);
+  ASSERT_EQ(block.GetTS(0), tmp_data.ts);
+  char* value;
+  TsBitmap bitmap;
+  s = block.GetFixLenColAddr(0, schema, schema[0], &value, bitmap);
   ASSERT_TRUE(s == KStatus::SUCCESS);
-  ASSERT_EQ(KUint64(value.data), row_value);
+  ASSERT_EQ(KUint64(value), row_value);
 }
 
 TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
@@ -119,15 +147,17 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
   ASSERT_EQ(block.GetEntityID(), entity_id);
-  ASSERT_EQ(block.block->GetTableId(), table_id);
-  ASSERT_EQ(block.block->GetRowNum(), row_num);
+  ASSERT_EQ(block.GetTableID(), table_id);
+  ASSERT_EQ(block.GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
+  AttributeInfo dest_type;
+  char* value;
+  TsBitmap bitmap;
+  s = block.GetFixLenColAddr(0, schema, dest_type, &value, bitmap);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
   for (size_t i = 0; i < row_num; i++) {
-    ASSERT_EQ(block.block->GetTS(i), 10086 + i);
-    TSSlice value;
-    s = block.block->GetValueSlice(i, 0, schema, value);
-    ASSERT_TRUE(s == KStatus::SUCCESS);
-    ASSERT_EQ(KUint64(value.data), row_value + i);
+    ASSERT_EQ(block.GetTS(i), 10086 + i);
+    ASSERT_EQ(KUint64(value + 8 * i), row_value + i);
   }
   for (auto v : values) {
     delete v;
@@ -158,15 +188,16 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
   ASSERT_EQ(block.GetEntityID(), entity_id);
-  ASSERT_EQ(block.block->GetTableId(), table_id);
-  ASSERT_EQ(block.block->GetRowNum(), row_num);
+  ASSERT_EQ(block.GetTableID(), table_id);
+  ASSERT_EQ(block.GetRowNum(), row_num);
   std::vector<AttributeInfo> schema;
+  char* value;
+  TsBitmap bitmap;
+  s = block.GetFixLenColAddr(0, schema, schema[0], &value, bitmap);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
   for (size_t i = 0; i < row_num; i++) {
-    ASSERT_EQ(block.block->GetTS(i), 10086);
-    TSSlice value;
-    s = block.block->GetValueSlice(i, 0, schema, value);
-    ASSERT_TRUE(s == KStatus::SUCCESS);
-    ASSERT_EQ(KUint64(value.data), row_value + i);
+    ASSERT_EQ(block.GetTS(i), 10086);
+    ASSERT_EQ(KUint64(value + 8 * i), row_value + i);
   }
   for (auto v : values) {
     delete v;
@@ -197,15 +228,17 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     ASSERT_EQ(blocks.size(), 1);
     auto block = blocks.front();
     ASSERT_EQ(block.GetEntityID(), j);
-    ASSERT_EQ(block.block->GetTableId(), table_id);
-    ASSERT_EQ(block.block->GetRowNum(), row_num / entity_num);
+    ASSERT_EQ(block.GetTableID(), table_id);
+    ASSERT_EQ(block.GetRowNum(), row_num / entity_num);
     std::vector<AttributeInfo> schema;
-    for (size_t i = 0; i < block.block->GetRowNum(); i++) {
-      ASSERT_EQ(block.block->GetTS(i), 10086 + i * 10 + j - 1);
-      TSSlice value;
-      s = block.block->GetValueSlice(i, 0, schema, value);
-      ASSERT_TRUE(s == KStatus::SUCCESS);
-      ASSERT_EQ(KUint64(value.data), row_value + i * 10 + j - 1);
+    AttributeInfo dest_type;
+    char* value;
+    TsBitmap bitmap;
+    s = block.GetFixLenColAddr(0, schema, dest_type, &value, bitmap);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    for (size_t i = 0; i < block.GetRowNum(); i++) {
+      ASSERT_EQ(block.GetTS(i), 10086 + i * 10 + j - 1);
+      ASSERT_EQ(KUint64(value + 8 * i), row_value + i * 10 + j - 1);
     }
   }
   for (auto v : values) {
@@ -238,15 +271,17 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
   int j = 0;
   for (auto block : blocks) {
     ASSERT_EQ(block.GetEntityID(), entity_id);
-    ASSERT_EQ(block.block->GetTableId(), table_id);
-    ASSERT_EQ(block.block->GetRowNum(), row_num / version_num);
+    ASSERT_EQ(block.GetTableID(), table_id);
+    ASSERT_EQ(block.GetRowNum(), row_num / version_num);
     std::vector<AttributeInfo> schema;
+    AttributeInfo dest_type;
+    char* value;
+    TsBitmap bitmap;
+    s = block.GetFixLenColAddr(0, schema, dest_type, &value, bitmap);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
     for (size_t i = 0; i < row_num / version_num; i++) {
-      ASSERT_EQ(block.block->GetTS(i), 10086 + i * version_num + j);
-      TSSlice value;
-      s = block.block->GetValueSlice(i, 0, schema, value);
-      ASSERT_TRUE(s == KStatus::SUCCESS);
-      ASSERT_EQ(KUint64(value.data), row_value + i * version_num + j);
+      ASSERT_EQ(block.GetTS(i), 10086 + i * version_num + j);
+      ASSERT_EQ(KUint64(value + i * 8), row_value + i * version_num + j);
     }
     j++;
   }  
@@ -285,8 +320,8 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
     ASSERT_EQ(blocks.size(), version_num);
     for (auto block : blocks) {
       ASSERT_EQ(block.GetEntityID(), entity_id);
-      ASSERT_EQ(block.block->GetTableId(), table_id + i);
-      ASSERT_EQ(block.block->GetRowNum(), row_num / version_num / table_num);
+      ASSERT_EQ(block.GetTableID(), table_id + i);
+      ASSERT_EQ(block.GetRowNum(), row_num / version_num / table_num);
     }
   }
   for (auto v : values) {

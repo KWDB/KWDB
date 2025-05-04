@@ -94,7 +94,7 @@ TEST_F(TestV2Iterator, basic) {
         KwTsSpan ts_span = {start_ts, start_ts + 20};
         DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
         ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-        std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
+        std::vector<k_uint32> scan_cols = {0, 1, 2};
         std::vector<Sumfunctype> scan_agg_types;
 
         s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
@@ -157,7 +157,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
       TsStorageIterator* ts_iter;
       KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
       DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-      std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
+      std::vector<k_uint32> scan_cols = {0, 1, 2};
       std::vector<Sumfunctype> scan_agg_types;
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
         s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
@@ -217,7 +217,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
       TsStorageIterator* ts_iter;
       KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
       DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-      std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
+      std::vector<k_uint32> scan_cols = {0, 1, 2};
       std::vector<Sumfunctype> scan_agg_types;
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
         bool found = false;
