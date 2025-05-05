@@ -217,7 +217,7 @@ add_subdirectory(common)
 add_subdirectory(kwdbts2)
 
 # compile kwbase
-if (BUILD_KWBASE OR WITH_TESTS)
+if (BUILD_KWBASE)
     set(KWBASE_MAKEFILE "Makefile")
     if(NOT KWBASE_OSS)
         set(KWBASE_MAKEFILE "Makefile_ent")
