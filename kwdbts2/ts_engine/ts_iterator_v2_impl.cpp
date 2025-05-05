@@ -420,41 +420,13 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     }
   }
 
-  k_uint64 total_row_count = 0;
-  for (const auto& block : ts_block_spans_) {
-    total_row_count += block.GetRowNum();
-  }
-
-  if (total_row_count > 0) {
-    res->clear();
-    for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
-      switch (scan_agg_types_[i]) {
-        case Sumfunctype::COUNT: {
-          char* value = static_cast<char*>(malloc(sizeof(k_uint64)));
-          *reinterpret_cast<k_uint64*>(value) = total_row_count;
-
-          unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(1)));
-          memset(bitmap, 0x00, KW_BITMAP_SIZE(1));
-
-          Batch* b = new Batch(value, 1, bitmap, 1, nullptr);
-          b->is_new = true;
-          b->need_free_bitmap = true;
-          res->push_back(i, b);
-          break;
-        }
-        default: {
-          LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(scan_agg_types_[i]));
-          return KStatus::FAIL;
-        }
-      }
+  if (!ts_block_spans_.empty()) {
+    ret = NextBlockSpan(res, count);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to process next block span for entity(%d).", entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
     }
-
-    res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-    res->col_num_ = kw_scan_cols_.size();
-    *count = 1;
     *is_finished = false;
-    total_row_count = 0;
-    ++cur_entity_index_;
     return KStatus::SUCCESS;
   }
 
@@ -462,5 +434,60 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   ++cur_entity_index_;
   return KStatus::SUCCESS;
 }
+
+KStatus TsAggIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count) {
+  if (ts_block_spans_.empty()) {
+    return KStatus::FAIL;
+  }
+
+  TsBlockSpan blk_span = ts_block_spans_.front();
+  ts_block_spans_.pop_front();
+
+  KStatus ret;
+  std::shared_ptr<MMapMetricsTable> blk_version;
+  ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("GetMetricSchema faile. table version [%u]", blk_span.GetTableVersion());
+    return ret;
+  }
+  auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+  res->clear();
+  for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+    std::vector<Sumfunctype> agg_types = {scan_agg_types_[i]};
+    std::vector<TSSlice> agg_data;
+
+    ret = blk_span.GetAggResult(kw_scan_cols_[i], schema_info, attrs_[kw_scan_cols_[i]], agg_types, agg_data);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[i]);
+      return ret;
+    }
+
+    if (agg_data.empty()) {
+      LOG_ERROR("Aggregation result is empty for col_id(%u).", kw_scan_cols_[i]);
+      return KStatus::FAIL;
+    }
+
+    TSSlice& slice = agg_data[0];
+    char* data_copy = static_cast<char*>(malloc(slice.len));
+    memcpy(data_copy, slice.data, slice.len);
+
+    unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(1)));
+    memset(bitmap, 0x00, KW_BITMAP_SIZE(1));
+
+    Batch* b = new Batch(data_copy, 1, bitmap, 1, nullptr);
+    b->is_new = true;
+    b->need_free_bitmap = true;
+
+    res->push_back(i, b);
+  }
+
+  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
+  res->col_num_ = kw_scan_cols_.size();
+  *count = 1;
+
+  ++cur_entity_index_;
+  return KStatus::SUCCESS;
+}
+
 
 }  //  namespace kwdbts
