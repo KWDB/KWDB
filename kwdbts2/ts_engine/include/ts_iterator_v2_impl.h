@@ -20,6 +20,7 @@
 #include "ts_lastsegment.h"
 #include "ts_table_schema_manager.h"
 #include "ts_vgroup_partition.h"
+#include "ts_block_span_sorted_iterator.h"
 
 namespace kwdbts {
 
@@ -54,6 +55,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus AddLastSegmentBlockSpans();
   KStatus AddEntitySegmentBlockSpans();
   KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
+  KStatus ScanEntityBlockSpans();
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -99,6 +101,12 @@ class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+
+ protected:
+  KStatus ScanAndSortEntityData();
+  KStatus MoveToNextEntity();
+
+  std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
 
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {

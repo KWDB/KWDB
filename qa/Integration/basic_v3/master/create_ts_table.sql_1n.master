@@ -128,6 +128,11 @@ order by k_timestamp;
 --------------------------------+------+----+---+---+---------------
   2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | F6
 (1 row)
+> SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2023-04-10 07:18:00+00:00 |  12
+(1 row)
 > drop database test cascade;
 DROP DATABASE
 > create ts database test_alter;

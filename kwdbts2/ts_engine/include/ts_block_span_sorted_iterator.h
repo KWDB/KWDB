@@ -16,7 +16,6 @@
 #include <vector>
 #include "kwdb_type.h"
 #include "ts_block.h"
-#include "ts_iterator_v2_impl.h"
 #include "ts_mem_segment_mgr.h"
 
 namespace kwdbts {
