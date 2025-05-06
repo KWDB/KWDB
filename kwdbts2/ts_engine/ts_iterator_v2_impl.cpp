@@ -375,7 +375,7 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
   return KStatus::SUCCESS;
 }
 
-TsSortedRowDataIteratorV2Impl::TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
+TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
                                                               DATATYPE ts_col_type,
@@ -389,10 +389,10 @@ TsSortedRowDataIteratorV2Impl::TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsV
                                                                             table_version) {
 }
 
-TsSortedRowDataIteratorV2Impl::~TsSortedRowDataIteratorV2Impl() {
+TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::Init(bool is_reversed) {
+KStatus TsSortedRawDataIteratorV2Impl::Init(bool is_reversed) {
   KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
@@ -400,7 +400,7 @@ KStatus TsSortedRowDataIteratorV2Impl::Init(bool is_reversed) {
   return ScanAndSortEntityData();
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::ScanAndSortEntityData() {
+KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
   if (cur_entity_index_ < entity_ids_.size()) {
     // scan row data for current entity
     KStatus ret = ScanEntityBlockSpans();
@@ -419,12 +419,12 @@ KStatus TsSortedRowDataIteratorV2Impl::ScanAndSortEntityData() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::MoveToNextEntity() {
+KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity() {
   ++cur_entity_index_;
   return ScanAndSortEntityData();
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
   if (cur_entity_index_ >= entity_ids_.size()) {
     *is_finished = true;

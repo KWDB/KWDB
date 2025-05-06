@@ -90,14 +90,14 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus NextBlockSpan(ResultSet* res, k_uint32* count);
 };
 
-class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
+class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
-  TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                 std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                                 std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
                                 SortOrder order_type = ASC);
-  ~TsSortedRowDataIteratorV2Impl();
+  ~TsSortedRawDataIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
