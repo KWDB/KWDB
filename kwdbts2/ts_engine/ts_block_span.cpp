@@ -78,7 +78,8 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
       }
     }
 
-    size_t value_size = dest_type.size;
+    // size_t value_size = dest_type.size;
+    size_t value_size = sizeof(int64_t);;
     size_t total_size = 2 + 3 * value_size;
     char* allc_mem = reinterpret_cast<char*>(malloc(total_size));
     if (!allc_mem) {
