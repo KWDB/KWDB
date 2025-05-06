@@ -413,8 +413,10 @@ RestartPreventExitStatus=INVALIDARGUMENT
 [Install]
 WantedBy=multi-user.target\" > /etc/systemd/system/kaiwudb.service"
 	fi
-  sudo chmod 700 /etc/kaiwudb/certs/*.key >/dev/null 2>&1
-  sudo chmod 644 /etc/kaiwudb/certs/*.crt >/dev/null 2>&1
+  if [ "$g_secure_mode" != "insecure" ];then
+    sudo chmod 700 /etc/kaiwudb/certs/*.key >/dev/null 2>&1
+    sudo chmod 644 /etc/kaiwudb/certs/*.crt >/dev/null 2>&1
+  fi
 }
 
 function compress_certs() {
@@ -445,7 +447,9 @@ function cp_files() {
   eval $prefix cp -rf ./certs /etc/kaiwudb
   eval $prefix cp -rf ./info /etc/kaiwudb
   eval $prefix cp -rf ./script/kaiwudb_env /etc/kaiwudb/script
-  sudo chmod 700 /etc/kaiwudb/certs/*.key
-  sudo chmod 644 /etc/kaiwudb/certs/*.crt
+  if [ "$g_secure_mode" != "insecure" ];then
+    sudo chmod 700 /etc/kaiwudb/certs/*.key >/dev/null 2>&1
+    sudo chmod 644 /etc/kaiwudb/certs/*.crt >/dev/null 2>&1
+  fi
   eval $prefix cp -rf ~/kaiwudb_files/*
 }

@@ -11,6 +11,8 @@ KWBASE_OSS ?= ON
 
 PROTOBUF_DIR ?=
 
+PARALLEL_FLAG = $(findstring -j, $(MAKEFLAGS))
+
 # cmake configuration options
 BUILD_TYPE ?= Debug
 WITH_TESTS ?= OFF
@@ -43,7 +45,15 @@ $(BUILDDIR):
 build: export GO111MODULE = off
 build: .ALWAYS_REBUILD | bin/.submodules-initialized
 	$(info ========== $@ ==========)
-	GOPATH=$(GOPATH) cmake -B $(BUILDDIR) -S $(BASEDIR) $(CMAKE_CONFIG_OPTIONS)
+	@if [ -n "$(PARALLEL_FLAG)" ]; then \
+		NUMBER=$$(echo $(MAKEFLAGS) | egrep -o '(-j)[0-9]*' | sed 's/-j//'); \
+		if [ -z "$${NUMBER}" ]; then \
+			NUMBER=$$(getconf _NPROCESSORS_ONLN || sysctl -n hw.ncpu || nproc); \
+		fi; \
+		echo "Parallel build with -j$${NUMBER}"; \
+		PARALLEL="-DCMAKE_BUILD_PARALLEL_LEVEL=$${NUMBER}"; \
+	fi; \
+	GOPATH=$(GOPATH) cmake -B $(BUILDDIR) -S $(BASEDIR) $(CMAKE_CONFIG_OPTIONS) $${PARALLEL}
 	$(MAKE) -C $(BUILDDIR) \
 		BUILDTYPE=$(if $(findstring $(BUILD_TYPE),debug Debug),development,release)
 
