@@ -186,6 +186,14 @@ KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
   }
   // Save to map cache
   put(max_table_version, tmp_bt);
+
+  tag_table_ = std::make_shared<TagTable>(schema_root_path_, tag_schema_path_, table_id_, 1);
+  if (tag_table_->open(err_info) < 0) {
+    LOG_ERROR("failed to open the tag table %s%lu, error: %s",
+              tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
+    return FAIL;
+  }
+
   return SUCCESS;
 }
 
@@ -244,7 +252,7 @@ std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::Get(uint32_t ts_version,
   return nullptr;
 }
 
-KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
+KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
                                           uint32_t ts_version, ErrorInfo& err_info) {
   if (ts_version == 0) {
     LOG_ERROR("cannot create version 0 table, table id [%lu]", table_id_)
@@ -284,6 +292,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     return FAIL;
   }
   tmp_bt->metaData()->schema_version_of_latest_data = ts_version;
+  tmp_bt->metaData()->db_id = db_id;
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({ts_version, tmp_bt});
@@ -343,6 +352,7 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
     tmp_bt->metaData()->is_dropped = src_bt->metaData()->is_dropped;
     tmp_bt->metaData()->min_ts = src_bt->metaData()->min_ts;
     tmp_bt->metaData()->max_ts = src_bt->metaData()->max_ts;
+    tmp_bt->metaData()->db_id = src_bt->metaData()->db_id;
     // Version compatibility
     if (src_bt->metaData()->schema_version_of_latest_data == 0) {
       tmp_bt->metaData()->schema_version_of_latest_data = new_version;
@@ -351,6 +361,7 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
     }
   } else {
     tmp_bt->metaData()->schema_version_of_latest_data = new_version;
+    tmp_bt->metaData()->db_id = GetDbID();
   }
   tmp_bt->setObjectReady();
   // Save to map cache
@@ -367,7 +378,6 @@ KStatus TsTableSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, uin
                                         roachpb::CreateTsTable* meta) {
   // Traverse metric schema and use attribute info to construct metric column info of meta.
   std::vector<AttributeInfo> metric_meta;
-  metric_schemas_.find(version);
   auto s = GetMetricMeta(version, metric_meta);
   if (s != SUCCESS) {
     LOG_ERROR("GetMetricSchema failed.");
@@ -445,11 +455,14 @@ KStatus TsTableSchemaManager::GetMetricSchema(kwdbContext_p ctx, uint32_t versio
   if (version == 0) {
     version = cur_schema_version_;
   }
+  wrLock();
   auto it = metric_schemas_.find(version);
   if (it == metric_schemas_.end()) {
+    unLock();
     return FAIL;
   }
   *schema = it->second;
+  unLock();
   return SUCCESS;
 }
 
@@ -472,6 +485,15 @@ uint32_t TsTableSchemaManager::GetCurrentVersion() const {
 
 uint64_t TsTableSchemaManager::GetPartitionInterval() const {
   return partition_interval_;
+}
+
+uint64_t TsTableSchemaManager::GetDbID() const {
+  if (cur_metric_schema_ && cur_metric_schema_->metaData()) {
+    return cur_metric_schema_->metaData()->db_id;
+  } else {
+    LOG_ERROR("cur_metric_schema_ is nullptr");
+    return 0;
+  }
 }
 
 impl_latch_virtual_func(TsTableSchemaManager, &schema_rw_lock_)

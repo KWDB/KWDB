@@ -1,0 +1,27 @@
+create ts database benchmark;
+CREATE TABLE benchmark.readings (
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ latitude FLOAT8 NOT NULL,
+ longitude FLOAT8 NOT NULL,
+ elevation FLOAT8 NOT NULL,
+ velocity FLOAT8 NOT NULL,
+ heading FLOAT8 NOT NULL,
+ grade FLOAT8 NOT NULL,
+ fuel_consumption FLOAT8 NOT NULL
+) TAGS (
+ name VARCHAR(30) NOT NULL,
+ fleet VARCHAR(30),
+ driver VARCHAR(30),
+ model VARCHAR(30),
+ device_version VARCHAR(30),
+ load_capacity FLOAT8,
+ fuel_capacity FLOAT8,
+ nominal_fuel_consumption FLOAT8 ) PRIMARY TAGS(name);
+
+select fleet,name,driver,avg(hours_driven) as avg_daily_hours  from
+(select k_timestamp,fleet,name,driver,count(avg_v)/6 as hours_driven from
+ (select k_timestamp,fleet,name,driver,avg(velocity) as avg_v from benchmark.readings
+where k_timestamp > '2016-01-01 08:00:00' AND k_timestamp <= '2016-01-05 00:00:01'
+group by k_timestamp,fleet,name,driver, time_bucket(k_timestamp, '600s') )
+where  avg_v >1  group by k_timestamp,fleet,name,driver, time_bucket(k_timestamp, '1d') ) group by fleet,name,driver;
+drop database benchmark cascade;

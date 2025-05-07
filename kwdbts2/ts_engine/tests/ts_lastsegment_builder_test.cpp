@@ -53,7 +53,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
     CreateTsTable meta;
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
-    auto s = mgr->CreateTable(nullptr, table_id, &meta);
+    auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::shared_ptr<TsTableSchemaManager> schema_mgr;
     s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
@@ -180,7 +180,7 @@ R GenBuilders(TSTableID table_id) {
   CreateTsTable meta;
   ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
   auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
-  auto s = mgr->CreateTable(nullptr, table_id, &meta);
+  auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 

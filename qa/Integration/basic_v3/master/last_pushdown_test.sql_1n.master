@@ -1,0 +1,1919 @@
+> create ts database last_db;
+CREATE TS DATABASE
+> use last_db;
+SET
+> create table t(
+                  k_timestamp timestamp not null,
+                  x float,
+                  y int,
+                  z char(10),
+                  x2 float8,
+                  y2 int2,
+                  y3 int8,
+                  z2 char(10),
+                  z3 nchar(10),
+                  z4 nvarchar(32),
+                  z5 varbytes(10),
+                  z6 varbytes(10),
+                  z7 varchar(32)
+) tags(a int not null) primary tags(a);
+CREATE TABLE
+> insert into t values('2023-10-10 09:10:00.688', 1.0,  1, 'a',1.1, 10, 100,'aa','last测试','表达式测试','aaa','aaaa','aaaaa', 1);
+INSERT 1
+> insert into t values('2023-10-10 09:20:00.688', 2.0,  2, 'b',2.1, 20, 200,'bb','last测试','表达式测试','bbb','bbbb','bbbbb', 1);
+INSERT 1
+> insert into t values('2023-10-10 09:30:00.688', 3.0,  1, 'c',3.1, 10, 100,'cc','last测试','表达式测试','ccc','cccc','ccccc', 1);
+INSERT 1
+> insert into t values('2023-10-10 09:40:00.688', 4.0,  2, 'd',4.1, 20, 200,'dd','last测试','表达式测试','ddd','dddd','ddddd', 1);
+INSERT 1
+> insert into t values('2023-10-10 09:50:00.688', 5.0,  5, 'e',5.1, 50, 500,'ee','last测试','表达式测试','eee','eeee','eeeee', 1);
+INSERT 1
+> insert into t values('2023-10-10 10:10:00.688', 6.0,  6, 'e',6.1, 60, 600,'ee','last测试','表达式测试','eee','eeee','eeeee', 1);
+INSERT 1
+> insert into t values('2023-10-10 10:20:00.688', 0.1,  2, 'f',0.2, 20, 200,'ff','last测试','表达式测试','fff','ffff','fffff', 1);
+INSERT 1
+> insert into t values('2023-10-10 10:30:00.688', 5.5,  5, 'e',5.6, 50, 500,'ee','last测试','表达式测试','eee','eeee','eeeee', 1);
+INSERT 1
+> insert into t values('2023-10-10 10:40:00.688', 7.0, -1, 'z',7.1,-10,-100,'zz','last测试','表达式测试','zzz','zzzz','zzzzz', 1);
+INSERT 1
+> insert into t values('2023-10-10 10:50:00.688', 8.0, -2, 'z',8.1,-20,-200,'zz','last测试','表达式测试','zzz','zzzz','zzzzz', 1);
+INSERT 1
+> insert into t values('2023-10-10 11:00:00.688', 8.0, -3, 'z',8.1,-30,-300,'zz','last测试','表达式测试','zzz','zzzz','zzzzz', 1);
+INSERT 1
+> select last(k_timestamp),last(x),last(y),last(z),last_row(k_timestamp),last_row(x),last_row(y),last_row(z) from t;
+              last              | last | last | last |           last_row            | last_row | last_row | last_row
+--------------------------------+------+------+------+-------------------------------+----------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |    8 |   -3 | z    | 2023-10-10 11:00:00.688+00:00 |        8 |       -3 | z
+(1 row)
+> select lastts(k_timestamp),lastts(x),lastts(y),lastts(z) from t;
+             lastts             |            lastts             |            lastts             |            lastts
+--------------------------------+-------------------------------+-------------------------------+--------------------------------
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00
+(1 row)
+> select last(y),last(y)+1,1+last(y)+last(y)+1,last_row(y),last_row(y)+2,2+last_row(y)+last_row(y)+2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |       -2 |       -4 |       -3 |       -1 |       -2
+(1 row)
+> select last(y),last(y)-1,1+last(y)+last(y)-1,last_row(y),last_row(y)-2,2+last_row(y)+last_row(y)-2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |       -4 |       -6 |       -3 |       -5 |       -6
+(1 row)
+> select last(y),last(y)*1,1+last(y)+last(y)*1,last_row(y),last_row(y)*2,2+last_row(y)+last_row(y)*2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |       -3 |       -5 |       -3 |       -6 |       -7
+(1 row)
+> select last(y),last(y)/1,1+last(y)+last(y)/1,last_row(y),last_row(y)/2,2+last_row(y)+last_row(y)/2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |       -3 |       -5 |       -3 |     -1.5 |     -2.5
+(1 row)
+> select last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |        0 |       -2 |       -3 |       -1 |       -2
+(1 row)
+> select last(y),last(y)=1,1+last(y)+last(y)=1,last_row(y),last_row(y)=2,2+last_row(y)+last_row(y)=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |  false   |  false   |       -3 |  false   |  false
+(1 row)
+> select last(y),last(y)<1,1+last(y)+last(y)<1,last_row(y),last_row(y)<2,2+last_row(y)+last_row(y)<2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |   true   |   true   |       -3 |   true   |   true
+(1 row)
+> select last(y),last(y)<=1,1+last(y)+last(y)<=1,last_row(y),last_row(y)<=2,2+last_row(y)+last_row(y)<=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |   true   |   true   |       -3 |   true   |   true
+(1 row)
+> select last(y),last(y)>1,1+last(y)+last(y)>1,last_row(y),last_row(y)>2,2+last_row(y)+last_row(y)>2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |  false   |  false   |       -3 |  false   |  false
+(1 row)
+> select last(y),last(y)>=1,1+last(y)+last(y)>=1,last_row(y),last_row(y)>=2,2+last_row(y)+last_row(y)>=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |  false   |  false   |       -3 |  false   |  false
+(1 row)
+> select last(y),last(y)!=1,1+last(y)+last(y)!=1,last_row(y),last_row(y)!=2,2+last_row(y)+last_row(y)!=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |   true   |   true   |       -3 |   true   |   true
+(1 row)
+> select last(x),last(x)+1,1+last(x)+last(x)+1,last_row(x),last_row(x)+2,2+last_row(x)+last_row(x)+2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |        9 |       18 |        8 |       10 |       20
+(1 row)
+> select last(x),last(x)-1,1+last(x)+last(x)-1,last_row(x),last_row(x)-2,2+last_row(x)+last_row(x)-2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |        7 |       16 |        8 |        6 |       16
+(1 row)
+> select last(x),last(x)*1,1+last(x)+last(x)*1,last_row(x),last_row(x)*2,2+last_row(x)+last_row(x)*2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |        8 |       17 |        8 |       16 |       26
+(1 row)
+> select last(x),last(x)/1,1+last(x)+last(x)/1,last_row(x),last_row(x)/2,2+last_row(x)+last_row(x)/2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |        8 |       17 |        8 |        4 |       14
+(1 row)
+> select last(x),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |        0 |        9 |        8 |        0 |       10
+(1 row)
+> select last(x),last(x)=1,1+last(x)+last(x)=1,last_row(x),last_row(x)=2,2+last_row(x)+last_row(x)=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |  false   |  false   |        8 |  false   |  false
+(1 row)
+> select last(x),last(x)<1,1+last(x)+last(x)<1,last_row(x),last_row(x)<2,2+last_row(x)+last_row(x)<2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |  false   |  false   |        8 |  false   |  false
+(1 row)
+> select last(x),last(x)<=1,1+last(x)+last(x)<=1,last_row(x),last_row(x)<=2,2+last_row(x)+last_row(x)<=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |  false   |  false   |        8 |  false   |  false
+(1 row)
+> select last(x),last(x)>1,1+last(x)+last(x)>1,last_row(x),last_row(x)>2,2+last_row(x)+last_row(x)>2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |   true   |   true   |        8 |   true   |   true
+(1 row)
+> select last(x),last(x)>=1,1+last(x)+last(x)>=1,last_row(x),last_row(x)>=2,2+last_row(x)+last_row(x)>=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |   true   |   true   |        8 |   true   |   true
+(1 row)
+> select last(x),last(x)!=1,1+last(x)+last(x)!=1,last_row(x),last_row(x)!=2,2+last_row(x)+last_row(x)!=2 from t;
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     8 |   true   |   true   |        8 |   true   |   true
+(1 row)
+> select last(x),last(y),last(y)<<cast(1.0 as int),1+last(y)+last(y)<<cast(1.0 as int),last_row(y),last_row(y)<<1,1+last_row(y)+last_row(y)<<1 from t;
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     8 |   -3 |       -6 |      -10 |       -3 |       -6 |      -10
+(1 row)
+> select last(x),last(y),last(y)>>cast(1.0 as int),1+last(y)+last(y)>>cast(2.0 as int),last_row(y),last_row(y)>>2,1+last_row(y)+last_row(y)>>2 from t;
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     8 |   -3 |       -2 |       -2 |       -3 |       -1 |       -2
+(1 row)
+> select last(y),last(y)+1,1+last(y)+last(y)+1,last_row(y),last_row(y)+2,2+last_row(y)+last_row(y)+2 from t where y > 1 group by y having last(y)+last_row(y)>4 order by last(y);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     5 |        6 |       12 |        5 |        7 |       14
+     6 |        7 |       14 |        6 |        8 |       16
+(2 rows)
+> select last(y),last(y)-1,1+last(y)+last(y)-1,last_row(y),last_row(y)-2,2+last_row(y)+last_row(y)-2 from t where y+y>1 group by y having last(y)-last_row(y)=0 order by last(y);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     1 |        0 |        2 |        1 |       -1 |        2
+     2 |        1 |        4 |        2 |        0 |        4
+     5 |        4 |       10 |        5 |        3 |       10
+     6 |        5 |       12 |        6 |        4 |       12
+(4 rows)
+> select last(y),last(y)*1,1+last(y)+last(y)*1,last_row(y),last_row(y)*2,2+last_row(y)+last_row(y)*2 from t where y < 9 group by y having last(y)*last_row(y)>4 order by last(y);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |       -3 |       -5 |       -3 |       -6 |       -7
+     5 |        5 |       11 |        5 |       10 |       17
+     6 |        6 |       13 |        6 |       12 |       20
+(3 rows)
+> select last(y),last(y)/1,1+last(y)+last(y)/1,last_row(y),last_row(y)/2,2+last_row(y)+last_row(y)/2 from t group by y having last(y)/y>=1 order by last(y);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+    -3 |       -3 |       -5 |       -3 |     -1.5 |     -2.5
+    -2 |       -2 |       -3 |       -2 |       -1 |       -1
+    -1 |       -1 |       -1 |       -1 |     -0.5 |      0.5
+     1 |        1 |        3 |        1 |      0.5 |      3.5
+     2 |        2 |        5 |        2 |        1 |        5
+     5 |        5 |       11 |        5 |      2.5 |      9.5
+     6 |        6 |       13 |        6 |        3 |       11
+(7 rows)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(y)%2=0 order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+    -2 |   -2 |        0 |       -1 |       -2 |        0 |        0
+     2 |    2 |        0 |        3 |        2 |        0 |        4
+     6 |    6 |        0 |        7 |        6 |        0 |        8
+(3 rows)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(y)+last_row(y)>=2.1 order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     2 |    2 |        0 |        3 |        2 |        0 |        4
+     5 |    5 |        0 |        6 |        5 |        1 |        8
+     6 |    6 |        0 |        7 |        6 |        0 |        8
+(3 rows)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(y)+last_row(y)>2.1 order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     2 |    2 |        0 |        3 |        2 |        0 |        4
+     5 |    5 |        0 |        6 |        5 |        1 |        8
+     6 |    6 |        0 |        7 |        6 |        0 |        8
+(3 rows)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(y)+last_row(y)<10.5 order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+    -3 |   -3 |        0 |       -2 |       -3 |       -1 |       -2
+    -2 |   -2 |        0 |       -1 |       -2 |        0 |        0
+    -1 |   -1 |        0 |        0 |       -1 |       -1 |        0
+     1 |    1 |        0 |        2 |        1 |        1 |        4
+     2 |    2 |        0 |        3 |        2 |        0 |        4
+     5 |    5 |        0 |        6 |        5 |        1 |        8
+(6 rows)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(y)+last_row(y)<=10.5 order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+    -3 |   -3 |        0 |       -2 |       -3 |       -1 |       -2
+    -2 |   -2 |        0 |       -1 |       -2 |        0 |        0
+    -1 |   -1 |        0 |        0 |       -1 |       -1 |        0
+     1 |    1 |        0 |        2 |        1 |        1 |        4
+     2 |    2 |        0 |        3 |        2 |        0 |        4
+     5 |    5 |        0 |        6 |        5 |        1 |        8
+(6 rows)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(y)+last_row(y)>=10.5 order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     6 |    6 |        0 |        7 |        6 |        0 |        8
+(1 row)
+> select last(y),last(y),last(y)%1,1+last(y)+last(y)%1,last_row(y),last_row(y)%2,2+last_row(y)+last_row(y)%2 from t group by y having last(x)!=last(y) order by last(y);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+    -3 |   -3 |        0 |       -2 |       -3 |       -1 |       -2
+    -2 |   -2 |        0 |       -1 |       -2 |        0 |        0
+    -1 |   -1 |        0 |        0 |       -1 |       -1 |        0
+     1 |    1 |        0 |        2 |        1 |        1 |        4
+     2 |    2 |        0 |        3 |        2 |        0 |        4
+     5 |    5 |        0 |        6 |        5 |        1 |        8
+(6 rows)
+> select last(x),last(x)+1,1+last(x)+last(x)+1,last_row(x),last_row(x)+2,2+last_row(x)+last_row(x)+2 from t where x > 1 group by x having last(x)+last_row(x)>4 order by last(x);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     3 |        4 |        8 |        3 |        5 |       10
+     4 |        5 |       10 |        4 |        6 |       12
+     5 |        6 |       12 |        5 |        7 |       14
+   5.5 |      6.5 |       13 |      5.5 |      7.5 |       15
+     6 |        7 |       14 |        6 |        8 |       16
+     7 |        8 |       16 |        7 |        9 |       18
+     8 |        9 |       18 |        8 |       10 |       20
+(7 rows)
+> select last(x),last(x)-1,1+last(x)+last(x)-1,last_row(x),last_row(x)-2,2+last_row(x)+last_row(x)-2 from t where x+y>1 group by x having last(x)-last_row(x)>2 order by last(x);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+(0 rows)
+> select last(x),last(x)*1,1+last(x)+last(x)*1,last_row(x),last_row(x)*2,2+last_row(x)+last_row(x)*2 from t where x < 9 group by x having last(x)*last_row(x)>4 order by last(x);
+  last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+----------+----------+----------+----------+-----------
+     3 |        3 |        7 |        3 |        6 |       11
+     4 |        4 |        9 |        4 |        8 |       14
+     5 |        5 |       11 |        5 |       10 |       17
+   5.5 |      5.5 |       12 |      5.5 |       11 |     18.5
+     6 |        6 |       13 |        6 |       12 |       20
+     7 |        7 |       15 |        7 |       14 |       23
+     8 |        8 |       17 |        8 |       16 |       26
+(7 rows)
+> select last(x),last(x)/1,1+last(x)+last(x)/1,last_row(x),last_row(x)/2,2+last_row(x)+last_row(x)/2 from t group by x having last(x)/x>=1 order by last(x);
+  last | ?column? |      ?column?      | last_row | ?column? | ?column?
+-------+----------+--------------------+----------+----------+-----------
+   0.1 |      0.1 | 1.2000000000000002 |      0.1 |     0.05 |     2.15
+     1 |        1 |                  3 |        1 |      0.5 |      3.5
+     2 |        2 |                  5 |        2 |        1 |        5
+     3 |        3 |                  7 |        3 |      1.5 |      6.5
+     4 |        4 |                  9 |        4 |        2 |        8
+     5 |        5 |                 11 |        5 |      2.5 |      9.5
+   5.5 |      5.5 |                 12 |      5.5 |     2.75 |    10.25
+     6 |        6 |                 13 |        6 |        3 |       11
+     7 |        7 |                 15 |        7 |      3.5 |     12.5
+     8 |        8 |                 17 |        8 |        4 |       14
+(10 rows)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(y)%2=0 order by last(x);
+  last | last | ?column? |      ?column?      | last_row | ?column? | ?column?
+-------+------+----------+--------------------+----------+----------+-----------
+   0.1 |    2 |      0.1 | 1.2000000000000002 |      0.1 |      0.1 |      2.2
+     6 |    6 |        0 |                  7 |        6 |        0 |        8
+     8 |   -2 |        0 |                  9 |        8 |        0 |       10
+(3 rows)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(x)+last_row(y)=2.1 order by last(x), y;
+  last | last | ?column? |      ?column?      | last_row | ?column? | ?column?
+-------+------+----------+--------------------+----------+----------+-----------
+   0.1 |    2 |      0.1 | 1.2000000000000002 |      0.1 |      0.1 |      2.2
+(1 row)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(x)+last_row(y)>2.1 order by last(x), y;
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     3 |    1 |        0 |        4 |        3 |        1 |        6
+   5.5 |    5 |      0.5 |        7 |      5.5 |      1.5 |        9
+     6 |    6 |        0 |        7 |        6 |        0 |        8
+     7 |   -1 |        0 |        8 |        7 |        1 |       10
+     8 |   -3 |        0 |        9 |        8 |        0 |       10
+     8 |   -2 |        0 |        9 |        8 |        0 |       10
+(6 rows)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(x)+last_row(y)<10.5 order by last(x), y;
+  last | last | ?column? |      ?column?      | last_row | ?column? | ?column?
+-------+------+----------+--------------------+----------+----------+-----------
+   0.1 |    2 |      0.1 | 1.2000000000000002 |      0.1 |      0.1 |      2.2
+     3 |    1 |        0 |                  4 |        3 |        1 |        6
+     7 |   -1 |        0 |                  8 |        7 |        1 |       10
+     8 |   -3 |        0 |                  9 |        8 |        0 |       10
+     8 |   -2 |        0 |                  9 |        8 |        0 |       10
+(5 rows)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(x)+last_row(y)<=10.5 order by last(x), y;
+  last | last | ?column? |      ?column?      | last_row | ?column? | ?column?
+-------+------+----------+--------------------+----------+----------+-----------
+   0.1 |    2 |      0.1 | 1.2000000000000002 |      0.1 |      0.1 |      2.2
+     3 |    1 |        0 |                  4 |        3 |        1 |        6
+   5.5 |    5 |      0.5 |                  7 |      5.5 |      1.5 |        9
+     7 |   -1 |        0 |                  8 |        7 |        1 |       10
+     8 |   -3 |        0 |                  9 |        8 |        0 |       10
+     8 |   -2 |        0 |                  9 |        8 |        0 |       10
+(6 rows)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(x)+last_row(y)>=10.5 order by last(x), y;
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+   5.5 |    5 |      0.5 |        7 |      5.5 |      1.5 |        9
+     6 |    6 |        0 |        7 |        6 |        0 |        8
+(2 rows)
+> select last(x),last(y),last(x)%1,1+last(x)+last(x)%1,last_row(x),last_row(x)%2,2+last_row(x)+last_row(x)%2 from t group by y having last(y)!=last(x) order by last(x), y;
+  last | last | ?column? |      ?column?      | last_row | ?column? | ?column?
+-------+------+----------+--------------------+----------+----------+-----------
+   0.1 |    2 |      0.1 | 1.2000000000000002 |      0.1 |      0.1 |      2.2
+     3 |    1 |        0 |                  4 |        3 |        1 |        6
+   5.5 |    5 |      0.5 |                  7 |      5.5 |      1.5 |        9
+     7 |   -1 |        0 |                  8 |        7 |        1 |       10
+     8 |   -3 |        0 |                  9 |        8 |        0 |       10
+     8 |   -2 |        0 |                  9 |        8 |        0 |       10
+(6 rows)
+> select last(x),last(y),last(y)<<cast(1.0 as int),1+last(y)+last(y)<<cast(1.0 as int),last_row(y),last_row(y)<<1,1+last_row(y)+last_row(y)<<1 from t group by y having last(y)<<1<5 order by last(x), y;
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+   0.1 |    2 |        4 |       10 |        2 |        4 |       10
+     3 |    1 |        2 |        6 |        1 |        2 |        6
+     7 |   -1 |       -2 |       -2 |       -1 |       -2 |       -2
+     8 |   -3 |       -6 |      -10 |       -3 |       -6 |      -10
+     8 |   -2 |       -4 |       -6 |       -2 |       -4 |       -6
+(5 rows)
+> select last(x),last(y),last(y)<<cast(1.0 as int),1+last(y)+last(y)<<cast(1.0 as int),last_row(y),last_row(y)<<1,1+last_row(y)+last_row(y)<<1 from t where x+y = 12 group by y having last(y)<<1>5 order by last(x);
+  last | last | ?column? | ?column? | last_row | ?column? | ?column?
+-------+------+----------+----------+----------+----------+-----------
+     6 |    6 |       12 |       26 |        6 |       12 |       26
+(1 row)
+> select last(x),last(y),last(x)+y from t group by y order by y;
+  last | last | ?column?
+-------+------+-----------
+     8 |   -3 |        5
+     8 |   -2 |        6
+     7 |   -1 |        6
+     3 |    1 |        4
+   0.1 |    2 |      2.1
+   5.5 |    5 |     10.5
+     6 |    6 |       12
+(7 rows)
+> select last(y)+y,last_row(y)+y,last(y)+y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+        -6 |       -6 |       -5
+        -4 |       -4 |       -3
+        -2 |       -2 |       -1
+         2 |        2 |        3
+         4 |        4 |        5
+        10 |       10 |       11
+        12 |       12 |       13
+(7 rows)
+> select last(y)-y,last_row(y)-y,last(y)-y-1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+         0 |        0 |       -1
+         0 |        0 |       -1
+         0 |        0 |       -1
+         0 |        0 |       -1
+         0 |        0 |       -1
+         0 |        0 |       -1
+         0 |        0 |       -1
+(7 rows)
+> select last(y)*y,last_row(y)*y,last(y)*y*1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+         9 |        9 |        9
+         4 |        4 |        4
+         1 |        1 |        1
+         1 |        1 |        1
+         4 |        4 |        4
+        25 |       25 |       25
+        36 |       36 |       36
+(7 rows)
+> select last(y)/y,last_row(y)/y,last(y)/y/1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+         1 |        1 |        1
+         1 |        1 |        1
+         1 |        1 |        1
+         1 |        1 |        1
+         1 |        1 |        1
+         1 |        1 |        1
+         1 |        1 |        1
+(7 rows)
+> select last(x)+y,last_row(x)+y,last(x)+y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+         5 |        5 |        6
+         6 |        6 |        7
+         6 |        6 |        7
+         4 |        4 |        5
+       2.1 |      2.1 |      3.1
+      10.5 |     10.5 |     11.5
+        12 |       12 |       13
+(7 rows)
+> select last(x)-y,last_row(x)-y,last(x)-y-1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+        11 |       11 |       10
+        10 |       10 |        9
+         8 |        8 |        7
+         2 |        2 |        1
+      -1.9 |     -1.9 |     -2.9
+       0.5 |      0.5 |     -0.5
+         0 |        0 |       -1
+(7 rows)
+> select last(x)*y,last_row(x)*y,last(x)*y*1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+       -24 |      -24 |      -24
+       -16 |      -16 |      -16
+        -7 |       -7 |       -7
+         3 |        3 |        3
+       0.2 |      0.2 |      0.2
+      27.5 |     27.5 |     27.5
+        36 |       36 |       36
+(7 rows)
+> select last(x)/y,last_row(x)/y,last(x)/y/1 from t group by y order by y;
+       ?column?       |      ?column?       |      ?column?
+----------------------+---------------------+----------------------
+  -2.6666666666666665 | -2.6666666666666665 | -2.6666666666666665
+                   -4 |                  -4 |                  -4
+                   -7 |                  -7 |                  -7
+                    3 |                   3 |                   3
+                 0.05 |                0.05 |                0.05
+                  1.1 |                 1.1 |                 1.1
+                    1 |                   1 |                   1
+(7 rows)
+> select last(y)%y,last_row(y)%y,last(y)%y%1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+         0 |        0 |        0
+         0 |        0 |        0
+         0 |        0 |        0
+         0 |        0 |        0
+         0 |        0 |        0
+         0 |        0 |        0
+         0 |        0 |        0
+(7 rows)
+> select last(x)=y,last_row(x)=y,last(x)=y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+    true   |   true   |  false
+(7 rows)
+> select last(x)<y,last_row(x)<y,last(x)<y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+    true   |   true   |   true
+   false   |  false   |   true
+   false   |  false   |   true
+(7 rows)
+> select last(x)<=y,last_row(x)<=y,last(x)<=y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+   false   |  false   |  false
+    true   |   true   |   true
+   false   |  false   |   true
+    true   |   true   |   true
+(7 rows)
+> select last(x)>y,last_row(x)>y,last(x)>y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+   false   |  false   |  false
+    true   |   true   |  false
+   false   |  false   |  false
+(7 rows)
+> select last(x)>=y,last_row(x)>=y,last(x)>=y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+   false   |  false   |  false
+    true   |   true   |  false
+    true   |   true   |  false
+(7 rows)
+> select last(x)!=y,last_row(x)!=y,last(x)!=y+1 from t group by y order by y;
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+    true   |   true   |   true
+   false   |  false   |   true
+(7 rows)
+> select last(y)<<y,last_row(y)<<y,last(y)<<y+1 from t group by y order by y;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select last(y)>>y,last_row(y)>>y,last(y)>>y+1 from t group by y order by y;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select y,last(x),last(y),last(x)+y from t where y>1 group by y having last(x)+y>2.1 order by y;
+  y | last | last | ?column?
+----+------+------+-----------
+  5 |  5.5 |    5 |     10.5
+  6 |    6 |    6 |       12
+(2 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1 from t where x+y =2 group by y having last(x)+y-2=1 order by y;
+  y | ?column? | ?column? | ?column?
+----+----------+----------+-----------
+(0 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1 from t where x+y =2 group by y having last(x)+y-2=0 order by y;
+  y | ?column? | ?column? | ?column?
+----+----------+----------+-----------
+  1 |        2 |        2 |        3
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1 from t where x+y =2 group by y having last(x)-y=0 order by y;
+  y | ?column? | ?column? | ?column?
+----+----------+----------+-----------
+  1 |        2 |        2 |        3
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1 from t where x+y =2 group by y having last(x)*y=1 order by y;
+  y | ?column? | ?column? | ?column?
+----+----------+----------+-----------
+  1 |        2 |        2 |        3
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1 from t where x+y =2 group by y having last(x)/y=1 order by y;
+  y | ?column? | ?column? | ?column?
+----+----------+----------+-----------
+  1 |        2 |        2 |        3
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)%y=0 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+  1 |        2 |        2 |        3 |    1
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+  1 |        2 |        2 |        3 |    1
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)<2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+(0 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)<=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+  1 |        2 |        2 |        3 |    1
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)>2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+(0 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)>=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+  1 |        2 |        2 |        3 |    1
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)!=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+(0 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)!=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+(0 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)+last(y)!=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+(0 rows)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)<<y=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+  1 |        2 |        2 |        3 |    1
+(1 row)
+> select y,last(x)+y,last_row(x)+y,last(x)+y+1,last(y) from t where x+y =2 group by y having last(y)>>y=2 order by y;
+  y | ?column? | ?column? | ?column? | last
+----+----------+----------+----------+-------
+(0 rows)
+> select last(y),x,last(y)+x,last(y)-x,last(y)*x,last(y)/x from t group by x order by x;
+  last |  x  | ?column? | ?column? | ?column? |       ?column?
+-------+-----+----------+----------+----------+-----------------------
+     2 | 0.1 |      2.1 |      1.9 |      0.2 |                   20
+     1 |   1 |        2 |        0 |        1 |                    1
+     2 |   2 |        4 |        0 |        4 |                    1
+     1 |   3 |        4 |       -2 |        3 |   0.3333333333333333
+     2 |   4 |        6 |       -2 |        8 |                  0.5
+     5 |   5 |       10 |        0 |       25 |                    1
+     5 | 5.5 |     10.5 |     -0.5 |     27.5 |   0.9090909090909091
+     6 |   6 |       12 |        0 |       36 |                    1
+    -1 |   7 |        6 |       -8 |       -7 | -0.14285714285714285
+    -3 |   8 |        5 |      -11 |      -24 |               -0.375
+(10 rows)
+> select last(y),x2,last(y)+x2,last(y)-x2,last(y)*x2,last(y)/x2 from t group by x2 order by x2;
+  last | x2  | ?column? |       ?column?       |      ?column?       |       ?column?
+-------+-----+----------+----------------------+---------------------+-----------------------
+     2 | 0.2 |      2.2 |                  1.8 |                 0.4 |                   10
+     1 | 1.1 |      2.1 | -0.10000000000000009 |                 1.1 |   0.9090909090909091
+     2 | 2.1 |      4.1 | -0.10000000000000009 |                 4.2 |   0.9523809523809523
+     1 | 3.1 |      4.1 |                 -2.1 |                 3.1 |   0.3225806451612903
+     2 | 4.1 |      6.1 |  -2.0999999999999996 |                 8.2 |  0.48780487804878053
+     5 | 5.1 |     10.1 | -0.09999999999999964 |                25.5 |   0.9803921568627452
+     5 | 5.6 |     10.6 |  -0.5999999999999996 |                  28 |   0.8928571428571429
+     6 | 6.1 |     12.1 | -0.09999999999999964 |  36.599999999999994 |   0.9836065573770493
+    -1 | 7.1 |      6.1 |                 -8.1 |                -7.1 | -0.14084507042253522
+    -3 | 8.1 |      5.1 |                -11.1 | -24.299999999999997 |  -0.3703703703703704
+(10 rows)
+> select last(x),y2,last(x)+y2,last(x)-y2,last(x)*y2,last(x)/y2 from t group by y2 order by y2;
+  last | y2  | ?column? | ?column? | ?column? |       ?column?
+-------+-----+----------+----------+----------+-----------------------
+     8 | -30 |      -22 |       38 |     -240 | -0.26666666666666666
+     8 | -20 |      -12 |       28 |     -160 |                 -0.4
+     7 | -10 |       -3 |       17 |      -70 |                 -0.7
+     3 |  10 |       13 |       -7 |       30 |                  0.3
+   0.1 |  20 |     20.1 |    -19.9 |        2 |                0.005
+   5.5 |  50 |     55.5 |    -44.5 |      275 |                 0.11
+     6 |  60 |       66 |      -54 |      360 |                  0.1
+(7 rows)
+> select last(x),y3,last(x)+y3,last(x)-y3,last(x)*y3,last(x)/y3 from t group by y3 order by y3;
+  last |  y3  | ?column? | ?column? | ?column? |       ?column?
+-------+------+----------+----------+----------+-----------------------
+     8 | -300 |     -292 |      308 |    -2400 | -0.02666666666666667
+     8 | -200 |     -192 |      208 |    -1600 |                -0.04
+     7 | -100 |      -93 |      107 |     -700 |                -0.07
+     3 |  100 |      103 |      -97 |      300 |                 0.03
+   0.1 |  200 |    200.1 |   -199.9 |       20 |               0.0005
+   5.5 |  500 |    505.5 |   -494.5 |     2750 |                0.011
+     6 |  600 |      606 |     -594 |     3600 |                 0.01
+(7 rows)
+> select last(y),y,last(y)+y,last(y)-y,last(y)*y,last(y)/y from t group by y order by y;
+  last | y  | ?column? | ?column? | ?column? | ?column?
+-------+----+----------+----------+----------+-----------
+    -3 | -3 |       -6 |        0 |        9 |        1
+    -2 | -2 |       -4 |        0 |        4 |        1
+    -1 | -1 |       -2 |        0 |        1 |        1
+     1 |  1 |        2 |        0 |        1 |        1
+     2 |  2 |        4 |        0 |        4 |        1
+     5 |  5 |       10 |        0 |       25 |        1
+     6 |  6 |       12 |        0 |       36 |        1
+(7 rows)
+> select last(y),y2,last(y)+y2,last(y)-y2,last(y)*y2,last(y)/y2 from t group by y2 order by y2;
+  last | y2  | ?column? | ?column? | ?column? | ?column?
+-------+-----+----------+----------+----------+-----------
+    -3 | -30 |      -33 |       27 |       90 |      0.1
+    -2 | -20 |      -22 |       18 |       40 |      0.1
+    -1 | -10 |      -11 |        9 |       10 |      0.1
+     1 |  10 |       11 |       -9 |       10 |      0.1
+     2 |  20 |       22 |      -18 |       40 |      0.1
+     5 |  50 |       55 |      -45 |      250 |      0.1
+     6 |  60 |       66 |      -54 |      360 |      0.1
+(7 rows)
+> select last(y),y,last(y)+y,last(y)-y,last(y)*y,last(y)/y from t group by y order by y;
+  last | y  | ?column? | ?column? | ?column? | ?column?
+-------+----+----------+----------+----------+-----------
+    -3 | -3 |       -6 |        0 |        9 |        1
+    -2 | -2 |       -4 |        0 |        4 |        1
+    -1 | -1 |       -2 |        0 |        1 |        1
+     1 |  1 |        2 |        0 |        1 |        1
+     2 |  2 |        4 |        0 |        4 |        1
+     5 |  5 |       10 |        0 |       25 |        1
+     6 |  6 |       12 |        0 |       36 |        1
+(7 rows)
+> select last(y),y2,last(y)+y2,last(y)-y2,last(y)*y2,last(y)/y2 from t group by y2 order by y2;
+  last | y2  | ?column? | ?column? | ?column? | ?column?
+-------+-----+----------+----------+----------+-----------
+    -3 | -30 |      -33 |       27 |       90 |      0.1
+    -2 | -20 |      -22 |       18 |       40 |      0.1
+    -1 | -10 |      -11 |        9 |       10 |      0.1
+     1 |  10 |       11 |       -9 |       10 |      0.1
+     2 |  20 |       22 |      -18 |       40 |      0.1
+     5 |  50 |       55 |      -45 |      250 |      0.1
+     6 |  60 |       66 |      -54 |      360 |      0.1
+(7 rows)
+> select last(y),y3,last(y)+y3,last(y)-y3,last(y)*y3,last(y)/y3 from t group by y3 order by y3;
+  last |  y3  | ?column? | ?column? | ?column? | ?column?
+-------+------+----------+----------+----------+-----------
+    -3 | -300 |     -303 |      297 |      900 |     0.01
+    -2 | -200 |     -202 |      198 |      400 |     0.01
+    -1 | -100 |     -101 |       99 |      100 |     0.01
+     1 |  100 |      101 |      -99 |      100 |     0.01
+     2 |  200 |      202 |     -198 |      400 |     0.01
+     5 |  500 |      505 |     -495 |     2500 |     0.01
+     6 |  600 |      606 |     -594 |     3600 |     0.01
+(7 rows)
+> select last(x),x2,last(x)%x2  from t group by x2 order by x2;
+  last | x2  | ?column?
+-------+-----+-----------
+   0.1 | 0.2 |      0.1
+     1 | 1.1 |        1
+     2 | 2.1 |        2
+     3 | 3.1 |        3
+     4 | 4.1 |        4
+     5 | 5.1 |        5
+   5.5 | 5.6 |      5.5
+     6 | 6.1 |        6
+     7 | 7.1 |        7
+     8 | 8.1 |        8
+(10 rows)
+> select last(y),y,last(y)<<y,last(y)>>y  from t group by y order by y;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select last(y),y,last(y)<<y,last(y)>>y  from t where y > 0 group by y order by y;
+  last | y | ?column? | ?column?
+-------+---+----------+-----------
+     1 | 1 |        2 |        0
+     2 | 2 |        8 |        0
+     5 | 5 |      160 |        0
+     6 | 6 |      384 |        0
+(4 rows)
+> select last(y),y2,last(y)<<y2,last(y)>>y2  from t group by y2 order by y2;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select last(y),y2,last(y)<<y2,last(y)>>y2 from t where y2 > 0 group by y2 order by y2;
+  last | y2 |      ?column?       | ?column?
+-------+----+---------------------+-----------
+     1 | 10 |                1024 |        0
+     2 | 20 |             2097152 |        0
+     5 | 50 |    5629499534213120 |        0
+     6 | 60 | 6917529027641081856 |        0
+(4 rows)
+> select last(y),y3,last(y)<<y3,last(y)>>y3  from t group by y3 order by y3;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select last(x),x,last(x)%x from t group by x order by x;
+  last |  x  | ?column?
+-------+-----+-----------
+   0.1 | 0.1 |        0
+     1 |   1 |        0
+     2 |   2 |        0
+     3 |   3 |        0
+     4 |   4 |        0
+     5 |   5 |        0
+   5.5 | 5.5 |        0
+     6 |   6 |        0
+     7 |   7 |        0
+     8 |   8 |        0
+(10 rows)
+> select last(x),x2,last(x)%x2  from t group by x2 order by x2;
+  last | x2  | ?column?
+-------+-----+-----------
+   0.1 | 0.2 |      0.1
+     1 | 1.1 |        1
+     2 | 2.1 |        2
+     3 | 3.1 |        3
+     4 | 4.1 |        4
+     5 | 5.1 |        5
+   5.5 | 5.6 |      5.5
+     6 | 6.1 |        6
+     7 | 7.1 |        7
+     8 | 8.1 |        8
+(10 rows)
+> select last(y),y,last(y)%y from t group by y order by y;
+  last | y  | ?column?
+-------+----+-----------
+    -3 | -3 |        0
+    -2 | -2 |        0
+    -1 | -1 |        0
+     1 |  1 |        0
+     2 |  2 |        0
+     5 |  5 |        0
+     6 |  6 |        0
+(7 rows)
+> select last(y),y2,last(y)%y2 from t group by y2 order by y2;
+  last | y2  | ?column?
+-------+-----+-----------
+    -3 | -30 |       -3
+    -2 | -20 |       -2
+    -1 | -10 |       -1
+     1 |  10 |        1
+     2 |  20 |        2
+     5 |  50 |        5
+     6 |  60 |        6
+(7 rows)
+> select last(y),y3,last(y)%y3 from t group by y3 order by y3;
+  last |  y3  | ?column?
+-------+------+-----------
+    -3 | -300 |       -3
+    -2 | -200 |       -2
+    -1 | -100 |       -1
+     1 |  100 |        1
+     2 |  200 |        2
+     5 |  500 |        5
+     6 |  600 |        6
+(7 rows)
+> select last(x),last(x2),last(y),last(y2),last(y3),last(x)=last(x),last(x)=last(x2),last(x)=last(y),last(x)=last(y2),last(x)=last(y3) from t;
+  last | last | last | last | last | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+------+------+------+------+----------+----------+----------+----------+-----------
+     8 |  8.1 |   -3 |  -30 | -300 |   true   |  false   |  false   |  false   |  false
+(1 row)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),k_timestamp=last(k_timestamp),last(k_timestamp)=last_row(k_timestamp) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true   |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true   |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true   |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true   |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true   |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true   |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true   |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true   |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true   |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true   |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true   |   true
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),k_timestamp=last(k_timestamp),'2023-10-10 09:10:00.688'=last_row(k_timestamp) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true   |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true   |  false
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true   |  false
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true   |  false
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true   |  false
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true   |  false
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true   |  false
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true   |  false
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true   |  false
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true   |  false
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true   |  false
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),last_row(k_timestamp)=lastts(k_timestamp) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),lastts(k_timestamp)=last(k_timestamp) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),k_timestamp=lastts(x) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),lastts(x)=k_timestamp from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),k_timestamp='2023-10-10 09:10:00.688' from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |  false
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |  false
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |  false
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |  false
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |  false
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |  false
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |  false
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |  false
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |  false
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |  false
+(11 rows)
+> select last(z),last(z2),last(z3),last(z4),last(z5),last(z6),last(z7),last(z)=last_row(z2) from t;
+  last | last |   last   |    last    |   last   |    last    | last  | ?column?
+-------+------+----------+------------+----------+------------+-------+-----------
+  z    | zz   | last测试 | 表达式测试 | \x7a7a7a | \x7a7a7a7a | zzzzz |  false
+(1 row)
+> select last_row(x),last_row(x2),last_row(y),last_row(y2),last_row(y3),last_row(y)!=last(x),last_row(y)!=last(x2),last_row(y)!=last(y),last_row(y)!=last(y2),last_row(y)!=last(y3) from t;
+  last_row | last_row | last_row | last_row | last_row | ?column? | ?column? | ?column? | ?column? | ?column?
+-----------+----------+----------+----------+----------+----------+----------+----------+----------+-----------
+         8 |      8.1 |       -3 |      -30 |     -300 |   true   |   true   |  false   |   true   |   true
+(1 row)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),k_timestamp!=last(k_timestamp),last(k_timestamp)!=last_row(k_timestamp) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false   |  false
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |  false   |  false
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |  false   |  false
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |  false   |  false
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |  false   |  false
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |  false   |  false
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |  false   |  false
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |  false   |  false
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |  false   |  false
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |  false   |  false
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |  false   |  false
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),k_timestamp!=last(k_timestamp),'2023-10-10 09:10:00.688'!=last_row(k_timestamp) from t group by k_timestamp  order by k_timestamp;
+           k_timestamp          |           last_row            |             last              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false   |  false
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |  false   |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |  false   |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |  false   |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |  false   |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |  false   |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |  false   |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |  false   |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |  false   |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |  false   |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |  false   |   true
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),last_row(k_timestamp)!=lastts(k_timestamp) from t group by k_timestamp  order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |  false
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |  false
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |  false
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |  false
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |  false
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |  false
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |  false
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |  false
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |  false
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |  false
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),lastts(k_timestamp)!=last(k_timestamp) from t group by k_timestamp order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |  false
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |  false
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |  false
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |  false
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |  false
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |  false
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |  false
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |  false
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |  false
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |  false
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),k_timestamp!=lastts(x) from t group by k_timestamp  order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |  false
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |  false
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |  false
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |  false
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |  false
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |  false
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |  false
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |  false
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |  false
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |  false
+(11 rows)
+> select k_timestamp,last_row(k_timestamp),last(k_timestamp),lastts(k_timestamp),k_timestamp!='2023-10-10 09:10:00.688' from t group by k_timestamp  order by k_timestamp;
+           k_timestamp          |           last_row            |             last              |            lastts             | ?column?
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------
+  2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false
+  2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 | 2023-10-10 09:20:00.688+00:00 |   true
+  2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 | 2023-10-10 09:30:00.688+00:00 |   true
+  2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 | 2023-10-10 09:40:00.688+00:00 |   true
+  2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 | 2023-10-10 09:50:00.688+00:00 |   true
+  2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 | 2023-10-10 10:10:00.688+00:00 |   true
+  2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 | 2023-10-10 10:20:00.688+00:00 |   true
+  2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 | 2023-10-10 10:30:00.688+00:00 |   true
+  2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 | 2023-10-10 10:40:00.688+00:00 |   true
+  2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 | 2023-10-10 10:50:00.688+00:00 |   true
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 |   true
+(11 rows)
+> select last(z),last(z2),last(z3),last(z4),last(z5),last(z6),last(z7),last(z)!=last_row(z2) from t;
+  last | last |   last   |    last    |   last   |    last    | last  | ?column?
+-------+------+----------+------------+----------+------------+-------+-----------
+  z    | zz   | last测试 | 表达式测试 | \x7a7a7a | \x7a7a7a7a | zzzzz |   true
+(1 row)
+> select last(x),last(x2),last(y),last(y2),last(y3),last(x)>last(x),last(x)>last(x2),last(x)>last(y),last(x)>last(y2),last(x)>last(y3) from t;
+  last | last | last | last | last | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+------+------+------+------+----------+----------+----------+----------+-----------
+     8 |  8.1 |   -3 |  -30 | -300 |  false   |  false   |   true   |   true   |   true
+(1 row)
+> select last(x),last(x2),last(y),last(y2),last(y3),last(x)>=last(x),last(x)>=last(x2),last(x)>=last(y),last(x)>=last(y2),last(x)>=last(y3) from t;
+  last | last | last | last | last | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+------+------+------+------+----------+----------+----------+----------+-----------
+     8 |  8.1 |   -3 |  -30 | -300 |   true   |  false   |   true   |   true   |   true
+(1 row)
+> select last(x),last(x2),last(y),last(y2),last(y3),last(x)<last(x),last(x)<last(x2),last(x)<last(y),last(x)<last(y2),last(x)<last(y3) from t;
+  last | last | last | last | last | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+------+------+------+------+----------+----------+----------+----------+-----------
+     8 |  8.1 |   -3 |  -30 | -300 |  false   |   true   |  false   |  false   |  false
+(1 row)
+> select last(x),last(x2),last(y),last(y2),last(y3),last(x)<=last(x),last(x)<=last(x2),last(x)<=last(y),last(x)<=last(y2),last(x)<=last(y3) from t;
+  last | last | last | last | last | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+------+------+------+------+----------+----------+----------+----------+-----------
+     8 |  8.1 |   -3 |  -30 | -300 |   true   |   true   |  false   |  false   |  false
+(1 row)
+> select z2,last(z),last(z2),last(z3),last(z4),last(z5),last(z6),last(z7),last(z)>z2 from t group by z2 order by z2;
+  z2 | last | last |   last   |    last    |   last   |    last    | last  | ?column?
+-----+------+------+----------+------------+----------+------------+-------+-----------
+  aa | a    | aa   | last测试 | 表达式测试 | \x616161 | \x61616161 | aaaaa |  false
+  bb | b    | bb   | last测试 | 表达式测试 | \x626262 | \x62626262 | bbbbb |  false
+  cc | c    | cc   | last测试 | 表达式测试 | \x636363 | \x63636363 | ccccc |  false
+  dd | d    | dd   | last测试 | 表达式测试 | \x646464 | \x64646464 | ddddd |  false
+  ee | e    | ee   | last测试 | 表达式测试 | \x656565 | \x65656565 | eeeee |  false
+  ff | f    | ff   | last测试 | 表达式测试 | \x666666 | \x66666666 | fffff |  false
+  zz | z    | zz   | last测试 | 表达式测试 | \x7a7a7a | \x7a7a7a7a | zzzzz |  false
+(7 rows)
+> select z2,last(z),last(z2),last(z3),last(z4),last(z5),last(z6),last(z7),last(z)>=z2 from t group by z2 order by z2;
+  z2 | last | last |   last   |    last    |   last   |    last    | last  | ?column?
+-----+------+------+----------+------------+----------+------------+-------+-----------
+  aa | a    | aa   | last测试 | 表达式测试 | \x616161 | \x61616161 | aaaaa |  false
+  bb | b    | bb   | last测试 | 表达式测试 | \x626262 | \x62626262 | bbbbb |  false
+  cc | c    | cc   | last测试 | 表达式测试 | \x636363 | \x63636363 | ccccc |  false
+  dd | d    | dd   | last测试 | 表达式测试 | \x646464 | \x64646464 | ddddd |  false
+  ee | e    | ee   | last测试 | 表达式测试 | \x656565 | \x65656565 | eeeee |  false
+  ff | f    | ff   | last测试 | 表达式测试 | \x666666 | \x66666666 | fffff |  false
+  zz | z    | zz   | last测试 | 表达式测试 | \x7a7a7a | \x7a7a7a7a | zzzzz |  false
+(7 rows)
+> select z2,last(z),last(z2),last(z3),last(z4),last(z5),last(z6),last(z7),last(z)<z2 from t group by z2 order by z2;
+  z2 | last | last |   last   |    last    |   last   |    last    | last  | ?column?
+-----+------+------+----------+------------+----------+------------+-------+-----------
+  aa | a    | aa   | last测试 | 表达式测试 | \x616161 | \x61616161 | aaaaa |   true
+  bb | b    | bb   | last测试 | 表达式测试 | \x626262 | \x62626262 | bbbbb |   true
+  cc | c    | cc   | last测试 | 表达式测试 | \x636363 | \x63636363 | ccccc |   true
+  dd | d    | dd   | last测试 | 表达式测试 | \x646464 | \x64646464 | ddddd |   true
+  ee | e    | ee   | last测试 | 表达式测试 | \x656565 | \x65656565 | eeeee |   true
+  ff | f    | ff   | last测试 | 表达式测试 | \x666666 | \x66666666 | fffff |   true
+  zz | z    | zz   | last测试 | 表达式测试 | \x7a7a7a | \x7a7a7a7a | zzzzz |   true
+(7 rows)
+> select z2,last(z),last(z2),last(z3),last(z4),last(z5),last(z6),last(z7),last(z)<=z2 from t group by z2 order by z2;
+  z2 | last | last |   last   |    last    |   last   |    last    | last  | ?column?
+-----+------+------+----------+------------+----------+------------+-------+-----------
+  aa | a    | aa   | last测试 | 表达式测试 | \x616161 | \x61616161 | aaaaa |   true
+  bb | b    | bb   | last测试 | 表达式测试 | \x626262 | \x62626262 | bbbbb |   true
+  cc | c    | cc   | last测试 | 表达式测试 | \x636363 | \x63636363 | ccccc |   true
+  dd | d    | dd   | last测试 | 表达式测试 | \x646464 | \x64646464 | ddddd |   true
+  ee | e    | ee   | last测试 | 表达式测试 | \x656565 | \x65656565 | eeeee |   true
+  ff | f    | ff   | last测试 | 表达式测试 | \x666666 | \x66666666 | fffff |   true
+  zz | z    | zz   | last测试 | 表达式测试 | \x7a7a7a | \x7a7a7a7a | zzzzz |   true
+(7 rows)
+> select last(x),last(x2),last(y),last(y2),last(y3) from t;
+  last | last | last | last | last
+-------+------+------+------+-------
+     8 |  8.1 |   -3 |  -30 | -300
+(1 row)
+> select avg(x),avg(x2),round(avg(y),2),round(avg(y2),2),round(avg(y3),2) from t;
+         avg        |        avg        | round | round | round
+--------------------+-------------------+-------+-------+---------
+  4.509090909090909 | 4.609090909090909 |  1.64 | 16.36 | 163.64
+(1 row)
+> select sum(x),sum(x2),sum(y),sum(y2),sum(y3) from t;
+  sum  | sum  | sum | sum | sum
+-------+------+-----+-----+-------
+  49.6 | 50.7 |  18 | 180 | 1800
+(1 row)
+> select count(k_timestamp),count(x),count(x2),count(y),count(y2),count(y3),count(z) from t;
+  count | count | count | count | count | count | count
+--------+-------+-------+-------+-------+-------+--------
+     11 |    11 |    11 |    11 |    11 |    11 |    11
+(1 row)
+> select max(k_timestamp),max(x),max(x2),max(y),max(y2),max(y3),max(z),max(z7) from t;
+               max              | max | max | max | max | max | max |  max
+--------------------------------+-----+-----+-----+-----+-----+-----+--------
+  2023-10-10 11:00:00.688+00:00 |   8 | 8.1 |   6 |  60 | 600 | z   | zzzzz
+(1 row)
+> select min(k_timestamp),min(x),min(x2),min(y),min(y2),min(y3),min(z),min(z7) from t;
+               min              | min | min | min | min | min  | min |  min
+--------------------------------+-----+-----+-----+-----+------+-----+--------
+  2023-10-10 09:10:00.688+00:00 | 0.1 | 0.2 |  -3 | -30 | -300 | a   | aaaaa
+(1 row)
+> select first(k_timestamp),first(x),first(x2),first(y),first(y2),first(y3),first(z),first(z7) from t;
+              first             | first | first | first | first | first | first | first
+--------------------------------+-------+-------+-------+-------+-------+-------+--------
+  2023-10-10 09:10:00.688+00:00 |     1 |   1.1 |     1 |    10 |   100 | a     | aaaaa
+(1 row)
+> select variance(x),variance(x2),variance(y),variance(y2),variance(y3) from t;
+      variance      |     variance      |       variance        |       variance        |       variance
+--------------------+-------------------+-----------------------+-----------------------+------------------------
+  7.460909090909091 | 7.460909090909091 | 8.4545454545454545455 | 845.45454545454545455 | 84545.454545454545455
+(1 row)
+> select stddev_samp(x),stddev_samp(x2),stddev_samp(y),stddev_samp(y2),stddev_samp(y3) from t;
+     stddev_samp    |    stddev_samp    |      stddev_samp      |      stddev_samp      |      stddev_samp
+--------------------+-------------------+-----------------------+-----------------------+------------------------
+  2.731466472594729 | 2.731466472594729 | 2.9076701075853592345 | 29.076701075853592345 | 290.76701075853592345
+(1 row)
+> select corr(x,x),corr(x,x2),corr(x,y),corr(x,y2),corr(x,y3) from t;
+  corr |        corr        |        corr         |         corr         |         corr
+-------+--------------------+---------------------+----------------------+-----------------------
+     1 | 0.9999999999999998 | -0.2954298089052919 | -0.29542980890529197 | -0.29542980890529197
+(1 row)
+> select x,y,last(x),last_row(x),avg(y),last(x)+avg(y),last_row(x)-avg(y),last_row(x)*avg(x),last(x)/avg(x) from t group by x,y order by x,y;
+   x  | y  | last | last_row | avg | ?column? | ?column? |       ?column?       | ?column?
+------+----+------+----------+-----+----------+----------+----------------------+-----------
+  0.1 |  2 |  0.1 |      0.1 |   2 |      2.1 |     -1.9 | 0.010000000000000002 |        1
+    1 |  1 |    1 |        1 |   1 |        2 |        0 |                    1 |        1
+    2 |  2 |    2 |        2 |   2 |        4 |        0 |                    4 |        1
+    3 |  1 |    3 |        3 |   1 |        4 |        2 |                    9 |        1
+    4 |  2 |    4 |        4 |   2 |        6 |        2 |                   16 |        1
+    5 |  5 |    5 |        5 |   5 |       10 |        0 |                   25 |        1
+  5.5 |  5 |  5.5 |      5.5 |   5 |     10.5 |      0.5 |                30.25 |        1
+    6 |  6 |    6 |        6 |   6 |       12 |        0 |                   36 |        1
+    7 | -1 |    7 |        7 |  -1 |        6 |        8 |                   49 |        1
+    8 | -3 |    8 |        8 |  -3 |        5 |       11 |                   64 |        1
+    8 | -2 |    8 |        8 |  -2 |        6 |       10 |                   64 |        1
+(11 rows)
+> select x,y,last(x),last_row(x),sum(y),last(x)+sum(y),last_row(x)-sum(y2),last_row(x)*sum(x2),last(x)/sum(x2) from t group by x,y order by x,y;
+   x  | y  | last | last_row | sum | ?column? | ?column? |       ?column?       |      ?column?
+------+----+------+----------+-----+----------+----------+----------------------+---------------------
+  0.1 |  2 |  0.1 |      0.1 |   2 |      2.1 |    -19.9 | 0.020000000000000004 |                0.5
+    1 |  1 |    1 |        1 |   1 |        2 |       -9 |                  1.1 | 0.9090909090909091
+    2 |  2 |    2 |        2 |   2 |        4 |      -18 |                  4.2 | 0.9523809523809523
+    3 |  1 |    3 |        3 |   1 |        4 |       -7 |                  9.3 | 0.9677419354838709
+    4 |  2 |    4 |        4 |   2 |        6 |      -16 |                 16.4 | 0.9756097560975611
+    5 |  5 |    5 |        5 |   5 |       10 |      -45 |                 25.5 | 0.9803921568627452
+  5.5 |  5 |  5.5 |      5.5 |   5 |     10.5 |    -44.5 |   30.799999999999997 | 0.9821428571428572
+    6 |  6 |    6 |        6 |   6 |       12 |      -54 |   36.599999999999994 | 0.9836065573770493
+    7 | -1 |    7 |        7 |  -1 |        6 |       17 |   49.699999999999996 | 0.9859154929577465
+    8 | -3 |    8 |        8 |  -3 |        5 |       38 |                 64.8 | 0.9876543209876544
+    8 | -2 |    8 |        8 |  -2 |        6 |       28 |                 64.8 | 0.9876543209876544
+(11 rows)
+> select x,y,last(x),last_row(x),count(y),last(x)+count(y),last_row(x)-count(x),last_row(x)*count(x2),last(x)/count(x2) from t group by x,y order by x,y;
+   x  | y  | last | last_row | count | ?column? | ?column? | ?column? | ?column?
+------+----+------+----------+-------+----------+----------+----------+-----------
+  0.1 |  2 |  0.1 |      0.1 |     1 |      1.1 |     -0.9 |      0.1 |      0.1
+    1 |  1 |    1 |        1 |     1 |        2 |        0 |        1 |        1
+    2 |  2 |    2 |        2 |     1 |        3 |        1 |        2 |        2
+    3 |  1 |    3 |        3 |     1 |        4 |        2 |        3 |        3
+    4 |  2 |    4 |        4 |     1 |        5 |        3 |        4 |        4
+    5 |  5 |    5 |        5 |     1 |        6 |        4 |        5 |        5
+  5.5 |  5 |  5.5 |      5.5 |     1 |      6.5 |      4.5 |      5.5 |      5.5
+    6 |  6 |    6 |        6 |     1 |        7 |        5 |        6 |        6
+    7 | -1 |    7 |        7 |     1 |        8 |        6 |        7 |        7
+    8 | -3 |    8 |        8 |     1 |        9 |        7 |        8 |        8
+    8 | -2 |    8 |        8 |     1 |        9 |        7 |        8 |        8
+(11 rows)
+> select x,y,last(x),last_row(x),first(y),last(x)+first(y),last_row(x)-first(y),last_row(x)*first(x),last(x)/first(x2) from t group by x,y order by x,y;
+   x  | y  | last | last_row | first | ?column? | ?column? |       ?column?       |      ?column?
+------+----+------+----------+-------+----------+----------+----------------------+---------------------
+  0.1 |  2 |  0.1 |      0.1 |     2 |      2.1 |     -1.9 | 0.010000000000000002 |                0.5
+    1 |  1 |    1 |        1 |     1 |        2 |        0 |                    1 | 0.9090909090909091
+    2 |  2 |    2 |        2 |     2 |        4 |        0 |                    4 | 0.9523809523809523
+    3 |  1 |    3 |        3 |     1 |        4 |        2 |                    9 | 0.9677419354838709
+    4 |  2 |    4 |        4 |     2 |        6 |        2 |                   16 | 0.9756097560975611
+    5 |  5 |    5 |        5 |     5 |       10 |        0 |                   25 | 0.9803921568627452
+  5.5 |  5 |  5.5 |      5.5 |     5 |     10.5 |      0.5 |                30.25 | 0.9821428571428572
+    6 |  6 |    6 |        6 |     6 |       12 |        0 |                   36 | 0.9836065573770493
+    7 | -1 |    7 |        7 |    -1 |        6 |        8 |                   49 | 0.9859154929577465
+    8 | -3 |    8 |        8 |    -3 |        5 |       11 |                   64 | 0.9876543209876544
+    8 | -2 |    8 |        8 |    -2 |        6 |       10 |                   64 | 0.9876543209876544
+(11 rows)
+> select x,y,last(x),last_row(x),max(y),last(x)+max(y),last_row(x)-max(y),last_row(x)*max(x),last(x)/max(x2) from t group by x,y order by x,y;
+   x  | y  | last | last_row | max | ?column? | ?column? |       ?column?       |      ?column?
+------+----+------+----------+-----+----------+----------+----------------------+---------------------
+  0.1 |  2 |  0.1 |      0.1 |   2 |      2.1 |     -1.9 | 0.010000000000000002 |                0.5
+    1 |  1 |    1 |        1 |   1 |        2 |        0 |                    1 | 0.9090909090909091
+    2 |  2 |    2 |        2 |   2 |        4 |        0 |                    4 | 0.9523809523809523
+    3 |  1 |    3 |        3 |   1 |        4 |        2 |                    9 | 0.9677419354838709
+    4 |  2 |    4 |        4 |   2 |        6 |        2 |                   16 | 0.9756097560975611
+    5 |  5 |    5 |        5 |   5 |       10 |        0 |                   25 | 0.9803921568627452
+  5.5 |  5 |  5.5 |      5.5 |   5 |     10.5 |      0.5 |                30.25 | 0.9821428571428572
+    6 |  6 |    6 |        6 |   6 |       12 |        0 |                   36 | 0.9836065573770493
+    7 | -1 |    7 |        7 |  -1 |        6 |        8 |                   49 | 0.9859154929577465
+    8 | -3 |    8 |        8 |  -3 |        5 |       11 |                   64 | 0.9876543209876544
+    8 | -2 |    8 |        8 |  -2 |        6 |       10 |                   64 | 0.9876543209876544
+(11 rows)
+> select x,y,last(x),last_row(x),min(y),last(x)+min(y),last_row(x)-min(y),last_row(x)*min(x),last(x)/min(x2) from t group by x,y order by x,y;
+   x  | y  | last | last_row | min | ?column? | ?column? |       ?column?       |      ?column?
+------+----+------+----------+-----+----------+----------+----------------------+---------------------
+  0.1 |  2 |  0.1 |      0.1 |   2 |      2.1 |     -1.9 | 0.010000000000000002 |                0.5
+    1 |  1 |    1 |        1 |   1 |        2 |        0 |                    1 | 0.9090909090909091
+    2 |  2 |    2 |        2 |   2 |        4 |        0 |                    4 | 0.9523809523809523
+    3 |  1 |    3 |        3 |   1 |        4 |        2 |                    9 | 0.9677419354838709
+    4 |  2 |    4 |        4 |   2 |        6 |        2 |                   16 | 0.9756097560975611
+    5 |  5 |    5 |        5 |   5 |       10 |        0 |                   25 | 0.9803921568627452
+  5.5 |  5 |  5.5 |      5.5 |   5 |     10.5 |      0.5 |                30.25 | 0.9821428571428572
+    6 |  6 |    6 |        6 |   6 |       12 |        0 |                   36 | 0.9836065573770493
+    7 | -1 |    7 |        7 |  -1 |        6 |        8 |                   49 | 0.9859154929577465
+    8 | -3 |    8 |        8 |  -3 |        5 |       11 |                   64 | 0.9876543209876544
+    8 | -2 |    8 |        8 |  -2 |        6 |       10 |                   64 | 0.9876543209876544
+(11 rows)
+> select last(x),last_row(x),variance(y),last(x)+variance(y),variance(y)-last_row(x2),last_row(x)*variance(x),variance(x2)/last(y) from t;
+  last | last_row |       variance        |        ?column?        |       ?column?        |     ?column?      |      ?column?
+-------+----------+-----------------------+------------------------+-----------------------+-------------------+---------------------
+     8 |        8 | 8.4545454545454545455 | 16.4545454545454545455 | 0.3545454545454545455 | 59.68727272727273 | -2.486969696969697
+(1 row)
+> select last(x),last_row(x),stddev_samp(y),last(x)+stddev_samp(y),last_row(x)-stddev_samp(y),last_row(x)*stddev_samp(x),last(x)/stddev_samp(x2) from t;
+  last | last_row |      stddev_samp      |        ?column?        |       ?column?        |     ?column?      |     ?column?
+-------+----------+-----------------------+------------------------+-----------------------+-------------------+--------------------
+     8 |        8 | 2.9076701075853592345 | 10.9076701075853592345 | 5.0923298924146407655 | 21.85173178075783 | 2.928829652593349
+(1 row)
+> select last(x),last_row(x),corr(x,y),last(x)+corr(x,y),last_row(x)-corr(x,y3),last_row(x)*corr(x,x2),last(x)/corr(x,x2) from t;
+  last | last_row |        corr         |     ?column?      |     ?column?      |     ?column?      |     ?column?
+-------+----------+---------------------+-------------------+-------------------+-------------------+--------------------
+     8 |        8 | -0.2954298089052919 | 7.704570191094708 | 8.295429808905292 | 7.999999999999998 | 8.000000000000002
+(1 row)
+> select x,y,last(x),last_row(x),sum(y),last(x)%sum(x2),last_row(y)<<count(y),last(y)>>count(y) from t group by x,y order by x,y;
+   x  | y  | last | last_row | sum | ?column? | ?column? | ?column?
+------+----+------+----------+-----+----------+----------+-----------
+  0.1 |  2 |  0.1 |      0.1 |   2 |      0.1 |        4 |        1
+    1 |  1 |    1 |        1 |   1 |        1 |        2 |        0
+    2 |  2 |    2 |        2 |   2 |        2 |        4 |        1
+    3 |  1 |    3 |        3 |   1 |        3 |        2 |        0
+    4 |  2 |    4 |        4 |   2 |        4 |        4 |        1
+    5 |  5 |    5 |        5 |   5 |        5 |       10 |        2
+  5.5 |  5 |  5.5 |      5.5 |   5 |      5.5 |       10 |        2
+    6 |  6 |    6 |        6 |   6 |        6 |       12 |        3
+    7 | -1 |    7 |        7 |  -1 |        7 |       -2 |       -1
+    8 | -3 |    8 |        8 |  -3 |        8 |       -6 |       -2
+    8 | -2 |    8 |        8 |  -2 |        8 |       -4 |       -1
+(11 rows)
+> select x,y,last(y),last_row(y),sum(y),last(y)%sum(y),last_row(y)<<count(y),last(y)>>count(y) from t group by x,y order by x,y;
+   x  | y  | last | last_row | sum | ?column? | ?column? | ?column?
+------+----+------+----------+-----+----------+----------+-----------
+  0.1 |  2 |    2 |        2 |   2 |        0 |        4 |        1
+    1 |  1 |    1 |        1 |   1 |        0 |        2 |        0
+    2 |  2 |    2 |        2 |   2 |        0 |        4 |        1
+    3 |  1 |    1 |        1 |   1 |        0 |        2 |        0
+    4 |  2 |    2 |        2 |   2 |        0 |        4 |        1
+    5 |  5 |    5 |        5 |   5 |        0 |       10 |        2
+  5.5 |  5 |    5 |        5 |   5 |        0 |       10 |        2
+    6 |  6 |    6 |        6 |   6 |        0 |       12 |        3
+    7 | -1 |   -1 |       -1 |  -1 |       -0 |       -2 |       -1
+    8 | -3 |   -3 |       -3 |  -3 |       -0 |       -6 |       -2
+    8 | -2 |   -2 |       -2 |  -2 |       -0 |       -4 |       -1
+(11 rows)
+> select x,y,last(y),last_row(y),avg(y),last(y)%avg(y) from t group by x,y order by x,y;
+   x  | y  | last | last_row | avg | ?column?
+------+----+------+----------+-----+-----------
+  0.1 |  2 |    2 |        2 |   2 |        0
+    1 |  1 |    1 |        1 |   1 |        0
+    2 |  2 |    2 |        2 |   2 |        0
+    3 |  1 |    1 |        1 |   1 |        0
+    4 |  2 |    2 |        2 |   2 |        0
+    5 |  5 |    5 |        5 |   5 |        0
+  5.5 |  5 |    5 |        5 |   5 |        0
+    6 |  6 |    6 |        6 |   6 |        0
+    7 | -1 |   -1 |       -1 |  -1 |       -0
+    8 | -3 |   -3 |       -3 |  -3 |       -0
+    8 | -2 |   -2 |       -2 |  -2 |       -0
+(11 rows)
+> select x,y,last(y),last_row(y),max(y),last(y)%max(y),last_row(y)<<max(y),last(y)>>max(y) from t group by x,y having max(y) > 0 order by x,y;
+   x  | y | last | last_row | max | ?column? | ?column? | ?column?
+------+---+------+----------+-----+----------+----------+-----------
+  0.1 | 2 |    2 |        2 |   2 |        0 |        8 |        0
+    1 | 1 |    1 |        1 |   1 |        0 |        2 |        0
+    2 | 2 |    2 |        2 |   2 |        0 |        8 |        0
+    3 | 1 |    1 |        1 |   1 |        0 |        2 |        0
+    4 | 2 |    2 |        2 |   2 |        0 |        8 |        0
+    5 | 5 |    5 |        5 |   5 |        0 |      160 |        0
+  5.5 | 5 |    5 |        5 |   5 |        0 |      160 |        0
+    6 | 6 |    6 |        6 |   6 |        0 |      384 |        0
+(8 rows)
+> select x,y,last(y),last_row(y),min(y),last(y)%min(y),last_row(y)<<min(y),last(y)>>min(y) from t group by x,y having min(y) > 0 order by x,y;
+   x  | y | last | last_row | min | ?column? | ?column? | ?column?
+------+---+------+----------+-----+----------+----------+-----------
+  0.1 | 2 |    2 |        2 |   2 |        0 |        8 |        0
+    1 | 1 |    1 |        1 |   1 |        0 |        2 |        0
+    2 | 2 |    2 |        2 |   2 |        0 |        8 |        0
+    3 | 1 |    1 |        1 |   1 |        0 |        2 |        0
+    4 | 2 |    2 |        2 |   2 |        0 |        8 |        0
+    5 | 5 |    5 |        5 |   5 |        0 |      160 |        0
+  5.5 | 5 |    5 |        5 |   5 |        0 |      160 |        0
+    6 | 6 |    6 |        6 |   6 |        0 |      384 |        0
+(8 rows)
+> select last(y),last_row(y),variance(y),last(y)%variance(y)from t;
+  last | last_row |       variance        |        ?column?
+-------+----------+-----------------------+-------------------------
+    -3 |       -3 | 8.4545454545454545455 | -3.0000000000000000000
+(1 row)
+> select last(y),last_row(y),stddev_samp(y),last(y)%stddev_samp(y),last(y)<<stddev_samp(y) from t;
+ERROR: unsupported binary operator: <int4> << <decimal>
+SQLSTATE: 22023
+> select last(x),last_row(x),corr(x,y),last(x)%corr(x,y) from t;
+  last | last_row |        corr         |      ?column?
+-------+----------+---------------------+----------------------
+     8 |        8 | -0.2954298089052919 | 0.02339515955711835
+(1 row)
+> select last(x),last_row(x),last(z),lastts(k_timestamp),last(x)=avg(x),last_row(x)=sum(x),last(x)=count(x),last(x)=max(x),last(x)=min(x),last(x)=variance(x),last(x)=stddev_samp(x),last(x)=corr(x,x) from t;
+  last | last_row | last |            lastts             | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+----------+------+-------------------------------+----------+----------+----------+----------+----------+----------+----------+-----------
+     8 |        8 | z    | 2023-10-10 11:00:00.688+00:00 |  false   |  false   |  false   |   true   |  false   |  false   |  false   |  false
+(1 row)
+> select last(x),last_row(x),last(z),lastts(k_timestamp),last(x)!=avg(x),last_row(x)!=sum(x),last(x)!=count(x),last(x)!=max(x),last(x)!=min(x),last(x)!=variance(x),last(x)!=stddev_samp(x),last(x)!=corr(x,x) from t;
+  last | last_row | last |            lastts             | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+----------+------+-------------------------------+----------+----------+----------+----------+----------+----------+----------+-----------
+     8 |        8 | z    | 2023-10-10 11:00:00.688+00:00 |   true   |   true   |   true   |  false   |   true   |   true   |   true   |   true
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)=max(k_timestamp),lastts(k_timestamp)=min(k_timestamp) from t;
+             lastts             | ?column? | ?column?
+--------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |   true   |  false
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)!=max(k_timestamp),lastts(k_timestamp)!=min(k_timestamp) from t;
+             lastts             | ?column? | ?column?
+--------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |  false   |   true
+(1 row)
+> select last(x),last_row(x),last(z),lastts(k_timestamp),last(x)>avg(x),last_row(x)>sum(x),last(x)>count(x),last(x)>max(x),last(x)>min(x),last(x)>variance(x),last(x)>stddev_samp(x),last(x)>corr(x,x) from t;
+  last | last_row | last |            lastts             | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+----------+------+-------------------------------+----------+----------+----------+----------+----------+----------+----------+-----------
+     8 |        8 | z    | 2023-10-10 11:00:00.688+00:00 |   true   |  false   |  false   |  false   |   true   |   true   |   true   |   true
+(1 row)
+> select last(x),last_row(x),last(z),lastts(k_timestamp),last(x)>=avg(x),last_row(x)>=sum(x),last(x)>=count(x),last(x)>=max(x),last(x)>=min(x),last(x)>=variance(x),last(x)>=stddev_samp(x),last(x)>=corr(x,x) from t;
+  last | last_row | last |            lastts             | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+----------+------+-------------------------------+----------+----------+----------+----------+----------+----------+----------+-----------
+     8 |        8 | z    | 2023-10-10 11:00:00.688+00:00 |   true   |  false   |  false   |   true   |   true   |   true   |   true   |   true
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)>max(k_timestamp),lastts(k_timestamp)>min(k_timestamp) from t;
+             lastts             | ?column? | ?column?
+--------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |  false   |   true
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)>=max(k_timestamp),lastts(k_timestamp)>=min(k_timestamp) from t;
+             lastts             | ?column? | ?column?
+--------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |   true   |   true
+(1 row)
+> select last(x),last_row(x),last(z),lastts(k_timestamp),last(x)<avg(x),last_row(x)<sum(x),last(x)<count(x),last(x)<max(x),last(x)<min(x),last(x)<variance(x),last(x)<stddev_samp(x),last(x)<corr(x,x) from t;
+  last | last_row | last |            lastts             | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+----------+------+-------------------------------+----------+----------+----------+----------+----------+----------+----------+-----------
+     8 |        8 | z    | 2023-10-10 11:00:00.688+00:00 |  false   |   true   |   true   |  false   |  false   |  false   |  false   |  false
+(1 row)
+> select last(x),last_row(x),last(z),lastts(k_timestamp),last(x)<=avg(x),last_row(x)<=sum(x),last(x)<=count(x),last(x)<=max(x),last(x)<=min(x),last(x)<=variance(x),last(x)<=stddev_samp(x),last(x)<=corr(x,x) from t;
+  last | last_row | last |            lastts             | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column? | ?column?
+-------+----------+------+-------------------------------+----------+----------+----------+----------+----------+----------+----------+-----------
+     8 |        8 | z    | 2023-10-10 11:00:00.688+00:00 |  false   |   true   |   true   |   true   |  false   |  false   |  false   |  false
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)<max(k_timestamp),lastts(k_timestamp)<min(k_timestamp) from t;
+             lastts             | ?column? | ?column?
+--------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |  false   |  false
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)<=max(k_timestamp),lastts(k_timestamp)<=min(k_timestamp) from t;
+             lastts             | ?column? | ?column?
+--------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 |   true   |  false
+(1 row)
+> select last(z),last_row(z2),max(z),max(z2),min(z),min(z2),last(z)=max(z),last(z)>min(z),last(z)>=max(z),LAST_ROW(z2)<min(z2)from t;
+  last | last_row | max | max | min | min | ?column? | ?column? | ?column? | ?column?
+-------+----------+-----+-----+-----+-----+----------+----------+----------+-----------
+  z    | zz       | z   | zz  | a   | aa  |   true   |   true   |   true   |  false
+(1 row)
+> select x,y,last(y),last_row(y),max(y),last(y)+max(y),last_row(y)+max(y) from t where x+y > 2 group by x,y having last(y)+max(y)>2 order by x,y;
+   x  | y | last | last_row | max | ?column? | ?column?
+------+---+------+----------+-----+----------+-----------
+  0.1 | 2 |    2 |        2 |   2 |        4 |        4
+    2 | 2 |    2 |        2 |   2 |        4 |        4
+    4 | 2 |    2 |        2 |   2 |        4 |        4
+    5 | 5 |    5 |        5 |   5 |       10 |       10
+  5.5 | 5 |    5 |        5 |   5 |       10 |       10
+    6 | 6 |    6 |        6 |   6 |       12 |       12
+(6 rows)
+> select x,y,last(y),last_row(y),min(y),last(y)+min(y),last_row(y)+min(y) from t where x+y>4 group by x,y having last_row(y)-min(y)>=0 order by x,y;
+   x  | y  | last | last_row | min | ?column? | ?column?
+------+----+------+----------+-----+----------+-----------
+    4 |  2 |    2 |        2 |   2 |        4 |        4
+    5 |  5 |    5 |        5 |   5 |       10 |       10
+  5.5 |  5 |    5 |        5 |   5 |       10 |       10
+    6 |  6 |    6 |        6 |   6 |       12 |       12
+    7 | -1 |   -1 |       -1 |  -1 |       -2 |       -2
+    8 | -3 |   -3 |       -3 |  -3 |       -6 |       -6
+    8 | -2 |   -2 |       -2 |  -2 |       -4 |       -4
+(7 rows)
+> select x,y,last(y),last_row(y),avg(y),last(y)+avg(y),last_row(y)+avg(y) from t where x+y > 2 group by x,y having last(y)-avg(y)=0 order by x,y;
+   x  | y  | last | last_row | avg | ?column? | ?column?
+------+----+------+----------+-----+----------+-----------
+  0.1 |  2 |    2 |        2 |   2 |        4 |        4
+    2 |  2 |    2 |        2 |   2 |        4 |        4
+    3 |  1 |    1 |        1 |   1 |        2 |        2
+    4 |  2 |    2 |        2 |   2 |        4 |        4
+    5 |  5 |    5 |        5 |   5 |       10 |       10
+  5.5 |  5 |    5 |        5 |   5 |       10 |       10
+    6 |  6 |    6 |        6 |   6 |       12 |       12
+    7 | -1 |   -1 |       -1 |  -1 |       -2 |       -2
+    8 | -3 |   -3 |       -3 |  -3 |       -6 |       -6
+    8 | -2 |   -2 |       -2 |  -2 |       -4 |       -4
+(10 rows)
+> select x,y,last(y),last_row(y),sum(y),last(y)+sum(y),last_row(y)+sum(y) from t where x+y > 2 group by x,y having last(y)*sum(y)=4 order by x,y;
+   x  | y  | last | last_row | sum | ?column? | ?column?
+------+----+------+----------+-----+----------+-----------
+  0.1 |  2 |    2 |        2 |   2 |        4 |        4
+    2 |  2 |    2 |        2 |   2 |        4 |        4
+    4 |  2 |    2 |        2 |   2 |        4 |        4
+    8 | -2 |   -2 |       -2 |  -2 |       -4 |       -4
+(4 rows)
+> select x,y,last(y),last_row(y),count(y),last(y)+count(y),last_row(y)+count(y) from t where x+y > 2 group by x,y having last(y)/count(y)=1 order by x,y;
+  x | y | last | last_row | count | ?column? | ?column?
+----+---+------+----------+-------+----------+-----------
+  3 | 1 |    1 |        1 |     1 |        2 |        2
+(1 row)
+> select x,y,last(y),last_row(y),last(y)+last(y),last_row(y)+last(y) from t where x+y > 2 group by x,y having last(y)%last(y)=0 order by x,y;
+   x  | y  | last | last_row | ?column? | ?column?
+------+----+------+----------+----------+-----------
+  0.1 |  2 |    2 |        2 |        4 |        4
+    2 |  2 |    2 |        2 |        4 |        4
+    3 |  1 |    1 |        1 |        2 |        2
+    4 |  2 |    2 |        2 |        4 |        4
+    5 |  5 |    5 |        5 |       10 |       10
+  5.5 |  5 |    5 |        5 |       10 |       10
+    6 |  6 |    6 |        6 |       12 |       12
+    7 | -1 |   -1 |       -1 |       -2 |       -2
+    8 | -3 |   -3 |       -3 |       -6 |       -6
+    8 | -2 |   -2 |       -2 |       -4 |       -4
+(10 rows)
+> select last(y),last_row(y),variance(y),last(y)+variance(y),last_row(y)+variance(y) from t where x+y > 2;
+  last | last_row |       variance        |       ?column?        |       ?column?
+-------+----------+-----------------------+-----------------------+------------------------
+    -3 |       -3 | 9.3444444444444444444 | 6.3444444444444444444 | 6.3444444444444444444
+(1 row)
+> select last(y),last_row(y),stddev_samp(y),last(y)+stddev_samp(y),last_row(y)+stddev_samp(y) from t where x+y > 2;
+  last | last_row |      stddev_samp      |       ?column?        |       ?column?
+-------+----------+-----------------------+-----------------------+------------------------
+    -3 |       -3 | 3.0568684048294333543 | 0.0568684048294333543 | 0.0568684048294333543
+(1 row)
+> select last(y),last_row(y),corr(x,y),last(y)+corr(x,y),last_row(y)+corr(x,y) from t where x+y > 2;
+  last | last_row |         corr         |      ?column?       |      ?column?
+-------+----------+----------------------+---------------------+----------------------
+    -3 |       -3 | -0.36169655691112224 | -3.3616965569111223 | -3.3616965569111223
+(1 row)
+> select x,y,last(y),last_row(y),sum(y),last(y)+sum(y),last_row(y)+sum(y) from t where x+y > 2 group by x,y having last(y)+sum(y)>2 order by x,y;
+   x  | y | last | last_row | sum | ?column? | ?column?
+------+---+------+----------+-----+----------+-----------
+  0.1 | 2 |    2 |        2 |   2 |        4 |        4
+    2 | 2 |    2 |        2 |   2 |        4 |        4
+    4 | 2 |    2 |        2 |   2 |        4 |        4
+    5 | 5 |    5 |        5 |   5 |       10 |       10
+  5.5 | 5 |    5 |        5 |   5 |       10 |       10
+    6 | 6 |    6 |        6 |   6 |       12 |       12
+(6 rows)
+> select x,y,last(y),last_row(y),count(y),last(y)+count(y),last_row(y)+count(y) from t where x+y > 2 group by x,y having last(y)+count(y)>=2 order by x,y;
+   x  | y | last | last_row | count | ?column? | ?column?
+------+---+------+----------+-------+----------+-----------
+  0.1 | 2 |    2 |        2 |     1 |        3 |        3
+    2 | 2 |    2 |        2 |     1 |        3 |        3
+    3 | 1 |    1 |        1 |     1 |        2 |        2
+    4 | 2 |    2 |        2 |     1 |        3 |        3
+    5 | 5 |    5 |        5 |     1 |        6 |        6
+  5.5 | 5 |    5 |        5 |     1 |        6 |        6
+    6 | 6 |    6 |        6 |     1 |        7 |        7
+(7 rows)
+> select x,y,last(y),last_row(y),avg(y),last(y)+avg(y),last_row(y)+avg(y) from t where x+y > 2 group by x,y having last(y)+avg(y)<2 order by x,y;
+  x | y  | last | last_row | avg | ?column? | ?column?
+----+----+------+----------+-----+----------+-----------
+  7 | -1 |   -1 |       -1 |  -1 |       -2 |       -2
+  8 | -3 |   -3 |       -3 |  -3 |       -6 |       -6
+  8 | -2 |   -2 |       -2 |  -2 |       -4 |       -4
+(3 rows)
+> select x,y,last(y),last_row(y),max(y),last(y)+max(y),last_row(y)+max(y) from t where x+y > 2 group by x,y having last(y)+max(y)<=2 order by x,y;
+  x | y  | last | last_row | max | ?column? | ?column?
+----+----+------+----------+-----+----------+-----------
+  3 |  1 |    1 |        1 |   1 |        2 |        2
+  7 | -1 |   -1 |       -1 |  -1 |       -2 |       -2
+  8 | -3 |   -3 |       -3 |  -3 |       -6 |       -6
+  8 | -2 |   -2 |       -2 |  -2 |       -4 |       -4
+(4 rows)
+> select x,y,last(y),last_row(y),min(y),last(y)+min(y),last_row(y)+min(y) from t where x+y > 2 group by x,y having last(y)+min(y)!=2 order by x,y;
+   x  | y  | last | last_row | min | ?column? | ?column?
+------+----+------+----------+-----+----------+-----------
+  0.1 |  2 |    2 |        2 |   2 |        4 |        4
+    2 |  2 |    2 |        2 |   2 |        4 |        4
+    4 |  2 |    2 |        2 |   2 |        4 |        4
+    5 |  5 |    5 |        5 |   5 |       10 |       10
+  5.5 |  5 |    5 |        5 |   5 |       10 |       10
+    6 |  6 |    6 |        6 |   6 |       12 |       12
+    7 | -1 |   -1 |       -1 |  -1 |       -2 |       -2
+    8 | -3 |   -3 |       -3 |  -3 |       -6 |       -6
+    8 | -2 |   -2 |       -2 |  -2 |       -4 |       -4
+(9 rows)
+> select x,y,last(y),last_row(y),max(y),last(y)+max(y),last_row(y)+max(y) from t where x+y > 2 group by x,y having last(y)<<max(y)>8 order by x,y;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select x,y,last(y),last_row(y),min(y),last(y)+min(y),last_row(y)+min(y) from t where x+y > 2 group by x,y having last(y)<<min(y)<8 order by x,y;
+ERROR: shift argument out of range
+SQLSTATE: 22023
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t group by bucket order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:00:00+00:00 | a        | aa   |    1 |     1 |   1 |   1 |   1 |   1 | 2023-10-10 09:10:00.688+00:00
+  2023-10-10 09:20:00+00:00 | c        | cc   |    3 |     2 | 2.5 |   5 |   2 |   1 | 2023-10-10 09:30:00.688+00:00
+  2023-10-10 09:40:00+00:00 | e        | ee   |    5 |     2 | 4.5 |   9 |   5 |   2 | 2023-10-10 09:50:00.688+00:00
+  2023-10-10 10:00:00+00:00 | e        | ee   |    6 |     1 |   6 |   6 |   6 |   6 | 2023-10-10 10:10:00.688+00:00
+  2023-10-10 10:20:00+00:00 | e        | ee   |  5.5 |     2 | 2.8 | 5.6 |   5 |   2 | 2023-10-10 10:30:00.688+00:00
+  2023-10-10 10:40:00+00:00 | z        | zz   |    8 |     2 | 7.5 |  15 |  -1 |  -2 | 2023-10-10 10:50:00.688+00:00
+  2023-10-10 11:00:00+00:00 | z        | zz   |    8 |     1 |   8 |   8 |  -3 |  -3 | 2023-10-10 11:00:00.688+00:00
+(7 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where x+y>3 group by bucket order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:20:00+00:00 | c        | cc   |    3 |     2 | 2.5 |   5 |   2 |   1 | 2023-10-10 09:30:00.688+00:00
+  2023-10-10 09:40:00+00:00 | e        | ee   |    5 |     2 | 4.5 |   9 |   5 |   2 | 2023-10-10 09:50:00.688+00:00
+  2023-10-10 10:00:00+00:00 | e        | ee   |    6 |     1 |   6 |   6 |   6 |   6 | 2023-10-10 10:10:00.688+00:00
+  2023-10-10 10:20:00+00:00 | e        | ee   |  5.5 |     1 | 5.5 | 5.5 |   5 |   5 | 2023-10-10 10:30:00.688+00:00
+  2023-10-10 10:40:00+00:00 | z        | zz   |    8 |     2 | 7.5 |  15 |  -1 |  -2 | 2023-10-10 10:50:00.688+00:00
+  2023-10-10 11:00:00+00:00 | z        | zz   |    8 |     1 |   8 |   8 |  -3 |  -3 | 2023-10-10 11:00:00.688+00:00
+(6 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),last_row(z)>last(z2),last(x)+count(z) from t where z6 in ('aaaa', 'bbbb', 'eeee') group by bucket order by bucket;
+           bucket           | last_row | last | last | count | ?column? | ?column?
+----------------------------+----------+------+------+-------+----------+-----------
+  2023-10-10 09:00:00+00:00 | a        | aa   |    1 |     1 |  false   |        2
+  2023-10-10 09:20:00+00:00 | b        | bb   |    2 |     1 |  false   |        3
+  2023-10-10 09:40:00+00:00 | e        | ee   |    5 |     1 |  false   |        6
+  2023-10-10 10:00:00+00:00 | e        | ee   |    6 |     1 |  false   |        7
+  2023-10-10 10:20:00+00:00 | e        | ee   |  5.5 |     1 |  false   |      6.5
+(5 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where k_timestamp between '2023-10-10 09:00:00' and '2023-10-10 10:20:00' group by bucket order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:00:00+00:00 | a        | aa   |    1 |     1 |   1 |   1 |   1 |   1 | 2023-10-10 09:10:00.688+00:00
+  2023-10-10 09:20:00+00:00 | c        | cc   |    3 |     2 | 2.5 |   5 |   2 |   1 | 2023-10-10 09:30:00.688+00:00
+  2023-10-10 09:40:00+00:00 | e        | ee   |    5 |     2 | 4.5 |   9 |   5 |   2 | 2023-10-10 09:50:00.688+00:00
+  2023-10-10 10:00:00+00:00 | e        | ee   |    6 |     1 |   6 |   6 |   6 |   6 | 2023-10-10 10:10:00.688+00:00
+(4 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where x+y>3 and k_timestamp >= '2023-10-10 10:00:00' and k_timestamp <= '2023-10-10 11:00:00' group by bucket order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 10:00:00+00:00 | e        | ee   |    6 |     1 |   6 |   6 |   6 |   6 | 2023-10-10 10:10:00.688+00:00
+  2023-10-10 10:20:00+00:00 | e        | ee   |  5.5 |     1 | 5.5 | 5.5 |   5 |   5 | 2023-10-10 10:30:00.688+00:00
+  2023-10-10 10:40:00+00:00 | z        | zz   |    8 |     2 | 7.5 |  15 |  -1 |  -2 | 2023-10-10 10:50:00.688+00:00
+(3 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where x+y<3 and k_timestamp >= '2023-10-10 10:00:00' and k_timestamp <= '2023-10-10 11:00:00' group by bucket order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 10:20:00+00:00 | f        | ff   |  0.1 |     1 | 0.1 | 0.1 |   2 |   2 | 2023-10-10 10:20:00.688+00:00
+(1 row)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where x+y<3 or k_timestamp >= '2023-10-10 10:00:00' and k_timestamp <= '2023-10-10 11:00:00' group by bucket order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:00:00+00:00 | a        | aa   |    1 |     1 |   1 |   1 |   1 |   1 | 2023-10-10 09:10:00.688+00:00
+  2023-10-10 10:00:00+00:00 | e        | ee   |    6 |     1 |   6 |   6 |   6 |   6 | 2023-10-10 10:10:00.688+00:00
+  2023-10-10 10:20:00+00:00 | e        | ee   |  5.5 |     2 | 2.8 | 5.6 |   5 |   2 | 2023-10-10 10:30:00.688+00:00
+  2023-10-10 10:40:00+00:00 | z        | zz   |    8 |     2 | 7.5 |  15 |  -1 |  -2 | 2023-10-10 10:50:00.688+00:00
+(4 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where k_timestamp between '2023-10-10 09:00:00' and '2023-10-10 10:20:00' group by bucket having avg(x)+sum(x)=7.5 order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:20:00+00:00 | c        | cc   |    3 |     2 | 2.5 |   5 |   2 |   1 | 2023-10-10 09:30:00.688+00:00
+(1 row)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where k_timestamp between '2023-10-10 09:00:00' and '2023-10-10 10:20:00' group by bucket having last(x)=3 order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:20:00+00:00 | c        | cc   |    3 |     2 | 2.5 |   5 |   2 |   1 | 2023-10-10 09:30:00.688+00:00
+(1 row)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where k_timestamp between '2023-10-10 09:00:00' and '2023-10-10 10:20:00' group by bucket having last(x)-count(x)>=min(y) order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:20:00+00:00 | c        | cc   |    3 |     2 | 2.5 |   5 |   2 |   1 | 2023-10-10 09:30:00.688+00:00
+  2023-10-10 09:40:00+00:00 | e        | ee   |    5 |     2 | 4.5 |   9 |   5 |   2 | 2023-10-10 09:50:00.688+00:00
+(2 rows)
+> select time_bucket(k_timestamp, '1200s') bucket, last_row(z),last(z2),last(x),count(z),avg(x),sum(x),max(y),min(y),lastts(z) from t where k_timestamp between '2023-10-10 09:00:00' and '2023-10-10 10:20:00' group by bucket having last(x)-count(x)>=min(y) and max(y)+min(y)!=3 order by bucket;
+           bucket           | last_row | last | last | count | avg | sum | max | min |            lastts
+----------------------------+----------+------+------+-------+-----+-----+-----+-----+--------------------------------
+  2023-10-10 09:40:00+00:00 | e        | ee   |    5 |     2 | 4.5 |   9 |   5 |   2 | 2023-10-10 09:50:00.688+00:00
+(1 row)
+> select last(x),max(y),last(x)+1,(select last(x)+1 as a from t),(select last(x)+max(y) as b from t) from t;
+  last | max | ?column? | a | b
+-------+-----+----------+---+-----
+     8 |   6 |        9 | 9 | 14
+(1 row)
+> select x,last(x),max(y),last(x)+1,(select last(x)+count(z) as a from t) from t group by x order by x;
+   x  | last | max | ?column? | a
+------+------+-----+----------+-----
+  0.1 |  0.1 |   2 |      1.1 | 19
+    1 |    1 |   1 |        2 | 19
+    2 |    2 |   2 |        3 | 19
+    3 |    3 |   1 |        4 | 19
+    4 |    4 |   2 |        5 | 19
+    5 |    5 |   5 |        6 | 19
+  5.5 |  5.5 |   5 |      6.5 | 19
+    6 |    6 |   6 |        7 | 19
+    7 |    7 |  -1 |        8 | 19
+    8 |    8 |  -2 |        9 | 19
+(10 rows)
+> select x,last(x),max(y),last(x)+1,(select last(x)+max(y) as a from t where x > 5) from t group by x order by x;
+   x  | last | max | ?column? | a
+------+------+-----+----------+-----
+  0.1 |  0.1 |   2 |      1.1 | 14
+    1 |    1 |   1 |        2 | 14
+    2 |    2 |   2 |        3 | 14
+    3 |    3 |   1 |        4 | 14
+    4 |    4 |   2 |        5 | 14
+    5 |    5 |   5 |        6 | 14
+  5.5 |  5.5 |   5 |      6.5 | 14
+    6 |    6 |   6 |        7 | 14
+    7 |    7 |  -1 |        8 | 14
+    8 |    8 |  -2 |        9 | 14
+(10 rows)
+> select a+b,a,b,c from (select last(x) as a,min(x) as b,last(x)+min(x) as c from t)tt order by a;
+  ?column? | a |  b  |  c
+-----------+---+-----+------
+       8.1 | 8 | 0.1 | 8.1
+(1 row)
+> select a+b,a,b,c from (select last(x) as a,min(x) as b,last(x)+min(x) as c from t group by x)tt order by a;
+  ?column? |  a  |  b  |  c
+-----------+-----+-----+------
+       0.2 | 0.1 | 0.1 | 0.2
+         2 |   1 |   1 |   2
+         4 |   2 |   2 |   4
+         6 |   3 |   3 |   6
+         8 |   4 |   4 |   8
+        10 |   5 |   5 |  10
+        11 | 5.5 | 5.5 |  11
+        12 |   6 |   6 |  12
+        14 |   7 |   7 |  14
+        16 |   8 |   8 |  16
+(10 rows)
+> select a+b,a,b,c from (select last(x) as a,min(x) as b,last(x)+min(x) as c from t where x > 2 group by x)tt order by a;
+  ?column? |  a  |  b  | c
+-----------+-----+-----+-----
+         6 |   3 |   3 |  6
+         8 |   4 |   4 |  8
+        10 |   5 |   5 | 10
+        11 | 5.5 | 5.5 | 11
+        12 |   6 |   6 | 12
+        14 |   7 |   7 | 14
+        16 |   8 |   8 | 16
+(7 rows)
+> select last(k_timestamp)=lastts(k_timestamp) from t;
+  ?column?
+------------
+    true
+(1 row)
+> select lastts(k_timestamp),max(k_timestamp),min(k_timestamp),lastts(k_timestamp)<max(k_timestamp),lastts(k_timestamp)<min(k_timestamp) from t;
+             lastts             |              max              |              min              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false   |  false
+(1 row)
+> select lastts(k_timestamp),max(k_timestamp),min(k_timestamp),lastts(k_timestamp)<max(k_timestamp),lastts(k_timestamp)>min(k_timestamp) from t;
+             lastts             |              max              |              min              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |  false   |   true
+(1 row)
+> select lastts(k_timestamp),max(k_timestamp),min(k_timestamp),lastts(k_timestamp)=max(k_timestamp),lastts(k_timestamp)>min(k_timestamp) from t;
+             lastts             |              max              |              min              | ?column? | ?column?
+--------------------------------+-------------------------------+-------------------------------+----------+-----------
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:00.688+00:00 | 2023-10-10 09:10:00.688+00:00 |   true   |   true
+(1 row)
+> select lastts(k_timestamp),lastts(k_timestamp)+'1d' from t;
+             lastts             |           ?column?
+--------------------------------+--------------------------------
+  2023-10-10 11:00:00.688+00:00 | 2023-10-11 11:00:00.688+00:00
+(1 row)
+> explain select lastts(k_timestamp),lastts(k_timestamp)+'1d' from t;
+           tree          |        field        |           description
+-------------------------+---------------------+-----------------------------------
+                         | distributed         | true
+                         | vectorized          | false
+  render                 |                     |
+   │                     | lastts              | lastts
+   │                     | ?column?            | lastts + '1 day'
+   └── group             |                     |
+        │                | engine type         | time series
+        │                | aggregate 0         | lastts(k_timestamp, k_timestamp)
+        │                | scalar              |
+        │                | pushLocalAggToScan  | true
+        │                | addSynchronizer     | true
+        └── render       |                     |
+             │           | engine type         | time series
+             │           | k_timestamp         | k_timestamp
+             └── ts scan |                     |
+                         | ts-table            | t
+                         | access mode         | metaTable
+                         | use statistic       | true
+(18 rows)
+> select lastts(k_timestamp),lastts(k_timestamp)+'1s' from t;
+             lastts             |           ?column?
+--------------------------------+--------------------------------
+  2023-10-10 11:00:00.688+00:00 | 2023-10-10 11:00:01.688+00:00
+(1 row)
+> explain select lastts(k_timestamp),lastts(k_timestamp)+'1s' from t;
+           tree          |        field        |           description
+-------------------------+---------------------+-----------------------------------
+                         | distributed         | true
+                         | vectorized          | false
+  render                 |                     |
+   │                     | lastts              | lastts
+   │                     | ?column?            | lastts + '00:00:01'
+   └── group             |                     |
+        │                | engine type         | time series
+        │                | aggregate 0         | lastts(k_timestamp, k_timestamp)
+        │                | scalar              |
+        │                | pushLocalAggToScan  | true
+        │                | addSynchronizer     | true
+        └── render       |                     |
+             │           | engine type         | time series
+             │           | k_timestamp         | k_timestamp
+             └── ts scan |                     |
+                         | ts-table            | t
+                         | access mode         | metaTable
+                         | use statistic       | true
+(18 rows)
+> insert into t values('2023-10-10 11:00:00.688', 0.1, -3, 'z',0.033333,-30,-300,'zz','last测试','表达式测试','zzz','zzzz','zzzzz', 1);
+INSERT 1
+> insert into t values('2023-10-10 11:00:00.688', 0.3, -3, 'z',0.0033333,-30,-300,'zz','last测试','表达式测试','zzz','zzzz','zzzzz', 1);
+INSERT 1
+> select last(x),last(x2),last(x)%last(x2) from t;
+  last |   last    |       ?column?
+-------+-----------+------------------------
+   0.3 | 0.0033333 | 2.999999999990857e-06
+(1 row)
+> insert into t values('2023-10-10 11:00:00.688', 0.1, -3, 'z',0.100000000000001,-30,-300,'zz','last测试','表达式测试','zzz','zzzz','zzzzz', 1);
+INSERT 1
+> select last(x),last(x2) from t where x = 0.1;
+  last |       last
+-------+--------------------
+   0.1 | 0.100000000000001
+(1 row)
+> drop table t;
+DROP TABLE
+> create table test_int(k_timestamp timestamp not null,e1 smallint,e2 int,e3 bigint) attributes (att1 int2 not null) primary tags(att1);
+CREATE TABLE
+> insert into test_int values('2023-10-10 09:10:00.688',    10,     1000000,             3000000, 1);
+INSERT 1
+> insert into test_int values('2023-10-10 09:20:00.688',  32767, 2147483647, 9223372036854775807, 1);
+INSERT 1
+> insert into test_int values('2023-10-10 09:30:00.688', -32768,-2147483648,-9223372036854775808, 1);
+INSERT 1
+> select last(e2)+last(e3) from test_int;
+ERROR: integer out of range
+SQLSTATE: 22003
+> select first(e2)*first(e3) from test_int;
+    ?column?
+-----------------
+  3000000000000
+(1 row)
+> explain select e2/e3 from test_int;
+        tree        |    field    | description
+--------------------+-------------+--------------
+                    | distributed | true
+                    | vectorized  | false
+  synchronizer      |             |
+   └── render       |             |
+        │           | engine type | time series
+        │           | ?column?    | e2 / e3
+        └── ts scan |             |
+                    | ts-table    | test_int
+                    | access mode | metaTable
+(9 rows)
+> drop table test_int;
+DROP TABLE
+> use defaultdb;
+SET
+> drop database last_db cascade;
+DROP DATABASE
+> create ts database test_query;
+CREATE TS DATABASE
+> create table test_query.d1(k_timestamp timestamp not null,e1 timestamp,e2 smallint,e3 int,e4 bigint,e5 float,e6 float8,e7 bool) attributes (att1 int2 not null) primary tags(att1);
+CREATE TABLE
+> insert into test_query.d1 values ('2023-05-10 09:04:18.223',111111110000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,true, 1);
+INSERT 1
+> insert into test_query.d1 values ('2023-04-10 08:04:15.783',222222220000,2000,2000000,200000000000000000,200000000000000000.202,200000000000000000.20202020202,true, 1);
+INSERT 1
+> insert into test_query.d1 values ('2023-03-01 17:30:32',    333333330000,3000,2000000,300000000000000000,300000000000000000.303,300000000000000000.30303030303,true, 1);
+INSERT 1
+> insert into test_query.d1 values ('2023-12-21 17:30:25.167',444444440000,3000,3000000,400000000000000000,400000000000000000.404,400000000000000000.40404040404,false, 1);
+INSERT 1
+> insert into test_query.d1 values ('2023-05-01 08:00:00',    555555550000,5000,5000000,500000000000000000,500000000000000000.505,500000000000000000.50505050505,true, 1);
+INSERT 1
+> insert into test_query.d1 values ('2023-06-01 08:00:00',    666666660000,6000,6000000,600000000000000000,600000000000000000.606,600000000000000000.60606060606,false, 1);
+INSERT 1
+> insert into test_query.d1 values ('2020-11-06 17:10:23',    666666660000,7000,7000000,700000000000000000,700000000000000000.707,700000000000000000.10101010101,true, 1);
+INSERT 1
+> insert into test_query.d1 values (168111110011,                     null,null,null,null,null,null,null, 1);
+INSERT 1
+> insert into test_query.d1 values ('2021-04-01 15:00:00',111111110000,1000,3000000,400000000000000000,600000000000000000.606,400000000000000000.40404040404,false, 1);
+INSERT 1
+> insert into test_query.d1 values ('2022-05-01 17:00:00',666666660000,5000,5000000,600000000000000000,500000000000000000.505,500000000000000000.50505050505,false, 1);
+INSERT 1
+> select e3*e3 from test_query.d1 order by k_timestamp;
+     ?column?
+------------------
+            NULL
+  49000000000000
+   9000000000000
+  25000000000000
+   4000000000000
+   4000000000000
+  25000000000000
+   1000000000000
+  36000000000000
+   9000000000000
+(10 rows)
+> select max(e2) * max(e3), max(e4) - max(e3) from test_query.d1;
+   ?column?   |      ?column?
+--------------+---------------------
+  49000000000 | 699999999993000000
+(1 row)
+> create table test_query.s1 (k_timestamp timestamp not null,e1 timestamp,e2 smallint,e3 int,e4 bigint,e5 float,e6 float8,e7 bool) attributes(name varchar(10) not null, t1_p1 varchar) primary tags(name);
+CREATE TABLE
+> insert into test_query.s1 values ('2023-05-10 09:04:18.223',111111110000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101, true, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2023-04-10 08:04:15.783',222222220000,2000,2000000,200000000000000000,200000000000000000.202,200000000000000000.20202020202, true, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2023-03-01 17:30:32',    333333330000,3000,2000000,300000000000000000,300000000000000000.303,300000000000000000.30303030303, true, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2023-12-21 17:30:25.167',444444440000,3000,3000000,400000000000000000,400000000000000000.404,400000000000000000.40404040404,false, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2023-05-01 08:00:00',            null,null,   null,              null,                  null,                          null, null, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2023-06-01 08:00:00',    666666660000,6000,6000000,600000000000000000,600000000000000000.606,600000000000000000.60606060606,false, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2020-11-06 17:10:23',    666666660000,7000,7000000,700000000000000000,700000000000000000.707,700000000000000000.10101010101, true, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2022-08-16 10:23:05.123',888888880000,8000,8000000,800000000000000000,800000000000000000.808,800000000000000000.20202020202,false, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2021-04-01 15:00:00',    111111110000,1000,3000000,400000000000000000,600000000000000000.606,400000000000000000.40404040404,false, 's1_1', 'd1');
+INSERT 1
+> insert into test_query.s1 values ('2022-05-01 17:00:00',    666666660000,5000,5000000,600000000000000000,500000000000000000.505,500000000000000000.50505050505,false, 's1_1', 'd1');
+INSERT 1
+> select e3 * e3 from test_query.s1 order by k_timestamp;
+     ?column?
+------------------
+  49000000000000
+   9000000000000
+  25000000000000
+  64000000000000
+   4000000000000
+   4000000000000
+            NULL
+   1000000000000
+  36000000000000
+   9000000000000
+(10 rows)
+> select e3 * e3 from test_query.s1 where name = 's1_1' order by k_timestamp;
+     ?column?
+------------------
+  49000000000000
+   9000000000000
+  25000000000000
+  64000000000000
+   4000000000000
+   4000000000000
+            NULL
+   1000000000000
+  36000000000000
+   9000000000000
+(10 rows)
+> select max(e2) * max(e3), max(e4) - max(e3) from test_query.s1 where name = 's1_1';
+   ?column?   |      ?column?
+--------------+---------------------
+  64000000000 | 799999999992000000
+(1 row)
+> drop database test_query CASCADE;
+DROP DATABASE

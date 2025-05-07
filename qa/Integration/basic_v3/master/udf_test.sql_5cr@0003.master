@@ -1,0 +1,249 @@
+> CREATE TS DATABASE test_udf;
+CREATE TS DATABASE
+> CREATE TABLE test_udf.tb1(ts timestamptz NOT NULL, e1 int) TAGS(t1 int NOT NULL) PRIMARY TAGS(t1);
+CREATE TABLE
+> INSERT INTO test_udf.tb1 VALUES(NOW(), 10, 1);
+INSERT 1
+> INSERT INTO test_udf.tb1 VALUES(NOW(), 20, 2);
+INSERT 1
+> INSERT INTO test_udf.tb1 VALUES(NOW(), 28, 3);
+INSERT 1
+> CREATE FUNCTION is_perfect_number(num int)
+    RETURNS int
+    LANGUAGE LUA
+BEGIN
+'function is_perfect_number(num)
+    local function find_divisors(n)
+        local sum = 1
+        for i = 2, math.sqrt(n) do
+            if n % i == 0 then
+                sum = sum + i
+                if i ~= n / i then
+                    sum = sum + n / i
+                end
+            end
+        end
+        return sum
+    end
+
+
+    local divisors_sum = find_divisors(num)
+
+
+    if num > 1 and divisors_sum == num then
+        return num
+    else
+        return nil
+    end
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION square(nu_int int)
+    RETURNS int
+    LANGUAGE LUA
+BEGIN
+'function square(nu_int)
+    local re = nu_int * nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION sum_two_ints(a int, b int)
+    RETURNS int
+    LANGUAGE LUA
+BEGIN
+'function sum_two_ints(a, b)
+    local re = a + b
+    return re
+end'
+END;
+CREATE FUNCTION
+> SELECT square(4);
+  square
+----------
+      16
+(1 row)
+> SELECT sum_two_ints(3, 5);
+  sum_two_ints
+----------------
+             8
+(1 row)
+> SELECT is_perfect_number(28);
+  is_perfect_number
+---------------------
+                 28
+(1 row)
+> SELECT function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, comments FROM system.user_defined_function;
+    function_name   | argument_types | return_type | types_length |                function_body                | function_type | language |  db_name  | creator | comments
+--------------------+----------------+-------------+--------------+---------------------------------------------+---------------+----------+-----------+---------+-----------
+  is_perfect_number | {2}            | {2}         | {0,0}        | function is_perfect_number(num)             |             1 | LUA      | defaultdb | root    |
+                    |                |             |              |     local function find_divisors(n)         |               |          |           |         |
+                    |                |             |              |         local sum = 1                       |               |          |           |         |
+                    |                |             |              |         for i = 2, math.sqrt(n) do          |               |          |           |         |
+                    |                |             |              |             if n % i == 0 then              |               |          |           |         |
+                    |                |             |              |                 sum = sum + i               |               |          |           |         |
+                    |                |             |              |                 if i ~= n / i then          |               |          |           |         |
+                    |                |             |              |                     sum = sum + n / i       |               |          |           |         |
+                    |                |             |              |                 end                         |               |          |           |         |
+                    |                |             |              |             end                             |               |          |           |         |
+                    |                |             |              |         end                                 |               |          |           |         |
+                    |                |             |              |         return sum                          |               |          |           |         |
+                    |                |             |              |     end                                     |               |          |           |         |
+                    |                |             |              |                                             |               |          |           |         |
+                    |                |             |              |                                             |               |          |           |         |
+                    |                |             |              |     local divisors_sum = find_divisors(num) |               |          |           |         |
+                    |                |             |              |                                             |               |          |           |         |
+                    |                |             |              |                                             |               |          |           |         |
+                    |                |             |              |     if num > 1 and divisors_sum == num then |               |          |           |         |
+                    |                |             |              |         return num                          |               |          |           |         |
+                    |                |             |              |     else                                    |               |          |           |         |
+                    |                |             |              |         return nil                          |               |          |           |         |
+                    |                |             |              |     end                                     |               |          |           |         |
+                    |                |             |              | end                                         |               |          |           |         |
+  square            | {2}            | {2}         | {0,0}        | function square(nu_int)                     |             1 | LUA      | defaultdb | root    |
+                    |                |             |              |     local re = nu_int * nu_int              |               |          |           |         |
+                    |                |             |              |     return re                               |               |          |           |         |
+                    |                |             |              | end                                         |               |          |           |         |
+  sum_two_ints      | {2,2}          | {2}         | {0,0,0}      | function sum_two_ints(a, b)                 |             1 | LUA      | defaultdb | root    |
+                    |                |             |              |     local re = a + b                        |               |          |           |         |
+                    |                |             |              |     return re                               |               |          |           |         |
+                    |                |             |              | end                                         |               |          |           |         |
+(3 rows)
+> SHOW FUNCTIONS;
+    function_name
+---------------------
+  is_perfect_number
+  square
+  sum_two_ints
+(3 rows)
+> SHOW FUNCTION square;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  square        | INT            | INT         | function      | LUA
+(1 row)
+> SHOW FUNCTION sum_two_ints;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  sum_two_ints  | INT, INT       | INT         | function      | LUA
+(1 row)
+> SELECT square(e1) FROM test_udf.tb1 order by e1;
+  square
+----------
+     100
+     400
+     784
+(3 rows)
+> SELECT sum_two_ints(e1, e1) AS double_e1 FROM test_udf.tb1 order by e1;
+  double_e1
+-------------
+         20
+         40
+         56
+(3 rows)
+> SELECT is_perfect_number(e1) FROM test_udf.tb1 where is_perfect_number(e1) > 0 order by e1;
+  is_perfect_number
+---------------------
+                 28
+(1 row)
+> drop table test_udf.tb1;
+DROP TABLE
+> drop database test_udf cascade;
+DROP DATABASE
+> CREATE DATABASE test_udf_re;
+CREATE DATABASE
+> CREATE TABLE test_udf_re.r1(e1 int);
+CREATE TABLE
+> INSERT INTO test_udf_re.r1 VALUES(10);
+INSERT 1
+> INSERT INTO test_udf_re.r1 VALUES(20);
+INSERT 1
+> SELECT square(e1) FROM test_udf_re.r1 order by e1;
+  square
+----------
+     100
+     400
+(2 rows)
+> SELECT sum_two_ints(e1, e1) AS double_e1 FROM test_udf_re.r1 order by e1;
+  double_e1
+-------------
+         20
+         40
+(2 rows)
+> SELECT is_perfect_number(e1) FROM test_udf_re.r1 where is_perfect_number(e1) > 0 order by e1;
+  is_perfect_number
+---------------------
+(0 rows)
+> drop table test_udf_re.r1 ;
+DROP TABLE
+> drop database test_udf_re cascade;
+DROP DATABASE
+> SELECT square(-2147483648);
+ERROR: square(): integer out of range
+SQLSTATE: 22003
+> SELECT square(2147483647);
+ERROR: square(): integer out of range
+SQLSTATE: 22003
+> SELECT square(null);
+  square
+----------
+  NULL
+(1 row)
+> SELECT sum_two_ints(-2147483648, 2147483647);
+  sum_two_ints
+----------------
+            -1
+(1 row)
+> SELECT sum_two_ints(-2147483648, 2147483648);
+ERROR: sum_two_ints(): integer out of range
+SQLSTATE: 22003
+> SELECT sum_two_ints(null,null);
+  sum_two_ints
+----------------
+  NULL
+(1 row)
+> SELECT is_perfect_number(-2147483648);
+  is_perfect_number
+---------------------
+  NULL
+(1 row)
+> SELECT is_perfect_number(-2147483649);
+ERROR: is_perfect_number(): integer out of range
+SQLSTATE: 22003
+> SELECT is_perfect_number(2147483647);
+  is_perfect_number
+---------------------
+  NULL
+(1 row)
+> SELECT is_perfect_number(2147483648);
+ERROR: is_perfect_number(): integer out of range
+SQLSTATE: 22003
+> SELECT is_perfect_number(null);
+  is_perfect_number
+---------------------
+  NULL
+(1 row)
+> SELECT square(NOW());
+ERROR: square(): unknown signature: now() (desired <int4>)
+SQLSTATE: 42883
+> SELECT square('test');
+ERROR: unknown signature: square(STRING)
+SQLSTATE: 42883
+> SELECT square(1.2);
+ERROR: unknown signature: square(DECIMAL)
+SQLSTATE: 42883
+> SELECT square(TRUE);
+ERROR: unknown signature: square(BOOL)
+SQLSTATE: 42883
+> SELECT square('2011-11-11');
+ERROR: unknown signature: square(STRING)
+SQLSTATE: 42883
+> DROP FUNCTION square;
+DROP FUNCTION
+> DROP FUNCTION sum_two_ints;
+DROP FUNCTION
+> DROP FUNCTION is_perfect_number;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)

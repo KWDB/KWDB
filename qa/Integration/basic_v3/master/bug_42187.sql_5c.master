@@ -1,0 +1,275 @@
+> CREATE TS DATABASE runba;
+CREATE TS DATABASE
+> CREATE TABLE runba.opcdata449600 (
+                                     "time" TIMESTAMPTZ NOT NULL,
+                                     "value" FLOAT8 NULL
+) TAGS (
+  adr VARCHAR(20),
+  channel VARCHAR(20) NOT NULL,
+  companyid int NOT NULL,
+  companyname VARCHAR(100),
+  datatype VARCHAR(20),
+  device VARCHAR(100),
+  deviceid VARCHAR(20),
+  highmorewarn VARCHAR(20),
+  highwarn VARCHAR(20),
+  lowmorewarn VARCHAR(20),
+  lowwarn VARCHAR(20),
+  "name" VARCHAR(20),
+  region VARCHAR(20),
+  slaveid VARCHAR(100),
+  "tag" VARCHAR(20),
+  unit VARCHAR(20)
+) PRIMARY TAGS (
+  channel,
+  companyid
+);
+CREATE TABLE
+> CREATE DATABASE IF NOT EXISTS runba_tra;
+CREATE DATABASE
+> CREATE TABLE IF NOT EXISTS runba_tra.plat_zone_member (
+                                                          member_id INT4 NOT NULL,
+                                                          member_code VARCHAR(20) NOT NULL DEFAULT '':::STRING,
+    member_name VARCHAR(50) NOT NULL,
+    member_type INT4 NOT NULL,
+    "contract" VARCHAR(50) NULL,
+    "position" VARCHAR(50) NULL,
+    contract_call VARCHAR(30) NULL,
+    contract_mobile VARCHAR(20) NOT NULL,
+    contract_email VARCHAR(100) NULL,
+    invite_status INT4 NOT NULL,
+    invite_operate_status INT4 NOT NULL,
+    invite_operate_open_time INT4 NOT NULL,
+    enterprise_status INT4 NULL,
+    company_id INT4 NOT NULL,
+    zone_company_id INT4 NOT NULL,
+    rel_status INT4 NOT NULL,
+    join_time INT4 NOT NULL,
+    remove_time INT4 NOT NULL,
+    create_time INT4 NOT NULL,
+    create_user_id INT4 NULL,
+    update_time INT4 NULL,
+    update_user_id INT4 NULL,
+    invite_date INT4 NOT NULL,
+    invite_count INT4 NOT NULL,
+    introducing_way INT4 NOT NULL,
+    sys_investment_workplace_id INT4 NOT NULL DEFAULT 0:::INT8,
+    sys_investment_people_id INT4 NOT NULL DEFAULT 0:::INT8,
+    investment_type_id INT4 NULL,
+    company_type_id INT4 NULL,
+    investment_date INT4 NULL,
+    expand_city_id INT4 NOT NULL,
+    add_type INT4 NOT NULL,
+    "status" INT4 NOT NULL DEFAULT 1:::INT8,
+    zhuce_code VARCHAR(50) NOT NULL,
+    archives_code VARCHAR(50) NOT NULL,
+    is_history_rel INT4 NOT NULL,
+    agency_id INT4 NOT NULL,
+    pic1_url VARCHAR(255) NOT NULL,
+    pic1_down_times INT4 NOT NULL,
+    pic1_upload_time TIMESTAMP NULL,
+    pic2_url VARCHAR(255) NOT NULL,
+    pic2_down_times INT4 NOT NULL,
+    pic2_upload_time TIMESTAMP NULL,
+    pic3_url VARCHAR(255) NOT NULL,
+    pic3_down_times INT4 NOT NULL,
+    pic3_upload_time TIMESTAMP NULL,
+    pic4_url VARCHAR(255) NOT NULL,
+    pic4_down_times INT4 NOT NULL,
+    pic4_upload_time TIMESTAMP NULL,
+    pic5_url VARCHAR(255) NOT NULL,
+    pic5_down_times INT4 NOT NULL,
+    pic5_upload_time TIMESTAMP NULL,
+    new_taxpayer INT4 NOT NULL DEFAULT 0:::INT8,
+    effective_taxpayer INT4 NOT NULL DEFAULT 0:::INT8,
+    total_tax DECIMAL(20, 2) NOT NULL DEFAULT 0.00:::DECIMAL,
+    company_type INT4 NOT NULL,
+    is_virtual_member INT4 NOT NULL DEFAULT 0:::INT8,
+    new_taxpayer_month INT4 NULL,
+    effective_taxpayer_month INT4 NULL,
+    has_return_tax INT4 NULL DEFAULT 0:::INT8,
+    "level" INT4 NOT NULL DEFAULT 6:::INT8,
+    is_member INT4 NOT NULL DEFAULT 1:::INT8,
+    join_error_msg VARCHAR(255) NOT NULL,
+    admin_user_id INT4 NOT NULL DEFAULT 0:::INT8,
+    return_tax_limit INT4 NOT NULL,
+    leader_name VARCHAR(255) NOT NULL,
+    leader_tel VARCHAR(255) NOT NULL,
+    trade_type INT4 NOT NULL,
+    move_in_type INT4 NOT NULL,
+    expense_management_time INT4 NOT NULL DEFAULT 0:::INT8,
+    introduce_investment_people_id INT4 NOT NULL DEFAULT 0:::INT8,
+    company_belong VARCHAR(255) NOT NULL,
+    residence_id VARCHAR(255) NOT NULL,
+    passport_id VARCHAR(50) NOT NULL DEFAULT '':::STRING,
+    accountant VARCHAR(255) NOT NULL,
+    accountant_mobile VARCHAR(255) NOT NULL,
+    administrator_mobile VARCHAR(25) NOT NULL,
+    "tag" VARCHAR(255) NOT NULL DEFAULT '1':::STRING,
+    company_category VARCHAR(255) NOT NULL DEFAULT '1':::STRING,
+    register_in_zone INT4 NOT NULL,
+    business_information_complete INT4 NOT NULL DEFAULT 0:::INT8,
+    qianyi_id INT4 NOT NULL,
+    CONSTRAINT "primary" PRIMARY KEY (
+    member_id ASC
+                                     ),
+    FAMILY "primary" (
+                         member_id,
+                         member_code,
+                         member_name,
+                         member_type,
+                         "contract",
+                         "position",
+                         contract_call,
+                         contract_mobile,
+                         contract_email,
+                         invite_status,
+                         invite_operate_status,
+                         invite_operate_open_time,
+                         enterprise_status,
+                         company_id,
+                         zone_company_id,
+                         rel_status,
+                         join_time,
+                         remove_time,
+                         create_time,
+                         create_user_id,
+                         update_time,
+                         update_user_id,
+                         invite_date,
+                         invite_count,
+                         introducing_way,
+                         sys_investment_workplace_id,
+                         sys_investment_people_id,
+                         investment_type_id,
+                         company_type_id,
+                         investment_date,
+                         expand_city_id,
+                         add_type,
+                         "status",
+                         zhuce_code,
+                         archives_code,
+                         is_history_rel,
+                         agency_id,
+                         pic1_url,
+                         pic1_down_times,
+                         pic1_upload_time,
+                         pic2_url,
+                         pic2_down_times,
+                         pic2_upload_time,
+                         pic3_url,
+                         pic3_down_times,
+                         pic3_upload_time,
+                         pic4_url,
+                         pic4_down_times,
+                         pic4_upload_time,
+                         pic5_url,
+                         pic5_down_times,
+                         pic5_upload_time,
+                         new_taxpayer,
+                         effective_taxpayer,
+                         total_tax,
+                         company_type,
+                         is_virtual_member,
+                         new_taxpayer_month,
+                         effective_taxpayer_month,
+                         has_return_tax,
+                         "level",
+                         is_member,
+                         join_error_msg,
+                         admin_user_id,
+                         return_tax_limit,
+                         leader_name,
+                         leader_tel,
+                         trade_type,
+                         move_in_type,
+                         expense_management_time,
+                         introduce_investment_people_id,
+                         company_belong,
+                         residence_id,
+                         passport_id,
+                         accountant,
+                         accountant_mobile,
+                         administrator_mobile,
+                         "tag",
+                         company_category,
+                         register_in_zone,
+                         business_information_complete,
+                         qianyi_id
+                     )
+    );
+CREATE TABLE
+> select * from(SELECT
+    COUNT(*),
+    AVG(opcdata."value")
+FROM runba.opcdata449600 opcdata,runba_tra.plat_zone_member pzm
+where pzm."tag"= opcdata."tag"
+AND pzm.company_id =opcdata.companyid
+AND opcdata."time">'2023-05-29 10:10:10'
+AND opcdata."time"<='2024-05-29 16:10:10'
+AND pzm.contract_email ='ningmeng0823@hotmail.com'
+AND pzm.contract_mobile=opcdata.channel);
+  count | avg
+--------+-------
+      0 | NULL
+(1 row)
+> explain select * from(SELECT
+    COUNT(*),
+    AVG(opcdata."value")
+FROM runba.opcdata449600 opcdata,runba_tra.plat_zone_member pzm
+where pzm."tag"= opcdata."tag"
+AND pzm.company_id =opcdata.companyid
+AND opcdata."time">'2023-05-29 10:10:10'
+AND opcdata."time"<='2024-05-29 16:10:10'
+AND pzm.contract_email ='ningmeng0823@hotmail.com'
+AND pzm.contract_mobile=opcdata.channel);
+                  tree                  |       field       |                            description
+----------------------------------------+-------------------+---------------------------------------------------------------------
+                                        | distributed       | true
+                                        | vectorized        | false
+  render                                |                   |
+   │                                    | count             | sum_int
+   │                                    | avg               | sum / sum_int
+   └── group                            |                   |
+        │                               | aggregate 0       | sum_int(count_rows)
+        │                               | aggregate 1       | sum(sum)
+        │                               | aggregate 2       | sum_int(count)
+        │                               | scalar            |
+        └── render                      |                   |
+             │                          | count_rows        | count_rows
+             │                          | sum               | sum
+             │                          | count             | count
+             └── hash-join              |                   |
+                  │                     | type              | inner
+                  │                     | equality          | ("tag", companyid, channel) = ("tag", company_id, contract_mobile)
+                  │                     | left cols are key |
+                  ├── group             |                   |
+                  │    │                | engine type       | time series
+                  │    │                | aggregate 0       | channel
+                  │    │                | aggregate 1       | companyid
+                  │    │                | aggregate 2       | tag
+                  │    │                | aggregate 3       | count_rows()
+                  │    │                | aggregate 4       | sum(value)
+                  │    │                | aggregate 5       | count(value)
+                  │    │                | group by          | channel, companyid, tag
+                  │    │                | addSynchronizer   | true
+                  │    └── render       |                   |
+                  │         │           | engine type       | time series
+                  │         │           | value             | value
+                  │         │           | channel           | channel
+                  │         │           | companyid         | companyid
+                  │         │           | tag               | "tag"
+                  │         └── ts scan |                   |
+                  │                     | ts-table          | opcdata449600
+                  │                     | access mode       | tableTableMeta
+                  │                     | spans:fromTime    | 2023-05-29 10:10:10.001 +0000 UTC
+                  │                     | spans:toTime      | 2024-05-29 16:10:10 +0000 UTC
+                  └── scan              |                   |
+                                        | table             | plat_zone_member@primary
+                                        | spans             | FULL SCAN
+                                        | filter            | contract_email = 'ningmeng0823@hotmail.com'
+(43 rows)
+> drop database runba cascade;
+DROP DATABASE
+> drop database runba_tra cascade;
+DROP DATABASE

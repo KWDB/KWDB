@@ -1,0 +1,243 @@
+> CREATE FUNCTION time_difference_to_string(start_time timestamp, end_time timestamp)
+    RETURNS varchar(100)
+    LANGUAGE LUA
+BEGIN
+'function time_difference_to_string(start_time, end_time)
+    local difference = math.abs(end_time - start_time)
+
+    local days = math.floor(difference / (60 * 60 * 24))
+    local hours = math.floor((difference % (60 * 60 * 24)) / (60 * 60))
+    local minutes = math.floor((difference % (60 * 60)) / 60)
+    local seconds = difference % 60
+
+    local result = days .. "天 " .. hours .. "小时 " .. minutes .. "分钟 " .. seconds .. "秒"
+    return result
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION time_add_hour(input_time timestamp, hours_to_add double)
+    RETURNS timestamp
+    LANGUAGE LUA
+BEGIN
+'function time_add_hour(input_time, hours_to_add)
+    local new_time = input_time + (hours_to_add * 3600)
+    return new_time
+end'
+END;
+CREATE FUNCTION
+> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+        function_name       | argument_types | return_type | types_length |                                         function_body                                         | function_type | language |  db_name  | creator | version | comments
+----------------------------+----------------+-------------+--------------+-----------------------------------------------------------------------------------------------+---------------+----------+-----------+---------+---------+-----------
+  time_add_hour             | {0,5}          | {0}         | {0,0,0}      | function time_add_hour(input_time, hours_to_add)                                              |             1 | LUA      | defaultdb | root    | 1.0     |
+                            |                |             |              |     local new_time = input_time + (hours_to_add * 3600)                                       |               |          |           |         |         |
+                            |                |             |              |     return new_time                                                                           |               |          |           |         |         |
+                            |                |             |              | end                                                                                           |               |          |           |         |         |
+  time_difference_to_string | {0,0}          | {10}        | {0,0,100}    | function time_difference_to_string(start_time, end_time)                                      |             1 | LUA      | defaultdb | root    | 1.0     |
+                            |                |             |              |     local difference = math.abs(end_time - start_time)                                        |               |          |           |         |         |
+                            |                |             |              |                                                                                               |               |          |           |         |         |
+                            |                |             |              |     local days = math.floor(difference / (60 * 60 * 24))                                      |               |          |           |         |         |
+                            |                |             |              |     local hours = math.floor((difference % (60 * 60 * 24)) / (60 * 60))                       |               |          |           |         |         |
+                            |                |             |              |     local minutes = math.floor((difference % (60 * 60)) / 60)                                 |               |          |           |         |         |
+                            |                |             |              |     local seconds = difference % 60                                                           |               |          |           |         |         |
+                            |                |             |              |                                                                                               |               |          |           |         |         |
+                            |                |             |              |     local result = days .. "天 " .. hours .. "小时 " .. minutes .. "分钟 " .. seconds .. "秒" |               |          |           |         |         |
+                            |                |             |              |     return result                                                                             |               |          |           |         |         |
+                            |                |             |              | end                                                                                           |               |          |           |         |         |
+(2 rows)
+> SHOW FUNCTIONS;
+        function_name
+-----------------------------
+  time_add_hour
+  time_difference_to_string
+(2 rows)
+> SHOW FUNCTION time_add_hour;
+  function_name |  argument_types   | return_type | function_type | language
+----------------+-------------------+-------------+---------------+-----------
+  time_add_hour | TIMESTAMP, DOUBLE | TIMESTAMP   | function      | LUA
+(1 row)
+> select time_add_hour('2024-01-01 10:00:00',1);
+        time_add_hour
+-----------------------------
+  2024-01-01 11:00:00+00:00
+(1 row)
+> select time_add_hour(time_add_hour('2024-01-01 10:00:00',1),1);
+        time_add_hour
+-----------------------------
+  2024-01-01 12:00:00+00:00
+(1 row)
+> select time_difference_to_string('2024-01-01 10:00:00','2024-01-02 11:00:00');
+  time_difference_to_string
+-----------------------------
+  1天 1小时 0分钟 0秒
+(1 row)
+> create ts database test_udf;
+CREATE TS DATABASE
+> create table test_udf.tb1(ts timestamptz not null,e1 timestamp)tags(t1 int not null)primary tags(t1);
+CREATE TABLE
+> insert into test_udf.tb1 values(now(),'2024-01-01 10:00:00',1);
+INSERT 1
+> insert into test_udf.tb1 values(now(),'2024-01-01 12:00:00',2);
+INSERT 1
+> insert into test_udf.tb1 values(now(),'2024-01-01 13:00:00',3);
+INSERT 1
+> select time_add_hour(e1,1) from test_udf.tb1 order by e1;
+        time_add_hour
+-----------------------------
+  2024-01-01 11:00:00+00:00
+  2024-01-01 13:00:00+00:00
+  2024-01-01 14:00:00+00:00
+(3 rows)
+> select time_difference_to_string(e1,'2024-01-01 10:00:00') from test_udf.tb1 order by e1;
+  time_difference_to_string
+-----------------------------
+  0天 0小时 0分钟 0秒
+  0天 2小时 0分钟 0秒
+  0天 3小时 0分钟 0秒
+(3 rows)
+> select count(e1),min(e1),max(e1),time_add_hour(e1,1) as udf_add ,last_row(e1) from test_udf.tb1 group by e1 having time_add_hour(e1,1) > '2024-01-01 12:00:00' order by e1;
+  count |            min            |            max            |          udf_add          |         last_row
+--------+---------------------------+---------------------------+---------------------------+----------------------------
+      1 | 2024-01-01 12:00:00+00:00 | 2024-01-01 12:00:00+00:00 | 2024-01-01 13:00:00+00:00 | 2024-01-01 12:00:00+00:00
+      1 | 2024-01-01 13:00:00+00:00 | 2024-01-01 13:00:00+00:00 | 2024-01-01 14:00:00+00:00 | 2024-01-01 13:00:00+00:00
+(2 rows)
+> select count(e1),min(e1),max(e1),time_difference_to_string(e1,'2024-01-01 10:00:00') as udf_time_diff ,last_row(e1) from test_udf.tb1 where time_add_hour(e1,1) >= '2024-01-01 12:00:00' group by e1 order by e1;
+  count |            min            |            max            |    udf_time_diff    |         last_row
+--------+---------------------------+---------------------------+---------------------+----------------------------
+      1 | 2024-01-01 12:00:00+00:00 | 2024-01-01 12:00:00+00:00 | 0天 2小时 0分钟 0秒 | 2024-01-01 12:00:00+00:00
+      1 | 2024-01-01 13:00:00+00:00 | 2024-01-01 13:00:00+00:00 | 0天 3小时 0分钟 0秒 | 2024-01-01 13:00:00+00:00
+(2 rows)
+> drop table test_udf.tb1;
+DROP TABLE
+> drop database test_udf cascade;
+DROP DATABASE
+> create  database test_udf_re;
+CREATE DATABASE
+> create table test_udf_re.r1(e1 timestamp);
+CREATE TABLE
+> insert into test_udf_re.r1 values('2024-01-01 10:00:00');
+INSERT 1
+> insert into test_udf_re.r1 values('2024-01-01 12:00:00');
+INSERT 1
+> insert into test_udf_re.r1 values('2024-01-01 13:00:00');
+INSERT 1
+> select time_add_hour(e1,1) from test_udf_re.r1 order by e1;
+        time_add_hour
+-----------------------------
+  2024-01-01 11:00:00+00:00
+  2024-01-01 13:00:00+00:00
+  2024-01-01 14:00:00+00:00
+(3 rows)
+> select time_difference_to_string(e1,'2024-01-01 10:00:00') from test_udf_re.r1 order by e1;
+  time_difference_to_string
+-----------------------------
+  0天 0小时 0分钟 0秒
+  0天 2小时 0分钟 0秒
+  0天 3小时 0分钟 0秒
+(3 rows)
+> select count(e1),min(e1),max(e1) ,time_add_hour(e1,1) as udf_add from test_udf_re.r1 group by e1 having time_add_hour(e1,1) > '2024-01-01 12:00:00' order by e1;
+  count |            min            |            max            |          udf_add
+--------+---------------------------+---------------------------+----------------------------
+      1 | 2024-01-01 12:00:00+00:00 | 2024-01-01 12:00:00+00:00 | 2024-01-01 13:00:00+00:00
+      1 | 2024-01-01 13:00:00+00:00 | 2024-01-01 13:00:00+00:00 | 2024-01-01 14:00:00+00:00
+(2 rows)
+> select count(e1),min(e1),max(e1),time_difference_to_string(e1,'2024-01-01 10:00:00') as udf_time_diff,time_add_hour(e1,1) as udf_add from test_udf_re.r1 where time_add_hour(e1,1) >= '2024-01-01 12:00:00' group by e1 order by e1;
+  count |            min            |            max            |    udf_time_diff    |          udf_add
+--------+---------------------------+---------------------------+---------------------+----------------------------
+      1 | 2024-01-01 12:00:00+00:00 | 2024-01-01 12:00:00+00:00 | 0天 2小时 0分钟 0秒 | 2024-01-01 13:00:00+00:00
+      1 | 2024-01-01 13:00:00+00:00 | 2024-01-01 13:00:00+00:00 | 0天 3小时 0分钟 0秒 | 2024-01-01 14:00:00+00:00
+(2 rows)
+> drop table test_udf_re.r1 ;
+DROP TABLE
+> drop database test_udf_re cascade;
+DROP DATABASE
+> select time_add_hour('1970-01-01 00:00:00',1);
+        time_add_hour
+-----------------------------
+  1970-01-01 01:00:00+00:00
+(1 row)
+> select time_add_hour('1969-01-01 00:00:00',2);
+        time_add_hour
+-----------------------------
+  1969-01-01 02:00:00+00:00
+(1 row)
+> select time_add_hour('2262-04-11 23:47:16.854',3);
+        time_add_hour
+-----------------------------
+  2262-04-12 02:47:16+00:00
+(1 row)
+> select time_add_hour('2262-04-11 23:47:16.857',4);
+        time_add_hour
+-----------------------------
+  2262-04-12 03:47:16+00:00
+(1 row)
+> select time_add_hour(null,null);
+  time_add_hour
+-----------------
+  NULL
+(1 row)
+> select time_difference_to_string('1970-01-01 00:00:00','1970-01-01 00:00:00');
+  time_difference_to_string
+-----------------------------
+  0天 0小时 0分钟 0秒
+(1 row)
+> select time_difference_to_string('1969-01-01 00:00:00','1970-01-01 00:00:00');
+  time_difference_to_string
+-----------------------------
+  365天 0小时 0分钟 0秒
+(1 row)
+> select time_difference_to_string('2262-04-11 23:47:16.854','1970-01-01 00:00:00');
+   time_difference_to_string
+-------------------------------
+  106751天 23小时 47分钟 16秒
+(1 row)
+> select time_difference_to_string('2262-04-11 23:47:16.857','1970-01-01 00:00:00');
+   time_difference_to_string
+-------------------------------
+  106751天 23小时 47分钟 16秒
+(1 row)
+> select time_difference_to_string(null,null);
+  time_difference_to_string
+-----------------------------
+  NULL
+(1 row)
+> select time_add_hour(-1,1);
+ERROR: unknown signature: time_add_hour(INT8, INT8)
+SQLSTATE: 42883
+> select time_add_hour('test',1);
+ERROR: unknown signature: time_add_hour(STRING, INT8)
+SQLSTATE: 42883
+> select time_add_hour(123456,1);
+ERROR: unknown signature: time_add_hour(INT8, INT8)
+SQLSTATE: 42883
+> select time_add_hour(1.1,1);
+ERROR: unknown signature: time_add_hour(DECIMAL, INT8)
+SQLSTATE: 42883
+> select time_add_hour(false,1);
+ERROR: unknown signature: time_add_hour(BOOL, INT8)
+SQLSTATE: 42883
+> select time_difference_to_string(-1,1);
+ERROR: unknown signature: time_difference_to_string(INT8, INT8)
+SQLSTATE: 42883
+> select time_difference_to_string('test',1);
+ERROR: unknown signature: time_difference_to_string(STRING, INT8)
+SQLSTATE: 42883
+> select time_difference_to_string(123456,1);
+ERROR: unknown signature: time_difference_to_string(INT8, INT8)
+SQLSTATE: 42883
+> select time_difference_to_string(1.1,1);
+ERROR: unknown signature: time_difference_to_string(DECIMAL, INT8)
+SQLSTATE: 42883
+> select time_difference_to_string(false,1);
+ERROR: unknown signature: time_difference_to_string(BOOL, INT8)
+SQLSTATE: 42883
+> DROP FUNCTION time_add_hour;
+DROP FUNCTION
+> DROP FUNCTION time_difference_to_string;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)
+> SHOW FUNCTION time_add_hour;
+ERROR: function time_add_hour does not exists or current user does not have privilege on this function
+SQLSTATE: 42704

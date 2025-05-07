@@ -1,0 +1,154 @@
+> SELECT e1>10000 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+    true
+    true
+    true
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    true
+   false
+    true
+    true
+(18 rows)
+> SELECT e2>10000 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+    true
+    true
+    true
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    true
+   false
+    NULL
+    NULL
+(18 rows)
+> SELECT e4<3000.0000 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+    true
+   false
+   false
+   false
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+   false
+   false
+   false
+    NULL
+(18 rows)
+> SELECT e6!=true FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    NULL
+(18 rows)
+> SELECT e7='2020-12-12 12:12:00.000' FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+(18 rows)
+> SELECT e8>='test时间精度通用查询测试！！！@TEST1' FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+    true
+    true
+    true
+    true
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    true
+    true
+    true
+    NULL
+(18 rows)
+> SELECT e10<='test时间精度通用查询测试！！！@TEST1' FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+   false
+    NULL
+(18 rows)

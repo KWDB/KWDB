@@ -1,0 +1,47 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+ e1 int2 not null,
+ e2 smallint not null,
+ e3 int4,
+ e4 int,
+ e5 integer,
+ e6 int8 not null,
+ e7 float4,
+ e8 real,
+ e9 float8 not null,
+ e10 float,
+ e11 double,
+ e12 double precision,
+ e13 bool,
+ e14 boolean,
+ e15 timestamp not null,
+ e16 timestamptz not null,
+ e17 char not null,
+ e18 char(1023),
+ e19 character not null,
+ e20 character(1023),
+ e21 nchar not null,
+ e22 nchar(255) not null,
+ e23 varchar,
+ e24 varchar(4096),
+ e25 varchar(255),
+ e26 nvarchar,
+ e27 nvarchar(255) not null,
+ e28 nvarchar(4096) not null,
+ e29 varbytes not null,
+ e30 varbytes(1023),
+ e31 varbytes,
+ e32 varbytes(4096) not null,
+ e33 varbytes(254),
+ e34 geometry
+ ) ATTRIBUTES (
+ code1 int2 not null,
+ code2 int2) PRIMARY TAGS(code1);
+CREATE TABLE
+> SELECT * FROM test_geometry.t1;
+  k_timestamp | e1 | e2 | e3 | e4 | e5 | e6 | e7 | e8 | e9 | e10 | e11 | e12 | e13 | e14 | e15 | e16 | e17 | e18 | e19 | e20 | e21 | e22 | e23 | e24 | e25 | e26 | e27 | e28 | e29 | e30 | e31 | e32 | e33 | e34 | code1 | code2
+--------------+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-------+--------
+(0 rows)
+> drop database if exists test_geometry cascade;
+DROP DATABASE

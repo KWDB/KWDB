@@ -1,0 +1,847 @@
+> DROP DATABASE IF EXISTS test_udvar;
+DROP DATABASE
+> CREATE DATABASE test_udvar;
+CREATE DATABASE
+> USE test_udvar;
+SET
+> CREATE SEQUENCE user_id_seq;
+CREATE SEQUENCE
+> DROP TABLE IF EXISTS employees;
+DROP TABLE
+> CREATE TABLE employees (
+                           employee_id INT PRIMARY KEY DEFAULT nextval('user_id_seq'),
+                           name VARCHAR(50),
+                           salary DECIMAL(10,2),
+                           department VARCHAR(50),
+                           hire_date DATE
+);
+CREATE TABLE
+> INSERT INTO employees (name, salary, department, hire_date) VALUES
+                                                                ('Alice', 5000.00, 'Sales', '2023-01-15'),
+                                                                ('Bob', 6000.00, 'Sales', '2023-02-20'),
+                                                                ('Charlie', 6000.00, 'HR', '2023-03-05'),
+                                                                ('David', 5500.00, 'Sales', '2023-01-25'),
+                                                                ('Eve', 7000.00, 'Engineering', '2023-04-10'),
+                                                                ('Frank', 4500.00, 'HR', '2023-02-10'),
+                                                                ('Grace', 8000.00, 'Engineering', '2023-03-15');
+INSERT 7
+> CREATE SEQUENCE user_id_seq1;
+CREATE SEQUENCE
+> DROP TABLE IF EXISTS products;
+DROP TABLE
+> CREATE TABLE products (
+                          product_id INT PRIMARY KEY DEFAULT nextval('user_id_seq1'),
+                          product_name VARCHAR(50),
+                          price DECIMAL(10,2),
+                          category VARCHAR(50)
+);
+CREATE TABLE
+> INSERT INTO products (product_name, price, category) VALUES
+                                                         ('Laptop', 1000.00, 'Electronics'),
+                                                         ('Smartphone', 800.00, 'Electronics'),
+                                                         ('Headphones', 200.00, 'Electronics'),
+                                                         ('Desk', 150.00, 'Furniture'),
+                                                         ('Chair', 100.00, 'Furniture'),
+                                                         ('Monitor', 300.00, 'Electronics');
+INSERT 6
+> SET @num := 100;
+SET
+> SELECT @num AS num_value;
+  num_value
+-------------
+        100
+(1 row)
+> SHOW @num;
+  var_name | var_type
+-----------+-----------
+  @num     | INT8
+(1 row)
+> SET @num := 200;
+SET
+> SELECT @num AS new_num_value;
+  new_num_value
+-----------------
+            200
+(1 row)
+> SHOW @num;
+  var_name | var_type
+-----------+-----------
+  @num     | INT8
+(1 row)
+> SET @NUM := 201;
+SET
+> SELECT @NUM;
+  @num
+--------
+   201
+(1 row)
+> SHOW @NUM;
+  var_name | var_type
+-----------+-----------
+  @num     | INT8
+(1 row)
+> SET @"NUM" := 202;
+SET
+> SELECT @"NUM";
+  @NUM
+--------
+   202
+(1 row)
+> SHOW @"NUM";
+  var_name | var_type
+-----------+-----------
+  @NUM     | INT8
+(1 row)
+> SET @first_salary := 0.0;
+SET
+> SELECT salary FROM employees ORDER BY employee_id LIMIT 1;
+  salary
+-----------
+  5000.00
+(1 row)
+> SELECT salary INTO @first_salary FROM employees ORDER BY employee_id LIMIT 1;
+SET 1
+> SELECT @first_salary AS first_salary;
+  first_salary
+----------------
+       5000.00
+(1 row)
+> SELECT salary + 1 FROM employees ORDER BY employee_id LIMIT 1;
+  ?column?
+------------
+   5001.00
+(1 row)
+> SELECT salary + 1 INTO @FIRST_salary FROM employees ORDER BY employee_id LIMIT 1;
+SET 1
+> SELECT @FIRST_salary;
+  @first_salary
+-----------------
+        5001.00
+(1 row)
+> SELECT salary + 2 FROM employees ORDER BY employee_id LIMIT 1;
+  ?column?
+------------
+   5002.00
+(1 row)
+> SELECT salary + 2 INTO @"FIRST_salary" FROM employees ORDER BY employee_id LIMIT 1;
+SET 1
+> SELECT @"FIRST_salary";
+  @FIRST_salary
+-----------------
+        5002.00
+(1 row)
+> SELECT salary + 3 FROM employees ORDER BY employee_id LIMIT 1;
+  ?column?
+------------
+   5003.00
+(1 row)
+> set @FIRST_salary = (SELECT salary + 3 FROM employees ORDER BY employee_id LIMIT 1);
+SET
+> SELECT @FIRST_salary;
+  @first_salary
+-----------------
+        5003.00
+(1 row)
+> SELECT salary + 4 FROM employees ORDER BY employee_id LIMIT 1;
+  ?column?
+------------
+   5004.00
+(1 row)
+> set @"FIRST_salary" = (SELECT salary + 4 FROM employees ORDER BY employee_id LIMIT 1);
+SET
+> SELECT @"FIRST_salary";
+  @FIRST_salary
+-----------------
+        5004.00
+(1 row)
+> SHOW @first_salary;
+    var_name    | var_type
+----------------+-----------
+  @first_salary | DECIMAL
+(1 row)
+> SHOW @FIRST_salary;
+    var_name    | var_type
+----------------+-----------
+  @first_salary | DECIMAL
+(1 row)
+> SHOW @FIRST_salar;
+ERROR: @first_salar is not defined
+SQLSTATE: 42704
+> SET @first_product := '';
+SET
+> SELECT product_name FROM products ORDER BY product_id LIMIT 1;
+  product_name
+----------------
+  Laptop
+(1 row)
+> SELECT product_name INTO @first_product FROM products ORDER BY product_id LIMIT 1;
+SET 1
+> SELECT @first_product AS first_product_name;
+  first_product_name
+----------------------
+  Laptop
+(1 row)
+> SHOW @first_product;
+     var_name    | var_type
+-----------------+-----------
+  @first_product | STRING
+(1 row)
+> SET @first_name := '';
+SET
+> SET @first_salary2 := 0.0;
+SET
+> SELECT name, salary FROM employees WHERE employee_id = 1;
+  name  | salary
+--------+----------
+  Alice | 5000.00
+(1 row)
+> SELECT name, salary INTO @first_name, @first_salary2 FROM employees WHERE employee_id = 1;
+SET 2
+> SELECT @first_name AS first_name, @first_salary2 AS first_salary2;
+  first_name | first_salary2
+-------------+----------------
+  Alice      |       5000.00
+(1 row)
+> SELECT name, salary INTO @only_name FROM employees WHERE employee_id = 1;
+ERROR: The used SELECT statements have a different number of columns
+SQLSTATE: 42601
+> SET @a := 10;
+SET
+> SET @b := 3;
+SET
+> SELECT @a + @b AS sum, @a - @b AS diff, @a * @b AS prod, @a / @b AS quot;
+  sum | diff | prod |         quot
+------+------+------+------------------------
+   13 |    7 |   30 | 3.3333333333333333333
+(1 row)
+> SET @a := 20;
+SET
+> SET @b := 5;
+SET
+> SET @c := 2;
+SET
+> SELECT (@a - @b) + (@a * @c) - (@a / @b) AS mixed_expr;
+  mixed_expr
+--------------
+          51
+(1 row)
+> SET @a := 10;
+SET
+> SET @b := 3;
+SET
+> SELECT @a % @b AS mod_result;
+  mod_result
+--------------
+           1
+(1 row)
+> SELECT MOD(@a, @b) AS mod_func;
+  mod_func
+------------
+         1
+(1 row)
+> SET @a := 10;
+SET
+> SET @b := 3;
+SET
+> SET @c := 2;
+SET
+> SELECT @a + @b * @c AS expr1, (@a + @b) * @c AS expr2;
+  expr1 | expr2
+--------+--------
+     16 |    26
+(1 row)
+> SET @a := 15;
+SET
+> SET @b := 4;
+SET
+> SET @c := 3;
+SET
+> SELECT ((@a + @b) * (@c - 1)) / (@a - 5) AS nested_expr;
+  nested_expr
+---------------
+          3.8
+(1 row)
+> SET @a := -5;
+SET
+> SET @b := 3;
+SET
+> SELECT @a + @b AS sum_neg, @a * @b AS prod_neg;
+  sum_neg | prod_neg
+----------+-----------
+       -2 |      -15
+(1 row)
+> SET @x := 10.5;
+SET
+> SET @y := 4.2;
+SET
+> SELECT @x / @y AS division, @x - @y AS diff_float;
+  division | diff_float
+-----------+-------------
+       2.5 |        6.3
+(1 row)
+> SET @base := 2;
+SET
+> SET @exp := 3;
+SET
+> SELECT POW(@base, @exp) AS power_val, POW(@base, @exp) + 1 AS power_plus;
+  power_val | power_plus
+------------+-------------
+          8 |          9
+(1 row)
+> SET @a := 20;
+SET
+> SET @b := 3;
+SET
+> SET @c := 2;
+SET
+> SET @d := 2;
+SET
+> SELECT (@a - @b) * (@c + @d) / (MOD(@b, @d) + 1) AS complex_expr;
+  complex_expr
+----------------
+            34
+(1 row)
+> SET @a := 50;
+SET
+> SET @b := 7;
+SET
+> SET @c := 3;
+SET
+> SELECT ((@a + @b) - (@a / @c)) % @b AS mixed_result;
+      mixed_result
+------------------------
+  5.333333333333333333
+(1 row)
+> SET @num_str := '123';
+SET
+> SELECT CAST(@num_str AS INT) + 7 AS explicit_result;
+  explicit_result
+-------------------
+              130
+(1 row)
+> SELECT @num_str + 7 AS implicit_result;
+ERROR: unsupported binary operator: <string> + <int>
+SQLSTATE: 22023
+> SET @init_date := '2023-01-01';
+SET
+> SELECT @init_date AS init_date;
+  init_date
+--------------
+  2023-01-01
+(1 row)
+> SELECT hire_date FROM employees ORDER BY hire_date LIMIT 1;
+          hire_date
+-----------------------------
+  2023-01-15 00:00:00+00:00
+(1 row)
+> SELECT hire_date::STRING INTO @init_date FROM employees ORDER BY hire_date LIMIT 1;
+SET 1
+> SELECT @init_date AS first_hire_date;
+  first_hire_date
+-------------------
+  2023-01-15
+(1 row)
+> SET @min_salary := 5500;
+SET
+> SELECT employee_id, name, salary FROM employees WHERE salary > 5500;
+  employee_id |  name   | salary
+--------------+---------+----------
+            2 | Bob     | 6000.00
+            3 | Charlie | 6000.00
+            5 | Eve     | 7000.00
+            7 | Grace   | 8000.00
+(4 rows)
+> SELECT employee_id, name, salary FROM employees WHERE salary > @min_salary;
+  employee_id |  name   | salary
+--------------+---------+----------
+            2 | Bob     | 6000.00
+            3 | Charlie | 6000.00
+            5 | Eve     | 7000.00
+            7 | Grace   | 8000.00
+(4 rows)
+> SET @dept := 'Sales';
+SET
+> SELECT employee_id, name, salary FROM employees WHERE salary > 5000 AND department = 'Sales';
+  employee_id | name  | salary
+--------------+-------+----------
+            2 | Bob   | 6000.00
+            4 | David | 5500.00
+(2 rows)
+> SET @sales_count := 0;
+SET
+> SELECT COUNT(*) FROM employees WHERE department = 'Sales' GROUP BY department LIMIT 1;
+  count
+---------
+      3
+(1 row)
+> SELECT COUNT(*) INTO @sales_count FROM employees WHERE department = 'Sales' GROUP BY department LIMIT 1;
+SET 1
+> SELECT @sales_count AS sales_count;
+  sales_count
+---------------
+            3
+(1 row)
+> SELECT department, AVG(salary) AS avg_salary FROM employees GROUP BY department HAVING AVG(salary) > (SELECT AVG(salary) FROM employees) LIMIT 1;
+  department  | avg_salary
+--------------+-------------
+  Engineering |    7500.00
+(1 row)
+> SET @max_salary := 0.0;
+SET
+> SELECT salary FROM employees ORDER BY salary DESC LIMIT 1;
+  salary
+-----------
+  8000.00
+(1 row)
+> SELECT salary INTO @max_salary FROM employees ORDER BY salary DESC LIMIT 1;
+SET 1
+> SELECT @max_salary AS highest_salary;
+  highest_salary
+------------------
+         8000.00
+(1 row)
+> SET @unique_dept := '';
+SET
+> SELECT DISTINCT department FROM employees WHERE department IN ('Sales', 'HR') LIMIT 1;
+  department
+--------------
+  Sales
+(1 row)
+> SELECT DISTINCT department INTO @unique_dept FROM employees WHERE department IN ('Sales', 'HR') LIMIT 1;
+SET 1
+> SELECT @unique_dept AS unique_department;
+  unique_department
+---------------------
+  Sales
+(1 row)
+> SET @total_emp := 0;
+SET
+> SELECT COUNT(*) FROM employees;
+  count
+---------
+      7
+(1 row)
+> SELECT (SELECT COUNT(*) FROM employees) INTO @total_emp;
+SET 1
+> SELECT @total_emp AS total_employees;
+  total_employees
+-------------------
+                7
+(1 row)
+> SELECT name FROM employees ORDER BY employee_id;
+   name
+-----------
+  Alice
+  Bob
+  Charlie
+  David
+  Eve
+  Frank
+  Grace
+(7 rows)
+> SELECT name INTO @emp_name FROM employees ORDER BY employee_id;
+ERROR: result consisted of more than one row
+SQLSTATE: 42702
+> SET @tbl := 'employees';
+SET
+> SET @col := 'salary';
+SET
+> SET @cond := 'salary >= 6000';
+SET
+> SET @dyn_sql := CONCAT('SELECT employee_id, name, ', @col,
+                        ' FROM ', @tbl,
+                        ' WHERE ', @cond,
+                        ' ORDER BY ', @col, ' DESC LIMIT 2');
+SET
+> SELECT @dyn_sql;
+                                              @dyn_sql
+-----------------------------------------------------------------------------------------------------
+  SELECT employee_id, name, salary FROM employees WHERE salary >= 6000 ORDER BY salary DESC LIMIT 2
+(1 row)
+> PREPARE stmt AS @dyn_sql;
+PREPARE
+> EXECUTE stmt;
+  employee_id | name  | salary
+--------------+-------+----------
+            7 | Grace | 8000.00
+            5 | Eve   | 7000.00
+(2 rows)
+> SELECT employee_id, name, salary FROM employees WHERE salary >= 6000 ORDER BY salary DESC LIMIT 2;
+  employee_id | name  | salary
+--------------+-------+----------
+            7 | Grace | 8000.00
+            5 | Eve   | 7000.00
+(2 rows)
+> DEALLOCATE PREPARE stmt;
+DEALLOCATE
+> SET @avg_salary := 0.0;
+SET
+> SELECT AVG(salary) FROM employees;
+    avg
+-----------
+  6000.00
+(1 row)
+> SET @avg_salary := (SELECT AVG(salary) FROM employees);
+SET
+> SELECT employee_id, name, salary FROM employees WHERE salary > @avg_salary;
+  employee_id | name  | salary
+--------------+-------+----------
+            5 | Eve   | 7000.00
+            7 | Grace | 8000.00
+(2 rows)
+> SET @nonexistent := 'default';
+SET
+> SELECT name FROM employees WHERE employee_id = -1;
+  name
+--------
+(0 rows)
+> SELECT name INTO @nonexistent FROM employees WHERE employee_id = -1;
+ERROR: result consisted of zero rows
+SQLSTATE: 42702
+> SELECT name INTO @nonexistent FROM employees;
+ERROR: result consisted of more than one row
+SQLSTATE: 42702
+> SELECT name FROM employees;
+   name
+-----------
+  Alice
+  Bob
+  Charlie
+  David
+  Eve
+  Frank
+  Grace
+(7 rows)
+> SELECT @nonexistent AS result_when_no_row;
+  result_when_no_row
+----------------------
+  default
+(1 row)
+> SET @last_name := '';
+SET
+> SELECT name FROM employees ORDER BY employee_id;
+   name
+-----------
+  Alice
+  Bob
+  Charlie
+  David
+  Eve
+  Frank
+  Grace
+(7 rows)
+> SELECT name INTO @last_name FROM employees ORDER BY employee_id;
+ERROR: result consisted of more than one row
+SQLSTATE: 42702
+> SELECT @last_name AS last_employee_name;
+  last_employee_name
+----------------------
+
+(1 row)
+> SELECT @uninit_var + 10 AS result;
+ERROR: @uninit_var is not defined
+SQLSTATE: 42704
+> SET @var := 100;
+SET
+> SET @var := 'Hello';
+ERROR: new value of @var (type STRING) does not match previous type INT8
+SQLSTATE: 42804
+> SELECT @var AS result;
+  result
+----------
+     100
+(1 row)
+> SET @str := 'abc';
+SET
+> SET @str := 123;
+ERROR: new value of @str (type INT8) does not match previous type STRING
+SQLSTATE: 42804
+> SELECT @str AS result;
+  result
+----------
+  abc
+(1 row)
+> DROP DATABASE IF EXISTS test_ts_udvar;
+DROP DATABASE
+> CREATE TS DATABASE test_ts_udvar;
+CREATE TS DATABASE
+> USE test_ts_udvar;
+SET
+> DROP TABLE IF EXISTS t1;
+DROP TABLE
+> CREATE TABLE t1(
+                   ts TIMESTAMP NOT NULL,
+                   a INT
+) TAGS(
+  b INT NOT NULL,
+  c INT
+) PRIMARY TAGS(b);
+CREATE TABLE
+> INSERT INTO t1 VALUES ('2024-03-06 10:00:00', 10, 101, 1001);
+INSERT 1
+> INSERT INTO t1 VALUES ('2024-03-06 10:05:00', 20, 102, 1002);
+INSERT 1
+> INSERT INTO t1 VALUES ('2024-03-06 10:10:00', 30, 101, 1003);
+INSERT 1
+> INSERT INTO t1 VALUES ('2024-03-06 10:15:00', 40, 103, 1001);
+INSERT 1
+> INSERT INTO t1 VALUES ('2024-03-06 10:20:00', 50, 102, 1002);
+INSERT 1
+> SET @first_a := 0;
+SET
+> SELECT a INTO @first_a FROM t1 ORDER BY ts LIMIT 1;
+SET 1
+> SELECT a FROM t1 ORDER BY ts LIMIT 1;
+  a
+------
+  10
+(1 row)
+> SELECT @first_a AS first_a_value;
+  first_a_value
+-----------------
+             10
+(1 row)
+> SET @first_a2 := 0;
+SET
+> SET @dummy := 0;
+SET
+> SELECT a, a+5 INTO @first_a2, @dummy FROM t1 WHERE ts = '2024-03-06 10:10:00';
+SET 2
+> SELECT a, a+5 FROM t1 WHERE ts = '2024-03-06 10:10:00';
+  a  | ?column?
+-----+-----------
+  30 |       35
+(1 row)
+> SELECT @first_a2 AS first_a2, @dummy AS dummy_value;
+  first_a2 | dummy_value
+-----------+--------------
+        30 |          35
+(1 row)
+> SET @first_tag_b := '';
+SET
+> SELECT CAST(b AS CHAR) INTO @first_tag_b FROM t1 WHERE ts = '2024-03-06 10:05:00' LIMIT 1;
+SET 1
+> SELECT CAST(b AS CHAR) INTO @first_tag_b FROM t1 WHERE ts = '2024-03-06 10:05:00';
+SET 1
+> SELECT CAST(b AS CHAR) FROM t1 WHERE ts = '2024-03-06 10:05:00' LIMIT 1;
+  b
+-----
+  1
+(1 row)
+> SELECT CAST(b AS CHAR) FROM t1 WHERE ts = '2024-03-06 10:05:00';
+  b
+-----
+  1
+(1 row)
+> SELECT @first_tag_b AS first_tag_b;
+  first_tag_b
+---------------
+  1
+(1 row)
+> SET @str1 := '';
+SET
+> SET @str2 := '';
+SET
+> SELECT CAST(b AS CHAR), CAST(c AS CHAR) INTO @str1, @str2
+FROM t1 WHERE ts = '2024-03-06 10:15:00' LIMIT 1;
+SET 2
+> SELECT @str1 AS tag_b_str, @str2 AS tag_c_str;
+  tag_b_str | tag_c_str
+------------+------------
+  1         | 1
+(1 row)
+> SET @first_ts := '2000-01-01 00:00:00';
+SET
+> SELECT ts::STRING INTO @first_ts FROM t1 ORDER BY ts LIMIT 1;
+SET 1
+> SELECT ts FROM t1 ORDER BY ts LIMIT 1;
+             ts
+-----------------------------
+  2024-03-06 10:00:00+00:00
+(1 row)
+> SELECT @first_ts AS first_ts_value;
+       first_ts_value
+-----------------------------
+  2024-03-06 10:00:00+00:00
+(1 row)
+> SET @first_ts_1 := '2000-01-01 00:00:00'::timestamptz;
+SET
+> SELECT ts INTO @first_ts_1 FROM t1 ORDER BY ts LIMIT 1;
+SET 1
+> SELECT ts FROM t1 ORDER BY ts LIMIT 1;
+             ts
+-----------------------------
+  2024-03-06 10:00:00+00:00
+(1 row)
+> SELECT @first_ts_1 AS first_ts_value;
+       first_ts_value
+-----------------------------
+  2024-03-06 10:00:00+00:00
+(1 row)
+> SET @first_ts_1 = (SELECT ts FROM t1 ORDER BY ts LIMIT 1);
+SET
+> SELECT @first_ts_1 AS first_ts_value;
+       first_ts_value
+-----------------------------
+  2024-03-06 10:00:00+00:00
+(1 row)
+> SET @avg_salary := 0.0;
+SET
+> SET @avg_salary := (SELECT AVG(a) FROM t1);
+SET
+> SELECT @avg_salary AS avg_a;
+  avg_a
+---------
+     30
+(1 row)
+> SELECT AVG(a) FROM t1;
+  avg
+-------
+   30
+(1 row)
+> SET @total_a := 0.0;
+SET
+> SELECT SUM(a) INTO @total_a FROM t1;
+SET 1
+> SELECT SUM(a) FROM t1;
+  sum
+-------
+  150
+(1 row)
+> SELECT @total_a AS total_a;
+  total_a
+-----------
+      150
+(1 row)
+> SET @tbl := 't1';
+SET
+> SET @col := 'a';
+SET
+> SET @cond := 'a >= 30';
+SET
+> SET @dyn_sql := CONCAT('SELECT ts, a FROM ', @tbl, ' WHERE ', @cond, ' ORDER BY a DESC LIMIT 2');
+SET
+> SELECT @dyn_sql;
+                           @dyn_sql
+--------------------------------------------------------------
+  SELECT ts, a FROM t1 WHERE a >= 30 ORDER BY a DESC LIMIT 2
+(1 row)
+> PREPARE stmt AS @dyn_sql;
+PREPARE
+> EXECUTE stmt;
+             ts             | a
+----------------------------+-----
+  2024-03-06 10:20:00+00:00 | 50
+  2024-03-06 10:15:00+00:00 | 40
+(2 rows)
+> SELECT ts, a FROM t1 WHERE a >= 30 ORDER BY a DESC LIMIT 2;
+             ts             | a
+----------------------------+-----
+  2024-03-06 10:20:00+00:00 | 50
+  2024-03-06 10:15:00+00:00 | 40
+(2 rows)
+> DEALLOCATE PREPARE stmt;
+DEALLOCATE
+> SET @grp := 'b';
+SET
+> SET @dyn_sql := CONCAT('SELECT ', @grp, ', COUNT(*) as cnt FROM t1 GROUP BY ', @grp, ' ORDER BY ', @grp, ' LIMIT 1');
+SET
+> SET @DYN_sql := CONCAT('SELECT ', @grp, ', COUNT(*) as cnt FROM t1 GROUP BY ', @grp, ' ORDER BY ', @grp, ' LIMIT 1');
+SET
+> SET @"DYN_sql" := CONCAT('SELECT ', @grp, ', COUNT(*) as cnt FROM t1 GROUP BY ', @grp, ' ORDER BY ', @grp, ' LIMIT 1');
+SET
+> SELECT @dyn_sql;
+                             @dyn_sql
+-------------------------------------------------------------------
+  SELECT b, COUNT(*) as cnt FROM t1 GROUP BY b ORDER BY b LIMIT 1
+(1 row)
+> PREPARE stmt AS @dyn_sql;
+PREPARE
+> EXECUTE stmt;
+   b  | cnt
+------+------
+  101 |   2
+(1 row)
+> PREPARE stmt1 AS @DYN_sql;
+PREPARE
+> EXECUTE stmt1;
+   b  | cnt
+------+------
+  101 |   2
+(1 row)
+> PREPARE stmt2 AS @"DYN_sql";
+PREPARE
+> EXECUTE stmt2;
+   b  | cnt
+------+------
+  101 |   2
+(1 row)
+> SELECT b, COUNT(*) as cnt FROM t1 GROUP BY b ORDER BY b LIMIT 1;
+   b  | cnt
+------+------
+  101 |   2
+(1 row)
+> PREPARE stmt3 AS @unexist_sql;
+ERROR: invalid syntax of query
+SQLSTATE: 42601
+> DEALLOCATE PREPARE stmt;
+DEALLOCATE
+> SET @tag_c = 1003;
+SET
+> INSERT INTO t1 VALUES ('2024-03-06 10:20:00', 50, 104, @tag_c);
+INSERT 1
+> SET @tag_c = 10030;
+SET
+> UPDATE t1 SET c = @tag_c WHERE b = 104;
+UPDATE 1
+> SET @tag_c = 104;
+SET
+> DELETE FROM t1 WHERE b = @tag_c;
+DELETE 1
+> DROP DATABASE test_ts_udvar CASCADE;
+DROP DATABASE
+> SHOW @qwe;
+ERROR: @qwe is not defined
+SQLSTATE: 42704
+> SET @qwe = MAX(1);
+ERROR: cannot evaluate function in this context
+SQLSTATE: 0A000
+> SET @qwe = 'ss';
+SET
+> SET @qwe = NULL;
+ERROR: new value of @qwe (type UNKNOWN) does not match previous type STRING
+SQLSTATE: 42804
+> SET @qwe = null;
+ERROR: new value of @qwe (type UNKNOWN) does not match previous type STRING
+SQLSTATE: 42804
+> SET @qwe = 'null';
+SET
+> USE test_udvar;
+SET
+> create table test_udv1(a string);
+CREATE TABLE
+> SELECT a into @qwe from test_udv1;
+ERROR: result consisted of zero rows
+SQLSTATE: 42702
+> SHOW @qwe;
+  var_name | var_type
+-----------+-----------
+  @qwe     | STRING
+(1 row)
+> SELECT @qwe;
+  @qwe
+--------
+  null
+(1 row)
+> INSERT INTO test_udv1 VALUES('Q'),('W');
+INSERT 2
+> SELECT a into @qwe from test_udv1;
+ERROR: result consisted of more than one row
+SQLSTATE: 42702
+> SELECT @qwe;
+  @qwe
+--------
+  null
+(1 row)
+> DROP DATABASE test_udvar CASCADE;
+DROP DATABASE
