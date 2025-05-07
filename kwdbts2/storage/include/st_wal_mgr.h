@@ -368,6 +368,11 @@ class WALMgr {
   KStatus ResetWAL(kwdbContext_p ctx);
 
   /**
+   * Reset WAL files.
+   */
+  KStatus ResetWAL();
+
+  /**
    * Switch Current File to Next File.
    * @param ctx
    * @return KStatus

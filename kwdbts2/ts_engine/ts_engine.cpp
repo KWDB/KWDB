@@ -447,6 +447,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 4. rewrite wal log to chk file
+  wal_mgr_->Close();
+  wal_mgr_->ResetWAL(ctx);
   std::cout<< "rewrite logs count: " << rewrite.size() << std::endl;
    if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
      LOG_ERROR("Failed to WriteIncompleteWAL.")

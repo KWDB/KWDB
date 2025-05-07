@@ -169,9 +169,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
   this->Lock();
 
   // remove old meta file
-  if (meta_file_.is_open()) {
-   meta_file_.close();
-  }
   if (!Remove(file_mgr_->getChkMetaFilePath())) {
     std::cout << "failed to remove meta file.11111" << std::endl;
   }
@@ -773,6 +770,55 @@ void WALMgr::CleanUp(kwdbContext_p ctx) {
 
 KStatus WALMgr::RemoveChkFile(kwdbContext_p ctx) {
   return Remove(file_mgr_->getChkFilePath()) ? KStatus::SUCCESS : KStatus::FAIL;
+}
+
+KStatus WALMgr::ResetWAL() {
+  LOG_INFO("Cleaning wal meta file tableId: %lu.", table_id_)
+  if (!IsExists(wal_path_)) {
+    if (!MakeDirectory(wal_path_)) {
+      LOG_ERROR("Failed to create the WAL log directory '%s'", wal_path_.c_str())
+      return FAIL;
+    }
+  }
+
+  TS_LSN current_lsn_recover = 0;
+  WALMeta old_meta = meta_;
+  if (meta_file_.is_open()) {
+    meta_file_.close();
+  }
+  string meta_path = wal_path_ + "kwdb_wal.meta";
+  if (IsExists(meta_path)) {
+    Remove(meta_path);
+  }
+
+  KStatus s = initWalMeta(ctx, true);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to initialize the WAL metadata.")
+    return s;
+  }
+  meta_ = old_meta;
+  meta_.current_checkpoint_no = 0;
+
+  s = file_mgr_->ResetWALInternal(ctx, current_lsn_recover);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to Reset the WAL files.")
+    return s;
+  }
+
+  s = file_mgr_->Open();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to Open the WAL metadata.")
+    return s;
+  }
+
+  buffer_mgr_->ResetMeta();
+
+  s = buffer_mgr_->init(0);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to initialize the WAL buffer.")
+    return s;
+  }
+  return SUCCESS;
 }
 
 KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {
