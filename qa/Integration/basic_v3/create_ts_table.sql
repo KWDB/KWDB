@@ -21,6 +21,8 @@ where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
 select count(*) from test.sjcx01;
+select sum(a), min(b) from test.sjcx01;
+select count(a), sum(b), max(a), max(b) from test.sjcx01;
 select * from test.sjcx01 where t1_attribute = 'F6';
 drop database test cascade;
 
