@@ -461,24 +461,24 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
-//  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
-//  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
+  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
 
   // 7. a). update checkpoint LSN .
   //    b). trig all vgroup write checkpoint wal.
   //    c). remove vgroup wal file.
-  for (const auto &vgrp: vgroups_) {
-    TS_LSN lsn = 0;
-    uint32_t vgrp_id = vgrp->GetVGroupID();
-    auto it = vgrp_lsn.find(vgrp_id);
-    if (it != vgrp_lsn.end()) {
-      lsn = it->second;
-    } else {
-      LOG_ERROR("Failed to find vgroup lsn from map.")
-      return KStatus::FAIL;
-    }
-    vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
-  }
+//  for (const auto &vgrp: vgroups_) {
+//    TS_LSN lsn = 0;
+//    uint32_t vgrp_id = vgrp->GetVGroupID();
+//    auto it = vgrp_lsn.find(vgrp_id);
+//    if (it != vgrp_lsn.end()) {
+//      lsn = it->second;
+//    } else {
+//      LOG_ERROR("Failed to find vgroup lsn from map.")
+//      return KStatus::FAIL;
+//    }
+//    vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
+//  }
 
   // 8. remove old chk file
   wal_mgr_->RemoveChkFile(ctx);
