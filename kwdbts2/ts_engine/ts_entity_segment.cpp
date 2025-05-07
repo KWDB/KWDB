@@ -312,6 +312,15 @@ KStatus TsEntityBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& va
 
 char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
   assert(col_idx < column_blocks_.size() - 1);
+  if (col_idx == 0) {
+    if (extra_buffer_.empty()) {
+      extra_buffer_.resize(n_rows_ * 16);
+      for (int i = 0; i < n_rows_; ++i) {
+        memcpy(extra_buffer_.data() + i * 16, column_blocks_[1].buffer.data() + i * 8, 8);
+      }
+    }
+    return extra_buffer_.data();
+  }
   return column_blocks_[col_idx + 1].buffer.data();
 }
 
@@ -338,9 +347,8 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
                    EngineOptions::max_rows_per_block - n_rows_ : span.GetRowNum();
   assert(span.GetRowNum() >= written_rows);
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
-    DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
-                      static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
-    size_t d_size = col_idx == 0 ? 8 : col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
+    DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
+    size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
     bool has_bitmap = col_idx != 0;
 
     bool is_var_col = isVarLenType(d_type);
@@ -373,6 +381,8 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
         memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
         block.buffer.append(value.data, value.len);
         block.var_rows.emplace_back(value.data, value.len);
+      } else if (col_idx == 1) {
+        block.buffer.append(col_val + span_row_idx * d_size, sizeof(timestamp64));
       }
       row_idx_in_block++;
     }
@@ -383,7 +393,7 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
       if (col_idx == 0) {
         char* seq_col_value = reinterpret_cast<char *>(span.GetSeqNoAddr(0));
         block.buffer.append(seq_col_value, written_rows * d_size);
-      } else {
+      } else if (col_idx != 1) {
         block.buffer.append(col_val, written_rows * d_size);
       }
     }
@@ -407,7 +417,6 @@ KStatus TsEntityBlock::Flush(TsVGroupPartition* partition) {
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
-    size_t d_size = col_idx == 0 ? 8 : col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
     bool has_bitmap = col_idx != 0;
     bool is_var_col = isVarLenType(d_type);
 
