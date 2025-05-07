@@ -167,9 +167,9 @@ KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length) {
 
 KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> logs) {
   this->Lock();
-  if (!Remove(file_mgr_->getChkMetaFilePath())) {
-    std::cout << "failed to remove meta file.11111" << std::endl;
-  }
+//  if (!Remove(file_mgr_->getChkMetaFilePath())) {
+//    std::cout << "failed to remove meta file.11111" << std::endl;
+//  }
   KStatus s = initWalMeta(ctx, true);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize the WAL metadata.")
