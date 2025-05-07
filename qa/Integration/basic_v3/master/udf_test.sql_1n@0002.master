@@ -1,0 +1,214 @@
+> CREATE FUNCTION multiply(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function multiply(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+  function_name | argument_types | return_type | types_length |         function_body          | function_type | language |  db_name  | creator | version | comments
+----------------+----------------+-------------+--------------+--------------------------------+---------------+----------+-----------+---------+---------+-----------
+  multiply      | {1}            | {1}         | {0,0}        | function multiply(nu_int)      |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+(1 row)
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+  multiply
+(1 row)
+> SHOW FUNCTION multiply;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  multiply      | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> select multiply(3);
+  multiply
+------------
+         6
+(1 row)
+> select multiply(multiply(2));
+  multiply
+------------
+         8
+(1 row)
+> create ts database test_udf;
+CREATE TS DATABASE
+> create table test_udf.tb1(ts timestamptz not null,e1 smallint)tags(t1 int not null)primary tags(t1);
+CREATE TABLE
+> insert into test_udf.tb1 values(now(),0,1);
+INSERT 1
+> insert into test_udf.tb1 values(now(),10,2);
+INSERT 1
+> insert into test_udf.tb1 values(now(),200,3);
+INSERT 1
+> CREATE FUNCTION complex_calculation(input_val smallint)
+    RETURNS smallint
+    LANGUAGE LUA
+BEGIN
+'
+function complex_calculation(input_val)
+    local result = 0
+    if input_val < 10 then
+        result = input_val * input_val
+    elseif input_val >= 10 and input_val <= 100 then
+        result = math.floor(math.sqrt(input_val) * 2)
+    else
+        result = math.floor(math.log(input_val) * 3)
+    end
+return result
+end
+'
+END;
+CREATE FUNCTION
+> select complex_calculation(e1) from test_udf.tb1 order by e1;
+  complex_calculation
+-----------------------
+                    0
+                    6
+                   15
+(3 rows)
+> select multiply(e1) from test_udf.tb1 order by e1;
+  multiply
+------------
+         0
+        20
+       400
+(3 rows)
+> select count(e1),min(e1),max(e1),complex_calculation(e1) as udf_cal ,last_row(e1) from test_udf.tb1 group by e1 having complex_calculation(e1) > 2 order by e1;
+  count | min | max | udf_cal | last_row
+--------+-----+-----+---------+-----------
+      1 |  10 |  10 |       6 |       10
+      1 | 200 | 200 |      15 |      200
+(2 rows)
+> select count(e1),min(e1),max(e1),multiply(e1) as udf_add ,last_row(e1) from test_udf.tb1 group by e1 having multiply(e1) > 2 order by e1;
+  count | min | max | udf_add | last_row
+--------+-----+-----+---------+-----------
+      1 |  10 |  10 |      20 |       10
+      1 | 200 | 200 |     400 |      200
+(2 rows)
+> drop table test_udf.tb1;
+DROP TABLE
+> drop database test_udf cascade;
+DROP DATABASE
+> create  database test_udf_re;
+CREATE DATABASE
+> create table test_udf_re.r1(e1 smallint);
+CREATE TABLE
+> insert into test_udf_re.r1 values(0);
+INSERT 1
+> insert into test_udf_re.r1 values(10);
+INSERT 1
+> insert into test_udf_re.r1 values(200);
+INSERT 1
+> select complex_calculation(e1) from test_udf_re.r1 order by e1;
+  complex_calculation
+-----------------------
+                    0
+                    6
+                   15
+(3 rows)
+> select multiply(e1) from test_udf_re.r1 order by e1;
+  multiply
+------------
+         0
+        20
+       400
+(3 rows)
+> select count(e1),min(e1),max(e1) ,multiply(e1) as udf_add from test_udf_re.r1 group by e1 having multiply(e1) > 2 order by e1;
+  count | min | max | udf_add
+--------+-----+-----+----------
+      1 |  10 |  10 |      20
+      1 | 200 | 200 |     400
+(2 rows)
+> select count(e1),min(e1),max(e1) ,complex_calculation(e1) as udf_cal from test_udf_re.r1 group by e1 having complex_calculation(e1) > 2 order by e1;
+  count | min | max | udf_cal
+--------+-----+-----+----------
+      1 |  10 |  10 |       6
+      1 | 200 | 200 |      15
+(2 rows)
+> drop table test_udf_re.r1 ;
+DROP TABLE
+> drop database test_udf_re cascade;
+DROP DATABASE
+> select multiply(-32768);
+ERROR: multiply(): integer out of range
+SQLSTATE: 22003
+> select multiply(-32769);
+ERROR: multiply(): integer out of range
+SQLSTATE: 22003
+> select multiply(32767);
+ERROR: multiply(): integer out of range
+SQLSTATE: 22003
+> select multiply(32768);
+ERROR: multiply(): integer out of range
+SQLSTATE: 22003
+> select multiply(null);
+  multiply
+------------
+  NULL
+(1 row)
+> select complex_calculation(-32768);
+ERROR: complex_calculation(): integer out of range
+SQLSTATE: 22003
+> select complex_calculation(-32769);
+ERROR: complex_calculation(): integer out of range
+SQLSTATE: 22003
+> select complex_calculation(32767);
+  complex_calculation
+-----------------------
+                   31
+(1 row)
+> select complex_calculation(32768);
+ERROR: complex_calculation(): integer out of range
+SQLSTATE: 22003
+> select complex_calculation(null);
+  complex_calculation
+-----------------------
+  NULL
+(1 row)
+> select multiply(now());
+ERROR: multiply(): unknown signature: now() (desired <int2>)
+SQLSTATE: 42883
+> select multiply('test');
+ERROR: unknown signature: multiply(STRING)
+SQLSTATE: 42883
+> select multiply(1.2);
+ERROR: unknown signature: multiply(DECIMAL)
+SQLSTATE: 42883
+> select multiply(true);
+ERROR: unknown signature: multiply(BOOL)
+SQLSTATE: 42883
+> select multiply('2011-11-11');
+ERROR: unknown signature: multiply(STRING)
+SQLSTATE: 42883
+> select complex_calculation(now());
+ERROR: complex_calculation(): unknown signature: now() (desired <int2>)
+SQLSTATE: 42883
+> select complex_calculation('test');
+ERROR: unknown signature: complex_calculation(STRING)
+SQLSTATE: 42883
+> select complex_calculation(1.2);
+ERROR: unknown signature: complex_calculation(DECIMAL)
+SQLSTATE: 42883
+> select complex_calculation(true);
+ERROR: unknown signature: complex_calculation(BOOL)
+SQLSTATE: 42883
+> select complex_calculation('2011-11-11');
+ERROR: unknown signature: complex_calculation(STRING)
+SQLSTATE: 42883
+> DROP FUNCTION multiply;
+DROP FUNCTION
+> DROP FUNCTION complex_calculation;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)
+> SHOW FUNCTION multiply;
+ERROR: function multiply does not exists or current user does not have privilege on this function
+SQLSTATE: 42704

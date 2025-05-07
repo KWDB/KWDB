@@ -1,0 +1,36 @@
+> create ts database tsdb;
+CREATE TS DATABASE
+> alter database tsdb rename to tsdb1;
+RENAME DATABASE
+> show databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+  tsdb1         | TIME SERIES
+(4 rows)
+> create table tsdb1.test1(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> alter database tsdb rename to tsdb1;
+ERROR: database "tsdb" does not exist
+SQLSTATE: 3D000
+> alter database tsdb1 rename to tsdb;
+RENAME DATABASE
+> show databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+  tsdb          | TIME SERIES
+(4 rows)
+> select * from tsdb1.test1;
+ERROR: relation "tsdb1.test1" does not exist
+SQLSTATE: 42P01
+> select * from tsdb.test1;
+  ts | a | tag1
+-----+---+-------
+(0 rows)
+> drop database tsdb;
+DROP DATABASE

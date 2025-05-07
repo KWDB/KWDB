@@ -54,3 +54,14 @@ drop role r3;
 drop role r4;
 drop role r5;
 drop role r6;
+
+CREATE TS DATABASE db;
+USE db;
+CREATE TABLE db.t1( "time" timestamptz not null,e8 char(1023), e9 nchar(255))tags(i int not null) primary tags(i);
+
+INSERT INTO db.t1 values('2023-12-1 12:00:12.000+00:00',null, '基础测试',1);
+INSERT INTO db.t1 values('2023-12-2 12:00:12.000+00:00',null, '基础测试',1);
+EXPORT INTO CSV "nodelocal://1/test_sql" FROM TABLE db.t1;
+IMPORT INTO db.t1 SQL DATA ("nodelocal://1/test_sql");
+USE defaultdb;
+DROP DATABASE db;

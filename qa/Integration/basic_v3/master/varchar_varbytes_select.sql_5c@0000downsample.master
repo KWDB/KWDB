@@ -1,0 +1,24 @@
+> select time_bucket(k_timestamp,'1s') as tb,e1 from test_SELECT_col.t1 where e1=100 group by tb,e1 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,last(e1) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,last(*) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,max(e1) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,min(e6) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,count(*) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,count(*) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select time_bucket(k_timestamp,'1s') as tb,count(distinct e1) from test_SELECT_col.t1 where e1=100 group by tb ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803

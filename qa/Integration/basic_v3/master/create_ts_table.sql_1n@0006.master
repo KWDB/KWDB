@@ -1,0 +1,56 @@
+> create ts database test;
+CREATE TS DATABASE
+> create ts database test2;
+CREATE TS DATABASE
+> create ts database pre;
+CREATE TS DATABASE
+> create table test.et1(k_timestamp timestamp not null,a INT2 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et2(k_timestamp timestamp not null,a INT not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et3(k_timestamp timestamp not null,a bool not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et4(k_timestamp timestamp not null,a float not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et5(k_timestamp timestamp not null,a int8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et6(k_timestamp timestamp not null,a float8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et7(k_timestamp timestamp not null,a timestamp not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et8(k_timestamp timestamp not null,a char(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et10(k_timestamp timestamp not null,a varchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et11(k_timestamp timestamp not null,a char not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et12(k_timestamp timestamp not null,a char(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et13(k_timestamp timestamp not null,a nchar not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et14(k_timestamp timestamp not null,a varchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et15(k_timestamp timestamp not null,a nvarchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et16(k_timestamp timestamp not null,a varbytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et17(k_timestamp timestamp not null,a nvarchar(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et18(k_timestamp timestamp not null,a nvarchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et19(k_timestamp timestamp not null,a varbytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et20(k_timestamp timestamp not null,a varbytes(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et21(k_timestamp timestamp not null,a varbytes(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et22(k_timestamp timestamp not null,a varbytes(254) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.atll(k_timestamp timestamp not null,e0 int not null ,e1 int2  not null ,e2 int  not null , e3 bool  not null ,e4 float  not null ,e5 int8  not null ,e6 float8  not null ,e7 timestamp  not null ,e8 char(1023)  not null ,e9 nchar(255)  not null ,e10 varchar(4096)  not null ,e11 char  not null ,e12 char(255)  not null ,e13 nchar  not null ,e14 varchar(128)  not null ,                e15 nvarchar(4096)  not null , e16 varbytes  not null ,e17 nvarchar(255)  not null ,e18 nvarchar(128)   not null ,                e19 varbytes  not null ,e20 varbytes(1023)  not null ,e21 varbytes(4096)  not null ,e22 varbytes(254)  not null )attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> drop database test2;
+DROP DATABASE
+> drop database pre;
+DROP DATABASE

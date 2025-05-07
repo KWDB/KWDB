@@ -202,7 +202,7 @@ KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableK
   }
 
   ErrorInfo err_info;
-  if (table_schema_mgr_->CreateTable(ctx, &meta, version, err_info) != KStatus::SUCCESS) {
+  if (table_schema_mgr_->CreateTable(ctx, &meta, meta.ts_table().database_id(), version, err_info) != KStatus::SUCCESS) {
     LOG_ERROR("failed during upper version, err: %s", err_info.errmsg.c_str());
     return KStatus::FAIL;
   }

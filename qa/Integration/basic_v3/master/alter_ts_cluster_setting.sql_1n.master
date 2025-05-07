@@ -1,0 +1,589 @@
+> drop database if exists test_cluster_setting cascade;
+DROP DATABASE
+> create ts database test_cluster_setting;
+CREATE TS DATABASE
+> use test_cluster_setting;
+SET
+> set sql_safe_updates = false;
+SET
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 1;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 0;
+ERROR: invalid value, the range of ts.entities_per_subgroup.max_limit is [1, 2147483647]
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = -1;
+ERROR: invalid value, the range of ts.entities_per_subgroup.max_limit is [1, 2147483647]
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 2.03;
+ERROR: argument of SET CLUSTER SETTING ts.entities_per_subgroup.max_limit must be type int, not type decimal
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 20d;
+ERROR: argument of SET CLUSTER SETTING ts.entities_per_subgroup.max_limit must be type int, not type interval
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 2147483647;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 2147483648;
+ERROR: invalid value, the range of ts.entities_per_subgroup.max_limit is [1, 2147483647]
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 10000000000;
+ERROR: invalid value, the range of ts.entities_per_subgroup.max_limit is [1, 2147483647]
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = '';
+ERROR: could not parse "" as type int: strconv.ParseInt: parsing "": invalid syntax
+SQLSTATE: 22P02
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = \x12;
+ERROR: at or near "\": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = \x12
+                                                         ^
+HINT: try \h SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 1;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 0;
+ERROR: invalid value, the range of ts.blocks_per_segment.max_limit is [1, 1000000]
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = -1;
+ERROR: invalid value, the range of ts.blocks_per_segment.max_limit is [1, 1000000]
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 2.03;
+ERROR: argument of SET CLUSTER SETTING ts.blocks_per_segment.max_limit must be type int, not type decimal
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 20d;
+ERROR: argument of SET CLUSTER SETTING ts.blocks_per_segment.max_limit must be type int, not type interval
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 1000000;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 1000001;
+ERROR: invalid value, the range of ts.blocks_per_segment.max_limit is [1, 1000000]
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 10000000000;
+ERROR: invalid value, the range of ts.blocks_per_segment.max_limit is [1, 1000000]
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = '';
+ERROR: could not parse "" as type int: strconv.ParseInt: parsing "": invalid syntax
+SQLSTATE: 22P02
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = \x12;
+ERROR: at or near "\": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SET CLUSTER SETTING ts.blocks_per_segment.max_limit = \x12
+                                                      ^
+HINT: try \h SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 9;
+ERROR: invalid value, the range of ts.rows_per_block.max_limit is [10, 1000]
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = -1;
+ERROR: invalid value, the range of ts.rows_per_block.max_limit is [10, 1000]
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 2.03;
+ERROR: argument of SET CLUSTER SETTING ts.rows_per_block.max_limit must be type int, not type decimal
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 20d;
+ERROR: argument of SET CLUSTER SETTING ts.rows_per_block.max_limit must be type int, not type interval
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 1000;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 1001;
+ERROR: invalid value, the range of ts.rows_per_block.max_limit is [10, 1000]
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10000000000;
+ERROR: invalid value, the range of ts.rows_per_block.max_limit is [10, 1000]
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = '';
+ERROR: could not parse "" as type int: strconv.ParseInt: parsing "": invalid syntax
+SQLSTATE: 22P02
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = \x12;
+ERROR: at or near "\": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SET CLUSTER SETTING ts.rows_per_block.max_limit = \x12
+                                                  ^
+HINT: try \h SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 0;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = -1;
+ERROR: invalid value, the range of ts.cached_partitions_per_subgroup.max_limit is [0, 2147483647]
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 2.03;
+ERROR: argument of SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit must be type int, not type decimal
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 20d;
+ERROR: argument of SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit must be type int, not type interval
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 2147483647;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 2147483648;
+ERROR: invalid value, the range of ts.cached_partitions_per_subgroup.max_limit is [0, 2147483647]
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 10000000000;
+ERROR: invalid value, the range of ts.cached_partitions_per_subgroup.max_limit is [0, 2147483647]
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = '';
+ERROR: could not parse "" as type int: strconv.ParseInt: parsing "": invalid syntax
+SQLSTATE: 22P02
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = \x12;
+ERROR: at or near "\": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = \x12
+                                                                  ^
+HINT: try \h SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 2;
+ERROR: argument of SET CLUSTER SETTING ts.compression.type must be type string, not type int
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.compression.type = 2.33;
+ERROR: argument of SET CLUSTER SETTING ts.compression.type must be type string, not type decimal
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.compression.type = '';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = \x12;
+ERROR: at or near "\": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SET CLUSTER SETTING ts.compression.type = \x12
+                                          ^
+HINT: try \h SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'LZ4';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = 'GZIP';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = 'LZO';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = 'XZ';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = 'ZSTD';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = 'LZMA';
+ERROR: ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd
+> SET CLUSTER SETTING ts.compression.type = 'lz4';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'gzip';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'lzo';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'xz';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'zstd';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'lzma';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.level = 2;
+ERROR: argument of SET CLUSTER SETTING ts.compression.level must be type string, not type int
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.compression.level = 2.33;
+ERROR: argument of SET CLUSTER SETTING ts.compression.level must be type string, not type decimal
+SQLSTATE: 42804
+> SET CLUSTER SETTING ts.compression.level = '';
+ERROR: ts.compression.level is incorrectly configured, and can be configured as: low, middle, high
+> SET CLUSTER SETTING ts.compression.level = \x12;
+ERROR: at or near "\": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SET CLUSTER SETTING ts.compression.level = \x12
+                                           ^
+HINT: try \h SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.level = 'LOW';
+ERROR: ts.compression.level is incorrectly configured, and can be configured as: low, middle, high
+> SET CLUSTER SETTING ts.compression.level = 'MIDDLE';
+ERROR: ts.compression.level is incorrectly configured, and can be configured as: low, middle, high
+> SET CLUSTER SETTING ts.compression.level = 'HIGH';
+ERROR: ts.compression.level is incorrectly configured, and can be configured as: low, middle, high
+> SET CLUSTER SETTING ts.compression.level = 'low';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.level = 'middle';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.level = 'high';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.type = 'gzip';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.compression.level = 'middle';
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 3;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 2;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 1;
+SET CLUSTER SETTING
+> create table t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into t1 values(1672531201000, 111, 1);
+INSERT 1
+> insert into t1 values(1672531202000, 111, 1);
+INSERT 1
+> insert into t1 values(1672531203000, 222, 2);
+INSERT 1
+> insert into t1 values(1672531204000, 222, 2);
+INSERT 1
+> insert into t1 values(1672531205000, 333, 3);
+INSERT 1
+> insert into t1 values(1672531206000, 333, 3);
+INSERT 1
+> insert into t1 values(1672531201000, 444, 4);
+INSERT 1
+> insert into t1 values(1672531202000, 444, 4);
+INSERT 1
+> select * from t1 order by b, ts;
+             ts             |  a  | b
+----------------------------+-----+----
+  2023-01-01 00:00:01+00:00 | 111 | 1
+  2023-01-01 00:00:02+00:00 | 111 | 1
+  2023-01-01 00:00:03+00:00 | 222 | 2
+  2023-01-01 00:00:04+00:00 | 222 | 2
+  2023-01-01 00:00:05+00:00 | 333 | 3
+  2023-01-01 00:00:06+00:00 | 333 | 3
+  2023-01-01 00:00:01+00:00 | 444 | 4
+  2023-01-01 00:00:02+00:00 | 444 | 4
+(8 rows)
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 1;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 5;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 100;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 1;
+SET CLUSTER SETTING
+> insert into t1 values(1673531201000, 555, 5);
+INSERT 1
+> insert into t1 values(1673531202000, 555, 5);
+INSERT 1
+> insert into t1 values(1673531203000, 666, 6);
+INSERT 1
+> insert into t1 values(1673531204000, 666, 6);
+INSERT 1
+> insert into t1 values(1672531205000, 777, 7);
+INSERT 1
+> insert into t1 values(1672531206000, 777, 7);
+INSERT 1
+> insert into t1 values(1672531201000, 888, 8);
+INSERT 1
+> insert into t1 values(1672531202000, 888, 8);
+INSERT 1
+> select * from t1 order by b, ts;
+             ts             |  a  | b
+----------------------------+-----+----
+  2023-01-01 00:00:01+00:00 | 111 | 1
+  2023-01-01 00:00:02+00:00 | 111 | 1
+  2023-01-01 00:00:03+00:00 | 222 | 2
+  2023-01-01 00:00:04+00:00 | 222 | 2
+  2023-01-01 00:00:05+00:00 | 333 | 3
+  2023-01-01 00:00:06+00:00 | 333 | 3
+  2023-01-01 00:00:01+00:00 | 444 | 4
+  2023-01-01 00:00:02+00:00 | 444 | 4
+  2023-01-12 13:46:41+00:00 | 555 | 5
+  2023-01-12 13:46:42+00:00 | 555 | 5
+  2023-01-12 13:46:43+00:00 | 666 | 6
+  2023-01-12 13:46:44+00:00 | 666 | 6
+  2023-01-01 00:00:05+00:00 | 777 | 7
+  2023-01-01 00:00:06+00:00 | 777 | 7
+  2023-01-01 00:00:01+00:00 | 888 | 8
+  2023-01-01 00:00:02+00:00 | 888 | 8
+(16 rows)
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 2;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 3;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 0;
+SET CLUSTER SETTING
+> insert into t1 values(1675531201000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531202000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531203000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531204000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531205000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531206000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531207000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531208000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531209000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531210000, 999, 9);
+INSERT 1
+> insert into t1 values(1675531211000, 999, 9);
+INSERT 1
+> insert into t1 values(1676531203000, 666, 10);
+INSERT 1
+> insert into t1 values(1676531204000, 666, 10);
+INSERT 1
+> select * from t1 order by b, ts;
+             ts             |  a  | b
+----------------------------+-----+-----
+  2023-01-01 00:00:01+00:00 | 111 |  1
+  2023-01-01 00:00:02+00:00 | 111 |  1
+  2023-01-01 00:00:03+00:00 | 222 |  2
+  2023-01-01 00:00:04+00:00 | 222 |  2
+  2023-01-01 00:00:05+00:00 | 333 |  3
+  2023-01-01 00:00:06+00:00 | 333 |  3
+  2023-01-01 00:00:01+00:00 | 444 |  4
+  2023-01-01 00:00:02+00:00 | 444 |  4
+  2023-01-12 13:46:41+00:00 | 555 |  5
+  2023-01-12 13:46:42+00:00 | 555 |  5
+  2023-01-12 13:46:43+00:00 | 666 |  6
+  2023-01-12 13:46:44+00:00 | 666 |  6
+  2023-01-01 00:00:05+00:00 | 777 |  7
+  2023-01-01 00:00:06+00:00 | 777 |  7
+  2023-01-01 00:00:01+00:00 | 888 |  8
+  2023-01-01 00:00:02+00:00 | 888 |  8
+  2023-02-04 17:20:01+00:00 | 999 |  9
+  2023-02-04 17:20:02+00:00 | 999 |  9
+  2023-02-04 17:20:03+00:00 | 999 |  9
+  2023-02-04 17:20:04+00:00 | 999 |  9
+  2023-02-04 17:20:05+00:00 | 999 |  9
+  2023-02-04 17:20:06+00:00 | 999 |  9
+  2023-02-04 17:20:07+00:00 | 999 |  9
+  2023-02-04 17:20:08+00:00 | 999 |  9
+  2023-02-04 17:20:09+00:00 | 999 |  9
+  2023-02-04 17:20:10+00:00 | 999 |  9
+  2023-02-04 17:20:11+00:00 | 999 |  9
+  2023-02-16 07:06:43+00:00 | 666 | 10
+  2023-02-16 07:06:44+00:00 | 666 | 10
+(29 rows)
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 20;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 15;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 200;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 7;
+SET CLUSTER SETTING
+> select * from t1 order by b, ts;
+             ts             |  a  | b
+----------------------------+-----+-----
+  2023-01-01 00:00:01+00:00 | 111 |  1
+  2023-01-01 00:00:02+00:00 | 111 |  1
+  2023-01-01 00:00:03+00:00 | 222 |  2
+  2023-01-01 00:00:04+00:00 | 222 |  2
+  2023-01-01 00:00:05+00:00 | 333 |  3
+  2023-01-01 00:00:06+00:00 | 333 |  3
+  2023-01-01 00:00:01+00:00 | 444 |  4
+  2023-01-01 00:00:02+00:00 | 444 |  4
+  2023-01-12 13:46:41+00:00 | 555 |  5
+  2023-01-12 13:46:42+00:00 | 555 |  5
+  2023-01-12 13:46:43+00:00 | 666 |  6
+  2023-01-12 13:46:44+00:00 | 666 |  6
+  2023-01-01 00:00:05+00:00 | 777 |  7
+  2023-01-01 00:00:06+00:00 | 777 |  7
+  2023-01-01 00:00:01+00:00 | 888 |  8
+  2023-01-01 00:00:02+00:00 | 888 |  8
+  2023-02-04 17:20:01+00:00 | 999 |  9
+  2023-02-04 17:20:02+00:00 | 999 |  9
+  2023-02-04 17:20:03+00:00 | 999 |  9
+  2023-02-04 17:20:04+00:00 | 999 |  9
+  2023-02-04 17:20:05+00:00 | 999 |  9
+  2023-02-04 17:20:06+00:00 | 999 |  9
+  2023-02-04 17:20:07+00:00 | 999 |  9
+  2023-02-04 17:20:08+00:00 | 999 |  9
+  2023-02-04 17:20:09+00:00 | 999 |  9
+  2023-02-04 17:20:10+00:00 | 999 |  9
+  2023-02-04 17:20:11+00:00 | 999 |  9
+  2023-02-16 07:06:43+00:00 | 666 | 10
+  2023-02-16 07:06:44+00:00 | 666 | 10
+(29 rows)
+> SET CLUSTER SETTING ts.dedup.rule = 'merge';
+SET CLUSTER SETTING
+> alter table t1 add column c int;
+ALTER TABLE
+> select * from t1 order by b, ts;
+             ts             |  a  |  c   | b
+----------------------------+-----+------+-----
+  2023-01-01 00:00:01+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:02+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:03+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:04+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:05+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:06+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:01+00:00 | 444 | NULL |  4
+  2023-01-01 00:00:02+00:00 | 444 | NULL |  4
+  2023-01-12 13:46:41+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:42+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:43+00:00 | 666 | NULL |  6
+  2023-01-12 13:46:44+00:00 | 666 | NULL |  6
+  2023-01-01 00:00:05+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:06+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:01+00:00 | 888 | NULL |  8
+  2023-01-01 00:00:02+00:00 | 888 | NULL |  8
+  2023-02-04 17:20:01+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:02+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:03+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:04+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:05+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:06+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:07+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:08+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:09+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:10+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:11+00:00 | 999 | NULL |  9
+  2023-02-16 07:06:43+00:00 | 666 | NULL | 10
+  2023-02-16 07:06:44+00:00 | 666 | NULL | 10
+(29 rows)
+> alter table t1 drop column c;
+ALTER TABLE
+> select * from t1 order by b, ts;
+             ts             |  a  | b
+----------------------------+-----+-----
+  2023-01-01 00:00:01+00:00 | 111 |  1
+  2023-01-01 00:00:02+00:00 | 111 |  1
+  2023-01-01 00:00:03+00:00 | 222 |  2
+  2023-01-01 00:00:04+00:00 | 222 |  2
+  2023-01-01 00:00:05+00:00 | 333 |  3
+  2023-01-01 00:00:06+00:00 | 333 |  3
+  2023-01-01 00:00:01+00:00 | 444 |  4
+  2023-01-01 00:00:02+00:00 | 444 |  4
+  2023-01-12 13:46:41+00:00 | 555 |  5
+  2023-01-12 13:46:42+00:00 | 555 |  5
+  2023-01-12 13:46:43+00:00 | 666 |  6
+  2023-01-12 13:46:44+00:00 | 666 |  6
+  2023-01-01 00:00:05+00:00 | 777 |  7
+  2023-01-01 00:00:06+00:00 | 777 |  7
+  2023-01-01 00:00:01+00:00 | 888 |  8
+  2023-01-01 00:00:02+00:00 | 888 |  8
+  2023-02-04 17:20:01+00:00 | 999 |  9
+  2023-02-04 17:20:02+00:00 | 999 |  9
+  2023-02-04 17:20:03+00:00 | 999 |  9
+  2023-02-04 17:20:04+00:00 | 999 |  9
+  2023-02-04 17:20:05+00:00 | 999 |  9
+  2023-02-04 17:20:06+00:00 | 999 |  9
+  2023-02-04 17:20:07+00:00 | 999 |  9
+  2023-02-04 17:20:08+00:00 | 999 |  9
+  2023-02-04 17:20:09+00:00 | 999 |  9
+  2023-02-04 17:20:10+00:00 | 999 |  9
+  2023-02-04 17:20:11+00:00 | 999 |  9
+  2023-02-16 07:06:43+00:00 | 666 | 10
+  2023-02-16 07:06:44+00:00 | 666 | 10
+(29 rows)
+> alter table t1 add column c int;
+ALTER TABLE
+> select * from t1 order by b, ts;
+             ts             |  a  |  c   | b
+----------------------------+-----+------+-----
+  2023-01-01 00:00:01+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:02+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:03+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:04+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:05+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:06+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:01+00:00 | 444 | NULL |  4
+  2023-01-01 00:00:02+00:00 | 444 | NULL |  4
+  2023-01-12 13:46:41+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:42+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:43+00:00 | 666 | NULL |  6
+  2023-01-12 13:46:44+00:00 | 666 | NULL |  6
+  2023-01-01 00:00:05+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:06+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:01+00:00 | 888 | NULL |  8
+  2023-01-01 00:00:02+00:00 | 888 | NULL |  8
+  2023-02-04 17:20:01+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:02+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:03+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:04+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:05+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:06+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:07+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:08+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:09+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:10+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:11+00:00 | 999 | NULL |  9
+  2023-02-16 07:06:43+00:00 | 666 | NULL | 10
+  2023-02-16 07:06:44+00:00 | 666 | NULL | 10
+(29 rows)
+> insert into t1 values(1672531215000, 556, NULL, 3);
+INSERT 1
+> insert into t1 values(1672531216000, 666, 11, 1);
+INSERT 1
+> insert into t1 values(1672531217000, 777, NULL, 2);
+INSERT 1
+> insert into t1 values(1672531217000, NULL, 0, 2);
+INSERT 1
+> insert into t1 values(1672531218000, 888, 33, 3);
+INSERT 1
+> SET CLUSTER SETTING ts.dedup.rule = 'override';
+SET CLUSTER SETTING
+> select * from t1 order by b, ts;
+             ts             |  a  |  c   | b
+----------------------------+-----+------+-----
+  2023-01-01 00:00:01+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:02+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:16+00:00 | 666 |   11 |  1
+  2023-01-01 00:00:03+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:04+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:17+00:00 | 777 |    0 |  2
+  2023-01-01 00:00:05+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:06+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:15+00:00 | 556 | NULL |  3
+  2023-01-01 00:00:18+00:00 | 888 |   33 |  3
+  2023-01-01 00:00:01+00:00 | 444 | NULL |  4
+  2023-01-01 00:00:02+00:00 | 444 | NULL |  4
+  2023-01-12 13:46:41+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:42+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:43+00:00 | 666 | NULL |  6
+  2023-01-12 13:46:44+00:00 | 666 | NULL |  6
+  2023-01-01 00:00:05+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:06+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:01+00:00 | 888 | NULL |  8
+  2023-01-01 00:00:02+00:00 | 888 | NULL |  8
+  2023-02-04 17:20:01+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:02+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:03+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:04+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:05+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:06+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:07+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:08+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:09+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:10+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:11+00:00 | 999 | NULL |  9
+  2023-02-16 07:06:43+00:00 | 666 | NULL | 10
+  2023-02-16 07:06:44+00:00 | 666 | NULL | 10
+(33 rows)
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 3;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 10;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 40;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 3;
+SET CLUSTER SETTING
+> select * from t1 order by b, ts;
+             ts             |  a  |  c   | b
+----------------------------+-----+------+-----
+  2023-01-01 00:00:01+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:02+00:00 | 111 | NULL |  1
+  2023-01-01 00:00:16+00:00 | 666 |   11 |  1
+  2023-01-01 00:00:03+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:04+00:00 | 222 | NULL |  2
+  2023-01-01 00:00:17+00:00 | 777 |    0 |  2
+  2023-01-01 00:00:05+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:06+00:00 | 333 | NULL |  3
+  2023-01-01 00:00:15+00:00 | 556 | NULL |  3
+  2023-01-01 00:00:18+00:00 | 888 |   33 |  3
+  2023-01-01 00:00:01+00:00 | 444 | NULL |  4
+  2023-01-01 00:00:02+00:00 | 444 | NULL |  4
+  2023-01-12 13:46:41+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:42+00:00 | 555 | NULL |  5
+  2023-01-12 13:46:43+00:00 | 666 | NULL |  6
+  2023-01-12 13:46:44+00:00 | 666 | NULL |  6
+  2023-01-01 00:00:05+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:06+00:00 | 777 | NULL |  7
+  2023-01-01 00:00:01+00:00 | 888 | NULL |  8
+  2023-01-01 00:00:02+00:00 | 888 | NULL |  8
+  2023-02-04 17:20:01+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:02+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:03+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:04+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:05+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:06+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:07+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:08+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:09+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:10+00:00 | 999 | NULL |  9
+  2023-02-04 17:20:11+00:00 | 999 | NULL |  9
+  2023-02-16 07:06:43+00:00 | 666 | NULL | 10
+  2023-02-16 07:06:44+00:00 | 666 | NULL | 10
+(33 rows)
+> DROP DATABASE test_cluster_setting CASCADE;
+DROP DATABASE
+> SET CLUSTER SETTING ts.entities_per_subgroup.max_limit = 500;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 500;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 100;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.cached_partitions_per_subgroup.max_limit = 10;
+SET CLUSTER SETTING

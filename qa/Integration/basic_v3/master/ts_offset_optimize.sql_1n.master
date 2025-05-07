@@ -1,0 +1,117 @@
+> create ts database stbl;
+CREATE TS DATABASE
+> use stbl;
+SET
+> CREATE TABLE stbl_raw (
+        ts TIMESTAMPTZ NOT NULL,
+        data VARCHAR(16374) NULL,
+        type VARCHAR(10) NULL,
+        parse VARCHAR(10) NULL
+) TAGS (
+        device VARCHAR(64) NOT NULL,
+        iot_hub_name NCHAR(64) NOT NULL ) PRIMARY TAGS(device, iot_hub_name)
+        activetime 1d;
+CREATE TABLE
+> explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30' order by ts limit 20 offset 7200000;
+      tree     |       field       |            description
+---------------+-------------------+------------------------------------
+               | distributed       | true
+               | vectorized        | false
+  limit        |                   |
+   │           | engine type       | time series
+   │           | count             | 7200020
+   │           | offset            | 7200000
+   │           | useOffsetOptimize | true
+   └── ts scan |                   |
+               | ts-table          | stbl_raw
+               | ordered type      | order scan
+               | access mode       | tableTableMeta
+               | spans:fromTime    | 2024-11-01 00:00:00.001 +0000 UTC
+               | spans:toTime      | 2024-11-29 23:59:59.999 +0000 UTC
+(13 rows)
+> explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30'  and iot_hub_name='kaiwu_mqtt' order by ts desc limit 20 offset 7200000;
+      tree     |       field       |            description
+---------------+-------------------+------------------------------------
+               | distributed       | true
+               | vectorized        | false
+  limit        |                   |
+   │           | engine type       | time series
+   │           | count             | 7200020
+   │           | offset            | 7200000
+   │           | useOffsetOptimize | true
+   └── ts scan |                   |
+               | ts-table          | stbl_raw
+               | ordered type      | order scan
+               | access mode       | tableTableMeta
+               | spans:fromTime    | 2024-11-01 00:00:00.001 +0000 UTC
+               | spans:toTime      | 2024-11-29 23:59:59.999 +0000 UTC
+               | tag filter[0]     | iot_hub_name = 'kaiwu_mqtt'
+(14 rows)
+> explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30'  and device='1' and iot_hub_name='kaiwu_mqtt' order by ts limit 20 offset 7200000;
+      tree     |       field       |            description
+---------------+-------------------+------------------------------------
+               | distributed       | true
+               | vectorized        | false
+  limit        |                   |
+   │           | engine type       | time series
+   │           | count             | 7200020
+   │           | offset            | 7200000
+   │           | useOffsetOptimize | true
+   └── ts scan |                   |
+               | ts-table          | stbl_raw
+               | ordered type      | order scan
+               | access mode       | tagIndex
+               | spans:fromTime    | 2024-11-01 00:00:00.001 +0000 UTC
+               | spans:toTime      | 2024-11-29 23:59:59.999 +0000 UTC
+               | ptag filter[0]    | device = '1'
+               | ptag filter[1]    | iot_hub_name = 'kaiwu_mqtt'
+(15 rows)
+> explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30'  and device='1' and iot_hub_name='kaiwu_mqtt' and length(data) < 10 order by ts limit 20 offset 7200000;
+             tree             |     field      |            description
+------------------------------+----------------+------------------------------------
+                              | distributed    | true
+                              | vectorized     | false
+  limit                       |                |
+   │                          | engine type    | time series
+   │                          | offset         | 7200000
+   └── limit                  |                |
+        │                     | engine type    | time series
+        │                     | count          | 7200020
+        └── sort              |                |
+             │                | order          | +ts
+             └── synchronizer |                |
+                  └── ts scan |                |
+                              | ts-table       | stbl_raw
+                              | access mode    | tagIndex
+                              | spans:fromTime | 2024-11-01 00:00:00.001 +0000 UTC
+                              | spans:toTime   | 2024-11-29 23:59:59.999 +0000 UTC
+                              | filter         | length(data) < 10
+                              | ptag filter[0] | device = '1'
+                              | ptag filter[1] | iot_hub_name = 'kaiwu_mqtt'
+(19 rows)
+> explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30'  and device='1' and iot_hub_name='kaiwu_mqtt' order by ts limit 2000 offset 7200000;
+             tree             |     field      |            description
+------------------------------+----------------+------------------------------------
+                              | distributed    | true
+                              | vectorized     | false
+  limit                       |                |
+   │                          | engine type    | time series
+   │                          | offset         | 7200000
+   └── limit                  |                |
+        │                     | engine type    | time series
+        │                     | count          | 7202000
+        └── sort              |                |
+             │                | order          | +ts
+             └── synchronizer |                |
+                  └── ts scan |                |
+                              | ts-table       | stbl_raw
+                              | access mode    | tagIndex
+                              | spans:fromTime | 2024-11-01 00:00:00.001 +0000 UTC
+                              | spans:toTime   | 2024-11-29 23:59:59.999 +0000 UTC
+                              | ptag filter[0] | device = '1'
+                              | ptag filter[1] | iot_hub_name = 'kaiwu_mqtt'
+(18 rows)
+> use defaultdb;
+SET
+> drop database stbl cascade;
+DROP DATABASE

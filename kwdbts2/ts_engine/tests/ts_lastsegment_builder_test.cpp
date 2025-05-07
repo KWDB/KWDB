@@ -53,7 +53,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
     CreateTsTable meta;
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
-    auto s = mgr->CreateTable(nullptr, table_id, &meta);
+    auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::shared_ptr<TsTableSchemaManager> schema_mgr;
     s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
@@ -180,7 +180,7 @@ R GenBuilders(TSTableID table_id) {
   CreateTsTable meta;
   ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
   auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
-  auto s = mgr->CreateTable(nullptr, table_id, &meta);
+  auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 
@@ -279,14 +279,16 @@ class TimestampChecker {
  public:
   TimestampChecker(timestamp64 initial, int interval) : cur_ts(initial), int_(interval) {}
   void operator()(TSSlice r) {
-    ASSERT_EQ(r.len, 8);
+    ASSERT_EQ(r.len, 16);
     timestamp64 val = *reinterpret_cast<timestamp64 *>(r.data);
     if (first) {
       EXPECT_EQ(val, cur_ts);
+      assert(val == cur_ts);
       first = false;
       return;
     }
-    ASSERT_EQ(val - cur_ts, int_);
+    EXPECT_EQ(val - cur_ts, int_);
+    assert(val - cur_ts == int_);
     cur_ts = val;
   }
 };
@@ -488,7 +490,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
         ASSERT_EQ(ret, KStatus::SUCCESS);
         for (int i = 0; i < s.GetRowNum(); ++i) {
           TSSlice val;
-          val.len = (icol == 0 ? 8 : res.metric_schema[icol].size);
+          val.len = res.metric_schema[icol].size;
           val.data = value + val.len * i;
           checker_funcs[dtypes[icol]](val);
         }

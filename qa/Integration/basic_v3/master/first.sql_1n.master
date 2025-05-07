@@ -1,0 +1,59 @@
+> create ts database first_db;
+CREATE TS DATABASE
+> use first_db;
+SET
+> create table t(k_timestamp timestamp not null, x float, y int, z varchar(32)) tags(a int not null) primary tags (a);
+CREATE TABLE
+> insert into t values('2023-07-29 03:11:59.688', 1.0, 1, 'a', 1);
+INSERT 1
+> insert into t values('2023-07-29 03:12:59.688', 2.0, 2, NULL, 1);
+INSERT 1
+> insert into t values('2023-07-29 03:15:59.688', 3.0, 1, 'a', 1);
+INSERT 1
+> insert into t values('2023-07-29 03:18:59.688', 4.0, 2, 'b', 1);
+INSERT 1
+> insert into t values('2023-07-29 03:25:59.688', 5.0, 5, 'e', 1);
+INSERT 1
+> insert into t values('2023-07-29 03:35:59.688', 6.0, 6, 'e', 1);
+INSERT 1
+> insert into t values('2023-07-29 03:10:59.688', 0.1, NULL, 'b', 1);
+INSERT 1
+> insert into t values('2023-07-29 03:26:59.688', NULL, 5, 'e', 1);
+INSERT 1
+> select first(*) from t;
+       first(k_timestamp)       | first(x) | first(y) | first(z) | first(a)
+--------------------------------+----------+----------+----------+-----------
+  2023-07-29 03:10:59.688+00:00 |      0.1 |        1 | b        |        1
+(1 row)
+> select firstts(*) from t;
+      firstts(k_timestamp)      |          firstts(x)           |          firstts(y)           |          firstts(z)           |          firstts(a)
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+--------------------------------
+  2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:11:59.688+00:00 | 2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:10:59.688+00:00
+(1 row)
+> select first_row(*) from t;
+     first_row(k_timestamp)     | first_row(x) | first_row(y) | first_row(z) | first_row(a)
+--------------------------------+--------------+--------------+--------------+---------------
+  2023-07-29 03:10:59.688+00:00 |          0.1 | NULL         | b            |            1
+(1 row)
+> select first_row_ts(*) from t;
+    first_row_ts(k_timestamp)   |        first_row_ts(x)        |        first_row_ts(y)        |        first_row_ts(z)        |        first_row_ts(a)
+--------------------------------+-------------------------------+-------------------------------+-------------------------------+--------------------------------
+  2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:10:59.688+00:00 | 2023-07-29 03:10:59.688+00:00
+(1 row)
+> create table t1(k_timestamp timestamp not null, x float, y int) tags(a int not null, b varchar(10)) primary tags (a);
+CREATE TABLE
+> insert into t1 values('2023-07-29 03:11:59.688', 4.0, 2, 1, 'a');
+INSERT 1
+> insert into t1 values('2023-07-29 03:10:59.688', 0.1, NULL, 1, 'a');
+INSERT 1
+> insert into t1 values('2023-07-29 03:35:59.688', 6.0, 6, 1, 'b');
+INSERT 1
+> select first(x),first(y) from t1 group by b having b = 'a';
+  first | first
+--------+--------
+    0.1 |     2
+(1 row)
+> use defaultdb;
+SET
+> drop database first_db cascade;
+DROP DATABASE

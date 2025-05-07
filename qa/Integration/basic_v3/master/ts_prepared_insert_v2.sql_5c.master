@@ -1,0 +1,176 @@
+> drop database if exists tsdb cascade;
+DROP DATABASE
+> create ts database tsdb;
+CREATE TS DATABASE
+> use tsdb;
+SET
+> create table nt(ts timestamp not null, name char(20), age int not null, height float) tags(ptag int not null) primary tags(ptag);
+CREATE TABLE
+> prepare p1 as insert into tsdb.nt values($1,$2,$3,$4,$5),('2023-08-16 08:51:14.623', $6,12,$7,$8),($9,'nick',29,$10,$11);
+PREPARE
+> execute p1('2023-08-16 08:51:14.623','a',1,1.85,1, 'b',1.73,1, '2023-08-16 08:51:14.623',1.69,1);
+INSERT 3
+> execute p1(1692147075000,'a',1,1.85,1, 'b',1.73,1, 1692147075000,1.69,1);
+INSERT 3
+> execute p1('2023-08-16 08:51:14.623','a',1,1.85,1, 'b',1.73,1, '2023-08-16 08:51:14.623',1.69,1,'error');
+ERROR: wrong number of parameters for prepared statement "p1": expected 11, got 12
+SQLSTATE: 42601
+> select ts from nt order by ts;
+               ts
+---------------------------------
+  2023-08-16 00:51:15+00:00
+  2023-08-16 08:51:14.623+00:00
+(2 rows)
+> prepare p2 as insert into nt values ($1,$2,$3,$4,$5),($6,$7,$8,$9,$10);
+PREPARE
+> execute p2('2023-08-16 08:51:14.623','a',1,1.1,2, '2023-08-16 08:51:14.623','b',2,2.2,2);
+INSERT 2
+> select ts from nt order by ts;
+               ts
+---------------------------------
+  2023-08-16 00:51:15+00:00
+  2023-08-16 08:51:14.623+00:00
+  2023-08-16 08:51:14.623+00:00
+(3 rows)
+> prepare p3 as insert into nt(height, age, ts, name, ptag) values ($1,$2,'2023-08-16 08:51:14.623',$3,$4);
+PREPARE
+> execute p3(1.71, 25, 'xiaohong',3);
+INSERT 1
+> select ts from nt order by ts;
+               ts
+---------------------------------
+  2023-08-16 00:51:15+00:00
+  2023-08-16 08:51:14.623+00:00
+  2023-08-16 08:51:14.623+00:00
+  2023-08-16 08:51:14.623+00:00
+(4 rows)
+> prepare p4 as insert into nt values ($1,$2,$3,$4,$5);
+PREPARE
+> execute p4('2023-08-16 08:51:14.623', 'a', null, 1.85, 4);
+ERROR: null value in column "age" violates not-null constraint
+SQLSTATE: 23502
+> select ts from nt order by ts;
+               ts
+---------------------------------
+  2023-08-16 00:51:15+00:00
+  2023-08-16 08:51:14.623+00:00
+  2023-08-16 08:51:14.623+00:00
+  2023-08-16 08:51:14.623+00:00
+(4 rows)
+> use defaultdb;
+SET
+> drop database if exists tsdb cascade;
+DROP DATABASE
+> create ts database tsdb;
+CREATE TS DATABASE
+> use tsdb;
+SET
+> create table tsdb.tt(ts timestamp not null, f float4) tags(ptag int not null) primary tags(ptag);
+CREATE TABLE
+> prepare p6 as insert into tsdb.tt values($1,$2,1);
+PREPARE
+> execute p6 ('2023-08-16 08:51:14.623', -2000.2021);
+INSERT 1
+> create table tsdb.test(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag);
+CREATE TABLE
+> prepare p7 as insert into test values($1,$2,1);
+PREPARE
+> execute p7('2023-10-27 12:13:14', NULL);
+INSERT 1
+> create table tsdb.insertBool(ts timestamp not null, a bool) tags(ptag int not null) primary tags(ptag);
+CREATE TABLE
+> insert into tsdb.insertBool values('2023-10-27 12:13:14', 11111, 1);
+ERROR: could not resolve "11111" as BOOL type (column a)
+SQLSTATE: 42804
+> prepare p8 as insert into tsdb.insertBool values($1,$2,1);
+PREPARE
+> execute p8('2023-10-27 12:13:14', 11111);
+ERROR: could not resolve "11111" as BOOL type (column p8)
+SQLSTATE: 42809
+> use defaultdb;
+SET
+> drop database tsdb cascade;
+DROP DATABASE
+> drop database if exists test_insert2 cascade;
+DROP DATABASE
+> create ts database test_insert2;
+CREATE TS DATABASE
+> create table test_insert2.t1(ts timestamptz not null,e1 timestamp,e2 int2)tags (tag1 int not null)primary tags(tag1);
+CREATE TABLE
+> prepare p9 as insert into test_insert2.t1 values($1,$2,$3,$4);
+PREPARE
+> prepare p10 as delete from test_insert2.t1 where ts = $1;
+PREPARE
+> execute p9('2022-02-02 11:11:11+00','2024-02-02 11:11:11+00', 1, 111);
+INSERT 1
+> execute p9('2022-02-02 11:11:12+00','2024-02-02 11:11:11+00', 2, 111);
+INSERT 1
+> execute p9('2022-02-02 11:11:13+00','2024-02-02 11:11:11+00', 3, 111);
+INSERT 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 11:11:11+00:00 | 2024-02-02 11:11:11+00:00 |  1 |  111
+  2022-02-02 11:11:12+00:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 11:11:13+00:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+(3 rows)
+> set time zone 8;
+SET
+> execute p10('2022-02-02 11:11:11+00');
+DELETE 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 19:11:12+08:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 19:11:13+08:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+(2 rows)
+> execute p9('2022-02-02 11:11:14+00','2024-02-02 12:11:11+00', 4, 222);
+INSERT 1
+> execute p9('2022-02-02 19:11:15','2024-02-02 12:11:11+00', 5, 222);
+INSERT 1
+> execute p9('2022-02-02 19:11:16','2024-02-02 12:11:11+00', 6, 222);
+INSERT 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 19:11:12+08:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 19:11:13+08:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+  2022-02-02 19:11:14+08:00 | 2024-02-02 12:11:11+00:00 |  4 |  222
+  2022-02-02 19:11:15+08:00 | 2024-02-02 12:11:11+00:00 |  5 |  222
+  2022-02-02 19:11:16+08:00 | 2024-02-02 12:11:11+00:00 |  6 |  222
+(5 rows)
+> set time zone 1;
+SET
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 12:11:12+01:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 12:11:13+01:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+  2022-02-02 12:11:14+01:00 | 2024-02-02 12:11:11+00:00 |  4 |  222
+  2022-02-02 12:11:15+01:00 | 2024-02-02 12:11:11+00:00 |  5 |  222
+  2022-02-02 12:11:16+01:00 | 2024-02-02 12:11:11+00:00 |  6 |  222
+(5 rows)
+> execute p10('2022-02-02 11:11:14+00');
+DELETE 1
+> execute p10('2022-02-02 12:11:12');
+DELETE 1
+> execute p10('2022-02-02 12:11:15');
+DELETE 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 12:11:13+01:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+  2022-02-02 12:11:16+01:00 | 2024-02-02 12:11:11+00:00 |  6 |  222
+(2 rows)
+> delete from test_insert2.t1 where ts < '2022-02-02 12:11:14';
+DELETE 1
+> delete from test_insert2.t1 where ts > '2022-02-02 11:11:15+00';
+DELETE 1
+> select * from test_insert2.t1 order by ts;
+  ts | e1 | e2 | tag1
+-----+----+----+-------
+(0 rows)
+> drop table test_insert2.t1;
+DROP TABLE
+> drop database if exists test_insert2 cascade;
+DROP DATABASE

@@ -201,7 +201,7 @@ func _ACCUMULATE_SUM(a *sum_TYPEAgg, nulls *coldata.Nulls, i int, _HAS_NULLS boo
 		}
 		a.scratch.curIdx++
 		// {{with .Global}}
-		a.scratch.curAgg = zero_TYPEValue
+		a.scratch.curAgg = zero_TemplateTypeValue
 		// {{end}}
 
 		// {{/*

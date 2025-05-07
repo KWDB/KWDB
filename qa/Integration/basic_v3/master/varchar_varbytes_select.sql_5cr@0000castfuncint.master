@@ -1,0 +1,339 @@
+> select cast(e1 as float4) from test_SELECT_col.t1  order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select cast(e1 as float8) from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select cast(e1 as int4) from test_SELECT_col.t1  order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select cast(e1 as int8) from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select cast(e3 as int4) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> select cast(e3 as int2) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> select cast(e1 as bool) from test_SELECT_col.t1 order by k_timestamp;
+   e1
+---------
+  false
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+(18 rows)
+> select cast(e1 as varchar) from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+  0
+  20002
+  20002
+  30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+  32767
+  -32768
+  32050
+  32767
+(18 rows)
+> select cast(e1 as varbytes) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: invalid cast: int2 -> varbytes
+SQLSTATE: 42846
+> select cast(e1 as char) from test_SELECT_col.t1 order by k_timestamp;
+  e1
+------
+   0
+   2
+   2
+   3
+  -
+  -
+  -
+  -
+  -
+  -
+  -
+  -
+  -
+  -
+   3
+  -
+   3
+   3
+(18 rows)
+> select cast(e1 as char(1023)) from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select cast(e1 as nchar(1023)) from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+  0
+  20002
+  20002
+  30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+  32767
+  -32768
+  32050
+  32767
+(18 rows)
+> select cast(val1 as int2) from test_SELECT_col.t1 order by k_timestamp;
+  val1
+--------
+   100
+   100
+   400
+   400
+   400
+   400
+     0
+     0
+     0
+     0
+     0
+     0
+     0
+     0
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> select cast(val1 as bool) from test_SELECT_col.t1 order by k_timestamp;
+  val1
+---------
+  true
+  true
+  true
+  true
+  true
+  true
+  false
+  false
+  false
+  false
+  false
+  false
+  false
+  false
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> select cast(val1 as varchar) from test_SELECT_col.t1 order by k_timestamp;
+  val1
+--------
+  100
+  100
+  400
+  400
+  400
+  400
+  0
+  0
+  0
+  0
+  0
+  0
+  0
+  0
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> select cast(val1 as char) from test_SELECT_col.t1 order by k_timestamp;
+  val1
+--------
+     1
+     1
+     4
+     4
+     4
+     4
+     0
+     0
+     0
+     0
+     0
+     0
+     0
+     0
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> select cast(val1 as char(1023)) from test_SELECT_col.t1 order by k_timestamp;
+  val1
+--------
+   100
+   100
+   400
+   400
+   400
+   400
+     0
+     0
+     0
+     0
+     0
+     0
+     0
+     0
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> select cast(val1 as nchar(1023)) from test_SELECT_col.t1 order by k_timestamp;
+  val1
+--------
+  100
+  100
+  400
+  400
+  400
+  400
+  0
+  0
+  0
+  0
+  0
+  0
+  0
+  0
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)

@@ -94,7 +94,7 @@ class TsTableSchemaManager {
  public:
   TsTableSchemaManager() = delete;
 
-  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id), schema_root_path_(root_path),
+  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id), schema_root_path_(root_path + '/'),
       schema_rw_lock_(RWLATCH_ID_TABLE_SCHEMA_RWLOCK) {
     metric_schema_path_ = "metric_" + std::to_string(table_id_) + "/";
     tag_schema_path_ = "tag_" + std::to_string(table_id_) + "/";
@@ -116,7 +116,8 @@ class TsTableSchemaManager {
 
   KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
                             ErrorInfo& err_info, uint32_t cur_version = 0);
-  KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version, ErrorInfo& err_info);
+  KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
+                      uint32_t ts_version, ErrorInfo& err_info);
 
   KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
@@ -139,6 +140,8 @@ class TsTableSchemaManager {
   uint32_t GetCurrentVersion() const;
 
   uint64_t GetPartitionInterval() const;
+
+  uint64_t GetDbID() const;
 
   int rdLock();
 

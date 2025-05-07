@@ -1,0 +1,365 @@
+> select e1::float from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select e1::int4 from test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> select e2::int2 from test_SELECT_col.t1 order by k_timestamp;
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> select e2::int8 from test_SELECT_col.t1 order by k_timestamp;
+      e2
+---------------
+            0
+      1000002
+      2000003
+      3000000
+     -3000003
+     -2000002
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+   2147483647
+  -2147483648
+         NULL
+         NULL
+(18 rows)
+> select e3::int2 from test_SELECT_col.t1 order by k_timestamp;
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> select e3::int4 from test_SELECT_col.t1 order by k_timestamp;
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> select e4::float8 from test_SELECT_col.t1 order by k_timestamp;
+         e4
+--------------------
+                 0
+  1.0472e+06
+   22845.869140625
+    39845.87109375
+   -39845.87109375
+  -29845.869140625
+  -19845.869140625
+  -19845.869140625
+  -19845.869140625
+  -19845.869140625
+  -19845.869140625
+  -19845.869140625
+  -19845.869140625
+  -19845.869140625
+   9845.8701171875
+  9.842323456e+09
+   9845.8701171875
+  NULL
+(18 rows)
+> select e5::float4 from test_SELECT_col.t1 order by k_timestamp;
+        e5
+-------------------
+                0
+          -109810
+       200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+      -200.123459
+       200.123459
+       200.123459
+       200.123459
+  2.043543552e+13
+(18 rows)
+> select e6::int from test_SELECT_col.t1 order by k_timestamp;
+   e6
+--------
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+  NULL
+(18 rows)
+> select e6::varchar from test_SELECT_col.t1 order by k_timestamp;
+   e6
+--------
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  NULL
+(18 rows)
+> select e6::char(4) from test_SELECT_col.t1 order by k_timestamp;
+   e6
+--------
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  NULL
+(18 rows)
+> select e7::int from test_SELECT_col.t1 order by k_timestamp;
+       e7
+-----------------
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+  1577880000000
+(18 rows)
+> select e7::varchar from test_SELECT_col.t1 order by k_timestamp;
+             e7
+-----------------------------
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+(18 rows)
+> select e8::nchar(255) from test_SELECT_col.t1 order by k_timestamp;
+                     e8
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)
+> select e8::varchar(255) from test_SELECT_col.t1 order by k_timestamp;
+                     e8
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)
+> select e9::char(255) from test_SELECT_col.t1 order by k_timestamp;
+                     e9
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(18 rows)
+> select e9::varchar(255) from test_SELECT_col.t1 order by k_timestamp;
+                     e9
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(18 rows)
+> select e10:char(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e10:char(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e10:nchar(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e10:nchar(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e11:nchar(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e11:nchar(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e15:nchar(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e15:nchar(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e15:varchar(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e15:varchar(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e15:char(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e15:char(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e19:varchar(255) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e19:varchar(255) from test_SELECT_col.t1 order by k_timestamp
+          ^
+> select e22:bytes(1023) from test_SELECT_col.t1 order by k_timestamp;
+ERROR: at or near ":": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select e22:bytes(1023) from test_SELECT_col.t1 order by k_timestamp
+          ^
