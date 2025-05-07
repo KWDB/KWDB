@@ -99,6 +99,33 @@ inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
+  KStatus ret;
+  ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
+              cur_partition_index_, entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
+
+  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    ret = AddLastSegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+
+    ret = AddEntitySegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return ret;
+    }
+  }
+  return ret;
+}
+
 KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span,
                                                               ResultSet* res, k_uint32* count) {
   *count = ts_blk_span.GetRowNum();
@@ -331,7 +358,7 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
   return KStatus::SUCCESS;
 }
 
-TsSortedRowDataIteratorV2Impl::TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
+TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
                                                               DATATYPE ts_col_type,
@@ -345,17 +372,65 @@ TsSortedRowDataIteratorV2Impl::TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsV
                                                                             table_version) {
 }
 
-TsSortedRowDataIteratorV2Impl::~TsSortedRowDataIteratorV2Impl() {
+TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::Init(bool is_reversed) {
-  // TODO(Yongyan): initialization
-  return KStatus::FAIL;
+KStatus TsSortedRawDataIteratorV2Impl::Init(bool is_reversed) {
+  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
+  if (ret != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  return ScanAndSortEntityData();
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  // TODO(Yongyan): scan next batch
-  return KStatus::FAIL;
+KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
+  if (cur_entity_index_ < entity_ids_.size()) {
+    // scan row data for current entity
+    KStatus ret = ScanEntityBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to scan block spans for entity(%d).", entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+    // sort the block span data
+    block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
+    ret = block_span_sorted_iterator_->Init();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity() {
+  ++cur_entity_index_;
+  return ScanAndSortEntityData();
+}
+
+KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+  *count = 0;
+  if (cur_entity_index_ >= entity_ids_.size()) {
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
+  KStatus ret;
+  bool is_done = false;
+  TsBlockSpan block_span;
+  ret = block_span_sorted_iterator_->Next(&block_span, &is_done);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
+  if (is_done) {
+    ret = MoveToNextEntity();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to move to next entity for sorted row data scan, cur_entity_index_: %d.", cur_entity_index_);
+      return KStatus::FAIL;
+    }
+    return KStatus::SUCCESS;
+  } else {
+    return ConvertBlockSpanToResultSet(block_span, res, count);
+  }
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
