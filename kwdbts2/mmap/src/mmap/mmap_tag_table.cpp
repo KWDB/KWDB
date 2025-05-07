@@ -794,19 +794,6 @@ int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const s
       if (errcode != 0) {
         LOG_ERROR("create hash index symlink failed, errorcode:%d, errno:%d", errcode, errno)
       }
-      auto new_index = new MMapNTagHashIndex(mmap_ntag_index->keySize(), mmap_ntag_index->getIndexID(),
-                                             mmap_ntag_index->getColIDs());
-      err_info.errcode = new_index->open(new_index_file_name, m_db_path_, tag_part_ptr->m_db_name_,
-                                         MMAP_OPEN, err_info);
-      if (err_info.errcode < 0) {
-        delete new_index;
-        new_index = nullptr;
-        err_info.errmsg = "create Hash Index failed.";
-        LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
-                  m_tbl_sub_path_.c_str(), new_index_file_name.c_str(), err_info.errmsg.c_str())
-        tag_part_ptr->stopWrite();
-        return err_info.errcode;
-      }
       tag_part_ptr->NtagIndexRWMutexXLock();
       tag_part_ptr->getMmapNTagHashIndex().emplace_back(mmap_ntag_index);
       tag_part_ptr->NtagIndexRWMutexUnLock();
@@ -2144,6 +2131,8 @@ int TagPartitionTableManager::RollbackPartitionTableVersion(TableVersion need_ro
   part_table->second->remove();
   delete part_table->second;
   m_partition_tables_.erase(part_table);
+  std::string real_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(need_rollback_version) + "/";
+  fs::remove_all(real_path);
   unLock();
   return 0;
 }
