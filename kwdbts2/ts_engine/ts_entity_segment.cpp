@@ -899,10 +899,6 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
       } else {
         metric_schema = block->GetMetricSchema();
       }
-      // TODO(limeng04)
-      if (!metric_schema.empty()) {
-        metric_schema[0].size = 8;
-      }
       // init the block segment block
       block = std::make_shared<TsEntityBlock>(block_span.GetTableID(), block_span.GetTableVersion(),
                                                       block_span.GetEntityID(), metric_schema);
