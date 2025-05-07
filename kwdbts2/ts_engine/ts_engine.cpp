@@ -388,15 +388,12 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   wal_mgr_->Init(ctx);
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   std::cout<< "start lsn : " << wal_mgr_->FetchCheckpointLSN() <<   "\tstop  lsn: " << wal_mgr_->FetchCurrentLSN() << std::endl;
-//  if (!end_chk) {
-//    LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
-//    logs.clear();
-//  }
-  wal_mgr_->SwitchNextFile();
-  std::cout<< "read chk logs count: " << logs.size() << std::endl;
-  if (logs.empty() && end_chk) {
-    std::cout<< "read chk logs count 0. " << std::endl;
+  if (!end_chk) {
+    LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
+    logs.clear();
   }
+//  wal_mgr_->SwitchNextFile();
+  std::cout<< "read chk logs count: " << logs.size() << std::endl;
   for (auto log : logs) {
     std::cout<< "read logs type: " << log->getType() << std::endl;
   }
@@ -413,11 +410,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     vgrp_lsn.emplace(vgrp_id, lsn);
 
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
-  }
-
-  std::cout<< "read logs count: " << logs.size() << std::endl;
-  for (auto log : logs) {
-    std::cout<< "read logs type: " << log->getType() << std::endl;
   }
   // 3. merge chk log and wal log
   std::vector<uint64_t> commit;
@@ -461,8 +453,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
-//  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
-//  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
+  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
 
   // 7. a). update checkpoint LSN .
   //    b). trig all vgroup write checkpoint wal.
