@@ -169,7 +169,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
   this->Lock();
   if (!Remove(file_mgr_->getChkMetaFilePath())) {
     std::cout << "failed to remove meta file.11111" << std::endl;
-    return KStatus::FAIL;
   }
   KStatus s = initWalMeta(ctx, true);
   if (s == KStatus::FAIL) {
