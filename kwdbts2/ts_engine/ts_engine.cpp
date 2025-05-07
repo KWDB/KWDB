@@ -123,11 +123,6 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     LOG_INFO("TsTable %lu exist.", table_id);
     return KStatus::SUCCESS;
   }
-  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr);
-  if (s == KStatus::SUCCESS) {
-    return s;
-  }
 
   uint64_t db_id = 1;
   if (meta->ts_table().has_database_id()) {
@@ -141,6 +136,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
   }
   LOG_INFO("Create TsTable %lu success.", table_id);
 
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
   s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get table schema manager [%lu] failed.", table_id);

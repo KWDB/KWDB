@@ -9,15 +9,12 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#pragma once
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include "ts_blkspan_type_convert.h"
-#include "ts_agg.h"
 #include "ts_block.h"
 
 namespace kwdbts {
@@ -87,7 +84,7 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
  const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
   assert(!isVarLenType(dest_type.type));
   assert(col_id < schema.size());
-  uint32_t dest_type_size = col_id == 0 ? 8 : dest_type.size;
+  uint32_t dest_type_size = dest_type.size;
   TsBitmap blk_bitmap;
   auto s = block_->GetColBitmap(col_id, schema, blk_bitmap);
   if (s != KStatus::SUCCESS) {
