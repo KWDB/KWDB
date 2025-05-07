@@ -392,7 +392,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
     logs.clear();
   }
-//  wal_mgr_->SwitchNextFile();
+  wal_mgr_->SwitchNextFile();
   std::cout<< "read chk logs count: " << logs.size() << std::endl;
   for (auto log : logs) {
     std::cout<< "read logs type: " << log->getType() << std::endl;
@@ -446,6 +446,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
      LOG_ERROR("Failed to WriteIncompleteWAL.")
      return KStatus::FAIL;
    }
+   rewrite.clear();
 
   // 5. trig all vgroup flush
   for (const auto &vgrp: vgroups_) {
@@ -455,6 +456,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 6.write EndWAL to chk file
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
   wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
+  delete []end_chk_log;
 
   // 7. a). update checkpoint LSN .
   //    b). trig all vgroup write checkpoint wal.
