@@ -763,7 +763,10 @@ void WALMgr::CleanUp(kwdbContext_p ctx) {
 }
 
 KStatus WALMgr::RemoveChkFile(kwdbContext_p ctx) {
-  return Remove(file_mgr_->getChkFilePath()) ? KStatus::SUCCESS : KStatus::FAIL;
+  if (Remove(file_mgr_->getChkFilePath()) && Remove(file_mgr_->getChkMetaFilePath())) {
+    return KStatus::SUCCESS;
+  }
+  return KStatus::FAIL;
 }
 
 KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {

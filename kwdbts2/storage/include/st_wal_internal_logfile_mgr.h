@@ -126,6 +126,9 @@ class WALFileMgr {
   string getChkFilePath() {
     return wal_path_ + "kwdb_wal.chk";
   }
+  string getChkMetaFilePath() {
+    return wal_path_ + "kwdb_wal.meta";
+  }
 
 //  uint16_t getFileNoFromLSN(TS_LSN lsn) {
 //    uint16_t file_no = lsn / (opt_->wal_file_size << 20);

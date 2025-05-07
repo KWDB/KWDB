@@ -387,7 +387,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   bool end_chk = false;
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   if (!end_chk) {
-    LOG_INFO("Failed to detect the expected end checkpoint wal;skipping this file's content.")
+    LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
     logs.clear();
   }
   wal_mgr_->SwitchNextFile();
