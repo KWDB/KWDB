@@ -32,6 +32,7 @@
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"
+#include "ts_common.h"
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
 #include "ts_io.h"
@@ -331,6 +332,14 @@ struct ColumnBlockCacheV2 {
   }
 };
 
+static inline bool need_convert_ts(int dtype) {
+  return (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN ||
+          dtype == TIMESTAMP64_LSN_NANO);
+}
+
+constexpr static int VARCHAR_CACHE_ID = -1;
+constexpr static int TIMESTAMP8_CACHE_ID = -2;
+
 class TsLastBlock : public TsBlock {
  private:
   std::shared_ptr<TsLastSegment> lastsegment_;
@@ -368,28 +377,39 @@ class TsLastBlock : public TsBlock {
   }
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                      char** value) override {
+    int dtype = schema[col_id].type;
+    if (isVarLenType(dtype)) {
+      *value = nullptr;
+      return FAIL;
+    }
+
     int actual_colid = col_id + 2;
     auto s = LoadAllDataToCache(actual_colid);
     if (s == FAIL) {
       return FAIL;
     }
-    if (isVarLenType(schema[col_id].type)) {
-      *value = nullptr;
-      return FAIL;
+    if (need_convert_ts(dtype)) {
+      ConvertTS8to16(actual_colid);
+      actual_colid = TIMESTAMP8_CACHE_ID;
     }
     *value = column_cache_->GetColumnBlock(actual_colid)->data->data();
     return SUCCESS;
   }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
                         TSSlice& value) override {
+    int dtype = schema[col_id].type;
     int actual_colid = col_id + 2;
     auto s = LoadAllDataToCache(actual_colid);
     if (s == FAIL) {
       return FAIL;
     }
+
+    if (need_convert_ts(dtype)) {
+      ConvertTS8to16(actual_colid);
+      actual_colid = TIMESTAMP8_CACHE_ID;
+    }
     char* ptr = column_cache_->GetColumnBlock(actual_colid)->data->data();
-    int dtype = schema[col_id].type;
-    int dsize = 0;
+
     if (isVarLenType(dtype)) {
       s = LoadVarcharToCache();
       if (s == FAIL) {
@@ -397,22 +417,17 @@ class TsLastBlock : public TsBlock {
       }
       const size_t* data = reinterpret_cast<const size_t*>(ptr);
       size_t offset = data[row_num];
-      TSSlice result{column_cache_->GetColumnBlock(-1)->data->data() + offset, 2};
+      TSSlice result{column_cache_->GetColumnBlock(VARCHAR_CACHE_ID)->data->data() + offset, 2};
       uint16_t len;
       GetFixed16(&result, &len);
       value.data = result.data;
       value.len = len;
-    } else {
-      if (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN ||
-          dtype == TIMESTAMP64_LSN_NANO) {
-        // discard LSN
-        dsize = 8;
-      } else {
-        dsize = getDataTypeSize(dtype);
-      }
-      value.len = dsize;
-      value.data = ptr + dsize * row_num;
+      return SUCCESS;
     }
+    int dsize = getDataTypeSize(dtype);
+    value.len = dsize;
+    value.data = ptr + dsize * row_num;
+
     return SUCCESS;
   }
   bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
@@ -454,6 +469,30 @@ class TsLastBlock : public TsBlock {
     }
     return SUCCESS;
   }
+
+  void ConvertTS8to16(int ts_col_id) {
+    if (column_cache_->HasDataCached(TIMESTAMP8_CACHE_ID)) {
+      return;
+    }
+    assert(column_cache_->HasDataCached(ts_col_id));
+    const std::string& cached = *column_cache_->GetColumnBlock(ts_col_id)->data;
+    auto sz = cached.size();
+    assert(sz % 8 == 0);
+    auto count = sz / 8;
+    std::string tmp;
+    tmp.resize(count * 16);
+    struct TsWithLSN {
+      timestamp64 ts;
+      TS_LSN lsn;
+    };
+    TsWithLSN* ptr = reinterpret_cast<TsWithLSN*>(tmp.data());
+    const timestamp64* p_ts = reinterpret_cast<const timestamp64*>(cached.data());
+    for (int i = 0; i < count; ++i) {
+      ptr[i].ts = p_ts[i];
+    }
+    column_cache_->PutData(TIMESTAMP8_CACHE_ID, std::move(tmp));
+  }
+
   KStatus LoadAllDataToCache(int actual_colid) {
     if (!column_cache_->HasDataCached(actual_colid)) {
       std::unique_ptr<TsBitmap> bitmap;
@@ -471,14 +510,13 @@ class TsLastBlock : public TsBlock {
     return SUCCESS;
   }
   KStatus LoadVarcharToCache() {
-    // we use idx -1 to cache varchar block
-    if (!column_cache_->HasDataCached(-1)) {
+    if (!column_cache_->HasDataCached(VARCHAR_CACHE_ID)) {
       std::string data;
       auto s = ReadVarcharBlock(lastsegment_->file_.get(), block_info_, &data);
       if (s == FAIL) {
         return FAIL;
       }
-      column_cache_->PutData(-1, std::move(data));
+      column_cache_->PutData(VARCHAR_CACHE_ID, std::move(data));
     }
     return SUCCESS;
   }

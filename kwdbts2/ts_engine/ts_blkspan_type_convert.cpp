@@ -9,15 +9,12 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#pragma once
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include "ts_blkspan_type_convert.h"
-#include "ts_agg.h"
 #include "ts_block.h"
 
 namespace kwdbts {

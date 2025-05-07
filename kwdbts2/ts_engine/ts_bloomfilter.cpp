@@ -51,8 +51,10 @@ namespace kwdbts {
 const char TsBloomFilter::MAGIC[] = "TSBLOOMFILTER";
 void TsBloomFilter::CalcHash(TSEntityID eid, std::vector<size_t>* result) const {
   assert(result->size() == k_);
+  auto h1 = hash1(eid);
+  auto h2 = hash2(eid);
   for (int i = 0; i < k_; ++i) {
-    size_t hash = hash1(eid) + i * hash2(eid) + i * i * i;
+    size_t hash = h1 + i * h2 + i * i * i;
     size_t n = hash % m_;
     (*result)[i] = n;
   }
