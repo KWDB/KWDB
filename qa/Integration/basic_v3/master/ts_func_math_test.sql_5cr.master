@@ -1,0 +1,523 @@
+> drop database if EXISTS ts_db cascade;
+DROP DATABASE
+> create ts database ts_db;
+CREATE TS DATABASE
+> create table ts_db.t1(
+k_timestamp timestamp not null,
+e1 int2 not null,
+e2 int not null,
+e3 int8 not null,
+e4 float4 not null,
+e5 float8 not null,
+e6 char(10) not null,
+e7 char(10) not null,
+e8 varbytes(20) not null,
+e9 varbytes(20) not null) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
+CREATE TABLE
+> create table ts_db.t2(
+k_timestamp timestamp not null,
+e1 float4 not null,
+e2 float8 not null
+) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
+CREATE TABLE
+> create table ts_db.t3(
+k_timestamp timestamp not null,
+e1 float4 not null,
+e2 float8 not null
+) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
+CREATE TABLE
+> insert into ts_db.t1 values('2018-10-10 10:00:00', -1000, 2000, 233, 123.45, 196.32, 'e2', 'a3', b'\x123', b'\xaa\xbb\xee', 100);
+INSERT 1
+> insert into ts_db.t1 values('2018-10-10 10:00:01', 0, 3000, 322, 0.0, 156.89, 'abc', 'e2f', b'\x1234', b'\xaa\xbb\xcc', 100);
+INSERT 1
+> insert into ts_db.t1 values('2018-10-10 10:00:02', 3000, 4000, 555, -98.63, 298.36, 'ab', 'cf', b'\xff', b'\xaa\xbb\x12',100);
+INSERT 1
+> insert into ts_db.t1 values('2018-10-10 10:00:03', 3000, 2000, 666, 56.98, 16.32, 'abc', '123', b'\x123', b'\xaa\xbb\xcc', 100);
+INSERT 1
+> insert into ts_db.t1 values('2018-10-10 10:00:04', 2000, 2000, 777, 0.5, 16.32, '1q', 'a1c', b'\xa1', b'\xa1\xb2\xe3', 100);
+INSERT 1
+> insert into ts_db.t2 values('2018-10-10 10:00:05', 123.45, 196.32, 100);
+INSERT 1
+> insert into ts_db.t2 values('2018-10-10 10:00:06', 56.98, 16.32, 100);
+INSERT 1
+> insert into ts_db.t2 values('2018-10-10 10:00:07', 0.5, 16.32, 100);
+INSERT 1
+> insert into ts_db.t3 values('2018-10-10 10:00:08', -98.63, 298.36, 100);
+INSERT 1
+> insert into ts_db.t3 values('2018-10-10 10:00:09', 98.63, -298.36, 100);
+INSERT 1
+> SELECT isnan(e4) FROM ts_db.t1;
+  isnan
+---------
+  false
+  false
+  false
+  false
+  false
+(5 rows)
+> SELECT isnan(e5) FROM ts_db.t1;
+  isnan
+---------
+  false
+  false
+  false
+  false
+  false
+(5 rows)
+> SELECT ln(e4) FROM ts_db.t1;
+          ln
+-----------------------
+   4.8158361910705905
+  -Inf
+  NaN
+    4.042700321036001
+  -0.6931471805599453
+(5 rows)
+> SELECT ln(e5) FROM ts_db.t1;
+         ln
+---------------------
+  5.279745980962601
+  5.055544922844864
+  5.698300811086963
+  2.792391349535961
+  2.792391349535961
+(5 rows)
+> SELECT log(e4) FROM ts_db.t1;
+          log
+-----------------------
+   2.0914910835319316
+  -Inf
+  NaN
+   1.7557224414144401
+  -0.3010299956639812
+(5 rows)
+> SELECT log(e5) FROM ts_db.t1;
+         log
+----------------------
+   2.292964545382929
+  2.1955952630055253
+   2.474740598479892
+  1.2127201544178423
+  1.2127201544178423
+(5 rows)
+> SELECT log(e4, e5) FROM ts_db.t1;
+ERROR: cannot take logarithm of zero
+SQLSTATE: 2201E
+> SELECT log(e5, e4) FROM ts_db.t1;
+ERROR: cannot take logarithm of zero
+SQLSTATE: 2201E
+> SELECT log(e1, e2) FROM ts_db.t2;
+         log
+----------------------
+  1.0963300601362191
+  0.6907243000441768
+  -4.028569152196771
+(3 rows)
+> SELECT log(e2, e1) FROM ts_db.t2;
+          log
+-----------------------
+   0.9121340701683851
+   1.4477556384450971
+  -0.2482270906171989
+(3 rows)
+> SELECT log(e1, e2) FROM ts_db.t3;
+ERROR: cannot take logarithm of a negative number
+SQLSTATE: 2201E
+> SELECT log(e2, e1) FROM ts_db.t3;
+ERROR: cannot take logarithm of a negative number
+SQLSTATE: 2201E
+> SELECT radians(e4) FROM ts_db.t1;
+        radians
+------------------------
+     2.154608908323778
+                     0
+   -1.7214181933051076
+    0.9944885997968858
+  0.008726646259971648
+(5 rows)
+> SELECT radians(e5) FROM ts_db.t1;
+        radians
+-----------------------
+   3.4264303875152677
+   2.7382470634539033
+    5.207364356250282
+  0.28483773392547457
+  0.28483773392547457
+(5 rows)
+> SELECT sign(e1) FROM ts_db.t1;
+  sign
+--------
+    -1
+     0
+     1
+     1
+     1
+(5 rows)
+> SELECT sign(e2) FROM ts_db.t1;
+  sign
+--------
+     1
+     1
+     1
+     1
+     1
+(5 rows)
+> SELECT sign(e3) FROM ts_db.t1;
+  sign
+--------
+     1
+     1
+     1
+     1
+     1
+(5 rows)
+> SELECT sign(e4) FROM ts_db.t1;
+  sign
+--------
+     1
+     0
+    -1
+     1
+     1
+(5 rows)
+> SELECT sign(e5) FROM ts_db.t1;
+  sign
+--------
+     1
+     1
+     1
+     1
+     1
+(5 rows)
+> SELECT trunc(e4) FROM ts_db.t1;
+  trunc
+---------
+    123
+      0
+    -98
+     56
+      0
+(5 rows)
+> SELECT trunc(e5) FROM ts_db.t1;
+  trunc
+---------
+    196
+    156
+    298
+     16
+     16
+(5 rows)
+> SELECT width_bucket(0, e1, e2, 3) FROM ts_db.t1;
+      width_bucket
+------------------------
+                     2
+                     1
+                     0
+                     4
+  -9223372036854775808
+(5 rows)
+> SELECT width_bucket(0, e2, e3, 3) FROM ts_db.t1;
+  width_bucket
+----------------
+             4
+             4
+             4
+             4
+             4
+(5 rows)
+> SELECT width_bucket(0, e1, e3, 3) FROM ts_db.t1;
+  width_bucket
+----------------
+             3
+             1
+             4
+             4
+             4
+(5 rows)
+> SELECT mod(e1, e2) FROM ts_db.t1;
+   mod
+---------
+  -1000
+      0
+   3000
+   1000
+      0
+(5 rows)
+> SELECT mod(e2, e1) FROM ts_db.t1;
+ERROR: zero modulus
+SQLSTATE: 22012
+> SELECT mod(e4, e5) FROM ts_db.t1;
+         mod
+----------------------
+  123.44999694824219
+                   0
+  -98.62999725341797
+   8.019999542236327
+                 0.5
+(5 rows)
+> SELECT mod(e5, e4) FROM ts_db.t1;
+         mod
+----------------------
+    72.8700030517578
+  NaN
+  2.4700082397461074
+               16.32
+  0.3200000000000003
+(5 rows)
+> SELECT pow(e1, e2) FROM ts_db.t1;
+ERROR: integer out of range
+SQLSTATE: 22003
+> SELECT pow(e2, e1) FROM ts_db.t1;
+ERROR: integer out of range
+SQLSTATE: 22003
+> SELECT pow(e4, e5) FROM ts_db.t1;
+           pow
+--------------------------
+  +Inf
+                       0
+  NaN
+  4.501841951014093e+28
+  1.2223356286462736e-05
+(5 rows)
+> SELECT pow(e5, e4) FROM ts_db.t1;
+            pow
+---------------------------
+  1.1653761611539286e+283
+                        1
+  8.247865477619466e-245
+  1.2612286964426253e+69
+        4.039801975344831
+(5 rows)
+> SELECT pow(0,0) FROM ts_db.t1;
+ERROR: invalid argument for power function
+SQLSTATE: 2201F
+> SELECT round(e4) FROM ts_db.t1;
+  round
+---------
+    123
+      0
+    -99
+     57
+      0
+(5 rows)
+> SELECT round(e5) FROM ts_db.t1;
+  round
+---------
+    196
+    157
+    298
+     16
+     16
+(5 rows)
+> SELECT sin(e4) FROM ts_db.t1;
+          sin
+-----------------------
+  -0.8003528057122014
+                    0
+   0.9459868098405911
+   0.4180809726266119
+    0.479425538604203
+(5 rows)
+> SELECT sin(e5) FROM ts_db.t1;
+          sin
+-----------------------
+   0.9995637008393347
+  -0.1884981719469956
+  0.09117529375998511
+  -0.5745356741286307
+  -0.5745356741286307
+(5 rows)
+> SELECT sqrt(e4) FROM ts_db.t1;
+ERROR: cannot take square root of a negative number
+SQLSTATE: 2201F
+> SELECT sqrt(e5) FROM ts_db.t1;
+         sqrt
+----------------------
+  14.011423910509595
+  12.525573839150045
+  17.273100474437125
+   4.039801975344831
+   4.039801975344831
+(5 rows)
+> SELECT tan(e4) FROM ts_db.t1;
+          tan
+-----------------------
+   1.3349686167708625
+                    0
+   -2.917865173937983
+  0.46023390428247385
+   0.5463024898437905
+(5 rows)
+> SELECT tan(e5) FROM ts_db.t1;
+          tan
+------------------------
+    33.841582669532144
+  -0.19193895788016999
+  -0.09155664010270263
+    0.7019548385730938
+    0.7019548385730938
+(5 rows)
+> SELECT atan2(e4,e5) FROM ts_db.t1;
+         atan2
+------------------------
+    0.5613417658240741
+                     0
+   -0.3192649165750693
+    1.2918477665654367
+  0.030627674498432397
+(5 rows)
+> SELECT cbrt(e4) FROM ts_db.t1;
+         cbrt
+----------------------
+   4.979247276707619
+                   0
+  -4.620294660426172
+  3.8480509512251158
+  0.7937005259840998
+(5 rows)
+> SELECT cot(e4) FROM ts_db.t1;
+          cot
+-----------------------
+    0.749081279842283
+  +Inf
+  -0.3427163149729735
+   2.1728081975165363
+    1.830487721712452
+(5 rows)
+> SELECT div(e1,e2) FROM ts_db.t1;
+  div
+-------
+    0
+    0
+    0
+    1
+    1
+(5 rows)
+> SELECT div(e4,e5) FROM ts_db.t1;
+  div
+-------
+    0
+    0
+    0
+    3
+    0
+(5 rows)
+> SELECT exp(e4) FROM ts_db.t1;
+           exp
+--------------------------
+  4.108208393820498e+53
+                       1
+  1.4639843788913267e-43
+  5.573132648964517e+24
+      1.6487212707001282
+(5 rows)
+> SELECT fnv32(e6,e7) FROM ts_db.t1;
+    fnv32
+--------------
+   487135804
+  1881849484
+  3118363511
+  3613024805
+  1734509344
+(5 rows)
+> SELECT fnv32(e8,e9) FROM ts_db.t1;
+    fnv32
+--------------
+  1534933285
+   845737323
+  3104719821
+  1534933255
+  3060728010
+(5 rows)
+> SELECT fnv32a(e6,e7) FROM ts_db.t1;
+    fnv32a
+--------------
+  3162736146
+  2448460010
+  3425990295
+   951228933
+  1742569694
+(5 rows)
+> SELECT fnv32a(e8,e9) FROM ts_db.t1;
+    fnv32a
+--------------
+  2739357221
+   751039199
+  1900769189
+  2168918175
+  2944524660
+(5 rows)
+> SELECT fnv64(e6,e7) FROM ts_db.t1;
+         fnv64
+------------------------
+    955506935934383388
+   2593634015477542124
+   3375784916657917847
+   2635828873713441413
+  -7577875556383678560
+(5 rows)
+> SELECT fnv64(e8,e9) FROM ts_db.t1;
+         fnv64
+------------------------
+   1405872140318419685
+   7503620854780035371
+  -2874646230134580755
+   1405872140318419655
+    509104110628695434
+(5 rows)
+> SELECT fnv64a(e6,e7) FROM ts_db.t1;
+         fnv64a
+------------------------
+  -2440994559016560174
+  -3485028274378982742
+   -281583261727645321
+   7119243511811735397
+  -1803148031311328706
+(5 rows)
+> SELECT fnv64a(e8,e9) FROM ts_db.t1;
+        fnv64a
+-----------------------
+  3669718237104209829
+  -210646271463332833
+  6094916648235014277
+  3669751222453056159
+  1973941795090101780
+(5 rows)
+> SELECT crc32c(e6,e7) FROM ts_db.t1;
+    crc32c
+--------------
+  4236724295
+  1279427407
+  1945336518
+    26154185
+    55680549
+(5 rows)
+> SELECT crc32c(e8,e9) FROM ts_db.t1;
+    crc32c
+--------------
+  2793050312
+  1419613842
+  2653059033
+  1744596705
+  3006112152
+(5 rows)
+> SELECT crc32ieee(e6,e7) FROM ts_db.t1;
+  crc32ieee
+--------------
+  3378893347
+  3216414795
+    59550781
+  3473062748
+  3524474773
+(5 rows)
+> SELECT crc32ieee(e8,e9) FROM ts_db.t1;
+  crc32ieee
+--------------
+  2867856394
+   655920845
+  3743811424
+  2140161518
+  3822709203
+(5 rows)
+> drop database if EXISTS ts_db cascade;
+DROP DATABASE

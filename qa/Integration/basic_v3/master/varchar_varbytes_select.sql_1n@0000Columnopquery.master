@@ -1,0 +1,357 @@
+> SELECT e1+e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+   ?column?
+---------------
+            0
+      1020004
+      2020005
+      3030003
+     -3010004
+     -2020004
+     -1030004
+     -1030005
+     -1030006
+     -1030007
+     -1030008
+     -1030009
+     -1030010
+     -1030011
+   2147516414
+  -2147516416
+         NULL
+         NULL
+(18 rows)
+> SELECT e3+e3 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+ERROR: integer out of range
+SQLSTATE: 22003
+> SELECT e1+NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1-e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+   ?column?
+---------------
+            0
+      -980000
+     -1980001
+     -2969997
+      2990002
+      1980000
+       969998
+       969997
+       969996
+       969995
+       969994
+       969993
+       969992
+       969991
+  -2147450880
+   2147450880
+         NULL
+         NULL
+(18 rows)
+> SELECT e1-NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1*e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+     ?column?
+------------------
+               0
+     20002040004
+     40004060006
+     90009000000
+     30003030003
+     40004040004
+     30003030003
+     30004030004
+     30005030005
+     30006030006
+     30007030007
+     30008030008
+     30009030009
+     30010030010
+  70366596661249
+  70368744177664
+            NULL
+            NULL
+(18 rows)
+> SELECT e1*NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1/e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+ERROR: division undefined
+SQLSTATE: 22012
+> SELECT e1/0 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+ERROR: division by zero
+SQLSTATE: 22012
+> SELECT e1/NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1//e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+ERROR: division by zero
+SQLSTATE: 22012
+> SELECT e1//8 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+         0
+      2500
+      2500
+      3750
+     -1250
+     -2500
+     -3750
+     -3750
+     -3750
+     -3750
+     -3750
+     -3751
+     -3751
+     -3751
+      4095
+     -4096
+      4006
+      4095
+(18 rows)
+> SELECT e1//0 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+ERROR: division by zero
+SQLSTATE: 22012
+> SELECT e1//NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1%e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+ERROR: zero modulus
+SQLSTATE: 22012
+> SELECT e1%2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+  ?column?
+------------
+         0
+         0
+         0
+         1
+        -1
+         0
+        -1
+         0
+        -1
+         0
+        -1
+         0
+        -1
+         0
+         1
+         0
+         0
+         1
+(18 rows)
+> SELECT e1%NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1^2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+   ?column?
+--------------
+           0
+   400080004
+   400080004
+   900180009
+   100020001
+   400080004
+   900180009
+   900240016
+   900300025
+   900360036
+   900420049
+   900480064
+   900540081
+   900600100
+  1073676289
+  1073741824
+  1027202500
+  1073676289
+(18 rows)
+> SELECT e1^0 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+ERROR: invalid argument for power function
+SQLSTATE: 2201F
+> SELECT e1^NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+  NULL
+(18 rows)
+> SELECT e1^9223372036854775807 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+ERROR: exponent out of range
+SQLSTATE: 22003
+> SELECT e6&e6 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <bool> & <bool>
+SQLSTATE: 22023
+> SELECT e1&e2 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+   ?column?
+---------------
+            0
+        16898
+         1026
+        17408
+     -3008467
+     -2018978
+     -1013619
+     -1013620
+     -1013621
+     -1013622
+     -1013623
+     -1013624
+     -1013625
+     -1013626
+        32767
+  -2147483648
+         NULL
+         NULL
+(18 rows)
+> SELECT e8||e9 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+                                      ?column?
+------------------------------------------------------------------------------------
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0\0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \\
+  \\
+  \\\\
+  \\\\
+  \\\\\\\\
+  \\\\\\\\
+
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)

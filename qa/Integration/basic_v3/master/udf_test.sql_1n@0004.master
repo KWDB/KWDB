@@ -1,0 +1,156 @@
+> CREATE TS DATABASE test_udf;
+CREATE TS DATABASE
+> CREATE TABLE test_udf.tb1(ts timestamptz NOT NULL, e1 bigint) TAGS(t1 int NOT NULL) PRIMARY TAGS(t1);
+CREATE TABLE
+> INSERT INTO test_udf.tb1 VALUES(NOW(),10,1);
+INSERT 1
+> CREATE FUNCTION fibonacci(n bigint)
+    RETURNS bigint
+    LANGUAGE LUA
+BEGIN
+'function fibonacci(n)
+    if n <= 1 then return n end
+    local fib = {0, 1}
+    for i = 3, n + 1 do
+        fib[i] = fib[i - 1] + fib[i - 2]
+    end
+    return fib[n + 1]
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION sum_of_factors(num bigint)
+    RETURNS bigint
+    LANGUAGE LUA
+BEGIN
+'function sum_of_factors(num)
+    local sum = 1
+    for i = 2, num do
+        if num % i == 0 then
+            sum = sum + i
+        end
+    end
+    return sum
+end'
+END;
+CREATE FUNCTION
+> SELECT sum_of_factors(28);
+  sum_of_factors
+------------------
+              56
+(1 row)
+> SELECT fibonacci(10);
+  fibonacci
+-------------
+         55
+(1 row)
+> SELECT function_name,argument_types,return_type,types_length,function_body,function_type,language,db_name,creator,comments FROM system.user_defined_function;
+  function_name  | argument_types | return_type | types_length |              function_body               | function_type | language |  db_name  | creator | comments
+-----------------+----------------+-------------+--------------+------------------------------------------+---------------+----------+-----------+---------+-----------
+  fibonacci      | {3}            | {3}         | {0,0}        | function fibonacci(n)                    |             1 | LUA      | defaultdb | root    |
+                 |                |             |              |     if n <= 1 then return n end          |               |          |           |         |
+                 |                |             |              |     local fib = {0, 1}                   |               |          |           |         |
+                 |                |             |              |     for i = 3, n + 1 do                  |               |          |           |         |
+                 |                |             |              |         fib[i] = fib[i - 1] + fib[i - 2] |               |          |           |         |
+                 |                |             |              |     end                                  |               |          |           |         |
+                 |                |             |              |     return fib[n + 1]                    |               |          |           |         |
+                 |                |             |              | end                                      |               |          |           |         |
+  sum_of_factors | {3}            | {3}         | {0,0}        | function sum_of_factors(num)             |             1 | LUA      | defaultdb | root    |
+                 |                |             |              |     local sum = 1                        |               |          |           |         |
+                 |                |             |              |     for i = 2, num do                    |               |          |           |         |
+                 |                |             |              |         if num % i == 0 then             |               |          |           |         |
+                 |                |             |              |             sum = sum + i                |               |          |           |         |
+                 |                |             |              |         end                              |               |          |           |         |
+                 |                |             |              |     end                                  |               |          |           |         |
+                 |                |             |              |     return sum                           |               |          |           |         |
+                 |                |             |              | end                                      |               |          |           |         |
+(2 rows)
+> SHOW FUNCTIONS;
+  function_name
+------------------
+  fibonacci
+  sum_of_factors
+(2 rows)
+> SHOW FUNCTION fibonacci;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  fibonacci     | BIGINT         | BIGINT      | function      | LUA
+(1 row)
+> SHOW FUNCTION sum_of_factors;
+  function_name  | argument_types | return_type | function_type | language
+-----------------+----------------+-------------+---------------+-----------
+  sum_of_factors | BIGINT         | BIGINT      | function      | LUA
+(1 row)
+> SELECT fibonacci(e1) FROM test_udf.tb1;
+  fibonacci
+-------------
+         55
+(1 row)
+> SELECT sum_of_factors(e1) FROM test_udf.tb1;
+  sum_of_factors
+------------------
+              18
+(1 row)
+> drop table test_udf.tb1;
+DROP TABLE
+> drop database test_udf cascade;
+DROP DATABASE
+> CREATE DATABASE test_udf_re;
+CREATE DATABASE
+> CREATE TABLE test_udf_re.r1(e1 bigint);
+CREATE TABLE
+> INSERT INTO test_udf_re.r1 VALUES(10);
+INSERT 1
+> SELECT fibonacci(e1) FROM test_udf_re.r1;
+  fibonacci
+-------------
+         55
+(1 row)
+> SELECT sum_of_factors(e1) FROM test_udf_re.r1;
+  sum_of_factors
+------------------
+              18
+(1 row)
+> drop table test_udf_re.r1 ;
+DROP TABLE
+> drop database test_udf_re cascade;
+DROP DATABASE
+> select fibonacci(12200160415121876738);
+ERROR: unknown signature: fibonacci(DECIMAL)
+SQLSTATE: 42883
+> SELECT fibonacci(93);
+ERROR: fibonacci(): integer out of range
+SQLSTATE: 22003
+> SELECT sum_of_factors(100);
+  sum_of_factors
+------------------
+             217
+(1 row)
+> select fibonacci(null);
+  fibonacci
+-------------
+  NULL
+(1 row)
+> SELECT fibonacci(null);
+  fibonacci
+-------------
+  NULL
+(1 row)
+> SELECT sum_of_factors(null);
+  sum_of_factors
+------------------
+  NULL
+(1 row)
+> SELECT fibonacci('test');
+ERROR: unknown signature: fibonacci(STRING)
+SQLSTATE: 42883
+> SELECT sum_of_factors(now());
+ERROR: sum_of_factors(): unknown signature: now() (desired <int>)
+SQLSTATE: 42883
+> DROP FUNCTION fibonacci;
+DROP FUNCTION
+> DROP FUNCTION sum_of_factors;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)

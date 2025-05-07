@@ -1,0 +1,54 @@
+> drop database if EXISTS tsdb cascade;
+DROP DATABASE
+> create ts database tsdb;
+CREATE TS DATABASE
+> use tsdb;
+SET
+> create table t1(ts timestamp not null,a int, b int) tags(tag1 int not null, tag2 int) primary tags(tag1);
+CREATE TABLE
+> insert into t1 values(1705028908000,11,22,33,44);
+INSERT 1
+> insert into t1 values(1705028909000,22,33,33,44);
+INSERT 1
+> prepare p1 as select * from t1 where a>$1;
+PREPARE
+> execute p1(0);
+             ts             | a  | b  | tag1 | tag2
+----------------------------+----+----+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44
+(2 rows)
+> prepare p2 as select * from t1 where tag1=$1;
+PREPARE
+> execute p2(33);
+             ts             | a  | b  | tag1 | tag2
+----------------------------+----+----+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44
+(2 rows)
+> prepare p3 as select max(a) from t1 where a>$1 group by b order by b;
+PREPARE
+> execute p3(0);
+  max
+-------
+   11
+   22
+(2 rows)
+> prepare p4 as select max(a) from t1 where tag1=$1 and a>$2 group by b order by b;
+PREPARE
+> execute p4(33,0);
+  max
+-------
+   11
+   22
+(2 rows)
+> prepare p5 as select max(a)+$1 from t1 where tag1=$2 and a>$3 group by b order by b;
+PREPARE
+> execute p5(1,33,0);
+  ?column?
+------------
+        12
+        23
+(2 rows)
+> drop database tsdb cascade;
+DROP DATABASE

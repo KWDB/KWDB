@@ -122,3 +122,24 @@ DROP ROLE
 DROP ROLE
 > drop role r6;
 DROP ROLE
+> CREATE TS DATABASE db;
+CREATE TS DATABASE
+> USE db;
+SET
+> CREATE TABLE db.t1( "time" timestamptz not null,e8 char(1023), e9 nchar(255))tags(i int not null) primary tags(i);
+CREATE TABLE
+> INSERT INTO db.t1 values('2023-12-1 12:00:12.000+00:00',null, '基础测试',1);
+INSERT 1
+> INSERT INTO db.t1 values('2023-12-2 12:00:12.000+00:00',null, '基础测试',1);
+INSERT 1
+> EXPORT INTO CSV "nodelocal://1/test_sql" FROM TABLE db.t1;
+  result
+-----------
+  succeed
+(1 row)
+> IMPORT INTO db.t1 SQL DATA ("nodelocal://1/test_sql");
+ERROR: Import regular data only supports CSV format
+> USE defaultdb;
+SET
+> DROP DATABASE db;
+DROP DATABASE

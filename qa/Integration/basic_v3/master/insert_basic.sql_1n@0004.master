@@ -1,0 +1,38 @@
+> CREATE ts DATABASE test_savedata1;
+CREATE TS DATABASE
+> create TABLE test_savedata1.d1(k_timestamp timestamp not null,e1 int64  not null)
+attributes (t1_attribute int not null) primary tags(t1_attribute);
+CREATE TABLE
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:00', -1, 1);
+INSERT 1
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:01', 0, 2);
+INSERT 1
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:02', 9223372036854775807, 3);
+INSERT 1
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:03', 'test', 4);
+ERROR: could not resolve "test" as INT8 type (column e1)
+SQLSTATE: 42804
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:04', true, 5);
+INSERT 1
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:05', 9223372036854775807, 6);
+INSERT 1
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:06', 9223372036854775807, 7);
+INSERT 1
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:07', 123.679, 8);
+ERROR: could not resolve "123.679" as INT8 type (column e1)
+SQLSTATE: 42804
+> INSERT INTO test_savedata1.d1 VALUES ('2018-10-10 10:00:08', '中文', 9);
+ERROR: could not resolve "中文" as INT8 type (column e1)
+SQLSTATE: 42804
+> select e1, t1_attribute from test_savedata1.d1 order by e1,t1_attribute;
+          e1          | t1_attribute
+----------------------+---------------
+                   -1 |            1
+                    0 |            2
+                    1 |            5
+  9223372036854775807 |            3
+  9223372036854775807 |            6
+  9223372036854775807 |            7
+(6 rows)
+> DROP DATABASE test_savedata1 cascade;
+DROP DATABASE

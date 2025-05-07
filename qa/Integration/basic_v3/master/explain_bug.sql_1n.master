@@ -1,0 +1,44 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS test_select_last_add cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_select_last_add;
+CREATE TS DATABASE
+> CREATE TABLE test_select_last_add.t1(k_timestamp TIMESTAMPTZ NOT NULL, id INT NOT NULL) ATTRIBUTES (code1 INT2 NOT NULL) PRIMARY TAGS(code1);
+CREATE TABLE
+> explain SELECT TIME_BUCKET(k_timestamp,concat('0','10000000000','s')) AS tb FROM (SELECT k_timestamp FROM test_select_last_add.t1 GROUP BY id,k_timestamp) GROUP BY tb;
+             tree             |    field    |                description
+------------------------------+-------------+--------------------------------------------
+                              | distributed | true
+                              | vectorized  | false
+  distinct                    |             |
+   │                          | distinct on | tb
+   └── render                 |             |
+        │                     | engine type | time series
+        │                     | tb          | time_bucket(k_timestamp, '010000000000s')
+        └── distinct          |             |
+             │                | distinct on | k_timestamp, id
+             └── synchronizer |             |
+                  └── ts scan |             |
+                              | ts-table    | t1
+                              | access mode | metaTable
+(13 rows)
+> explain SELECT TIME_BUCKET(k_timestamp,'10000000000s') AS tb FROM (SELECT k_timestamp FROM test_select_last_add.t1 GROUP BY id,k_timestamp) GROUP BY tb;
+             tree             |    field    |               description
+------------------------------+-------------+-------------------------------------------
+                              | distributed | true
+                              | vectorized  | false
+  distinct                    |             |
+   │                          | distinct on | tb
+   └── render                 |             |
+        │                     | engine type | time series
+        │                     | tb          | time_bucket(k_timestamp, '10000000000s')
+        └── distinct          |             |
+             │                | distinct on | k_timestamp, id
+             └── synchronizer |             |
+                  └── ts scan |             |
+                              | ts-table    | t1
+                              | access mode | metaTable
+(13 rows)
+> DROP DATABASE IF EXISTS test_select_last_add cascade;
+DROP DATABASE
