@@ -1,0 +1,544 @@
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> begin;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> set transaction_isolation = 'read committed';
+SET
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  read committed
+(1 row)
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  read committed
+(1 row)
+> set session transaction isolation level serializable;
+SET TRANSACTION
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> set session transaction isolation level read committed;
+SET TRANSACTION
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  read committed
+(1 row)
+> set transaction_isolation = 'repeatable read';
+SET
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> set session transaction isolation level serializable;
+SET TRANSACTION
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> set session transaction isolation level repeatable read;
+SET TRANSACTION
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> commit;
+COMMIT
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> begin transaction isolation level read committed;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  read committed
+(1 row)
+> set transaction_isolation = 'serializable';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> commit;
+COMMIT
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> begin transaction isolation level repeatable read;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> set transaction_isolation = 'serializable';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> commit;
+COMMIT
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show default_transaction_isolation;
+  default_transaction_isolation
+---------------------------------
+  serializable
+(1 row)
+> set default_transaction_isolation = 'read committed';
+SET
+> show default_transaction_isolation;
+  default_transaction_isolation
+---------------------------------
+  read committed
+(1 row)
+> set default_transaction_isolation = 'repeatable read';
+SET
+> show default_transaction_isolation;
+  default_transaction_isolation
+---------------------------------
+  repeatable read
+(1 row)
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> begin;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> set default_transaction_isolation = 'serializable';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> set default_transaction_isolation = 'repeatable read';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> set transaction_isolation = 'repeatable read';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  repeatable read
+(1 row)
+> set transaction_isolation = 'serializable';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> commit;
+COMMIT
+> set default_transaction_isolation = 'serializable';
+SET
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show default_transaction_isolation;
+  default_transaction_isolation
+---------------------------------
+  serializable
+(1 row)
+> show cluster setting sql.txn.cluster_transaction_isolation;
+  sql.txn.cluster_transaction_isolation
+-----------------------------------------
+  serializable
+(1 row)
+> set cluster setting sql.txn.cluster_transaction_isolation = 'read committed';
+SET CLUSTER SETTING
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> set cluster setting sql.txn.cluster_transaction_isolation = 'repeatable read';
+SET CLUSTER SETTING
+> show transaction_isolation;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> show default_transaction_isolation;
+  default_transaction_isolation
+---------------------------------
+  serializable
+(1 row)
+> show cluster setting sql.txn.cluster_transaction_isolation;
+  sql.txn.cluster_transaction_isolation
+-----------------------------------------
+  repeatable read
+(1 row)
+> set cluster setting sql.txn.cluster_transaction_isolation = 'serializable';
+SET CLUSTER SETTING
+> create table iso_t1(a int primary key, b int);
+CREATE TABLE
+> insert into iso_t1 values(1,100),(2,200),(3,300),(4,400),(5,500);
+INSERT 5
+> begin;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+(5 rows)
+> savepoint s1;
+SAVEPOINT
+> insert into iso_t1 values(6,600);
+INSERT 1
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+  6 | 600
+(6 rows)
+> rollback to savepoint s1;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+(5 rows)
+> insert into iso_t1 values(6,600);
+INSERT 1
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+  6 | 600
+(6 rows)
+> savepoint s2;
+SAVEPOINT
+> delete  from iso_t1 where a = 6;
+DELETE 1
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+(5 rows)
+> rollback to savepoint s2;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+  6 | 600
+(6 rows)
+> update iso_t1 set b = 1200 where a = 1;
+UPDATE 1
+> select * from iso_t1 order by a;
+  a |  b
+----+-------
+  1 | 1200
+  2 |  200
+  3 |  300
+  4 |  400
+  5 |  500
+  6 |  600
+(6 rows)
+> savepoint s3;
+SAVEPOINT
+> update iso_t1 set b = 2200 where a = 1;
+UPDATE 1
+> select * from iso_t1 order by a;
+  a |  b
+----+-------
+  1 | 2200
+  2 |  200
+  3 |  300
+  4 |  400
+  5 |  500
+  6 |  600
+(6 rows)
+> rollback to savepoint s3;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+-------
+  1 | 1200
+  2 |  200
+  3 |  300
+  4 |  400
+  5 |  500
+  6 |  600
+(6 rows)
+> savepoint s4;
+SAVEPOINT
+> rollback to savepoint s4;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+-------
+  1 | 1200
+  2 |  200
+  3 |  300
+  4 |  400
+  5 |  500
+  6 |  600
+(6 rows)
+> rollback to savepoint s3;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+-------
+  1 | 1200
+  2 |  200
+  3 |  300
+  4 |  400
+  5 |  500
+  6 |  600
+(6 rows)
+> rollback to savepoint s2;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+  6 | 600
+(6 rows)
+> rollback to savepoint s1;
+ROLLBACK
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+(5 rows)
+> commit;
+COMMIT
+> select * from iso_t1 order by a;
+  a |  b
+----+------
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+(5 rows)
+> drop table iso_t1;
+DROP TABLE
+> create ts database iso_d1;
+CREATE TS DATABASE
+> create table iso_d1.t1(ts timestamp not null,a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into iso_d1.t1 values(0,0,0);
+INSERT 1
+> begin;
+BEGIN
+> select * from iso_d1.t1 order by a;
+             ts             | a | b
+----------------------------+---+----
+  1970-01-01 00:00:00+00:00 | 0 | 0
+(1 row)
+> insert into iso_d1.t1 values(1,1,1);
+INSERT 1
+> select * from iso_d1.t1 order by a;
+               ts               | a | b
+--------------------------------+---+----
+  1970-01-01 00:00:00+00:00     | 0 | 0
+  1970-01-01 00:00:00.001+00:00 | 1 | 1
+(2 rows)
+> commit;
+COMMIT
+> begin;
+BEGIN
+> create table iso_d1.t2(ts timestamp not null,a int) tags(b int not null) primary tags(b);
+ERROR: TS DDL statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> commit;
+ROLLBACK
+> begin;
+BEGIN
+> drop table iso_d1.t1;
+ERROR: TS DDL statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> commit;
+ROLLBACK
+> begin;
+BEGIN
+> alter table iso_d1.t1 rename tag b to c;
+ERROR: TS DDL statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> commit;
+ROLLBACK
+> begin;
+BEGIN
+> alter table iso_d1.t1 drop tag b;
+ERROR: TS DDL statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> commit;
+ROLLBACK
+> begin;
+BEGIN
+> select * from iso_d1.t1 order by a;
+               ts               | a | b
+--------------------------------+---+----
+  1970-01-01 00:00:00+00:00     | 0 | 0
+  1970-01-01 00:00:00.001+00:00 | 1 | 1
+(2 rows)
+> savepoint s1;
+SAVEPOINT
+> insert into iso_d1.t1 values(1,1,1);
+INSERT 1
+> select * from iso_d1.t1 order by a;
+               ts               | a | b
+--------------------------------+---+----
+  1970-01-01 00:00:00+00:00     | 0 | 0
+  1970-01-01 00:00:00.001+00:00 | 1 | 1
+(2 rows)
+> rollback to savepoint s1;
+ROLLBACK
+> select * from iso_d1.t1 order by a;
+               ts               | a | b
+--------------------------------+---+----
+  1970-01-01 00:00:00+00:00     | 0 | 0
+  1970-01-01 00:00:00.001+00:00 | 1 | 1
+(2 rows)
+> commit;
+COMMIT
+> drop database iso_d1 cascade;
+DROP DATABASE
+> create table iso_t2(a int);
+CREATE TABLE
+> begin;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> set transaction isolation level read committed;
+SET TRANSACTION
+> select * from iso_t2;
+  a
+-----
+(0 rows)
+> set transaction isolation level read committed;
+SET TRANSACTION
+> set transaction isolation level serializable;
+ERROR: cannot change the isolation level of a running transaction
+SQLSTATE: 25001
+> commit;
+ROLLBACK
+> begin;
+BEGIN
+> show transaction isolation level;
+  transaction_isolation
+-------------------------
+  serializable
+(1 row)
+> set transaction isolation level serializable;
+SET TRANSACTION
+> select * from iso_t2;
+  a
+-----
+(0 rows)
+> set transaction isolation level serializable;
+SET TRANSACTION
+> set transaction isolation level read committed;
+ERROR: cannot change the isolation level of a running transaction
+SQLSTATE: 25001
+> commit;
+ROLLBACK
+> drop table iso_t2;
+DROP TABLE

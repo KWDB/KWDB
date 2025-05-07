@@ -1,0 +1,15 @@
+> CREATE FUNCTION t1(a char)
+    RETURNs char
+    LANGUAGE LUA
+BEGIN
+'function t1(a)
+    local c = a * 100000000
+    return c
+end'
+END;
+CREATE FUNCTION
+> select t1('a');
+ERROR: t1(): <string>:2: cannot perform mul operation between string and number
+stack traceback:
+	<string>:2: in main chunk
+	[G]: ?

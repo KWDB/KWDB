@@ -1,0 +1,412 @@
+> DROP DATABASE IF EXISTS default_expr_db;
+DROP DATABASE
+> CREATE DATABASE default_expr_db;
+CREATE DATABASE
+> use default_expr_db;
+SET
+> CREATE TABLE default_expr_tb1 (id int default unique_rowid(), name string);
+ERROR: The type of the default expression does not match the type of the column (column id)
+> CREATE TABLE default_expr_tb2 (id int8 default unique_rowid(), name string);
+CREATE TABLE
+> insert into default_expr_tb2(name) values ('aaa');
+INSERT 1
+> use defaultdb;
+SET
+> DROP DATABASE IF EXISTS default_expr_db;
+DROP DATABASE
+> create ts database "NULL";
+CREATE TS DATABASE
+> create table "NULL".test(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into "NULL".test values ('2023-07-03 10:58:52.111',1, 11);
+INSERT 1
+> select * from "NULL".test;
+               ts               | a | b
+--------------------------------+---+-----
+  2023-07-03 10:58:52.111+00:00 | 1 | 11
+(1 row)
+> CREATE ts DATABASE "null";
+CREATE TS DATABASE
+> CREATE TABLE "null".null(ts timestamp not null,"null" int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> INSERT INTO "null".null VALUES ('2023-07-03 10:58:52.111',1, 22);
+INSERT 1
+> select * from "null".null;
+               ts               | null | b
+--------------------------------+------+-----
+  2023-07-03 10:58:52.111+00:00 |    1 | 22
+(1 row)
+> create ts database "int";
+CREATE TS DATABASE
+> create table "int".test(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into "int".test values ('2023-07-03 10:58:52.111',1, 33);
+INSERT 1
+> select * from "int".test;
+               ts               | a | b
+--------------------------------+---+-----
+  2023-07-03 10:58:52.111+00:00 | 1 | 33
+(1 row)
+> create ts database "nul";
+CREATE TS DATABASE
+> create table "nul".test(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into "nul".test values ('2023-07-03 10:58:52.111',1, 44);
+INSERT 1
+> select * from "nul".test;
+               ts               | a | b
+--------------------------------+---+-----
+  2023-07-03 10:58:52.111+00:00 | 1 | 44
+(1 row)
+> create ts database NULL;
+ERROR: at or near "null": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database NULL
+                   ^
+HINT: try \h CREATE TS DATABASE
+> use defaultdb;
+SET
+> drop database "NULL" cascade;
+DROP DATABASE
+> drop database "null" cascade;
+DROP DATABASE
+> drop database "int" cascade;
+DROP DATABASE
+> drop database "nul" cascade;
+DROP DATABASE
+> drop database NULL cascade;
+ERROR: at or near "null": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database NULL cascade
+              ^
+HINT: try \h DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> use db1;
+SET
+> create table t1(k_timestamp timestamp not null,e1 varchar(100)) tags (a int not null) primary tags(a);
+CREATE TABLE
+> insert into t1 values('2018-10-10 10:00:00','null', 1);
+INSERT 1
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> use db1;
+SET
+> create table db1.t1 (k_timestamp timestamptz not null,
+                     e1 int2 not null,
+                     e2 int,
+                     e3 int8 not null,
+                     e4 float,
+                     e5 float8 not null,
+                     e6 bool,
+                     e7 timestamp not null,
+                     e8 char(1023),
+                     e9 nchar(255) not null,
+                     e10 varchar(4096),
+                     e11 char not null,
+                     e12 varchar(255),
+                     e13 nchar not null,
+                     e14 varchar,
+                     e15 nvarchar(4096) not null,
+                     e16 varbytes,
+                     e17 nvarchar(255) not null,
+                     e18 nvarchar,
+                     e19 varbytes not null,
+                     e20 varbytes(1023),
+                     e21 varbytes(4096) not null,
+                     e22 varbytes(254),
+                     e23 timestamp not null) ATTRIBUTES (
+code1 int2 not null,
+code1 int2) PRIMARY TAGS(code1);
+ERROR: duplicate tag name: "code1"
+SQLSTATE: 42701
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> CREATE TS DATABASE test;
+CREATE TS DATABASE
+> CREATE TABLE test.tb1(k_timestamp timestamptz not null,
+                      e1 int2,
+                      e2 int,
+                      e3 int8,
+                      e4 float,
+                      e5 float8,
+                      e6 bool,
+                      e7 timestamp,
+                      e8 char(1023),
+                      e9 nchar(255),
+                      e10 varchar(4096),
+                      e11 char,
+                      e12 varchar(255),
+                      e13 nchar,
+                      e14 varchar,
+                      e15 nvarchar(4096),
+                      e16 varbytes,
+                      e17 nvarchar(255),
+                      e18 nvarchar,
+                      e19 varbytes,
+                      e20 varbytes(1023),
+                      e21 varbytes(4096),
+                      e22 varbytes(254),
+                      e23 timestamptz)
+    TAGS (code timestamptz not null) primary tags (code);
+ERROR: tag code: unsupported tag type timestamptz in timeseries table
+SQLSTATE: 42809
+> use defaultdb;
+SET
+> drop database test;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> create table db1.t2(k_timestamp timestamptz not null,e1 int2)attributes(code1 int not null,code2 timestamp)PRIMARY TAGS(code1);
+ERROR: tag code2: unsupported tag type timestamp in timeseries table
+SQLSTATE: 42809
+> create table db1.t1 (k_timestamp timestamptz not null,e1 int2)attributes(code1 int not null,code2 SERIAL2 not null)PRIMARY TAGS(code1);
+ERROR: serial type for tag code2 is not supported in timeseries table
+SQLSTATE: 0A000
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> use db1;
+SET
+> create table db1.t1(k_timestamp timestamptz not null,e1 int2 not null unique,e2 double)attributes(code1 int2 not null) PRIMARY TAGS(code1);
+ERROR: unique constraint is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1(k_timestamp timestamptz not null,e1 int2 not null,e2 double,constraint ck1 check(e1))attributes(code1 int2 not
+null) PRIMARY TAGS(code1);
+ERROR: check constraint is not supported in timeseries table
+SQLSTATE: 0A000
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> use db1;
+SET
+> create table db1.t2()attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: ts table must have at least 2 columns
+SQLSTATE: 42P16
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> create table db1.tt1(a int);
+ERROR: can not create relational table in timeseries database "db1"
+SQLSTATE: 42809
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> create table db1.t1 (k_timestamp timestamptz not null,e1 SERIAL2)attributes(code1 int2 not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 SERIAL2)attributes(code1 int2 not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 SMALLSERIAL)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 SERIAL4)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 SERIAL)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 SERIAL8)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 BIGSERIAL)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: SERIAL column is not supported in timeseries table
+SQLSTATE: 0A000
+> create table db1.t1 (k_timestamp timestamptz not null,e1 TIME)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type time(3) in timeseries table
+SQLSTATE: 42809
+> create table db1.t1 (k_timestamp timestamptz not null,e1 DATE)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type date in timeseries table
+SQLSTATE: 42809
+> create table db1.t1 (k_timestamp timestamptz not null,e1 STRING)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type string in timeseries table
+SQLSTATE: 42809
+> create table db1.t1 (k_timestamp timestamptz not null,e1 STRING(20))attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type string in timeseries table
+SQLSTATE: 42809
+> create table db1.t1 (k_timestamp timestamptz not null,e1 CLOB)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type clob in timeseries table
+SQLSTATE: 42809
+> create table db1.t1 (k_timestamp timestamptz not null,e1 DECIMAL)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type decimal in timeseries table
+SQLSTATE: 42809
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> create table db1.t1 (k_timestamp timestamptz not null,e1 BLOB)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type blob in timeseries table
+SQLSTATE: 42809
+> create table db1.t2 (k_timestamp timestamptz not null,e1 BYTEA)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type bytes in timeseries table
+SQLSTATE: 42809
+> create table db1.t3 (k_timestamp timestamptz not null,e1 CHARACTER)attributes(code1 int not null)PRIMARY TAGS(code1);
+CREATE TABLE
+> create table db1.t4 (k_timestamp timestamptz not null,e1 CHARACTER VARYING)attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type char/character varying in timeseries table
+SQLSTATE: 42809
+> create table db1.t5 (k_timestamp timestamptz not null,e1 CHARACTER(20))attributes(code1 int not null)PRIMARY TAGS(code1);
+CREATE TABLE
+> create table db1.t6 (k_timestamp timestamptz not null,e1 CHARACTER VARYING(20))attributes(code1 int not null)PRIMARY TAGS(code1);
+ERROR: column e1: unsupported column type char/character varying in timeseries table
+SQLSTATE: 42809
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> create table db1.t1 (k_timestamp timestamptz not null,e1 int)attributes(code1 int not null)PRIMARY TAGS(code1);
+CREATE TABLE
+> begin;
+BEGIN
+> select * from db1.t1;
+  k_timestamp | e1 | code1
+--------------+----+--------
+(0 rows)
+> end;
+COMMIT
+> use defaultdb;
+SET
+> drop database db1;
+DROP DATABASE
+> CREATE TS DATABASE db1;
+CREATE TS DATABASE
+> use db1;
+SET
+> CREATE TABLE db1.tb01(k_timestamp timestamptz not null, e1 int2) TAGS (code1 bool not null,code2 varchar not null)PRIMARY TAGS(code1,code2);
+CREATE TABLE
+> CREATE TABLE db1.tb02(k_timestamp timestamptz not null, e1 int2) TAGS (code1 bool not null,code2 varchar)PRIMARY TAGS(code1);
+CREATE TABLE
+> show create table db1.tb01;
+    table_name    |                      create_statement
+------------------+--------------------------------------------------------------
+  db1.public.tb01 | CREATE TABLE tb01 (
+                  |     k_timestamp TIMESTAMPTZ(3) NOT NULL,
+                  |     e1 INT2 NULL
+                  | ) TAGS (
+                  |     code1 BOOL NOT NULL,
+                  |     code2 VARCHAR(64) NOT NULL ) PRIMARY TAGS(code1, code2)
+                  |     retentions 0s
+                  |     activetime 1d
+                  |     partition interval 10d
+(1 row)
+> show create table db1.tb02;
+    table_name    |               create_statement
+------------------+-----------------------------------------------
+  db1.public.tb02 | CREATE TABLE tb02 (
+                  |     k_timestamp TIMESTAMPTZ(3) NOT NULL,
+                  |     e1 INT2 NULL
+                  | ) TAGS (
+                  |     code1 BOOL NOT NULL,
+                  |     code2 VARCHAR(254) ) PRIMARY TAGS(code1)
+                  |     retentions 0s
+                  |     activetime 1d
+                  |     partition interval 10d
+(1 row)
+> CREATE TABLE db1.tb_varchar(k_timestamp timestamptz not null, e1 varchar,e2 varchar(30))TAGS (code1 bool not null) primary tags (code1);
+CREATE TABLE
+> show create table db1.tb_varchar;
+       table_name       |               create_statement
+------------------------+------------------------------------------------
+  db1.public.tb_varchar | CREATE TABLE tb_varchar (
+                        |     k_timestamp TIMESTAMPTZ(3) NOT NULL,
+                        |     e1 VARCHAR(254) NULL,
+                        |     e2 VARCHAR(30) NULL
+                        | ) TAGS (
+                        |     code1 BOOL NOT NULL ) PRIMARY TAGS(code1)
+                        |     retentions 0s
+                        |     activetime 1d
+                        |     partition interval 10d
+(1 row)
+> show columns from db1.tb_varchar;
+  column_name |   data_type    | is_nullable | column_default | generation_expression |  indices  | is_hidden | is_tag
+--------------+----------------+-------------+----------------+-----------------------+-----------+-----------+---------
+  k_timestamp | TIMESTAMPTZ(3) |    false    | NULL           |                       | {primary} |   false   | false
+  e1          | VARCHAR(254)   |    true     | NULL           |                       | {}        |   false   | false
+  e2          | VARCHAR(30)    |    true     | NULL           |                       | {}        |   false   | false
+  code1       | BOOL           |    false    | NULL           |                       | {}        |   false   |  true
+(4 rows)
+> drop database db1;
+DROP DATABASE
+> drop database if exists db1 cascade;
+DROP DATABASE
+> create database db1;
+CREATE DATABASE
+> use db1;
+SET
+> select count(*) from pg_catalog.pg_class;
+  count
+---------
+    115
+(1 row)
+> use defaultdb;
+SET
+> alter database db1 rename to db2;
+RENAME DATABASE
+> use db2;
+SET
+> select count(*) from pg_catalog.pg_class;
+  count
+---------
+    115
+(1 row)
+> use defaultdb;
+SET
+> drop database if exists db2 cascade;
+DROP DATABASE
+> create role test;
+CREATE ROLE
+> drop role test;
+DROP ROLE
+> create user test_u1;
+CREATE USER
+> create user test_u2;
+CREATE USER
+> create user test_u3;
+CREATE USER
+> drop user test_u1, test_u2, test_u3;
+DROP USER 3
+> CREATE TS DATABASE test;
+CREATE TS DATABASE
+> CREATE TABLE test."!@#$%%^中文" (k_timestamp timestamptz not null, e1 int2, e2 int4, e3 double) tags (code1 bool not null, code2 int2) primary tags (code1);
+ERROR: invalid name: test.public."!@#$%%^中文", naming of time series objects only supports letters, numbers and symbols
+SQLSTATE: 42602
+> CREATE TABLE test."!@#$%%^" (k_timestamp timestamptz not null, e1 int2, e2 int4, e3 double) tags (code1 bool not null, code2 int2) primary tags (code1);
+CREATE TABLE
+> ALTER TABLE test."!@#$%%^" RENAME TO test."!@#$%%^中文";
+ERROR: invalid name: test."!@#$%%^中文", naming of time series objects only supports letters, numbers and symbols
+SQLSTATE: 42602
+> CREATE TABLE test.ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt(k_timestamp timestamptz not null, e1 int2) tags(code1 bool not null, code2 int2) primary tags (code1);
+ERROR: ts table name "ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt" exceeds max length (128)
+SQLSTATE: 42602
+> CREATE TABLE test.tb1(k_timestamp timestamptz not null, e1 int2, e2 int4, e3 double) tags (code1 bool not null, code2 int2) primary tags (code1);
+CREATE TABLE
+> ALTER TABLE test.tb1 RENAME TO test.ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt;
+ERROR: ts table name "test.ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt" exceeds max length (128)
+SQLSTATE: 42602
+> DROP DATABASE test;
+DROP DATABASE

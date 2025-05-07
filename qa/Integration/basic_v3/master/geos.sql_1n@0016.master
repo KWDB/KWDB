@@ -1,0 +1,68 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Linestring(0.0 0.0,0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',0);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Linestring(0 0,1 1)','Linestring(1 1,60 90)',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Linestring(-1 -1,0.0 0.0)','Linestring(0 -1,1 1)',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:13', 'Linestring(-32768 -1,1 32768)','Linestring(0 -1,1000 1000)',3);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:14', 'Linestring(-1 -1,0 32767)','Linestring(0 32767,-1 -1)',4);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:15', 'Linestring(-2147483648 -2147483648,0 2147483647)','Linestring(0 2147483647,-2147483648 -214748364)',5);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:16', 'Linestring(-9223372036854775807 -1,0 9223372036854775807)','Linestring(0 9223372036854775807,-9223372036854775807 -1)',6);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:17', 'Linestring(1000.101156789 1000.101156789,0 -2000.2022)','Linestring(0 -2000.2022,1000.101156789 1000.101156789)',7);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:18', 'Linestring(-32767.111156 -1,0 -32767.111156)','Linestring(0 -32767.111156,-32767.111156 -1)',8);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:19', 'Linestring(1.2345678911111 -1,0 2147483646.6789)','Linestring(0 2147483646.6789,1.2345678911111 -1)',9);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:20', 'Linestring(-1.0000000 -1.0000,0 9223372036854775806.12345)','Linestring(0 9223372036854775806.12345,-1.0000000 -1.0000)',10);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:21', 'Linestring(0.0000000 0.0000,1.435243 7.673421)','Linestring(600000.606066666 9223372036854775806.12345,0.0000000 0.0000)',11);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:22', 'Linestring(0 0,1 1,2 3,3 3,4 4,5 5,6 6,9 9,111 445,999 999999)','Linestring(0.0 0.0,1.0 2.0,3.0 4.0,5.0 5.0,6.0 7.0,8.0 9.0,11.0 15.0,45.0 22.0,0.1111 0.0,9.0 0.0,0.0 0.0)',1);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |                               e1                               |                                                     e2                                                     | tag1
+----------------------------+----------------------------------------------------------------+------------------------------------------------------------------------------------------------------------+-------
+  2023-05-01 10:10:00+00:00 | Linestring(0.0 0.0,0.0 0.0)                                    | Linestring(1.0 1.0, 2.0 2.0)                                                                               |    0
+  2023-05-01 10:11:00+00:00 | Linestring(0 0,1 1)                                            | Linestring(1 1,60 90)                                                                                      |    1
+  2023-05-01 10:12:00+00:00 | Linestring(-1 -1,0.0 0.0)                                      | Linestring(0 -1,1 1)                                                                                       |    2
+  2023-05-01 10:13:00+00:00 | Linestring(-32768 -1,1 32768)                                  | Linestring(0 -1,1000 1000)                                                                                 |    3
+  2023-05-01 10:14:00+00:00 | Linestring(-1 -1,0 32767)                                      | Linestring(0 32767,-1 -1)                                                                                  |    4
+  2023-05-01 10:15:00+00:00 | Linestring(-2147483648 -2147483648,0 2147483647)               | Linestring(0 2147483647,-2147483648 -214748364)                                                            |    5
+  2023-05-01 10:16:00+00:00 | Linestring(-9223372036854775807 -1,0 9223372036854775807)      | Linestring(0 9223372036854775807,-9223372036854775807 -1)                                                  |    6
+  2023-05-01 10:17:00+00:00 | Linestring(1000.101156789 1000.101156789,0 -2000.2022)         | Linestring(0 -2000.2022,1000.101156789 1000.101156789)                                                     |    7
+  2023-05-01 10:18:00+00:00 | Linestring(-32767.111156 -1,0 -32767.111156)                   | Linestring(0 -32767.111156,-32767.111156 -1)                                                               |    8
+  2023-05-01 10:19:00+00:00 | Linestring(1.2345678911111 -1,0 2147483646.6789)               | Linestring(0 2147483646.6789,1.2345678911111 -1)                                                           |    9
+  2023-05-01 10:20:00+00:00 | Linestring(-1.0000000 -1.0000,0 9223372036854775806.12345)     | Linestring(0 9223372036854775806.12345,-1.0000000 -1.0000)                                                 |   10
+  2023-05-01 10:21:00+00:00 | Linestring(0.0000000 0.0000,1.435243 7.673421)                 | Linestring(600000.606066666 9223372036854775806.12345,0.0000000 0.0000)                                    |   11
+  2023-05-01 10:22:00+00:00 | Linestring(0 0,1 1,2 3,3 3,4 4,5 5,6 6,9 9,111 445,999 999999) | Linestring(0.0 0.0,1.0 2.0,3.0 4.0,5.0 5.0,6.0 7.0,8.0 9.0,11.0 15.0,45.0 22.0,0.1111 0.0,9.0 0.0,0.0 0.0) |    1
+(13 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+     st_distance
+----------------------
+  1.4142135623730951
+                   0
+   0.447213595499958
+  23169.767899139602
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+(13 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE

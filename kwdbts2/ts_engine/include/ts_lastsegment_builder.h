@@ -117,7 +117,7 @@ class TsLastSegmentBuilder {
   };
   ColDataBuffer cols_data_buffer_;
 
-  const TsEngineSchemaManager* schema_mgr_;
+  TsEngineSchemaManager* schema_mgr_;
 
   KStatus WriteMetricBlock(MetricBlockBuilder* builder);
   KStatus FlushPayloadBuffer();

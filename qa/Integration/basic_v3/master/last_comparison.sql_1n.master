@@ -1,0 +1,183 @@
+> create ts database last_db;
+CREATE TS DATABASE
+> use last_db;
+SET
+> create table t(k_timestamp timestamp not null, x nchar(10), y char, z bool) tags(a int not null) primary tags(a);
+CREATE TABLE
+> insert into t values('2023-07-29 03:11:59.688', 'hello', 'a', true, 1);
+INSERT 1
+> select last(x),pi() from t where x = 'a' group by x order by x;
+  last | pi
+-------+-----
+(0 rows)
+> select last(x),pi() from t where x != 'a' group by x order by x;
+  last  |        pi
+--------+--------------------
+  hello | 3.141592653589793
+(1 row)
+> select last(x),pi() from t where x < 'a' group by x order by x;
+  last | pi
+-------+-----
+(0 rows)
+> select last(x),pi() from t where x <= 'a' group by x order by x;
+  last | pi
+-------+-----
+(0 rows)
+> select last(x),pi() from t where x > 'a' group by x order by x;
+  last  |        pi
+--------+--------------------
+  hello | 3.141592653589793
+(1 row)
+> select last(x),pi() from t where x >= 'a' group by x order by x;
+  last  |        pi
+--------+--------------------
+  hello | 3.141592653589793
+(1 row)
+> select last(y),pi() from t where y = 'a' group by y order by y;
+  last |        pi
+-------+--------------------
+  a    | 3.141592653589793
+(1 row)
+> select last(y),pi() from t where y != 'a' group by y order by y;
+  last | pi
+-------+-----
+(0 rows)
+> select last(y),pi() from t where y < 'a' group by y order by y;
+  last | pi
+-------+-----
+(0 rows)
+> select last(y),pi() from t where y <= 'a' group by y order by y;
+  last |        pi
+-------+--------------------
+  a    | 3.141592653589793
+(1 row)
+> select last(y),pi() from t where y > 'a' group by y order by y;
+  last | pi
+-------+-----
+(0 rows)
+> select last(y),pi() from t where y >= 'a' group by y order by y;
+  last |        pi
+-------+--------------------
+  a    | 3.141592653589793
+(1 row)
+> select last(y),pi() from t group by y having y = 'a' order by y;
+  last |        pi
+-------+--------------------
+  a    | 3.141592653589793
+(1 row)
+> select last(y),pi() from t group by y having y != 'a' order by y;
+  last | pi
+-------+-----
+(0 rows)
+> select last(y),pi() from t group by y having y < 'a' order by y;
+  last | pi
+-------+-----
+(0 rows)
+> select last(y),pi() from t group by y having y <= 'a' order by y;
+  last |        pi
+-------+--------------------
+  a    | 3.141592653589793
+(1 row)
+> select last(y),pi() from t group by y having y > 'a' order by y;
+  last | pi
+-------+-----
+(0 rows)
+> select last(y),pi() from t group by y having y >= 'a' order by y;
+  last |        pi
+-------+--------------------
+  a    | 3.141592653589793
+(1 row)
+> select last(z),pi() from t where z = 1.3 group by z order by z;
+ERROR: unsupported comparison operator: <bool> = <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t where z != 1.3 group by z order by z;
+ERROR: unsupported comparison operator: <bool> != <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t where z < 1.3 group by z order by z;
+ERROR: unsupported comparison operator: <bool> < <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t where z <= 1.3 group by z order by z;
+ERROR: unsupported comparison operator: <bool> <= <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t where z > 1.3 group by z order by z;
+ERROR: unsupported comparison operator: <bool> > <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t where z >= 1.3 group by z order by z;
+ERROR: unsupported comparison operator: <bool> >= <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t group by z having z = 1.3 order by z;
+ERROR: unsupported comparison operator: <bool> = <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t group by z having z != 1.3 order by z;
+ERROR: unsupported comparison operator: <bool> != <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t group by z having z < 1.3 order by z;
+ERROR: unsupported comparison operator: <bool> < <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t group by z having z <= 1.3 order by z;
+ERROR: unsupported comparison operator: <bool> <= <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t group by z having z > 1.3 order by z;
+ERROR: unsupported comparison operator: <bool> > <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t group by z having z >= 1.3 order by z;
+ERROR: unsupported comparison operator: <bool> >= <decimal>
+SQLSTATE: 22023
+> select last(z),pi() from t where z = false group by z order by z;
+  last | pi
+-------+-----
+(0 rows)
+> select last(z),pi() from t where z != false group by z order by z;
+  last |        pi
+-------+--------------------
+  true | 3.141592653589793
+(1 row)
+> select last(z),pi() from t where z < false group by z order by z;
+  last | pi
+-------+-----
+(0 rows)
+> select last(z),pi() from t where z <= false group by z order by z;
+  last | pi
+-------+-----
+(0 rows)
+> select last(z),pi() from t where z > false group by z order by z;
+  last |        pi
+-------+--------------------
+  true | 3.141592653589793
+(1 row)
+> select last(z),pi() from t where z >= false group by z order by z;
+  last |        pi
+-------+--------------------
+  true | 3.141592653589793
+(1 row)
+> select last(z),pi() from t group by z having z = false order by z;
+  last | pi
+-------+-----
+(0 rows)
+> select last(z),pi() from t group by z having z != false order by z;
+  last |        pi
+-------+--------------------
+  true | 3.141592653589793
+(1 row)
+> select last(z),pi() from t group by z having z < false order by z;
+  last | pi
+-------+-----
+(0 rows)
+> select last(z),pi() from t group by z having z <= false order by z;
+  last | pi
+-------+-----
+(0 rows)
+> select last(z),pi() from t group by z having z > false order by z;
+  last |        pi
+-------+--------------------
+  true | 3.141592653589793
+(1 row)
+> select last(z),pi() from t group by z having z >= false order by z;
+  last |        pi
+-------+--------------------
+  true | 3.141592653589793
+(1 row)
+> drop table t;
+DROP TABLE
+> drop database last_db;
+DROP DATABASE

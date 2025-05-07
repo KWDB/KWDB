@@ -1,0 +1,11 @@
+> CREATE FUNCTION max(timestamp_str timestamp)
+    RETURNs timestamp
+    LANGUAGE LUA
+BEGIN
+'function max(timestamp_str)
+    local new_time = timestamp_str + 3600
+    return new_time
+end'
+END;
+ERROR: function named 'max' already exists. Please choose a different name
+SQLSTATE: 42710
