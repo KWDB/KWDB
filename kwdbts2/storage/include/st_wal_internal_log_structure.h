@@ -211,8 +211,8 @@ class InsertLogMetricsEntry : public InsertLogEntry {
     location += sizeof(table_type_);
     memcpy(log_ptr + location, &time_partition, sizeof(time_partition_));
     location += sizeof(time_partition_);
-    memcpy(log_ptr + location, &offset, sizeof(offset));
-    location += sizeof(offset);
+    memcpy(log_ptr + location, &offset, sizeof(offset_));
+    location += sizeof(offset_);
     memcpy(log_ptr + location, &length, sizeof(length_));
     location += sizeof(length_);
     memcpy(log_ptr + location, &p_tag_len, sizeof(p_tag_len_));

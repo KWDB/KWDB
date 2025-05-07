@@ -410,9 +410,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     uint32_t vgrp_id = vgrp->GetVGroupID();
     vgrp_lsn.emplace(vgrp_id, lsn);
 
-    for (auto it = vgrp_lsn.begin(); it != vgrp_lsn.end(); it++) {
-//      std::cout<< "READ ALL MAP: add id: " << it->first << "\t lsn:" << it->second << std::endl;
-    }
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
 
@@ -482,7 +479,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 8. remove old chk file
   wal_mgr_->RemoveChkFile(ctx);
-  wal_mgr_->Close();
 
   // after checkpoint, engine wal mgr meta sync?
   return KStatus::SUCCESS;
