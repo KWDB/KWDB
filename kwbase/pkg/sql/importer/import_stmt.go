@@ -152,8 +152,20 @@ func importPlanHook(
 		}
 	}
 	if !importStmt.Users && !importStmt.Settings {
-		if fileFormat.Format != roachpb.IOFileFormat_CSV {
-			return nil, nil, nil, false, errors.Errorf("Import regular data only supports CSV format")
+		if importStmt.IsDatabase || importStmt.Into {
+			if fileFormat.Format != roachpb.IOFileFormat_CSV {
+				return nil, nil, nil, false, errors.Errorf("Import regular data only supports CSV format")
+			}
+		}
+		if importStmt.CreateFile != nil {
+			if !importStmt.OnlyMeta && fileFormat.Format != roachpb.IOFileFormat_CSV {
+				return nil, nil, nil, false, errors.Errorf("Import regular data only supports CSV format")
+			}
+		}
+		if importStmt.CreateDefs != nil {
+			if fileFormat.Format != roachpb.IOFileFormat_CSV {
+				return nil, nil, nil, false, errors.Errorf("Import regular data only supports CSV format")
+			}
 		}
 	}
 	_, hasComment := opts[optionComment]
