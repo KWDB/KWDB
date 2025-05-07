@@ -44,8 +44,6 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
 
-  cur_entity_index_ = 0;
-
   auto& partition_managers = vgroup_->GetPartitionManagers();
   auto it = partition_managers.find(db_id_);
 
@@ -218,14 +216,6 @@ TsRawDataIteratorV2Impl::TsRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
 }
 
 TsRawDataIteratorV2Impl::~TsRawDataIteratorV2Impl() {
-}
-
-KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
-  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
-  if (ret != KStatus::SUCCESS) {
-    return KStatus::FAIL;
-  }
-  return MoveToMemSegment();
 }
 
 KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count) {

@@ -65,7 +65,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
 
   std::list<TsBlockSpan> ts_block_spans_;
-  STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -76,7 +75,6 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
   ~TsRawDataIteratorV2Impl();
 
-  KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
