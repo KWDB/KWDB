@@ -179,6 +179,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
     writeHeaderBlock(header);
   }
   file_.flush();
+  fsync(file_.get());
 
   return SUCCESS;
 }
