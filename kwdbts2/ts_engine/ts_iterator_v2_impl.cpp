@@ -298,7 +298,8 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
   // Return one block span data each time.
   ret = NextBlockSpan(res, count);
   if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to get next block span for entity: %d, cur_partition_index_: %d.", entity_ids_[cur_entity_index_], cur_partition_index_);
+    LOG_ERROR("Failed to get next block span for entity: %d, cur_partition_index_: %d.",
+                entity_ids_[cur_entity_index_], cur_partition_index_);
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
@@ -371,7 +372,6 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         return KStatus::SUCCESS;
       }
       ScanAndSortEntityData();
-      is_done = false;
     }
   } while (is_done);
 
@@ -394,6 +394,9 @@ TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 
 KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
+  if (cur_entity_index_ == -1) {
+    cur_entity_index_ = 0;
+  }
   if (cur_entity_index_ >= entity_ids_.size()) {
     *is_finished = true;
     return KStatus::SUCCESS;
