@@ -267,25 +267,14 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
     auto slice = bitmap_.GetData();
     bitmap_buffer_.append(slice.data, slice.len);
   }
-
-  const auto& mgr = CompressorManager::GetInstance();
-  auto compressor = mgr.GetDefaultCompressor(dtype_);
-  TSSlice plain{data_buffer_.data(), data_buffer_.size()};
-  std::string compressed;
   TsBitmap* bm = has_bitmap_ ? &bitmap_ : nullptr;
-  bool ok = compressor.Compress(plain, bm, row_cnt_, &compressed);
-  std::string tmp;
-  if (ok) {
-    auto [first, second] = compressor.GetAlgorithms();
-    tmp.push_back(static_cast<char>(first));
-    tmp.push_back(static_cast<char>(second));
-    tmp.append(compressed);
-  } else {
-    tmp.push_back(static_cast<char>(TsCompAlg::kPlain));
-    tmp.push_back(static_cast<char>(GenCompAlg::kPlain));
-    tmp.append(data_buffer_);
-  }
-  data_buffer_.swap(tmp);
+
+  std::string compressed;
+  const auto& mgr = CompressorManager::GetInstance();
+  auto [first, second] = mgr.GetDefaultAlgorithm(dtype_);
+  TSSlice plain{data_buffer_.data(), data_buffer_.size()};
+  mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
+  data_buffer_.swap(compressed);
 }
 
 auto TsLastSegmentBuilder::MetricBlockBuilder::GetBlockInfo() const -> BlockInfo {
