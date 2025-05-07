@@ -194,7 +194,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
           }
         }
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 1\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << std::endl;
+        std::cout << "rewrite wal 1\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << "log len:" << log->getLen() << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
