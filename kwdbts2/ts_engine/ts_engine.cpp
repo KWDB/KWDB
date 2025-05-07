@@ -385,6 +385,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   bool end_chk = false;
+//  wal_mgr_->Init(ctx);
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   std::cout<< "start lsn : " << wal_mgr_->FetchCheckpointLSN() <<   "\tstop  lsn: " << wal_mgr_->FetchCurrentLSN() << std::endl;
   if (!end_chk) {
@@ -447,7 +448,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 4. rewrite wal log to chk file
-  wal_mgr_->Close();
   wal_mgr_->ResetWAL(ctx, true);
   std::cout<< "rewrite logs count: " << rewrite.size() << std::endl;
    if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
@@ -482,7 +482,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 8. remove old chk file
   wal_mgr_->RemoveChkFile(ctx);
-
+  wal_mgr_->Close();
   // after checkpoint, engine wal mgr meta sync?
   return KStatus::SUCCESS;
 }
