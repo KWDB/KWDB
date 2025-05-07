@@ -769,10 +769,11 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx, bool reset) {
     }
   }
   TS_LSN current_lsn_recover = FetchCurrentLSN();
+  WALMeta old_meta = meta_;
   if (reset) {
     current_lsn_recover = 0;
+    old_meta = WALMeta{BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, 0, BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE};
   }
-  WALMeta old_meta = meta_;
   if (meta_file_.is_open()) {
     meta_file_.close();
   }
