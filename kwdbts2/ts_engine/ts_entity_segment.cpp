@@ -843,6 +843,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   iter.Init();
   TsEntityKey entity_key;
   std::shared_ptr<TsEntityBlock> block = nullptr;
+  std::vector<std::shared_ptr<TsEntityBlock>> cached_blocks;
   while (true) {
     if (block_span.GetRowNum() == 0) {
       s = iter.Next(&block_span, &is_finished);
@@ -877,10 +878,14 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
               return s;
             }
           }
-          s = builder.FlushBuffer();
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush buffer failed.")
-            return s;
+          cached_blocks.push_back(block);
+          if (entity_key.table_id != cur_entity_key.table_id || entity_key.table_version != cur_entity_key.table_version) {
+            s = builder.FlushBuffer();
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush buffer failed.")
+              return s;
+            }
+            cached_blocks.clear();
           }
         }
       }
