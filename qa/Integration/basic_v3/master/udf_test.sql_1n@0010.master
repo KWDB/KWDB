@@ -1,0 +1,232 @@
+> CREATE FUNCTION m1(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m1(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m2(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m2(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m3(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m3(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m4(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m4(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m5(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m5(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m6(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m6(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m7(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m7(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m8(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m8(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m9(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m9(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION m10(nu_int smallint)
+    RETURNs smallint
+    LANGUAGE LUA
+BEGIN
+'function m10(nu_int)
+    local re = nu_int + nu_int
+    return re
+end'
+END;
+CREATE FUNCTION
+> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+  function_name | argument_types | return_type | types_length |         function_body          | function_type | language |  db_name  | creator | version | comments
+----------------+----------------+-------------+--------------+--------------------------------+---------------+----------+-----------+---------+---------+-----------
+  m1            | {1}            | {1}         | {0,0}        | function m1(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m10           | {1}            | {1}         | {0,0}        | function m10(nu_int)           |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m2            | {1}            | {1}         | {0,0}        | function m2(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m3            | {1}            | {1}         | {0,0}        | function m3(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m4            | {1}            | {1}         | {0,0}        | function m4(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m5            | {1}            | {1}         | {0,0}        | function m5(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m6            | {1}            | {1}         | {0,0}        | function m6(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m7            | {1}            | {1}         | {0,0}        | function m7(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m8            | {1}            | {1}         | {0,0}        | function m8(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+  m9            | {1}            | {1}         | {0,0}        | function m9(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
+                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
+                |                |             |              |     return re                  |               |          |           |         |         |
+                |                |             |              | end                            |               |          |           |         |         |
+(10 rows)
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+  m1
+  m10
+  m2
+  m3
+  m4
+  m5
+  m6
+  m7
+  m8
+  m9
+(10 rows)
+> SHOW FUNCTION m1;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m1            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m2;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m2            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m3;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m3            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m4;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m4            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m5;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m5            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m6;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m6            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m7;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m7            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m8;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m8            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m9;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m9            | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> SHOW FUNCTION m10;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  m10           | SMALLINT       | SMALLINT    | function      | LUA
+(1 row)
+> DROP FUNCTION m1;
+DROP FUNCTION
+> DROP FUNCTION m2;
+DROP FUNCTION
+> DROP FUNCTION m3;
+DROP FUNCTION
+> DROP FUNCTION m4;
+DROP FUNCTION
+> DROP FUNCTION m5;
+DROP FUNCTION
+> DROP FUNCTION m6;
+DROP FUNCTION
+> DROP FUNCTION m7;
+DROP FUNCTION
+> DROP FUNCTION m8;
+DROP FUNCTION
+> DROP FUNCTION m9;
+DROP FUNCTION
+> DROP FUNCTION m10;
+DROP FUNCTION
+> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+  function_name | argument_types | return_type | types_length | function_body | function_type | language | db_name | creator | version | comments
+----------------+----------------+-------------+--------------+---------------+---------------+----------+---------+---------+---------+-----------
+(0 rows)

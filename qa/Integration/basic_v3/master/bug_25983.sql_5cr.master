@@ -1,0 +1,14 @@
+> DROP DATABASE IF EXISTS default_expr_db;
+DROP DATABASE
+> CREATE DATABASE default_expr_db;
+CREATE DATABASE
+> DROP TABLE IF EXISTS default_expr_tb;
+DROP TABLE
+> CREATE TABLE default_expr_tb1 (id int default unique_rowid(), name string);
+ERROR: The type of the default expression does not match the type of the column (column id)
+> CREATE TABLE default_expr_tb2 (id int8 default unique_rowid(), name string);
+CREATE TABLE
+> insert into default_expr_tb2(name) values ('aaa');
+INSERT 1
+> drop database default_expr_db;
+DROP DATABASE

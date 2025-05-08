@@ -1,0 +1,29 @@
+> drop database if EXISTS tsdb cascade;
+DROP DATABASE
+> drop database if EXISTS rdb cascade;
+DROP DATABASE
+> create ts database tsdb;
+CREATE TS DATABASE
+> create database rdb;
+CREATE DATABASE
+> CREATE TABLE rdb.r (id INT4 NOT NULL, rname VARCHAR NOT NULL, create_time TIMESTAMP, CONSTRAINT "primary" PRIMARY KEY (id ASC), FAMILY "primary" (id, rname));
+CREATE TABLE
+> CREATE TABLE tsdb.ts (ts TIMESTAMPTZ NOT NULL, e1 int) TAGS (tag1 VARCHAR not null, tag2 VARCHAR) PRIMARY TAGS (tag1);
+CREATE TABLE
+> insert into tsdb.ts values('2020-01-01 00:00:00', 1, 'a', 'b');
+INSERT 1
+> insert into rdb.r values(1, 'b', '2021-01-01 00:00:00.123456');
+INSERT 1
+> set enable_multimodel=true;
+SET
+> SELECT r.create_time FROM rdb.r r, tsdb.ts ts WHERE ts.tag2 = r.rname;
+            create_time
+------------------------------------
+  2021-01-01 00:00:00.123456+00:00
+(1 row)
+> set enable_multimodel=false;
+SET
+> drop database tsdb cascade;
+DROP DATABASE
+> drop database rdb cascade;
+DROP DATABASE

@@ -89,7 +89,7 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
     if (!min || cmp(current, min) < 0) {
       min = current;
     }
-    if (isSumType(type_)) {
+    if (isSumType(type_) && sum_addr != nullptr) {
       // When a memory overflow has occurred, there is no need to calculate the sum result again
       if (is_overflow) {
         continue;

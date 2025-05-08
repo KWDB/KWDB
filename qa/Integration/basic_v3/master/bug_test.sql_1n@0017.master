@@ -1,0 +1,57 @@
+> select  
+  ref_0.powerf_a as c0, 
+  ref_0.allrenergy2_c as c1, 
+  61 as c2, 
+  ref_0.vol_ab as c3, 
+  (select powerf_a from public.t_electmeter limit 1 offset 1)
+     as c4, 
+  ref_0.powerf as c5, 
+  ref_0.vol_a as c6, 
+  ref_0.k_timestamp as c7, 
+  ref_0.elect_name as c8, 
+  ref_0.op_group as c9, 
+  ref_0.op_group as c10, 
+  ref_0.cur_c as c11, 
+  ref_0.infre as c12, 
+  case when true then ref_0.powerr_c else ref_0.powerr_c end
+     as c13
+from 
+  public.t_electmeter as ref_0
+where case when (cast(null as _int8) IS DISTINCT FROM cast(coalesce(cast(null as _int8),
+          pg_catalog.array_positions(
+            cast(cast(null as _float8) as _float8),
+            cast(ref_0.powerl_b as float8))) as _int8)) 
+      and (((cast(null as _timetz) = cast(null as _timetz)) 
+          or (ref_0.k_timestamp >= cast(null as date))) 
+        and (pg_catalog.pg_client_encoding() IS DISTINCT FROM pg_catalog.split_part(
+            cast(cast(null as text) as text),
+            cast(cast(null as text) as text),
+            cast(cast(null as int8) as int8)))) then pg_catalog.kwdb_internal.is_admin() else pg_catalog.kwdb_internal.is_admin() end
+     < pg_catalog.not_like_escape(
+    cast(cast(null as text) as text),
+    cast(case when (ref_0.allrenergy1_a is not NULL) 
+        and ((cast(null as bytea) < cast(null as bytea)) 
+          or (cast(null as _inet) > cast(null as _inet))) then pg_catalog.pg_get_constraintdef(
+        cast(pg_catalog.pg_my_temp_schema() as oid)) else pg_catalog.pg_get_constraintdef(
+        cast(pg_catalog.pg_my_temp_schema() as oid)) end
+       as text),
+    cast(case when (false) 
+        or (cast(null as int8) = cast(null as int8)) then cast(nullif(pg_catalog.btrim(
+          cast(cast(nullif(cast(null as text),
+            cast(null as text)) as text) as text)),
+        cast(nullif(pg_catalog.kwdb_internal.cluster_name(),
+          case when cast(null as "interval") >= cast(null as "interval") then cast(null as text) else cast(null as text) end
+            ) as text)) as text) else cast(nullif(pg_catalog.btrim(
+          cast(cast(nullif(cast(null as text),
+            cast(null as text)) as text) as text)),
+        cast(nullif(pg_catalog.kwdb_internal.cluster_name(),
+          case when cast(null as "interval") >= cast(null as "interval") then cast(null as text) else cast(null as text) end
+            ) as text)) as text) end
+       as text));
+  c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | c9 | c10 | c11 | c12 | c13
+-----+----+----+----+----+----+----+----+----+----+-----+-----+-----+------
+(0 rows)
+> select 1 from t_electmeter as ref_0 where pg_catalog.kwdb_internal.is_admin() < pg_catalog.not_like_escape(cast(cast(null as text) as text),cast(pg_catalog.pg_get_constraintdef(cast(pg_catalog.pg_my_temp_schema() as oid)) as text),pg_catalog.btrim(cast(null as text)));
+  ?column?
+------------
+(0 rows)

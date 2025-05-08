@@ -189,7 +189,8 @@ func (n *noopProcessor) handleMetaForTs(meta *execinfrapb.ProducerMetadata) (Nee
 		}
 	case execinfrapb.OperatorType_TsDropTsTable, execinfrapb.OperatorType_TsDropDeleteEntities,
 		execinfrapb.OperatorType_TsDeleteExpiredData, execinfrapb.OperatorType_TsCompressTsTable,
-		execinfrapb.OperatorType_TsVacuum, execinfrapb.OperatorType_TsCount:
+		execinfrapb.OperatorType_TsVacuum, execinfrapb.OperatorType_TsCount, execinfrapb.OperatorType_TsAutonomy,
+		execinfrapb.OperatorType_TsManualCompressTable:
 		// n.InputNum > 1: Collect multi node information.
 		if n.InputNum > 1 {
 			if meta.TsPro != nil {
@@ -205,7 +206,9 @@ func (n *noopProcessor) handleMetaForTs(meta *execinfrapb.ProducerMetadata) (Nee
 			}
 		}
 	case execinfrapb.OperatorType_TsDropColumn, execinfrapb.OperatorType_TsAddColumn, execinfrapb.OperatorType_TsAlterType,
-		execinfrapb.OperatorType_TsCommit, execinfrapb.OperatorType_TsRollback:
+		execinfrapb.OperatorType_TsCommit, execinfrapb.OperatorType_TsRollback, execinfrapb.OperatorType_TsAlterCompressInterval,
+		execinfrapb.OperatorType_TsAlterVacuumInterval, execinfrapb.OperatorType_TsCreateTagIndex, execinfrapb.OperatorType_TsDropTagIndex,
+		execinfrapb.OperatorType_TsAlterTagIndex:
 		if n.InputNum > 1 {
 			if meta.TsAlterColumn != nil {
 				if !meta.TsAlterColumn.AlterSuccess {

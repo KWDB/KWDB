@@ -344,7 +344,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"|", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"|", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"|", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
-	{"|", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"&", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"&", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"&", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -868,7 +867,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"NOT IN", 1, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"NOT IN", 1, []uint32{uint32(oid.T_int8), uint32(oid.T_timestamptz)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"NOT IN", 1, []uint32{uint32(oid.T_float4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
-	{"NOT IN", 1, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"NOT IN", 1, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
 	// string family for NOT IN
 	{"NOT IN", 1, []uint32{uint32(oid.T_bpchar), uint32(oid.T_bpchar)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -888,10 +886,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"LIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
-	{"LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
-	{"LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
-	{"LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(oid.T_text), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(oid.T_text), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
@@ -908,8 +902,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"LIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"LIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
-	{"LIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
-	{"LIKE", 2, []uint32{uint32(types.T_nchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT LIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
@@ -931,10 +923,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
-	{"ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
-	{"ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
-	{"ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(oid.T_text), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(oid.T_text), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
@@ -951,8 +939,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"ILIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"ILIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
-	{"ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
-	{"ILIKE", 2, []uint32{uint32(types.T_nchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
 
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
@@ -963,10 +949,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
-	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
-	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
-	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_varchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_text), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(oid.T_text), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
@@ -983,8 +965,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"NOT ILIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nchar)}, PosWhere, true, TypeConstAndColumn},
 	{"NOT ILIKE", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nvarchar)}, PosWhere, true, TypeConstAndColumn},
-	{"NOT ILIKE", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
-	{"NOT ILIKE", 2, []uint32{uint32(types.T_nchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
 
 	{"~", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_varchar)}, PosWhere, true, TypeConstAndColumn},
 	{"~", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
@@ -1041,10 +1021,8 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"chr", 1, []uint32{uint32(oid.T_int2)}, PosAll, true, TypeConstAndColumn},
 	{"chr", 1, []uint32{uint32(oid.T_int4)}, PosAll, true, TypeConstAndColumn},
 	{"chr", 1, []uint32{uint32(oid.T_int8)}, PosAll, true, TypeConstAndColumn},
-	{"concat", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"decode", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_text)}, PosAll, true, TypeConstAndColumn},
 	{"decode", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_text)}, PosAll, true, TypeConstAndColumn},
-	{"left", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	{"char_length", 1, []uint32{uint32(oid.T_bpchar)}, PosAll, true, TypeConstAndColumn},
 	{"char_length", 1, []uint32{uint32(types.T_nchar)}, PosAll, true, TypeConstAndColumn},
 	{"char_length", 1, []uint32{uint32(oid.T_varchar)}, PosAll, true, TypeConstAndColumn},
@@ -1055,7 +1033,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"initcap", 1, []uint32{uint32(oid.T_varchar)}, PosAll, true, TypeConstAndColumn},
 	{"initcap", 1, []uint32{uint32(oid.T_bpchar)}, PosAll, true, TypeConstAndColumn},
 	{"initcap", 1, []uint32{uint32(types.T_nchar)}, PosAll, true, TypeConstAndColumn},
-	{"initcap", 1, []uint32{uint32(oid.T_varchar)}, PosAll, true, TypeConstAndColumn},
 	{"initcap", 1, []uint32{uint32(types.T_nvarchar)}, PosAll, true, TypeConstAndColumn},
 	{"initcap", 1, []uint32{uint32(oid.T_text)}, PosAll, true, TypeConstAndColumn},
 	{"character_length", 1, []uint32{uint32(oid.T_bpchar)}, PosAll, true, TypeConstAndColumn},
@@ -1076,17 +1053,10 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"octet_length", 1, []uint32{uint32(types.T_nvarchar)}, PosAll, true, TypeConstAndColumn},
 	{"octet_length", 1, []uint32{uint32(oid.T_text)}, PosAll, true, TypeConstAndColumn},
 	{"octet_length", 1, []uint32{uint32(oid.T_varbytea)}, PosAll, true, TypeConstAndColumn},
-	{"lower", 1, []uint32{uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"lpad", 3, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"ltrim", 1, []uint32{uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"right", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
-	{"rpad", 3, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
-	{"rtrim", 1, []uint32{uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"substr", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	{"substr", 3, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	{"substring", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	{"substring", 3, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
-	{"upper", 1, []uint32{uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
 	{"cast_check_ts", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_text)}, PosWhere, true, TypeConstAndColumn},
 	{"concat", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_bpchar)}, PosAll, true, TypeConstAndColumn},
 	{"concat", 2, []uint32{uint32(oid.T_bpchar), uint32(types.T_nchar)}, PosAll, true, TypeConstAndColumn},
@@ -1245,8 +1215,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"right", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_int2)}, PosAll, true, TypeConstAndColumn},
 	{"right", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_int4)}, PosAll, true, TypeConstAndColumn},
 	{"right", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_int8)}, PosAll, true, TypeConstAndColumn},
-	// {"right", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
-	// {"rpad", 3, []uint32{uint32(oid.T_bpchar), uint32(oid.T_int4), uint32(oid.T_bpchar)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"rtrim", 1, []uint32{uint32(oid.T_bpchar)}, PosAll, true, TypeConstAndColumn},
 	{"rtrim", 1, []uint32{uint32(types.T_nchar)}, PosAll, true, TypeConstAndColumn},
 	{"rtrim", 1, []uint32{uint32(oid.T_varchar)}, PosAll, true, TypeConstAndColumn},
@@ -1262,9 +1230,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"time_bucket", 2, []uint32{uint32(oid.T_timestamptz), uint32(types.T_nchar)}, PosAll, true, TypALL},
 	{"time_bucket", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_varchar)}, PosAll, true, TypALL},
 	{"time_bucket", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_text)}, PosAll, true, TypALL},
-	{"date_trunc", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
 	{"date_trunc", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
-	{"date_trunc", 2, []uint32{uint32(oid.T_text), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
 	{"date_trunc", 2, []uint32{uint32(types.T_nchar), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
 	{"date_trunc", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
 	{"date_trunc", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_timestamp)}, PosWhere, true, TypeConstAndColumn},
@@ -1280,7 +1246,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"current_timestamp", 0, []uint32{}, PosWhereAndProject, true, TypALL},
 	{"current_timestamp", 1, []uint32{uint32(oid.T_int8)}, PosWhereAndProject, true, TypALL},
 	{"current_date", 0, []uint32{}, PosWhereAndProject, true, TypeConstAndColumn},
-	{"now", 0, []uint32{}, PosWhereAndProject, true, TypALL},
 	{"timeofday", 0, []uint32{}, PosWhereAndProject, true, TypALL},
 	{"localtimestamp", 0, []uint32{}, PosWhereAndProject, true, TypALL},
 	{"age", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_timestamptz)}, PosWhereAndProject, true, TypALL},
@@ -1741,7 +1706,6 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"any_not_null", 1, []uint32{uint32(types.T_nchar)}, PosAll, true, TypeConstAndColumn},
 	{"any_not_null", 1, []uint32{uint32(types.T_varbytea)}, PosAll, true, TypeConstAndColumn},
 	{"any_not_null", 1, []uint32{uint32(types.T_nvarchar)}, PosAll, true, TypeConstAndColumn},
-	{"any_not_null", 1, []uint32{uint32(types.T_varbytea)}, PosAll, true, TypeConstAndColumn},
 	{"any_not_null", 1, []uint32{uint32(oid.T_timestamp)}, PosAll, true, TypeConstAndColumn},
 	{"any_not_null", 1, []uint32{uint32(oid.T_timestamptz)}, PosAll, true, TypeConstAndColumn},
 	// {"variance", 1, []uint32{uint32(oid.T_int2)}, PosAll, true, TypeConstAndColumn},
@@ -2989,6 +2953,23 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
 }
 
+// generate a hash value using the name and parameters of whitelist to compare whether the whitelist is consistent.
+func rowToHashKey(row tree.Datums) uint32 {
+	var buffer bytes.Buffer
+	buffer.WriteString(string(tree.MustBeDString(row[0])))
+	for _, t := range tree.MustBeDArray(row[1]).Array {
+		buffer.WriteString(strconv.Itoa(int(tree.MustBeDInt(t))))
+	}
+	return memo.StringHash(buffer.String())
+}
+
+func deleteWhiteList(ctx context.Context, txn *kv.Txn, ie sqlutil.InternalExecutor) error {
+	const deleteStmt = `delete from system.bo_black_list`
+	_, err := ie.Exec(
+		ctx, `delete bo_black_list`, txn, deleteStmt)
+	return err
+}
+
 // WriteWhiteListDesc writes bo_white_list
 func WriteWhiteListDesc(
 	ctx context.Context,
@@ -2998,45 +2979,87 @@ func WriteWhiteListDesc(
 	whiteList []sqlbase.WhiteList,
 	overWrite bool,
 ) error {
-	const selectStmt = `select count(1) from system.bo_black_list`
-	if !overWrite {
-		row, err := ie.QueryRow(
-			ctx, `select white_list`, txn, selectStmt)
-		if err != nil {
-			return err
-		}
-		if int(tree.MustBeDInt(row[0])) > 0 {
-			return nil
-		}
-	}
-
-	var rows []tree.Datums
-	for _, b := range whiteList {
-		argType := tree.NewDArray(types.Int2)
-		var argTypeArray tree.Datums
-		for _, val := range b.ArgType {
-			argTypeArray = append(argTypeArray, tree.NewDInt(tree.DInt(val)))
-		}
-		// generate rowID
-		rowID := builtins.GenerateUniqueInt(nodeID)
-		argType.Array = argTypeArray
-		row := tree.Datums{
-			tree.NewDInt(rowID),
-			tree.NewDString(b.Name),
-			tree.NewDInt(tree.DInt(b.ArgNum)),
-			argType,
-			tree.NewDInt(tree.DInt(b.Position)),
-			tree.MakeDBool(tree.DBool(b.Enabled)),
-			tree.NewDInt(tree.DInt(b.ArgOpt)),
-		}
-		rows = append(rows, row)
-	}
-
-	// system.bo_white_list
-	if err := WriteKWDBDesc(ctx, txn, sqlbase.BoBlackListTable, rows, overWrite); err != nil {
+	const selectStmt = `select name, arg_type, position, enabled, arg_opt from system.bo_black_list`
+	resRows, err := ie.Query(
+		ctx, `select white_list`, txn, selectStmt)
+	if err != nil {
 		return err
 	}
+	insertFlag := true
+	if !overWrite && resRows != nil {
+		// we add whiteList or delete whiteList
+		if len(resRows) != len(whiteList) {
+			if err := deleteWhiteList(ctx, txn, ie); err != nil {
+				return err
+			}
+		} else {
+			// the number of whitelist is equal to the number of query records
+			whiteListMap := make(map[uint32]struct{}, 0)
+			for _, row := range resRows {
+				whiteListMap[rowToHashKey(row)] = struct{}{}
+			}
+			for _, b := range whiteList {
+				argType := tree.NewDArray(types.Int2)
+				var argTypeArray tree.Datums
+				for _, val := range b.ArgType {
+					argTypeArray = append(argTypeArray, tree.NewDInt(tree.DInt(val)))
+				}
+				argType.Array = argTypeArray
+				key := rowToHashKey(tree.Datums{tree.NewDString(b.Name), argType})
+				if _, ok := whiteListMap[key]; !ok {
+					whiteListMap[key] = struct{}{}
+				}
+			}
 
+			// we write the system table whitelist and the local whitelist into whiteListMap,
+			// and compare the count of local whitelist.
+			// if they are not equal, it indicates that the local whitelist has been modified.
+			// eg:
+			//	init local whiteList: 1,2,3,4,5
+			// 	init system table whiteList: 1,2,3,4,5
+			// 	update local whiteList: 1,2,3,4,6( delete 5, add 6, count has not changed.)
+			// 	write system table whiteList into whiteListMap: 1,2,3,4,5
+			// 	write local whiteList into whiteListMap: 1,2,3,4,5,6
+			//  count of whiteListMap > count of local whiteList
+			if len(whiteListMap) != len(whiteList) {
+				if err := deleteWhiteList(ctx, txn, ie); err != nil {
+					return err
+				}
+			} else {
+				insertFlag = false
+			}
+		}
+	}
+
+	if insertFlag {
+		// rewrite the whitelist.
+		var rows []tree.Datums
+		for _, b := range whiteList {
+			argType := tree.NewDArray(types.Int2)
+			var argTypeArray tree.Datums
+			for _, val := range b.ArgType {
+				argTypeArray = append(argTypeArray, tree.NewDInt(tree.DInt(val)))
+			}
+			argType.Array = argTypeArray
+			// generate rowID
+			rowID := builtins.GenerateUniqueInt(nodeID)
+			row := tree.Datums{
+				tree.NewDInt(rowID),
+				tree.NewDString(b.Name),
+				tree.NewDInt(tree.DInt(b.ArgNum)),
+				argType,
+				tree.NewDInt(tree.DInt(b.Position)),
+				tree.MakeDBool(tree.DBool(b.Enabled)),
+				tree.NewDInt(tree.DInt(b.ArgOpt)),
+			}
+			rows = append(rows, row)
+		}
+
+		// system.bo_white_list
+		if err := WriteKWDBDesc(ctx, txn, sqlbase.BoBlackListTable, rows, overWrite); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

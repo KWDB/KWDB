@@ -1,0 +1,24 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry) PRIMARY TAGS(code1);
+ERROR: tag code2: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> create table test_geometry.t2 (k_timestamp timestamptz not null,
+  e1 int) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry null) PRIMARY TAGS(code1);
+ERROR: tag code2: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show create table test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> show create table test_geometry.t2;
+ERROR: relation "test_geometry.t2" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE

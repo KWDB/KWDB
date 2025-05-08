@@ -123,10 +123,25 @@ order by k_timestamp;
 ---------
       9
 (1 row)
+> select sum(a), min(b) from test.sjcx01;
+  sum | min
+------+------
+   35 |   1
+(1 row)
+> select count(a), sum(b), max(a), max(b) from test.sjcx01;
+  count | sum | max | max
+--------+-----+-----+------
+      9 |  55 |  12 |  13
+(1 row)
 > select * from test.sjcx01 where t1_attribute = 'F6';
            k_timestamp          |  a   | b  | c | d | t1_attribute
 --------------------------------+------+----+---+---+---------------
   2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | F6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2023-04-10 07:18:00+00:00 |  12
 (1 row)
 > drop database test cascade;
 DROP DATABASE

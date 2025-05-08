@@ -200,6 +200,7 @@ class TsEntityBlock : public TsBlock {
 
   TsEntitySegmentBlockInfo block_info_;
   std::vector<TsEntitySegmentColumnBlock> column_blocks_;
+  std::string extra_buffer_;
 
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;

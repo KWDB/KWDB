@@ -1,0 +1,88 @@
+> use defaultdb;drop database test_select_tag5 cascade;
+ERROR: database "test_select_tag5" does not exist
+SQLSTATE: 3D000
+> create ts database test_select_tag5;
+CREATE TS DATABASE
+> create table test_select_tag5.tb(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes(100),t16 varbytes(200)) primary tags(t1,t4,t8,t12);
+CREATE TABLE
+> create table test_select_tag5.tb2(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2,t2 int not null,t3 int8,t4 bool,t5 float4,t6 float8,t7 char not null,t8 char(100),t9 nchar not null,t10 nchar(254) not null,t11 varchar,t12 varchar(128),t13 varbytes,t14 varbytes(100),t15 varbytes(100),t16 varbytes(200)) primary tags(t2,t7,t9,t10);
+CREATE TABLE
+> insert into test_select_tag5.tb values ('2020-11-06 17:10:23','1970-01-01 08:00:00',700,7000,70000,700000.707,7000000.1010101,true,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,
+1,null,7000,false,70.7077,700.5675675,'a','test测试！！！@TEST1','e','\a',null,'vvvaa64_1','b','test测试1023_1','vwwws测试_1','aaabbb');
+INSERT 1
+> insert into test_select_tag5.tb values ('2020-11-06 17:10:55.123','2019-12-06 18:10:23',100,3000,40000,600000.60612,4000000.4040404,false,' ',' ',' ',' ',' ',' ',' ',null,'','','','','','',null,
+-32678,-2147483648,-9223372036854775808,false,-9223372036854775807.12345,100.111111,'b','test测试！！！@TEST1 ','f','test测试！TEST1xaa','\0test查询  @TEST1\0',e'\\','y','test@@测试！1023_1','vwwws测试_1','cccddde');
+INSERT 1
+> insert into test_select_tag5.tb values ('2022-05-01 12:10:23.456','2020-05-01 17:00:00',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ','test！@TEST1  ',e'\\','255测试1cdf~# ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xbb\xcc',b'\xaa\xaa\xbb\xbb',
+32767,2147483647,9223372036854775807,true,9223372036854775806.12345,500.578578,'c','test测试！！！@TEST1  ','g','" \','\0test查询！！！@TEST1\0','64_3','t','es1023_2','\\f','tes4096_2');
+INSERT 1
+> insert into test_select_tag5.tb values ('2022-05-01 12:10:25','2020-05-01 20:30:00',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2  ', 'c', 'r255测试2()*&^%{}','\\\\', 'v255测试1cdf~#   ', 'lengthis4096  测试%&!','ar-1', 'ar255()*&^%{}  ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',
+4,400,4000,false,50.555,500.578578,'d','\\test测试！！！@TEST1','e','test测试！T  EST1xaa','\0test查询！！！@TEST1\0 ',e'\\\\','e','es1023_2','s_ 4','ww4096_2');
+INSERT 1
+> insert into test_select_tag5.tb values ('2023-05-10 09:08:18.223','2021-05-10 09:04:18.223',600,6000,60000,600000.666,666660.101011,true,'r', 'a r3', 'a', 'r255测试1(){}','varchar  中文1', null, 'hof4096查询test%%&!   ',null, 'ar255{}', 'ar4096测试1%{}','e','es1023_0', null, b'\xbb\xee\xff', null,
+5,null,6000,true,60.6066,600.123455,'a','test测试！！！@TEST1','e',e'\a',null,'chch4_1','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_select_tag5.tb values ('2023-05-10 09:08:19.22','2021-06-01 10:00:00',100,3000,40000,600000.60612,4000000.4040404,false,'r', '\a r3', 'a', 'r255测试1{}','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,
+6,100,1000,false,-10.123,100.111111,'b','\\TEST1 ','f','测试！TEST1xaa','test查询  @TEST1\0','bd64_1','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> insert into test_select_tag5.tb values ('2023-05-10 09:15:15.783','2021-06-10 06:04:15.183',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ',null,null,'255测试1cdf~# ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',
+7,200,2000,true,-10.123,500.578578,'c','test测试！！！@TEST1  ','g','" \','\0test查询！！！@TEST1\0','64_3','t','es1023_2','\\f','tes4096_2');
+INSERT 1
+> insert into test_select_tag5.tb2 values ('2023-05-10 09:08:18.223','2021-05-10 09:04:18.223',600,6000,60000,600000.666,666660.101011,true,'r', 'a r3', 'a', 'r255测试1(){}','varchar  中文1', null, 'hof4096查询test%%&!   ',null, 'ar255{}', 'ar4096测试1%{}','e','es1023_0', null, b'\xbb\xee\xff', null,
+5,600,6000,false,60.6066,600.123455,'a','test测试！！！@TEST1','e','\a',null,'chch4_1','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_select_tag5.tb2 values ('2023-05-10 09:08:19.22','2021-06-01 10:00:00',100,3000,40000,600000.60612,4000000.4040404,false,'r', '\a r3', 'a', 'r255测试1{}','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,
+6,100,1000,true,-10.123,100.111111,'b','\\TEST1 ','f','测试！TEST1xaa','test查询  @TEST1\0','bd64_1','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> select t11,t12 from test_select_tag5.tb order by k_timestamp,t11,t12 limit 3;
+            t11            |    t12
+---------------------------+------------
+  NULL                     | vvvaa64_1
+  \0test查询  @TEST1\0     | \
+  \0test查询！！！@TEST1\0 | 64_3
+(3 rows)
+> select t8,t11 from test_select_tag5.tb order by k_timestamp,t8,t11 limit 1 offset 1;
+           t8           |         t11
+------------------------+-----------------------
+  test测试！！！@TEST1  | \0test查询  @TEST1\0
+(1 row)
+> select t7 from test_select_tag5.tb order by k_timestamp, t7 desc limit -1;
+ERROR: negative value for LIMIT
+> select t8,t10 from test_select_tag5.tb order by k_timestamp,t8,t10 limit 3;
+            t8           |        t10
+-------------------------+---------------------
+  test测试！！！@TEST1   | \a
+  test测试！！！@TEST1   | test测试！TEST1xaa
+  test测试！！！@TEST1   | " \
+(3 rows)
+> select t2,t11 from test_select_tag5.tb2 where t2 > 100 order by k_timestamp,t2 asc, t11 desc limit 2 offset 3;
+  t2 | t11
+-----+------
+(0 rows)
+> select t7 from test_select_tag5.tb2 order by k_timestamp,t7 desc limit -1;
+ERROR: negative value for LIMIT
+> select t3,t8,t12 from test_select_tag5.tb order by k_timestamp,t3,t8,t12 limit 3;
+           t3          |           t8           |    t12
+-----------------------+------------------------+------------
+                  7000 | test测试！！！@TEST1   | vvvaa64_1
+  -9223372036854775808 | test测试！！！@TEST1   | \
+   9223372036854775807 | test测试！！！@TEST1   | 64_3
+(3 rows)
+> select t5,t13,t14 from test_select_tag5.tb2 where t13 = 'b' or t14 in('bytes1023_1','bytes1023_2') order by k_timestamp,t13,t14 limit 1;
+     t5     | t13  |              t14
+------------+------+---------------------------------
+  60.606602 | \x62 | \x74657374e6b58be8af9531305f31
+(1 row)
+> select e4,e6,t3,t8,t10 from test_select_tag5.tb order by k_timestamp, e4,t8,t12 limit 3;
+   e4   |         e6          |          t3          |           t8           |        t10
+--------+---------------------+----------------------+------------------------+---------------------
+  70000 | 7.0000001010101e+06 |                 7000 | test测试！！！@TEST1   | \a
+  40000 | 4.0000004040404e+06 | -9223372036854775808 | test测试！！！@TEST1   | test测试！TEST1xaa
+  60000 | 5.000000505055e+06  |  9223372036854775807 | test测试！！！@TEST1   | " \
+(3 rows)
+> drop table test_select_tag5.tb cascade;
+DROP TABLE
+> drop table test_select_tag5.tb2 cascade;
+DROP TABLE
+> use defaultdb;drop database test_select_tag5 cascade;
+DROP DATABASE

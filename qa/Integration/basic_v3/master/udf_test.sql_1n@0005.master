@@ -1,0 +1,162 @@
+> CREATE TS DATABASE test_udf;
+CREATE TS DATABASE
+> CREATE TABLE test_udf.tb1(ts timestamptz NOT NULL, e1 float4) TAGS(t1 int NOT NULL) PRIMARY TAGS(t1);
+CREATE TABLE
+> INSERT INTO test_udf.tb1 VALUES(NOW(), 5, 1);
+INSERT 1
+> CREATE FUNCTION calculate_circle_area(radius float4)
+    RETURNS float4
+    LANGUAGE LUA
+BEGIN
+'function calculate_circle_area(radius)
+    local pi = 3.141592653589793
+    local area = pi * radius * radius
+    return area
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION calculate_stddev(numbers_str varchar)
+    RETURNS float4
+    LANGUAGE LUA
+BEGIN
+'function calculate_stddev(numbers_str)
+    local sum = 0
+    local numbers = {}
+    local count = 0
+    for number in string.gmatch(numbers_str, "([^,]+)") do
+        local num = tonumber(number)
+        if not num then
+
+          return nil
+        end
+        table.insert(numbers, num)
+        sum = sum + num
+        count = count + 1
+    end
+    local mean = sum / count
+    local variance_sum = 0
+    for _, num in ipairs(numbers) do
+        variance_sum = variance_sum + ((num - mean) ^ 2)
+    end
+    local variance = variance_sum / count
+    return math.sqrt(variance)
+end'
+END;
+CREATE FUNCTION
+> SELECT calculate_circle_area(5);
+  calculate_circle_area
+-------------------------
+              78.539818
+(1 row)
+> SELECT calculate_stddev('1,2,3,4,5');
+  calculate_stddev
+--------------------
+          1.414214
+(1 row)
+> SELECT function_name,argument_types,return_type,types_length,function_body,function_type,language,db_name,creator,comments FROM system.user_defined_function;
+      function_name     | argument_types | return_type | types_length |                       function_body                        | function_type | language |  db_name  | creator | comments
+------------------------+----------------+-------------+--------------+------------------------------------------------------------+---------------+----------+-----------+---------+-----------
+  calculate_circle_area | {4}            | {4}         | {0,0}        | function calculate_circle_area(radius)                     |             1 | LUA      | defaultdb | root    |
+                        |                |             |              |     local pi = 3.141592653589793                           |               |          |           |         |
+                        |                |             |              |     local area = pi * radius * radius                      |               |          |           |         |
+                        |                |             |              |     return area                                            |               |          |           |         |
+                        |                |             |              | end                                                        |               |          |           |         |
+  calculate_stddev      | {10}           | {4}         | {0,0}        | function calculate_stddev(numbers_str)                     |             1 | LUA      | defaultdb | root    |
+                        |                |             |              |     local sum = 0                                          |               |          |           |         |
+                        |                |             |              |     local numbers = {}                                     |               |          |           |         |
+                        |                |             |              |     local count = 0                                        |               |          |           |         |
+                        |                |             |              |     for number in string.gmatch(numbers_str, "([^,]+)") do |               |          |           |         |
+                        |                |             |              |         local num = tonumber(number)                       |               |          |           |         |
+                        |                |             |              |         if not num then                                    |               |          |           |         |
+                        |                |             |              |                                                            |               |          |           |         |
+                        |                |             |              |           return nil                                       |               |          |           |         |
+                        |                |             |              |         end                                                |               |          |           |         |
+                        |                |             |              |         table.insert(numbers, num)                         |               |          |           |         |
+                        |                |             |              |         sum = sum + num                                    |               |          |           |         |
+                        |                |             |              |         count = count + 1                                  |               |          |           |         |
+                        |                |             |              |     end                                                    |               |          |           |         |
+                        |                |             |              |     local mean = sum / count                               |               |          |           |         |
+                        |                |             |              |     local variance_sum = 0                                 |               |          |           |         |
+                        |                |             |              |     for _, num in ipairs(numbers) do                       |               |          |           |         |
+                        |                |             |              |         variance_sum = variance_sum + ((num - mean) ^ 2)   |               |          |           |         |
+                        |                |             |              |     end                                                    |               |          |           |         |
+                        |                |             |              |     local variance = variance_sum / count                  |               |          |           |         |
+                        |                |             |              |     return math.sqrt(variance)                             |               |          |           |         |
+                        |                |             |              | end                                                        |               |          |           |         |
+(2 rows)
+> SHOW FUNCTIONS;
+      function_name
+-------------------------
+  calculate_circle_area
+  calculate_stddev
+(2 rows)
+> SHOW FUNCTION calculate_circle_area;
+      function_name     | argument_types | return_type | function_type | language
+------------------------+----------------+-------------+---------------+-----------
+  calculate_circle_area | FLOAT          | FLOAT       | function      | LUA
+(1 row)
+> SHOW FUNCTION calculate_stddev;
+   function_name   | argument_types | return_type | function_type | language
+-------------------+----------------+-------------+---------------+-----------
+  calculate_stddev | VARCHAR        | FLOAT       | function      | LUA
+(1 row)
+> SELECT calculate_circle_area(e1) FROM test_udf.tb1;
+  calculate_circle_area
+-------------------------
+              78.539818
+(1 row)
+> drop table test_udf.tb1;
+DROP TABLE
+> drop database test_udf cascade;
+DROP DATABASE
+> CREATE DATABASE test_udf_re;
+CREATE DATABASE
+> CREATE TABLE test_udf_re.r1(e1 varchar);
+CREATE TABLE
+> INSERT INTO test_udf_re.r1 VALUES('1,2,3,4,5');
+INSERT 1
+> SELECT calculate_stddev(e1) FROM test_udf_re.r1;
+  calculate_stddev
+--------------------
+          1.414214
+(1 row)
+> drop table test_udf_re.r1 ;
+DROP TABLE
+> drop database test_udf_re cascade;
+DROP DATABASE
+> SELECT calculate_circle_area(1.0407460546591726e+6);
+  calculate_circle_area
+-------------------------
+  3.402823368704e+12
+(1 row)
+> SELECT calculate_circle_area(1.0407460546591726e+20);
+  calculate_circle_area
+-------------------------
+  +Inf
+(1 row)
+> SELECT calculate_circle_area(null);
+  calculate_circle_area
+-------------------------
+  NULL
+(1 row)
+> SELECT calculate_circle_area(null);
+  calculate_circle_area
+-------------------------
+  NULL
+(1 row)
+> SELECT calculate_circle_area('test');
+ERROR: unknown signature: calculate_circle_area(STRING)
+SQLSTATE: 42883
+> SELECT calculate_stddev('invalid, data');
+  calculate_stddev
+--------------------
+  NULL
+(1 row)
+> DROP FUNCTION calculate_circle_area;
+DROP FUNCTION
+> DROP FUNCTION calculate_stddev;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)

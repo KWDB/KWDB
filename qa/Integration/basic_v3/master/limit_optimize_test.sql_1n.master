@@ -1,0 +1,261 @@
+> DROP DATABASE if EXISTS test_limit_optimize cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_limit_optimize;
+CREATE TS DATABASE
+> use test_limit_optimize;
+SET
+> CREATE TABLE cpu (
+     k_timestamp TIMESTAMPTZ NOT NULL,
+     usage_user1 INT8 NOT NULL,
+     usage_system1 INT8 NOT NULL,
+     usage_idle1 INT8 NOT NULL,
+     usage_nice1 INT8 NOT NULL,
+     usage_iowait1 INT8 NOT NULL,
+     usage_irq1 INT8 NOT NULL,
+     usage_softirq1 INT8 NOT NULL,
+     usage_steal1 INT8 NOT NULL,
+     usage_guest1 INT8 NOT NULL,
+     usage_guest_nice1 INT8 NOT NULL,
+	 k_timestamp2 TIMESTAMPTZ NOT NULL
+ ) TAGS (
+     hostname CHAR(30) NOT NULL,
+     region CHAR(30),
+     datacenter CHAR(30),
+     rack CHAR(30),
+     os CHAR(30),
+     arch CHAR(30),
+     team CHAR(30),
+     service CHAR(30),
+     service_version CHAR(30),
+     service_environment CHAR(30) ) PRIMARY TAGS(hostname);
+CREATE TABLE
+> insert into cpu values('2016-01-01 00:00:00+00:00', 1,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:00+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu values('2016-01-01 00:00:10+00:00', 2,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:10+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu values('2016-01-01 00:00:20+00:00', 3,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:20+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu values('2016-01-01 00:00:30+00:00', 4,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:30+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu values('2016-01-01 00:00:40+00:00', 5,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:40+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu values('2016-01-01 00:00:50+00:00', 6,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:50+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> EXPLAIN SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+             tree             |              field              |            description
+------------------------------+---------------------------------+------------------------------------
+                              | distributed                     | true
+                              | vectorized                      | false
+  limit                       |                                 |
+   │                          | engine type                     | time series
+   │                          | pushLimitToAggScan              | true
+   │                          | count                           | 5
+   └── sort                   |                                 |
+        │                     | order                           | +time_bucket
+        └── group             |                                 |
+             │                | engine type                     | time series
+             │                | aggregate 0                     | time_bucket(k_timestamp, '60s')
+             │                | aggregate 1                     | max(usage_user1)
+             │                | group by                        | time_bucket(k_timestamp, '60s')
+             │                | pushLocalAggToScan              | true
+             │                | addSynchronizer                 | true
+             └── render       |                                 |
+                  │           | engine type                     | time series
+                  │           | time_bucket(k_timestamp, '60s') | time_bucket(k_timestamp, '60s')
+                  │           | usage_user1                     | usage_user1
+                  └── ts scan |                                 |
+                              | ts-table                        | cpu
+                              | access mode                     | metaTable
+                              | spans:fromTime                  | 0000-01-01 00:00:00 +0000 UTC
+                              | spans:toTime                    | 2016-01-01 13:31:03.645 +0000 UTC
+(24 rows)
+> EXPLAIN SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+           tree          |              field              |            description
+-------------------------+---------------------------------+------------------------------------
+                         | distributed                     | true
+                         | vectorized                      | false
+  limit                  |                                 |
+   │                     | engine type                     | time series
+   │                     | pushLimitToAggScan              | true
+   │                     | count                           | 5
+   └── group             |                                 |
+        │                | engine type                     | time series
+        │                | aggregate 0                     | time_bucket(k_timestamp, '60s')
+        │                | aggregate 1                     | max(usage_user1)
+        │                | group by                        | time_bucket(k_timestamp, '60s')
+        │                | pushLocalAggToScan              | true
+        │                | addSynchronizer                 | true
+        └── render       |                                 |
+             │           | engine type                     | time series
+             │           | time_bucket(k_timestamp, '60s') | time_bucket(k_timestamp, '60s')
+             │           | usage_user1                     | usage_user1
+             └── ts scan |                                 |
+                         | ts-table                        | cpu
+                         | access mode                     | metaTable
+                         | spans:fromTime                  | 0000-01-01 00:00:00 +0000 UTC
+                         | spans:toTime                    | 2016-01-01 13:31:03.645 +0000 UTC
+(22 rows)
+> SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), min(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | min
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   1
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), last(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | last
+----------------------------+-------
+  2016-01-01 00:00:00+00:00 |    6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), first(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | first
+----------------------------+--------
+  2016-01-01 00:00:00+00:00 |     1
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), count(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | count
+----------------------------+--------
+  2016-01-01 00:00:00+00:00 |     6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), avg(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | avg
+----------------------------+------
+  2016-01-01 00:00:00+00:00 | 3.5
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), sum(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | sum
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |  21
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), min(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | min
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   1
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), last(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | last
+----------------------------+-------
+  2016-01-01 00:00:00+00:00 |    6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), first(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | first
+----------------------------+--------
+  2016-01-01 00:00:00+00:00 |     1
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), count(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | count
+----------------------------+--------
+  2016-01-01 00:00:00+00:00 |     6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), avg(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | avg
+----------------------------+------
+  2016-01-01 00:00:00+00:00 | 3.5
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), sum(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket        | sum
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |  21
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), time_bucket(k_timestamp, '30s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s'), time_bucket(k_timestamp, '30s') ORDER BY time_bucket(k_timestamp, '60s'), time_bucket(k_timestamp, '30s');
+         time_bucket        |        time_bucket        | max
+----------------------------+---------------------------+------
+  2016-01-01 00:00:00+00:00 | 2016-01-01 00:00:00+00:00 |   3
+  2016-01-01 00:00:00+00:00 | 2016-01-01 00:00:30+00:00 |   6
+(2 rows)
+> SELECT time_bucket(k_timestamp2, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp2 < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp2, '60s') ORDER BY time_bucket(k_timestamp2, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   6
+(1 row)
+> SELECT time_bucket(k_timestamp2, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp2 < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp2, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   6
+(1 row)
+> SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s'),k_timestamp ORDER BY k_timestamp LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   1
+  2016-01-01 00:00:00+00:00 |   2
+  2016-01-01 00:00:00+00:00 |   3
+  2016-01-01 00:00:00+00:00 |   4
+  2016-01-01 00:00:00+00:00 |   5
+(5 rows)
+> SELECT time_bucket(k_timestamp, '60s') FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
+         time_bucket
+-----------------------------
+  2016-01-01 00:00:00+00:00
+  2016-01-01 00:00:00+00:00
+  2016-01-01 00:00:00+00:00
+  2016-01-01 00:00:00+00:00
+  2016-01-01 00:00:00+00:00
+(5 rows)
+> SELECT count(k_timestamp) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY k_timestamp ORDER BY k_timestamp LIMIT 5;
+  count
+---------
+      1
+      1
+      1
+      1
+      1
+(5 rows)
+> CREATE TABLE cpu1 (
+     k_timestamp TIMESTAMPTZ NOT NULL,
+     usage_user1 INT8 NOT NULL,
+     usage_system1 INT8 NOT NULL,
+     usage_idle1 INT8 NOT NULL,
+     usage_nice1 INT8 NOT NULL,
+     usage_iowait1 INT8 NOT NULL,
+     usage_irq1 INT8 NOT NULL,
+     usage_softirq1 INT8 NOT NULL,
+     usage_steal1 INT8 NOT NULL,
+     usage_guest1 INT8 NOT NULL,
+     usage_guest_nice1 INT8 NOT NULL,
+	 k_timestamp2 TIMESTAMPTZ NOT NULL
+ ) TAGS (
+     hostname CHAR(30) NOT NULL,
+     region CHAR(30),
+     datacenter CHAR(30),
+     rack CHAR(30),
+     os CHAR(30),
+     arch CHAR(30),
+     team CHAR(30),
+     service CHAR(30),
+     service_version CHAR(30),
+     service_environment CHAR(30) ) PRIMARY TAGS(hostname);
+CREATE TABLE
+> insert into cpu1 values('2016-01-01 00:00:00+00:00', 1,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:00+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu1 values('2016-01-01 00:00:10+00:00', 2,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:10+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu1 values('2016-01-01 00:00:20+00:00', 3,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:20+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu1 values('2016-01-01 00:00:30+00:00', 4,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:30+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu1 values('2016-01-01 00:00:40+00:00', 5,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:40+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> insert into cpu1 values('2016-01-01 00:00:50+00:00', 6,20, 20, 20,20,20, 20,20,20,20, '2016-01-01 00:00:50+00:00','host_1', 'test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1','test_1');
+INSERT 1
+> SELECT time_bucket(t1.k_timestamp, '60s'), max(t1.usage_user1) FROM test_limit_optimize.cpu as t1, test_limit_optimize.cpu1 as t2 WHERE t1.k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(t1.k_timestamp, '60s') ORDER BY time_bucket(t1.k_timestamp, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   6
+(1 row)
+> SELECT time_bucket(t1.k_timestamp, '60s'), max(t1.usage_user1) FROM test_limit_optimize.cpu as t1 join test_limit_optimize.cpu1 as t2 ON t1.k_timestamp=t2.k_timestamp WHERE t1.k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(t1.k_timestamp, '60s') ORDER BY time_bucket(t1.k_timestamp, '60s') LIMIT 5;
+         time_bucket        | max
+----------------------------+------
+  2016-01-01 00:00:00+00:00 |   6
+(1 row)
+> use defaultdb;
+SET
+> DROP DATABASE test_limit_optimize cascade;
+DROP DATABASE

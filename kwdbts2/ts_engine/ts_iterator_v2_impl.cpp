@@ -101,6 +101,33 @@ inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
+  KStatus ret;
+  ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
+              cur_partition_index_, entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
+
+  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    ret = AddLastSegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+
+    ret = AddEntitySegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return ret;
+    }
+  }
+  return ret;
+}
+
 KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span,
                                                               ResultSet* res, k_uint32* count) {
   *count = ts_blk_span.GetRowNum();
@@ -169,15 +196,8 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
           }
         }
         // Temporary workaround for timestamp column alignment:
-        if (col_idx == 0 &&
-          (status_ == STORAGE_SCAN_STATUS::SCAN_ENTITY_SEGMENT || status_ == STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT)) {
-          int actual_row_size = 8;
-          for (int i = 0; i < *count; ++i) {
-            memcpy(res_value + i * attrs_[col_idx].size, value + i * actual_row_size, actual_row_size);
-          }
-        } else {
-          memcpy(res_value, value, attrs_[col_idx].size * (*count));
-        }
+        memcpy(res_value, value, attrs_[col_idx].size * (*count));
+
         batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
         batch->is_new = true;
         batch->need_free_bitmap = true;
@@ -348,7 +368,7 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
   return KStatus::SUCCESS;
 }
 
-TsSortedRowDataIteratorV2Impl::TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
+TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
                                                               DATATYPE ts_col_type,
@@ -362,17 +382,65 @@ TsSortedRowDataIteratorV2Impl::TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsV
                                                                             table_version) {
 }
 
-TsSortedRowDataIteratorV2Impl::~TsSortedRowDataIteratorV2Impl() {
+TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::Init(bool is_reversed) {
-  // TODO(Yongyan): initialization
-  return KStatus::FAIL;
+KStatus TsSortedRawDataIteratorV2Impl::Init(bool is_reversed) {
+  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
+  if (ret != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  return ScanAndSortEntityData();
 }
 
-KStatus TsSortedRowDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  // TODO(Yongyan): scan next batch
-  return KStatus::FAIL;
+KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
+  if (cur_entity_index_ < entity_ids_.size()) {
+    // scan row data for current entity
+    KStatus ret = ScanEntityBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to scan block spans for entity(%d).", entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+    // sort the block span data
+    block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
+    ret = block_span_sorted_iterator_->Init();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity() {
+  ++cur_entity_index_;
+  return ScanAndSortEntityData();
+}
+
+KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+  *count = 0;
+  if (cur_entity_index_ >= entity_ids_.size()) {
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
+  KStatus ret;
+  bool is_done = false;
+  TsBlockSpan block_span;
+  ret = block_span_sorted_iterator_->Next(&block_span, &is_done);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
+  if (is_done) {
+    ret = MoveToNextEntity();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to move to next entity for sorted row data scan, cur_entity_index_: %d.", cur_entity_index_);
+      return KStatus::FAIL;
+    }
+    return KStatus::SUCCESS;
+  } else {
+    return ConvertBlockSpanToResultSet(block_span, res, count);
+  }
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -420,47 +488,113 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     }
   }
 
-  k_uint64 total_row_count = 0;
-  for (const auto& block : ts_block_spans_) {
-    total_row_count += block.GetRowNum();
+  ret = AggregateBlockSpans(res, count);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to aggregate spans for entity(%d).", entity_ids_[cur_entity_index_]);
+    return ret;
   }
 
-  if (total_row_count > 0) {
-    res->clear();
-    for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
-      switch (scan_agg_types_[i]) {
-        case Sumfunctype::COUNT: {
-          char* value = static_cast<char*>(malloc(sizeof(k_uint64)));
-          *reinterpret_cast<k_uint64*>(value) = total_row_count;
-
-          unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(1)));
-          memset(bitmap, 0x00, KW_BITMAP_SIZE(1));
-
-          Batch* b = new Batch(value, 1, bitmap, 1, nullptr);
-          b->is_new = true;
-          b->need_free_bitmap = true;
-          res->push_back(i, b);
-          break;
-        }
-        default: {
-          LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(scan_agg_types_[i]));
-          return KStatus::FAIL;
-        }
-      }
-    }
-
-    res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-    res->col_num_ = kw_scan_cols_.size();
-    *count = 1;
-    *is_finished = false;
-    total_row_count = 0;
-    ++cur_entity_index_;
-    return KStatus::SUCCESS;
-  }
-
-  *is_finished = true;
+  *is_finished = false;
   ++cur_entity_index_;
   return KStatus::SUCCESS;
 }
+
+KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count) {
+  if (ts_block_spans_.empty()) {
+    return KStatus::FAIL;
+  }
+
+  std::vector<TSSlice> final_agg_data(kw_scan_cols_.size(), TSSlice{nullptr, 0});
+
+  while (!ts_block_spans_.empty()) {
+    TsBlockSpan blk_span = ts_block_spans_.front();
+    ts_block_spans_.pop_front();
+
+    KStatus ret;
+    std::shared_ptr<MMapMetricsTable> blk_version;
+    ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span.GetTableVersion());
+      return ret;
+    }
+    auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+
+    for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+      std::vector<Sumfunctype> agg_types = {scan_agg_types_[i]};
+      std::vector<TSSlice> agg_data;
+
+      ret = blk_span.GetAggResult(kw_scan_cols_[i], schema_info, attrs_[kw_scan_cols_[i]], agg_types, agg_data);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[i]);
+        return ret;
+      }
+
+      if (agg_data.empty()) {
+        LOG_ERROR("Aggregation result is empty for col_id(%u).", kw_scan_cols_[i]);
+        return KStatus::FAIL;
+      }
+
+      TSSlice& src = agg_data[0];
+      TSSlice& dst = final_agg_data[i];
+
+      if (dst.data == nullptr) {
+        dst.len = src.len;
+        dst.data = static_cast<char*>(malloc(src.len));
+        memcpy(dst.data, src.data, src.len);
+      } else {
+        switch (scan_agg_types_[i]) {
+          case Sumfunctype::COUNT:
+            *reinterpret_cast<k_uint64*>(dst.data) += *reinterpret_cast<k_uint64*>(src.data);
+            break;
+          case Sumfunctype::SUM:
+            switch (attrs_[kw_scan_cols_[i]].type) {
+              case DATATYPE::INT32:
+                *reinterpret_cast<int32_t*>(dst.data) += *reinterpret_cast<int32_t*>(src.data);
+                break;
+              case DATATYPE::INT64:
+                *reinterpret_cast<int64_t*>(dst.data) += *reinterpret_cast<int64_t*>(src.data);
+                break;
+              case DATATYPE::FLOAT:
+                *reinterpret_cast<float*>(dst.data) += *reinterpret_cast<float*>(src.data);
+                break;
+              case DATATYPE::DOUBLE:
+                *reinterpret_cast<double*>(dst.data) += *reinterpret_cast<double*>(src.data);
+                break;
+              default:
+                LOG_ERROR("Unsupported SUM type in merge: %d", attrs_[kw_scan_cols_[i]].type);
+                return KStatus::FAIL;
+            }
+            break;
+          default:
+            LOG_ERROR("Unsupported aggregation type in merge: %d", scan_agg_types_[i]);
+            return KStatus::FAIL;
+        }
+      }
+
+      free(src.data);
+    }
+  }
+
+  res->clear();
+  for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+    TSSlice& slice = final_agg_data[i];
+    char* data_copy = static_cast<char*>(malloc(slice.len));
+    memcpy(data_copy, slice.data, slice.len);
+
+    Batch* b = new AggBatch(data_copy, 1, nullptr);
+    b->is_new = true;
+    b->need_free_bitmap = true;
+
+    res->push_back(i, b);
+    free(slice.data);
+  }
+
+  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
+  res->col_num_ = kw_scan_cols_.size();
+  *count = 1;
+
+  return KStatus::SUCCESS;
+}
+
 
 }  //  namespace kwdbts
