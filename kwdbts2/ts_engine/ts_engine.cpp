@@ -460,8 +460,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
+  TS_LSN lsn;
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
-  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length);
+  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length, lsn);
   delete []end_chk_log;
 
   // 7. a). update checkpoint LSN .
