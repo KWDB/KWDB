@@ -387,7 +387,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   bool end_chk = false;
 //  wal_mgr_->Init(ctx);
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
-  std::cout<< "start lsn : " << wal_mgr_->FetchCheckpointLSN() <<   "\tstop  lsn: " << wal_mgr_->FetchCurrentLSN() << std::endl;
   if (!end_chk) {
     LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
     logs.clear();
@@ -442,11 +441,12 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 4. rewrite wal log to chk file
   wal_mgr_.release();
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-  auto res = wal_mgr_->Init(ctx);
-  if (res == KStatus::FAIL) {
-    LOG_ERROR("Failed to initialize WAL manager")
-    return res;
-  }
+  wal_mgr_->ResetWAL(ctx, true);
+//  auto res = wal_mgr_->Init(ctx);
+//  if (res == KStatus::FAIL) {
+//    LOG_ERROR("Failed to initialize WAL manager")
+//    return res;
+//  }
   std::cout<< "rewrite logs count: " << rewrite.size() << std::endl;
    if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
      LOG_ERROR("Failed to WriteIncompleteWAL.")
