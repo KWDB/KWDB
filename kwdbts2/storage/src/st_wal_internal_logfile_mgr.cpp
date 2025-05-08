@@ -99,14 +99,12 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header) {
     delete[] header_value;
     delete[] eb_value;
   } else {
-    if (g_engine_version == 1) {
       // we should check the header of the existing log file to ensure it's old enough to been overwritten.
       HeaderBlock old_header = getHeader();
       if (old_header.getCheckpointNo() == header.getCheckpointNo()) {
         LOG_ERROR("Failed to init the WAL log file from %s, require checkpoint first", path.c_str())
         return FAIL;
       }
-    }
 
     file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);
     char* header_value = header.encode();
