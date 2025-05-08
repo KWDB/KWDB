@@ -176,20 +176,27 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         auto wal_log = reinterpret_cast<InsertLogEntry *>(log);
         switch (wal_log->getTableType()) {
           case WALTableType::DATA : {
-            wal_log =  reinterpret_cast<InsertLogMetricsEntry *>(log);
+            auto ins_log =  reinterpret_cast<InsertLogMetricsEntry *>(log);
+            s = writeWALInternal(ctx, ins_log->encode(), ins_log->getLen(), current_lsn);
+            std::cout << "rewrite wal 1 metric\t" << "old lsn: " << ins_log->getOldLSN() << "\tvgrp_id:" << ins_log->getVGroupID() << "log len:" << ins_log->getLen() << std::endl;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
             break;
           }
           case WALTableType::TAG : {
-            wal_log =  reinterpret_cast<InsertLogTagsEntry *>(log);
+            auto ins_log =  reinterpret_cast<InsertLogTagsEntry *>(log);
+            s = writeWALInternal(ctx, ins_log->encode(), ins_log->getLen(), current_lsn);
+            std::cout << "rewrite wal 1 tag\t" << "old lsn: " << ins_log->getOldLSN() << "\tvgrp_id:" << ins_log->getVGroupID() << "log len:" << ins_log->getLen() << std::endl;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
             break;
           }
         }
-        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 1\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << "log len:" << log->getLen() << std::endl;
-        if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to writeWALInternal.")
-          return s;
-        }
+
       }
         break;
       case UPDATE: {
@@ -210,19 +217,25 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         auto wal_log = reinterpret_cast<DeleteLogEntry *>(log);
         switch (wal_log->getTableType()) {
           case WALTableType::DATA : {
-            wal_log =  reinterpret_cast<DeleteLogMetricsEntry *>(log);
+            auto del_log =  reinterpret_cast<DeleteLogMetricsEntry *>(log);
+            s = writeWALInternal(ctx, del_log->encode(), del_log->getLen(), current_lsn);
+            std::cout << "rewrite wal 3\t" << "old lsn: " << del_log->getOldLSN() << "\tvgrp_id:" << del_log->getVGroupID() << std::endl;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
             break;
           }
           case WALTableType::TAG : {
-            wal_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
+            auto del_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
+            s = writeWALInternal(ctx, del_log->encode(), log->getLen(), current_lsn);
+            std::cout << "rewrite wal 3\t" << "old lsn: " << del_log->getOldLSN() << "\tvgrp_id:" << del_log->getVGroupID() << std::endl;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
             break;
           }
-        }
-        s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 3\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << std::endl;
-        if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to writeWALInternal.")
-          return s;
         }
       }
         break;

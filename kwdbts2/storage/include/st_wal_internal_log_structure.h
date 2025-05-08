@@ -93,6 +93,8 @@ class InsertLogTagsEntry : public InsertLogEntry {
 
   TSSlice getPayload();
 
+  int64_t getTimePartition();
+
   char* encode() override {
     return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, data_);
   }
