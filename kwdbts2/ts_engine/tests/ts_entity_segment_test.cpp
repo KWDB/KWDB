@@ -45,17 +45,17 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       &meta, table_id,
       {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT, DataType::VARCHAR});
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
-    auto s = mgr->CreateTable(nullptr, table_id, &meta);
+    auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::shared_ptr<TsTableSchemaManager> schema_mgr;
     s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricAttr(metric_schema, 1);
+    s = schema_mgr->GetMetricMeta(1, metric_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagAttr(1, tag_schema);
+    s = schema_mgr->GetTagMeta(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::filesystem::path path = "db001-123";
@@ -84,7 +84,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     // partition->Compact();
     EXPECT_EQ(partition->Compact(), KStatus::SUCCESS);
 
-    TsEntitySegment* block_segment = partition->GetBlockSegment();
+    TsEntitySegment* entity_segment = partition->GetEntitySegment();
     int sum = 0;
     for (int i = 0; i < 10; ++i) {
       {
@@ -92,29 +92,35 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{500, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
-        s = block_segment->GetBlockSpans(filter, &block_spans);
+        s = entity_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          for (int idx = 0; idx < block_span.nrow; ++idx) {
-            TSSlice value;
-            block_span.block->GetValueSlice(block_span.start_row + idx, 0, metric_schema, value);
-            EXPECT_EQ(*(timestamp64*)value.data, 500 + row_idx + idx);
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 500 + row_idx + idx);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
-            EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 10240);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
-            string str(value.data, 10);
+          TsBitmap bitmap;
+          std::vector<char*> col_values;
+          col_values.resize(3);
+          s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
+            EXPECT_EQ(block_span.GetTS(idx), 500 + row_idx + idx);
+            EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+            EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+            EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+            kwdbts::DataFlags flag;
+            TSSlice data;
+            s = block_span.GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span.nrow;
+          row_idx += block_span.GetRowNum();
         }
         if (i >= 1) {
           EXPECT_EQ(row_idx, (i - 1) * 1000 + 623);
@@ -127,27 +133,35 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, 622}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
-        s = block_segment->GetBlockSpans(filter, &block_spans);
+        s = entity_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          for (int idx = 0; idx < block_span.nrow; ++idx) {
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
-            TSSlice value;
-            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
-            EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 10240);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
-            string str(value.data, 10);
+          TsBitmap bitmap;
+          std::vector<char*> col_values;
+          col_values.resize(3);
+          s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
+            EXPECT_EQ(block_span.GetTS(idx), 123 + row_idx + idx);
+            EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+            EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+            EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+            kwdbts::DataFlags flag;
+            TSSlice data;
+            s = block_span.GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span.nrow;
+          row_idx += block_span.GetRowNum();
         }
         EXPECT_EQ(row_idx, i > 0 ? 500 : 0);
       }
@@ -156,28 +170,36 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
-        s = block_segment->GetBlockSpans(filter, &block_spans);
+        s = entity_segment->GetBlockSpans(filter, &block_spans);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
         while(!block_spans.empty()) {
           auto block_span = block_spans.front();
-          sum += block_span.nrow;
+          sum += block_span.GetRowNum();
           block_spans.pop_front();
-          for (int idx = 0; idx < block_span.nrow; ++idx) {
-            EXPECT_EQ(block_span.block->GetTS(block_span.start_row + idx), 123 + row_idx + idx);
-            TSSlice value;
-            block_span.block->GetValueSlice(block_span.start_row + idx, 1, metric_schema, value);
-            EXPECT_LE(*(int32_t *) value.data, 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 2, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 1024 * 1024);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 3, metric_schema, value);
-            EXPECT_LE(*(double *) value.data, 10240);
-            block_span.block->GetValueSlice(block_span.start_row + idx, 4, metric_schema, value);
-            string str(value.data, 10);
+          TsBitmap bitmap;
+          std::vector<char*> col_values;
+          col_values.resize(3);
+          s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          s = block_span.GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
+            EXPECT_EQ(block_span.GetTS(idx), 123 + row_idx + idx);
+            EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+            EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+            EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+            kwdbts::DataFlags flag;
+            TSSlice data;
+            s = block_span.GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
           }
-          row_idx += block_span.block->GetRowNum();
+          row_idx += block_span.GetRowNum();
         }
         EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
       }
@@ -192,7 +214,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::list<TsBlockSpan> block_span;
         result[0]->GetBlockSpans(filter, &block_span);
         for (auto block : block_span) {
-          sum += block.nrow;
+          sum += block.GetRowNum();
         }
       }
     }

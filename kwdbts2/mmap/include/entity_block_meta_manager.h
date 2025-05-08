@@ -67,6 +67,12 @@ class EntityBlockMetaManager {
    */
   int GetAllBlockItems(uint32_t entity_id, std::deque<BlockItem*>& block_items, bool reverse = false);
 
+  /**
+   * @brief	get blockitem objects larger than the block_id.
+   * @return	0 succeed, otherwise -1.
+   */
+  int GetCountBlockItems(uint32_t entity_id, BLOCK_ID block_id, std::deque<BlockItem*>& block_items);
+
   int remove();
   void release();
 

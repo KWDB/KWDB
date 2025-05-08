@@ -5,6 +5,14 @@ message(STATUS "Project:KWDB")
 
 set(KWDB_PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
+if (NOT DEFINED CMAKE_BUILD_PARALLEL_LEVEL)
+    set(PARALLEL_LEVEL "")
+else()
+    set(PARALLEL_LEVEL "-j${CMAKE_BUILD_PARALLEL_LEVEL}")
+endif()
+
+message(STATUS "CMAKE_BUILD_PARALLEL_LEVEL:${CMAKE_BUILD_PARALLEL_LEVEL}")
+
 # project version
 if (NOT DEFINED VERSION)
     set(VERSION "unknown")
@@ -217,7 +225,7 @@ add_subdirectory(common)
 add_subdirectory(kwdbts2)
 
 # compile kwbase
-if (BUILD_KWBASE OR WITH_TESTS)
+if (BUILD_KWBASE)
     set(KWBASE_MAKEFILE "Makefile")
     if(NOT KWBASE_OSS)
         set(KWBASE_MAKEFILE "Makefile_ent")
@@ -231,6 +239,7 @@ if (BUILD_KWBASE OR WITH_TESTS)
                 OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
                 KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
                 GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
+                ${PARALLEL_LEVEL}
                 ENABLE_ROCKSDB_ASSERTIONS=1
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
                 COMMENT "====== compile kwbase ======"
@@ -244,6 +253,7 @@ if (BUILD_KWBASE OR WITH_TESTS)
                 OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
                 KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
                 GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
+                ${PARALLEL_LEVEL}
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
                 COMMENT "====== compile kwbase ======"
                 DEPENDS kwdbts2 common

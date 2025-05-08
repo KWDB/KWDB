@@ -20,6 +20,7 @@
 #include "ts_lastsegment.h"
 #include "ts_table_schema_manager.h"
 #include "ts_vgroup_partition.h"
+#include "ts_block_span_sorted_iterator.h"
 
 namespace kwdbts {
 
@@ -27,9 +28,9 @@ namespace kwdbts {
 
 typedef enum {
   SCAN_STATUS_UNKNOWN,
-  SCAN_MEM_TABLE,
+  SCAN_MEM_SEGMENT,
   SCAN_LAST_SEGMENT,
-  SCAN_BLOCK_SEGMENT,
+  SCAN_ENTITY_SEGMENT,
   SCAN_STATUS_DONE
 } STORAGE_SCAN_STATUS;
 
@@ -50,19 +51,23 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  KStatus InitializeMemSegmentIterator();
-  KStatus InitializeLastSegmentIterator();
-  KStatus InitializeBlockSegmentIterator();
+  KStatus AddMemSegmentBlockSpans();
+  KStatus AddLastSegmentBlockSpans();
+  KStatus AddEntitySegmentBlockSpans();
+  KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
+  KStatus ScanEntityBlockSpans();
 
-  k_uint32 cur_entity_index_;
-  k_uint32 cur_partition_index_;
-  std::unique_ptr<TsMemSegmentIterator> mem_segment_iterator_{nullptr};
-  std::unique_ptr<TsLastSegmentIterator> last_segment_iterator_{nullptr};
-  std::unique_ptr<TsEntitySegmentIterator> block_segment_iterator_{nullptr};
+  k_int32 cur_entity_index_{-1};
+  k_int32 cur_partition_index_{-1};
+  TSTableID table_id_;
+  uint32_t db_id_;
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
+
+  std::list<TsBlockSpan> ts_block_spans_;
+  STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -77,20 +82,31 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
+  KStatus MoveToMemSegment();
+  KStatus MoveToLastSegment();
+  KStatus MoveToEntitySegment();
+  KStatus MoveToNextEntity();
+  KStatus MoveToNextPartition();
+  KStatus NextBlockSpan(ResultSet* res, k_uint32* count);
 };
 
-class TsSortedRowDataIteratorV2Impl : public TsStorageIteratorV2Impl {
+class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
-  TsSortedRowDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                 std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                                 std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
                                 SortOrder order_type = ASC);
-  ~TsSortedRowDataIteratorV2Impl();
+  ~TsSortedRawDataIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+
+ protected:
+  KStatus ScanAndSortEntityData();
+  KStatus MoveToNextEntity();
+
+  std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
 
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -105,76 +121,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
+  KStatus AggregateBlockSpans(ResultSet* res, k_uint32* count);
+
   std::vector<Sumfunctype> scan_agg_types_;
-};
-
-class TsSegmentIterator {
- public:
-  TsSegmentIterator(std::shared_ptr<TsVGroup>& vgroup, std::shared_ptr<TsVGroupPartition> ts_partition,
-                    uint32_t entity_id, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                    std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                    std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  virtual ~TsSegmentIterator();
-  virtual KStatus Init();
-  virtual KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished);
-  virtual KStatus ScanCount(k_uint32* count);
-
- protected:
-  KStatus AddBlockData(std::shared_ptr<TsBlock> ts_block, ResultSet* res, k_uint32* count);
-
-  KStatus AddBlockSpanData(const TsBlockSpan& ts_block, ResultSet* res, k_uint32* count);
-
-  std::list<TsBlockSpan> ts_block_spans_;
-  uint32_t entity_id_;
-  std::shared_ptr<TsVGroupPartition> ts_partition_{nullptr};
-
-  std::shared_ptr<TsVGroup> vgroup_;
-  STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
-  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
-
-  std::vector<KwTsSpan> ts_spans_;
-  // column index
-  std::vector<k_uint32> kw_scan_cols_;
-  std::vector<k_uint32> ts_scan_cols_;
-  DATATYPE ts_col_type_;
-    // table version
-  uint32_t table_version_;
-  // column attributes
-  vector<AttributeInfo> attrs_;
-};
-
-class TsMemSegmentIterator : public TsSegmentIterator {
- public:
-  TsMemSegmentIterator(std::shared_ptr<TsVGroup>& vgroup, uint32_t entity_id,
-                        std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                        std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                        std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsMemSegmentIterator();
-
-  KStatus Init() override;
-};
-
-class TsLastSegmentIterator : public TsSegmentIterator {
- public:
-  TsLastSegmentIterator(std::shared_ptr<TsVGroup>& vgroup, std::shared_ptr<TsVGroupPartition> ts_partition,
-                        uint32_t entity_id, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                        std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                        std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsLastSegmentIterator();
-
-  KStatus Init() override;
-};
-
-class TsEntitySegmentIterator : public TsSegmentIterator {
- public:
-  TsEntitySegmentIterator(std::shared_ptr<TsVGroup>& vgroup, std::shared_ptr<TsVGroupPartition> ts_partition,
-                         uint32_t entity_id, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsEntitySegmentIterator();
-
-  KStatus Init() override;
 };
 
 }  //  namespace kwdbts

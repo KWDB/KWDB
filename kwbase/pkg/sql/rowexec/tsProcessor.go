@@ -159,6 +159,14 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 				log.Errorf(context.Background(), "Vacuum TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
 			}
 		}
+	case execinfrapb.OperatorType_TsCount:
+		errPrefix = "Count TS Table Failed, reason:%s"
+		for _, table := range tp.dropMEInfo {
+			err = tp.FlowCtx.Cfg.TsEngine.CountTsTable(uint64(table.TableID))
+			if err != nil {
+				log.Errorf(context.Background(), "Count TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
+			}
+		}
 	default:
 		err = errors.Newf("the TsOperatorType is not supported, TsOperatorType:%s", tp.tsOperatorType.String())
 	}

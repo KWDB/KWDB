@@ -2639,6 +2639,8 @@ func (dsp *DistSQLPlanner) operateTSData(
 		tsPro.TsOperator = execinfrapb.OperatorType_TsAutonomy
 	case vacuum:
 		tsPro.TsOperator = execinfrapb.OperatorType_TsVacuum
+	case count:
+		tsPro.TsOperator = execinfrapb.OperatorType_TsCount
 	default:
 		return p, pgerror.New(pgcode.WrongObjectType, "operate type is not supported")
 	}

@@ -1,0 +1,148 @@
+> create database test;
+CREATE DATABASE
+> use test;
+SET
+> Create table t1(k_timestamp timestamp not null,c1 int,c2 int);
+CREATE TABLE
+> set timezone = 8;
+SET
+> Insert into t1 values ('2024-1-1 1:00:00',1,2);
+INSERT 1
+> Insert into t1 values ('2024-1-1 1:00:00',2,4);
+INSERT 1
+> Insert into t1 values ('2024-1-1 2:00:00',6,3);
+INSERT 1
+> Insert into t1 values ('2024-1-1 5:00:00',8,12);
+INSERT 1
+> Insert into t1 values ('2024-1-1 5:00:00',0,3);
+INSERT 1
+> CREATE FUNCTION calculate_growth_rate(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function calculate_growth_rate(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+CREATE FUNCTION
+> select calculate_growth_rate(c1,c2) from t1 where k_timestamp >= '2024-1-1 1:00:00' and k_timestamp <= '2024-1-1 5:00:00';
+  calculate_growth_rate
+-------------------------
+                      1
+                      1
+                   -0.5
+                    0.5
+  NULL
+(5 rows)
+> show functions;
+      function_name
+-------------------------
+  calculate_growth_rate
+(1 row)
+> show function calculate_growth_rate;
+      function_name     | argument_types | return_type | function_type | language
+------------------------+----------------+-------------+---------------+-----------
+  calculate_growth_rate | INT, INT       | DOUBLE      | function      | LUA
+(1 row)
+> show function "";
+ERROR: empty function name is not supported
+SQLSTATE: 42601
+> show function xxxyyyzzz;
+ERROR: function xxxyyyzzz does not exists or current user does not have privilege on this function
+SQLSTATE: 42704
+> CREATE FUNCTION calculate_growth_rate(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function calculate_growth_rate(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+ERROR: function named 'calculate_growth_rate' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION abs(a int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function abs(a)
+  if a > 0 then
+        return a
+    end
+  return -a
+end'
+END;
+ERROR: function named 'abs' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION ""(a int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function  (a)
+  if a > 0 then
+        return a
+    end
+  return -a
+end'
+END;
+ERROR: function name cannot be empty when creating a new function
+SQLSTATE: 42601
+> drop function calculate_growth_rate;
+DROP FUNCTION
+> select calculate_growth_rate(c1,c2) from t1 where k_timestamp >= '2024-1-1 1:00:00' and k_timestamp <= '2024-1-1 5:00:00';
+ERROR: unknown function: calculate_growth_rate()
+SQLSTATE: 42883
+> DELETE FROM system.user_defined_function WHERE true;
+DELETE 0
+> use default;
+SET
+> drop database test cascade;
+DROP DATABASE
+> BEGIN;
+BEGIN
+> CREATE FUNCTION test_txn(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function test_txn(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+ERROR: Create Function statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> COMMIT;
+ROLLBACK
+> CREATE FUNCTION test_txn(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function test_txn(previous_consumption, current_consumption)
+  if previous_consumption == 0 then
+        return nil
+    end
+  return (current_consumption - previous_consumption) / previous_consumption
+end'
+END;
+CREATE FUNCTION
+> BEGIN;
+BEGIN
+> DROP FUNCTION test_txn;
+ERROR: Drop Function statement is not supported in explicit transaction
+SQLSTATE: 0A000
+> COMMIT;
+ROLLBACK
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+  test_txn
+(1 row)
+> DROP FUNCTION test_txn;
+DROP FUNCTION

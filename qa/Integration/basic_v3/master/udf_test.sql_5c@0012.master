@@ -1,0 +1,22 @@
+> CREATE FUNCTION time_add_hour(timestamp_str string)
+    RETURNs timestamp
+    LANGUAGE LUA
+BEGIN
+'function time_add_hour(timestamp_str)
+    local new_time = timestamp_str + 3600
+    return new_time
+end'
+END;
+ERROR: argument type STRING is not supported
+SQLSTATE: 42804
+> CREATE FUNCTION time_add_hour(timestamp_str timestamp)
+    RETURNs string
+    LANGUAGE LUA
+BEGIN
+'function time_add_hour(timestamp_str)
+    local new_time = timestamp_str + 3600
+    return new_time
+end'
+END;
+ERROR: return type STRING is not supported
+SQLSTATE: 42804

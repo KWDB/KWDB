@@ -109,7 +109,7 @@ func (n *createFunctionNode) startExec(params runParams) error {
 		case <-timeout:
 			return pgerror.Newf(pgcode.Warning, "create %s function hits timeout problem broadcasting across cluster, it might not be available on other nodes", funcName)
 		case <-ticker.C:
-			if _, ok := tree.FunDefs[funcName]; ok {
+			if _, ok := tree.ConcurrentFunDefs.LookupFunc(funcName); ok {
 				return nil
 			}
 		}

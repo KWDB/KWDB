@@ -1,0 +1,187 @@
+> drop database test1 CASCADE;
+ERROR: database "test1" does not exist
+SQLSTATE: 3D000
+> create ts database test1;
+CREATE TS DATABASE
+> CREATE TABLE test1.t1(k_timestamp TIMESTAMP not null, a int, b int) TAGS (tag1 int not null,tag2 int) PRIMARY TAGS (tag1);
+CREATE TABLE
+> insert into test1.t1 values('2024-07-08 07:17:22.988', 1, 2,2,2);
+INSERT 1
+> insert into test1.t1 values('2024-07-08 07:17:30.745', 11, 2,21,2);
+INSERT 1
+> insert into test1.t1 values('2024-07-08 07:17:34.781', 21, 21,31,2);
+INSERT 1
+> insert into test1.t1 values('2024-07-08 07:17:39.178', 31, 21,33,3);
+INSERT 1
+> insert into test1.t1 values('2024-07-08 07:17:42.866', 41, 41,43,23);
+INSERT 1
+> insert into test1.t1 values('2024-07-09 07:17:42.866', 410, 410,43,230);
+INSERT 1
+> select * from test1.t1 order by k_timestamp;
+           k_timestamp          |  a  |  b  | tag1 | tag2
+--------------------------------+-----+-----+------+-------
+  2024-07-08 07:17:22.988+00:00 |   1 |   2 |    2 |    2
+  2024-07-08 07:17:30.745+00:00 |  11 |   2 |   21 |    2
+  2024-07-08 07:17:34.781+00:00 |  21 |  21 |   31 |    2
+  2024-07-08 07:17:39.178+00:00 |  31 |  21 |   33 |    3
+  2024-07-08 07:17:42.866+00:00 |  41 |  41 |   43 |   23
+  2024-07-09 07:17:42.866+00:00 | 410 | 410 |   43 |   23
+(6 rows)
+> select last(a) from test1.t1;
+  last
+--------
+   410
+(1 row)
+> SELECT last(a, '2024-07-08 07:17:42.866'), last(b, '2024-07-08 07:17:42.866') FROM test1.t1;
+  last | last
+-------+-------
+    41 |   41
+(1 row)
+> SELECT last(a, '2024-07-08 07:17:41.866'), last(b, '2024-07-07 07:17:42.866') FROM test1.t1;
+  last | last
+-------+-------
+    31 | NULL
+(1 row)
+> SELECT sum(tag1),count(a),last(a, '2024-07-07 07:17:41.866'), last(b, '2024-07-09 07:17:42.866') FROM test1.t1;
+  sum | count | last | last
+------+-------+------+-------
+  173 |     6 | NULL |  410
+(1 row)
+> SELECT first(a),first(tag2),last(tag1),count(a),last(a, '2024-07-07 07:17:41.866'), last(b, '2024-07-09 07:17:42.866') FROM test1.t1;
+  first | first | last | count | last | last
+--------+-------+------+-------+------+-------
+      1 |     2 |   43 |     6 | NULL |  410
+(1 row)
+> select last(*) from test1.t1;
+        last(k_timestamp)       | last(a) | last(b) | last(tag1) | last(tag2)
+--------------------------------+---------+---------+------------+-------------
+  2024-07-09 07:17:42.866+00:00 |     410 |     410 |         43 |         23
+(1 row)
+> SELECT first(tag1),last(a,'2024-07-08 07:17:28.247'),first(b),last(b,'2024-07-08 07:17:32.047')  FROM test1.t1;
+  first | last | first | last
+--------+------+-------+-------
+      2 |    1 |     2 |    2
+(1 row)
+> SELECT last(a, '2024-07-08 07:17:42.866'), last(b, '2024-07-08 07:17:42.866') FROM test1.t1 where k_timestamp < '2024-07-08 07:17:39.178';
+  last | last
+-------+-------
+    21 |   21
+(1 row)
+> SELECT max(a),max(tag1),count(a),last(a, '2024-07-07 07:17:41.866'), last(b, '2024-07-09 07:17:42.866') FROM test1.t1;
+  max | max | count | last | last
+------+-----+-------+------+-------
+  410 |  43 |     6 | NULL |  410
+(1 row)
+> select last(a,'2024-07-11 07:17:39.178+00:00'),last(tag1,'2024-07-09 07:17:43.178+00:00'),tag1 from test1.t1 group by tag1 order by tag1;
+  last | last | tag1
+-------+------+-------
+     1 |    2 |    2
+    11 |   21 |   21
+    21 |   31 |   31
+    31 |   33 |   33
+   410 |   43 |   43
+(5 rows)
+> CREATE TABLE test1.t2(k_timestamp TIMESTAMP not null, a int, b varchar(30)) TAGS (tag1 varchar(30) not null,tag2 int) PRIMARY TAGS (tag1);
+CREATE TABLE
+> insert into test1.t2 values('2024-07-08 07:17:47.718', 1, '2','2',2);
+INSERT 1
+> insert into test1.t2 values('2024-07-08 07:17:51.918', 11, '2','21',2);
+INSERT 1
+> insert into test1.t2 values('2024-07-08 07:17:58.26', 21, '21','31',2);
+INSERT 1
+> insert into test1.t2 values('2024-07-08 07:18:02.775', 31, '21','33',3);
+INSERT 1
+> insert into test1.t2 values('2024-07-08 07:18:06.833', 41, '41','43',23);
+INSERT 1
+> select * from test1.t2  order by k_timestamp;
+           k_timestamp          | a  | b  | tag1 | tag2
+--------------------------------+----+----+------+-------
+  2024-07-08 07:17:47.718+00:00 |  1 | 2  | 2    |    2
+  2024-07-08 07:17:51.918+00:00 | 11 | 2  | 21   |    2
+  2024-07-08 07:17:58.26+00:00  | 21 | 21 | 31   |    2
+  2024-07-08 07:18:02.775+00:00 | 31 | 21 | 33   |    3
+  2024-07-08 07:18:06.833+00:00 | 41 | 41 | 43   |   23
+(5 rows)
+> select last(*) from test1.t2;
+        last(k_timestamp)       | last(a) | last(b) | last(tag1) | last(tag2)
+--------------------------------+---------+---------+------------+-------------
+  2024-07-08 07:18:06.833+00:00 |      41 | 41      | 43         |         23
+(1 row)
+> SELECT first(tag1),last(a,'2024-07-08 07:18:02.247'),count(tag2),last(tag1),last(tag2,'2024-07-18 07:17:51.047'),count(tag1),last(b,'2024-07-18 07:18:40.047')  FROM test1.t2;
+  first | last | count | last | last | count | last
+--------+------+-------+------+------+-------+-------
+  2     |   21 |     5 | 43   |   23 |     5 | 41
+(1 row)
+> SELECT last(a,'2024-07-08 07:18:06.833')  FROM test1.t2;
+  last
+--------
+    41
+(1 row)
+> SELECT last(a,'2024-07-08 07:18:02.247'),last(tag1),last(tag2,'2024-07-18 07:17:51.047'),count(tag1)  FROM test1.t2;
+  last | last | last | count
+-------+------+------+--------
+    21 | 43   |   23 |     5
+(1 row)
+> use defaultdb;
+SET
+> drop database test1 CASCADE;
+DROP DATABASE
+> DROP DATABASE test_select_last_add cascade;
+ERROR: database "test_select_last_add" does not exist
+SQLSTATE: 3D000
+> CREATE ts DATABASE test_select_last_add;
+CREATE TS DATABASE
+> CREATE TABLE test_select_last_add.t1(
+                k_timestamp TIMESTAMPTZ NOT NULL,
+                id INT NOT NULL,
+                e1 INT2,
+                e2 INT,
+                e3 INT8,
+                e4 FLOAT4,
+                e5 FLOAT8,
+                e6 BOOL,
+                e7 TIMESTAMPTZ,
+                e8 CHAR(1023),
+                e9 NCHAR(255),
+                e10 VARCHAR(4096),
+                e11 CHAR,
+                e12 CHAR(255),
+                e13 NCHAR,
+                e14 NVARCHAR(4096),
+                e15 VARCHAR(1023), 
+                e16 NVARCHAR(200),
+                e17 NCHAR(255),
+                e18 CHAR(200),           
+                e19 VARBYTES,
+                e20 VARBYTES(60),
+                e21 VARCHAR,
+                e22 NVARCHAR) 
+ATTRIBUTES (
+            code1 INT2 NOT NULL,code2 INT,code3 INT8,
+            code4 FLOAT4 ,code5 FLOAT8,
+            code6 BOOL,
+            code7 VARCHAR,code8 VARCHAR(128) NOT NULL,
+            code9 VARBYTES,code10 VARBYTES(60),
+            code11 VARCHAR,code12 VARCHAR(60),
+            code13 CHAR(2),code14 CHAR(1023) NOT NULL,
+            code15 NCHAR,code16 NCHAR(254) NOT NULL) 
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> INSERT INTO test_select_last_add.t1 VALUES(0,1,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> INSERT INTO test_select_last_add.t1 VALUES(1,2,0,0,0,0,0,true,999999,' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',0,0,0,0,0,TRUE,' ',' ',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> SELECT   last(code1,'0000-01-01 00:00:00')  LE FROM test_select_last_add.t1;
+   le
+--------
+  NULL
+(1 row)
+> INSERT INTO test_select_last_add.t1 VALUES(-62167219200000,0,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> SELECT   last(code1,'0000-01-01 00:00:00')  LE FROM test_select_last_add.t1;
+  le
+------
+   0
+(1 row)
+> DROP DATABASE test_select_last_add cascade;
+DROP DATABASE

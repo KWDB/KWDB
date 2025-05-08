@@ -1,0 +1,31 @@
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database test;
+CREATE TS DATABASE
+> create table test.TB(k_timestamp timestamp not null,A INT4 not null,B FLOAT not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> show databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+(3 rows)
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB;
+DROP DATABASE
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB CASCADE;
+DROP DATABASE
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB;
+DROP DATABASE

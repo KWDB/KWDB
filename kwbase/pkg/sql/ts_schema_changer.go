@@ -75,6 +75,7 @@ const (
 	createTagIndex
 	dropTagIndex
 	alterTagIndex
+	count
 )
 
 // tsSchemaChangeResumer implements the jobs.Resumer interface for syncMetaCache
@@ -352,7 +353,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				},
 			}
 			updateErr = p.handleSetTagValue(ctx, d.SNTable, insTable, syncErr)
-		case compress, deleteExpiredData, autonomy, vacuum:
+		case compress, deleteExpiredData, autonomy, vacuum, count:
 			updateErr = p.handleSchedule(ctx, sw.job, syncErr)
 		default:
 		}
@@ -1083,6 +1084,8 @@ func getDDLOpType(op int32) string {
 		return "create tag index"
 	case dropTagIndex:
 		return "drop tag index"
+	case count:
+		return "count"
 	}
 	return ""
 }

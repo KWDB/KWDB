@@ -1,0 +1,17 @@
+> CREATE ts DATABASE test_varchar1;
+CREATE TS DATABASE
+> CREATE TABLE test_varchar1.d11 (k_timestamp timestamp not null,
+                                e1 varchar ,
+                                e2 nvarchar ,
+                                e3 varchar(254) ,
+                                e4 nvarchar(63) ,
+                                e5 varchar(4096) ,
+                                e6 nvarchar(4096))
+attributes (t1_attribute int not null) primary tags(t1_attribute);
+CREATE TABLE
+> SELECT * FROM test_varchar1.d11;
+  k_timestamp | e1 | e2 | e3 | e4 | e5 | e6 | t1_attribute
+--------------+----+----+----+----+----+----+---------------
+(0 rows)
+> DROP DATABASE test_varchar1 cascade;
+DROP DATABASE

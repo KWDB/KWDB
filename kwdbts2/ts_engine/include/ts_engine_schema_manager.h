@@ -45,39 +45,36 @@ class TsEngineSchemaManager {
 
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
+  KStatus CreateTable(kwdbContext_p ctx, const uint64_t& db_id, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
   KStatus GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
-                               std::shared_ptr<MMapMetricsTable>* metric_schema) const;
+                               std::shared_ptr<MMapMetricsTable>* metric_schema);
 
-  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) const {
-    auto it = table_schema_mgrs_.find(tbl_id);
-    if (it == table_schema_mgrs_.end()) {
-      return KStatus::FAIL;
-    }
-    tb_schema_mgr = it->second;
-    return KStatus::SUCCESS;
-  }
+  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   // Get or allocate vgroup_id and entity_id
   KStatus GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
-                        uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) const;
+                        uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag);
 
-  KStatus SetTableID2DBID(kwdbContext_p ctx, TSTableID table_id, uint32_t database_id);
-
-  uint32_t GetDBIDByTableID(TSTableID table_id) const;
+  uint32_t GetDBIDByTableID(TSTableID table_id);
 
   KStatus AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg);
+
+  int rdLock();
+
+  int wrLock();
+
+  int unLock();
 
  protected:
   std::filesystem::path root_path_;
   uint32_t vgroup_id_;
   string tbl_sub_path_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;
-  std::unordered_map<TSTableID, uint32_t> table_2_db_;
+  KRWLatch mgrs_rw_latch_;
 };
 
 }  // namespace kwdbts

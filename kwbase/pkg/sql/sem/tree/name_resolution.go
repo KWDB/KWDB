@@ -542,6 +542,11 @@ func (n *UnresolvedName) ResolveFunction(
 		return d, nil
 	}
 
+	if d, ok := ConcurrentFunDefs.LookupFunc(function); ok && prefix == "" {
+		// Fast path: return early.
+		return d, nil
+	}
+
 	fullName := function
 
 	if prefix == sessiondata.PgCatalogName {

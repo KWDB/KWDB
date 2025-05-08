@@ -66,10 +66,10 @@ class PartitionManager {
   std::vector<std::shared_ptr<TsVGroupPartition>> GetPartitionArray();
   void SetInterval(int64_t interval) { interval_ = interval; }
 
-  std::unordered_map<int, std::shared_ptr<TsVGroupPartition>> GetPartitions() {
+  void GetPartitions(std::unordered_map<int, std::shared_ptr<TsVGroupPartition>>* map) {
     RW_LATCH_S_LOCK(&partitions_latch_);
     Defer defer{[&]{ RW_LATCH_UNLOCK(&partitions_latch_); }};
-    return partitions_;
+    *map = partitions_;
   }
 };
 

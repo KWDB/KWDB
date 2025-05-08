@@ -43,7 +43,6 @@ class TSEngineV2Impl : public TSEngine {
   std::vector<std::shared_ptr<TsVGroup>> vgroups_;
   int vgroup_max_num_{0};
   EngineOptions options_;
-  std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
   std::unique_ptr<TSxMgr> tsx_mgr_;
@@ -78,7 +77,6 @@ class TSEngineV2Impl : public TSEngine {
       if (s == KStatus::SUCCESS) {
         auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
         if (table.get() != nullptr) {
-          tables_[table_id] = table;
           ts_table = table;
           tables_cache_->Put(table_id, ts_table);
         } else {
@@ -89,7 +87,6 @@ class TSEngineV2Impl : public TSEngine {
         LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
         s = KStatus::FAIL;
       }
-      table_mutex_.unlock();
     }
 
     // if table no exist. try get schema from go level.

@@ -1,0 +1,76 @@
+> select  
+  ref_1.dist_pos as c0, 
+  subq_1.c1 as c1, 
+  subq_1.c1 as c2, 
+  ref_1.number_of_molds as c3, 
+  ref_3.abs_pos as c4, 
+  ref_3.value5 as c5
+from 
+  public.t_cnc as ref_0
+        inner join public.t_cnc as ref_1
+          inner join (select  
+                ref_2.alarm_code as c0
+              from 
+                public.t_cnc as ref_2
+              where ref_2.k_timestamp <= ref_2.k_timestamp
+              limit 168) as subq_0
+          on (47 is NULL)
+        on ((ref_0.k_timestamp <= ref_0.k_timestamp) 
+            or (cast(null as "interval") < cast(null as "interval")))
+      inner join public.t_cnc as ref_3
+      on (subq_0.c0 = ref_3.cnc_sn )
+    left join (select  
+          ref_5.rallenergy_c as c0, 
+          ref_4.pallpower as c1, 
+          cast(coalesce(ref_7.cnc_number,
+            ref_7.allrenergy2_b) as int4) as c2, 
+          ref_5.rallenergy_a as c3
+        from 
+          public.t_electmeter as ref_4
+            inner join public.t_electmeter as ref_5
+                inner join public.t_cnc as ref_6
+                on (ref_5.allrenergy1_b is NULL)
+              right join public.t_electmeter as ref_7
+              on (ref_6.cnc_sn = ref_7.elect_name )
+            on ((EXISTS (
+                  select  
+                      ref_5.allrenergy2_a as c0, 
+                      ref_7.k_timestamp as c1, 
+                      ref_7.powerl as c2, 
+                      ref_4.powerl_c as c3, 
+                      ref_6.alarm_type as c4, 
+                      ref_7.rallenergy_a as c5, 
+                      ref_4.powera_a as c6, 
+                      ref_4.infre as c7
+                    from 
+                      public.t_cnc as ref_8
+                    where (cast(null as _numeric) >= cast(null as _numeric)) 
+                      and ((false) 
+                        or (cast(null as _text) IS NOT DISTINCT FROM cast(null as _text)))
+                    limit 81)) 
+                or (cast(null as _uuid) <= cast(null as _uuid)))
+        where ref_5.k_timestamp != pg_catalog.now()
+        limit 106) as subq_1
+    on (ref_3.sp_override < case when ref_1.sp_override >= cast(null as "numeric") then cast(null as int8) else cast(null as int8) end
+          )
+where (cast(null as "numeric") < cast(coalesce(pg_catalog.inet_client_port(),
+      case when EXISTS (
+          select  
+              ref_9.powerf_a as c0, 
+              ref_0.cur_tool_z_len as c1, 
+              ref_9.powerl_a as c2, 
+              subq_0.c0 as c3, 
+              ref_3.feed_set_speed as c4
+            from 
+              public.t_electmeter as ref_9
+            where true
+            limit 28) then case when cast(null as _float8) IS DISTINCT FROM cast(null as _float8) then pg_catalog.inet_client_port() else pg_catalog.inet_client_port() end
+           else case when cast(null as _float8) IS DISTINCT FROM cast(null as _float8) then pg_catalog.inet_client_port() else pg_catalog.inet_client_port() end
+           end
+        ) as int8)) 
+  and (cast(null as "interval") < pg_catalog.interval_in(
+      cast(ref_1.prog_seq_content as "varchar")))
+limit 71;
+  c0 | c1 | c2 | c3 | c4 | c5
+-----+----+----+----+----+-----
+(0 rows)

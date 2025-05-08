@@ -1,0 +1,19 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 geometry) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> show columns from test_geometry.t1;
+  column_name |   data_type    | is_nullable | column_default | generation_expression |  indices  | is_hidden | is_tag
+--------------+----------------+-------------+----------------+-----------------------+-----------+-----------+---------
+  k_timestamp | TIMESTAMPTZ(3) |    false    | NULL           |                       | {primary} |   false   | false
+  e1          | GEOMETRY       |    true     | NULL           |                       | {}        |   false   | false
+  code1       | INT2           |    false    | NULL           |                       | {}        |   false   |  true
+  code2       | INT4           |    true     | NULL           |                       | {}        |   false   |  true
+(4 rows)
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE

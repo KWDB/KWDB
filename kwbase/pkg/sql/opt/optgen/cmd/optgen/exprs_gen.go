@@ -440,6 +440,11 @@ func (g *exprsGen) genExprFuncs(define *lang.DefineExpr) {
 		fmt.Fprintf(g.w, "  return e.grp.bestProps().required\n")
 		fmt.Fprintf(g.w, "}\n\n")
 
+		// Generate the ClearRequiredPhysical method.
+		fmt.Fprintf(g.w, "func (e *%s) ClearRequiredPhysical() {\n", opTyp.name)
+		fmt.Fprintf(g.w, "  e.grp.bestProps().required = nil\n")
+		fmt.Fprintf(g.w, "}\n\n")
+
 		// Generate the ProvidedPhysical method.
 		fmt.Fprintf(g.w, "func (e *%s) ProvidedPhysical() *physical.Provided {\n", opTyp.name)
 		fmt.Fprintf(g.w, "  return &e.grp.bestProps().provided\n")
@@ -644,6 +649,11 @@ func (g *exprsGen) genEnforcerFuncs(define *lang.DefineExpr) {
 	// Generate the RequiredPhysical method.
 	fmt.Fprintf(g.w, "func (e *%s) RequiredPhysical() *physical.Required {\n", opTyp.name)
 	fmt.Fprintf(g.w, "  return e.best.required\n")
+	fmt.Fprintf(g.w, "}\n\n")
+
+	// Generate the ClearRequiredPhysical method.
+	fmt.Fprintf(g.w, "func (e *%s) ClearRequiredPhysical() {\n", opTyp.name)
+	fmt.Fprintf(g.w, "  e.best.required = nil\n")
 	fmt.Fprintf(g.w, "}\n\n")
 
 	// Generate the ProvidedPhysical method.

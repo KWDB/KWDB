@@ -23,7 +23,8 @@ std::mt19937 gen(seed);
 
 namespace kwdbts {
 
-TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) : root_path_(schema_root_path) {
+TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
+    root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
   auto exists = IsExists(schema_root_path);
   if (exists == false) {
     ErrorInfo error_info;
@@ -38,10 +39,22 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta) {
+KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db_id, const KTableKey& table_id,
+                                           roachpb::CreateTsTable* meta) {
+  {
+    rdLock();
+    Defer defer([&]() { unLock(); });
+    auto it = table_schema_mgrs_.find(table_id);
+    if (it != table_schema_mgrs_.end()) {
+      return KStatus::SUCCESS;
+    }
+  }
+
+  wrLock();
+  Defer defer([&]() { unLock(); });
   auto it = table_schema_mgrs_.find(table_id);
   if (it != table_schema_mgrs_.end()) {
-    return KStatus::FAIL;
+    return KStatus::SUCCESS;
   }
   uint32_t ts_version = 1;
   if (meta->ts_table().has_ts_version()) {
@@ -58,12 +71,11 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const KTableKey& t
   string tag_schema_path = root_path_.string() + "/tag_" + std::to_string(table_id);
   MakeDirectory(tag_schema_path, err_info);
   auto tb_schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_.string() + "/", table_id);
-  KStatus s = tb_schema_mgr->CreateTable(ctx, meta, ts_version, err_info);
+  KStatus s = tb_schema_mgr->CreateTable(ctx, meta, db_id, ts_version, err_info);
   if (s != KStatus::SUCCESS) {
     return s;
   }
 
-  // TODO(zqh): rwlock
   table_schema_mgrs_[table_id] = std::move(tb_schema_mgr);
   return KStatus::SUCCESS;
 }
@@ -72,14 +84,29 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
                                        roachpb::CreateTsTable* meta) {
   KStatus s = KStatus::FAIL;
   // Get Metric Meta
-  auto tb_schema = table_schema_mgrs_.find(table_id);
-  if (tb_schema != table_schema_mgrs_.end()) {
-    s = tb_schema->second->GetMeta(ctx, table_id, version, meta);
+  rdLock();
+  auto it = table_schema_mgrs_.find(table_id);
+  if (it != table_schema_mgrs_.end()) {
+    std::shared_ptr<TsTableSchemaManager> tb_schema = it->second;
+    unLock();
+    s = tb_schema->GetMeta(ctx, table_id, version, meta);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
       return s;
     }
   } else {
+    unLock();
+    wrLock();
+    Defer defer([&]() { unLock(); });
+    it = table_schema_mgrs_.find(table_id);
+    if (it != table_schema_mgrs_.end()) {
+      s = it->second->GetMeta(ctx, table_id, version, meta);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
+        return s;
+      }
+      return KStatus::SUCCESS;
+    }
     auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, table_id);
     s = schema_mgr->Init(ctx);
     if (s != KStatus::SUCCESS) {
@@ -96,16 +123,70 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
 }
 
 KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
-                                                    std::shared_ptr<MMapMetricsTable>* metric_schema) const {
-  auto schema_mgr = table_schema_mgrs_.find(tbl_id);
-  if (schema_mgr != table_schema_mgrs_.end()) {
-    return schema_mgr->second->GetMetricSchema(ctx, version, metric_schema);
+                                                    std::shared_ptr<MMapMetricsTable>* metric_schema) {
+  rdLock();
+  auto it = table_schema_mgrs_.find(tbl_id);
+  if (it != table_schema_mgrs_.end()) {
+    std::shared_ptr<TsTableSchemaManager> tb_schema = it->second;
+    unLock();
+    return tb_schema->GetMetricSchema(ctx, version, metric_schema);
+  } else {
+    unLock();
+    wrLock();
+    Defer defer([&]() { unLock(); });
+    it = table_schema_mgrs_.find(tbl_id);
+    if (it != table_schema_mgrs_.end()) {
+      return it->second->GetMetricSchema(ctx, version, metric_schema);
+    }
+    auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
+    KStatus s = schema_mgr->Init(ctx);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    s = schema_mgr->GetMetricSchema(ctx, version, metric_schema);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", tbl_id, version);
+      return s;
+    }
+    table_schema_mgrs_[tbl_id] = std::move(schema_mgr);
   }
   return KStatus::FAIL;
 }
 
+KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
+  rdLock();
+  auto it = table_schema_mgrs_.find(tbl_id);
+  if (it == table_schema_mgrs_.end()) {
+    unLock();
+    wrLock();
+    Defer defer([&]() { unLock(); });
+    it = table_schema_mgrs_.find(tbl_id);
+    if (it != table_schema_mgrs_.end()) {
+      tb_schema_mgr = it->second;
+      return KStatus::SUCCESS;
+    }
+    auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
+    kwdbContext_t context;
+    kwdbContext_p ctx_p = &context;
+    KStatus s = InitServerKWDBContext(ctx_p);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    s = schema_mgr->Init(ctx_p);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    table_schema_mgrs_[tbl_id] = std::move(schema_mgr);
+    tb_schema_mgr = table_schema_mgrs_.find(tbl_id)->second;
+  } else {
+    tb_schema_mgr = it->second;
+    unLock();
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
-                                             uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) const {
+                                             uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
   std::shared_ptr<TsTableSchemaManager> tb_schema;
   KStatus s = GetTableSchemaMgr(tbl_id, tb_schema);
   if (s != KStatus::SUCCESS) {
@@ -130,24 +211,13 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::SetTableID2DBID(kwdbContext_p ctx, TSTableID table_id, uint32_t database_id) {
-  // TODO(zhangzirui): LOCK
-  auto it = table_2_db_.find(table_id);
-  if (it == table_2_db_.end()) {
-    table_2_db_[table_id] = database_id;
-    return KStatus::SUCCESS;
+uint32_t TsEngineSchemaManager::GetDBIDByTableID(TSTableID table_id) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s == KStatus::SUCCESS) {
+    return tb_schema_mgr->GetDbID();
   }
-  if (it->second == database_id) {
-    return KStatus::SUCCESS;
-  }
-  LOG_ERROR("table %lu has non-consistent database id, previous: %u, new: %u", table_id, it->second, database_id);
-  return KStatus::FAIL;
-}
-
-uint32_t TsEngineSchemaManager::GetDBIDByTableID(TSTableID table_id) const {
-  auto it = table_2_db_.find(table_id);
-  assert(it != table_2_db_.end());
-  return it->second;
+  return 0;
 }
 
 KStatus TsEngineSchemaManager::AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type,
@@ -160,6 +230,8 @@ KStatus TsEngineSchemaManager::AlterTable(kwdbContext_p ctx, const KTableKey& ta
   }
   return tb_schema_mgr->AlterTable(ctx, alter_type, column, cur_version, new_version, msg);
 }
+
+impl_latch_virtual_func(TsEngineSchemaManager, &mgrs_rw_latch_)
 
 }  //  namespace kwdbts
 

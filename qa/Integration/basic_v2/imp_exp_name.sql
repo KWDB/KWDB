@@ -48,3 +48,11 @@ use "tsDB";
 select * from t1 order by a;
 drop database "tsDB";
 drop database "TSDB";
+
+CREATE TS DATABASE db;
+USE db;
+CREATE TABLE db.t1("time" timestamptz not null,e8 char(1023), e9 nchar(255))tags(i int not null) primary tags(i);
+INSERT INTO db.t1 values('2023-12-1 12:00:12.000+00:00',null, '测试',1);
+EXPORT INTO CSV "nodelocal://1/time" FROM TABLE db.t1;
+IMPORT INTO db.t1("time",e8,e9,i) CSV DATA  ("nodelocal://1/time/");
+DROP DATABASE db;

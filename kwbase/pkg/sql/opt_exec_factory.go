@@ -3500,3 +3500,38 @@ func (ef *execFactory) AddAvgFuncColumns(node exec.Node, mem *memo.Memo, tableGr
 
 	mem.MultimodelHelper.PreGroupInfos[tableGroupIndex].AvgColumnRelations = relations
 }
+
+// ProcessTSInsertWithSort constructs sortNode base on the input of tsInsertSelectNode,
+// then uses sortNode as the input for tsInsertSelectNode.
+// params:
+// 1. tsInsertSelect is the tsInsertSelectNode
+// 2. outputCols is the output cols of the input of tsInsertSelectNode
+// 3. ordering is used to describe a desired column ordering.
+// 4. alreadyOrderedPrefix describes the input columns that have already been sorted.
+// 5. execInTSEngine is true when the sort can exec in ts engine.
+func (ef *execFactory) ProcessTSInsertWithSort(
+	tsInsertSelect exec.Node,
+	outputCols *opt.ColMap,
+	ordering sqlbase.ColumnOrdering,
+	alreadyOrderedPrefix int,
+	execInTSEngine bool,
+) (exec.Node, bool) {
+	if tsInsert, ok := tsInsertSelect.(*tsInsertSelectNode); ok {
+		engine := tree.EngineTypeRelational
+		if execInTSEngine {
+			engine = tree.EngineTypeTimeseries
+		}
+
+		sort := &sortNode{
+			plan:                 tsInsert.plan,
+			ordering:             ordering,
+			alreadyOrderedPrefix: alreadyOrderedPrefix,
+			engine:               engine,
+		}
+		tsInsert.plan = sort
+
+		(*outputCols) = opt.ColMap{}
+		return tsInsert, true
+	}
+	return struct{}{}, false
+}

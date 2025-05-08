@@ -1,0 +1,610 @@
+> drop database if exists d1 cascade;
+DROP DATABASE
+> drop database if exists d2 cascade;
+DROP DATABASE
+> create database d1;
+CREATE DATABASE
+> create ts database d2;
+CREATE TS DATABASE
+> use d2;
+SET
+> create table t1 (ts timestamptz not null, e1 blob, e2 clob) tags (tag1 int not null) primary tags(tag1);
+ERROR: column e1: unsupported column type blob in timeseries table
+SQLSTATE: 42809
+> create table t2 (ts timestamptz not null, e1 clob, e2 blob) tags (tag1 int not null) primary tags(tag1);
+ERROR: column e1: unsupported column type clob in timeseries table
+SQLSTATE: 42809
+> use d1;
+SET
+> create table t1 (e1 blob, e2 clob);
+CREATE TABLE
+> show create t1;
+  table_name |           create_statement
+-------------+---------------------------------------
+  t1         | CREATE TABLE t1 (
+             |     e1 BLOB NULL,
+             |     e2 CLOB NULL,
+             |     FAMILY "primary" (e1, e2, rowid)
+             | )
+(1 row)
+> insert into t1 values ('abc', 'def');
+INSERT 1
+> select * from t1;
+     e1    | e2
+-----------+------
+  \x616263 | def
+(1 row)
+> create table t2 (e1 blob(3), e2 clob);
+ERROR: at or near "(": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create table t2 (e1 blob(3), e2 clob)
+                        ^
+HINT: try \h CREATE TABLE
+> create table t3 (e1 blob, e2 clob(3));
+ERROR: at or near "(": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create table t3 (e1 blob, e2 clob(3))
+                                 ^
+HINT: try \h CREATE TABLE
+> create table t4 (e1 string);
+CREATE TABLE
+> insert into t4 values ('abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz');
+INSERT 1
+> select length(e1) from t4;
+  length
+----------
+      78
+(1 row)
+> alter table t4 alter e1 type varchar(65);
+ERROR: unimplemented: type conversion not yet implemented
+SQLSTATE: 0A000
+HINT: You have attempted to use a feature that is not yet implemented.
+
+Please check our website to find out whether this problem is already 
+tracked.  If you cannot find it there, please contact us with the 
+available channels published on website.
+
+We appreciate your feedback.
+> drop database d1 cascade;
+DROP DATABASE
+> drop database d2 cascade;
+DROP DATABASE
+> drop database if exists test_blob_clob_rel cascade;
+DROP DATABASE
+> create database test_blob_clob_rel;
+CREATE DATABASE
+> DROP TABLE IF EXISTS test_blob_clob_rel.type CASCADE;
+DROP TABLE
+> CREATE TABLE test_blob_clob_rel.type(
+                                        id  INT,
+                                        k_timestamp TIMESTAMPTZ,
+                                        e1  INT,
+                                        e2  SMALLINT,
+                                        e3  BIGINT,
+                                        e4  INTEGER,
+                                        e5  INT2,
+                                        e6  INT4,
+                                        e7  INT8,
+                                        e8  INT64,
+                                        e9  SERIAL,
+                                        e10 SMALLSERIAL,
+                                        e11 BIGSERIAL,
+                                        e12 SERIAL2,
+                                        e13 SERIAL4,
+                                        e14 SERIAL8,
+                                        e15 FLOAT,
+                                        e16 REAL,
+                                        e17 DOUBLE PRECISION,
+                                        e18 FLOAT4,
+                                        e19 FLOAT8,
+                                        e20 DECIMAL,
+                                        e21 DEC,
+                                        e22 NUMERIC,
+                                        e23 BOOL,
+                                        e24 BOOLEAN,
+                                        e25 BIT,
+                                        e26 BIT(3),
+                                        e27 VARBIT,
+                                        e28 VARBIT(3),
+                                        e29 BYTES,
+                                        e30 BLOB,
+                                        e31 BYTEA,
+                                        e32 STRING,
+                                        e33 CHARACTER,
+                                        e34 CHAR,
+                                        e35 VARCHAR,
+                                        e36 TEXT,
+                                        e37 STRING(5),
+                                        e38 CHARACTER(95),
+                                        e39 CHARACTER VARYING(200),
+                                        e40 CHAR(15),
+                                        e41 CHAR VARYING(2500),
+                                        e42 VARCHAR(5),
+                                        e43 STRING COLLATE en,
+                                        e44 TEXT COLLATE en,
+                                        e45 DATE,
+                                        e46 TIME,
+                                        e47 TIMESTAMP,
+                                        e48 DATE[],
+                                        e49 TIMESTAMP WITHOUT TIME ZONE,
+                                        e50 TIMESTAMP WITH TIME ZONE,
+                                        e51 INTERVAL,
+                                        e52 INET,
+                                        e53 UUID,
+                                        e54 JSONB,
+                                        e55 JSON,
+                                        e56 INT ARRAY,
+                                        e57 FLOAT[],
+                                        e58 STRING ARRAY,
+                                        e59 OID,
+                                        e60 VARBYTES,
+                                        e61 NVARCHAR,
+                                        e62 INET[],
+                                        e63 DATE[],
+                                        e64 UUID[],
+                                        e65 TIMESTAMP ARRAY,
+                                        e66 OID[],
+                                        e67 DECIMAL[],
+                                        e68 NVARCHAR(3000),
+                                        e69 VARBYTES,
+                                        e70 CLOB);
+CREATE TABLE
+> INSERT INTO test_blob_clob_rel.type VALUES (
+                                               1,
+                                               '1976-12-13 12:00:12.111222',
+                                               2147483647,
+                                               32767,
+                                               9223372036854775807,
+                                               2147483647,
+                                               32767,
+                                               2147483647,
+                                               9223372036854775807,
+                                               9223372036854775807,
+                                               1,
+                                               1,
+                                               1,
+                                               1,
+                                               1,
+                                               1,
+                                               3.40282e+18,
+                                               1.17549e+18,
+                                               2.22507e-8,
+                                               1.17549e+18,
+                                               2.22507e+18,
+                                               10.123,
+                                               10.123,
+                                               10.123,
+                                               TRUE,
+                                               TRUE,
+                                               B'1',
+                                               B'101',
+                                               B'101',
+                                               B'101',
+                                               '1',
+                                               'sample blob',
+                                               'sample bytea',
+                                               'Hello, world!',
+                                               'A',
+                                               'A',
+                                               'Hello, world!',
+                                               'Text content',
+                                               'Hello',
+                                               'A',
+                                               'Variable length character string',
+                                               'FixedLength',
+                                               'Very long character varying string that exceeds normal lengths',
+                                               'Short',
+                                               null,
+                                               null,
+                                               '2024-04-28',
+                                               '15:12:07',
+                                               '2024-04-28 15:12:07',
+                                               ARRAY['2024-04-28', '2024-02-29'],
+                                               '2024-04-28 15:12:07',
+                                               '2024-04-28 15:12:07+08',
+                                               '1year 5months 2minutes 60 seconds',
+                                               '192.168.1.1',
+                                               'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+                                               '{"key": "value"}',
+                                               '{"key": "value"}',
+                                               ARRAY[1,2,3],
+                                               ARRAY[1.0, 2.0, 3.0],
+                                               ARRAY['text1', 'text2', 'text3'],
+                                               2048,
+                                               'var bytes',
+                                               'nvarchar text',
+                                               ARRAY['192.168.1.1', '10.0.0.1'],
+                                               ARRAY['2024-04-28', '2024-05-01'],
+                                               ARRAY['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'],
+                                               ARRAY['2024-04-28 15:12:07', '2024-05-01 12:00:00'],
+                                               ARRAY[2048],
+                                               ARRAY[10.123, 20.456],
+                                               'Long NVARCHAR text',
+                                               'var bytes',
+                                               'test数据库语法查询测试！TEST1-111111xaa');
+INSERT 1
+> CREATE VIEW test_blob_clob_rel.typev1 AS SELECT * FROM test_blob_clob_rel.type;
+CREATE VIEW
+> INSERT INTO test_blob_clob_rel.type VALUES (
+                                               2,
+                                               '2020-4-3 12:00:12.1293',
+                                               -2147483648,
+                                               -32768,
+                                               -9223372036854775808,
+                                               -2147483648,
+                                               -32768,
+                                               -2147483648,
+                                               -9223372036854775808,
+                                               -9223372036854775808,
+                                               -1,
+                                               -1,
+                                               -1,
+                                               -1,
+                                               -1,
+                                               -1,
+                                               -3.40282e+18,
+                                               -1.17549e+18,
+                                               -2.22507e-8,
+                                               -1.17549e+18,
+                                               -2.22507e+18,
+                                               -10.123,
+                                               -10.123,
+                                               -10.123,
+                                               TRUE,
+                                               TRUE,
+                                               B'1',
+                                               B'101',
+                                               B'101',
+                                               B'101',
+                                               '1',
+                                               '中文#@<Ab《18',
+                                               '中文#@<Ab《18',
+                                               '中文#@<Ab《18',
+                                               '中',
+                                               '中',
+                                               '中文#@<Ab《18',
+                                               '中文#@<Ab《18',
+                                               '中《1a',
+                                               '中',
+                                               '中文#@<Ab《18',
+                                               '中文#@<Ab《18',
+                                               '中文#@<Ab《18',
+                                               '中《1a',
+                                               null,
+                                               null,
+                                               '2024-04-28',
+                                               '15:12:07',
+                                               '2024-04-28 15:12:07',
+                                               ARRAY['2024-04-28', '2024-02-29'],
+                                               '2024-04-28 15:12:07',
+                                               '2024-04-28 15:12:07+08',
+                                               '1year 5months 2minutes 60 seconds',
+                                               '192.168.1.1',
+                                               'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+                                               '{"key": "value"}',
+                                               '{"key": "value"}',
+                                               ARRAY[-1,2,-3,0],
+                                               ARRAY[-1.0, 2.0, -3.0],
+                                               ARRAY['SJmnjd中', '0000', '中Ab1<《'],
+                                               2048,
+                                               '中文#@<Ab《18',
+                                               '中文#@<Ab《18',
+                                               ARRAY['192.168.1.1', '10.0.0.1'],
+                                               ARRAY['2024-04-28', '2024-05-01'],
+                                               ARRAY['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'],
+                                               ARRAY['2024-04-28 15:12:07', '2024-05-01 12:00:00'],
+                                               ARRAY[2048],
+                                               ARRAY[10.123, 20.456],
+                                               'Long NVARCHAR text',
+                                               'var bytes',
+                                               'test数据库语法查询测试！TEST2-222222zbb');
+INSERT 1
+> SELECT * FROM test_blob_clob_rel.type ORDER BY id;
+  id |           k_timestamp            |     e1      |   e2   |          e3          |     e4      |   e5   |     e6      |          e7          |          e8          | e9 | e10 | e11 | e12 | e13 | e14 |     e15      |           e16           |     e17      |           e18           |     e19      |   e20   |   e21   |   e22   | e23  | e24  | e25 | e26 | e27 | e28 | e29  |                e30                 |                e31                 |      e32      | e33 | e34 |      e35      |      e36      |  e37   | e38 |               e39                |      e40      |                              e41                               |  e42   | e43  | e44  |            e45            |            e46            |            e47            |           e48           |            e49            |            e50            |          e51           |     e52     |                 e53                  |       e54        |       e55        |     e56     |       e57       |           e58            | e59  |                e60                 |      e61      |          e62           |           e63           |                  e64                   |                            e65                            |  e66   |       e67       |        e68         |         e69          |                   e70
+-----+----------------------------------+-------------+--------+----------------------+-------------+--------+-------------+----------------------+----------------------+----+-----+-----+-----+-----+-----+--------------+-------------------------+--------------+-------------------------+--------------+---------+---------+---------+------+------+-----+-----+-----+-----+------+------------------------------------+------------------------------------+---------------+-----+-----+---------------+---------------+--------+-----+----------------------------------+---------------+----------------------------------------------------------------+--------+------+------+---------------------------+---------------------------+---------------------------+-------------------------+---------------------------+---------------------------+------------------------+-------------+--------------------------------------+------------------+------------------+-------------+-----------------+--------------------------+------+------------------------------------+---------------+------------------------+-------------------------+----------------------------------------+-----------------------------------------------------------+--------+-----------------+--------------------+----------------------+------------------------------------------
+   1 | 1976-12-13 12:00:12.111222+00:00 |  2147483647 |  32767 |  9223372036854775807 |  2147483647 |  32767 |  2147483647 |  9223372036854775807 |  9223372036854775807 |  1 |   1 |   1 |   1 |   1 |   1 | 3.40282e+18  | 1.1754899428396237e+18  | 2.22507e-08  | 1.1754899428396237e+18  | 2.22507e+18  |  10.123 |  10.123 |  10.123 | true | true |   1 | 101 | 101 | 101 | \x31 | \x73616d706c6520626c6f62           | \x73616d706c65206279746561         | Hello, world! | A   | A   | Hello, world! | Text content  | Hello  | A   | Variable length character string | FixedLength   | Very long character varying string that exceeds normal lengths | Short  | NULL | NULL | 2024-04-28 00:00:00+00:00 | 0000-01-01 15:12:07+00:00 | 2024-04-28 15:12:07+00:00 | {2024-04-28,2024-02-29} | 2024-04-28 15:12:07+00:00 | 2024-04-28 07:12:07+00:00 | 1 year 5 mons 00:03:00 | 192.168.1.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"} | {"key": "value"} | {1,2,3}     | {1.0,2.0,3.0}   | {text1,text2,text3}      | 2048 | \x766172206279746573               | nvarchar text | {192.168.1.1,10.0.0.1} | {2024-04-28,2024-05-01} | {a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11} | {"2024-04-28 15:12:07+00:00","2024-05-01 12:00:00+00:00"} | {2048} | {10.123,20.456} | Long NVARCHAR text | \x766172206279746573 | test数据库语法查询测试！TEST1-111111xaa
+   2 | 2020-04-03 12:00:12.1293+00:00   | -2147483648 | -32768 | -9223372036854775808 | -2147483648 | -32768 | -2147483648 | -9223372036854775808 | -9223372036854775808 | -1 |  -1 |  -1 |  -1 |  -1 |  -1 | -3.40282e+18 | -1.1754899428396237e+18 | -2.22507e-08 | -1.1754899428396237e+18 | -2.22507e+18 | -10.123 | -10.123 | -10.123 | true | true |   1 | 101 | 101 | 101 | \x31 | \xe4b8ade6968723403c4162e3808a3138 | \xe4b8ade6968723403c4162e3808a3138 | 中文#@<Ab《18 | 中  | 中  | 中文#@<Ab《18 | 中文#@<Ab《18 | 中《1a | 中  | 中文#@<Ab《18                    | 中文#@<Ab《18 | 中文#@<Ab《18                                                  | 中《1a | NULL | NULL | 2024-04-28 00:00:00+00:00 | 0000-01-01 15:12:07+00:00 | 2024-04-28 15:12:07+00:00 | {2024-04-28,2024-02-29} | 2024-04-28 15:12:07+00:00 | 2024-04-28 07:12:07+00:00 | 1 year 5 mons 00:03:00 | 192.168.1.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"} | {"key": "value"} | {-1,2,-3,0} | {-1.0,2.0,-3.0} | {SJmnjd中,0000,中Ab1<《} | 2048 | \xe4b8ade6968723403c4162e3808a3138 | 中文#@<Ab《18 | {192.168.1.1,10.0.0.1} | {2024-04-28,2024-05-01} | {a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11} | {"2024-04-28 15:12:07+00:00","2024-05-01 12:00:00+00:00"} | {2048} | {10.123,20.456} | Long NVARCHAR text | \x766172206279746573 | test数据库语法查询测试！TEST2-222222zbb
+(2 rows)
+> SELECT * FROM test_blob_clob_rel.typev1 ORDER BY id;
+  id |           k_timestamp            |     e1      |   e2   |          e3          |     e4      |   e5   |     e6      |          e7          |          e8          | e9 | e10 | e11 | e12 | e13 | e14 |     e15      |           e16           |     e17      |           e18           |     e19      |   e20   |   e21   |   e22   | e23  | e24  | e25 | e26 | e27 | e28 | e29  |                e30                 |                e31                 |      e32      | e33 | e34 |      e35      |      e36      |  e37   | e38 |               e39                |      e40      |                              e41                               |  e42   | e43  | e44  |            e45            |            e46            |            e47            |           e48           |            e49            |            e50            |          e51           |     e52     |                 e53                  |       e54        |       e55        |     e56     |       e57       |           e58            | e59  |                e60                 |      e61      |          e62           |           e63           |                  e64                   |                            e65                            |  e66   |       e67       |        e68         |         e69          |                   e70
+-----+----------------------------------+-------------+--------+----------------------+-------------+--------+-------------+----------------------+----------------------+----+-----+-----+-----+-----+-----+--------------+-------------------------+--------------+-------------------------+--------------+---------+---------+---------+------+------+-----+-----+-----+-----+------+------------------------------------+------------------------------------+---------------+-----+-----+---------------+---------------+--------+-----+----------------------------------+---------------+----------------------------------------------------------------+--------+------+------+---------------------------+---------------------------+---------------------------+-------------------------+---------------------------+---------------------------+------------------------+-------------+--------------------------------------+------------------+------------------+-------------+-----------------+--------------------------+------+------------------------------------+---------------+------------------------+-------------------------+----------------------------------------+-----------------------------------------------------------+--------+-----------------+--------------------+----------------------+------------------------------------------
+   1 | 1976-12-13 12:00:12.111222+00:00 |  2147483647 |  32767 |  9223372036854775807 |  2147483647 |  32767 |  2147483647 |  9223372036854775807 |  9223372036854775807 |  1 |   1 |   1 |   1 |   1 |   1 | 3.40282e+18  | 1.1754899428396237e+18  | 2.22507e-08  | 1.1754899428396237e+18  | 2.22507e+18  |  10.123 |  10.123 |  10.123 | true | true |   1 | 101 | 101 | 101 | \x31 | \x73616d706c6520626c6f62           | \x73616d706c65206279746561         | Hello, world! | A   | A   | Hello, world! | Text content  | Hello  | A   | Variable length character string | FixedLength   | Very long character varying string that exceeds normal lengths | Short  | NULL | NULL | 2024-04-28 00:00:00+00:00 | 0000-01-01 15:12:07+00:00 | 2024-04-28 15:12:07+00:00 | {2024-04-28,2024-02-29} | 2024-04-28 15:12:07+00:00 | 2024-04-28 07:12:07+00:00 | 1 year 5 mons 00:03:00 | 192.168.1.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"} | {"key": "value"} | {1,2,3}     | {1.0,2.0,3.0}   | {text1,text2,text3}      | 2048 | \x766172206279746573               | nvarchar text | {192.168.1.1,10.0.0.1} | {2024-04-28,2024-05-01} | {a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11} | {"2024-04-28 15:12:07+00:00","2024-05-01 12:00:00+00:00"} | {2048} | {10.123,20.456} | Long NVARCHAR text | \x766172206279746573 | test数据库语法查询测试！TEST1-111111xaa
+   2 | 2020-04-03 12:00:12.1293+00:00   | -2147483648 | -32768 | -9223372036854775808 | -2147483648 | -32768 | -2147483648 | -9223372036854775808 | -9223372036854775808 | -1 |  -1 |  -1 |  -1 |  -1 |  -1 | -3.40282e+18 | -1.1754899428396237e+18 | -2.22507e-08 | -1.1754899428396237e+18 | -2.22507e+18 | -10.123 | -10.123 | -10.123 | true | true |   1 | 101 | 101 | 101 | \x31 | \xe4b8ade6968723403c4162e3808a3138 | \xe4b8ade6968723403c4162e3808a3138 | 中文#@<Ab《18 | 中  | 中  | 中文#@<Ab《18 | 中文#@<Ab《18 | 中《1a | 中  | 中文#@<Ab《18                    | 中文#@<Ab《18 | 中文#@<Ab《18                                                  | 中《1a | NULL | NULL | 2024-04-28 00:00:00+00:00 | 0000-01-01 15:12:07+00:00 | 2024-04-28 15:12:07+00:00 | {2024-04-28,2024-02-29} | 2024-04-28 15:12:07+00:00 | 2024-04-28 07:12:07+00:00 | 1 year 5 mons 00:03:00 | 192.168.1.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"} | {"key": "value"} | {-1,2,-3,0} | {-1.0,2.0,-3.0} | {SJmnjd中,0000,中Ab1<《} | 2048 | \xe4b8ade6968723403c4162e3808a3138 | 中文#@<Ab《18 | {192.168.1.1,10.0.0.1} | {2024-04-28,2024-05-01} | {a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11} | {"2024-04-28 15:12:07+00:00","2024-05-01 12:00:00+00:00"} | {2048} | {10.123,20.456} | Long NVARCHAR text | \x766172206279746573 | test数据库语法查询测试！TEST2-222222zbb
+(2 rows)
+> SHOW CREATE TABLE test_blob_clob_rel.type;
+            table_name           |                                                                                                                                                                                          create_statement
+---------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  test_blob_clob_rel.public.type | CREATE TABLE type (
+                                 |     id INT4 NULL,
+                                 |     k_timestamp TIMESTAMPTZ NULL,
+                                 |     e1 INT4 NULL,
+                                 |     e2 INT2 NULL,
+                                 |     e3 INT8 NULL,
+                                 |     e4 INT4 NULL,
+                                 |     e5 INT2 NULL,
+                                 |     e6 INT4 NULL,
+                                 |     e7 INT8 NULL,
+                                 |     e8 INT8 NULL,
+                                 |     e9 INT8 NOT NULL DEFAULT unique_rowid(),
+                                 |     e10 INT8 NOT NULL DEFAULT unique_rowid(),
+                                 |     e11 INT8 NOT NULL DEFAULT unique_rowid(),
+                                 |     e12 INT8 NOT NULL DEFAULT unique_rowid(),
+                                 |     e13 INT8 NOT NULL DEFAULT unique_rowid(),
+                                 |     e14 INT8 NOT NULL DEFAULT unique_rowid(),
+                                 |     e15 FLOAT8 NULL,
+                                 |     e16 FLOAT4 NULL,
+                                 |     e17 FLOAT8 NULL,
+                                 |     e18 FLOAT4 NULL,
+                                 |     e19 FLOAT8 NULL,
+                                 |     e20 DECIMAL NULL,
+                                 |     e21 DECIMAL NULL,
+                                 |     e22 DECIMAL NULL,
+                                 |     e23 BOOL NULL,
+                                 |     e24 BOOL NULL,
+                                 |     e25 BIT NULL,
+                                 |     e26 BIT(3) NULL,
+                                 |     e27 VARBIT NULL,
+                                 |     e28 VARBIT(3) NULL,
+                                 |     e29 BYTES NULL,
+                                 |     e30 BLOB NULL,
+                                 |     e31 BYTES NULL,
+                                 |     e32 STRING NULL,
+                                 |     e33 CHAR NULL,
+                                 |     e34 CHAR NULL,
+                                 |     e35 VARCHAR NULL,
+                                 |     e36 STRING NULL,
+                                 |     e37 STRING(5) NULL,
+                                 |     e38 CHAR(95) NULL,
+                                 |     e39 VARCHAR(200) NULL,
+                                 |     e40 CHAR(15) NULL,
+                                 |     e41 VARCHAR(2500) NULL,
+                                 |     e42 VARCHAR(5) NULL,
+                                 |     e43 STRING COLLATE en NULL,
+                                 |     e44 STRING COLLATE en NULL,
+                                 |     e45 DATE NULL,
+                                 |     e46 TIME NULL,
+                                 |     e47 TIMESTAMP NULL,
+                                 |     e48 DATE[] NULL,
+                                 |     e49 TIMESTAMP NULL,
+                                 |     e50 TIMESTAMPTZ NULL,
+                                 |     e51 INTERVAL NULL,
+                                 |     e52 INET NULL,
+                                 |     e53 UUID NULL,
+                                 |     e54 JSONB NULL,
+                                 |     e55 JSONB NULL,
+                                 |     e56 INT4[] NULL,
+                                 |     e57 FLOAT8[] NULL,
+                                 |     e58 STRING[] NULL,
+                                 |     e59 OID NULL,
+                                 |     e60 VARBYTES NULL,
+                                 |     e61 NVARCHAR NULL,
+                                 |     e62 INET[] NULL,
+                                 |     e63 DATE[] NULL,
+                                 |     e64 UUID[] NULL,
+                                 |     e65 TIMESTAMP[] NULL,
+                                 |     e66 OID[] NULL,
+                                 |     e67 DECIMAL[] NULL,
+                                 |     e68 NVARCHAR(3000) NULL,
+                                 |     e69 VARBYTES NULL,
+                                 |     e70 CLOB NULL,
+                                 |     FAMILY "primary" (id, k_timestamp, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e60, e61, e62, e63, e64, e65, e66, e67, e68, e69, e70, rowid)
+                                 | )
+(1 row)
+> SHOW CREATE TABLE test_blob_clob_rel.typev1;
+             table_name            |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           create_statement
+-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  test_blob_clob_rel.public.typev1 | CREATE VIEW typev1 (id, k_timestamp, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e60, e61, e62, e63, e64, e65, e66, e67, e68, e69, e70) AS SELECT test_blob_clob_rel.public.type.id, test_blob_clob_rel.public.type.k_timestamp, test_blob_clob_rel.public.type.e1, test_blob_clob_rel.public.type.e2, test_blob_clob_rel.public.type.e3, test_blob_clob_rel.public.type.e4, test_blob_clob_rel.public.type.e5, test_blob_clob_rel.public.type.e6, test_blob_clob_rel.public.type.e7, test_blob_clob_rel.public.type.e8, test_blob_clob_rel.public.type.e9, test_blob_clob_rel.public.type.e10, test_blob_clob_rel.public.type.e11, test_blob_clob_rel.public.type.e12, test_blob_clob_rel.public.type.e13, test_blob_clob_rel.public.type.e14, test_blob_clob_rel.public.type.e15, test_blob_clob_rel.public.type.e16, test_blob_clob_rel.public.type.e17, test_blob_clob_rel.public.type.e18, test_blob_clob_rel.public.type.e19, test_blob_clob_rel.public.type.e20, test_blob_clob_rel.public.type.e21, test_blob_clob_rel.public.type.e22, test_blob_clob_rel.public.type.e23, test_blob_clob_rel.public.type.e24, test_blob_clob_rel.public.type.e25, test_blob_clob_rel.public.type.e26, test_blob_clob_rel.public.type.e27, test_blob_clob_rel.public.type.e28, test_blob_clob_rel.public.type.e29, test_blob_clob_rel.public.type.e30, test_blob_clob_rel.public.type.e31, test_blob_clob_rel.public.type.e32, test_blob_clob_rel.public.type.e33, test_blob_clob_rel.public.type.e34, test_blob_clob_rel.public.type.e35, test_blob_clob_rel.public.type.e36, test_blob_clob_rel.public.type.e37, test_blob_clob_rel.public.type.e38, test_blob_clob_rel.public.type.e39, test_blob_clob_rel.public.type.e40, test_blob_clob_rel.public.type.e41, test_blob_clob_rel.public.type.e42, test_blob_clob_rel.public.type.e43, test_blob_clob_rel.public.type.e44, test_blob_clob_rel.public.type.e45, test_blob_clob_rel.public.type.e46, test_blob_clob_rel.public.type.e47, test_blob_clob_rel.public.type.e48, test_blob_clob_rel.public.type.e49, test_blob_clob_rel.public.type.e50, test_blob_clob_rel.public.type.e51, test_blob_clob_rel.public.type.e52, test_blob_clob_rel.public.type.e53, test_blob_clob_rel.public.type.e54, test_blob_clob_rel.public.type.e55, test_blob_clob_rel.public.type.e56, test_blob_clob_rel.public.type.e57, test_blob_clob_rel.public.type.e58, test_blob_clob_rel.public.type.e59, test_blob_clob_rel.public.type.e60, test_blob_clob_rel.public.type.e61, test_blob_clob_rel.public.type.e62, test_blob_clob_rel.public.type.e63, test_blob_clob_rel.public.type.e64, test_blob_clob_rel.public.type.e65, test_blob_clob_rel.public.type.e66, test_blob_clob_rel.public.type.e67, test_blob_clob_rel.public.type.e68, test_blob_clob_rel.public.type.e69, test_blob_clob_rel.public.type.e70 FROM test_blob_clob_rel.public.type
+(1 row)
+> DROP TABLE test_blob_clob_rel.type CASCADE;
+DROP TABLE
+> DROP TABLE IF EXISTS test_blob_clob_rel.data1 CASCADE;
+DROP TABLE
+> CREATE TABLE test_blob_clob_rel.data1(
+                                         tp  TIMESTAMPTZ NOT NULL,
+                                         id  INT NOT NULL        ,
+                                         e1  INT2                ,
+                                         e2  INT,
+                                         e3  INT8,
+                                         e4  FLOAT4,
+                                         e5  FLOAT8,
+                                         e6  BOOL,
+                                         e7  TIMESTAMP,
+                                         e8  CHAR(1023),
+                                         e9  NCHAR(255),
+                                         e10 VARCHAR(4096),
+                                         e11 CHAR,
+                                         e12 NVARCHAR(4096),
+                                         e13 NCHAR,
+                                         e14 VARBYTES,
+                                         e15 VARCHAR,
+                                         e16 NVARCHAR,
+                                         e17 BLOB,
+                                         e18 CLOB);
+CREATE TABLE
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1970-01-01 00:00:00+00:00'    ,1 ,0      ,0          ,0                   ,0                      ,0                          ,true ,'1970-01-01 00:00:00+00:00'    ,''                                     ,''                                     ,''                                      ,''   ,''                                      ,''   ,''                                       ,''                                       ,''                                    ,''                                    ,''                                    );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1970-1-1 00:00:00.001'        ,2 ,0      ,0          ,0                   ,0                      ,0                          ,true ,'1970-01-01 00:16:39.999+00:00','          '                           ,'          '                           ,'          '                            ,' '  ,'          '                            ,' '  ,' '                                      ,'          '                             ,'          '                          ,'          '                          ,'          '                          );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1976-10-20 12:00:12.123+00:00',3 ,10001  ,10000001   ,100000000001        ,-1047200.00312001      ,-1109810.113011921         ,true ,'2021-03-01 12:00:00.909+00:00','test数据库语法查询测试！！！@TEST3-8' ,'test数据库语法查询测试！！！@TEST3-9' ,'test数据库语法查询测试！！！@TEST3-10' ,'t'  ,'test数据库语法查询测试！！！@TEST3-12' ,'中' ,'test数据库语法查询测试！！！@TEST3-14'  ,'test数据库语法查询测试！！！@TEST3-15'  ,'test数据库语法查询测试！TEST3-16xaa' ,'test数据库语法查询测试！TEST3-16xaa' ,'test数据库语法查询测试！TEST3-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1979-2-28 11:59:01.999'       ,4 ,20002  ,20000002   ,200000000002        ,-20873209.0220322201   ,-22012110.113011921        ,false,'1970-01-01 00:00:00.123+00:00','test数据库语法查询测试！！！@TEST4-8' ,'test数据库语法查询测试！！！@TEST4-9' ,'test数据库语法查询测试！！！@TEST4-10' ,'t'  ,'test数据库语法查询测试！！！@TEST4-12' ,'中' ,'test数据库语法查询测试！！！@TEST4-14'  ,'test数据库语法查询测试！！！@TEST4-15'  ,'test数据库语法查询测试！TEST4-16xaa' ,'test数据库语法查询测试！TEST4-16xaa' ,'test数据库语法查询测试！TEST4-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-01-31 19:01:01+00:00'    ,5 ,30003  ,30000003   ,300000000003        ,-33472098.11312001     ,-39009810.333011921        ,true ,'2015-3-12 10:00:00.234'       ,'test数据库语法查询测试！！！@TEST5-8' ,'test数据库语法查询测试！！！@TEST5-9' ,'test数据库语法查询测试！！！@TEST5-10' ,'t'  ,'test数据库语法查询测试！！！@TEST5-12' ,'中' ,'test数据库语法查询测试！！！@TEST5-14'  ,'test数据库语法查询测试！！！@TEST5-15'  ,'test数据库语法查询测试！TEST5-16xaa' ,'test数据库语法查询测试！TEST5-16xaa' ,'test数据库语法查询测试！TEST5-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-02-10 01:14:51.09+00:00' ,6 ,-10001 ,10000001   ,-100000000001       ,1047200.00312001       ,1109810.113011921          ,false,'2023-6-23 05:00:00.55'        ,'test数据库语法查询测试！！！@TEST6-8' ,'test数据库语法查询测试！！！@TEST6-9' ,'test数据库语法查询测试！！！@TEST6-10' ,'t'  ,'test数据库语法查询测试！！！@TEST6-12' ,'中' ,'test数据库语法查询测试！！！@TEST6-14'  ,'test数据库语法查询测试！！！@TEST6-15'  ,'test数据库语法查询测试！TEST6-16xaa' ,'xaaxbbxcc'                           ,'xaaxbbxcc'                           );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-02-10 01:48:11.029+00:00',7 ,-20002 ,20000002   ,-200000000002       ,20873209.0220322201    ,22012110.113011921         ,true ,'2016-07-17 20:12:00.12+00:00' ,'test数据库语法查询测试！！！@TEST7-8' ,'test数据库语法查询测试！！！@TEST7-9' ,'test数据库语法查询测试！！！@TEST7-10' ,'t'  ,'test数据库语法查询测试！！！@TEST7-12' ,'中' ,'test数据库语法查询测试！！！@TEST7-14'  ,'test数据库语法查询测试！！！@TEST7-15'  ,'test数据库语法查询测试！TEST7-16xaa' ,'010101010101011010101010101010101010','010101010101011010101010101010101010');
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-02-10 01:48:22.501+00:00',8 ,-30003 ,30000003   ,-300000000003       ,33472098.11312001      ,39009810.333011921         ,false,'1970-01-01 01:16:05.476+00:00','test数据库语法查询测试！！！@TEST8-8' ,'test数据库语法查询测试！！！@TEST8-9' ,'test数据库语法查询测试！！！@TEST8-10' ,'t'  ,'test数据库语法查询测试！！！@TEST8-12' ,'中' ,'test数据库语法查询测试！！！@TEST8-14'  ,'test数据库语法查询测试！！！@TEST8-15'  ,'test数据库语法查询测试！TEST8-16xaa' ,'test数据库语法查询测试！TEST8-16xaa' ,'test数据库语法查询测试！TEST8-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2001-12-09 09:48:12.3+00:00'  ,9 ,null   ,null       ,null                ,null                   ,null                       ,null ,null                           ,null                                   ,null                                   ,null                                    ,null ,null                                    ,null ,null                                     ,null                                     ,null                                  ,null                                  ,null                                  );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2002-2-22 10:48:12.899'       ,10,32767  ,-2147483648,9223372036854775807 ,-99999999991.9999999991,9999999999991.999999999991 ,true ,'2020-10-01 12:00:01+00:00'    ,'test数据库语法查询测试！！！@TEST10-8','test数据库语法查询测试！！！@TEST10-9','test数据库语法查询测试！！！@TEST10-10','t'  ,'test数据库语法查询测试！！！@TEST10-12','中' ,'test数据库语法查询测试！！！@TEST10-14' ,'test数据库语法查询测试！！！@TEST10-15' ,'test数据库语法查询测试！TEST10-16xaa','110101010101011010101010101010101010','110101010101011010101010101010101010');
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2003-10-1 11:48:12.1'         ,11,-32768 ,2147483647 ,-9223372036854775808,99999999991.9999999991 ,-9999999999991.999999999991,false,'1970-11-25 09:23:07.421+00:00','test数据库语法查询测试！！！@TEST11-8','test数据库语法查询测试！！！@TEST11-9','test数据库语法查询测试！！！@TEST11-10','t'  ,'test数据库语法查询测试！！！@TEST11-12','中' ,'test数据库语法查询测试！！！@TEST11-14' ,'test数据库语法查询测试！！！@TEST11-15' ,'test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！TEST11-16xaa');
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2004-09-09 00:00:00.9+00:00'  ,12,12000  ,12000000   ,120000000000        ,-12000021.003125       ,-122209810.1131921         ,true ,'2129-3-1 12:00:00.011'        ,'aaaaaabbbbbbcccccc'                   ,'aaaaaabbbbbbcccccc'                   ,'aaaaaabbbbbbcccccc'                    ,'t'  ,'aaaaaabbbbbbcccccc'                    ,'z'  ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                  ,'aaaaaabbbbbbcccccc'                  ,'aaaaaabbbbbbcccccc'                  );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2004-12-31 12:10:10.911+00:00',13,23000  ,23000000   ,230000000000        ,-23000088.665120604    ,-122209810.1131921         ,true ,'2020-12-31 23:59:59.999'      ,'SSSSSSDDDDDDKKKKKK'                   ,'SSSSSSDDDDDDKKKKKK'                   ,'SSSSSSDDDDDDKKKKKK'                    ,'T'  ,'SSSSSSDDDDDDKKKKKK'                    ,'B'  ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                  ,'SSSSSSDDDDDDKKKKKK'                  ,'SSSSSSDDDDDDKKKKKK'                  );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2008-2-29 2:10:10.111'        ,14,32767  ,34000000   ,340000000000        ,-43000079.07812032     ,-122209810.1131921         ,true ,'1975-3-11 00:00:00.0'         ,'1234567890987654321'                  ,'1234567890987654321'                  ,'1234567890987654321'                   ,'1'  ,'1234567890987654321'                   ,'2'  ,'1234567890987654321'                    ,'1234567890987654321'                    ,'1234567890987654321'                 ,'1234567890987654321'                 ,'1234567890987654321'                 );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2012-02-29 1:10:10.000'       ,15,-32767 ,-34000000  ,-340000000000       ,43000079.07812032      ,122209810.1131921          ,true ,'2099-9-1 11:01:00.111'        ,'数据库语法查询测试'                   ,'数据库语法查询测试'                   ,'数据库语法查询测试'                    ,'1'  ,'数据库语法查询测试'                    ,'2'  ,'数据库语法查询测试'                     ,'数据库语法查询测试'                     ,'数据库语法查询测试'                  ,'数据库语法查询测试'                  ,'数据库语法查询测试'                  );
+INSERT 1
+> SELECT * FROM test_blob_clob_rel.data1 ORDER BY id;
+               tp               | id |   e1   |     e2      |          e3          |        e4         |           e5            |  e6   |              e7               |                  e8                   |                  e9                   |                  e10                   | e11  |                  e12                   | e13  |                                                  e14                                                   |                  e15                   |                 e16                  |                                              e17                                               |                 e18
+--------------------------------+----+--------+-------------+----------------------+-------------------+-------------------------+-------+-------------------------------+---------------------------------------+---------------------------------------+----------------------------------------+------+----------------------------------------+------+--------------------------------------------------------------------------------------------------------+----------------------------------------+--------------------------------------+------------------------------------------------------------------------------------------------+---------------------------------------
+  1970-01-01 00:00:00+00:00     |  1 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:00:00+00:00     |                                       |                                       |                                        |      |                                        |      | \x                                                                                                     |                                        |                                      | \x                                                                                             |
+  1970-01-01 00:00:00.001+00:00 |  2 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:16:39.999+00:00 |                                       |                                       |                                        |      |                                        |      | \x20                                                                                                   |                                        |                                      | \x20202020202020202020                                                                         |
+  1976-10-20 12:00:12.123+00:00 |  3 |  10001 |    10000001 |         100000000001 | -1.0472e+06       | -1.109810113011921e+06  | true  | 2021-03-01 12:00:00.909+00:00 | test数据库语法查询测试！！！@TEST3-8  | test数据库语法查询测试！！！@TEST3-9  | test数据库语法查询测试！！！@TEST3-10  | t    | test数据库语法查询测试！！！@TEST3-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354332d3134   | test数据库语法查询测试！！！@TEST3-15  | test数据库语法查询测试！TEST3-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354332d3136786161   | test数据库语法查询测试！TEST3-16xaa
+  1979-02-28 11:59:01.999+00:00 |  4 |  20002 |    20000002 |         200000000002 | -2.087321e+07     | -2.2012110113011923e+07 | false | 1970-01-01 00:00:00.123+00:00 | test数据库语法查询测试！！！@TEST4-8  | test数据库语法查询测试！！！@TEST4-9  | test数据库语法查询测试！！！@TEST4-10  | t    | test数据库语法查询测试！！！@TEST4-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354342d3134   | test数据库语法查询测试！！！@TEST4-15  | test数据库语法查询测试！TEST4-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354342d3136786161   | test数据库语法查询测试！TEST4-16xaa
+  1980-01-31 19:01:01+00:00     |  5 |  30003 |    30000003 |         300000000003 | -3.3472098e+07    | -3.900981033301192e+07  | true  | 2015-03-12 10:00:00.234+00:00 | test数据库语法查询测试！！！@TEST5-8  | test数据库语法查询测试！！！@TEST5-9  | test数据库语法查询测试！！！@TEST5-10  | t    | test数据库语法查询测试！！！@TEST5-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354352d3134   | test数据库语法查询测试！！！@TEST5-15  | test数据库语法查询测试！TEST5-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354352d3136786161   | test数据库语法查询测试！TEST5-16xaa
+  1980-02-10 01:14:51.09+00:00  |  6 | -10001 |    10000001 |        -100000000001 | 1.0472e+06        | 1.109810113011921e+06   | false | 2023-06-23 05:00:00.55+00:00  | test数据库语法查询测试！！！@TEST6-8  | test数据库语法查询测试！！！@TEST6-9  | test数据库语法查询测试！！！@TEST6-10  | t    | test数据库语法查询测试！！！@TEST6-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354362d3134   | test数据库语法查询测试！！！@TEST6-15  | test数据库语法查询测试！TEST6-16xaa  | \x786161786262786363                                                                           | xaaxbbxcc
+  1980-02-10 01:48:11.029+00:00 |  7 | -20002 |    20000002 |        -200000000002 | 2.087321e+07      | 2.2012110113011923e+07  | true  | 2016-07-17 20:12:00.12+00:00  | test数据库语法查询测试！！！@TEST7-8  | test数据库语法查询测试！！！@TEST7-9  | test数据库语法查询测试！！！@TEST7-10  | t    | test数据库语法查询测试！！！@TEST7-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354372d3134   | test数据库语法查询测试！！！@TEST7-15  | test数据库语法查询测试！TEST7-16xaa  | \x303130313031303130313031303131303130313031303130313031303130313031303130                     | 010101010101011010101010101010101010
+  1980-02-10 01:48:22.501+00:00 |  8 | -30003 |    30000003 |        -300000000003 | 3.3472098e+07     | 3.900981033301192e+07   | false | 1970-01-01 01:16:05.476+00:00 | test数据库语法查询测试！！！@TEST8-8  | test数据库语法查询测试！！！@TEST8-9  | test数据库语法查询测试！！！@TEST8-10  | t    | test数据库语法查询测试！！！@TEST8-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354382d3134   | test数据库语法查询测试！！！@TEST8-15  | test数据库语法查询测试！TEST8-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354382d3136786161   | test数据库语法查询测试！TEST8-16xaa
+  2001-12-09 09:48:12.3+00:00   |  9 | NULL   | NULL        |                 NULL | NULL              | NULL                    | NULL  | NULL                          | NULL                                  | NULL                                  | NULL                                   | NULL | NULL                                   | NULL | NULL                                                                                                   | NULL                                   | NULL                                 | NULL                                                                                           | NULL
+  2002-02-22 10:48:12.899+00:00 | 10 |  32767 | -2147483648 |  9223372036854775807 | -9.9999997952e+10 | 9.999999999992e+12      | true  | 2020-10-01 12:00:01+00:00     | test数据库语法查询测试！！！@TEST10-8 | test数据库语法查询测试！！！@TEST10-9 | test数据库语法查询测试！！！@TEST10-10 | t    | test数据库语法查询测试！！！@TEST10-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431302d3134 | test数据库语法查询测试！！！@TEST10-15 | test数据库语法查询测试！TEST10-16xaa | \x313130313031303130313031303131303130313031303130313031303130313031303130                     | 110101010101011010101010101010101010
+  2003-10-01 11:48:12.1+00:00   | 11 | -32768 |  2147483647 | -9223372036854775808 | 9.9999997952e+10  | -9.999999999992e+12     | false | 1970-11-25 09:23:07.421+00:00 | test数据库语法查询测试！！！@TEST11-8 | test数据库语法查询测试！！！@TEST11-9 | test数据库语法查询测试！！！@TEST11-10 | t    | test数据库语法查询测试！！！@TEST11-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431312d3134 | test数据库语法查询测试！！！@TEST11-15 | test数据库语法查询测试！TEST11-16xaa | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc815445535431312d3136786161 | test数据库语法查询测试！TEST11-16xaa
+  2004-09-09 00:00:00.9+00:00   | 12 |  12000 |    12000000 |         120000000000 | -1.2000021e+07    | -1.222098101131921e+08  | true  | 2129-03-01 12:00:00.011+00:00 | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                     | t    | aaaaaabbbbbbcccccc                     | z    | \x616161616161626262626262636363636363                                                                 | aaaaaabbbbbbcccccc                     | aaaaaabbbbbbcccccc                   | \x616161616161626262626262636363636363                                                         | aaaaaabbbbbbcccccc
+  2004-12-31 12:10:10.911+00:00 | 13 |  23000 |    23000000 |         230000000000 | -2.3000088e+07    | -1.222098101131921e+08  | true  | 2020-12-31 23:59:59.999+00:00 | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                     | T    | SSSSSSDDDDDDKKKKKK                     | B    | \x5353535353534444444444444b4b4b4b4b4b                                                                 | SSSSSSDDDDDDKKKKKK                     | SSSSSSDDDDDDKKKKKK                   | \x5353535353534444444444444b4b4b4b4b4b                                                         | SSSSSSDDDDDDKKKKKK
+  2008-02-29 02:10:10.111+00:00 | 14 |  32767 |    34000000 |         340000000000 | -4.300008e+07     | -1.222098101131921e+08  | true  | 1975-03-11 00:00:00+00:00     |                   1234567890987654321 | 1234567890987654321                   | 1234567890987654321                    |    1 | 1234567890987654321                    | 2    | \x31323334353637383930393837363534333231                                                               | 1234567890987654321                    | 1234567890987654321                  | \x31323334353637383930393837363534333231                                                       |                  1234567890987654321
+  2012-02-29 01:10:10+00:00     | 15 | -32767 |   -34000000 |        -340000000000 | 4.300008e+07      | 1.222098101131921e+08   | true  | 2099-09-01 11:01:00.111+00:00 | 数据库语法查询测试                    | 数据库语法查询测试                    | 数据库语法查询测试                     |    1 | 数据库语法查询测试                     | 2    | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                               | 数据库语法查询测试                     | 数据库语法查询测试                   | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                       | 数据库语法查询测试
+(15 rows)
+> SELECT * FROM test_blob_clob_rel.data1 ORDER BY e17;
+               tp               | id |   e1   |     e2      |          e3          |        e4         |           e5            |  e6   |              e7               |                  e8                   |                  e9                   |                  e10                   | e11  |                  e12                   | e13  |                                                  e14                                                   |                  e15                   |                 e16                  |                                              e17                                               |                 e18
+--------------------------------+----+--------+-------------+----------------------+-------------------+-------------------------+-------+-------------------------------+---------------------------------------+---------------------------------------+----------------------------------------+------+----------------------------------------+------+--------------------------------------------------------------------------------------------------------+----------------------------------------+--------------------------------------+------------------------------------------------------------------------------------------------+---------------------------------------
+  2001-12-09 09:48:12.3+00:00   |  9 | NULL   | NULL        |                 NULL | NULL              | NULL                    | NULL  | NULL                          | NULL                                  | NULL                                  | NULL                                   | NULL | NULL                                   | NULL | NULL                                                                                                   | NULL                                   | NULL                                 | NULL                                                                                           | NULL
+  1970-01-01 00:00:00+00:00     |  1 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:00:00+00:00     |                                       |                                       |                                        |      |                                        |      | \x                                                                                                     |                                        |                                      | \x                                                                                             |
+  1970-01-01 00:00:00.001+00:00 |  2 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:16:39.999+00:00 |                                       |                                       |                                        |      |                                        |      | \x20                                                                                                   |                                        |                                      | \x20202020202020202020                                                                         |
+  1980-02-10 01:48:11.029+00:00 |  7 | -20002 |    20000002 |        -200000000002 | 2.087321e+07      | 2.2012110113011923e+07  | true  | 2016-07-17 20:12:00.12+00:00  | test数据库语法查询测试！！！@TEST7-8  | test数据库语法查询测试！！！@TEST7-9  | test数据库语法查询测试！！！@TEST7-10  | t    | test数据库语法查询测试！！！@TEST7-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354372d3134   | test数据库语法查询测试！！！@TEST7-15  | test数据库语法查询测试！TEST7-16xaa  | \x303130313031303130313031303131303130313031303130313031303130313031303130                     | 010101010101011010101010101010101010
+  2002-02-22 10:48:12.899+00:00 | 10 |  32767 | -2147483648 |  9223372036854775807 | -9.9999997952e+10 | 9.999999999992e+12      | true  | 2020-10-01 12:00:01+00:00     | test数据库语法查询测试！！！@TEST10-8 | test数据库语法查询测试！！！@TEST10-9 | test数据库语法查询测试！！！@TEST10-10 | t    | test数据库语法查询测试！！！@TEST10-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431302d3134 | test数据库语法查询测试！！！@TEST10-15 | test数据库语法查询测试！TEST10-16xaa | \x313130313031303130313031303131303130313031303130313031303130313031303130                     | 110101010101011010101010101010101010
+  2008-02-29 02:10:10.111+00:00 | 14 |  32767 |    34000000 |         340000000000 | -4.300008e+07     | -1.222098101131921e+08  | true  | 1975-03-11 00:00:00+00:00     |                   1234567890987654321 | 1234567890987654321                   | 1234567890987654321                    |    1 | 1234567890987654321                    | 2    | \x31323334353637383930393837363534333231                                                               | 1234567890987654321                    | 1234567890987654321                  | \x31323334353637383930393837363534333231                                                       |                  1234567890987654321
+  2004-12-31 12:10:10.911+00:00 | 13 |  23000 |    23000000 |         230000000000 | -2.3000088e+07    | -1.222098101131921e+08  | true  | 2020-12-31 23:59:59.999+00:00 | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                     | T    | SSSSSSDDDDDDKKKKKK                     | B    | \x5353535353534444444444444b4b4b4b4b4b                                                                 | SSSSSSDDDDDDKKKKKK                     | SSSSSSDDDDDDKKKKKK                   | \x5353535353534444444444444b4b4b4b4b4b                                                         | SSSSSSDDDDDDKKKKKK
+  2004-09-09 00:00:00.9+00:00   | 12 |  12000 |    12000000 |         120000000000 | -1.2000021e+07    | -1.222098101131921e+08  | true  | 2129-03-01 12:00:00.011+00:00 | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                     | t    | aaaaaabbbbbbcccccc                     | z    | \x616161616161626262626262636363636363                                                                 | aaaaaabbbbbbcccccc                     | aaaaaabbbbbbcccccc                   | \x616161616161626262626262636363636363                                                         | aaaaaabbbbbbcccccc
+  2003-10-01 11:48:12.1+00:00   | 11 | -32768 |  2147483647 | -9223372036854775808 | 9.9999997952e+10  | -9.999999999992e+12     | false | 1970-11-25 09:23:07.421+00:00 | test数据库语法查询测试！！！@TEST11-8 | test数据库语法查询测试！！！@TEST11-9 | test数据库语法查询测试！！！@TEST11-10 | t    | test数据库语法查询测试！！！@TEST11-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431312d3134 | test数据库语法查询测试！！！@TEST11-15 | test数据库语法查询测试！TEST11-16xaa | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc815445535431312d3136786161 | test数据库语法查询测试！TEST11-16xaa
+  1976-10-20 12:00:12.123+00:00 |  3 |  10001 |    10000001 |         100000000001 | -1.0472e+06       | -1.109810113011921e+06  | true  | 2021-03-01 12:00:00.909+00:00 | test数据库语法查询测试！！！@TEST3-8  | test数据库语法查询测试！！！@TEST3-9  | test数据库语法查询测试！！！@TEST3-10  | t    | test数据库语法查询测试！！！@TEST3-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354332d3134   | test数据库语法查询测试！！！@TEST3-15  | test数据库语法查询测试！TEST3-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354332d3136786161   | test数据库语法查询测试！TEST3-16xaa
+  1979-02-28 11:59:01.999+00:00 |  4 |  20002 |    20000002 |         200000000002 | -2.087321e+07     | -2.2012110113011923e+07 | false | 1970-01-01 00:00:00.123+00:00 | test数据库语法查询测试！！！@TEST4-8  | test数据库语法查询测试！！！@TEST4-9  | test数据库语法查询测试！！！@TEST4-10  | t    | test数据库语法查询测试！！！@TEST4-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354342d3134   | test数据库语法查询测试！！！@TEST4-15  | test数据库语法查询测试！TEST4-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354342d3136786161   | test数据库语法查询测试！TEST4-16xaa
+  1980-01-31 19:01:01+00:00     |  5 |  30003 |    30000003 |         300000000003 | -3.3472098e+07    | -3.900981033301192e+07  | true  | 2015-03-12 10:00:00.234+00:00 | test数据库语法查询测试！！！@TEST5-8  | test数据库语法查询测试！！！@TEST5-9  | test数据库语法查询测试！！！@TEST5-10  | t    | test数据库语法查询测试！！！@TEST5-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354352d3134   | test数据库语法查询测试！！！@TEST5-15  | test数据库语法查询测试！TEST5-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354352d3136786161   | test数据库语法查询测试！TEST5-16xaa
+  1980-02-10 01:48:22.501+00:00 |  8 | -30003 |    30000003 |        -300000000003 | 3.3472098e+07     | 3.900981033301192e+07   | false | 1970-01-01 01:16:05.476+00:00 | test数据库语法查询测试！！！@TEST8-8  | test数据库语法查询测试！！！@TEST8-9  | test数据库语法查询测试！！！@TEST8-10  | t    | test数据库语法查询测试！！！@TEST8-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354382d3134   | test数据库语法查询测试！！！@TEST8-15  | test数据库语法查询测试！TEST8-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354382d3136786161   | test数据库语法查询测试！TEST8-16xaa
+  1980-02-10 01:14:51.09+00:00  |  6 | -10001 |    10000001 |        -100000000001 | 1.0472e+06        | 1.109810113011921e+06   | false | 2023-06-23 05:00:00.55+00:00  | test数据库语法查询测试！！！@TEST6-8  | test数据库语法查询测试！！！@TEST6-9  | test数据库语法查询测试！！！@TEST6-10  | t    | test数据库语法查询测试！！！@TEST6-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354362d3134   | test数据库语法查询测试！！！@TEST6-15  | test数据库语法查询测试！TEST6-16xaa  | \x786161786262786363                                                                           | xaaxbbxcc
+  2012-02-29 01:10:10+00:00     | 15 | -32767 |   -34000000 |        -340000000000 | 4.300008e+07      | 1.222098101131921e+08   | true  | 2099-09-01 11:01:00.111+00:00 | 数据库语法查询测试                    | 数据库语法查询测试                    | 数据库语法查询测试                     |    1 | 数据库语法查询测试                     | 2    | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                               | 数据库语法查询测试                     | 数据库语法查询测试                   | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                       | 数据库语法查询测试
+(15 rows)
+> SELECT * FROM test_blob_clob_rel.data1 ORDER BY e18;
+               tp               | id |   e1   |     e2      |          e3          |        e4         |           e5            |  e6   |              e7               |                  e8                   |                  e9                   |                  e10                   | e11  |                  e12                   | e13  |                                                  e14                                                   |                  e15                   |                 e16                  |                                              e17                                               |                 e18
+--------------------------------+----+--------+-------------+----------------------+-------------------+-------------------------+-------+-------------------------------+---------------------------------------+---------------------------------------+----------------------------------------+------+----------------------------------------+------+--------------------------------------------------------------------------------------------------------+----------------------------------------+--------------------------------------+------------------------------------------------------------------------------------------------+---------------------------------------
+  2001-12-09 09:48:12.3+00:00   |  9 | NULL   | NULL        |                 NULL | NULL              | NULL                    | NULL  | NULL                          | NULL                                  | NULL                                  | NULL                                   | NULL | NULL                                   | NULL | NULL                                                                                                   | NULL                                   | NULL                                 | NULL                                                                                           | NULL
+  1970-01-01 00:00:00+00:00     |  1 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:00:00+00:00     |                                       |                                       |                                        |      |                                        |      | \x                                                                                                     |                                        |                                      | \x                                                                                             |
+  1970-01-01 00:00:00.001+00:00 |  2 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:16:39.999+00:00 |                                       |                                       |                                        |      |                                        |      | \x20                                                                                                   |                                        |                                      | \x20202020202020202020                                                                         |
+  1980-02-10 01:48:11.029+00:00 |  7 | -20002 |    20000002 |        -200000000002 | 2.087321e+07      | 2.2012110113011923e+07  | true  | 2016-07-17 20:12:00.12+00:00  | test数据库语法查询测试！！！@TEST7-8  | test数据库语法查询测试！！！@TEST7-9  | test数据库语法查询测试！！！@TEST7-10  | t    | test数据库语法查询测试！！！@TEST7-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354372d3134   | test数据库语法查询测试！！！@TEST7-15  | test数据库语法查询测试！TEST7-16xaa  | \x303130313031303130313031303131303130313031303130313031303130313031303130                     | 010101010101011010101010101010101010
+  2002-02-22 10:48:12.899+00:00 | 10 |  32767 | -2147483648 |  9223372036854775807 | -9.9999997952e+10 | 9.999999999992e+12      | true  | 2020-10-01 12:00:01+00:00     | test数据库语法查询测试！！！@TEST10-8 | test数据库语法查询测试！！！@TEST10-9 | test数据库语法查询测试！！！@TEST10-10 | t    | test数据库语法查询测试！！！@TEST10-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431302d3134 | test数据库语法查询测试！！！@TEST10-15 | test数据库语法查询测试！TEST10-16xaa | \x313130313031303130313031303131303130313031303130313031303130313031303130                     | 110101010101011010101010101010101010
+  2008-02-29 02:10:10.111+00:00 | 14 |  32767 |    34000000 |         340000000000 | -4.300008e+07     | -1.222098101131921e+08  | true  | 1975-03-11 00:00:00+00:00     |                   1234567890987654321 | 1234567890987654321                   | 1234567890987654321                    |    1 | 1234567890987654321                    | 2    | \x31323334353637383930393837363534333231                                                               | 1234567890987654321                    | 1234567890987654321                  | \x31323334353637383930393837363534333231                                                       |                  1234567890987654321
+  2004-12-31 12:10:10.911+00:00 | 13 |  23000 |    23000000 |         230000000000 | -2.3000088e+07    | -1.222098101131921e+08  | true  | 2020-12-31 23:59:59.999+00:00 | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                     | T    | SSSSSSDDDDDDKKKKKK                     | B    | \x5353535353534444444444444b4b4b4b4b4b                                                                 | SSSSSSDDDDDDKKKKKK                     | SSSSSSDDDDDDKKKKKK                   | \x5353535353534444444444444b4b4b4b4b4b                                                         | SSSSSSDDDDDDKKKKKK
+  2004-09-09 00:00:00.9+00:00   | 12 |  12000 |    12000000 |         120000000000 | -1.2000021e+07    | -1.222098101131921e+08  | true  | 2129-03-01 12:00:00.011+00:00 | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                     | t    | aaaaaabbbbbbcccccc                     | z    | \x616161616161626262626262636363636363                                                                 | aaaaaabbbbbbcccccc                     | aaaaaabbbbbbcccccc                   | \x616161616161626262626262636363636363                                                         | aaaaaabbbbbbcccccc
+  2003-10-01 11:48:12.1+00:00   | 11 | -32768 |  2147483647 | -9223372036854775808 | 9.9999997952e+10  | -9.999999999992e+12     | false | 1970-11-25 09:23:07.421+00:00 | test数据库语法查询测试！！！@TEST11-8 | test数据库语法查询测试！！！@TEST11-9 | test数据库语法查询测试！！！@TEST11-10 | t    | test数据库语法查询测试！！！@TEST11-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431312d3134 | test数据库语法查询测试！！！@TEST11-15 | test数据库语法查询测试！TEST11-16xaa | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc815445535431312d3136786161 | test数据库语法查询测试！TEST11-16xaa
+  1976-10-20 12:00:12.123+00:00 |  3 |  10001 |    10000001 |         100000000001 | -1.0472e+06       | -1.109810113011921e+06  | true  | 2021-03-01 12:00:00.909+00:00 | test数据库语法查询测试！！！@TEST3-8  | test数据库语法查询测试！！！@TEST3-9  | test数据库语法查询测试！！！@TEST3-10  | t    | test数据库语法查询测试！！！@TEST3-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354332d3134   | test数据库语法查询测试！！！@TEST3-15  | test数据库语法查询测试！TEST3-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354332d3136786161   | test数据库语法查询测试！TEST3-16xaa
+  1979-02-28 11:59:01.999+00:00 |  4 |  20002 |    20000002 |         200000000002 | -2.087321e+07     | -2.2012110113011923e+07 | false | 1970-01-01 00:00:00.123+00:00 | test数据库语法查询测试！！！@TEST4-8  | test数据库语法查询测试！！！@TEST4-9  | test数据库语法查询测试！！！@TEST4-10  | t    | test数据库语法查询测试！！！@TEST4-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354342d3134   | test数据库语法查询测试！！！@TEST4-15  | test数据库语法查询测试！TEST4-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354342d3136786161   | test数据库语法查询测试！TEST4-16xaa
+  1980-01-31 19:01:01+00:00     |  5 |  30003 |    30000003 |         300000000003 | -3.3472098e+07    | -3.900981033301192e+07  | true  | 2015-03-12 10:00:00.234+00:00 | test数据库语法查询测试！！！@TEST5-8  | test数据库语法查询测试！！！@TEST5-9  | test数据库语法查询测试！！！@TEST5-10  | t    | test数据库语法查询测试！！！@TEST5-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354352d3134   | test数据库语法查询测试！！！@TEST5-15  | test数据库语法查询测试！TEST5-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354352d3136786161   | test数据库语法查询测试！TEST5-16xaa
+  1980-02-10 01:48:22.501+00:00 |  8 | -30003 |    30000003 |        -300000000003 | 3.3472098e+07     | 3.900981033301192e+07   | false | 1970-01-01 01:16:05.476+00:00 | test数据库语法查询测试！！！@TEST8-8  | test数据库语法查询测试！！！@TEST8-9  | test数据库语法查询测试！！！@TEST8-10  | t    | test数据库语法查询测试！！！@TEST8-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354382d3134   | test数据库语法查询测试！！！@TEST8-15  | test数据库语法查询测试！TEST8-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354382d3136786161   | test数据库语法查询测试！TEST8-16xaa
+  1980-02-10 01:14:51.09+00:00  |  6 | -10001 |    10000001 |        -100000000001 | 1.0472e+06        | 1.109810113011921e+06   | false | 2023-06-23 05:00:00.55+00:00  | test数据库语法查询测试！！！@TEST6-8  | test数据库语法查询测试！！！@TEST6-9  | test数据库语法查询测试！！！@TEST6-10  | t    | test数据库语法查询测试！！！@TEST6-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354362d3134   | test数据库语法查询测试！！！@TEST6-15  | test数据库语法查询测试！TEST6-16xaa  | \x786161786262786363                                                                           | xaaxbbxcc
+  2012-02-29 01:10:10+00:00     | 15 | -32767 |   -34000000 |        -340000000000 | 4.300008e+07      | 1.222098101131921e+08   | true  | 2099-09-01 11:01:00.111+00:00 | 数据库语法查询测试                    | 数据库语法查询测试                    | 数据库语法查询测试                     |    1 | 数据库语法查询测试                     | 2    | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                               | 数据库语法查询测试                     | 数据库语法查询测试                   | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                       | 数据库语法查询测试
+(15 rows)
+> DROP TABLE test_blob_clob_rel.data1 CASCADE;
+DROP TABLE
+> DROP TABLE IF EXISTS test_blob_clob_rel.data1 CASCADE;
+DROP TABLE
+> CREATE TABLE test_blob_clob_rel.data1(
+                                         tp  TIMESTAMPTZ NOT NULL,
+                                         id  INT NOT NULL        ,
+                                         e1  INT2                ,
+                                         e2  INT,
+                                         e3  INT8,
+                                         e4  FLOAT4,
+                                         e5  FLOAT8,
+                                         e6  BOOL,
+                                         e7  TIMESTAMP,
+                                         e8  CHAR(1023),
+                                         e9  NCHAR(255),
+                                         e10 VARCHAR(4096),
+                                         e11 CHAR,
+                                         e12 NVARCHAR(4096),
+                                         e13 NCHAR,
+                                         e14 VARBYTES,
+                                         e15 VARCHAR,
+                                         e16 NVARCHAR,
+                                         e17 BLOB,
+                                         e18 CLOB);
+CREATE TABLE
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1970-01-01 00:00:00+00:00'    ,1 ,0      ,0          ,0                   ,0                      ,0                          ,true ,'1970-01-01 00:00:00+00:00'    ,''                                     ,''                                     ,''                                      ,''   ,''                                      ,''   ,''                                       ,''                                       ,''                                    ,''                                    ,''                                    );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1970-1-1 00:00:00.001'        ,2 ,0      ,0          ,0                   ,0                      ,0                          ,true ,'1970-01-01 00:16:39.999+00:00','          '                           ,'          '                           ,'          '                            ,' '  ,'          '                            ,' '  ,' '                                      ,'          '                             ,'          '                          ,'          '                          ,'          '                          );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1976-10-20 12:00:12.123+00:00',3 ,10001  ,10000001   ,100000000001        ,-1047200.00312001      ,-1109810.113011921         ,true ,'2021-03-01 12:00:00.909+00:00','test数据库语法查询测试！！！@TEST3-8' ,'test数据库语法查询测试！！！@TEST3-9' ,'test数据库语法查询测试！！！@TEST3-10' ,'t'  ,'test数据库语法查询测试！！！@TEST3-12' ,'中' ,'test数据库语法查询测试！！！@TEST3-14'  ,'test数据库语法查询测试！！！@TEST3-15'  ,'test数据库语法查询测试！TEST3-16xaa' ,'test数据库语法查询测试！TEST3-16xaa' ,'test数据库语法查询测试！TEST3-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1979-2-28 11:59:01.999'       ,4 ,20002  ,20000002   ,200000000002        ,-20873209.0220322201   ,-22012110.113011921        ,false,'1970-01-01 00:00:00.123+00:00','test数据库语法查询测试！！！@TEST4-8' ,'test数据库语法查询测试！！！@TEST4-9' ,'test数据库语法查询测试！！！@TEST4-10' ,'t'  ,'test数据库语法查询测试！！！@TEST4-12' ,'中' ,'test数据库语法查询测试！！！@TEST4-14'  ,'test数据库语法查询测试！！！@TEST4-15'  ,'test数据库语法查询测试！TEST4-16xaa' ,'test数据库语法查询测试！TEST4-16xaa' ,'test数据库语法查询测试！TEST4-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-01-31 19:01:01+00:00'    ,5 ,30003  ,30000003   ,300000000003        ,-33472098.11312001     ,-39009810.333011921        ,true ,'2015-3-12 10:00:00.234'       ,'test数据库语法查询测试！！！@TEST5-8' ,'test数据库语法查询测试！！！@TEST5-9' ,'test数据库语法查询测试！！！@TEST5-10' ,'t'  ,'test数据库语法查询测试！！！@TEST5-12' ,'中' ,'test数据库语法查询测试！！！@TEST5-14'  ,'test数据库语法查询测试！！！@TEST5-15'  ,'test数据库语法查询测试！TEST5-16xaa' ,'test数据库语法查询测试！TEST5-16xaa' ,'test数据库语法查询测试！TEST5-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-02-10 01:14:51.09+00:00' ,6 ,-10001 ,10000001   ,-100000000001       ,1047200.00312001       ,1109810.113011921          ,false,'2023-6-23 05:00:00.55'        ,'test数据库语法查询测试！！！@TEST6-8' ,'test数据库语法查询测试！！！@TEST6-9' ,'test数据库语法查询测试！！！@TEST6-10' ,'t'  ,'test数据库语法查询测试！！！@TEST6-12' ,'中' ,'test数据库语法查询测试！！！@TEST6-14'  ,'test数据库语法查询测试！！！@TEST6-15'  ,'test数据库语法查询测试！TEST6-16xaa' ,'xaaxbbxcc'                           ,'xaaxbbxcc'                           );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-02-10 01:48:11.029+00:00',7 ,-20002 ,20000002   ,-200000000002       ,20873209.0220322201    ,22012110.113011921         ,true ,'2016-07-17 20:12:00.12+00:00' ,'test数据库语法查询测试！！！@TEST7-8' ,'test数据库语法查询测试！！！@TEST7-9' ,'test数据库语法查询测试！！！@TEST7-10' ,'t'  ,'test数据库语法查询测试！！！@TEST7-12' ,'中' ,'test数据库语法查询测试！！！@TEST7-14'  ,'test数据库语法查询测试！！！@TEST7-15'  ,'test数据库语法查询测试！TEST7-16xaa' ,'010101010101011010101010101010101010','010101010101011010101010101010101010');
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('1980-02-10 01:48:22.501+00:00',8 ,-30003 ,30000003   ,-300000000003       ,33472098.11312001      ,39009810.333011921         ,false,'1970-01-01 01:16:05.476+00:00','test数据库语法查询测试！！！@TEST8-8' ,'test数据库语法查询测试！！！@TEST8-9' ,'test数据库语法查询测试！！！@TEST8-10' ,'t'  ,'test数据库语法查询测试！！！@TEST8-12' ,'中' ,'test数据库语法查询测试！！！@TEST8-14'  ,'test数据库语法查询测试！！！@TEST8-15'  ,'test数据库语法查询测试！TEST8-16xaa' ,'test数据库语法查询测试！TEST8-16xaa' ,'test数据库语法查询测试！TEST8-16xaa' );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2001-12-09 09:48:12.3+00:00'  ,9 ,null   ,null       ,null                ,null                   ,null                       ,null ,null                           ,null                                   ,null                                   ,null                                    ,null ,null                                    ,null ,null                                     ,null                                     ,null                                  ,null                                  ,null                                  );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2002-2-22 10:48:12.899'       ,10,32767  ,-2147483648,9223372036854775807 ,-99999999991.9999999991,9999999999991.999999999991 ,true ,'2020-10-01 12:00:01+00:00'    ,'test数据库语法查询测试！！！@TEST10-8','test数据库语法查询测试！！！@TEST10-9','test数据库语法查询测试！！！@TEST10-10','t'  ,'test数据库语法查询测试！！！@TEST10-12','中' ,'test数据库语法查询测试！！！@TEST10-14' ,'test数据库语法查询测试！！！@TEST10-15' ,'test数据库语法查询测试！TEST10-16xaa','110101010101011010101010101010101010','110101010101011010101010101010101010');
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2003-10-1 11:48:12.1'         ,11,-32768 ,2147483647 ,-9223372036854775808,99999999991.9999999991 ,-9999999999991.999999999991,false,'1970-11-25 09:23:07.421+00:00','test数据库语法查询测试！！！@TEST11-8','test数据库语法查询测试！！！@TEST11-9','test数据库语法查询测试！！！@TEST11-10','t'  ,'test数据库语法查询测试！！！@TEST11-12','中' ,'test数据库语法查询测试！！！@TEST11-14' ,'test数据库语法查询测试！！！@TEST11-15' ,'test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！TEST11-16xaa');
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2004-09-09 00:00:00.9+00:00'  ,12,12000  ,12000000   ,120000000000        ,-12000021.003125       ,-122209810.1131921         ,true ,'2129-3-1 12:00:00.011'        ,'aaaaaabbbbbbcccccc'                   ,'aaaaaabbbbbbcccccc'                   ,'aaaaaabbbbbbcccccc'                    ,'t'  ,'aaaaaabbbbbbcccccc'                    ,'z'  ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                  ,'aaaaaabbbbbbcccccc'                  ,'aaaaaabbbbbbcccccc'                  );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2004-12-31 12:10:10.911+00:00',13,23000  ,23000000   ,230000000000        ,-23000088.665120604    ,-122209810.1131921         ,true ,'2020-12-31 23:59:59.999'      ,'SSSSSSDDDDDDKKKKKK'                   ,'SSSSSSDDDDDDKKKKKK'                   ,'SSSSSSDDDDDDKKKKKK'                    ,'T'  ,'SSSSSSDDDDDDKKKKKK'                    ,'B'  ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                  ,'SSSSSSDDDDDDKKKKKK'                  ,'SSSSSSDDDDDDKKKKKK'                  );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2008-2-29 2:10:10.111'        ,14,32767  ,34000000   ,340000000000        ,-43000079.07812032     ,-122209810.1131921         ,true ,'1975-3-11 00:00:00.0'         ,'1234567890987654321'                  ,'1234567890987654321'                  ,'1234567890987654321'                   ,'1'  ,'1234567890987654321'                   ,'2'  ,'1234567890987654321'                    ,'1234567890987654321'                    ,'1234567890987654321'                 ,'1234567890987654321'                 ,'1234567890987654321'                 );
+INSERT 1
+> INSERT INTO test_blob_clob_rel.data1 VALUES('2012-02-29 1:10:10.000'       ,15,-32767 ,-34000000  ,-340000000000       ,43000079.07812032      ,122209810.1131921          ,true ,'2099-9-1 11:01:00.111'        ,'数据库语法查询测试'                   ,'数据库语法查询测试'                   ,'数据库语法查询测试'                    ,'1'  ,'数据库语法查询测试'                    ,'2'  ,'数据库语法查询测试'                     ,'数据库语法查询测试'                     ,'数据库语法查询测试'                  ,'数据库语法查询测试'                  ,'数据库语法查询测试'                  );
+INSERT 1
+> SELECT * FROM test_blob_clob_rel.data1 ORDER BY id;
+               tp               | id |   e1   |     e2      |          e3          |        e4         |           e5            |  e6   |              e7               |                  e8                   |                  e9                   |                  e10                   | e11  |                  e12                   | e13  |                                                  e14                                                   |                  e15                   |                 e16                  |                                              e17                                               |                 e18
+--------------------------------+----+--------+-------------+----------------------+-------------------+-------------------------+-------+-------------------------------+---------------------------------------+---------------------------------------+----------------------------------------+------+----------------------------------------+------+--------------------------------------------------------------------------------------------------------+----------------------------------------+--------------------------------------+------------------------------------------------------------------------------------------------+---------------------------------------
+  1970-01-01 00:00:00+00:00     |  1 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:00:00+00:00     |                                       |                                       |                                        |      |                                        |      | \x                                                                                                     |                                        |                                      | \x                                                                                             |
+  1970-01-01 00:00:00.001+00:00 |  2 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:16:39.999+00:00 |                                       |                                       |                                        |      |                                        |      | \x20                                                                                                   |                                        |                                      | \x20202020202020202020                                                                         |
+  1976-10-20 12:00:12.123+00:00 |  3 |  10001 |    10000001 |         100000000001 | -1.0472e+06       | -1.109810113011921e+06  | true  | 2021-03-01 12:00:00.909+00:00 | test数据库语法查询测试！！！@TEST3-8  | test数据库语法查询测试！！！@TEST3-9  | test数据库语法查询测试！！！@TEST3-10  | t    | test数据库语法查询测试！！！@TEST3-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354332d3134   | test数据库语法查询测试！！！@TEST3-15  | test数据库语法查询测试！TEST3-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354332d3136786161   | test数据库语法查询测试！TEST3-16xaa
+  1979-02-28 11:59:01.999+00:00 |  4 |  20002 |    20000002 |         200000000002 | -2.087321e+07     | -2.2012110113011923e+07 | false | 1970-01-01 00:00:00.123+00:00 | test数据库语法查询测试！！！@TEST4-8  | test数据库语法查询测试！！！@TEST4-9  | test数据库语法查询测试！！！@TEST4-10  | t    | test数据库语法查询测试！！！@TEST4-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354342d3134   | test数据库语法查询测试！！！@TEST4-15  | test数据库语法查询测试！TEST4-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354342d3136786161   | test数据库语法查询测试！TEST4-16xaa
+  1980-01-31 19:01:01+00:00     |  5 |  30003 |    30000003 |         300000000003 | -3.3472098e+07    | -3.900981033301192e+07  | true  | 2015-03-12 10:00:00.234+00:00 | test数据库语法查询测试！！！@TEST5-8  | test数据库语法查询测试！！！@TEST5-9  | test数据库语法查询测试！！！@TEST5-10  | t    | test数据库语法查询测试！！！@TEST5-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354352d3134   | test数据库语法查询测试！！！@TEST5-15  | test数据库语法查询测试！TEST5-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354352d3136786161   | test数据库语法查询测试！TEST5-16xaa
+  1980-02-10 01:14:51.09+00:00  |  6 | -10001 |    10000001 |        -100000000001 | 1.0472e+06        | 1.109810113011921e+06   | false | 2023-06-23 05:00:00.55+00:00  | test数据库语法查询测试！！！@TEST6-8  | test数据库语法查询测试！！！@TEST6-9  | test数据库语法查询测试！！！@TEST6-10  | t    | test数据库语法查询测试！！！@TEST6-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354362d3134   | test数据库语法查询测试！！！@TEST6-15  | test数据库语法查询测试！TEST6-16xaa  | \x786161786262786363                                                                           | xaaxbbxcc
+  1980-02-10 01:48:11.029+00:00 |  7 | -20002 |    20000002 |        -200000000002 | 2.087321e+07      | 2.2012110113011923e+07  | true  | 2016-07-17 20:12:00.12+00:00  | test数据库语法查询测试！！！@TEST7-8  | test数据库语法查询测试！！！@TEST7-9  | test数据库语法查询测试！！！@TEST7-10  | t    | test数据库语法查询测试！！！@TEST7-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354372d3134   | test数据库语法查询测试！！！@TEST7-15  | test数据库语法查询测试！TEST7-16xaa  | \x303130313031303130313031303131303130313031303130313031303130313031303130                     | 010101010101011010101010101010101010
+  1980-02-10 01:48:22.501+00:00 |  8 | -30003 |    30000003 |        -300000000003 | 3.3472098e+07     | 3.900981033301192e+07   | false | 1970-01-01 01:16:05.476+00:00 | test数据库语法查询测试！！！@TEST8-8  | test数据库语法查询测试！！！@TEST8-9  | test数据库语法查询测试！！！@TEST8-10  | t    | test数据库语法查询测试！！！@TEST8-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354382d3134   | test数据库语法查询测试！！！@TEST8-15  | test数据库语法查询测试！TEST8-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354382d3136786161   | test数据库语法查询测试！TEST8-16xaa
+  2001-12-09 09:48:12.3+00:00   |  9 | NULL   | NULL        |                 NULL | NULL              | NULL                    | NULL  | NULL                          | NULL                                  | NULL                                  | NULL                                   | NULL | NULL                                   | NULL | NULL                                                                                                   | NULL                                   | NULL                                 | NULL                                                                                           | NULL
+  2002-02-22 10:48:12.899+00:00 | 10 |  32767 | -2147483648 |  9223372036854775807 | -9.9999997952e+10 | 9.999999999992e+12      | true  | 2020-10-01 12:00:01+00:00     | test数据库语法查询测试！！！@TEST10-8 | test数据库语法查询测试！！！@TEST10-9 | test数据库语法查询测试！！！@TEST10-10 | t    | test数据库语法查询测试！！！@TEST10-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431302d3134 | test数据库语法查询测试！！！@TEST10-15 | test数据库语法查询测试！TEST10-16xaa | \x313130313031303130313031303131303130313031303130313031303130313031303130                     | 110101010101011010101010101010101010
+  2003-10-01 11:48:12.1+00:00   | 11 | -32768 |  2147483647 | -9223372036854775808 | 9.9999997952e+10  | -9.999999999992e+12     | false | 1970-11-25 09:23:07.421+00:00 | test数据库语法查询测试！！！@TEST11-8 | test数据库语法查询测试！！！@TEST11-9 | test数据库语法查询测试！！！@TEST11-10 | t    | test数据库语法查询测试！！！@TEST11-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431312d3134 | test数据库语法查询测试！！！@TEST11-15 | test数据库语法查询测试！TEST11-16xaa | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc815445535431312d3136786161 | test数据库语法查询测试！TEST11-16xaa
+  2004-09-09 00:00:00.9+00:00   | 12 |  12000 |    12000000 |         120000000000 | -1.2000021e+07    | -1.222098101131921e+08  | true  | 2129-03-01 12:00:00.011+00:00 | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                     | t    | aaaaaabbbbbbcccccc                     | z    | \x616161616161626262626262636363636363                                                                 | aaaaaabbbbbbcccccc                     | aaaaaabbbbbbcccccc                   | \x616161616161626262626262636363636363                                                         | aaaaaabbbbbbcccccc
+  2004-12-31 12:10:10.911+00:00 | 13 |  23000 |    23000000 |         230000000000 | -2.3000088e+07    | -1.222098101131921e+08  | true  | 2020-12-31 23:59:59.999+00:00 | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                     | T    | SSSSSSDDDDDDKKKKKK                     | B    | \x5353535353534444444444444b4b4b4b4b4b                                                                 | SSSSSSDDDDDDKKKKKK                     | SSSSSSDDDDDDKKKKKK                   | \x5353535353534444444444444b4b4b4b4b4b                                                         | SSSSSSDDDDDDKKKKKK
+  2008-02-29 02:10:10.111+00:00 | 14 |  32767 |    34000000 |         340000000000 | -4.300008e+07     | -1.222098101131921e+08  | true  | 1975-03-11 00:00:00+00:00     |                   1234567890987654321 | 1234567890987654321                   | 1234567890987654321                    |    1 | 1234567890987654321                    | 2    | \x31323334353637383930393837363534333231                                                               | 1234567890987654321                    | 1234567890987654321                  | \x31323334353637383930393837363534333231                                                       |                  1234567890987654321
+  2012-02-29 01:10:10+00:00     | 15 | -32767 |   -34000000 |        -340000000000 | 4.300008e+07      | 1.222098101131921e+08   | true  | 2099-09-01 11:01:00.111+00:00 | 数据库语法查询测试                    | 数据库语法查询测试                    | 数据库语法查询测试                     |    1 | 数据库语法查询测试                     | 2    | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                               | 数据库语法查询测试                     | 数据库语法查询测试                   | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                       | 数据库语法查询测试
+(15 rows)
+> SELECT * FROM test_blob_clob_rel.data1 ORDER BY e18;
+               tp               | id |   e1   |     e2      |          e3          |        e4         |           e5            |  e6   |              e7               |                  e8                   |                  e9                   |                  e10                   | e11  |                  e12                   | e13  |                                                  e14                                                   |                  e15                   |                 e16                  |                                              e17                                               |                 e18
+--------------------------------+----+--------+-------------+----------------------+-------------------+-------------------------+-------+-------------------------------+---------------------------------------+---------------------------------------+----------------------------------------+------+----------------------------------------+------+--------------------------------------------------------------------------------------------------------+----------------------------------------+--------------------------------------+------------------------------------------------------------------------------------------------+---------------------------------------
+  2001-12-09 09:48:12.3+00:00   |  9 | NULL   | NULL        |                 NULL | NULL              | NULL                    | NULL  | NULL                          | NULL                                  | NULL                                  | NULL                                   | NULL | NULL                                   | NULL | NULL                                                                                                   | NULL                                   | NULL                                 | NULL                                                                                           | NULL
+  1970-01-01 00:00:00+00:00     |  1 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:00:00+00:00     |                                       |                                       |                                        |      |                                        |      | \x                                                                                                     |                                        |                                      | \x                                                                                             |
+  1970-01-01 00:00:00.001+00:00 |  2 |      0 |           0 |                    0 |                 0 |                       0 | true  | 1970-01-01 00:16:39.999+00:00 |                                       |                                       |                                        |      |                                        |      | \x20                                                                                                   |                                        |                                      | \x20202020202020202020                                                                         |
+  1980-02-10 01:48:11.029+00:00 |  7 | -20002 |    20000002 |        -200000000002 | 2.087321e+07      | 2.2012110113011923e+07  | true  | 2016-07-17 20:12:00.12+00:00  | test数据库语法查询测试！！！@TEST7-8  | test数据库语法查询测试！！！@TEST7-9  | test数据库语法查询测试！！！@TEST7-10  | t    | test数据库语法查询测试！！！@TEST7-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354372d3134   | test数据库语法查询测试！！！@TEST7-15  | test数据库语法查询测试！TEST7-16xaa  | \x303130313031303130313031303131303130313031303130313031303130313031303130                     | 010101010101011010101010101010101010
+  2002-02-22 10:48:12.899+00:00 | 10 |  32767 | -2147483648 |  9223372036854775807 | -9.9999997952e+10 | 9.999999999992e+12      | true  | 2020-10-01 12:00:01+00:00     | test数据库语法查询测试！！！@TEST10-8 | test数据库语法查询测试！！！@TEST10-9 | test数据库语法查询测试！！！@TEST10-10 | t    | test数据库语法查询测试！！！@TEST10-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431302d3134 | test数据库语法查询测试！！！@TEST10-15 | test数据库语法查询测试！TEST10-16xaa | \x313130313031303130313031303131303130313031303130313031303130313031303130                     | 110101010101011010101010101010101010
+  2008-02-29 02:10:10.111+00:00 | 14 |  32767 |    34000000 |         340000000000 | -4.300008e+07     | -1.222098101131921e+08  | true  | 1975-03-11 00:00:00+00:00     |                   1234567890987654321 | 1234567890987654321                   | 1234567890987654321                    |    1 | 1234567890987654321                    | 2    | \x31323334353637383930393837363534333231                                                               | 1234567890987654321                    | 1234567890987654321                  | \x31323334353637383930393837363534333231                                                       |                  1234567890987654321
+  2004-12-31 12:10:10.911+00:00 | 13 |  23000 |    23000000 |         230000000000 | -2.3000088e+07    | -1.222098101131921e+08  | true  | 2020-12-31 23:59:59.999+00:00 | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                    | SSSSSSDDDDDDKKKKKK                     | T    | SSSSSSDDDDDDKKKKKK                     | B    | \x5353535353534444444444444b4b4b4b4b4b                                                                 | SSSSSSDDDDDDKKKKKK                     | SSSSSSDDDDDDKKKKKK                   | \x5353535353534444444444444b4b4b4b4b4b                                                         | SSSSSSDDDDDDKKKKKK
+  2004-09-09 00:00:00.9+00:00   | 12 |  12000 |    12000000 |         120000000000 | -1.2000021e+07    | -1.222098101131921e+08  | true  | 2129-03-01 12:00:00.011+00:00 | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                    | aaaaaabbbbbbcccccc                     | t    | aaaaaabbbbbbcccccc                     | z    | \x616161616161626262626262636363636363                                                                 | aaaaaabbbbbbcccccc                     | aaaaaabbbbbbcccccc                   | \x616161616161626262626262636363636363                                                         | aaaaaabbbbbbcccccc
+  2003-10-01 11:48:12.1+00:00   | 11 | -32768 |  2147483647 | -9223372036854775808 | 9.9999997952e+10  | -9.999999999992e+12     | false | 1970-11-25 09:23:07.421+00:00 | test数据库语法查询测试！！！@TEST11-8 | test数据库语法查询测试！！！@TEST11-9 | test数据库语法查询测试！！！@TEST11-10 | t    | test数据库语法查询测试！！！@TEST11-12 | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431312d3134 | test数据库语法查询测试！！！@TEST11-15 | test数据库语法查询测试！TEST11-16xaa | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc815445535431312d3136786161 | test数据库语法查询测试！TEST11-16xaa
+  1976-10-20 12:00:12.123+00:00 |  3 |  10001 |    10000001 |         100000000001 | -1.0472e+06       | -1.109810113011921e+06  | true  | 2021-03-01 12:00:00.909+00:00 | test数据库语法查询测试！！！@TEST3-8  | test数据库语法查询测试！！！@TEST3-9  | test数据库语法查询测试！！！@TEST3-10  | t    | test数据库语法查询测试！！！@TEST3-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354332d3134   | test数据库语法查询测试！！！@TEST3-15  | test数据库语法查询测试！TEST3-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354332d3136786161   | test数据库语法查询测试！TEST3-16xaa
+  1979-02-28 11:59:01.999+00:00 |  4 |  20002 |    20000002 |         200000000002 | -2.087321e+07     | -2.2012110113011923e+07 | false | 1970-01-01 00:00:00.123+00:00 | test数据库语法查询测试！！！@TEST4-8  | test数据库语法查询测试！！！@TEST4-9  | test数据库语法查询测试！！！@TEST4-10  | t    | test数据库语法查询测试！！！@TEST4-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354342d3134   | test数据库语法查询测试！！！@TEST4-15  | test数据库语法查询测试！TEST4-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354342d3136786161   | test数据库语法查询测试！TEST4-16xaa
+  1980-01-31 19:01:01+00:00     |  5 |  30003 |    30000003 |         300000000003 | -3.3472098e+07    | -3.900981033301192e+07  | true  | 2015-03-12 10:00:00.234+00:00 | test数据库语法查询测试！！！@TEST5-8  | test数据库语法查询测试！！！@TEST5-9  | test数据库语法查询测试！！！@TEST5-10  | t    | test数据库语法查询测试！！！@TEST5-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354352d3134   | test数据库语法查询测试！！！@TEST5-15  | test数据库语法查询测试！TEST5-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354352d3136786161   | test数据库语法查询测试！TEST5-16xaa
+  1980-02-10 01:48:22.501+00:00 |  8 | -30003 |    30000003 |        -300000000003 | 3.3472098e+07     | 3.900981033301192e+07   | false | 1970-01-01 01:16:05.476+00:00 | test数据库语法查询测试！！！@TEST8-8  | test数据库语法查询测试！！！@TEST8-9  | test数据库语法查询测试！！！@TEST8-10  | t    | test数据库语法查询测试！！！@TEST8-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354382d3134   | test数据库语法查询测试！！！@TEST8-15  | test数据库语法查询测试！TEST8-16xaa  | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc8154455354382d3136786161   | test数据库语法查询测试！TEST8-16xaa
+  1980-02-10 01:14:51.09+00:00  |  6 | -10001 |    10000001 |        -100000000001 | 1.0472e+06        | 1.109810113011921e+06   | false | 2023-06-23 05:00:00.55+00:00  | test数据库语法查询测试！！！@TEST6-8  | test数据库语法查询测试！！！@TEST6-9  | test数据库语法查询测试！！！@TEST6-10  | t    | test数据库语法查询测试！！！@TEST6-12  | 中   | \x74657374e695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95efbc81efbc81efbc814054455354362d3134   | test数据库语法查询测试！！！@TEST6-15  | test数据库语法查询测试！TEST6-16xaa  | \x786161786262786363                                                                           | xaaxbbxcc
+  2012-02-29 01:10:10+00:00     | 15 | -32767 |   -34000000 |        -340000000000 | 4.300008e+07      | 1.222098101131921e+08   | true  | 2099-09-01 11:01:00.111+00:00 | 数据库语法查询测试                    | 数据库语法查询测试                    | 数据库语法查询测试                     |    1 | 数据库语法查询测试                     | 2    | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                               | 数据库语法查询测试                     | 数据库语法查询测试                   | \xe695b0e68daee5ba93e8afade6b395e69fa5e8afa2e6b58be8af95                                       | 数据库语法查询测试
+(15 rows)
+> DROP TABLE test_blob_clob_rel.data1 CASCADE;
+DROP TABLE
+> DROP database test_blob_clob_rel CASCADE;
+DROP DATABASE

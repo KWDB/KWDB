@@ -1,0 +1,310 @@
+> create ts database ts_db;
+CREATE TS DATABASE
+> use ts_db;
+SET
+> create table ts_db.t1(ts timestamp not null,a int, b int) tags(tag1 int not null,
+tag2 int) primary tags(tag1);
+CREATE TABLE
+> insert into ts_db.t1 values('2022-01-01 00:00:01+00:00',11,11,33,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-02 00:00:01+00:00',22,22,33,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-03 00:00:01+00:00',33,33,33,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-04 00:00:01+00:00',44,44,33,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-05 00:00:01+00:00',55,55,44,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-06 00:00:01+00:00',66,44,44,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-07 00:00:01+00:00',77,44,55,44);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-08 00:00:01+00:00',88,22,66,66);
+INSERT 1
+> insert into ts_db.t1 values('2022-01-09 00:00:01+00:00',99,33,66,77);
+INSERT 1
+> create table ts_db.t2(ts timestamp not null,a int, b int) tags(tag1 int not null,
+tag2 int) primary tags(tag1);
+CREATE TABLE
+> insert into ts_db.t2 values('2022-02-01 00:00:01+00:00',21,12,13,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-02 00:00:01+00:00',20,22,23,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-03 00:00:01+00:00',23,33,33,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-04 00:00:01+00:00',24,44,33,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-05 00:00:01+00:00',25,55,66,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-06 00:00:01+00:00',26,33,66,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-07 00:00:01+00:00',27,33,55,55);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-08 00:00:01+00:00',28,22,66,66);
+INSERT 1
+> insert into ts_db.t2 values('2022-02-09 00:00:01+00:00',29,33,66,77);
+INSERT 1
+> EXPORT INTO CSV "nodelocal://1/tb1" FROM select ts,a,tag1 from t1;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb1");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    9 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   33
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   55
+  2022-01-08 00:00:01+00:00 | 88 |   66
+  2022-01-09 00:00:01+00:00 | 99 |   66
+(9 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb2" FROM select ts,a,tag1 from ts_db.t1 where a > 11;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb2");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    8 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   55
+  2022-01-08 00:00:01+00:00 | 88 |   66
+  2022-01-09 00:00:01+00:00 | 99 |   66
+(8 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb3" FROM select ts,a,tag1 from t1 order by b;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb3");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    9 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   33
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   55
+  2022-01-08 00:00:01+00:00 | 88 |   66
+  2022-01-09 00:00:01+00:00 | 99 |   66
+(9 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb21" FROM select ts,a,b from t1 order by b,tag1;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb21");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    9 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   11
+  2022-01-02 00:00:01+00:00 | 22 |   22
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   44
+  2022-01-05 00:00:01+00:00 | 55 |   55
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   44
+  2022-01-08 00:00:01+00:00 | 88 |   22
+  2022-01-09 00:00:01+00:00 | 99 |   33
+(9 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb20" FROM select ts, a, tag1 from t1 order by a;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb20");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    9 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   33
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   55
+  2022-01-08 00:00:01+00:00 | 88 |   66
+  2022-01-09 00:00:01+00:00 | 99 |   66
+(9 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb4" FROM select ts,sum(a),sum(tag1) from t1 group by ts;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb4");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    9 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   33
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   55
+  2022-01-08 00:00:01+00:00 | 88 |   66
+  2022-01-09 00:00:01+00:00 | 99 |   66
+(9 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb5" FROM select ts,sum(a),sum(tag1) from t1 group by ts having ts < '2022-01-06 00:00:01+00:00';
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb5");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    5 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   33
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+(5 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb6" FROM select ts,a,tag1 from ts_db.t1 order by a offset 5;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb6");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    4 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-06 00:00:01+00:00 | 66 |   44
+  2022-01-07 00:00:01+00:00 | 77 |   55
+  2022-01-08 00:00:01+00:00 | 88 |   66
+  2022-01-09 00:00:01+00:00 | 99 |   66
+(4 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb7" FROM select ts,a,tag1 from ts_db.t1 order by a limit 5;
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb7");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    5 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-01 00:00:01+00:00 | 11 |   33
+  2022-01-02 00:00:01+00:00 | 22 |   33
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-04 00:00:01+00:00 | 44 |   33
+  2022-01-05 00:00:01+00:00 | 55 |   44
+(5 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb8" FROM select if (a=11, b=11, tag1=33) from t1;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tb15" FROM SELECT ts,a,tag1 FROM t1 WHERE tag1 = (SELECT MAX(b) FROM t2 WHERE t2.b = t1.b);
+  result
+-----------
+  succeed
+(1 row)
+> create table ts_db.tb2(ts timestamp not null, a int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> IMPORT INTO tb2 CSV DATA ("nodelocal://1/tb15");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> select * from tb2 order by a;
+             ts             | a  | tag1
+----------------------------+----+-------
+  2022-01-03 00:00:01+00:00 | 33 |   33
+  2022-01-06 00:00:01+00:00 | 66 |   44
+(2 rows)
+> drop table tb2;
+DROP TABLE
+> EXPORT INTO CSV "nodelocal://1/tb17" FROM select sum(a) = (select a from t2 limit 1) from t1;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tb18" FROM select sum(a) = (select a from t2 where t2.a=tag1) from t1;
+  result
+-----------
+  succeed
+(1 row)

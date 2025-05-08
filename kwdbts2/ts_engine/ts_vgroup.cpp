@@ -417,7 +417,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     // 2. get table schema info of certain version.
     if (last_row_info.cur_table_version != tbl->table_version) {
       last_row_info.info.clear();
-      auto s = last_row_info.schema_mgr->GetMetricAttr(last_row_info.info, tbl->table_version);
+      auto s = last_row_info.schema_mgr->GetColumnsExcludeDropped(last_row_info.info, tbl->table_version);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("cannot get table[%lu] version[%u] schema info.", tbl->table_id, tbl->table_version);
         flush_success = false;
@@ -483,7 +483,7 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
   TsStorageIterator* ts_iter = nullptr;
   if (scan_agg_types.empty()) {
     if (sorted) {
-      ts_iter = new TsSortedRowDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
+      ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
                                                   ts_scan_cols, table_schema_mgr, table_version, ASC);
     } else {
       ts_iter = new TsRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,

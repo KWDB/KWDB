@@ -1,0 +1,25 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb(e1,e2,tag1)values('Point(0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',1);
+ERROR: null value in column "k_timestamptz" violates not-null constraint
+SQLSTATE: 23502
+> insert into test_geometry.tb(e1,tag1)values('Point(1.0 0.0)',2);
+ERROR: null value in column "k_timestamptz" violates not-null constraint
+SQLSTATE: 23502
+> insert into test_geometry.tb(tag1)values(3);
+INSERT 1
+> select * from test_geometry.tb order by tag1;
+  k_timestamptz | e1 | e2 | tag1
+----------------+----+----+-------
+(0 rows)
+> show tag values from test_geometry.tb;
+  tag1
+--------
+     3
+(1 row)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE

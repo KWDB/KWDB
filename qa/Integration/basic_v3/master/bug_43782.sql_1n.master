@@ -1,0 +1,63 @@
+> create ts database test_select3;
+CREATE TS DATABASE
+> create table test_select3.t_int2(ts timestamptz not null, e1 int2 not null, e2 int4 not null, e3 int8 not null)  tags(
+    tag1 int2 not null, tag2 int4 not null, tag3 int8 not null) primary tags(tag1);
+CREATE TABLE
+> insert into test_select3.t_int2 values
+                (1643771471000,32767,2147483647,9223372036854775807,32767,2147483647,9223372036854775807),
+                (1643771472000,-32768,-2147483648,-9223372036854775808,-32768,-32768,-9223372036854775808),
+                (1643771473000,-444,-4444,-4444,-444,-4444,-44444),
+                (1643771474000,-444,-4444,-4444,-444,-4444,-44444),
+                (1643771475000,32767,9999,99999,32767,66666,66666);
+INSERT 5
+> PREPARE p as select * from test_select3.t_int2 where tag1=$1 order by ts;
+PREPARE
+> execute p(-444);
+             ts             |  e1  |  e2   |  e3   | tag1 | tag2  |  tag3
+----------------------------+------+-------+-------+------+-------+---------
+  2022-02-02 03:11:13+00:00 | -444 | -4444 | -4444 | -444 | -4444 | -44444
+  2022-02-02 03:11:14+00:00 | -444 | -4444 | -4444 | -444 | -4444 | -44444
+(2 rows)
+> execute p(999999999);
+ERROR: integer "999999999" out of range for type INT2
+SQLSTATE: 42809
+> drop database test_select3 cascade;
+DROP DATABASE
+> create ts database test_select3;
+CREATE TS DATABASE
+> create table test_select3.t_int2(ts timestamptz not null, e1 int2 not null, e2 int4 not null, e3 int8 not null)  tags(
+    tag1 int2 not null, tag2 int4 not null, tag3 int8 not null) primary tags(tag2);
+CREATE TABLE
+> insert into test_select3.t_int2 values
+                                    (1643771471000,32767,2147483647,9223372036854775807,32767,2147483647,9223372036854775807),
+                                    (1643771472000,-32768,-2147483648,-9223372036854775808,-32768,-32768,-9223372036854775808),
+                                    (1643771473000,-444,-4444,-4444,-444,-4444,-44444),
+                                    (1643771474000,-444,-4444,-4444,-444,-4444,-44444),
+                                    (1643771475000,32767,9999,99999,32767,66666,66666);
+INSERT 5
+> PREPARE p1 as select * from test_select3.t_int2 where tag2=$1 order by ts;
+PREPARE
+> execute p1(9223372036854775806);
+ERROR: integer "9223372036854775806" out of range for type INT4
+SQLSTATE: 42809
+> drop database test_select3 cascade;
+DROP DATABASE
+> create ts database test_select3;
+CREATE TS DATABASE
+> create table test_select3.t_int2(ts timestamptz not null, e1 int2 not null, e2 int4 not null, e3 int8 not null)  tags(
+    tag1 int2 not null, tag2 int4 not null, tag3 int8 not null) primary tags(tag3);
+CREATE TABLE
+> insert into test_select3.t_int2 values
+                                    (1643771471000,32767,2147483647,9223372036854775807,32767,2147483647,9223372036854775807),
+                                    (1643771472000,-32768,-2147483648,-9223372036854775808,-32768,-32768,-9223372036854775808),
+                                    (1643771473000,-444,-4444,-4444,-444,-4444,-44444),
+                                    (1643771474000,-444,-4444,-4444,-444,-4444,-44444),
+                                    (1643771475000,32767,9999,99999,32767,66666,66666);
+INSERT 5
+> PREPARE p2 as select * from test_select3.t_int2 where tag3=$1 order by ts;
+PREPARE
+> execute p2(9223372036854775808);
+ERROR: numeric constant out of int64 range
+SQLSTATE: 42809
+> drop database test_select3 cascade;
+DROP DATABASE
