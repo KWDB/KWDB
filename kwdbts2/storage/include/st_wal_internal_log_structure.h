@@ -95,6 +95,8 @@ class InsertLogTagsEntry : public InsertLogEntry {
 
   int64_t getTimePartition();
 
+  uint64_t getOffset();
+
   char* encode() override {
     return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, data_);
   }
@@ -168,6 +170,10 @@ class InsertLogMetricsEntry : public InsertLogEntry {
   [[nodiscard]] string getPrimaryTag() const;
 
   TSSlice getPayload();
+
+  int64_t getTimePartition();
+
+  uint64_t getOffset();
 
   char* encode() override {
     return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, data_, p_tag_len_,

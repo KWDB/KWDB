@@ -177,8 +177,11 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         switch (wal_log->getTableType()) {
           case WALTableType::DATA : {
             auto ins_log =  reinterpret_cast<InsertLogMetricsEntry *>(log);
-            auto log_ = ins_log->encode();
-            s = writeWALInternal(ctx, log_, ins_log->getLen(), current_lsn);
+            size_t log_len = InsertLogMetricsEntry::fixed_length + ins_log->getPayload().len + ins_log->getPrimaryTag().length();
+            auto log_ = InsertLogMetricsEntry::construct(WALLogType::INSERT, ins_log->getXID(), ins_log->getVGroupID(), ins_log->getOldLSN(),  WALTableType::DATA, ins_log->getTimePartition(), ins_log->getOffset(),
+                                                         ins_log->getPayload().len, ins_log->getPayload().data, ins_log->getPrimaryTag().length(),
+                                                         ins_log->getPrimaryTag().c_str());
+            s = writeWALInternal(ctx, log_, log_len, current_lsn);
             delete []log_;
             std::cout << "rewrite wal 1 metric\t" << "old lsn: " << ins_log->getOldLSN() << "\tvgrp_id:" << ins_log->getVGroupID() << "log len:" << ins_log->getLen() << std::endl;
             if (s == KStatus::FAIL) {
@@ -189,8 +192,10 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
           }
           case WALTableType::TAG : {
             auto ins_log =  reinterpret_cast<InsertLogTagsEntry *>(log);
-            auto log_ = ins_log->encode();
-            s = writeWALInternal(ctx, log_, ins_log->getLen(), current_lsn);
+            size_t log_len = InsertLogTagsEntry::fixed_length + ins_log->getPayload().len;
+            auto log_ = InsertLogTagsEntry::construct(WALLogType::INSERT, ins_log->getXID(), ins_log->getVGroupID(), ins_log->getOldLSN(), WALTableType::TAG, ins_log->getTimePartition(), ins_log->getOffset(),
+                                                      ins_log->getPayload().len, ins_log->getPayload().data);
+            s = writeWALInternal(ctx, log_, log_len, current_lsn);
             delete []log_;
             std::cout << "rewrite wal 1 tag\t" << "old lsn: " << ins_log->getOldLSN() << "\tvgrp_id:" << ins_log->getVGroupID() << "log len:" << ins_log->getLen() << std::endl;
             if (s == KStatus::FAIL) {

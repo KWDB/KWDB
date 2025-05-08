@@ -91,6 +91,11 @@ int64_t InsertLogTagsEntry::getTimePartition() {
   return time_partition_;
 }
 
+uint64_t InsertLogTagsEntry::getOffset() {
+  return offset_;
+}
+
+
 InsertLogMetricsEntry::InsertLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                              int64_t time_partition, uint64_t offset, uint64_t length,
                                              char* data, size_t p_tag_len, char* encoded_primary_tags, uint64_t vgrp_id,
@@ -142,6 +147,14 @@ size_t InsertLogMetricsEntry::getLen() {
 
 TSSlice InsertLogMetricsEntry::getPayload() {
   return TSSlice{data_, length_};
+}
+
+int64_t InsertLogMetricsEntry::getTimePartition() {
+  return time_partition_;
+}
+
+uint64_t InsertLogMetricsEntry::getOffset() {
+  return offset_;
 }
 
 UpdateLogEntry::UpdateLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
