@@ -123,6 +123,16 @@ order by k_timestamp;
 ---------
       9
 (1 row)
+> select sum(a), min(b) from test.sjcx01;
+  sum | min
+------+------
+   35 |   1
+(1 row)
+> select count(a), sum(b), max(a), max(b) from test.sjcx01;
+  count | sum | max | max
+--------+-----+-----+------
+      9 |  55 |  12 |  13
+(1 row)
 > select * from test.sjcx01 where t1_attribute = 'F6';
            k_timestamp          |  a   | b  | c | d | t1_attribute
 --------------------------------+------+----+---+---+---------------
