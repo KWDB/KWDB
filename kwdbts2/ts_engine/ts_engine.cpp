@@ -385,7 +385,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   bool end_chk = false;
-  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
+//  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
 //  wal_mgr_->Init(ctx);
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   if (!end_chk) {
