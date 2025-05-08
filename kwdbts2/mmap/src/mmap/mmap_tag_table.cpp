@@ -2142,6 +2142,7 @@ int TagPartitionTableManager::RollbackPartitionTableVersion(TableVersion need_ro
   m_partition_tables_.erase(part_table);
   std::string real_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(need_rollback_version) + "/";
   fs::remove_all(real_path);
+  LOG_INFO("Rollback partitionTable version, remove directory: %s", real_path.c_str());
   unLock();
   return 0;
 }
