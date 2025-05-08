@@ -350,7 +350,15 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
         // Load into cache
         ts_table = table;
       } else {
-        LOG_INFO("open table [%lu] failed.", table_id)
+        // move table directory to tmp directory for parsing error later.
+        string dir_path = options_.db_path + "/" + std::to_string(table_id);
+        if (IsExists(dir_path)) {
+          std::string cmd = "mv " + dir_path + " " + dir_path + "_" + std::to_string(time(0));
+          System(cmd, true, err_info);
+          LOG_WARN("open table failed. cmd:[%s], err info: [%s]", cmd.c_str(), err_info.errmsg.c_str());
+        } else {
+          LOG_INFO("open table [%lu] failed. table no exist.", table_id)
+        }
       }
     }
   }
