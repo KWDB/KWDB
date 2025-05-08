@@ -121,6 +121,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
+  KStatus AggregateBlockSpans(ResultSet* res, k_uint32* count);
+
   std::vector<Sumfunctype> scan_agg_types_;
 };
 
