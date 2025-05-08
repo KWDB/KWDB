@@ -271,6 +271,10 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
 
   TSSlice getOldPayload();
 
+  int64_t getTimePartition();
+
+  uint64_t getOffset();
+
   char* encode() override {
     return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, old_len_, data_, old_data_);
   }

@@ -393,10 +393,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     logs.clear();
   }
   wal_mgr_->SwitchNextFile();
-  std::cout<< "read chk logs count: " << logs.size() << std::endl;
-  for (auto log : logs) {
-    std::cout<< "read logs type: " << log->getType() << std::endl;
-  }
 
   // 2. read wal log from all vgroup
   for (const auto &vgrp: vgroups_) {
@@ -443,12 +439,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   wal_mgr_.release();
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   wal_mgr_->ResetWAL(ctx, true);
-//  auto res = wal_mgr_->Init(ctx);
-//  if (res == KStatus::FAIL) {
-//    LOG_ERROR("Failed to initialize WAL manager")
-//    return res;
-//  }
-  std::cout<< "rewrite logs count: " << rewrite.size() << std::endl;
    if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
      LOG_ERROR("Failed to WriteIncompleteWAL.")
      return KStatus::FAIL;

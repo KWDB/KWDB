@@ -183,7 +183,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
                                                          ins_log->getPrimaryTag().c_str());
             s = writeWALInternal(ctx, log_, log_len, current_lsn);
             delete []log_;
-            std::cout << "rewrite wal 1 metric\t" << "old lsn: " << ins_log->getOldLSN() << "\tvgrp_id:" << ins_log->getVGroupID() << "log len:" << ins_log->getLen() << std::endl;
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to writeWALInternal.")
               return s;
@@ -197,7 +196,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
                                                       ins_log->getPayload().len, ins_log->getPayload().data);
             s = writeWALInternal(ctx, log_, log_len, current_lsn);
             delete []log_;
-            std::cout << "rewrite wal 1 tag\t" << "old lsn: " << ins_log->getOldLSN() << "\tvgrp_id:" << ins_log->getVGroupID() << "log len:" << ins_log->getLen() << std::endl;
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to writeWALInternal.")
               return s;
@@ -213,8 +211,11 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         WALTableType t_type = update_log->getTableType();
         if (t_type == WALTableType::TAG) {
           auto wal_log = reinterpret_cast<UpdateLogTagsEntry *>(log);
-          s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-          std::cout << "rewrite wal 2\t" << "old lsn: " << wal_log->getOldLSN() << "\tvgrp_id:" << wal_log->getVGroupID() << std::endl;
+          size_t log_len = UpdateLogTagsEntry::fixed_length + wal_log->getPayload().len + wal_log->getOldPayload().len;
+          auto* up_log = UpdateLogTagsEntry::construct(WALLogType::UPDATE, wal_log->getXID(), wal_log->getVGroupID(), wal_log->getOldLSN(), WALTableType::TAG, wal_log->getTimePartition(), wal_log->getOffset(),
+                                                        wal_log->getPayload().len, wal_log->getOldPayload().len, wal_log->getPayload().data, wal_log->getOldPayload().data);
+          s = writeWALInternal(ctx, up_log, log_len, current_lsn);
+          delete []up_log;
           if (s == KStatus::FAIL) {
             LOG_ERROR("Failed to writeWALInternal.")
             return s;
@@ -228,7 +229,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
           case WALTableType::DATA : {
             auto del_log =  reinterpret_cast<DeleteLogMetricsEntry *>(log);
             s = writeWALInternal(ctx, del_log->encode(), del_log->getLen(), current_lsn);
-            std::cout << "rewrite wal 3\t" << "old lsn: " << del_log->getOldLSN() << "\tvgrp_id:" << del_log->getVGroupID() << std::endl;
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to writeWALInternal.")
               return s;
@@ -238,7 +238,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
           case WALTableType::TAG : {
             auto del_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
             s = writeWALInternal(ctx, del_log->encode(), log->getLen(), current_lsn);
-            std::cout << "rewrite wal 3\t" << "old lsn: " << del_log->getOldLSN() << "\tvgrp_id:" << del_log->getVGroupID() << std::endl;
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to writeWALInternal.")
               return s;
@@ -270,7 +269,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case MTR_COMMIT: {
         auto wal_log = reinterpret_cast<MTREntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 5" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -280,7 +278,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case MTR_ROLLBACK: {
         auto wal_log = reinterpret_cast<MTREntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 6" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -290,7 +287,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case RANGE_SNAPSHOT: {
         auto wal_log = reinterpret_cast<SnapshotEntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 7" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -300,7 +296,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case SNAPSHOT_TMP_DIRCTORY: {
         auto wal_log = reinterpret_cast<SnapshotEntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 8" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -310,7 +305,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case PARTITION_TIER_CHANGE: {
         auto wal_log = reinterpret_cast<PartitionTierChangeEntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 9" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -320,7 +314,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case CREATE_INDEX: {
         auto wal_log = reinterpret_cast<CreateIndexEntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 10" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;
@@ -330,7 +323,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
       case DROP_INDEX: {
         auto wal_log = reinterpret_cast<DropIndexEntry *>(log);
         s = writeWALInternal(ctx, wal_log->encode(), log->getLen(), current_lsn);
-        std::cout << "rewrite wal 11" << std::endl;
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to writeWALInternal.")
           return s;

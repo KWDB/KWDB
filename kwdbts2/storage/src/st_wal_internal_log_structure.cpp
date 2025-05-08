@@ -210,6 +210,14 @@ TSSlice UpdateLogTagsEntry::getOldPayload() {
   return TSSlice{old_data_, old_len_};
 }
 
+int64_t UpdateLogTagsEntry::getTimePartition() {
+  return time_partition_;
+}
+
+uint64_t UpdateLogTagsEntry::getOffset() {
+  return offset_;
+}
+
 DeleteLogEntry::DeleteLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
                                TS_LSN old_lsn) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn), table_type_(table_type) {}
 
