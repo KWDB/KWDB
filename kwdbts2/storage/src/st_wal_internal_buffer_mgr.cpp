@@ -79,6 +79,9 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
   uint start_block = file_mgr_->GetBlockNoFromLsn(start_lsn);
   uint end_block = file_mgr_->GetBlockNoFromLsn(end_lsn);
 
+  std::cout<< "start block : " << start_block << std::endl;
+  std::cout<< "end block : " << end_block << std::endl;
+
   // Read WAL entry blocks form disk.
   std::vector<EntryBlock*> blocks;
   if (start_block < buffer_[begin_block_index_].getBlockNo()) {
