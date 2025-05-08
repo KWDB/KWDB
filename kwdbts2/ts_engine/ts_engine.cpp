@@ -386,7 +386,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 1. read chk log from chk file.
   bool end_chk = false;
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-  wal_mgr_->Init(ctx);
+//  wal_mgr_->Init(ctx);
   wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
   if (!end_chk) {
     LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
@@ -484,7 +484,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 8. remove old chk file
   wal_mgr_->RemoveChkFile(ctx);
-  wal_mgr_.release();
+//  wal_mgr_.release();
   // after checkpoint, engine wal mgr meta sync?
   return KStatus::SUCCESS;
 }
