@@ -824,12 +824,12 @@ KStatus WALMgr::SwitchNextFile() {
       return KStatus::FAIL;
     }
   }
-  HeaderBlock hb = buffer_mgr_->getHeaderBlock();
-  KStatus s = file_mgr_->initWalFileWithHeader(hb);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to initWalFileWithHeader.")
-    return s;
-  }
+//  HeaderBlock hb = buffer_mgr_->getHeaderBlock();
+//  KStatus s = file_mgr_->initWalFileWithHeader(hb);
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to initWalFileWithHeader.")
+//    return s;
+//  }
   return KStatus::SUCCESS;
 }
 
