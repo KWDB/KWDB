@@ -728,6 +728,9 @@ bool isSoftLink(const std::string& path) {
 int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,
                               uint32_t index_id) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(new_version);
+  if (nullptr == obj) {
+      return -1;
+  }
   auto all_schema = obj->getIncludeDroppedSchemaInfos();
   auto schema_info_exclude_dropped = obj->getExcludeDroppedSchemaInfos();
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
@@ -911,7 +914,7 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
 
 int TagTable::addNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                                      const std::vector<uint32_t> &tags, uint32_t index_id, HashIndex idx_flag) {
-  LOG_INFO("AddNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
+  LOG_INFO("addNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
 
   auto tag_ver_obj = m_version_mgr_->GetVersionObject(new_version);
   if (nullptr != tag_ver_obj) {
@@ -1158,6 +1161,9 @@ int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info
 
 std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
+  if (nullptr == obj) {
+      return std::vector<uint32_t>{};
+  }
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
   tag_part->NtagIndexRWMutexSLock();
   for (auto ntag_index : tag_part->getMmapNTagHashIndex()) {
@@ -1172,6 +1178,9 @@ std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t i
 
 std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TagTable::GetAllNTagIndexs(uint32_t ts_version) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
+  if (nullptr == obj) {
+      return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
+  }
   std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret;
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
   tag_part->NtagIndexRWMutexSLock();
