@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <memory>
 #include <utility>
+#include <regex>
 
 #include "ts_entity_segment.h"
 #include "ts_vgroup_partition.h"
@@ -38,6 +39,25 @@ TsVGroupPartition::~TsVGroupPartition() {}
 KStatus TsVGroupPartition::Open() {
   std::filesystem::create_directories(path_);
   entity_segment_ = std::make_unique<TsEntitySegment>(path_);
+
+  // reload lastsegments
+  std::error_code ec;
+  std::filesystem::directory_iterator dir_iter{path_, ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("TsVGroupPartition::Open fail, reason: %s", ec.message().c_str());
+  }
+  std::regex re("last.ver-([0-9]{12})");
+  for (const auto& it : dir_iter) {
+    std::string fname = it.path().filename();
+    std::smatch res;
+    bool ok = std::regex_match(fname, res, re);
+    if (!ok) {
+      continue;
+    }
+    uint64_t file_number = std::stoi(res.str(1));
+    std::shared_ptr<TsLastSegment> last;
+    last_segment_mgr_.OpenLastSegmentFile(file_number, &last);
+  }
   return KStatus::SUCCESS;
 }
 
