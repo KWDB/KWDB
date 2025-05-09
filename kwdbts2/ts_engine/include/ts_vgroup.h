@@ -149,7 +149,11 @@ class TsVGroup {
   KStatus Flush() {
     std::shared_ptr<TsMemSegment> imm_segment;
     mem_segment_mgr_.SwitchMemSegment(&imm_segment);
-    return FlushImmSegment(imm_segment);
+    KStatus s = KStatus::SUCCESS;
+    if (imm_segment.get() != nullptr) {
+      s = FlushImmSegment(imm_segment);
+    }
+    return s;
   }
 
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) {

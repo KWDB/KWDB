@@ -460,7 +460,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 5. trig all vgroup flush
   for (const auto &vgrp: vgroups_) {
-//    vgrp->Flush();
+    vgrp->Flush();
   }
 
   // 6.write EndWAL to chk file
