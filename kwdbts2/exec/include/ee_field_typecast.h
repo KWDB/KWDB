@@ -80,7 +80,7 @@ class FieldTypeCastString : public FieldTypeCast {
   String ValStr() override;
 
   Field *field_to_copy() { return new FieldTypeCastString(*this); }
-  _to_string_func func_;
+  _to_string_func func_{nullptr};
 
  protected:
   k_uint32 letter_len_ = 0;

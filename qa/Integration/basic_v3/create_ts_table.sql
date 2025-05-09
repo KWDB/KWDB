@@ -12,6 +12,8 @@ insert into test.sjcx01 values (1681111110008,12,13,null,'G', 'G7');
 select * from test.sjcx01 order by k_timestamp;
 select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
 select A, B from test.sjcx01 order by k_timestamp;
+select A from test.sjcx01 order by k_timestamp;
+select C from test.sjcx01 order by k_timestamp;
 select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
 select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
 select * from test.sjcx01
@@ -19,5 +21,168 @@ where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
 select count(*) from test.sjcx01;
+select sum(a), min(b) from test.sjcx01;
+select count(a), sum(b), max(a), max(b) from test.sjcx01;
 select * from test.sjcx01 where t1_attribute = 'F6';
+
+SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
 drop database test cascade;
+
+
+create ts database test_alter;
+create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
+insert into test_alter.t2 values(1672531211005, 100, 200, 300, 1);
+alter table test_alter.t2 alter column a type int;
+alter table test_alter.t2 alter column b type bigint;
+alter table test_alter.t2 alter column c type varchar(120);
+insert into test_alter.t2 values(1672531211015, 65536, 65539,  'test时间精度！！！@TEST2', 1);
+select * from test_alter.t2 order by ts,attr;
+select a, b from test_alter.t2 order by ts,attr;
+
+create table test_alter.t9(ts timestamp not null, a char, b nchar(64)) tags(attr int not null) primary tags(attr);
+insert into test_alter.t9 values(1672531211005,  't',  'test时间精度通用查询测试！！！@TEST3', 1);
+alter table test_alter.t9 alter column a type char(128);
+alter table test_alter.t9 alter column b type nchar(128);
+insert into test_alter.t9 values(1672531211015,  'test时间精度！！！@TEST2',  'test时间精度通用查询测试！！！@TEST3', 1);
+select * from test_alter.t9 order by ts,attr;
+select a, b from test_alter.t9 order by ts,attr;
+drop database if exists test_alter cascade;
+--test_case0001 ;
+create ts database test;
+create table test.tt1 (k_timestamp timestamp not null,ser_id timestamp(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.tt2 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.tt3 (k_timestamp timestamp not null,ser_id timestamptz(7) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.logon (k_timestamp timestamp not null,ser_id INT4 not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='logon';
+create table test.sjgx03(k_timestamp timestamp not null,A VARCHAR(10) not null,B VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='sjcx01';
+insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq');
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='sjcx01';
+-- select * from test.sjcx01;
+create table test.ti(dt timestamp not null ,id int4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+-- select * from test.ti;
+select count(*) from kwdb_internal.ranges where database_name='test';
+drop database test cascade;
+
+
+--test_case0002
+create ts database test;
+create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq');
+show create TABLE test.sjcx01;
+create ts database db;
+drop database db;
+drop database test cascade;
+create ts database test;
+USE TEST;
+create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null ,D VARCHAR(10) not null) attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+show create table test.sjcx01;
+show create table test.sjcx01;
+drop table test.sjcx01;
+drop database test cascade;
+
+--test_case0003
+create ts database test;
+create table test.S(k_timestamp timestamp not null,A INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.S1(k_timestamp timestamp not null,A INT4 not null,b INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.S2(k_timestamp timestamp not null,A INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+drop database test cascade;
+drop database test cascade;
+create ts database test;
+create ts database 1;
+create ts database 1.0;
+create ts database 1.23;
+create ts database -1.23;
+create ts database '-1.23';
+create ts database '-1';
+create ts database 123123131388888888888888888888888888888888888888888888888888123132;
+create ts database '一二三';
+create ts database a;
+create ts database 'a';
+create ts database "a";
+create ts database 's';
+create ts database "q";
+create ts database 1+1;
+create ts database 2021-1-1;
+create ts database 2021-1-5 11:15:45;
+create ts database '2021-1-5 11:15:45';
+create ts database now();
+create ts database 1670976000;
+create ts database !;
+create ts database @;
+create ts database '#';
+create ts database $;
+create ts database '"';
+create ts database '♠';
+create ts database '--';
+show  databases;
+
+
+--test_case0004
+drop database '!';
+drop database '#';
+drop database '$';
+drop database '-';
+drop database '--';
+drop database '-1';
+drop database 1;
+drop database 1670976000;
+drop database 2021;
+drop database '@';
+drop database test cascade;
+drop database a;
+drop database kaiwudb;
+drop database now;
+drop database 'null';
+drop database q;
+drop database s;
+drop database '♠';
+show  databases;
+
+--test_case0005
+drop database test cascade;
+create ts database test;
+create table test.TB(k_timestamp timestamp not null,A INT4 not null,B FLOAT not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+drop database test cascade;
+show databases;
+drop database test cascade;
+create ts database DB;
+drop database DB;
+create ts database DB;
+drop database DB CASCADE;
+create ts database DB;
+drop database DB;
+
+--test_case0006
+create ts database test;
+create ts database test2;
+create ts database pre;
+create table test.et1(k_timestamp timestamp not null,a INT2 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+create table test.et2(k_timestamp timestamp not null,a INT not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et3(k_timestamp timestamp not null,a bool not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et4(k_timestamp timestamp not null,a float not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et5(k_timestamp timestamp not null,a int8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et6(k_timestamp timestamp not null,a float8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et7(k_timestamp timestamp not null,a timestamp not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et8(k_timestamp timestamp not null,a char(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et10(k_timestamp timestamp not null,a varchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et11(k_timestamp timestamp not null,a char not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et12(k_timestamp timestamp not null,a char(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et13(k_timestamp timestamp not null,a nchar not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et14(k_timestamp timestamp not null,a varchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et15(k_timestamp timestamp not null,a nvarchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et16(k_timestamp timestamp not null,a varbytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et17(k_timestamp timestamp not null,a nvarchar(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et18(k_timestamp timestamp not null,a nvarchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et19(k_timestamp timestamp not null,a varbytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et20(k_timestamp timestamp not null,a varbytes(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et21(k_timestamp timestamp not null,a varbytes(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.et22(k_timestamp timestamp not null,a varbytes(254) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+create table test.atll(k_timestamp timestamp not null,e0 int not null ,e1 int2  not null ,e2 int  not null , e3 bool  not null ,e4 float  not null ,e5 int8  not null ,e6 float8  not null ,e7 timestamp  not null ,e8 char(1023)  not null ,e9 nchar(255)  not null ,e10 varchar(4096)  not null ,e11 char  not null ,e12 char(255)  not null ,e13 nchar  not null ,e14 varchar(128)  not null ,                e15 nvarchar(4096)  not null , e16 varbytes  not null ,e17 nvarchar(255)  not null ,e18 nvarchar(128)   not null ,                e19 varbytes  not null ,e20 varbytes(1023)  not null ,e21 varbytes(4096)  not null ,e22 varbytes(254)  not null )attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+drop database test cascade;
+drop database test2;
+drop database pre;

@@ -77,3 +77,31 @@ DELETE 1
 DROP TABLE
 > drop database if exists test_insert2 cascade;
 DROP DATABASE
+> drop database if exists test_insert2 cascade;
+DROP DATABASE
+> create ts database test_insert2;
+CREATE TS DATABASE
+> CREATE TABLE test_insert2.t1(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ id INT NOT NULL)
+ATTRIBUTES (
+ code1 INT2 NOT NULL,
+ code8 VARCHAR(128) NOT NULL,
+ code14 CHAR(1023) NOT NULL,
+ code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> insert into test_insert2.t1 (k_timestamp,id,code1,code8,code14,code16) values
+ (0,1,1,'aa','bb','cc'),
+ (1000,1,1,'a','abb','cc'),
+ (2000,1,1,'a','a','bbcc');
+INSERT 3
+> select k_timestamp,id,code1,code8,code14,code16 from test_insert2.t1 order by k_timestamp;
+         k_timestamp        | id | code1 | code8 | code14 | code16
+----------------------------+----+-------+-------+--------+---------
+  1970-01-01 01:00:00+01:00 |  1 |     1 | aa    | bb     | cc
+  1970-01-01 01:00:01+01:00 |  1 |     1 | a     | abb    | cc
+  1970-01-01 01:00:02+01:00 |  1 |     1 | a     | a      | bbcc
+(3 rows)
+> drop database if exists test_insert2 cascade;
+DROP DATABASE

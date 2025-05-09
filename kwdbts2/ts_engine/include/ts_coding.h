@@ -275,7 +275,7 @@ class TsBitReader {
     *v += rep_[idx] & ((1U << ntail) - 1);
     *v <<= nhead;
 
-    if (idx + 1 == rep_.size()) {
+    if (idx + 1 >= rep_.size()) {
       return false;
     }
 
@@ -336,7 +336,7 @@ class TsBitReader {
     if (nbits == 0) {
       return true;
     }
-    if (idx + 1 > rep_.size()) {
+    if (idx + 1 >= rep_.size()) {
       pos_ = pos;
       return false;
     }

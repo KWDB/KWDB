@@ -199,16 +199,27 @@ file(GLOB_RECURSE NART_PROTOS_META
 generate_proto(${NART_PROTOS_META})
 generate_proto(${NART_PROTOS_EE})
 
-# rocksdb include dir
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX")
-# set(ROCKSDB_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../kwbase/c-deps/rocksdb/include ${CMAKE_CURRENT_SOURCE_DIR}/../kwbase/c-deps/rocksdb)
-set(SNAPPY_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../kwbase/c-deps/snappy)
-set(SNAPPY_LIB $ENV{GOPATH}/native/snappy/libsnappy.a)
-# if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-#   set(ROCKSDB_LIB $ENV{GOPATH}/native/rocksdb_assert/librocksdb.a)
-# else ()
-#   set(ROCKSDB_LIB $ENV{GOPATH}/native/rocksdb/librocksdb.a)
-# endif ()
+# Build third-party libraries
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party)
+
+# Snappy
+set(SNAPPY_INSTALL_DIR ${THIRD_PARTY_DIR}/snappy_install)
+set(SNAPPY_CMAKE_ARGS 
+  -DCMAKE_INSTALL_PREFIX=${SNAPPY_INSTALL_DIR} 
+  -DCMAKE_CXX_STANDARD=17 
+  -DSNAPPY_BUILD_TESTS=OFF 
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  -DCMAKE_BUILD_TYPE=Release
+)
+
+ExternalProject_Add(
+  snappy
+  PREFIX ${THIRD_PARTY_DIR}/snappy_build
+  SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../kwbase/c-deps/snappy
+  CMAKE_ARGS ${SNAPPY_CMAKE_ARGS}
+)
+set(SNAPPY_INCLUDE ${SNAPPY_INSTALL_DIR}/include)
+set(SNAPPY_LIB ${SNAPPY_INSTALL_DIR}/lib/libsnappy.a)
 
 # include file of kwdbts2
 set(TS_INCLUDE
@@ -264,7 +275,10 @@ if (ENABLE_COVERAGE)
 endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
-# target_link_libraries(${KWDBTS2_SERVER_LIB} )
+add_dependencies(${KWDBTS2_SERVER_LIB} snappy)
+target_link_libraries(${KWDBTS2_SERVER_LIB} 
+  PRIVATE ${SNAPPY_LIB}
+)
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
@@ -275,6 +289,7 @@ target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
   # COMPILE_FLAGS "-Werror -Wunused-variable"
   COMPILE_FLAGS " -fno-plt"
+  POSITION_INDEPENDENT_CODE ON
 )
 
 # Compile and generate test case executables
@@ -321,14 +336,13 @@ if (WITH_TESTS)
         add_subdirectory(${dircmake})
     else ()
         add_executable(${tname} ${tsrc})
-        add_dependencies(${tname} kwbase)
         target_include_directories(${tname}
                 PRIVATE ${TS_INCLUDE}
                 ${PROTOBUF_INCLUDE_DIR}
                 third_party/gtest-1.8.1/fused-src
                 )
 
-        target_link_libraries(${tname} ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} ${SNAPPY_LIB} common gtest dl rt)
+        target_link_libraries(${tname} ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} common gtest dl rt)
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO

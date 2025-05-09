@@ -96,7 +96,7 @@ class TsTable {
 
   // convert schema info to protobuf
   KStatus GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
-                             std::vector<TagInfo>& tag_schema);
+                             std::vector<TagInfo>& tag_schema, uint32_t schema_version);
   /**
    * @brief get table id
    *
@@ -247,6 +247,15 @@ class TsTable {
    * @return success or fail
    */
   virtual KStatus TierMigrate();
+
+  /**
+   * @brief Count the segment in the time series entity group
+   * @param[in] ctx Database Context
+   * @param[out] err_info error info
+   *
+   * @return KStatus
+   */
+  virtual KStatus Count(kwdbContext_p ctx, ErrorInfo& err_info);
 
   std::string GetStoreDirectory() {
     return db_path_ + tbl_sub_path_;
@@ -470,7 +479,7 @@ class TsTable {
 
   virtual std::vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
-  virtual std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs();
+  virtual std::vector<std::pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t schema_version);
 
   virtual KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                                      const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id);
@@ -525,6 +534,15 @@ class TsTable {
   inline MMapRootTableManager* GetMetricsTableMgr() {
     return entity_bt_manager_;
   }
+
+  struct SubgroupEntities{
+    uint64_t entity_group_id;
+    uint32_t subgroup_id;
+    std::vector<uint32_t> entity_ids;
+  };
+
+  KStatus SplitEntityBySubgroup(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_results,
+                                std::vector<SubgroupEntities>* subgroups);
 
  protected:
   string db_path_;
@@ -655,6 +673,15 @@ class TsEntityGroup {
    * @return success or fail
    */
   virtual KStatus TierMigrate();
+
+  /**
+   * @brief Count the segment in the time series entity group
+   * @param[in] ctx Database Context
+   * @param[out] err_info error info
+   *
+   * @return KStatus
+   */
+  virtual KStatus Count(kwdbContext_p ctx, ErrorInfo& err_info);
 
   /**
    * @brief Write entity tags values and support tag value modification.

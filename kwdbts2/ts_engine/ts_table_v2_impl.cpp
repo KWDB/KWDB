@@ -62,7 +62,6 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   return KStatus::SUCCESS;
 }
 
-
 KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 const std::vector<uint32_t> hps,
                                 BaseEntityIterator** iter, k_uint32 table_version) {
@@ -71,7 +70,12 @@ KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> s
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  TagIteratorV2Impl* tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags);
+  TagIteratorV2Impl* tag_iter;
+  if (!EngineOptions::isSingleNode()) {
+    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags, hps);
+  } else {
+    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags);
+  }
   if (KStatus::SUCCESS != tag_iter->Init()) {
     delete tag_iter;
     tag_iter = nullptr;
@@ -197,7 +201,7 @@ KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableK
   }
 
   ErrorInfo err_info;
-  if (table_schema_mgr_->CreateTable(ctx, &meta, version, err_info) != KStatus::SUCCESS) {
+  if (table_schema_mgr_->CreateTable(ctx, &meta, meta.ts_table().database_id(), version, err_info) != KStatus::SUCCESS) {
     LOG_ERROR("failed during upper version, err: %s", err_info.errmsg.c_str());
     return KStatus::FAIL;
   }

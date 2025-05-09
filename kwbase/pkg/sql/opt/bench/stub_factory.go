@@ -572,3 +572,14 @@ func (f *stubFactory) ResetTsScanAccessMode(
 ) {
 
 }
+
+// ProcessTSInsertWithSort implements the factory interface.
+func (f *stubFactory) ProcessTSInsertWithSort(
+	tsInsertSelect exec.Node,
+	outputCols *opt.ColMap,
+	ordering sqlbase.ColumnOrdering,
+	alreadyOrderedPrefix int,
+	execInTSEngine bool,
+) (exec.Node, bool) {
+	return struct{}{}, false
+}

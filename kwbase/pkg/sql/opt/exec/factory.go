@@ -672,6 +672,11 @@ type Factory interface {
 	// ResetTsScanAccessMode resets tsScanNode's accessMode when falling back
 	// to original plan for multiple model processing.
 	ResetTsScanAccessMode(expr memo.RelExpr, originalAccessMode execinfrapb.TSTableReadMode)
+
+	// ProcessTSInsertWithSort swaps the positions of sortNode and tsInsertSelectNode.
+	ProcessTSInsertWithSort(
+		tsInsertSelect Node, outputCols *opt.ColMap, ordering sqlbase.ColumnOrdering, alreadyOrderedPrefix int, execInTSEngine bool,
+	) (Node, bool)
 }
 
 // OutputOrdering indicates the required output ordering on a Node that is being

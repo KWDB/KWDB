@@ -183,6 +183,14 @@ class SubEntityGroupManager : public TSObject {
     }
   }
 
+  /**
+   * @brief Count the segment in all subgroups of entity group
+   * @param[out] err_info error info
+   *
+   * @return void
+   */
+  void Count(kwdbContext_p ctx, ErrorInfo& err_info);
+
  private:
   std::string db_path_;
   std::string tbl_sub_path_;

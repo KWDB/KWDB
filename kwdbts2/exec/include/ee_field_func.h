@@ -767,6 +767,9 @@ class FieldFuncCoalesce : public FieldFunc {
         storage_type_ = roachpb::DataType::DOUBLE;
         storage_len_ = sizeof(k_double64);
         break;
+      case roachpb::DataType::NULLVAL:
+        storage_type_ = b->get_storage_type();
+        storage_len_ = b->get_storage_length();
       default:
         storage_type_ = a->get_storage_type();
         storage_len_ = a->get_storage_length();

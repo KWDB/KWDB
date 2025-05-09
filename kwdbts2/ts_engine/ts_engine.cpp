@@ -126,14 +126,17 @@ TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
 KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable *meta) {
   LOG_INFO("Create TsTable %lu begin.", table_id);
   KStatus s;
-
-  uint32_t vgroup_id = 1;
-  if (meta->ts_table().has_database_id()) {
-    vgroup_id = meta->ts_table().database_id();
+  if (tables_cache_->Get(table_id)) {
+    LOG_INFO("TsTable %lu exist.", table_id);
+    return KStatus::SUCCESS;
   }
-  schema_mgr_->SetTableID2DBID(ctx, table_id, meta->ts_table().database_id());
 
-  s = schema_mgr_->CreateTable(ctx, table_id, meta);
+  uint64_t db_id = 1;
+  if (meta->ts_table().has_database_id()) {
+    db_id = meta->ts_table().database_id();
+  }
+
+  s = schema_mgr_->CreateTable(ctx, db_id, table_id, meta);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("schema Create Table[%lu] failed.", table_id);
     return s;
@@ -462,7 +465,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 5. trig all vgroup flush
   for (const auto &vgrp: vgroups_) {
-//    s = vgrp->Flush();
+    s = vgrp->Flush();
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to flush metric file.")
       return s;

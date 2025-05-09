@@ -31,11 +31,16 @@ class TsLastSegmentBuilder {
   class InfoHandle;
   class IndexHandle;
 
-  // TODO(zzr) Meta Blocks Handle...
 
   std::unique_ptr<MetricBlockBuilder> data_block_builder_;
   std::unique_ptr<InfoHandle> info_handle_;
   std::unique_ptr<IndexHandle> index_handle_;
+
+
+  // TODO(zzr) Meta Blocks Handle...
+  std::unique_ptr<LastSegmentBloomFilter> bloom_filter_;
+
+  std::vector<LastSegmentMetaBlockBase*> meta_blocks_;
 
   TSTableID table_id_ = -1;  // INVALID ID
   uint32_t version_ = -1;    // INVALID ID
@@ -112,7 +117,7 @@ class TsLastSegmentBuilder {
   };
   ColDataBuffer cols_data_buffer_;
 
-  const TsEngineSchemaManager* schema_mgr_;
+  TsEngineSchemaManager* schema_mgr_;
 
   KStatus WriteMetricBlock(MetricBlockBuilder* builder);
   KStatus FlushPayloadBuffer();
@@ -125,8 +130,11 @@ class TsLastSegmentBuilder {
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
         info_handle_(std::make_unique<InfoHandle>()),
         index_handle_(std::make_unique<IndexHandle>()),
+        bloom_filter_(std::make_unique<LastSegmentBloomFilter>()),
         file_number_(file_number),
-        schema_mgr_(schema_mgr) {}
+        schema_mgr_(schema_mgr) {
+    meta_blocks_.push_back(bloom_filter_.get());
+  }
 
   KStatus FlushBuffer();
 
@@ -267,7 +275,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
       dsize_ = getDataTypeSize(dtype);
     }
   }
-  void Add(const TSSlice& col_data) noexcept;
+  void Add(const TSSlice& col_data, DataFlags data_flag = kValid) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {

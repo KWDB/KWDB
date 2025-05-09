@@ -52,7 +52,7 @@ func (p *planner) DropSchedule(ctx context.Context, n *tree.DropSchedule) (planN
 
 	if n.ScheduleName != nil {
 		if *n.ScheduleName == ScheduleCompress || *n.ScheduleName == ScheduleRetention ||
-			*n.ScheduleName == ScheduleAutonomy || *n.ScheduleName == ScheduleVacuum {
+			*n.ScheduleName == ScheduleAutonomy || *n.ScheduleName == ScheduleVacuum || *n.ScheduleName == ScheduleCount {
 			return nil, pgerror.Newf(pgcode.DataException, "can not drop system schedule %s", *n.ScheduleName)
 		}
 		scheduleNames = append(scheduleNames, *n.ScheduleName)
@@ -71,7 +71,7 @@ func (p *planner) DropSchedule(ctx context.Context, n *tree.DropSchedule) (planN
 			if !ok {
 				return nil, pgerror.New(pgcode.DataException, "expects a string column source")
 			}
-			if name == ScheduleCompress || name == ScheduleRetention || name == ScheduleAutonomy || name == ScheduleVacuum {
+			if name == ScheduleCompress || name == ScheduleRetention || name == ScheduleAutonomy || name == ScheduleVacuum || name == ScheduleCount {
 				return nil, pgerror.Newf(pgcode.DataException, "can not drop system schedule %s", name)
 			}
 			scheduleNames = append(scheduleNames, tree.Name(name))

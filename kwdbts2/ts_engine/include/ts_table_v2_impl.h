@@ -14,10 +14,11 @@
 #include <vector>
 #include <memory>
 #include "ts_table.h"
-#include "ts_vgroup.h"
 #include "ts_table_schema_manager.h"
 
 namespace kwdbts {
+
+class TsVGroup;
 
 class TsTableV2Impl : public TsTable {
  private:
@@ -40,6 +41,10 @@ class TsTableV2Impl : public TsTable {
     return table_schema_mgr_->GetCurrentVersion();
   }
 
+  std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
+    return table_schema_mgr_;
+  }
+
   KStatus PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
                           DedupResult* dedup_result, const DedupRule& dedup_rule) override;
@@ -47,7 +52,6 @@ class TsTableV2Impl : public TsTable {
   KStatus PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
                   DedupResult* dedup_result, const DedupRule& dedup_rule);
-
 
   KStatus GetTagIterator(kwdbContext_p ctx,
                           std::vector<uint32_t> scan_tags,

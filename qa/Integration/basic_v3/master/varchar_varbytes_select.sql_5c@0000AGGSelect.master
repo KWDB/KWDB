@@ -1,0 +1,67 @@
+> SELECT sum(e1) FROM test_SELECT_col.t1;--e1为大数据量，求和看是否溢出
+    sum
+-----------
+  -135232
+(1 row)
+> SELECT sum(e1+e2) FROM test_SELECT_col.t1 WHERE code1=100 GROUP BY code1,code2  ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT avg(e1) FROM test_SELECT_col.t1 WHERE e1=10000 GROUP BY code1,code2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT max(e1) FROM test_SELECT_col.t1 WHERE e1=10000 GROUP BY code1,code2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT min(e1) FROM test_SELECT_col.t1 WHERE e1=10000 GROUP BY e2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT max(e1)+min(e2) FROM test_SELECT_col.t1;
+   ?column?
+---------------
+  -2147450881
+(1 row)
+> SELECT last(*) FROM test_SELECT_col.t1;
+      last(k_timestamp)     | last(e1) |  last(e2)   |      last(e3)       |  last(e4)   |        last(e5)        | last(e6) |         last(e7)          |               last(e8)               |               last(e9)               |               last(e10)                | last(e11) |              last(e12)               | last(e13) |              last(e14)               |              last(e15)               |                                          last(e16)                                           |              last(e17)               |              last(e18)               | last(e19) |                               last(e20)                                |                                              last(e21)                                               |                               last(e22)                                | last(code1) | last(code2) | last(code3) | last(flag) | last(val1) | last(val2) | last(location) | last(color) | last(name) | last(state) | last(tall) | last(screen) | last(age) | last(sex) | last(year) | last(type)
+----------------------------+----------+-------------+---------------------+-------------+------------------------+----------+---------------------------+--------------------------------------+--------------------------------------+----------------------------------------+-----------+--------------------------------------+-----------+--------------------------------------+--------------------------------------+----------------------------------------------------------------------------------------------+--------------------------------------+--------------------------------------+-----------+------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------+-------------+-------------+-------------+------------+------------+------------+----------------+-------------+------------+-------------+------------+--------------+-----------+-----------+------------+-------------
+  2034-01-25 04:09:13+00:00 |    32767 | -2147483648 | 9223372036854775807 | 9845.870117 | 2.0435435343430125e+13 |   true   | 2020-01-01 12:00:00+00:00 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1\0 | t         | test时间精度通用查询测试！！！@TEST1 | 中        | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \x62      | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 |         800 |           0 |           0 |   false    |          0 |          0 |                | red         | \x20       | \x20        | \x20       | \x20         |           |           |            |
+(1 row)
+> SELECT last_row(*) FROM test_SELECT_col.t1;
+    last_row(k_timestamp)   | last_row(e1) | last_row(e2) |    last_row(e3)     | last_row(e4) |      last_row(e5)      | last_row(e6) |       last_row(e7)        | last_row(e8) |             last_row(e9)             | last_row(e10) | last_row(e11) | last_row(e12) | last_row(e13) | last_row(e14) |            last_row(e15)             | last_row(e16) |            last_row(e17)             | last_row(e18) | last_row(e19) | last_row(e20) |                                            last_row(e21)                                             | last_row(e22) | last_row(code1) | last_row(code2) | last_row(code3) | last_row(flag) | last_row(val1) | last_row(val2) | last_row(location) | last_row(color) | last_row(name) | last_row(state) | last_row(tall) | last_row(screen) | last_row(age) | last_row(sex) | last_row(year) | last_row(type)
+----------------------------+--------------+--------------+---------------------+--------------+------------------------+--------------+---------------------------+--------------+--------------------------------------+---------------+---------------+---------------+---------------+---------------+--------------------------------------+---------------+--------------------------------------+---------------+---------------+---------------+------------------------------------------------------------------------------------------------------+---------------+-----------------+-----------------+-----------------+----------------+----------------+----------------+--------------------+-----------------+----------------+-----------------+----------------+------------------+---------------+---------------+----------------+-----------------
+  2034-01-25 04:09:13+00:00 |        32767 | NULL         | 9223372036854775807 | NULL         | 2.0435435343430125e+13 |     NULL     | 2020-01-01 12:00:00+00:00 | NULL         | test时间精度通用查询测试！！！@TEST1 | NULL          | t             | NULL          | 中            | NULL          | test时间精度通用查询测试！！！@TEST1 | NULL          | test时间精度通用查询测试！！！@TEST1 | NULL          | \x62          | NULL          | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431 | NULL          |             800 | NULL            |            NULL |     false      | NULL           | NULL           | NULL               | red             | NULL           | NULL            | NULL           | NULL             | NULL          | NULL          | NULL           | NULL
+(1 row)
+> SELECT last_row(e1) FROM test_SELECT_col.t1;
+  last_row
+------------
+     32767
+(1 row)
+> SELECT count(e1) FROM test_SELECT_col.t1;
+  count
+---------
+     18
+(1 row)
+> SELECT count(*) FROM test_SELECT_col.t1;
+  count
+---------
+     18
+(1 row)
+> SELECT variance(e1) FROM test_SELECT_col.t1;
+        variance
+-------------------------
+  743286724.33986928105
+(1 row)
+> SELECT stddev(e1) FROM test_SELECT_col.t1;
+         stddev
+-------------------------
+  27263.285281489266642
+(1 row)
+> SELECT count(e1) FROM test_SELECT_col.t1;
+  count
+---------
+     18
+(1 row)
+> SELECT count(distinct e1) FROM test_SELECT_col.t1;
+  count
+---------
+     16
+(1 row)

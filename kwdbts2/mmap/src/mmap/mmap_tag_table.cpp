@@ -30,6 +30,7 @@ TagTable::TagTable(const std::string& db_path,
                   m_db_path_(db_path), m_tbl_sub_path_(sub_path),
                   m_table_id(table_id), m_entity_group_id_(entity_group_id) {
   m_mutex_ = new KLatch(LATCH_ID_TAG_TABLE_METADATA_MUTEX);
+  m_version_mutex_ = new KLatch(LATCH_ID_TAG_TABLE_VERSION_MUTEX);
 }
 
 TagTable::~TagTable() {
@@ -38,11 +39,13 @@ TagTable::~TagTable() {
   delete m_index_;
   delete m_entity_row_index_;
   delete m_mutex_;
+  delete m_version_mutex_;
   m_version_mgr_ = nullptr;
   m_partition_mgr_ = nullptr;
   m_index_ = nullptr;
   m_entity_row_index_ = nullptr;
   m_mutex_ = nullptr;
+  m_version_mutex_ = nullptr;
 }
 
 int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version, ErrorInfo &err_info) {
@@ -906,6 +909,8 @@ int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const s
 int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t index_id) {
   LOG_INFO("DropHashIndex index_id:%d, new_version:%d", index_id, new_version)
   uint32_t cur_ver = 1;
+  // drop the soft link first and then drop the index file.
+  MMapNTagHashIndex* index_file = nullptr;
   while (cur_ver <= new_version) {
     TagVersionObject *tag_ver_obj = m_version_mgr_->GetVersionObject(cur_ver);
     if (tag_ver_obj == nullptr) {
@@ -924,15 +929,11 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
     part_table->NtagIndexRWMutexXLock();
     std::vector<MMapNTagHashIndex *> &mmap_ntag_index = part_table->getMmapNTagHashIndex();
     for (auto pos = mmap_ntag_index.begin(); pos < mmap_ntag_index.end(); pos++) {
-      if (pos.operator*() && pos.operator*()->getIndexID() == index_id) {
+      if ((*pos) && (*pos)->getIndexID() == index_id) {
         if (isSoftLink(m_db_path_ + part_table->m_db_name_ + index_name)) {
           unlink((m_db_path_ + part_table->m_db_name_ + index_name).c_str());
         } else {
-          if (pos.operator*()->clear() < 0) {
-            part_table->NtagIndexRWMutexUnLock();
-            LOG_ERROR("TagHashIndex remove failed.");
-            return -1;
-          }
+          index_file = *pos;
         }
         mmap_ntag_index.erase(pos);
         break;
@@ -946,18 +947,39 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
     part_table->NtagIndexRWMutexUnLock();
     cur_ver++;
   }
+  if (index_file != nullptr) {
+      if (index_file->clear() < 0) {
+          LOG_ERROR("TagHashIndex remove failed.");
+          return -1;
+      }
+  } else {
+      LOG_ERROR("TagHashIndex remove failed. Not find index file");
+  }
+
   return 0;
 }
 
-int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
+int TagTable::addNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                                      const std::vector<uint32_t> &tags, uint32_t index_id, HashIndex idx_flag) {
   LOG_INFO("AddNewPartitionVersion table id:%lu, new version:%d", this->m_table_id, new_version)
-  // 1. create tag version object
-  auto tag_ver_obj = m_version_mgr_->CreateTagVersionObject(schema, new_version, err_info);
-  if (nullptr == tag_ver_obj) {
-    LOG_ERROR("call CreateTagVersionObject failed, %s ", err_info.errmsg.c_str());
-    return -1;
+
+  auto tag_ver_obj = m_version_mgr_->GetVersionObject(new_version);
+  if (nullptr != tag_ver_obj) {
+      if (!tag_ver_obj->isValid()) {
+          // clear files
+          cleanPartition(new_version, index_id, err_info);
+      } else {
+        return 0;
+      }
   }
+
+  // 1. create tag version object
+  tag_ver_obj = m_version_mgr_->CreateTagVersionObject(schema, new_version, err_info);
+  if (nullptr == tag_ver_obj) {
+      LOG_ERROR("call CreateTagVersionObject failed, %s ", err_info.errmsg.c_str());
+      return -1;
+  }
+
   // get newest version
   TagVersionObject* newest_tag_ver_obj = nullptr;
   uint32_t newest_part_real_ver = 0;
@@ -1013,13 +1035,27 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
 
 int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                            const std::vector<roachpb::NTagIndexInfo>& idx_info) {
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   LOG_INFO("AddNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
+
+  TagVersionObject* tag_ver_obj = m_version_mgr_->GetVersionObject(new_version);
+  if (nullptr != tag_ver_obj) {
+      if (!tag_ver_obj->isValid()) {
+          // clear files
+          cleanPartition(new_version, idx_info, err_info);
+      } else {
+          return 0;
+      }
+  }
+
   // 1. create tag version object
-  auto tag_ver_obj = m_version_mgr_->CreateTagVersionObject(schema, new_version, err_info);
+  tag_ver_obj = m_version_mgr_->CreateTagVersionObject(schema, new_version, err_info);
   if (nullptr == tag_ver_obj) {
     LOG_ERROR("call CreateTagVersionObject failed, %s ", err_info.errmsg.c_str());
     return -1;
   }
+
   // get newest version
   TagVersionObject* newest_tag_ver_obj = nullptr;
   uint32_t newest_part_real_ver = 0;
@@ -1037,7 +1073,7 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
 
   // 3.
   if (!idx_info.empty()) {
-    for (auto it = idx_info.begin(); it <= idx_info.end(); it++) {
+    for (auto it = idx_info.begin(); it != idx_info.end(); it++) {
       const std::vector<uint32_t> tags (it->col_ids().begin(), it->col_ids().end());
       if (createHashIndex(new_version, err_info, tags, it->index_id()) < 0) {
         LOG_ERROR("error happening while createHashIndex.");
@@ -1052,9 +1088,69 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
   return 0;
 }
 
+int TagTable::cleanPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo, ErrorInfo &err_info) {
+
+    string partition_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(version) + "/";
+
+    // find max index id
+    uint32_t max_idx_id = 0;
+    for (roachpb::NTagIndexInfo info : ntagidxinfo) {
+        if (max_idx_id < info.index_id()) {
+            max_idx_id = info.index_id();
+        }
+    }
+
+    // clear index
+    uint32_t idx_id = 0;
+    string index_path = partition_path + std::to_string(m_table_id) + "_" + to_string(idx_id) + ".tag" + ".ht";
+    while (idx_id <= max_idx_id) {
+        if (fs::exists(index_path)) {
+            if (!isSoftLink(index_path)) {
+                dropHashIndex(version, err_info, idx_id);
+            }
+        }
+        idx_id++;
+        index_path = partition_path + std::to_string(m_table_id) + "_" + to_string(idx_id) + ".tag" + ".ht";
+    }
+
+    // clear memory object
+    m_version_mgr_->RollbackTableVersion(version, err_info);
+    m_partition_mgr_->RollbackPartitionTableVersion(version, err_info);
+
+    // clear directory
+    if (fs::is_directory(partition_path) && !fs::is_empty(partition_path)) {
+        fs::remove_all(partition_path);
+    }
+
+    // tag version object file
+    fs::remove(this->m_db_path_ + this->m_tbl_sub_path_ + std::to_string(m_table_id) + ".tag" + ".mt" + "_" + std::to_string(version));
+    return 0;
+}
+
+int TagTable::cleanPartition(uint32_t version, const uint32_t drop_index_id, ErrorInfo &err_info) {
+    // clear memory object
+    m_version_mgr_->RollbackTableVersion(version, err_info);
+    m_partition_mgr_->RollbackPartitionTableVersion(version, err_info);
+
+    // clear directory
+    string partition_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(version) + "/";
+    if (fs::is_directory(partition_path) && !fs::is_empty(partition_path)) {
+        fs::remove_all(partition_path);
+    }
+
+    // tag version object file
+    fs::remove(this->m_db_path_ + this->m_tbl_sub_path_ + std::to_string(m_table_id) + ".tag" + ".mt" + "_" + std::to_string(version));
+
+    // clear index
+    dropHashIndex(version, err_info, drop_index_id);
+    return 0;
+}
+
 int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info,
                     uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info) {
   LOG_INFO("AlterTableTag cur_version%d, new_version:%d", cur_version, new_version)
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   // get latest version
   TableVersion latest_version = m_version_mgr_->GetNewestTableVersion();
   TagVersionObject* tag_ver_obj = m_version_mgr_->GetVersionObject(cur_version);
@@ -1107,7 +1203,7 @@ int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info
       return -1;
   }
   // add new partition table
-  return AddNewPartitionVersion(cur_schemas, new_version, err_info);
+  return addNewPartitionVersion(cur_schemas, new_version, err_info);
 }
 
 std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
@@ -1155,6 +1251,8 @@ int TagTable::initHashIndex(int flags, ErrorInfo& err_info) {
 int TagTable::CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint32_t index_id,
                               const uint32_t cur_version, const uint32_t new_version, ErrorInfo &err_info) {
   LOG_INFO("createNHashIndex index_id:%d, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   if (cur_version < new_version) {
     TagVersionObject *cur_obj = m_version_mgr_->GetVersionObject(cur_version);
     if (cur_obj == nullptr) {
@@ -1162,16 +1260,20 @@ int TagTable::CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint
         return -1;
     }
 
-    for (MMapNTagHashIndex* index : GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_)->getMmapNTagHashIndex()) {
+    TagPartitionTable* tag_part = GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_);
+    tag_part->NtagIndexRWMutexSLock();
+    for (MMapNTagHashIndex* index : tag_part->getMmapNTagHashIndex()) {
         if (index->getIndexID() == index_id) {
             LOG_ERROR("Normal hash index already exists, index_id:%d", index_id)
+            tag_part->NtagIndexRWMutexUnLock();
             return -1;
         }
     }
+    tag_part->NtagIndexRWMutexUnLock();
 
     auto cur_schema = cur_obj->getIncludeDroppedSchemaInfos();
     // 1 for create hash index
-    if (AddNewPartitionVersion(cur_schema, new_version, err_info, tags, index_id, HashIndex::Create) < 0) {
+    if (addNewPartitionVersion(cur_schema, new_version, err_info, tags, index_id, HashIndex::Create) < 0) {
       LOG_ERROR("Failed to AddNewPartitionVersion while creating hash index.ts_version:%d.err_info:%s",
                 cur_version, err_info.errmsg.c_str());
       return -1;
@@ -1184,6 +1286,8 @@ int TagTable::CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint
 }
 
 int TagTable::UndoCreateHashIndex(uint32_t index_id, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info) {
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   // 1. check version is valid
   auto cur_tbl_version = m_version_mgr_->GetCurrentTableVersion();
   if (cur_version < cur_tbl_version) {
@@ -1213,6 +1317,8 @@ int TagTable::UndoCreateHashIndex(uint32_t index_id, uint32_t cur_version, uint3
 
 int TagTable::UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_version,
                                 uint32_t new_version, ErrorInfo& err_info) {
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   // 1. check version is valid
   auto cur_tbl_version = m_version_mgr_->GetCurrentTableVersion();
   if (cur_version < cur_tbl_version) {
@@ -1246,6 +1352,8 @@ int TagTable::UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t inde
 
 int TagTable::DropHashIndex(uint32_t index_id,  const uint32_t cur_version,
                             const uint32_t new_version, ErrorInfo& err_info) {
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   if (cur_version < new_version) {
     TagVersionObject *cur_obj = m_version_mgr_->GetVersionObject(cur_version);
     if (cur_obj == nullptr) {
@@ -1253,21 +1361,24 @@ int TagTable::DropHashIndex(uint32_t index_id,  const uint32_t cur_version,
       return -1;
     }
 
-    auto ntag_index = GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_)->
-            getMmapNTagHashIndex();
+    TagPartitionTable* tag_part = GetTagPartitionTableManager()->GetPartitionTable(cur_obj->metaData()->m_real_used_version_);
+    tag_part->NtagIndexRWMutexSLock();
+    auto ntag_index = tag_part->getMmapNTagHashIndex();
     for (int i = 0; i < ntag_index.size(); i++) {
       if (ntag_index[i]->getIndexID() == index_id) {
         break;
       }
       if (i == ntag_index.size() - 1) {
         LOG_ERROR("Normal hash index doesn't exist, index_id:%d", index_id)
+        tag_part->NtagIndexRWMutexUnLock();
         return -1;
       }
     }
+    tag_part->NtagIndexRWMutexUnLock();
 
     auto cur_schema = cur_obj->getIncludeDroppedSchemaInfos();
     // 1 for create hash index
-    if (AddNewPartitionVersion(cur_schema, new_version, err_info, {}, index_id, HashIndex::Drop) < 0) {
+    if (addNewPartitionVersion(cur_schema, new_version, err_info, {}, index_id, HashIndex::Drop) < 0) {
       LOG_ERROR("Failed to AddNewPartitionVersion while creating hash index.ts_version:%d.err_info:%s",
                 cur_version, err_info.errmsg.c_str());
       return -1;
@@ -1444,7 +1555,9 @@ TagTuplePack* TagTable::GenTagPack(const char* primarytag, int len) {
   return tag_partition_table->GenTagPack(ret.second);
 }
 
-int TagTable::undoAlterTagTable(uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info) {
+int TagTable::UndoAlterTagTable(uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info) {
+  versionMutexLock();
+  Defer defer{[&]() { versionMutexUnlock(); }};
   // 1. check version is valid
   auto cur_tbl_version = m_version_mgr_->GetCurrentTableVersion();
   if (cur_version < cur_tbl_version) {

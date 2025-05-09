@@ -328,7 +328,9 @@ func BuildInputForTSInsert(
 				return nil, err
 			}
 			if j < len(primaryTagCols) {
-				buf.WriteString(sqlbase.DatumToString(inputDatums[i][inputIdx]))
+				vString := sqlbase.DatumToString(inputDatums[i][inputIdx])
+				// Distinguish aa + bb = a + abb
+				buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 			}
 		}
 		// Group rows with the same primary tag value.
@@ -994,7 +996,9 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 				}
 			}
 			if j < pArgs.PTagNum {
-				buf.WriteString(sqlbase.DatumToString(datum[valIdx]))
+				vString := sqlbase.DatumToString(datum[valIdx])
+				// Distinguish aa + bb = a + abb
+				buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 			}
 			if isDataCol {
 				if datum[valIdx] == tree.DNull {
@@ -1381,7 +1385,9 @@ func BuildRowBytesForTsInsert(
 				return nil, err
 			}
 			if j < pArgs.PTagNum {
-				buf.WriteString(sqlbase.DatumToString(inputDatums[i][inputIdx]))
+				vString := sqlbase.DatumToString(inputDatums[i][inputIdx])
+				// Distinguish aa + bb = a + abb
+				buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 			}
 			if isDataCol {
 				if inputDatums[i][inputIdx] == tree.DNull {
