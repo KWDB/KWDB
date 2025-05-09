@@ -45,9 +45,10 @@ class TSEngineV2Impl : public TSEngine {
   EngineOptions options_;
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
-  std::unique_ptr<TSxMgr> tsx_mgr_;
   std::unique_ptr<WALMgr> wal_mgr_;
   std::map<uint64_t, uint64_t> range_indexes_map_{};
+  std::unique_ptr<WALMgr> wal_sys_{nullptr};
+  std::unique_ptr<TSxMgr> tsx_manager_sys_{nullptr};
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -217,23 +218,41 @@ class TSEngineV2Impl : public TSEngine {
   KStatus Recover(kwdbContext_p ctx) override;
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                     uint64_t range_id, uint64_t index, uint64_t& mtr_id) override { return KStatus::SUCCESS; }
+                     uint64_t range_id, uint64_t index, uint64_t& mtr_id) override;
 
   KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                      uint64_t range_group_id, uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                      uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                        uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
-    return KStatus::SUCCESS;
+    return tsx_manager_sys_->TSxBegin(ctx, transaction_id);
   }
 
   KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
+    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+    if (mtr_id != 0) {
+      if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
+        LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
+        return KStatus::FAIL;
+      }
+    }
     return KStatus::SUCCESS;
   }
 
   KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
+    KStatus s;
+
+    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+    if (mtr_id == 0) {
+      return KStatus::SUCCESS;
+    }
+    s = tsx_manager_sys_->TSxRollback(ctx, transaction_id);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("TSxRollback failed, TSxRollback failed, table id: %lu", table_id)
+      return s;
+    }
     return KStatus::SUCCESS;
   }
 
@@ -295,32 +314,6 @@ class TSEngineV2Impl : public TSEngine {
 
   // TODO(liangbo01)  To be implemented
   KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
-  /**
-* @brief Start a mini-transaction for the current EntityGroup.
-* @param[in] table_id Identifier of TS table.
-* @param[in] range_id Unique ID associated to a Raft consensus group, used to identify the current write batch.
-* @param[in] index The lease index of current write batch.
-* @param[out] mtr_id Mini-transaction id for TS table.
-*
-* @return KStatus
-*/
-  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id);
-
-  /**
-    * @brief Submit the mini-transaction for the current EntityGroup.
-    * @param[in] mtr_id Mini-transaction id for TS table.
-    *
-    * @return KStatus
-    */
-  KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id);
-
-  /**
-    * @brief Roll back the mini-transaction of the current EntityGroup.
-    * @param[in] mtr_id Mini-transaction id for TS table.
-    *
-    * @return KStatus
-    */
-  KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool skip_log = false);
 
   static uint64_t GetAppliedIndex(const uint64_t range_id, const std::map<uint64_t, uint64_t>& range_indexes_map) {
     const auto iter = range_indexes_map.find(range_id);

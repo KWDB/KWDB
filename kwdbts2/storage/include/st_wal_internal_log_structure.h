@@ -690,7 +690,7 @@ class SnapshotEntry : public LogEntry {
 
   void prettyPrint() override;
 
- private:
+ public:
   TSTableID table_id_;
   uint64_t begin_hash_;
   uint64_t end_hash_;
@@ -757,7 +757,7 @@ class TempDirectoryEntry : public LogEntry {
 
   void prettyPrint() override;
 
- private:
+ public:
   size_t string_len_{0};
   char* abs_path_{nullptr};
 
@@ -804,7 +804,7 @@ class PartitionTierChangeEntry : public LogEntry {
 
   void prettyPrint() override;
 
- private:
+ public:
   std::string link_path_;
   std::string tier_path_;
 

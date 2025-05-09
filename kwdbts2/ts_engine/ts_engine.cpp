@@ -32,6 +32,8 @@ size_t EngineOptions::min_rows_per_block = 1000;
 
 namespace kwdbts {
 
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+std::mt19937 gen(seed);
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(vgroups_) {
@@ -115,6 +117,19 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     return res;
   }
 
+  wal_sys_ = std::make_unique<WALMgr>(options_.db_path, "ddl", &options_);
+  tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get());
+  s = wal_sys_->Init(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("wal_sys_::Init fail.")
+    return s;
+  }
+
+  s = Recover(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Recover fail.")
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -318,17 +333,24 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
   return &vgroups_;
 }
 
-KStatus TSEngineV2Impl::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                                   uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
-  return tsx_mgr_->MtrBegin(ctx, range_id, index, mtr_id);
+  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
+  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
 }
 
-KStatus TSEngineV2Impl::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id) {
+KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
+                                    uint64_t range_group_id, uint64_t mtr_id) {
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
-  return tsx_mgr_->MtrCommit(ctx, mtr_id);
+  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
+  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  return vgroup->MtrCommit(ctx, mtr_id);
 }
 
-KStatus TSEngineV2Impl::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool skip_log) {
+KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
+                                      uint64_t range_group_id, uint64_t mtr_id) {
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -339,10 +361,11 @@ KStatus TSEngineV2Impl::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool sk
 //  4. If the rollback fails, a system log is generated and an error exit is reported.
 
   KStatus s;
-  if (!skip_log) {
-    s = tsx_mgr_->MtrRollback(ctx, mtr_id);
-    if (s == FAIL) Return(s)
-  }
+
+  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
+  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  s = vgroup->MtrRollback(ctx, mtr_id);
+  if (s == FAIL) Return(s)
 
   // for range
   for (auto vgrp : vgroups_) {
@@ -567,7 +590,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
         auto x_id = log->getXID();
-        if (MtrRollback(ctx, x_id, true) == KStatus::FAIL) return s;
+        if (TSMtrRollback(ctx, 0, 0, x_id) == KStatus::FAIL) return KStatus::FAIL;
         incomplete.erase(log->getXID());
         break;
       }
@@ -593,11 +616,12 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     auto log_entry = it.second;
     uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
-      s = tsx_mgr_->MtrCommit(ctx, mtr_id);
+      std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
+      auto vgroup = GetVGroupByID(ctx, distrib(gen));
+      s = vgroup->MtrCommit(ctx, mtr_id);
       if (s == FAIL) return s;
     } else {
-      s = MtrRollback(ctx, mtr_id);
-      if (s == FAIL) return s;
+      if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
     }
   }
 
