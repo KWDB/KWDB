@@ -197,6 +197,12 @@ KStatus TsVGroup::UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
     LOG_ERROR("Failed to WriteCheckpointWAL.")
     return FAIL;
   }
+
+  s = wal_manager_->Flush(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to Flush wal manager.")
+    return FAIL;
+  }
   // 2. remove chk file
   s = wal_manager_->RemoveChkFile(ctx);
   if (s == KStatus::FAIL) {
