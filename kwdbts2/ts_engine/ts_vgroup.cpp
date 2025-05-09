@@ -13,12 +13,16 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <memory>
+#include <regex>
+#include <string>
 #include <unordered_map>
 
 #include "cm_kwdb_context.h"
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "sys_utils.h"
 #include "ts_iterator_v2_impl.h"
@@ -26,6 +30,8 @@
 #include "ts_vgroup_partition.h"
 
 namespace kwdbts {
+
+static const uint64_t interval = 3600 * 24 * 30;  // 30 days.
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
@@ -75,6 +81,29 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     entity_counter_ = 0;
   } else {
     entity_counter_ = KUint32(config_file_->memAddr());
+  }
+
+  // recover partitions
+  std::error_code ec;
+  std::filesystem::directory_iterator dir_iter{path_, ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("TsVGroup::Init fail, reason: %s", ec.message().c_str());
+    return FAIL;
+  }
+  std::regex re("db([0-9]+)-(-?[0-9]+)");
+  for (const auto& it : dir_iter) {
+    std::string fname = it.path().filename();
+    std::smatch res;
+    bool ok = std::regex_match(fname, res, re);
+    if (!ok) {
+      continue;
+    }
+    uint32_t dbid = std::stoi(res.str(1));
+    timestamp64 ptime = std::stoi(res.str(2));
+    if(partitions_.find(dbid) == partitions_.end()){
+      partitions_[dbid] = std::make_unique<PartitionManager>(this, dbid, interval);
+    }
+    partitions_[dbid]->Get(ptime, true);
   }
 
   return KStatus::SUCCESS;
@@ -289,7 +318,6 @@ std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, 
     // TODO(zzr): interval should be fetched form global setting;
     RW_LATCH_X_LOCK(&partitions_latch_);
     if (partitions_[database_id].get() == nullptr) {
-      uint64_t interval = 3600 * 24 * 30;  // 30 days.
       partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
     }
     partition_manager = partitions_[database_id].get();

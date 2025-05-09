@@ -295,7 +295,7 @@ timestamp64 TsEntityBlock::GetTimestamp(uint32_t row_idx) {
   return *reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data() + row_idx * sizeof(timestamp64));
 }
 
-KStatus TsEntityBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value) {
+KStatus TsEntityBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value, std::vector<DataFlags>& data_flags) {
   for (int col_idx = 1; col_idx < n_cols_; ++col_idx) {
     char* ptr = column_blocks_[col_idx].buffer.data();
     if (isVarLenType(metric_schema_[col_idx - 1].type)) {
@@ -306,6 +306,7 @@ KStatus TsEntityBlock::GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& va
       size_t d_size = col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
       value.push_back({ptr + row_idx * d_size, d_size});
     }
+    data_flags.push_back(column_blocks_[col_idx].bitmap[row_idx]);
   }
   return KStatus::SUCCESS;
 }
@@ -870,9 +871,10 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
           for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
             uint64_t seq_no = block->GetSeqNo(row_idx);
             std::vector<TSSlice> metric_value;
-            block->GetMetricValue(row_idx, metric_value);
+            std::vector<DataFlags> data_flags;
+            block->GetMetricValue(row_idx, metric_value, data_flags);
             s = builder.PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, seq_no,
-                                   metric_value);
+                                   metric_value, data_flags);
             if (s != KStatus::SUCCESS) {
               LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder put failed.")
               return s;
@@ -932,8 +934,10 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
     for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
       uint64_t seq_no = block->GetSeqNo(row_idx);
       std::vector<TSSlice> metric_value;
-      block->GetMetricValue(row_idx, metric_value);
-      s = builder.PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, seq_no, metric_value);
+      std::vector<DataFlags> data_flags;
+      block->GetMetricValue(row_idx, metric_value, data_flags);
+      s = builder.PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id,
+                             seq_no, metric_value, data_flags);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder put failed.")
         return s;
