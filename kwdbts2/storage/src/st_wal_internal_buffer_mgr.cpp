@@ -398,6 +398,7 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         uint64_t lsn_len;
         int location = sizeof(uint64_t);
         memcpy(&lsn_len, read_buf + location, sizeof(EndCheckpointEntry::lsn_len_));
+        std::cout << " lsn len :"  << lsn_len << std::endl;
         status = readBytes(current_offset, read_queue, lsn_len, read_buf);
         if (status == FAIL) {
           delete[] read_buf;
@@ -412,6 +413,7 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
           memcpy(&lsn, read_buf + location, sizeof(uint64_t));
           location += sizeof(uint64_t);
           v_lsn.emplace_back(lsn);
+          std::cout << " read lsn :"  << lsn << std::endl;
         }
       }
         break;
