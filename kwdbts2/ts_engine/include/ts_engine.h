@@ -47,6 +47,8 @@ class TSEngineV2Impl : public TSEngine {
   TsLSNFlushManager flush_mgr_;
   std::unique_ptr<WALMgr> wal_mgr_;
   std::map<uint64_t, uint64_t> range_indexes_map_{};
+  std::unique_ptr<WALMgr> wal_sys_{nullptr};
+  std::unique_ptr<TSxMgr> tsx_manager_sys_{nullptr};
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -225,14 +227,32 @@ class TSEngineV2Impl : public TSEngine {
                         uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
-    return KStatus::SUCCESS;
+    return tsx_manager_sys_->TSxBegin(ctx, transaction_id);
   }
 
   KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
+    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+    if (mtr_id != 0) {
+      if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
+        LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
+        return KStatus::FAIL;
+      }
+    }
     return KStatus::SUCCESS;
   }
 
   KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
+    KStatus s;
+
+    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+    if (mtr_id == 0) {
+      return KStatus::SUCCESS;
+    }
+    s = tsx_manager_sys_->TSxRollback(ctx, transaction_id);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("TSxRollback failed, TSxRollback failed, table id: %lu", table_id)
+      return s;
+    }
     return KStatus::SUCCESS;
   }
 

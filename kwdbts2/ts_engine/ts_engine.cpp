@@ -117,6 +117,14 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     return res;
   }
 
+  wal_sys_ = std::make_unique<WALMgr>(options_.db_path, "ddl", &options_);
+  tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get());
+  s = wal_sys_->Init(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("wal_sys_::Init fail.")
+    return s;
+  }
+
   return KStatus::SUCCESS;
 }
 
