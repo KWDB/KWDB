@@ -386,7 +386,7 @@ KStatus TsVGroup::Compact(int thread_num) {
   std::vector<std::shared_ptr<TsVGroupPartition>> vgroup_partitions;
   RW_LATCH_S_LOCK(&partitions_latch_);
   for (auto& partition : partitions_) {
-    std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetPartitionArray();
+    std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetCompactPartitions();
     vgroup_partitions.insert(vgroup_partitions.end(), v.begin(), v.end());
   }
   RW_LATCH_UNLOCK(&partitions_latch_);
@@ -993,11 +993,23 @@ std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool
   return it->second;
 }
 
-std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetPartitionArray() {
+std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetAllPartitions() {
   std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
   RW_LATCH_S_LOCK(&partitions_latch_);
   for (auto& kv : partitions_) {
     if (kv.second != nullptr) {
+      partitions.push_back(kv.second);
+    }
+  }
+  RW_LATCH_UNLOCK(&partitions_latch_);
+  return partitions;
+}
+
+std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetCompactPartitions() {
+  std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
+  RW_LATCH_S_LOCK(&partitions_latch_);
+  for (auto& kv : partitions_) {
+    if (kv.second != nullptr && kv.second->NeedCompact()) {
       partitions.push_back(kv.second);
     }
   }

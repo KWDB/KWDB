@@ -63,7 +63,8 @@ class PartitionManager {
       : partitions_latch_(RWLATCH_ID_VGROUP_PARTITION_MGR_RWLOCK), vgroup_(vgroup),
         database_id_(database_id), interval_(interval) {}
   std::shared_ptr<TsVGroupPartition> Get(int64_t timestamp, bool create_if_not_exist);
-  std::vector<std::shared_ptr<TsVGroupPartition>> GetPartitionArray();
+  std::vector<std::shared_ptr<TsVGroupPartition>> GetAllPartitions();
+  std::vector<std::shared_ptr<TsVGroupPartition>> GetCompactPartitions();
   void SetInterval(int64_t interval) { interval_ = interval; }
 
   void GetPartitions(std::unordered_map<int, std::shared_ptr<TsVGroupPartition>>* map) {
