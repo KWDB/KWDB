@@ -29,11 +29,11 @@ uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 1000;
-unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-std::mt19937 gen(seed);
 
 namespace kwdbts {
 
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+std::mt19937 gen(seed);
 const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(vgroups_) {
