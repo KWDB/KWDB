@@ -1247,7 +1247,8 @@ TSStatus TSClose(TSEngine* engine) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   LOG_INFO("TSClose")
-  engine->CreateCheckpoint(ctx);
+  // todo need to change logic
+//  engine->CreateCheckpoint(ctx);
   delete engine;
   return TSStatus{nullptr, 0};
 }

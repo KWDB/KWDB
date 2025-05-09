@@ -113,7 +113,6 @@ KStatus WALMgr::Init(kwdbContext_p ctx) {
     }
   }
 
-  std::cout << "vgroup lsn: " << current_lsn << std::endl;
   s = buffer_mgr_->init(current_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize the WAL buffer with LSN %lu", current_lsn)
