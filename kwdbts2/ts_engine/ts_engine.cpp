@@ -475,8 +475,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   char* v_lsn = new char[lsn_len];
   int location = 0;
   for (auto it : vgrp_lsn) {
-    memcpy(v_lsn + location, &it.second, sizeof(uint64_t));
+    memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
     location += sizeof(uint64_t);
+    std::cout << " lsn:"  << it.second << std::endl;
   }
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
   s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length, lsn);

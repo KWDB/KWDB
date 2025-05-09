@@ -700,7 +700,6 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   read_offset += sizeof(old_lsn);
   memcpy(&tbl_typ, read_buf + read_offset, sizeof(tbl_typ));
 
-  std::cout << "read old_lsn: " << old_lsn << "\tvgrp_id:" << vgrp_id << std::endl;
   delete[] read_buf;
   read_buf = nullptr;
 
