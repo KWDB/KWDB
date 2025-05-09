@@ -480,7 +480,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     std::cout << " lsn:"  << it.second << std::endl;
   }
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
-  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length, lsn);
+  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, lsn);
   delete []end_chk_log;
   delete []v_lsn;
   if (s == KStatus::FAIL) {
