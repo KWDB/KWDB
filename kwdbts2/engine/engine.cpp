@@ -754,7 +754,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
     }
   }};
 
-  bool ignore = false;
+  std::vector<uint64_t> ignore;
   s = wal_sys_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn, ignore);
   if (s == KStatus::FAIL && !redo_logs.empty()) {
     LOG_ERROR("Failed to read the TS Engine WAL logs.")
@@ -1276,7 +1276,7 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   }
 
   std::vector<LogEntry*> logs;
-  bool ignore = false;
+  std::vector<uint64_t> ignore;
   s = wal_sys_->ReadWALLogForMtr(mtr_id, logs, ignore);
   if (s == KStatus::FAIL && !logs.empty()) {
     for (auto log : logs) {

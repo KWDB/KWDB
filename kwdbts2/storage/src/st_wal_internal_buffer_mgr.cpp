@@ -71,7 +71,7 @@ void WALBufferMgr::ResetMeta() {
 }
 
 KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
-                                  TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk, uint64_t txn_id, bool for_chk) {
+                                  TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& v_lsn, uint64_t txn_id, bool for_chk) {
   if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
     return SUCCESS;
   }
@@ -388,8 +388,24 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         break;
       }
       case WALLogType::END_CHECKPOINT: {
-        end_chk = true;
-        status = KStatus::SUCCESS;
+        status = readBytes(current_offset, read_queue, EndCheckpointEntry::fixed_length, read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+        uint64_t lsn_len;
+        int location = sizeof(uint64_t) + sizeof(WALLogType);
+        memcpy(&lsn_len, read_buf + location, sizeof(EndCheckpointEntry::lsn_len_));
+        location += sizeof(EndCheckpointEntry::lsn_len_);
+        uint64_t vgrp_num = lsn_len / sizeof(uint64_t);
+        for (int idx = 0; idx < vgrp_num; idx++) {
+          uint64_t lsn;
+          memcpy(&lsn, read_buf + location, sizeof(uint64_t));
+          location += sizeof(uint64_t);
+          v_lsn.emplace_back(lsn);
+        }
       }
         break;
       case DB_SETTING:

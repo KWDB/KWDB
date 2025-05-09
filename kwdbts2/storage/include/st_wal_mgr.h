@@ -298,7 +298,7 @@ class WALMgr {
    * @param[out] logs WAL log entries list
    * @return
    */
-  KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk);
+  KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk);
 
   /**
    *
@@ -307,14 +307,14 @@ class WALMgr {
    * @param end_lsn
    * @return
    */
-  KStatus ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, bool& end_chk);
+  KStatus ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk);
   /**
    * Read the relevant log entry according to the Mini-Transaction ID.
    * @param mtr_trans_id Mini-Transaction ID
    * @param[out] logs WAL log entries list
    * @return
    */
-  KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, bool& end_chk);
+  KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk);
 
   /**
    *  Read the relevant log entry according to the TS Transaction ID.

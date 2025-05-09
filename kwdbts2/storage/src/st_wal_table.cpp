@@ -529,7 +529,7 @@ KStatus LoggedTsEntityGroup::Recover(kwdbContext_p ctx, const std::map<uint64_t,
     }
   }};
 
-  bool ignore = false;
+  std::vector<uint64_t> ignore;
   s = wal_manager_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn, ignore);
   if (s == FAIL && !redo_logs.empty()) {
     Return(s)
@@ -694,7 +694,7 @@ KStatus LoggedTsEntityGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bo
   }
 
   std::vector<LogEntry*> wal_logs;
-  bool ignore = false;
+  std::vector<uint64_t> ignore;
   s = wal_manager_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   if (s == FAIL && !wal_logs.empty()) {
     Return(s)
