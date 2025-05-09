@@ -501,7 +501,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       LOG_ERROR("Failed to find vgroup lsn from map.")
       return KStatus::FAIL;
     }
-    s = vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
+    s = vgrp->UpdateLSN(ctx, lsn);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to update vgroup checkpoint lsn.")
       return s;

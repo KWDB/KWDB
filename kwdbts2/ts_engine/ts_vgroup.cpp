@@ -160,21 +160,14 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::WriteCheckpointWALAndUpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
+KStatus TsVGroup::UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
   // 1.UpdateLSN
   KStatus s = wal_manager_->UpdateCheckpointWithoutFlush(ctx, chk_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteCheckpointWAL.")
     return FAIL;
   }
-  // 2.WriteCheckpointWAL
-  TS_LSN lsn;
-  s = wal_manager_->WriteCheckpointWAL(ctx, 0, lsn);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to WriteCheckpointWAL.")
-    return FAIL;
-  }
-  // 3. remove chk file
+  // 2. remove chk file
   s = wal_manager_->RemoveChkFile(ctx);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteCheckpointWAL.")

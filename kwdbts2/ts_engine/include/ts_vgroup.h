@@ -163,7 +163,7 @@ class TsVGroup {
 
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload);
 
-  KStatus WriteCheckpointWALAndUpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn);
+  KStatus UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn);
 
   KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN &last_lsn);
 
