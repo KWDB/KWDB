@@ -275,7 +275,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
       dsize_ = getDataTypeSize(dtype);
     }
   }
-  void Add(const TSSlice& col_data) noexcept;
+  void Add(const TSSlice& col_data, DataFlags data_flag = kValid) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {

@@ -247,13 +247,13 @@ KStatus TsLastSegmentBuilder::Finalize() {
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
-    const TSSlice& col_data) noexcept {
+    const TSSlice& col_data, DataFlags data_flag) noexcept {
 #ifndef NDEBUG
   // assert(getDataTypeSize(dtype_) == col_data.len);
 #endif
   // TODO(zzr): parse bitmap from payload;
   if (has_bitmap_) {
-    bitmap_[row_cnt_] = kValid;
+    bitmap_[row_cnt_] = data_flag;
   }
   row_cnt_++;
   data_buffer_.append(col_data.data, dsize_);
@@ -344,11 +344,12 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     int col_id = i - 2;
     TSSlice data;
     parser_->GetColValueAddr(metric_data, col_id, &data);
+    bool is_null = parser_->IsColNull(metric_data, col_id);
     if (!isVarLenType(metric_schema_[col_id].type)) {
-      colblocks_[i]->Add(data);
+      colblocks_[i]->Add(data, is_null ? kNull : kValid);
     } else {
       size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8});
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, is_null ? kNull : kValid);
       uint16_t len = data.len;
       varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
       varchar_buffer_.append(data.data, data.len);
