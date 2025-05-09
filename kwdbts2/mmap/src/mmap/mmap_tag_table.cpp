@@ -728,6 +728,9 @@ bool isSoftLink(const std::string& path) {
 int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,
                               uint32_t index_id) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(new_version);
+  if (nullptr == obj) {
+      return -1;
+  }
   auto all_schema = obj->getIncludeDroppedSchemaInfos();
   auto schema_info_exclude_dropped = obj->getExcludeDroppedSchemaInfos();
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
@@ -793,19 +796,6 @@ int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const s
       int errcode = symlink(mmap_ntag_index->realFilePath().c_str(), new_index_path.c_str());
       if (errcode != 0) {
         LOG_ERROR("create hash index symlink failed, errorcode:%d, errno:%d", errcode, errno)
-      }
-      auto new_index = new MMapNTagHashIndex(mmap_ntag_index->keySize(), mmap_ntag_index->getIndexID(),
-                                             mmap_ntag_index->getColIDs());
-      err_info.errcode = new_index->open(new_index_file_name, m_db_path_, tag_part_ptr->m_db_name_,
-                                         MMAP_OPEN, err_info);
-      if (err_info.errcode < 0) {
-        delete new_index;
-        new_index = nullptr;
-        err_info.errmsg = "create Hash Index failed.";
-        LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
-                  m_tbl_sub_path_.c_str(), new_index_file_name.c_str(), err_info.errmsg.c_str())
-        tag_part_ptr->stopWrite();
-        return err_info.errcode;
       }
       tag_part_ptr->NtagIndexRWMutexXLock();
       tag_part_ptr->getMmapNTagHashIndex().emplace_back(mmap_ntag_index);
@@ -924,7 +914,7 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
 
 int TagTable::addNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new_version, ErrorInfo &err_info,
                                      const std::vector<uint32_t> &tags, uint32_t index_id, HashIndex idx_flag) {
-  LOG_INFO("AddNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
+  LOG_INFO("addNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
 
   auto tag_ver_obj = m_version_mgr_->GetVersionObject(new_version);
   if (nullptr != tag_ver_obj) {
@@ -1171,6 +1161,9 @@ int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info
 
 std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
+  if (nullptr == obj) {
+      return std::vector<uint32_t>{};
+  }
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
   tag_part->NtagIndexRWMutexSLock();
   for (auto ntag_index : tag_part->getMmapNTagHashIndex()) {
@@ -1185,6 +1178,9 @@ std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t i
 
 std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TagTable::GetAllNTagIndexs(uint32_t ts_version) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
+  if (nullptr == obj) {
+      return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
+  }
   std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret;
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
   tag_part->NtagIndexRWMutexSLock();
@@ -2144,6 +2140,8 @@ int TagPartitionTableManager::RollbackPartitionTableVersion(TableVersion need_ro
   part_table->second->remove();
   delete part_table->second;
   m_partition_tables_.erase(part_table);
+  std::string real_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(need_rollback_version) + "/";
+  fs::remove_all(real_path);
   unLock();
   return 0;
 }

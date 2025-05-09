@@ -1442,7 +1442,26 @@ KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& ta
   }
 
   if (entity_bt_manager_->GetRootTable(version, true) != nullptr) {
-    return KStatus::SUCCESS;
+    int retry = 6;
+    while (retry > 0) {
+      bool all_ready = true;
+      for (auto& e_grp : entity_groups_) {
+        TagVersionObject* tagVersionObject = e_grp.second->GetSubEntityGroupNewTagbt()->
+                GetTagTableVersionManager()->GetVersionObject(version);
+        if (!tagVersionObject || !tagVersionObject->isValid()) {
+          all_ready = false;
+          break;
+        }
+      }
+      if (all_ready) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      retry--;
+    }
+    if (retry > 0) {
+      return KStatus::SUCCESS;
+    }
   }
 
   char* error;
