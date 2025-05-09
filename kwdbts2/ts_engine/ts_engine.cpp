@@ -405,7 +405,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   for (const auto &vgrp: vgroups_) {
     std::vector<LogEntry *> vlogs;
     TS_LSN lsn = 0;
-    if (vgrp->GetVGroupID() < vgroup_lsn.size()) {
+    if (vgrp->GetVGroupID() <= vgroup_lsn.size()) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
     std::cout << "vgrp id : " << vgrp->GetVGroupID() << "   lsn:"  << lsn << std::endl;
