@@ -125,6 +125,11 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     return s;
   }
 
+  s = Recover(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Recover fail.")
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 
