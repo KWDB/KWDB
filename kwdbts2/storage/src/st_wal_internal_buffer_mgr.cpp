@@ -398,7 +398,14 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         uint64_t lsn_len;
         int location = sizeof(uint64_t) + sizeof(WALLogType);
         memcpy(&lsn_len, read_buf + location, sizeof(EndCheckpointEntry::lsn_len_));
-        location += sizeof(EndCheckpointEntry::lsn_len_);
+        status = readBytes(current_offset, read_queue, lsn_len, read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+        location = 0;
         uint64_t vgrp_num = lsn_len / sizeof(uint64_t);
         for (int idx = 0; idx < vgrp_num; idx++) {
           uint64_t lsn;
