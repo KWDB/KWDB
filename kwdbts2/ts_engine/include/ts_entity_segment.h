@@ -249,7 +249,7 @@ class TsEntityBlock : public TsBlock {
 
   timestamp64 GetTimestamp(uint32_t row_idx);
 
-  KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value);
+  KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value, std::vector<DataFlags>& data_flags);
 
   char* GetMetricColAddr(uint32_t col_idx);
 
