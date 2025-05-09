@@ -388,7 +388,7 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         break;
       }
       case WALLogType::END_CHECKPOINT: {
-        status = readBytes(current_offset, read_queue, EndCheckpointEntry::fixed_length, read_buf);
+        status = readBytes(current_offset, read_queue, EndCheckpointEntry::fixed_length - sizeof(WALLogType), read_buf);
         if (status == FAIL) {
           delete[] read_buf;
           read_buf = nullptr;
