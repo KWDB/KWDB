@@ -1064,7 +1064,9 @@ TsEntityGroup::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColu
 
   attr_info.size = getDataTypeSize(attr_info);
   attr_info.id = col.column_id();
-  strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN);
+  if (col.has_name()) {
+    strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN);
+  }
   attr_info.length = col.storage_len();
   if (!col.nullable()) {
     attr_info.setFlag(AINFO_NOT_NULL);
@@ -1072,7 +1074,7 @@ TsEntityGroup::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColu
   if (col.dropped()) {
     attr_info.setFlag(AINFO_DROPPED);
   }
-  attr_info.col_flag = (ColumnFlag) col.col_type();
+  attr_info.col_flag = static_cast<ColumnFlag>(col.col_type());
   attr_info.version = 1;
 
   return KStatus::SUCCESS;
@@ -3020,20 +3022,23 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   std::vector<AttributeInfo> metric_schema;
   for (int i = 0; i < meta->k_column_size(); i++) {
     const auto& col = meta->k_column(i);
-    struct AttributeInfo col_var;
-    s = TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, i == 0);
+    struct AttributeInfo attr;
+    s = TsEntityGroup::GetColAttributeInfo(ctx, col, attr, i == 0);
     if (s != KStatus::SUCCESS) {
       return s;
     }
     // TagInfo struct add member,set value
-    if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
-      tag_schema.push_back(std::move(TagInfo{col.column_id(), col_var.type,
-                                             static_cast<uint32_t>(col_var.length), 0,
-                                             static_cast<uint32_t>(col_var.size),
-                                             col_var.isAttrType(COL_PRIMARY_TAG) ? PRIMARY_TAG : GENERAL_TAG,
-                                             col_var.flag & AINFO_DROPPED}));
+    if (attr.isAttrType(COL_GENERAL_TAG) || attr.isAttrType(COL_PRIMARY_TAG)) {
+      if (attr.isFlag(AINFO_DROPPED)) {
+        continue;
+      }
+      tag_schema.push_back(std::move(TagInfo{col.column_id(), attr.type,
+                                             static_cast<uint32_t>(attr.length), 0,
+                                             static_cast<uint32_t>(attr.size),
+                                             attr.isAttrType(COL_PRIMARY_TAG) ? PRIMARY_TAG : GENERAL_TAG,
+                                             attr.flag & AINFO_DROPPED}));
     } else {
-      metric_schema.push_back(std::move(col_var));
+      metric_schema.push_back(std::move(attr));
     }
   }
   if (upper_version > latest_version) {

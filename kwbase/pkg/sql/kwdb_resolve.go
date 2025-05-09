@@ -21,6 +21,7 @@ package sql
 import "C"
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
@@ -172,8 +173,15 @@ func getTableMetaByVersion(
 			return pgerror.Newf(pgcode.UndefinedTable, "can not find table %d with tsVersion %d", tableID, tsVersion)
 		}
 
+		droppedTSColumns := make([]sqlbase.KWDBKTSColumn, 0)
+		for _, col := range targetDesc.DroppedTsColumns {
+			kCol := makeKTSColumn(col)
+			droppedTSColumns = append(droppedTSColumns, kCol)
+		}
+
 		d := jobspb.SyncMetaCacheDetails{SNTable: *targetDesc}
 		createKObjectTable := makeKObjectTableForTs(d)
+		createKObjectTable.KColumn = sortTSColumns(createKObjectTable.KColumn, droppedTSColumns)
 		meta, err := protoutil.Marshal(&createKObjectTable)
 		if err != nil {
 			panic(err.Error())
@@ -191,4 +199,27 @@ func getTableMetaByVersion(
 	*outputLen = C.size_t(len(res))
 	*errMsg = nil
 	return (*C.char)(cResult)
+}
+
+func sortTSColumns(a []sqlbase.KWDBKTSColumn, b []sqlbase.KWDBKTSColumn) []sqlbase.KWDBKTSColumn {
+	// sort b first
+	sort.Slice(b, func(i, j int) bool {
+		return b[i].ColumnId < b[j].ColumnId
+	})
+
+	// merge sort
+	result := make([]sqlbase.KWDBKTSColumn, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i].ColumnId < b[j].ColumnId {
+			result = append(result, a[i])
+			i++
+		} else {
+			result = append(result, b[j])
+			j++
+		}
+	}
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
+	return result
 }

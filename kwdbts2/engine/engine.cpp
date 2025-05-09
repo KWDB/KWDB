@@ -1381,13 +1381,16 @@ KStatus TSEngineImpl::parseMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable*
     }
 
     if (attr_info.isAttrType(COL_GENERAL_TAG) || attr_info.isAttrType(COL_PRIMARY_TAG)) {
-      tag_schema.push_back(std::move(TagInfo{col.column_id(), attr_info.type,
+      if (attr_info.isFlag(AINFO_DROPPED)) {
+        continue;
+      }
+      tag_schema.push_back(TagInfo{col.column_id(), attr_info.type,
                                              static_cast<uint32_t>(attr_info.length), 0,
                                              static_cast<uint32_t>(attr_info.size),
                                              attr_info.isAttrType(COL_PRIMARY_TAG) ? PRIMARY_TAG : GENERAL_TAG,
-                                             attr_info.flag}));
+                                             attr_info.flag});
     } else {
-      metric_schema.push_back(std::move(attr_info));
+      metric_schema.push_back(attr_info);
     }
   }
   return KStatus::SUCCESS;
