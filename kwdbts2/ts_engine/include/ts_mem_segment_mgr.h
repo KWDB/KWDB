@@ -254,7 +254,7 @@ class TsMemSegBlock : public TsBlock {
     return row_data_[row_num]->ts;
   }
 
-  uint64_t* GetSeqNoAddr(int row_num) override {
+  uint64_t* GetLSNAddr(int row_num) override {
     assert(row_data_.size() > row_num);
     return &row_data_[row_num]->lsn;
   }

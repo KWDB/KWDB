@@ -162,8 +162,8 @@ class TsEntitySegment;
 class TsEntitySegmentMetaManager {
  private:
   string path_;
-  TsEntitySegmentEntityItemFile entity_meta_;
-  TsEntitySegmentBlockItemFile block_meta_;
+  TsEntitySegmentEntityItemFile entity_header_;
+  TsEntitySegmentBlockItemFile block_header_;
 
  public:
   explicit TsEntitySegmentMetaManager(const string& path);
@@ -240,12 +240,12 @@ class TsEntityBlock : public TsBlock {
 
   uint32_t GetBlockLength() const { return block_length_; }
 
-  inline bool HasColumnData(int32_t col_idx) {
+  inline bool HasDataCached(int32_t col_idx) {
     assert(col_idx >= -1);
     return n_cols_ > 0 && column_blocks_.size() == n_cols_ && !column_blocks_[col_idx + 1].buffer.empty();
   }
 
-  uint64_t GetSeqNo(uint32_t row_idx);
+  uint64_t GetLSN(uint32_t row_idx);
 
   timestamp64 GetTimestamp(uint32_t row_idx);
 
@@ -259,7 +259,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus Flush(TsVGroupPartition* partition);
 
-  KStatus LoadSeqNo(TSSlice buffer);
+  KStatus LoadLSNColData(TSSlice buffer);
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
@@ -282,7 +282,7 @@ class TsEntityBlock : public TsBlock {
 
   timestamp64 GetTS(int row_num);
 
-  uint64_t* GetSeqNoAddr(int row_num);
+  uint64_t* GetLSNAddr(int row_num);
 
   void Clear();
 };
@@ -321,19 +321,10 @@ class TsEntitySegmentBuilder {
     uint64_t entity_id = 0;
 
     bool operator==(const TsEntityKey& other) const {
-      return table_id == other.table_id && table_version == other.table_version && entity_id == other.entity_id;
+      return entity_id == other.entity_id && table_version == other.table_version && table_id == other.table_id;
     }
     bool operator!=(const TsEntityKey& other) const {
       return !(*this == other);
-    }
-    bool operator<(const TsEntityKey& other) const {
-      if (table_id != other.table_id) {
-        return table_id < other.table_id;
-      }
-      if (table_version != other.table_version) {
-        return table_version < other.table_version;
-      }
-      return entity_id < other.entity_id;
     }
   };
 

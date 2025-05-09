@@ -62,9 +62,6 @@ KStatus TsVGroupPartition::Open() {
 }
 
 KStatus TsVGroupPartition::Compact() {
-  if (!last_segment_mgr_.NeedCompact()) {
-    return KStatus::SUCCESS;
-  }
   // 1. Get all the last segments that need to be compacted.
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
   last_segment_mgr_.GetCompactLastSegments(last_segments);
@@ -81,6 +78,10 @@ KStatus TsVGroupPartition::Compact() {
   // 3. Set the compacted version.
   last_segment_mgr_.ClearLastSegments(last_segments.back()->GetVersion());
   return KStatus::SUCCESS;
+}
+
+bool TsVGroupPartition::NeedCompact() {
+  return last_segment_mgr_.NeedCompact();
 }
 
 KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
