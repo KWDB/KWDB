@@ -585,9 +585,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
         auto x_id = log->getXID();
-        for (auto vrp : vgroups_) {
-          if (vrp->MtrRollback(ctx, x_id, true) == KStatus::FAIL) return s;
-        }
+        if (TSMtrRollback(ctx, 0, 0, x_id) == KStatus::FAIL) return KStatus::FAIL;
         incomplete.erase(log->getXID());
         break;
       }
@@ -618,9 +616,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       s = vgroup->MtrCommit(ctx, mtr_id);
       if (s == FAIL) return s;
     } else {
-      for (auto vrp : vgroups_) {
-        if (vrp->MtrRollback(ctx, mtr_id, true) == KStatus::FAIL) return s;
-      }
+      if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
     }
   }
 
