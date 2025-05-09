@@ -1138,15 +1138,18 @@ class EndCheckpointEntry : public LogEntry {
   ~EndCheckpointEntry() override = default;
 
   char* encode() override {
-    return construct(type_, x_id_);
+    return construct(type_, x_id_, lsn_len_, v_lsn_);
   }
 
  public:
 
-  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_);
+  char* v_lsn_;
+  uint64_t lsn_len_;
 
-  static char* construct(const WALLogType type, const uint64_t x_id) {
-    uint64_t len = fixed_length;
+  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + sizeof(lsn_len_);
+
+  static char* construct(const WALLogType type, const uint64_t x_id, uint64_t lsn_len, char* v_lsn) {
+    uint64_t len = fixed_length + lsn_len;
 
     char* log_ptr = KNEW char[len];
     int location = 0;
@@ -1154,6 +1157,10 @@ class EndCheckpointEntry : public LogEntry {
     memcpy(log_ptr, &type, sizeof(type_));
     location += sizeof(type_);
     memcpy(log_ptr + location, &x_id, sizeof(x_id_));
+    location += sizeof(x_id_);
+    memcpy(log_ptr + location, &lsn_len, sizeof(lsn_len_));
+    location += sizeof(lsn_len_);
+    memcpy(log_ptr + location, &v_lsn, lsn_len);
 
     return log_ptr;
   }

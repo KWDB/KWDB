@@ -378,6 +378,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   std::vector<LogEntry*> logs;
   std::vector<LogEntry*> rewrite;
   std::unordered_map<uint32_t, uint64_t> vgrp_lsn;
+  KStatus s;
   Defer defer{[&]() {
     for (auto& log : logs) {
       delete log;
@@ -385,14 +386,20 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   bool end_chk = false;
-  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-  wal_mgr_->Init(ctx);
-  wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
+  s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), end_chk);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to read wal log from chk file.")
+    return s;
+  }
   if (!end_chk) {
     LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
     logs.clear();
   }
-  wal_mgr_->SwitchNextFile();
+  s = wal_mgr_->SwitchNextFile();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to switch chk file.")
+    return s;
+  }
 
   // 2. read wal log from all vgroup
   for (const auto &vgrp: vgroups_) {
@@ -438,7 +445,11 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 4. rewrite wal log to chk file
   wal_mgr_.release();
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-  wal_mgr_->ResetWAL(ctx, true);
+  s = wal_mgr_->ResetWAL(ctx, true);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
+    return s;
+  }
    if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
      LOG_ERROR("Failed to WriteIncompleteWAL.")
      return KStatus::FAIL;
@@ -447,15 +458,31 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 5. trig all vgroup flush
   for (const auto &vgrp: vgroups_) {
-//    vgrp->Flush();
+    s = vgrp->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
   }
 
   // 6.write EndWAL to chk file
   TS_LSN lsn;
   // todo record vgroup lsn
-  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0);
-  wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length, lsn);
+  uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
+  char* v_lsn = new char[lsn_len];
+  int location = 0;
+  for (auto it : vgrp_lsn) {
+    memcpy(v_lsn + location, &it.second, sizeof(uint64_t));
+    location += sizeof(uint64_t);
+  }
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length, lsn);
   delete []end_chk_log;
+  delete []v_lsn;
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to write end checkpoint wal.")
+    return s;
+  }
 
   // 7. a). update checkpoint LSN .
   //    b). trig all vgroup write checkpoint wal.
@@ -470,18 +497,23 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       LOG_ERROR("Failed to find vgroup lsn from map.")
       return KStatus::FAIL;
     }
-    vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
+    s = vgrp->WriteCheckpointWALAndUpdateLSN(ctx, lsn);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to update vgroup checkpoint lsn.")
+      return s;
+    }
   }
 
   // 8. remove old chk file
-  wal_mgr_->RemoveChkFile(ctx);
-  wal_mgr_.release();
-  // after checkpoint, engine wal mgr meta sync?
+  s = wal_mgr_->RemoveChkFile(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to remove chk file.")
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
-  //todo recover logic
   /*
    * 1. get engine chk wal log.
    * 2. get all vgroup wal log from last checkpoint lsn.
@@ -515,6 +547,13 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   // 3. apply redo log
   std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
   for (auto wal_log : logs) {
+    if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
+      auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
+      incomplete.insert(std::pair<TS_LSN, MTRBeginEntry *>(log->getXID(), log));
+    }
+  }
+
+  for (auto wal_log : logs) {
     switch (wal_log->getType()) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
@@ -523,15 +562,9 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
         incomplete.erase(log->getXID());
         break;
       }
-      case WALLogType::CHECKPOINT: {
-        //todo need write checkpoint wal to every vgroup wal file?
-//      KStatus s = wal_manager_->CreateCheckpointWithoutFlush(ctx);
-//      if (s == FAIL) return s;
-        break;
-      }
+      case WALLogType::CHECKPOINT:
       case WALLogType::MTR_BEGIN: {
-        auto log = reinterpret_cast<MTRBeginEntry*>(wal_log);
-        incomplete.insert(std::pair<TS_LSN, MTRBeginEntry*>(log->getXID(), log));
+        // do nothing
         break;
       }
       case WALLogType::MTR_COMMIT: {
