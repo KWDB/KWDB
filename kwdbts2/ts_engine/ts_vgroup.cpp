@@ -185,6 +185,55 @@ std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, 
   return partition_manager->Get(p_time, true);
 }
 
+KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
+  TsRawPayload p{payload};
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
+  auto tbl_version = p.GetTableVersion();
+  bool new_tag;
+
+  uint32_t vgroup_id;
+  TSEntityID entity_id;
+
+  auto s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  uint8_t payload_data_flag = p.GetRowType();
+  if (new_tag) {
+    vgroup_id = GetVGroupID();
+    entity_id = AllocateEntityID();
+    // 1. Write tag data
+    assert(payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY);
+    LOG_DEBUG("tag bt insert hashPoint=%hu", p.GetHashPoint());
+    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+    s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+      return KStatus::FAIL;
+    }
+    std::shared_ptr<TagTable> tag_table;
+    s =  tb_schema_manager->GetTagSchema(ctx, &tag_table);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+      return s;
+    }
+    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id);
+    if (err_no < 0) {
+      LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
+      return KStatus::FAIL;
+    }
+  } else {
+    assert(vgroup_id == this->GetVGroupID());
+  }
+
+  if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+  }
+  return s;
+}
+
+
 int TsVGroup::saveToFile(uint32_t new_id) const {
   uint32_t entity_id = new_id;
   memcpy(reinterpret_cast<char*>(config_file_->memAddr()), &entity_id, sizeof(entity_id));
