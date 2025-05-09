@@ -881,17 +881,23 @@ bool WALMgr::NeedCheckpoint() {
 
 KStatus WALMgr::SwitchNextFile() {
   if (std::filesystem::exists(file_mgr_->getFilePath())) {
+    file_mgr_->Close();
     if (-1 == rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
       return KStatus::FAIL;
     }
   }
-  HeaderBlock hb = buffer_mgr_->getHeaderBlock();
+  HeaderBlock header = file_mgr_->readHeaderBlock();
+  TS_LSN start_lsn = header.getStartLSN() + BLOCK_SIZE + header.getBlockNum() * BLOCK_SIZE;
+  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+  auto hb = HeaderBlock(table_id_, header.getEndBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
+                        header.getCheckpointLSN(), header.getCheckpointNo());
   KStatus s = file_mgr_->initWalFileWithHeader(hb);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initWalFileWithHeader.")
     return s;
   }
+  file_mgr_->Open();
   return KStatus::SUCCESS;
 }
 
