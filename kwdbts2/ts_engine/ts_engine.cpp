@@ -411,7 +411,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     if (vgrp->GetVGroupID() <= vgroup_lsn.size()) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
-    std::cout << "vgrp id : " << vgrp->GetVGroupID() << "   lsn:"  << lsn << std::endl;
     if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
       LOG_ERROR("Failed to CreateCheckpointInternal for vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
@@ -480,7 +479,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   for (auto it : vgrp_lsn) {
     memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
     location += sizeof(uint64_t);
-    std::cout << " lsn:"  << it.second << std::endl;
   }
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
   s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, lsn);
