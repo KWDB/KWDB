@@ -185,6 +185,21 @@ KStatus TsVGroup::WriteCheckpointWALAndUpdateLSN(kwdbContext_p ctx, TS_LSN chk_l
 
 KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
   // 1. read chk wal log
+  // 2. switch new file
+  wal_manager_->Lock();
+  std::vector<uint64_t> ignore;
+  KStatus  s = wal_manager_->ReadWALLogAndSwitchFile(logs, wal_manager_->FetchCheckpointLSN(),
+                                                     wal_manager_->FetchCurrentLSN(), ignore);
+  last_lsn = wal_manager_->FetchCurrentLSN();
+  wal_manager_->Unlock();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLogAndSwitchFile.")
+  }
+  return s;
+}
+
+KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
+  // 1. read chk wal log
   wal_manager_->Lock();
   std::vector<uint64_t> ignore;
   TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();

@@ -545,7 +545,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
 
-    if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
+    if (vgrp->ReadLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
       LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint for vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
     }
