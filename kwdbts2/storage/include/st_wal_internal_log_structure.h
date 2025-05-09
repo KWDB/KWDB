@@ -1160,7 +1160,7 @@ class EndCheckpointEntry : public LogEntry {
     location += sizeof(x_id_);
     memcpy(log_ptr + location, &lsn_len, sizeof(lsn_len_));
     location += sizeof(lsn_len_);
-    memcpy(log_ptr + location, &v_lsn, lsn_len);
+    memcpy(log_ptr + location, v_lsn, lsn_len);
 
     return log_ptr;
   }
