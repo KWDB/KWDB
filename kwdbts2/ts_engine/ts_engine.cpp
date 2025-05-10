@@ -474,7 +474,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 4. rewrite wal log to chk file
-  wal_mgr_.release();
+  wal_mgr_ = nullptr;
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   s = wal_mgr_->ResetWAL(ctx, true);
   if (s == KStatus::FAIL) {
