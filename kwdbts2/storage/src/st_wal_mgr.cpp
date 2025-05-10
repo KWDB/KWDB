@@ -895,7 +895,7 @@ KStatus WALMgr::SwitchNextFile() {
       return KStatus::FAIL;
     }
   }
-  HeaderBlock header = file_mgr_->readHeaderBlock();
+  HeaderBlock header = buffer_mgr_->getHeaderBlock();
   TS_LSN start_lsn = header.getStartLSN() + BLOCK_SIZE + header.getBlockNum() * BLOCK_SIZE;
   TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
   auto hb = HeaderBlock(table_id_, header.getEndBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
