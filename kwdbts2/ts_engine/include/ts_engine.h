@@ -45,7 +45,7 @@ class TSEngineV2Impl : public TSEngine {
   EngineOptions options_;
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
-  std::unique_ptr<WALMgr> wal_mgr_;
+  std::unique_ptr<WALMgr> wal_mgr_ = nullptr;
   std::map<uint64_t, uint64_t> range_indexes_map_{};
   std::unique_ptr<WALMgr> wal_sys_{nullptr};
   std::unique_ptr<TSxMgr> tsx_manager_sys_{nullptr};
