@@ -100,7 +100,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     }
     uint32_t dbid = std::stoi(res.str(1));
     timestamp64 ptime = std::stoi(res.str(2));
-    if(partitions_.find(dbid) == partitions_.end()){
+    if (partitions_.find(dbid) == partitions_.end()) {
       partitions_[dbid] = std::make_unique<PartitionManager>(this, dbid, interval);
     }
     partitions_[dbid]->Get(ptime, true);
@@ -244,63 +244,8 @@ KStatus TsVGroup::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>
 }
 
 KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) {
-
-
+  return KStatus::SUCCESS;
 }
-//KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) {
-//  // get checkpoint_lsn
-//  TS_LSN checkpoint_lsn = wal_manager_->FetchCurrentLSN();
-//
-//  if (new_tag_bt_ == nullptr || root_bt_manager_ == nullptr) {
-//    LOG_ERROR("Failed to fetch current LSN.")
-//    return FAIL;
-//  }
-//
-//  // call Tag.flush, pass Checkpoint_LSN as parameter
-//  new_tag_bt_->sync_with_lsn(checkpoint_lsn);
-//
-//  /**
-//   * Call the Flush method of the Metrics table with the input parameter Current LSN
-//   * During the recovery process, check the dat aof each Entity based on Checkpoint LSN to determine the offset of
-//   * each Entity at the Checkpoint
-//   * The Checkpoint log of this solution is smaller, but the recovery time is longer.
-//   *
-//   * Another solution is to record the offset of each Entity at Checkpoint moment in the Checkpoint logs
-//   * The offset is used to reset the current write offset of the corresponding Entity while recovery
-//   * In this solution, the Checkpoint log is large, but the recovery time is reduced.
-//   *
-//   * At present, solution 1 is used, and later performance evaluation is needed to determine the final scheme.
-//  **/
-//  ErrorInfo err_info;
-//  map<uint32_t, uint64_t> rows;
-//  if (root_bt_manager_->Sync(checkpoint_lsn, err_info) != 0) {
-//    LOG_ERROR("Failed to flush the Metrics table.")
-//    return FAIL;
-//  }
-//  // force sync metric data into files.
-//  ebt_manager_->sync(0);
-//
-//  // update wal metadata lsn
-//  wal_manager_->CreateCheckpoint(ctx);
-//
-//  // construct CHECKPOINT log entry
-//  TS_LSN entry_lsn;
-//  KStatus s = wal_manager_->WriteCheckpointWAL(ctx, 0, entry_lsn);
-//
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("Failed to construct/write checkpoint WAL Log Entry.")
-//    return s;
-//  }
-//
-//  // TODO(liuwei) check whether entry_lsn is equal to checkpoint_lsn. if not, need to Re-Checkpoint
-//  s = wal_manager_->Flush(ctx);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("Failed to flush the WAL log buffer to ensure the checkpoint is done.")
-//    return s;
-//  }
-//
-//  return SUCCESS;
-//}
 
 TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
@@ -761,24 +706,11 @@ uint32_t TsVGroup::GetVGroupID() {
 }
 
 KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload) {
-
-}
-
-/**
- * @brief undoPut undo a put operation. This function is used to undo a previously executed put operation.
- *
- * @param ctx The context of the database, providing necessary environment for the operation.
- * @param log_lsn The log sequence number identifying the specific log entry to be undone.
- * @param payload A slice of the transaction log containing the data needed to reverse the put operation.
- *
- * @return KStatus The status of the undo operation, indicating success or specific failure reasons.
- */
-KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
-
+  return KStatus::SUCCESS;
 }
 
 /**
@@ -792,12 +724,12 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
  */
 KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
                    const std::vector<DelRowSpan>& rows) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
                       uint32_t group_id, uint32_t entity_id, TSSlice& tags) {
-
+  return KStatus::SUCCESS;
 }
 
 /**
@@ -883,33 +815,33 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TS
 }
 
 KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
                    const vector<DelRowSpan>& rows) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
                       uint32_t group_id, uint32_t entity_id, TSSlice& payload) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::redoCreateHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t ts_version) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::undoCreateHashIndex(uint32_t index_id, uint32_t ts_version) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::redoDropHashIndex(uint32_t index_id, uint32_t ts_version) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::undoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t ts_version) {
-
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
@@ -933,87 +865,6 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
   }
   return KStatus::SUCCESS;
 }
-
-//TsVGroup::TsPartitionedFlush::TsPartitionedFlush(TsVGroup* group, rocksdb::InternalIterator* iter)
-//    : vgroup_(group), iter_(iter) {}
-//
-//rocksdb::Status TsVGroup::TsPartitionedFlush::FlushFromMem() {
-//  iter_->SeekToFirst();
-//  TsEngineSchemaManager* schema_mgr = vgroup_->schema_mgr_;
-//
-//  rocksdb::FullKey full_key;
-//  TsInternalKey ts_key;
-//  std::unordered_map<TsVGroupPartition*, TsLastSegmentBuilder> builders;
-//
-//  std::shared_ptr<MMapMetricsTable> table_schema;
-//  std::vector<AttributeInfo> metric_schema;
-//
-//  std::unique_ptr<TsRawPayloadRowParser> parser;
-//  TSTableID last_table_id = -1;
-//  uint32_t last_version = -1;
-//  uint32_t db_id = -1;
-//  TsVGroupPartition* partition = nullptr;
-//
-//  for (; iter_->Valid(); iter_->Next()) {
-//    rocksdb::ParseFullKey(iter_->key(), &full_key);
-//    rocksdb::SequenceNumber seq_no = full_key.sequence;
-//    ts_key.Decode(full_key.user_key);
-//    if (last_table_id != ts_key.table_id) {
-//      db_id = schema_mgr->GetDBIDByTableID(ts_key.table_id);
-//    }
-//
-//    if (!(last_table_id == ts_key.table_id && last_version == ts_key.version)) {
-//      schema_mgr->GetTableMetricSchema(nullptr, ts_key.table_id, ts_key.version, &table_schema);
-//      assert(table_schema != nullptr);
-//      metric_schema = table_schema->getSchemaInfoExcludeDropped();
-//      parser = std::make_unique<TsRawPayloadRowParser>(metric_schema);
-//      last_table_id = ts_key.table_id;
-//      last_version = ts_key.version;
-//    }
-//
-//    auto val = iter_->value();
-//    assert(!metric_schema.empty());
-//    // TsRawPayload payload_prev{{const_cast<char*>(val.data()), val.size()}, metric_schema};
-//    TsRawPayloadV2 payload{{const_cast<char*>(val.data()), val.size()}};
-//    auto row_iter = payload.GetRowIterator();
-//
-//    int row_cnt = 0;
-//    for (; row_iter.Valid(); row_iter.Next()) {
-//      auto row_data = row_iter.Value();
-//      ++row_cnt;
-//      timestamp64 ts = parser->GetTimestamp(row_data);
-//      if (partition == nullptr || ts >= partition->EndTs() || ts < partition->StartTs()) {
-//        partition = this->vgroup_->GetPartition(db_id, ts, (DATATYPE)metric_schema[0].type);
-//      }
-//
-//      auto it = builders.find(partition);
-//      if (it == builders.end()) {
-//        std::shared_ptr<TsLastSegment> last_segment;
-//        partition->NewLastSegment(last_segment);
-//        auto result =
-//            builders.insert({partition, TsLastSegmentBuilder{schema_mgr, last_segment}});
-//        it = result.first;
-//      }
-//
-//      TsLastSegmentBuilder& builder = it->second;
-//      auto s =
-//          builder.PutRowData(ts_key.table_id, ts_key.version, ts_key.entity_id, seq_no, row_data);
-//      if (s != SUCCESS) {
-//        return rocksdb::Status::Incomplete("flush error");
-//      }
-//    }
-//
-//    int nrows = payload.GetRowCount();
-//    assert(nrows == row_cnt);
-//    // assert(payload.GetRowCount() == payload_prev.GetRowCount());
-//  }
-//  for (auto& kv : builders) {
-//    auto s = kv.second.Finalize();
-//    if (s == FAIL) return rocksdb::Status::Incomplete("flush error");
-//    kv.second.Flush();
-//  }
-//  return rocksdb::Status::OK();
-//}
 
 std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
   int idx = timestamp / interval_;
