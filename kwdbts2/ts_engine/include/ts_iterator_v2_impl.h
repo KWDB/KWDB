@@ -52,8 +52,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
  protected:
   KStatus AddMemSegmentBlockSpans();
-  KStatus AddLastSegmentBlockSpans();
-  KStatus AddEntitySegmentBlockSpans();
+  KStatus AddLastSegmentBlockSpans(bool for_last);
+  KStatus AddEntitySegmentBlockSpans(bool for_last);
   KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans();
 
@@ -67,6 +67,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
 
   std::list<TsBlockSpan> ts_block_spans_;
+  std::list<TsBlockSpan> ts_block_spans_for_last_;
   STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
 };
 

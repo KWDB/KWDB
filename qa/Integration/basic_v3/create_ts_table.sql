@@ -23,6 +23,7 @@ order by k_timestamp;
 select count(*) from test.sjcx01;
 select sum(a), min(b) from test.sjcx01;
 select count(a), sum(b), max(a), max(b) from test.sjcx01;
+select last(b), last(a) from test.sjcx01;
 select * from test.sjcx01 where t1_attribute = 'F6';
 
 SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;

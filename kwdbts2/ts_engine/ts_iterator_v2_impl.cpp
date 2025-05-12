@@ -76,10 +76,13 @@ KStatus TsStorageIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
 
 inline KStatus TsStorageIteratorV2Impl::AddMemSegmentBlockSpans() {
   TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
+  if (vgroup_->GetMemSegmentMgr()->GetBlockSpans(filter, &ts_block_spans_for_last_) != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
   return vgroup_->GetMemSegmentMgr()->GetBlockSpans(filter, &ts_block_spans_);
 }
 
-inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans() {
+inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans(bool for_last) {
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     std::vector<std::shared_ptr<TsLastSegment>> last_segments =
       ts_partitions_[cur_partition_index_]->GetLastSegmentMgr()->GetAllLastSegments();
@@ -89,14 +92,27 @@ inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans() {
         return KStatus::FAIL;
       }
     }
+    if (for_last) {
+      for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
+        if (last_segment->GetBlockSpans(filter, &ts_block_spans_for_last_) != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+      }
+    }
   }
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
+inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans(bool for_last) {
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
     return ts_partitions_[cur_partition_index_]->GetEntitySegment()->GetBlockSpans(filter, &ts_block_spans_);
+  }
+  if (for_last) {
+    if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
+      TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
+      return ts_partitions_[cur_partition_index_]->GetEntitySegment()->GetBlockSpans(filter, &ts_block_spans_for_last_);
+    }
   }
   return KStatus::SUCCESS;
 }
@@ -111,14 +127,14 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
   }
 
   for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    ret = AddLastSegmentBlockSpans();
+    ret = AddLastSegmentBlockSpans(false);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
 
-    ret = AddEntitySegmentBlockSpans();
+    ret = AddEntitySegmentBlockSpans(false);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
@@ -271,12 +287,12 @@ KStatus TsRawDataIteratorV2Impl::MoveToMemSegment() {
 
 KStatus TsRawDataIteratorV2Impl::MoveToLastSegment() {
   status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
-  return AddLastSegmentBlockSpans();
+  return AddLastSegmentBlockSpans(false);
 }
 
 KStatus TsRawDataIteratorV2Impl::MoveToEntitySegment() {
   status_ = STORAGE_SCAN_STATUS::SCAN_ENTITY_SEGMENT;
-  return AddEntitySegmentBlockSpans();
+  return AddEntitySegmentBlockSpans(false);
 }
 
 KStatus TsRawDataIteratorV2Impl::MoveToNextEntity() {
@@ -472,15 +488,25 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     return KStatus::FAIL;
   }
 
+  int64_t max_end_ts = INT64_MIN;
+  int max_partition_index = -1;
+  for (int i = 0; i < ts_partitions_.size(); ++i) {
+      if (ts_partitions_[i]->EndTs() > max_end_ts) {
+          max_end_ts = ts_partitions_[i]->EndTs();
+          max_partition_index = i;
+      }
+  }
+
   for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    ret = AddLastSegmentBlockSpans();
+    bool for_last = (cur_partition_index_ == max_partition_index);
+    ret = AddLastSegmentBlockSpans(for_last);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
 
-    ret = AddEntitySegmentBlockSpans();
+    ret = AddEntitySegmentBlockSpans(for_last);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
@@ -505,6 +531,15 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   }
 
   std::vector<TSSlice> final_agg_data(kw_scan_cols_.size(), TSSlice{nullptr, 0});
+  std::vector<k_uint32> last_cols;
+  std::vector<k_uint32> normal_cols;
+  for (size_t i = 0; i < scan_agg_types_.size(); ++i) {
+    if (scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) {
+      last_cols.push_back(i);
+    } else {
+      normal_cols.push_back(i);
+    }
+  }
 
   while (!ts_block_spans_.empty()) {
     TsBlockSpan blk_span = ts_block_spans_.front();
@@ -519,7 +554,7 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     }
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-    for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+    for (k_uint32 i = 0; i < normal_cols.size(); ++i) {
       std::vector<Sumfunctype> agg_types = {scan_agg_types_[i]};
       std::vector<TSSlice> agg_data;
 
@@ -571,6 +606,47 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
         }
       }
 
+      free(src.data);
+    }
+  }
+
+
+  while (!ts_block_spans_for_last_.empty()) {
+    TsBlockSpan blk_span_for_last = ts_block_spans_for_last_.front();
+    ts_block_spans_for_last_.pop_front();
+
+    KStatus ret;
+    std::shared_ptr<MMapMetricsTable> blk_version;
+    ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span_for_last.GetTableVersion(), &blk_version);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span_for_last.GetTableVersion());
+      return ret;
+    }
+    auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+    for (k_uint32 i = 0; i < last_cols.size(); ++i) {
+      std::vector<Sumfunctype> agg_types = {scan_agg_types_[last_cols[i]]};
+      std::vector<TSSlice> agg_data;
+
+      ret = blk_span_for_last.GetLastResult(
+        kw_scan_cols_[last_cols[i]], schema_info, attrs_[kw_scan_cols_[last_cols[i]]], agg_types, agg_data);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[last_cols[i]]);
+        return ret;
+      }
+
+      if (agg_data.empty()) {
+        LOG_ERROR("Aggregation result is empty for col_id(%u).", kw_scan_cols_[last_cols[i]]);
+        return KStatus::FAIL;
+      }
+
+      TSSlice& src = agg_data[0];
+      TSSlice& dst = final_agg_data[last_cols[i]];
+
+      if (dst.data == nullptr) {
+        dst.len = src.len;
+        dst.data = static_cast<char*>(malloc(src.len));
+        memcpy(dst.data, src.data, src.len);
+      }
       free(src.data);
     }
   }
