@@ -365,7 +365,9 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
   auto vgroup = GetVGroupByID(ctx, distrib(gen));
   s = vgroup->MtrRollback(ctx, mtr_id);
-  if (s == FAIL) Return(s)
+  if (s == FAIL) {
+    return s;
+  }
 
   // for range
   for (auto vgrp : vgroups_) {
@@ -428,7 +430,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 2. read wal log from all vgroup
-  for (const auto &vgrp: vgroups_) {
+  for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
     TS_LSN lsn = 0;
     if (vgrp->GetVGroupID() <= vgroup_lsn.size()) {
@@ -446,7 +448,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 3. merge chk log and wal log
   std::vector<uint64_t> commit;
 
-  for (auto log: logs) {
+  for (auto log : logs) {
     switch (log->getType()) {
       case MTR_COMMIT : {
         commit.emplace_back(log->getXID());
@@ -456,9 +458,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }
 
-  for (auto log: logs) {
+  for (auto log : logs) {
     bool skip = false;
-    for (auto xid: commit) {
+    for (auto xid : commit) {
       if (log->getXID() == xid) {
         skip = true;
         break;
@@ -479,14 +481,14 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     LOG_ERROR("Failed to reset wal log file before write incomplete log.")
     return s;
   }
-   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
-     LOG_ERROR("Failed to WriteIncompleteWAL.")
-     return KStatus::FAIL;
-   }
-   rewrite.clear();
+  if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
+    LOG_ERROR("Failed to WriteIncompleteWAL.")
+    return KStatus::FAIL;
+  }
+  rewrite.clear();
 
   // 5. trig all vgroup flush
-  for (const auto &vgrp: vgroups_) {
+  for (const auto &vgrp : vgroups_) {
     s = vgrp->Flush();
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to flush metric file.")
@@ -515,7 +517,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 7. a). update checkpoint LSN .
   //    b). trig all vgroup write checkpoint wal.
   //    c). remove vgroup wal file.
-  for (const auto &vgrp: vgroups_) {
+  for (const auto &vgrp : vgroups_) {
     TS_LSN lsn = 0;
     uint32_t vgrp_id = vgrp->GetVGroupID();
     auto it = vgrp_lsn.find(vgrp_id);
@@ -562,7 +564,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   }
 
   // 2. get all vgroup wal log
-  for (const auto &vgrp: vgroups_) {
+  for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
     TS_LSN lsn = 0;
     if (vgrp->GetVGroupID() < vgroup_lsn.size()) {

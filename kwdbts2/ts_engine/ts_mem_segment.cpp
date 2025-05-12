@@ -38,29 +38,7 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
 
 void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
   segment_lock_.lock();
-  bool found_seg = false;
-  // remove deleted mem segments.
-  while (segment_.size() > 0) {
-    std::shared_ptr<TsMemSegment>& cur_seg = segment_.front();
-    if (cur_seg == nullptr) {
-      segment_.pop_front();
-    } else if (cur_seg.get() == mem_seg.get()) {
-      found_seg = true;
-      segment_.pop_front();
-    } else {
-      break;
-    }
-  }
-  if (!found_seg) {
-    auto it = segment_.begin();
-    while (it != segment_.end()) {
-      if (it->get() == mem_seg.get()) {
-        it->reset();
-        break;
-      }
-      it++;
-    }
-  }
+  segment_.remove(mem_seg);
   segment_lock_.unlock();
 }
 

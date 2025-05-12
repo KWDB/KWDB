@@ -21,8 +21,6 @@
 
 namespace kwdbts {
 
-const string chk_file_name = "kwdb_wal.chk";
-
 /**
 * WAL Files Management class, manages WAL log group files and life cycle.
 */

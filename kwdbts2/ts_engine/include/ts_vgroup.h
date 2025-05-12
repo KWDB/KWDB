@@ -63,7 +63,8 @@ class PartitionManager {
       : partitions_latch_(RWLATCH_ID_VGROUP_PARTITION_MGR_RWLOCK), vgroup_(vgroup),
         database_id_(database_id), interval_(interval) {}
   std::shared_ptr<TsVGroupPartition> Get(int64_t timestamp, bool create_if_not_exist);
-  std::vector<std::shared_ptr<TsVGroupPartition>> GetPartitionArray();
+  std::vector<std::shared_ptr<TsVGroupPartition>> GetAllPartitions();
+  std::vector<std::shared_ptr<TsVGroupPartition>> GetCompactPartitions();
   void SetInterval(int64_t interval) { interval_ = interval; }
 
   void GetPartitions(std::unordered_map<int, std::shared_ptr<TsVGroupPartition>>* map) {
@@ -214,7 +215,10 @@ class TsVGroup {
    *
    * @return KStatus The status of the undo operation, indicating success or specific failure reasons.
    */
-  KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
+  KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
+    // todo(liangbo01) no implementation.
+    return KStatus::FAIL;
+  }
 
   /**
    * Undoes deletion of rows within a specified entity group.
@@ -295,6 +299,9 @@ class TsVGroup {
   std::shared_ptr<TsVGroupPartition> GetPartition(uint32_t database_id, timestamp64 p_time);
 
   int saveToFile(uint32_t new_id) const;
+
+
+  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);

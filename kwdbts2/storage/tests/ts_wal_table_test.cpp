@@ -340,7 +340,8 @@ TEST_F(TestTSWALTable, mulitiInsert) {
   wal2->Init(ctx_);
 
   vector<LogEntry*> redo_logs;
-  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   // metric log + tag log
   EXPECT_EQ(redo_logs.size(), thread_num * payload_num * batch_times + 1);
 
@@ -982,7 +983,8 @@ TEST_F(TestTSWALTable, incompleteRecover) {
 
   auto wal3_ = new WALMgr(kDbPath + "/", table_id_, range_group_id_, &opt_);
   wal3_->Init(ctx_);
-  wal3_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal3_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 1);
 
   for (auto& log : wal_logs) {
@@ -1060,7 +1062,8 @@ TEST_F(TestTSWALTable, incompleteRollbackRecover) {
 
   auto wal3_ = new WALMgr(kDbPath + "/", table_id_, range_group_id_, &opt_);
   wal3_->Init(ctx_);
-  wal3_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal3_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 0);
 
   for (auto& log : wal_logs) {
@@ -1125,7 +1128,8 @@ TEST_F(TestTSWALTable, deleteRollbackRecover) {
   wal2->Flush(ctx_);
 
   std::vector<LogEntry*> wal_logs;
-  wal2->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 3);
   for (auto& log : wal_logs) {
     delete log;
@@ -1133,7 +1137,7 @@ TEST_F(TestTSWALTable, deleteRollbackRecover) {
   wal_logs.clear();
 
   // Indicates the total number of logs. Two logs are duplicate data
-  wal2->ReadWALLog(wal_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  wal2->ReadWALLog(wal_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   ASSERT_EQ(wal_logs.size(), 5);
 
   delete wal2;

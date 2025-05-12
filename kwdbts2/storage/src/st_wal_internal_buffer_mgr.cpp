@@ -70,8 +70,8 @@ void WALBufferMgr::ResetMeta() {
   end_block_index_ = init_buffer_size_ - 1;
 }
 
-KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
-                                  TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& v_lsn, uint64_t txn_id, bool for_chk) {
+KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn,
+                                  std::vector<uint64_t>& v_lsn, uint64_t txn_id, bool for_chk) {
   if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
     return SUCCESS;
   }

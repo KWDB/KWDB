@@ -203,7 +203,8 @@ TEST_F(TestWalManagerWriter, TestInsertLogTagsEntry) {
   }
 
   vector<LogEntry*> logs;
-  buf.readWALLogs(logs, 4096 + 12, buf.getCurrentLsn());
+  std::vector<uint64_t> ignore;
+  buf.readWALLogs(logs, 4096 + 12, buf.getCurrentLsn(), ignore);
   EXPECT_EQ(logs.size(), num);
 
   for (int i = 0; i < logs.size(); i++) {
@@ -270,7 +271,8 @@ TEST_F(TestWalManagerWriter, TestInsertLogMetricsEntry) {
   buf.flushInternal(true);
 
   vector<LogEntry*> r_logs;
-  buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn());
+  std::vector<uint64_t> ignore;
+  buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn(), ignore);
   CheckLogs(num, r_logs, 80);
   for (auto& l : logs) {
     l->prettyPrint();
@@ -323,7 +325,8 @@ TEST_F(TestWalManagerWriter, TestBufferRestart) {
   EXPECT_EQ(hb.getCheckpointLSN(), lsn);
 
   vector<LogEntry*> read_logs;
-  buf->readWALLogs(read_logs, 4096 + 12, lsn);
+  std::vector<uint64_t> ignore;
+  buf->readWALLogs(read_logs, 4096 + 12, lsn, ignore);
   EXPECT_EQ(read_logs.size(), 20);
 
   for (int i = 0; i < 20; i++) {
@@ -338,7 +341,7 @@ TEST_F(TestWalManagerWriter, TestBufferRestart) {
     delete l;
   }
   read_logs.clear();
-  buf->readWALLogs(read_logs, 4096 + 12, lsn);
+  buf->readWALLogs(read_logs, 4096 + 12, lsn, ignore);
   EXPECT_EQ(read_logs.size(), 40);
 
   delete buf;
@@ -385,7 +388,8 @@ TEST_F(TestWalManagerWriter, TestRestart) {
   }
 
   std::vector<LogEntry*> read_logs;
-  s = wal->ReadWALLog(read_logs, 4096 + 12, wal->FetchCurrentLSN());
+std::vector<uint64_t> ignore;
+  s = wal->ReadWALLog(read_logs, 4096 + 12, wal->FetchCurrentLSN(), ignore);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(read_logs.size(), 320);
   for (auto& l : read_logs) {
@@ -425,8 +429,8 @@ TEST_F(TestWalManagerWriter, TestReadLogFile) {
   buf.flushInternal(true);
 
   vector<LogEntry*> read_logs;
-
-  buf.readWALLogs(read_logs, 4096 + 12, buf.getCurrentLsn());
+  std::vector<uint64_t> ignore;
+  buf.readWALLogs(read_logs, 4096 + 12, buf.getCurrentLsn(), ignore);
   CheckLogs(log_num, read_logs, 80);
   for (auto& entry : read_logs) {
     entry->prettyPrint();
@@ -529,7 +533,8 @@ TEST_F(TestWalManagerWriter, TestLogFileGroup) {
   std::cout << "Duration for reading all entry blocks is: " << duration.count() << "ms" << std::endl;
 
   vector<LogEntry*> logs;
-  KStatus status = buf.readWALLogs(logs, 4096 + 12, buf.getCurrentLsn());
+  std::vector<uint64_t> ignore;
+  KStatus status = buf.readWALLogs(logs, 4096 + 12, buf.getCurrentLsn(), ignore);
   EXPECT_EQ(status, SUCCESS);
   EXPECT_EQ(logs.size(), total_records);
 
@@ -656,7 +661,8 @@ TEST_F(TestWalManagerWriter, TestLogSpecific) {
   }
 
   vector<LogEntry*> r_logs;
-  buf.readWALLogs(r_logs, BLOCK_SIZE + 12, buf.getCurrentLsn());
+  std::vector<uint64_t> ignore;
+  buf.readWALLogs(r_logs, BLOCK_SIZE + 12, buf.getCurrentLsn(), ignore);
   CheckLogs(num, r_logs, 2019);
 
   // BLOCK_SIZE = 4096
@@ -677,7 +683,7 @@ TEST_F(TestWalManagerWriter, TestLogSpecific) {
     delete l;
   }
   r_logs.clear();
-  buf.readWALLogs(r_logs, BLOCK_SIZE * (num + 1) + 12, lsn);
+  buf.readWALLogs(r_logs, BLOCK_SIZE * (num + 1) + 12, lsn, ignore);
   CheckLogs(num, r_logs, 2027);
 
   logs = GenerateInsertMetricsLog(num, 2028);
@@ -695,21 +701,21 @@ TEST_F(TestWalManagerWriter, TestLogSpecific) {
     delete l;
   }
   r_logs.clear();
-  buf.readWALLogs(r_logs, now_lsn, lsn);
+  buf.readWALLogs(r_logs, now_lsn, lsn, ignore);
   CheckLogs(num, r_logs, 2028);
 
   for (auto& l : r_logs) {
     delete l;
   }
   r_logs.clear();
-  buf.readWALLogs(r_logs, BLOCK_SIZE * (num + 1) + 12, now_lsn);
+  buf.readWALLogs(r_logs, BLOCK_SIZE * (num + 1) + 12, now_lsn, ignore);
   CheckLogs(num, r_logs, 2027);
 
   for (auto& l : r_logs) {
     delete l;
   }
   r_logs.clear();
-  buf.readWALLogs(r_logs, BLOCK_SIZE + 12, buf.getCurrentLsn());
+  buf.readWALLogs(r_logs, BLOCK_SIZE + 12, buf.getCurrentLsn(), ignore);
   EXPECT_EQ(num * 3, r_logs.size());
 
   buf.flushInternal(true);
@@ -737,7 +743,7 @@ TEST_F(TestWalManagerWriter, TestLogSpecific) {
     delete l;
   }
   r_logs.clear();
-  KStatus status = buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn());
+  KStatus status = buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn(), ignore);
   EXPECT_EQ(status, SUCCESS);
 
   // the last block is not broken since we use the buffer cache for the last one.
@@ -753,7 +759,7 @@ TEST_F(TestWalManagerWriter, TestLogSpecific) {
   }
   r_logs.clear();
 
-  status = buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn());
+  status = buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn(), ignore);
 
   // failed to read all log records since the broken blocks.
   EXPECT_EQ(status, FAIL);
@@ -771,7 +777,7 @@ TEST_F(TestWalManagerWriter, TestLogSpecific) {
   file.close();
 
   r_logs.clear();
-  status = buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn());
+  status = buf.readWALLogs(r_logs, 4096 + 12, buf.getCurrentLsn(), ignore);
   EXPECT_EQ(status, FAIL);
   EXPECT_EQ(0, r_logs.size());
 }
@@ -800,7 +806,8 @@ TEST_F(TestWalManagerWriter, TestWALDeleteData) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, BLOCK_SIZE + 12, wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, BLOCK_SIZE + 12, wal_->FetchCurrentLSN(), ignore);
 
   EXPECT_EQ(redo_logs.size(), 2);
 
@@ -839,7 +846,8 @@ TEST_F(TestWalManagerWriter, TestWALDeleteTag) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, BLOCK_SIZE + 12, wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, BLOCK_SIZE + 12, wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 2);
 
   auto* redo = reinterpret_cast<DeleteLogTagsEntry*>(redo_logs[0]);
@@ -880,7 +888,8 @@ TEST_F(TestWalManagerWriter, TestWALMTR) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLogForMtr(x_id, redo_logs);
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLogForMtr(x_id, redo_logs, ignore);
   EXPECT_EQ(redo_logs.size(), 3);
 
   auto* redo = reinterpret_cast<MTREntry*>(redo_logs[0]);
@@ -914,7 +923,8 @@ TEST_F(TestWalManagerWriter, TestWALTTR) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 3);
 
   auto* redo = reinterpret_cast<TTREntry*>(redo_logs[0]);
@@ -963,7 +973,8 @@ TEST_F(TestWalManagerWriter, TestWALDDL) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 3);
 
   auto* redo1 = reinterpret_cast<DDLCreateEntry*>(redo_logs[0]);
@@ -997,7 +1008,8 @@ TEST_F(TestWalManagerWriter, TestWALCheckpoint) {
 
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 2);
 
   auto* redo = reinterpret_cast<CheckpointEntry*>(redo_logs[0]);
@@ -1021,7 +1033,8 @@ TEST_F(TestWalManagerWriter, TestWALSnapshot) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 2);
 
   for (size_t i = 0; i < 2; i++) {
@@ -1053,7 +1066,8 @@ TEST_F(TestWalManagerWriter, TestWALTempDirectory) {
   }
   
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), log_num);
 
   for (size_t i = 0; i < log_num; i++) {
@@ -1081,7 +1095,8 @@ TEST_F(TestWalManagerWriter, TestPartitionTierChange) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 1);
 
   auto* redo = reinterpret_cast<PartitionTierChangeEntry*>(redo_logs[0]);

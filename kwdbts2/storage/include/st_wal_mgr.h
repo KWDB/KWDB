@@ -19,7 +19,6 @@
 #include "st_wal_internal_log_structure.h"
 #include "st_logged_entity_group.h"
 #include "lt_rw_latch.h"
-//#include "ts_vgroup.h"
 
 namespace kwdbts {
 
@@ -135,8 +134,8 @@ class WALMgr {
    * @param[out] entry_lsn The lsn of WAL log entry
    * @return
    */
-  KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                         size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn, uint64_t vgrp_id = 0);
+  KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition, size_t offset, TSSlice primary_tag,
+                         TSSlice prepared_payload, TS_LSN& entry_lsn, uint64_t vgrp_id = 0);
 
   /**
    * Construct the log entry for the DELETE Metrics operation.
@@ -307,7 +306,8 @@ class WALMgr {
    * @param end_lsn
    * @return
    */
-  KStatus ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk);
+  KStatus ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+                                  std::vector<uint64_t>& end_chk);
   /**
    * Read the relevant log entry according to the Mini-Transaction ID.
    * @param mtr_trans_id Mini-Transaction ID

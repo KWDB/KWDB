@@ -1137,6 +1137,13 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 					if err := tableDesc.MakeMutationComplete(mutation); err != nil {
 						return err
 					}
+
+					// if drop column/tag, store column info as KWDBTSColumn into tableDesc
+					if d.Type == alterKwdbDropColumn || d.Type == alterKwdbDropTag {
+						droppedCol := makeKWDBTSColumn(mutation.GetColumn())
+						tableDesc.DroppedTsColumns = append(tableDesc.DroppedTsColumns, droppedCol)
+					}
+
 				} else if mutation.Direction == sqlbase.DescriptorMutation_ADD {
 					if !(d.Type == createTagIndex || d.Type == dropTagIndex) {
 						// If adding columns fails, roll back ColumnFamilyDescriptor.
@@ -1347,4 +1354,25 @@ func (sw *TSSchemaChangeWorker) waitToUpdateLeases(ctx context.Context, tableID 
 	version, err := sw.leaseMgr.WaitForOneVersion(ctx, tableID, retryOpts)
 	log.Infof(ctx, "waiting for a single version on ts table(%d)... done (at v %d)", tableID, version)
 	return err
+}
+
+// Assemble the columnDescriptor into KWDBTSColumn and return it.
+// KWDBTSColumn is responsible for recording the information of the dropped column/tag.
+func makeKWDBTSColumn(col *sqlbase.ColumnDescriptor) sqlbase.KWDBTSColumn {
+	return sqlbase.KWDBTSColumn{
+		ColumnId:    uint32(col.ID),
+		StorageType: col.TsCol.StorageType,
+		ColType:     col.TsCol.ColumnType,
+		Dropped:     true,
+	}
+}
+
+// Assemble the KWDBTSColumn into KWDBKTSColumn and return it.
+func makeKTSColumn(col sqlbase.KWDBTSColumn) sqlbase.KWDBKTSColumn {
+	return sqlbase.KWDBKTSColumn{
+		ColumnId:    col.ColumnId,
+		StorageType: col.StorageType,
+		ColType:     col.ColType,
+		Dropped:     true,
+	}
 }

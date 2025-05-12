@@ -283,12 +283,12 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
 }
 
 void WALFileMgr::CleanUp(TS_LSN checkpoint_lsn, TS_LSN current_lsn) {
- if (checkpoint_lsn == current_lsn) {
-   string path = getFilePath();
-   if (IsExists(path)) {
-     Remove(path);
-   }
- }
+  if (checkpoint_lsn == current_lsn) {
+    string path = getFilePath();
+    if (IsExists(path)) {
+      Remove(path);
+    }
+  }
 }
 
 KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recover) {

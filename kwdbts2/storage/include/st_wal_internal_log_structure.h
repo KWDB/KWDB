@@ -276,7 +276,8 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
   uint64_t getOffset();
 
   char* encode() override {
-    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, old_len_, data_, old_data_);
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, old_len_,
+                     data_, old_data_);
   }
 
   size_t getLen() override;
@@ -364,8 +365,8 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
   ~DeleteLogMetricsEntry() override;
 
   char* encode() override {
-    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, p_tag_len_, start_ts_, end_ts_, range_size_, encoded_primary_tags_,
-                     row_spans_);
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, p_tag_len_, start_ts_, end_ts_, range_size_,
+                     encoded_primary_tags_, row_spans_);
   }
 
   size_t getLen() override;
@@ -1142,7 +1143,6 @@ class EndCheckpointEntry : public LogEntry {
   }
 
  public:
-
   char* v_lsn_;
   uint64_t lsn_len_;
 
