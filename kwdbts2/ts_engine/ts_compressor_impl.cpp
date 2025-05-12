@@ -236,7 +236,7 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
   assert(data.len == sizeof(T) * count);
   auto sz = sizeof(T) * 8;
   out->clear();
-  if (count == 0 || count == 1) {
+  if (count <= 1) {
     return false;
   }
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
