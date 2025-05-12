@@ -62,7 +62,6 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   return KStatus::SUCCESS;
 }
 
-
 KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 const std::vector<uint32_t> hps,
                                 BaseEntityIterator** iter, k_uint32 table_version) {

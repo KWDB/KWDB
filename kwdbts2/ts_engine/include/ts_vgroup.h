@@ -188,6 +188,14 @@ class TsVGroup {
 
   int saveToFile(uint32_t new_id) const;
 
+
+  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
+
+  KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
+    // todo(liangbo01) no implementation.
+    return KStatus::FAIL;
+  }
+
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);
   // Initialize compact thread.

@@ -44,8 +44,6 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
 
-  cur_entity_index_ = 0;
-
   auto& partition_managers = vgroup_->GetPartitionManagers();
   auto it = partition_managers.find(db_id_);
 
@@ -115,6 +113,35 @@ inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans(bool for_last
     }
   }
   return KStatus::SUCCESS;
+}
+
+KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans() {
+  KStatus ret;
+  if (cur_partition_index_ == 0) {
+    // Scan memory segment while scanning first parition.
+    ret = AddMemSegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+  }
+
+  ret = AddLastSegmentBlockSpans(false);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
+              cur_partition_index_, entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
+
+  ret = AddEntitySegmentBlockSpans(false);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
+              cur_partition_index_, entity_ids_[cur_entity_index_]);
+    return ret;
+  }
+
+  return ret;
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
@@ -211,7 +238,6 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
             set_null_bitmap(bitmap, row_idx);
           }
         }
-        // Temporary workaround for timestamp column alignment:
         memcpy(res_value, value, attrs_[col_idx].size * (*count));
 
         batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
@@ -263,124 +289,35 @@ TsRawDataIteratorV2Impl::TsRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
 TsRawDataIteratorV2Impl::~TsRawDataIteratorV2Impl() {
 }
 
-KStatus TsRawDataIteratorV2Impl::Init(bool is_reversed) {
-  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
-  if (ret != KStatus::SUCCESS) {
-    return KStatus::FAIL;
-  }
-  return MoveToMemSegment();
-}
-
-KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count) {
-  if (ts_block_spans_.empty()) {
-    return KStatus::FAIL;
-  }
+inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count) {
   TsBlockSpan ts_block = ts_block_spans_.front();
   ts_block_spans_.pop_front();
   return ConvertBlockSpanToResultSet(ts_block, res, count);
 }
 
-KStatus TsRawDataIteratorV2Impl::MoveToMemSegment() {
-  status_ = STORAGE_SCAN_STATUS::SCAN_MEM_SEGMENT;
-  return AddMemSegmentBlockSpans();
-}
-
-KStatus TsRawDataIteratorV2Impl::MoveToLastSegment() {
-  status_ = STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT;
-  return AddLastSegmentBlockSpans(false);
-}
-
-KStatus TsRawDataIteratorV2Impl::MoveToEntitySegment() {
-  status_ = STORAGE_SCAN_STATUS::SCAN_ENTITY_SEGMENT;
-  return AddEntitySegmentBlockSpans(false);
-}
-
-KStatus TsRawDataIteratorV2Impl::MoveToNextEntity() {
-  ++cur_entity_index_;
-  if (cur_entity_index_ >= entity_ids_.size()) {
-    // All entities are scanned
-    status_ = STORAGE_SCAN_STATUS::SCAN_STATUS_DONE;
-    return KStatus::SUCCESS;
-  } else {
-    // Start from mem segment
-    return MoveToMemSegment();
-  }
-}
-
 KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  if (cur_entity_index_ >= entity_ids_.size()) {
-    *count = 0;
-    *is_finished = true;
-    return KStatus::SUCCESS;
-  }
-
   *count = 0;
   KStatus ret;
-  while (status_ != STORAGE_SCAN_STATUS::SCAN_STATUS_DONE && *count == 0) {
-    if (ts_block_spans_.size() > 0) {
-      ret = NextBlockSpan(res, count);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
-        return KStatus::FAIL;
+  while (ts_block_spans_.empty()) {
+    if (cur_entity_index_ == -1 || ++cur_partition_index_ >= ts_partitions_.size()) {
+      ++cur_entity_index_;
+      if (cur_entity_index_ >= entity_ids_.size()) {
+        // All entities are scanned.
+        *count = 0;
+        *is_finished = true;
+        return KStatus::SUCCESS;
       }
-    } else {
-      switch (status_) {
-        case STORAGE_SCAN_STATUS::SCAN_MEM_SEGMENT: {
-            // Move to scan partition
-            cur_partition_index_ = 0;
-            if (cur_partition_index_ >= ts_partitions_.size()) {
-              // Move to next entity
-              ret = MoveToNextEntity();
-              if (ret != KStatus::SUCCESS) {
-                LOG_ERROR("Failed to move to next entity(%d).", entity_ids_[cur_entity_index_]);
-                return KStatus::FAIL;
-              }
-            } else {
-              ret = MoveToLastSegment();
-              if (ret != KStatus::SUCCESS) {
-                LOG_ERROR("Failed to move to last segment of current entity(%d).", entity_ids_[cur_entity_index_]);
-                return KStatus::FAIL;
-              }
-            }
-          }
-          break;
-        case STORAGE_SCAN_STATUS::SCAN_LAST_SEGMENT: {
-            ret = MoveToEntitySegment();
-            if (ret != KStatus::SUCCESS) {
-              LOG_ERROR("Failed to move to entity segment of current entity(%d).", entity_ids_[cur_entity_index_]);
-              return KStatus::FAIL;
-            }
-          }
-          break;
-        case STORAGE_SCAN_STATUS::SCAN_ENTITY_SEGMENT: {
-            if (cur_partition_index_ >= ts_partitions_.size()) {
-              // Move to next entity
-              ret = MoveToNextEntity();
-              if (ret != KStatus::SUCCESS) {
-                LOG_ERROR("Failed to move to next entity(%d).", entity_ids_[cur_entity_index_]);
-                return KStatus::FAIL;
-              }
-            } else {
-              // Move to next partition
-              ++cur_partition_index_;
-              // Start from last segment
-              ret = MoveToLastSegment();
-              if (ret != KStatus::SUCCESS) {
-                LOG_ERROR("Failed to move to last segment of current entity(%d).", entity_ids_[cur_entity_index_]);
-                return KStatus::FAIL;
-              }
-            }
-          }
-          break;
-        default: {
-            // internal error
-            LOG_ERROR("Internal error: Unknown status: %d", status_);
-            return KStatus::FAIL;
-          };
-      }
+      cur_partition_index_ = 0;
     }
+    ScanPartitionBlockSpans();
   }
-  *is_finished = (status_ == STORAGE_SCAN_STATUS::SCAN_STATUS_DONE);
+  // Return one block span data each time.
+  ret = NextBlockSpan(res, count);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to get next block span for entity: %d, cur_partition_index_: %d.",
+                entity_ids_[cur_entity_index_], cur_partition_index_);
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -401,14 +338,6 @@ TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsV
 TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
 }
 
-KStatus TsSortedRawDataIteratorV2Impl::Init(bool is_reversed) {
-  KStatus ret = TsStorageIteratorV2Impl::Init(is_reversed);
-  if (ret != KStatus::SUCCESS) {
-    return KStatus::FAIL;
-  }
-  return ScanAndSortEntityData();
-}
-
 KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
   if (cur_entity_index_ < entity_ids_.size()) {
     // scan row data for current entity
@@ -417,12 +346,16 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
       LOG_ERROR("Failed to scan block spans for entity(%d).", entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
-    // sort the block span data
-    block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
-    ret = block_span_sorted_iterator_->Init();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
-      return KStatus::FAIL;
+    if (ts_block_spans_.empty()) {
+      block_span_sorted_iterator_ = nullptr;
+    } else {
+      // sort the block span data
+      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
+      ret = block_span_sorted_iterator_->Init();
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
+        return KStatus::FAIL;
+      }
     }
   }
   return KStatus::SUCCESS;
@@ -435,28 +368,30 @@ KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity() {
 
 KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
-  if (cur_entity_index_ >= entity_ids_.size()) {
-    *is_finished = true;
-    return KStatus::SUCCESS;
-  }
   KStatus ret;
-  bool is_done = false;
+  bool is_done = true;
   TsBlockSpan block_span;
-  ret = block_span_sorted_iterator_->Next(&block_span, &is_done);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
-  if (is_done) {
-    ret = MoveToNextEntity();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to move to next entity for sorted row data scan, cur_entity_index_: %d.", cur_entity_index_);
-      return KStatus::FAIL;
+  do {
+    if (block_span_sorted_iterator_) {
+      ret = block_span_sorted_iterator_->Next(&block_span, &is_done);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
+        return KStatus::FAIL;
+      }
     }
-    return KStatus::SUCCESS;
-  } else {
-    return ConvertBlockSpanToResultSet(block_span, res, count);
-  }
+    if (cur_entity_idx_ == -1 || is_done) {
+      ++cur_entity_index_;
+      if (cur_entity_index_ >= entity_ids_.size()) {
+        // All entities are scanned.
+        *count = 0;
+        *is_finished = true;
+        return KStatus::SUCCESS;
+      }
+      ScanAndSortEntityData();
+    }
+  } while (is_done);
+
+  return ConvertBlockSpanToResultSet(block_span, res, count);
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -475,6 +410,9 @@ TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 
 KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
+  if (cur_entity_index_ == -1) {
+    cur_entity_index_ = 0;
+  }
   if (cur_entity_index_ >= entity_ids_.size()) {
     *is_finished = true;
     return KStatus::SUCCESS;

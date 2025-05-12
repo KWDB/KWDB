@@ -56,6 +56,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus AddEntitySegmentBlockSpans(bool for_last);
   KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans();
+  KStatus ScanPartitionBlockSpans();
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -68,7 +69,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
   std::list<TsBlockSpan> ts_block_spans_;
   std::list<TsBlockSpan> ts_block_spans_for_last_;
-  STORAGE_SCAN_STATUS status_{SCAN_STATUS_UNKNOWN};
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -79,15 +79,9 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
   ~TsRawDataIteratorV2Impl();
 
-  KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  KStatus MoveToMemSegment();
-  KStatus MoveToLastSegment();
-  KStatus MoveToEntitySegment();
-  KStatus MoveToNextEntity();
-  KStatus MoveToNextPartition();
   KStatus NextBlockSpan(ResultSet* res, k_uint32* count);
 };
 
@@ -100,7 +94,6 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                                 SortOrder order_type = ASC);
   ~TsSortedRawDataIteratorV2Impl();
 
-  KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
