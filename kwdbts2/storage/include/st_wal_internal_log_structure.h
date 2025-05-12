@@ -20,7 +20,7 @@ class LogEntry {
  public:
   LogEntry() = delete;
 
-  LogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id);
+  LogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
 
   LogEntry(const LogEntry& entry) = delete;
 
@@ -31,6 +31,10 @@ class LogEntry {
   [[nodiscard]] TS_LSN getLSN() const;
 
   [[nodiscard]] uint64_t getXID() const;
+
+  [[nodiscard]] uint64_t getVGroupID() const;
+
+  [[nodiscard]] TS_LSN getOldLSN() const;
 
   virtual char* encode();
 
@@ -51,12 +55,15 @@ class LogEntry {
   TS_LSN lsn_;
   size_t len_;
   uint64_t x_id_;
+  uint64_t vgrp_id_;
+  TS_LSN old_lsn_;
   char tsx_id_[TS_TRANS_ID_LEN]{};
 };
 
 class InsertLogEntry : public LogEntry {
  public:
-  InsertLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type);
+  InsertLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id = 0,
+                 TS_LSN old_lsn = 0);
 
   InsertLogEntry(const InsertLogEntry& entry) = delete;
 
@@ -78,7 +85,7 @@ class InsertLogTagsEntry : public InsertLogEntry {
   char* data_{nullptr};
 
   InsertLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, int64_t time_partition,
-                     uint64_t offset, uint64_t length, char* data);
+                     uint64_t offset, uint64_t length, char* data, uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
 
   InsertLogTagsEntry(const InsertLogTagsEntry& entry) = delete;
 
@@ -86,8 +93,12 @@ class InsertLogTagsEntry : public InsertLogEntry {
 
   TSSlice getPayload();
 
+  int64_t getTimePartition();
+
+  uint64_t getOffset();
+
   char* encode() override {
-    return construct(type_, x_id_, table_type_, time_partition_, offset_, length_, data_);
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, data_);
   }
 
   size_t getLen() override;
@@ -100,13 +111,15 @@ class InsertLogTagsEntry : public InsertLogEntry {
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
+                                     sizeof(vgrp_id_) +
+                                     sizeof(old_lsn_) +
                                      sizeof(time_partition_) +
                                      sizeof(table_type_) +
                                      sizeof(offset_) +
                                      sizeof(length_);
 
-  static char* construct(const WALLogType type, const uint64_t x_id, const WALTableType table_type,
-                         const int64_t time_partition, const uint64_t offset,
+  static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
+                         const WALTableType table_type, const int64_t time_partition, const uint64_t offset,
                          const uint64_t length, const char* data) {
     size_t len = fixed_length + length;
 
@@ -116,6 +129,10 @@ class InsertLogTagsEntry : public InsertLogEntry {
     location += sizeof(type_);
     memcpy(log_ptr + location, &x_id, sizeof(x_id_));
     location += sizeof(x_id_);
+    memcpy(log_ptr + location, &vgrp_id, sizeof(vgrp_id_));
+    location += sizeof(vgrp_id_);
+    memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
+    location += sizeof(old_lsn_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
     memcpy(log_ptr + location, &time_partition, sizeof(time_partition_));
@@ -140,10 +157,12 @@ class InsertLogMetricsEntry : public InsertLogEntry {
   char* encoded_primary_tags_{nullptr};
 
   InsertLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, int64_t time_partition,
-                        uint64_t offset, uint64_t length, char* data, size_t p_tag_len, char* encoded_primary_tags);
+                        uint64_t offset, uint64_t length, char* data, size_t p_tag_len, char* encoded_primary_tags,
+                        uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
 
   InsertLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, int64_t time_partition,
-                        uint64_t offset, uint64_t length, size_t p_tag_len, char* data);
+                        uint64_t offset, uint64_t length, size_t p_tag_len, char* data, uint64_t vgrp_id = 0,
+                        TS_LSN old_lsn = 0);
 
 
   ~InsertLogMetricsEntry() override;
@@ -152,8 +171,12 @@ class InsertLogMetricsEntry : public InsertLogEntry {
 
   TSSlice getPayload();
 
+  int64_t getTimePartition();
+
+  uint64_t getOffset();
+
   char* encode() override {
-    return construct(type_, x_id_, table_type_, time_partition_, offset_, length_, data_, p_tag_len_,
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, data_, p_tag_len_,
                      encoded_primary_tags_);
   }
 
@@ -168,14 +191,16 @@ class InsertLogMetricsEntry : public InsertLogEntry {
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
+                                     sizeof(vgrp_id_) +
+                                     sizeof(old_lsn_) +
                                      sizeof(table_type_) +
                                      sizeof(time_partition_) +
                                      sizeof(offset_) +
                                      sizeof(length_) +
                                      sizeof(p_tag_len_);
 
-  static char* construct(const WALLogType type, const uint64_t x_id, const WALTableType table_type,
-                         const uint64_t time_partition, const uint64_t offset,
+  static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
+                         const WALTableType table_type, const uint64_t time_partition, const uint64_t offset,
                          const uint64_t length, const char* data, const size_t p_tag_len,
                          const char* encoded_primary_tags) {
     size_t len = fixed_length + length + p_tag_len;
@@ -186,12 +211,16 @@ class InsertLogMetricsEntry : public InsertLogEntry {
     location += sizeof(type_);
     memcpy(log_ptr + location, &x_id, sizeof(x_id_));
     location += sizeof(x_id_);
+    memcpy(log_ptr + location, &vgrp_id, sizeof(vgrp_id_));
+    location += sizeof(vgrp_id_);
+    memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
+    location += sizeof(old_lsn_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
     memcpy(log_ptr + location, &time_partition, sizeof(time_partition_));
     location += sizeof(time_partition_);
-    memcpy(log_ptr + location, &offset, sizeof(offset));
-    location += sizeof(offset);
+    memcpy(log_ptr + location, &offset, sizeof(offset_));
+    location += sizeof(offset_);
     memcpy(log_ptr + location, &length, sizeof(length_));
     location += sizeof(length_);
     memcpy(log_ptr + location, &p_tag_len, sizeof(p_tag_len_));
@@ -206,7 +235,8 @@ class InsertLogMetricsEntry : public InsertLogEntry {
 
 class UpdateLogEntry : public LogEntry {
  public:
-  UpdateLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type);
+  UpdateLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id = 0,
+                 TS_LSN old_lsn = 0);
 
   UpdateLogEntry(const UpdateLogEntry& entry) = delete;
 
@@ -230,7 +260,8 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
   char* old_data_{nullptr};
 
   UpdateLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, int64_t time_partition,
-                     uint64_t offset, uint64_t length, uint64_t old_len, char* data);
+                     uint64_t offset, uint64_t length, uint64_t old_len, char* data, uint64_t vgrp_id = 0,
+                     TS_LSN old_lsn = 0);
 
   UpdateLogTagsEntry(const UpdateLogTagsEntry& entry) = delete;
 
@@ -240,8 +271,13 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
 
   TSSlice getOldPayload();
 
+  int64_t getTimePartition();
+
+  uint64_t getOffset();
+
   char* encode() override {
-    return construct(type_, x_id_, table_type_, time_partition_, offset_, length_, old_len_, data_, old_data_);
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, time_partition_, offset_, length_, old_len_,
+                     data_, old_data_);
   }
 
   size_t getLen() override;
@@ -255,15 +291,17 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
+                                     sizeof(vgrp_id_) +
+                                     sizeof(old_lsn_) +
                                      sizeof(time_partition_) +
                                      sizeof(table_type_) +
                                      sizeof(offset_) +
                                      sizeof(length_) +
                                      sizeof(old_len_);
 
-  static char* construct(const WALLogType type, const uint64_t x_id, const WALTableType table_type,
-                         const int64_t time_partition, const uint64_t offset, const uint64_t length,
-                         uint64_t old_len, const char* data, const char* old_data) {
+  static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
+                         const WALTableType table_type, const int64_t time_partition, const uint64_t offset,
+                         const uint64_t length, uint64_t old_len, const char* data, const char* old_data) {
     size_t len = fixed_length + length  + old_len;
 
     char* log_ptr = KNEW char[len];
@@ -272,6 +310,10 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
     location += sizeof(type_);
     memcpy(log_ptr + location, &x_id, sizeof(x_id_));
     location += sizeof(x_id_);
+    memcpy(log_ptr + location, &vgrp_id, sizeof(vgrp_id_));
+    location += sizeof(vgrp_id_);
+    memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
+    location += sizeof(old_lsn_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
     memcpy(log_ptr + location, &time_partition, sizeof(time_partition_));
@@ -292,7 +334,8 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
 
 class DeleteLogEntry : public LogEntry {
  public:
-  DeleteLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type);
+  DeleteLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id = 0,
+                 TS_LSN old_lsn = 0);
 
   ~DeleteLogEntry() override = default;
 
@@ -317,13 +360,13 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
   DelRowSpan* row_spans_;
 
   DeleteLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, size_t p_tag_len,
-                        uint64_t range_size, char* data);
+                        uint64_t range_size, char* data, uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
 
   ~DeleteLogMetricsEntry() override;
 
   char* encode() override {
-    return construct(type_, x_id_, table_type_, p_tag_len_, start_ts_, end_ts_, range_size_, encoded_primary_tags_,
-                     row_spans_);
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, p_tag_len_, start_ts_, end_ts_, range_size_,
+                     encoded_primary_tags_, row_spans_);
   }
 
   size_t getLen() override;
@@ -340,6 +383,8 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
+                                     sizeof(vgrp_id_) +
+                                     sizeof(old_lsn_) +
                                      sizeof(table_type_) +
                                      sizeof(p_tag_len_) +
                                      sizeof(start_ts_) +
@@ -347,9 +392,10 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
                                      sizeof(range_size_);
 
 
-  static char* construct(const WALLogType type, const uint64_t x_id, const WALTableType table_type,
-                         const size_t p_tag_len, const KTimestamp start_ts, const KTimestamp end_ts,
-                         const uint64_t range_size, const char* encoded_primary_tags, const DelRowSpan* row_spans) {
+  static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
+                         const WALTableType table_type, const size_t p_tag_len, const KTimestamp start_ts,
+                         const KTimestamp end_ts, const uint64_t range_size, const char* encoded_primary_tags,
+                         const DelRowSpan* row_spans) {
     size_t len = fixed_length + (range_size) * sizeof(DelRowSpan) + p_tag_len;
 
     char* log_ptr = KNEW char[len];
@@ -359,6 +405,10 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
     offset += sizeof(type_);
     memcpy(log_ptr + offset, &x_id, sizeof(x_id_));
     offset += sizeof(x_id_);
+    memcpy(log_ptr + offset, &vgrp_id, sizeof(vgrp_id_));
+    offset += sizeof(vgrp_id_);
+    memcpy(log_ptr + offset, &old_lsn, sizeof(old_lsn_));
+    offset += sizeof(old_lsn_);
     memcpy(log_ptr + offset, &table_type, sizeof(table_type_));
     offset += sizeof(table_type_);
 
@@ -392,13 +442,14 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
   char* encoded_tags_{nullptr};
 
   DeleteLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint32_t group_id,
-                     uint32_t entity_id, size_t p_tag_len, size_t tag_len, char* encoded_data);
+                     uint32_t entity_id, size_t p_tag_len, size_t tag_len, char* encoded_data, uint64_t vgrp_id = 0,
+                     TS_LSN old_lsn = 0);
 
   ~DeleteLogTagsEntry() override;
 
   char* encode() override {
-    return construct(type_, x_id_, table_type_, group_id_, entity_id_, p_tag_len_, encoded_primary_tags_,
-                     tag_len_, encoded_tags_);
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, group_id_, entity_id_, p_tag_len_,
+                     encoded_primary_tags_, tag_len_, encoded_tags_);
   }
 
   size_t getLen() override;
@@ -412,15 +463,18 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
+                                     sizeof(vgrp_id_) +
+                                     sizeof(old_lsn_) +
                                      sizeof(table_type_) +
                                      sizeof(group_id_) +
                                      sizeof(entity_id_) +
                                      sizeof(p_tag_len_) +
                                      sizeof(tag_len_);
 
-  static char* construct(const WALLogType type, const uint64_t x_id, const WALTableType table_type,
-                         const uint32_t group_id, const uint32_t entity_id, const size_t p_tag_len,
-                         const char* encoded_primary_tags, const size_t tag_len, const char* encoded_tags) {
+  static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
+                         const WALTableType table_type, const uint32_t group_id, const uint32_t entity_id,
+                         const size_t p_tag_len, const char* encoded_primary_tags, const size_t tag_len,
+                         const char* encoded_tags) {
     size_t len = fixed_length + p_tag_len + tag_len;
 
     char* log_ptr = KNEW char[len];
@@ -430,6 +484,10 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
     location += sizeof(type_);
     memcpy(log_ptr + location, &x_id, sizeof(x_id_));
     location += sizeof(x_id_);
+    memcpy(log_ptr + location, &vgrp_id, sizeof(vgrp_id_));
+    location += sizeof(vgrp_id_);
+    memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
+    location += sizeof(old_lsn_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
     memcpy(log_ptr + location, &group_id, sizeof(group_id_));
@@ -633,7 +691,7 @@ class SnapshotEntry : public LogEntry {
 
   void prettyPrint() override;
 
- private:
+ public:
   TSTableID table_id_;
   uint64_t begin_hash_;
   uint64_t end_hash_;
@@ -700,7 +758,7 @@ class TempDirectoryEntry : public LogEntry {
 
   void prettyPrint() override;
 
- private:
+ public:
   size_t string_len_{0};
   char* abs_path_{nullptr};
 
@@ -747,7 +805,7 @@ class PartitionTierChangeEntry : public LogEntry {
 
   void prettyPrint() override;
 
- private:
+ public:
   std::string link_path_;
   std::string tier_path_;
 
@@ -1069,6 +1127,40 @@ class DropIndexEntry : public LogEntry {
     memcpy(log_ptr + offset, &new_ts_version, sizeof(new_ts_version_));
     offset += sizeof(new_ts_version_);
     memcpy(log_ptr + offset, &col_ids, sizeof(col_ids_));
+
+    return log_ptr;
+  }
+};
+
+class EndCheckpointEntry : public LogEntry {
+ public:
+  EndCheckpointEntry(TS_LSN lsn, uint64_t x_id);
+
+  ~EndCheckpointEntry() override = default;
+
+  char* encode() override {
+    return construct(type_, x_id_, lsn_len_, v_lsn_);
+  }
+
+ public:
+  char* v_lsn_;
+  uint64_t lsn_len_;
+
+  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + sizeof(lsn_len_);
+
+  static char* construct(const WALLogType type, const uint64_t x_id, uint64_t lsn_len, char* v_lsn) {
+    uint64_t len = fixed_length + lsn_len;
+
+    char* log_ptr = KNEW char[len];
+    int location = 0;
+
+    memcpy(log_ptr, &type, sizeof(type_));
+    location += sizeof(type_);
+    memcpy(log_ptr + location, &x_id, sizeof(x_id_));
+    location += sizeof(x_id_);
+    memcpy(log_ptr + location, &lsn_len, sizeof(lsn_len_));
+    location += sizeof(lsn_len_);
+    memcpy(log_ptr + location, v_lsn, lsn_len);
 
     return log_ptr;
   }

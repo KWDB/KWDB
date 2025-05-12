@@ -85,7 +85,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
 
   for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
     const EntityColData& p = cols_data_buffer_.buffer[idx];
-    data_block_builder_->Add(p.entity_id, p.seq_no, p.col_data);
+    data_block_builder_->Add(p.entity_id, p.seq_no, p.col_data, p.data_flags);
     --left;
 
     if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == cols_data_buffer_.buffer.size()) {
@@ -130,7 +130,8 @@ KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, T
 }
 
 KStatus TsLastSegmentBuilder::PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id,
-                                         kwdbts::TS_LSN seq_no, std::vector<TSSlice> col_data) {
+                                         kwdbts::TS_LSN seq_no, std::vector<TSSlice> col_data,
+                                         std::vector<DataFlags> data_flags) {
   if (table_id != table_id_ || version != version_) {
     auto s = FlushColDataBuffer();
     if (s != SUCCESS) return FAIL;
@@ -138,7 +139,7 @@ KStatus TsLastSegmentBuilder::PutColData(TSTableID table_id, uint32_t version, T
   table_id_ = table_id;
   version_ = version;
   bloom_filter_->Add(entity_id);
-  cols_data_buffer_.push_back({seq_no, entity_id, std::move(col_data)});
+  cols_data_buffer_.push_back({seq_no, entity_id, std::move(col_data), std::move(data_flags)});
   return KStatus::SUCCESS;
 }
 
@@ -247,13 +248,13 @@ KStatus TsLastSegmentBuilder::Finalize() {
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
-    const TSSlice& col_data) noexcept {
+    const TSSlice& col_data, DataFlags data_flag) noexcept {
 #ifndef NDEBUG
   // assert(getDataTypeSize(dtype_) == col_data.len);
 #endif
   // TODO(zzr): parse bitmap from payload;
   if (has_bitmap_) {
-    bitmap_[row_cnt_] = kValid;
+    bitmap_[row_cnt_] = data_flag;
   }
   row_cnt_++;
   data_buffer_.append(col_data.data, dsize_);
@@ -344,11 +345,12 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     int col_id = i - 2;
     TSSlice data;
     parser_->GetColValueAddr(metric_data, col_id, &data);
+    bool is_null = parser_->IsColNull(metric_data, col_id);
     if (!isVarLenType(metric_schema_[col_id].type)) {
-      colblocks_[i]->Add(data);
+      colblocks_[i]->Add(data, is_null ? kNull : kValid);
     } else {
       size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8});
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, is_null ? kNull : kValid);
       uint16_t len = data.len;
       varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
       varchar_buffer_.append(data.data, data.len);
@@ -357,7 +359,8 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN seq_no,
-                                                   const std::vector<TSSlice>& col_data) {
+                                                   const std::vector<TSSlice>& col_data,
+                                                   const std::vector<DataFlags>& data_flags) {
   assert(!finished_);
   assert(parser_ != nullptr);
   info_.nrow++;
@@ -380,10 +383,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     int col_id = i - 2;
     TSSlice data = col_data[col_id];
     if (!isVarLenType(metric_schema_[col_id].type)) {
-      colblocks_[i]->Add(data);
+      colblocks_[i]->Add(data, data_flags[col_id]);
     } else {
       size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8});
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, data_flags[col_id]);
       uint16_t len = data.len;
       varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
       varchar_buffer_.append(data.data, data.len);

@@ -75,7 +75,7 @@ class TsBlockSpanSortedIterator {
     while (left <= right) {
       int mid = left + (right - left) / 2;
       TsBlockSpanRowInfo cur_row_info = {block_span->GetEntityID(), block_span->GetTS(mid),
-                                         *(block_span->GetSeqNoAddr(mid))};
+                                         *(block_span->GetLSNAddr(mid))};
       if (!is_reverse_) {
         if (cur_row_info > target_row_info) {
           result = mid;
@@ -116,7 +116,7 @@ class TsBlockSpanSortedIterator {
         start_row_idx = block_span.GetRowNum() - 1;
       }
       timestamp64 ts = block_span.GetTS(start_row_idx);
-      uint64_t seq_no = *(block_span.GetSeqNoAddr(start_row_idx));
+      uint64_t seq_no = *(block_span.GetLSNAddr(start_row_idx));
       span_row_infos_.push_back({block_span.GetEntityID(), ts, seq_no, &block_span, start_row_idx});
     }
     if (!is_reverse_) {
@@ -152,7 +152,7 @@ class TsBlockSpanSortedIterator {
       end_row_idx = 0;
     }
     TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
-                                                *cur_block_span->GetSeqNoAddr(end_row_idx)};
+                                                *cur_block_span->GetLSNAddr(end_row_idx)};
     row_idx = span_row_infos_.begin()->row_idx;
     if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
       row_idx = cur_block_span->GetRowNum();
@@ -176,7 +176,7 @@ class TsBlockSpanSortedIterator {
         start_row_idx = cur_block_span->GetRowNum() - 1;
       }
       TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(start_row_idx),
-                                           *(cur_block_span->GetSeqNoAddr(start_row_idx)),
+                                           *(cur_block_span->GetLSNAddr(start_row_idx)),
                                            cur_block_span, start_row_idx};
       insertRowInfo(next_row_info);
     } else {

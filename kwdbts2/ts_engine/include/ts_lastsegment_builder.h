@@ -56,6 +56,7 @@ class TsLastSegmentBuilder {
     TS_LSN seq_no;
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
+    std::vector<DataFlags> data_flags;
   };
 
   struct PayloadBuffer {
@@ -143,7 +144,7 @@ class TsLastSegmentBuilder {
                      TSSlice row_data);
 
   KStatus PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
-                     std::vector<TSSlice> col_data);
+                     std::vector<TSSlice> col_data, std::vector<DataFlags> data_flags);
 
   uint32_t GetFileNumber() const {return file_number_;}
 
@@ -233,7 +234,8 @@ class TsLastSegmentBuilder::MetricBlockBuilder {
   KStatus Reset(TSTableID table_id, uint32_t table_version);
 
   void Add(TSEntityID entity_id, TS_LSN seq_no, TSSlice metric_data);
-  void Add(TSEntityID entity_id, TS_LSN seq_no, const std::vector<TSSlice>& col_data);
+  void Add(TSEntityID entity_id, TS_LSN seq_no, const std::vector<TSSlice>& col_data,
+           const std::vector<DataFlags>& data_flags);
   void Finish();
   bool IsFinished() const { return finished_; }
   BlockInfo GetBlockInfo() const;
@@ -275,7 +277,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
       dsize_ = getDataTypeSize(dtype);
     }
   }
-  void Add(const TSSlice& col_data) noexcept;
+  void Add(const TSSlice& col_data, DataFlags data_flag = kValid) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {
