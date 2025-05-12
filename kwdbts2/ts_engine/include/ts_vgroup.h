@@ -81,7 +81,7 @@ class PartitionManager {
 // const pointer
 class TsVGroup {
  private:
-  uint32_t vgroup_id_;
+  uint32_t vgroup_id_{0};
   TsEngineSchemaManager* schema_mgr_{nullptr};
   //  <database_id, Manager>
   std::map<uint32_t, std::unique_ptr<PartitionManager>> partitions_;
@@ -91,11 +91,11 @@ class TsVGroup {
 
   std::filesystem::path path_;
 
-  uint64_t entity_counter_;
+  uint64_t entity_counter_{0};
 
   mutable std::mutex mutex_;
 
-  MMapFile* config_file_;
+  MMapFile* config_file_{nullptr};
 
   EngineOptions engine_options_;
 
