@@ -335,6 +335,9 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
 
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                                    uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+  if (options_.wal_level == WALMode::OFF) {
+    return KStatus::SUCCESS;
+  }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
   std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
   auto vgroup = GetVGroupByID(ctx, distrib(gen));
@@ -343,6 +346,9 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
                                     uint64_t range_group_id, uint64_t mtr_id) {
+  if (options_.wal_level == WALMode::OFF) {
+    return KStatus::SUCCESS;
+  }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
   auto vgroup = GetVGroupByID(ctx, distrib(gen));
@@ -359,7 +365,9 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
 //    2) For the DELETE operation, remove the DELETE MARK of the corresponding data;
 //    3) For ALTER operations, roll back to the previous schema version;
 //  4. If the rollback fails, a system log is generated and an error exit is reported.
-
+  if (options_.wal_level == WALMode::OFF) {
+    return KStatus::SUCCESS;
+  }
   KStatus s;
 
   std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
@@ -403,6 +411,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
    * 7. trig all vgroup write checkpoint wal and update checkpoint LSN
    * 8. remove vgroup wal file and old chk file
    */
+  if (options_.wal_level == WALMode::OFF) {
+    return KStatus::SUCCESS;
+  }
   std::vector<LogEntry*> logs;
   std::vector<LogEntry*> rewrite;
   std::unordered_map<uint32_t, uint64_t> vgrp_lsn;
@@ -549,7 +560,9 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
    * 2. get all vgroup wal log from last checkpoint lsn.
    * 3. merge wal and apply wal
    */
-
+  if (options_.wal_level == WALMode::OFF) {
+    return KStatus::SUCCESS;
+  }
   // 1. get engine chk wal log.
   std::vector<LogEntry*> logs;
   std::vector<uint64_t> vgroup_lsn;
