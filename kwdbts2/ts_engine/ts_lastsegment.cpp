@@ -424,7 +424,10 @@ class TsLastBlock : public TsBlock {
       value.len = len;
       return SUCCESS;
     }
-    int dsize = getDataTypeSize(dtype);
+    int dsize = schema[col_id].size;
+    if (need_convert_ts(dtype)) {
+      dsize = 16;
+    }
     value.len = dsize;
     value.data = ptr + dsize * row_num;
 

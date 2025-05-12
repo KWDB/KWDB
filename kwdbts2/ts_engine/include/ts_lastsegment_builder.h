@@ -265,21 +265,21 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   ColumnBlockBuilder(const ColumnBlockBuilder&) = delete;
   void operator=(const ColumnBlockBuilder&) = delete;
 
-  explicit ColumnBlockBuilder(DATATYPE dtype, bool has_bitmap)
+  explicit ColumnBlockBuilder(DATATYPE dtype, int d_size, bool has_bitmap)
       : has_bitmap_(has_bitmap), dtype_(dtype) {
     if (dtype_ == TIMESTAMP64_LSN_MICRO || dtype_ == TIMESTAMP64_LSN ||
         dtype_ == TIMESTAMP64_LSN_NANO) {
       // discard LSN
       dsize_ = 8;
     } else {
-      dsize_ = getDataTypeSize(dtype);
+      dsize_ = d_size;
     }
   }
   void Add(const TSSlice& col_data) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {
-    data_buffer_.reserve(nrow * getDataTypeSize(dtype_));
+    data_buffer_.reserve(nrow * dsize_);
     bitmap_.Reset(has_bitmap_ ? nrow : 0);
   }
   TSSlice GetData() { return TSSlice{data_buffer_.data(), data_buffer_.size()}; }
