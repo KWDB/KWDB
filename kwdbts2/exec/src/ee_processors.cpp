@@ -291,7 +291,7 @@ KStatus Processors::RunWithVectorize(kwdbContext_p ctx, char **value, void *buff
       break;
     }
     ret = chunk->VectorizeData(ctx, info);
-    chunk.release();
+    //  chunk.release();
     break;
   } while (true);
   collection_.GetAnalyse(ctx);
