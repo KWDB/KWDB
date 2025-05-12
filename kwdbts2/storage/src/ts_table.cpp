@@ -3026,17 +3026,6 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   ErrorInfo err_info;
   auto latest_version = entity_bt_manager_->GetCurrentTableVersion();
   auto upper_version = meta->ts_table().ts_version();
-  // skip in case current table has that schema version
-  LOG_DEBUG("upper version[%u], latest schema version [%u]", upper_version, latest_version);
-  if (upper_version <= latest_version) {
-    auto root_table = entity_bt_manager_->GetRootTable(upper_version, true);
-    if (root_table != nullptr) {
-      *version_schema = root_table;
-      return KStatus::SUCCESS;
-    }
-    LOG_DEBUG("upper version[%u] no exists, need create.", upper_version);
-  }
-
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
   for (int i = 0; i < meta->k_column_size(); i++) {
