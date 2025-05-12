@@ -116,9 +116,13 @@ KStatus TsBlock::GetLastResult(uint32_t begin_row_idx,
                                const std::vector<AttributeInfo>& schema,
                                const AttributeInfo& dest_type,
                                std::vector<Sumfunctype> agg_types,
-                               std::vector<TSSlice>& agg_data) {
+                               std::vector<TSSlice>& agg_data,
+                               int64_t* out_ts) {
   TSBlkSpanDataTypeConvert convert(this, begin_row_idx, row_num);
   agg_data.clear();
+  if (out_ts) {
+    *out_ts = INT64_MIN;
+  }
 
   if (!isVarLenType(dest_type.type)) {
     char* value = nullptr;
@@ -128,6 +132,7 @@ KStatus TsBlock::GetLastResult(uint32_t begin_row_idx,
       LOG_ERROR("GetFixLenColAddr failed.");
       return s;
     }
+
     int64_t max_ts = INT64_MIN;
     int last_row_idx = -1;
 
@@ -140,6 +145,10 @@ KStatus TsBlock::GetLastResult(uint32_t begin_row_idx,
         max_ts = ts;
         last_row_idx = row_idx;
       }
+    }
+
+    if (out_ts) {
+      *out_ts = max_ts;
     }
 
     for (auto agg_type : agg_types) {
@@ -262,8 +271,8 @@ KStatus TsBlockSpan::GetAggResult(uint32_t col_id, const std::vector<AttributeIn
 }
 
 KStatus TsBlockSpan::GetLastResult(uint32_t col_id, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
-  return block_->GetLastResult(start_row_, nrow_, col_id, schema, dest_type, agg_types, agg_data);
+ const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data, int64_t* out_ts) {
+  return block_->GetLastResult(start_row_, nrow_, col_id, schema, dest_type, agg_types, agg_data, out_ts);
 }
 
 void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {

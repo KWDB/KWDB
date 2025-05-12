@@ -52,8 +52,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
  protected:
   KStatus AddMemSegmentBlockSpans();
-  KStatus AddLastSegmentBlockSpans(bool for_last);
-  KStatus AddEntitySegmentBlockSpans(bool for_last);
+  KStatus AddLastSegmentBlockSpans();
+  KStatus AddEntitySegmentBlockSpans();
   KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans();
   KStatus ScanPartitionBlockSpans();
@@ -116,6 +116,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus AggregateBlockSpans(ResultSet* res, k_uint32* count);
+  KStatus AggregateLastColumns(const std::vector<k_uint32>& last_cols, std::vector<TSSlice>& final_agg_data);
 
   std::vector<Sumfunctype> scan_agg_types_;
 };

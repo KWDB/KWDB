@@ -46,8 +46,8 @@ class TsBlock {
    const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 
   virtual KStatus GetLastResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
-   const std::vector<AttributeInfo>& schema,
-   const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+   const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types,
+   std::vector<TSSlice>& agg_data, int64_t* out_ts);
 };
 
 struct TsBlockSpan {
@@ -90,7 +90,7 @@ struct TsBlockSpan {
     std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
 
   KStatus GetLastResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data, int64_t* out_ts);
 
   void SplitFront(int row_num, TsBlockSpan* front_span);
 
