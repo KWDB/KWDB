@@ -1233,38 +1233,43 @@ func processRootExpr(root memo.RelExpr, mem *memo.Memo) {
 	switch expr := root.(type) {
 	case *memo.ProjectExpr:
 		processRootExpr(expr.Input, mem)
-		for _, proj := range expr.Projections {
-			if castExpr, ok := proj.Element.(*memo.CastExpr); ok {
-				if variableExpr, ok := castExpr.Input.(*memo.VariableExpr); ok {
-					colID := variableExpr.Col
-					tableID := mem.Metadata().ColumnMeta(colID).Table
-					tableGroupID := mem.MultimodelHelper.GetTSTableIndexFromGroup(tableID)
-					if tableGroupID >= 0 {
-						mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
+
+		// walk is true when the input of projectExpr has tscanExpr.
+		if walk(expr.Input) {
+			for _, proj := range expr.Projections {
+				if castExpr, ok := proj.Element.(*memo.CastExpr); ok {
+					if variableExpr, ok := castExpr.Input.(*memo.VariableExpr); ok {
+						colID := variableExpr.Col
+						tableID := mem.Metadata().ColumnMeta(colID).Table
+						tableGroupID := mem.MultimodelHelper.GetTSTableIndexFromGroup(tableID)
+						if tableGroupID >= 0 {
+							mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
+						}
 					}
 				}
-			}
-			if functionExpr, ok := proj.Element.(*memo.FunctionExpr); ok {
-				if functionExpr.FunctionPrivate.Name == "time_bucket" {
-					if len(functionExpr.Args) > 0 {
-						if variableExpr, ok := functionExpr.Args[0].(*memo.VariableExpr); ok {
-							colID := variableExpr.Col
-							tableID := mem.Metadata().ColumnMeta(colID).Table
-							tableGroupID := mem.MultimodelHelper.GetTableIndexFromGroup(tableID)
-							if tableGroupID >= 0 {
-								aggColID := proj.Col
-								if !containsColumn(mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID) {
-									mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols = append(
-										mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID)
+				if functionExpr, ok := proj.Element.(*memo.FunctionExpr); ok {
+					if functionExpr.FunctionPrivate.Name == "time_bucket" {
+						if len(functionExpr.Args) > 0 {
+							if variableExpr, ok := functionExpr.Args[0].(*memo.VariableExpr); ok {
+								colID := variableExpr.Col
+								tableID := mem.Metadata().ColumnMeta(colID).Table
+								tableGroupID := mem.MultimodelHelper.GetTableIndexFromGroup(tableID)
+								if tableGroupID >= 0 {
+									aggColID := proj.Col
+									if !containsColumn(mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID) {
+										mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols = append(
+											mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID)
+									}
+									mem.MultimodelHelper.PreGroupInfos[tableGroupID].HasTimeBucket = true
+									mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
 								}
-								mem.MultimodelHelper.PreGroupInfos[tableGroupID].HasTimeBucket = true
-								mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
 							}
 						}
 					}
 				}
 			}
 		}
+
 	case *memo.SelectExpr:
 		processRootExpr(expr.Input, mem)
 	case *memo.DistinctOnExpr:
