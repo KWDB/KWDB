@@ -1037,7 +1037,7 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
                            const std::vector<roachpb::NTagIndexInfo>& idx_info) {
   versionMutexLock();
   Defer defer{[&]() { versionMutexUnlock(); }};
-  LOG_INFO("AddNewPartitionVersion table id:%d, new version:%d", this->m_table_id, new_version)
+  LOG_INFO("AddNewPartitionVersion table id:%lu, new version:%d", this->m_table_id, new_version)
 
   TagVersionObject* tag_ver_obj = m_version_mgr_->GetVersionObject(new_version);
   if (nullptr != tag_ver_obj) {
