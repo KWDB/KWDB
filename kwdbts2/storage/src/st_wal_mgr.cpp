@@ -896,11 +896,11 @@ KStatus WALMgr::SwitchNextFile() {
     }
   }
   TS_LSN start_lsn = FetchCurrentLSN() + BLOCK_SIZE;
-//  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-//  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
-//                        start_lsn, 0);
-//  KStatus s = file_mgr_->initWalFileWithHeader(hb);
-  KStatus s = file_mgr_->initWalFile(start_lsn);
+  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
+                        FetchCurrentLSN(), 0);
+  KStatus s = file_mgr_->initWalFileWithHeader(hb);
+//  KStatus s = file_mgr_->initWalFile(start_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initWalFileWithHeader.")
     return s;
