@@ -552,7 +552,8 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
     column_blocks_[col_idx + 1].bitmap.Map({data.data, bitmap_len}, n_rows_);
   } else if (col_idx == 0) {
-    column_blocks_[0].bitmap.SetCount(n_rows_);
+    // Timestamp Column Assign Default Value kValid
+    column_blocks_[col_idx + 1].bitmap.SetCount(n_rows_);
   }
   RemovePrefix(&data, bitmap_len);
   std::string plain;
