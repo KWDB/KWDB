@@ -230,7 +230,8 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   if (last_lsn != 0) {
     chk_lsn = last_lsn;
   }
-  KStatus  s = wal_manager_->ReadWALLog(logs, chk_lsn, wal_manager_->FetchCurrentLSN(), ignore);
+  KStatus  s = wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(), wal_manager_->FetchCurrentLSN(),
+                                        ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
   wal_manager_->Unlock();
   if (s == KStatus::FAIL) {
