@@ -701,6 +701,7 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
     default:
       break;
   }
+  return KStatus::SUCCESS;
 }
 
 uint32_t TsVGroup::GetVGroupID() {
