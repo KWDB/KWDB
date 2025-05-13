@@ -22,7 +22,7 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
                                const AttributeInfo& dest_type,
                                std::vector<Sumfunctype> agg_types,
                                std::vector<TSSlice>& agg_data) {
-  TSBlkSpanDataTypeConvert convert(this, begin_row_idx, row_num);
+  TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
   agg_data.clear();
 
   if (!isVarLenType(dest_type.type)) {
@@ -209,8 +209,8 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
     if (ts != other_ts) {
       return ts < other_ts;
     } else {
-      uint64_t seq_no = *block_->GetSeqNoAddr(start_row_);
-      uint64_t other_seq_no = *other.block_->GetSeqNoAddr(other.start_row_);
+      uint64_t seq_no = *block_->GetLSNAddr(start_row_);
+      uint64_t other_seq_no = *other.block_->GetLSNAddr(other.start_row_);
       return seq_no > other_seq_no;
     }
   }
@@ -244,8 +244,8 @@ timestamp64 TsBlockSpan::GetTS(uint32_t row_idx) const {
   return block_->GetTS(start_row_ + row_idx);
 }
 
-uint64_t* TsBlockSpan::GetSeqNoAddr(int row_idx) const {
-  return block_->GetSeqNoAddr(start_row_ + row_idx);
+uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
+  return block_->GetLSNAddr(start_row_ + row_idx);
 }
 
 void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
@@ -281,8 +281,8 @@ void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
   front_span->entity_id_ = entity_id_;
   front_span->start_row_ = start_row_;
   front_span->nrow_ = row_num;
-  front_span->convert_ = TSBlkSpanDataTypeConvert(*front_span);
-  convert_ = TSBlkSpanDataTypeConvert(*this);
+  front_span->convert_ = TSBlkDataTypeConvert(*front_span);
+  convert_ = TSBlkDataTypeConvert(*this);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -294,8 +294,8 @@ void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
   back_span->entity_id_ = entity_id_;
   back_span->start_row_ = start_row_ + nrow_ - row_num;
   back_span->nrow_ = row_num;
-  back_span->convert_ = TSBlkSpanDataTypeConvert(*back_span);
-  convert_ = TSBlkSpanDataTypeConvert(*this);
+  back_span->convert_ = TSBlkDataTypeConvert(*back_span);
+  convert_ = TSBlkDataTypeConvert(*this);
   // change current span info
   nrow_ -= row_num;
 }
@@ -303,7 +303,7 @@ void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
 void TsBlockSpan::Truncate(int row_num) {
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_ = TSBlkSpanDataTypeConvert(*this);
+  convert_ = TSBlkDataTypeConvert(*this);
 }
 
 void TsBlockSpan::Clear() {

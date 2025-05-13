@@ -1,3 +1,4 @@
+drop database IF EXISTS TS_DB cascade;
 create TS DATABASE TS_DB;
 USE TS_DB;
 

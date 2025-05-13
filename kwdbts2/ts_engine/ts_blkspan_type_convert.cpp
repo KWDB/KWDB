@@ -19,7 +19,7 @@
 
 namespace kwdbts {
 
-TSBlkSpanDataTypeConvert::TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span)
+TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlockSpan& blk_span)
   : block_(blk_span.block_.get()),
     start_row_idx_(blk_span.start_row_),
     row_num_(blk_span.nrow_) {
@@ -80,8 +80,8 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
   return 0;
 }
 
-KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
+KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+                                               const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
   assert(!isVarLenType(dest_type.type));
   assert(col_id < schema.size());
   uint32_t dest_type_size = dest_type.size;
@@ -143,10 +143,10 @@ KStatus TSBlkSpanDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::v
   return KStatus::SUCCESS;
 }
 
-KStatus TSBlkSpanDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx,
-                                                       const std::vector<AttributeInfo>& schema,
-                                                       const AttributeInfo& dest_type, DataFlags& flag,
-                                                       TSSlice& data) {
+KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx,
+                                                   const std::vector<AttributeInfo>& schema,
+                                                   const AttributeInfo& dest_type, DataFlags& flag,
+                                                   TSSlice& data) {
   assert(isVarLenType(dest_type.type));
   assert(row_idx < row_num_);
   assert(col_idx < schema.size());

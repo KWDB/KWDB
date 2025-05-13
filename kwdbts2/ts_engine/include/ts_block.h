@@ -39,7 +39,7 @@ class TsBlock {
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
 
-  virtual uint64_t* GetSeqNoAddr(int row_num) = 0;
+  virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
   virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
    const std::vector<AttributeInfo>& schema,
@@ -55,9 +55,9 @@ struct TsBlockSpan {
   std::shared_ptr<TsBlock> block_ = nullptr;
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
-  TSBlkSpanDataTypeConvert convert_;
+  TSBlkDataTypeConvert convert_;
 
-  friend TSBlkSpanDataTypeConvert;
+  friend TSBlkDataTypeConvert;
 
  public:
   TsBlockSpan() = default;
@@ -74,7 +74,7 @@ struct TsBlockSpan {
   TSTableID GetTableID() const;
   uint32_t GetTableVersion() const;
   timestamp64 GetTS(uint32_t row_idx) const;
-  uint64_t* GetSeqNoAddr(int row_idx) const;
+  uint64_t* GetLSNAddr(int row_idx) const;
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);

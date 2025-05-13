@@ -9,6 +9,8 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <filesystem>
+
 #include "st_wal_mgr.h"
 #include "st_wal_internal_logfile_mgr.h"
 #include "sys_utils.h"
@@ -72,7 +74,7 @@ KStatus WALMgr::Create(kwdbContext_p ctx) {
 
   TS_LSN current_lsn = FetchCurrentLSN();
 
-  s = file_mgr_->initWalFile(0, current_lsn);
+  s = file_mgr_->initWalFile(current_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize the WAL file.")
     return s;
@@ -101,12 +103,12 @@ KStatus WALMgr::Init(kwdbContext_p ctx) {
 
   TS_LSN current_lsn = FetchCurrentLSN();
 
-  s = file_mgr_->Open(meta_.current_file_no);
+  s = file_mgr_->Open();
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to open the WAL file with file num %d", meta_.current_file_no)
-    s = file_mgr_->initWalFile(meta_.current_file_no, current_lsn);
+    LOG_ERROR("Failed to open the WAL file ")
+    s = file_mgr_->initWalFile(current_lsn);
     if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to init a WAL file with file num %d", meta_.current_file_no)
+      LOG_ERROR("Failed to init a WAL file")
       return s;
     }
   }
@@ -125,16 +127,15 @@ KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t leng
   KStatus s = buffer_mgr_->writeWAL(ctx, wal_log, length, lsn_offset);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to write the WAL log to WAL buffer, payload length %lu", length)
-    size_t wal_file_size = opt_->wal_file_size << 20;
-    if (length > wal_file_size) {
-      LOG_ERROR("Payload length must less than cluster setting ts.wal.file_size %lu", wal_file_size)
-    }
+//    size_t wal_file_size = opt_->wal_file_size << 20;
+//    if (length > wal_file_size) {
+//      LOG_ERROR("Payload length must less than cluster setting ts.wal.file_size %lu", wal_file_size)
+//    }
     return s;
   }
   // record current log LSN and update meta_.current_lsn(NEXT LSN)
   entry_lsn = meta_.current_lsn;
   meta_.current_lsn = lsn_offset;
-  meta_.current_file_no = file_mgr_->GetCurrentFileNo();
 
   // TODO(xy): optimize:if WAL LEVEL=SYNC, don't need sync every log to disk, only sync by FLUSH while COMMIT/ROLLBACK.
   if (WALMode(opt_->wal_level) == WALMode::SYNC) {
@@ -144,10 +145,10 @@ KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t leng
     }
   }
 
-  if (eg_ != nullptr && NeedCheckpoint()) {
-    LOG_DEBUG("WAL file is full, Force CreateCheckpoint.");
-    eg_->CreateCheckpointInternal(ctx);
-  }
+//  if (vg_ != nullptr && NeedCheckpoint()) {
+//    LOG_DEBUG("WAL file is full, Force CreateCheckpoint.");
+//    vg_->CreateCheckpointInternal(ctx);
+//  }
 
   return SUCCESS;
 }
@@ -162,6 +163,230 @@ KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_L
 KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length) {
   TS_LSN current_lsn = 0;
   return WriteWAL(ctx, wal_log, length, current_lsn);
+}
+
+KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> logs) {
+  this->Lock();
+  KStatus s;
+  uint64_t current_lsn = 0;
+  for (auto log : logs) {
+    // construct entry char*
+    switch (log->getType()) {
+      case WALLogType::INSERT: {
+        auto wal_log = reinterpret_cast<InsertLogEntry *>(log);
+        switch (wal_log->getTableType()) {
+          case WALTableType::DATA : {
+            auto ins_log =  reinterpret_cast<InsertLogMetricsEntry *>(log);
+            size_t log_len = InsertLogMetricsEntry::fixed_length + ins_log->getPayload().len +
+                    ins_log->getPrimaryTag().length();
+            auto log_ = InsertLogMetricsEntry::construct(WALLogType::INSERT, ins_log->getXID(),
+                                                         ins_log->getVGroupID(), ins_log->getOldLSN(),
+                                                         WALTableType::DATA, ins_log->getTimePartition(),
+                                                         ins_log->getOffset(), ins_log->getPayload().len,
+                                                         ins_log->getPayload().data, ins_log->getPrimaryTag().length(),
+                                                         ins_log->getPrimaryTag().c_str());
+            s = writeWALInternal(ctx, log_, log_len, current_lsn);
+            delete []log_;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
+            break;
+          }
+          case WALTableType::TAG : {
+            auto ins_log =  reinterpret_cast<InsertLogTagsEntry *>(log);
+            size_t log_len = InsertLogTagsEntry::fixed_length + ins_log->getPayload().len;
+            auto log_ = InsertLogTagsEntry::construct(WALLogType::INSERT, ins_log->getXID(),
+                                                      ins_log->getVGroupID(), ins_log->getOldLSN(), WALTableType::TAG,
+                                                      ins_log->getTimePartition(), ins_log->getOffset(),
+                                                      ins_log->getPayload().len, ins_log->getPayload().data);
+            s = writeWALInternal(ctx, log_, log_len, current_lsn);
+            delete []log_;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
+            break;
+          }
+        }
+      }
+        break;
+      case UPDATE: {
+        auto update_log = reinterpret_cast<UpdateLogEntry*>(log);
+        WALTableType t_type = update_log->getTableType();
+        if (t_type == WALTableType::TAG) {
+          auto wal_log = reinterpret_cast<UpdateLogTagsEntry *>(log);
+          size_t log_len = UpdateLogTagsEntry::fixed_length + wal_log->getPayload().len + wal_log->getOldPayload().len;
+          auto* up_log = UpdateLogTagsEntry::construct(WALLogType::UPDATE, wal_log->getXID(),
+                                                       wal_log->getVGroupID(), wal_log->getOldLSN(), WALTableType::TAG,
+                                                       wal_log->getTimePartition(), wal_log->getOffset(),
+                                                        wal_log->getPayload().len, wal_log->getOldPayload().len,
+                                                        wal_log->getPayload().data, wal_log->getOldPayload().data);
+          s = writeWALInternal(ctx, up_log, log_len, current_lsn);
+          delete []up_log;
+          if (s == KStatus::FAIL) {
+            LOG_ERROR("Failed to writeWALInternal.")
+            return s;
+          }
+        }
+      }
+        break;
+      case DELETE: {
+        auto wal_log = reinterpret_cast<DeleteLogEntry *>(log);
+        switch (wal_log->getTableType()) {
+          case WALTableType::DATA : {
+            auto wal_log =  reinterpret_cast<DeleteLogMetricsEntry *>(log);
+            size_t log_len = DeleteLogMetricsEntry::fixed_length + (wal_log->range_size_) * sizeof(DelRowSpan) +
+                    wal_log->p_tag_len_;
+            auto del_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, wal_log->getXID(),
+                                                            wal_log->getVGroupID(), wal_log->getOldLSN(),
+                                                            WALTableType::DATA, wal_log->p_tag_len_,
+                                                            wal_log->start_ts_, wal_log->end_ts_, wal_log->range_size_,
+                                                            wal_log->encoded_primary_tags_, wal_log->row_spans_);
+            s = writeWALInternal(ctx, del_log, log_len, current_lsn);
+            delete []del_log;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
+            break;
+          }
+          case WALTableType::TAG : {
+            auto wal_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
+            size_t log_len = DeleteLogTagsEntry::fixed_length + wal_log->tag_len_ + wal_log->p_tag_len_;
+            auto del_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, wal_log->getXID(),
+                                                         wal_log->getVGroupID(), wal_log->getOldLSN(),
+                                                         WALTableType::TAG, wal_log->group_id_, wal_log->entity_id_,
+                                                         wal_log->p_tag_len_, wal_log->encoded_primary_tags_,
+                                                         wal_log->tag_len_, wal_log->encoded_tags_);
+            s = writeWALInternal(ctx, del_log, log_len, current_lsn);
+            delete []del_log;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
+            break;
+          }
+        }
+      }
+        break;
+      case MTR_BEGIN: {
+        auto wal_log = reinterpret_cast<MTRBeginEntry *>(log);
+        auto log_len = MTRBeginEntry::fixed_length;
+        auto beg_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, wal_log->getXID(), LogEntry::DEFAULT_TS_TRANS_ID,
+                                                wal_log->getRangeID(), wal_log->getIndex());
+        s = writeWALInternal(ctx, beg_log, log_len, current_lsn);
+        delete []beg_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case MTR_COMMIT: {
+        auto wal_log = reinterpret_cast<MTREntry *>(log);
+        auto log_len = MTREntry::fixed_length;
+        auto commit_log = MTREntry::construct(WALLogType::MTR_COMMIT, wal_log->getXID(),
+                                              LogEntry::DEFAULT_TS_TRANS_ID);
+        s = writeWALInternal(ctx, commit_log, log_len, current_lsn);
+        delete []commit_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case MTR_ROLLBACK: {
+        auto wal_log = reinterpret_cast<MTREntry *>(log);
+        auto log_len = MTREntry::fixed_length;
+        auto roll_log = MTREntry::construct(WALLogType::MTR_ROLLBACK, wal_log->getXID(),
+                                              LogEntry::DEFAULT_TS_TRANS_ID);
+        s = writeWALInternal(ctx, roll_log, log_len, current_lsn);
+        delete []roll_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case RANGE_SNAPSHOT: {
+        auto wal_log = reinterpret_cast<SnapshotEntry *>(log);
+        auto log_len = SnapshotEntry::fixed_length;
+        auto snap_log = SnapshotEntry::construct(WALLogType::RANGE_SNAPSHOT, wal_log->getXID(), wal_log->table_id_,
+                                                 wal_log->begin_hash_, wal_log->end_hash_, wal_log->start_ts_,
+                                                 wal_log->end_ts_);
+        s = writeWALInternal(ctx, snap_log, log_len, current_lsn);
+        delete []snap_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case SNAPSHOT_TMP_DIRCTORY: {
+        auto wal_log = reinterpret_cast<SnapshotEntry *>(log);
+        auto log_len = SnapshotEntry::fixed_length;
+        auto snap_log = SnapshotEntry::construct(WALLogType::RANGE_SNAPSHOT, wal_log->getXID(), wal_log->table_id_,
+                                                 wal_log->begin_hash_, wal_log->end_hash_, wal_log->start_ts_,
+                                                 wal_log->end_ts_);
+        s = writeWALInternal(ctx, snap_log, log_len, current_lsn);
+        delete []snap_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case PARTITION_TIER_CHANGE: {
+        auto wal_log = reinterpret_cast<PartitionTierChangeEntry *>(log);
+        auto log_len = PartitionTierChangeEntry::fixed_length + wal_log->link_path_.length() +
+                sizeof(size_t) + wal_log->tier_path_.length() + sizeof(size_t);
+        auto par_log = PartitionTierChangeEntry::construct(WALLogType::PARTITION_TIER_CHANGE, wal_log->getXID(),
+                                                           wal_log->link_path_, wal_log->tier_path_);
+        s = writeWALInternal(ctx, par_log, log_len, current_lsn);
+        delete []par_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case CREATE_INDEX: {
+        auto wal_log = reinterpret_cast<CreateIndexEntry *>(log);
+        auto log_len = CreateIndexEntry::fixed_length;
+        auto cre_idx_log = CreateIndexEntry::construct(wal_log->getType(), wal_log->getXID(),
+                                                       wal_log->getObjectID(), wal_log->getIndexID(),
+                                                       wal_log->getCurTsVersion(), wal_log->getNewTsVersion(),
+                                                       wal_log->getColIDs());
+        s = writeWALInternal(ctx, cre_idx_log, log_len, current_lsn);
+        delete []cre_idx_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      case DROP_INDEX: {
+        auto wal_log = reinterpret_cast<DropIndexEntry *>(log);
+        auto log_len = DropIndexEntry::fixed_length;
+        auto drp_idx_log = DropIndexEntry::construct(wal_log->getType(), wal_log->getXID(),
+                                                       wal_log->getObjectID(), wal_log->getIndexID(),
+                                                       wal_log->getCurTsVersion(), wal_log->getNewTsVersion(),
+                                                       wal_log->getColIDs());
+        s = writeWALInternal(ctx, drp_idx_log, log_len, current_lsn);
+        delete []drp_idx_log;
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to writeWALInternal.")
+          return s;
+        }
+      }
+        break;
+      default:
+        break;
+    }
+  }
+  this->Unlock();
+  return KStatus::SUCCESS;
 }
 
 KStatus WALMgr::Flush(kwdbContext_p ctx) {
@@ -180,7 +405,6 @@ KStatus WALMgr::CreateCheckpoint(kwdbContext_p ctx) {
   meta_.current_checkpoint_no++;
   buffer_mgr_->setHeaderBlockCheckpointInfo(meta_.current_lsn, meta_.current_checkpoint_no);
   meta_.checkpoint_lsn = meta_.current_lsn;
-  meta_.checkpoint_file_no = meta_.current_file_no;
   // 6 flush log buffer to disk
   Flush(ctx);
 
@@ -191,8 +415,14 @@ KStatus WALMgr::CreateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx) {
   meta_.current_checkpoint_no++;
   buffer_mgr_->setHeaderBlockCheckpointInfo(meta_.current_lsn, meta_.current_checkpoint_no);
   meta_.checkpoint_lsn = meta_.current_lsn;
-  meta_.checkpoint_file_no = meta_.current_file_no;
 
+  return SUCCESS;
+}
+
+KStatus WALMgr::UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn) {
+  meta_.current_checkpoint_no++;
+  buffer_mgr_->setHeaderBlockCheckpointInfo(meta_.current_lsn, meta_.current_checkpoint_no);
+  meta_.checkpoint_lsn = chk_lsn;
   return SUCCESS;
 }
 
@@ -227,10 +457,10 @@ void WALMgr::Unlock() {
 }
 
 KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                               size_t offset, TSSlice prepared_payload) {
+                               size_t offset, TSSlice prepared_payload, uint64_t vgrp_id) {
   size_t log_len = InsertLogTagsEntry::fixed_length + prepared_payload.len;
-  auto* wal_log = InsertLogTagsEntry::construct(WALLogType::INSERT, x_id, WALTableType::TAG, time_partition, offset,
-                                                prepared_payload.len, prepared_payload.data);
+  auto* wal_log = InsertLogTagsEntry::construct(WALLogType::INSERT, x_id, vgrp_id, 0, WALTableType::TAG,
+                                                time_partition, offset, prepared_payload.len, prepared_payload.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -242,10 +472,11 @@ KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 }
 
 KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                               size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn) {
-  auto* wal_log = InsertLogMetricsEntry::construct(WALLogType::INSERT, x_id, WALTableType::DATA, time_partition, offset,
-                                                   prepared_payload.len, prepared_payload.data, primary_tag.len,
-                                                   primary_tag.data);
+                               size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn,
+                               uint64_t vgrp_id) {
+  auto* wal_log = InsertLogMetricsEntry::construct(WALLogType::INSERT, x_id, vgrp_id, 0, WALTableType::DATA,
+                                                   time_partition, offset, prepared_payload.len, prepared_payload.data,
+                                                   primary_tag.len, primary_tag.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -258,10 +489,11 @@ KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 }
 
 KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                               size_t offset, TSSlice new_payload, TSSlice old_payload) {
+                               size_t offset, TSSlice new_payload, TSSlice old_payload, uint64_t vgrp_id) {
   size_t log_len = UpdateLogTagsEntry::fixed_length + new_payload.len+ old_payload.len;
-  auto* wal_log = UpdateLogTagsEntry::construct(WALLogType::UPDATE, x_id, WALTableType::TAG, time_partition, offset,
-                                                new_payload.len, old_payload.len, new_payload.data, old_payload.data);
+  auto* wal_log = UpdateLogTagsEntry::construct(WALLogType::UPDATE, x_id, vgrp_id, 0, WALTableType::TAG,
+                                                time_partition, offset, new_payload.len, old_payload.len,
+                                                new_payload.data, old_payload.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -273,9 +505,11 @@ KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 }
 
 KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                                      const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans) {
-  auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, WALTableType::DATA, primary_tag.length(),
-                                                   0, 0, row_spans.size(), primary_tag.data(), row_spans.data());
+                                      const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans,
+                                      uint64_t vgrp_id) {
+  auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA,
+                                                   primary_tag.length(), 0, 0, row_spans.size(), primary_tag.data(),
+                                                   row_spans.data());
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -288,9 +522,10 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
 }
 
 KStatus WALMgr::WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                                  uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack) {
-  auto* wal_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, x_id, WALTableType::TAG, sub_group_id, entity_id,
-                                                primary_tag.length(), primary_tag.data(), tag_pack.len, tag_pack.data);
+                                  uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id) {
+  auto* wal_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::TAG,
+                                                sub_group_id, entity_id, primary_tag.length(), primary_tag.data(),
+                                                tag_pack.len, tag_pack.data);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
@@ -482,16 +717,35 @@ KStatus WALMgr::WriteTSxWAL(kwdbContext_p ctx, uint64_t x_id, const char* ts_tra
   return status;
 }
 
-KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn) {
+KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+                           std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn);
+  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk);
   file_mgr_->Unlock();
   return status;
 }
 
-KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs) {
+KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+                                        std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, mtr_trans_id, meta_.current_lsn, mtr_trans_id);
+  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk, 0, true);
+  if (status == KStatus::FAIL) {
+    LOG_ERROR("Failed to read the WAL log.")
+    file_mgr_->Unlock();
+    return status;
+  }
+  status = SwitchNextFile();
+  file_mgr_->Unlock();
+  if (status == KStatus::FAIL) {
+    LOG_ERROR("Failed to switch next WAL file.")
+    return status;
+  }
+  return status;
+}
+
+KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk) {
+  file_mgr_->Lock();
+  KStatus status = buffer_mgr_->readWALLogs(logs, mtr_trans_id, meta_.current_lsn, end_chk, mtr_trans_id);
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)
@@ -528,7 +782,7 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
 
     // start_lsn is header block size + block header size
     TS_LSN start_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-    meta_ = {0, start_lsn, start_lsn, 0, 0, start_lsn};
+    meta_ = {start_lsn, start_lsn, 0, start_lsn};
 
     flushMeta(ctx);
 
@@ -573,17 +827,24 @@ void WALMgr::CleanUp(kwdbContext_p ctx) {
   this->Unlock();
 }
 
-KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {
-  LOG_INFO("Cleaning wal meta file tableId: %lu.", table_id_)
+KStatus WALMgr::RemoveChkFile(kwdbContext_p ctx) {
+  return Remove(file_mgr_->getChkFilePath()) ? KStatus::SUCCESS : KStatus::FAIL;
+}
+
+KStatus WALMgr::ResetWAL(kwdbContext_p ctx, bool reset) {
   if (!IsExists(wal_path_)) {
     if (!MakeDirectory(wal_path_)) {
       LOG_ERROR("Failed to create the WAL log directory '%s'", wal_path_.c_str())
       return FAIL;
     }
   }
-
   TS_LSN current_lsn_recover = FetchCurrentLSN();
   WALMeta old_meta = meta_;
+  if (reset) {
+    current_lsn_recover = 0;
+    old_meta = WALMeta{BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, 0,
+                       BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE};
+  }
   if (meta_file_.is_open()) {
     meta_file_.close();
   }
@@ -598,9 +859,7 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {
     return s;
   }
   meta_ = old_meta;
-  meta_.current_file_no = 0;
   meta_.current_checkpoint_no = 0;
-  meta_.checkpoint_file_no = 0;
 
   s = file_mgr_->ResetWALInternal(ctx, current_lsn_recover);
   if (s == KStatus::FAIL) {
@@ -608,7 +867,7 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {
     return s;
   }
 
-  s = file_mgr_->Open(meta_.current_file_no);
+  s = file_mgr_->Open();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to Open the WAL metadata.")
     return s;
@@ -625,12 +884,28 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {
 }
 
 bool WALMgr::NeedCheckpoint() {
-  return meta_.checkpoint_file_no - meta_.current_file_no == 1 ||
-         (meta_.checkpoint_file_no == 0 && meta_.current_file_no == opt_->wal_file_in_group - 1);
+  return false;
 }
 
-void WALMgr::SetCheckpointObject(LoggedTsEntityGroup* eg) {
-  eg_ = eg;
+KStatus WALMgr::SwitchNextFile() {
+  if (std::filesystem::exists(file_mgr_->getFilePath())) {
+    file_mgr_->Close();
+    if (-1 == rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
+      LOG_ERROR("Failed to rename WAL file.")
+      return KStatus::FAIL;
+    }
+  }
+  TS_LSN start_lsn = FetchCurrentLSN() + BLOCK_SIZE;
+  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
+                        start_lsn, 0);
+  KStatus s = file_mgr_->initWalFileWithHeader(hb);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to initWalFileWithHeader.")
+    return s;
+  }
+  file_mgr_->Open();
+  return KStatus::SUCCESS;
 }
 
 }  // namespace kwdbts

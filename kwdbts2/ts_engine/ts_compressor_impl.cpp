@@ -234,17 +234,18 @@ static int leading_mapping[] = {0, 8, 12, 16, 18, 20, 22, 24};
 template <class T>
 bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
   assert(data.len == sizeof(T) * count);
+  auto sz = sizeof(T) * 8;
   out->clear();
-  if (count == 0 || count == 1) {
+  if (count <= 1) {
     return false;
   }
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   const utype *ptr = reinterpret_cast<utype *>(data.data);
   TsBitWriter writer(out);
 
-  writer.WriteBits(64, ptr[0]);
+  writer.WriteBits(sz, ptr[0]);
   utype prev = ptr[0];
-  uint64_t buffer = 0, pos = 0;
+  uint64_t buffer = 0;
   int prev_lead_idx = 0;
   for (int i = 1; i < count; ++i) {
     utype xored = ptr[i] ^ prev;
@@ -265,7 +266,7 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
     p--;
     int lead_idx = p - leading_mapping;
     if (trail > 6) {
-      int center_bits = 64 - *p - trail;
+      int center_bits = sz - *p - trail;
       buffer = (((0b01 << 3) + lead_idx) << 6) + center_bits;
       writer.WriteBits(11, buffer);
       writer.WriteBits(center_bits, xored >> trail);
@@ -277,7 +278,7 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
         buffer = (0b11 << 3) + lead_idx;
         writer.WriteBits(5, buffer);
       }
-      writer.WriteBits(64 - *p, xored);
+      writer.WriteBits(sz - *p, xored);
     }
     prev_lead_idx = lead_idx;
   }
@@ -286,17 +287,22 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
 
 template <class T>
 bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+  auto sz = sizeof(T) * 8;
   out->clear();
   if (count == 0) {
     return true;
   }
   TsBitReader reader(std::string_view{data.data, data.len});
   uint64_t v;
-  bool ok = reader.ReadBits(64, &v);
+  bool ok = reader.ReadBits(sz, &v);
   if (!ok) {
     return false;
   }
-  PutFixed64(out, v);
+  if constexpr (std::is_same_v<T, double>) {
+    PutFixed64(out, v);
+  } else {
+    PutFixed32(out, v);
+  }
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   utype prev = v, prev_lead_idx = 0;
   for (int i = 1; i < count; ++i) {
@@ -315,13 +321,13 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
         int center_bits = v & 0x3F;
         ok = reader.ReadBits(center_bits, &v);
         if (!ok) return false;
-        int trail = 64 - leading_mapping[idx] - center_bits;
+        int trail = sz - leading_mapping[idx] - center_bits;
         xored = v << trail;
         prev_lead_idx = idx;
         break;
       }
       case 0b10: {
-        ok = reader.ReadBits(64 - leading_mapping[prev_lead_idx], &v);
+        ok = reader.ReadBits(sz - leading_mapping[prev_lead_idx], &v);
         xored = v;
         if (!ok) return false;
         break;
@@ -331,7 +337,7 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
         ok = reader.ReadBits(3, &idx);
         if (!ok) return false;
         prev_lead_idx = idx;
-        ok = reader.ReadBits(64 - leading_mapping[idx], &v);
+        ok = reader.ReadBits(sz - leading_mapping[idx], &v);
         xored = v;
         if (!ok) return false;
         break;
@@ -339,8 +345,12 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
       default:
         assert(false);
     }
-    uint64_t current = prev ^ xored;
-    PutFixed64(out, current);
+    utype current = prev ^ xored;
+    if constexpr (std::is_same_v<T, double>) {
+      PutFixed64(out, current);
+    } else {
+      PutFixed32(out, current);
+    }
     prev = current;
   }
   return true;

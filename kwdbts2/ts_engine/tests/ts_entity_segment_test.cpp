@@ -100,6 +100,8 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
           TsBitmap bitmap;
+          char* ts_col;
+          s = block_span.GetFixLenColAddr(0, metric_schema, metric_schema[0], &ts_col, bitmap);
           std::vector<char*> col_values;
           col_values.resize(3);
           s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
@@ -110,6 +112,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
             EXPECT_EQ(block_span.GetTS(idx), 500 + row_idx + idx);
+            EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 16), 500 + row_idx + idx);
             EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
             EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
             EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
@@ -141,6 +144,9 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
           TsBitmap bitmap;
+          char* ts_col;
+          s = block_span.GetFixLenColAddr(0, metric_schema, metric_schema[0], &ts_col, bitmap);
+          EXPECT_EQ(s, KStatus::SUCCESS);
           std::vector<char*> col_values;
           col_values.resize(3);
           s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
@@ -151,6 +157,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
             EXPECT_EQ(block_span.GetTS(idx), 123 + row_idx + idx);
+            EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 16), 123 + row_idx + idx);
             EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
             EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
             EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
@@ -179,6 +186,8 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           sum += block_span.GetRowNum();
           block_spans.pop_front();
           TsBitmap bitmap;
+          char* ts_col;
+          s = block_span.GetFixLenColAddr(0, metric_schema, metric_schema[0], &ts_col, bitmap);
           std::vector<char*> col_values;
           col_values.resize(3);
           s = block_span.GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
@@ -189,6 +198,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span.GetRowNum(); ++idx) {
             EXPECT_EQ(block_span.GetTS(idx), 123 + row_idx + idx);
+            EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 16), 123 + row_idx + idx);
             EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
             EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
             EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);

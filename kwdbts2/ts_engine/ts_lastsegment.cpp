@@ -424,7 +424,10 @@ class TsLastBlock : public TsBlock {
       value.len = len;
       return SUCCESS;
     }
-    int dsize = getDataTypeSize(dtype);
+    int dsize = schema[col_id].size;
+    if (need_convert_ts(dtype)) {
+      dsize = 16;
+    }
     value.len = dsize;
     value.data = ptr + dsize * row_num;
 
@@ -448,7 +451,7 @@ class TsLastBlock : public TsBlock {
     return ts[row_num];
   }
 
-  uint64_t* GetSeqNoAddr(int row_num) override {
+  uint64_t* GetLSNAddr(int row_num) override {
     assert(block_info_.ncol > 2);
     auto seq_nos = GetSeqNos();
     return const_cast<uint64_t*>(&seq_nos[row_num]);
