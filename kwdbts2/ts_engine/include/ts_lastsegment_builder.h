@@ -56,6 +56,7 @@ class TsLastSegmentBuilder {
     TS_LSN seq_no;
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
+    std::vector<DataFlags> data_flags;
   };
 
   struct PayloadBuffer {
@@ -143,7 +144,7 @@ class TsLastSegmentBuilder {
                      TSSlice row_data);
 
   KStatus PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id, TS_LSN seq_no,
-                     std::vector<TSSlice> col_data);
+                     std::vector<TSSlice> col_data, std::vector<DataFlags> data_flags);
 
   uint32_t GetFileNumber() const {return file_number_;}
 
@@ -233,7 +234,8 @@ class TsLastSegmentBuilder::MetricBlockBuilder {
   KStatus Reset(TSTableID table_id, uint32_t table_version);
 
   void Add(TSEntityID entity_id, TS_LSN seq_no, TSSlice metric_data);
-  void Add(TSEntityID entity_id, TS_LSN seq_no, const std::vector<TSSlice>& col_data);
+  void Add(TSEntityID entity_id, TS_LSN seq_no, const std::vector<TSSlice>& col_data,
+           const std::vector<DataFlags>& data_flags);
   void Finish();
   bool IsFinished() const { return finished_; }
   BlockInfo GetBlockInfo() const;
@@ -265,21 +267,21 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   ColumnBlockBuilder(const ColumnBlockBuilder&) = delete;
   void operator=(const ColumnBlockBuilder&) = delete;
 
-  explicit ColumnBlockBuilder(DATATYPE dtype, bool has_bitmap)
+  explicit ColumnBlockBuilder(DATATYPE dtype, int d_size, bool has_bitmap)
       : has_bitmap_(has_bitmap), dtype_(dtype) {
     if (dtype_ == TIMESTAMP64_LSN_MICRO || dtype_ == TIMESTAMP64_LSN ||
         dtype_ == TIMESTAMP64_LSN_NANO) {
       // discard LSN
       dsize_ = 8;
     } else {
-      dsize_ = getDataTypeSize(dtype);
+      dsize_ = d_size;
     }
   }
-  void Add(const TSSlice& col_data) noexcept;
+  void Add(const TSSlice& col_data, DataFlags data_flag = kValid) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
   void Compress();
   void Reserve(size_t nrow) {
-    data_buffer_.reserve(nrow * getDataTypeSize(dtype_));
+    data_buffer_.reserve(nrow * dsize_);
     bitmap_.Reset(has_bitmap_ ? nrow : 0);
   }
   TSSlice GetData() { return TSSlice{data_buffer_.data(), data_buffer_.size()}; }

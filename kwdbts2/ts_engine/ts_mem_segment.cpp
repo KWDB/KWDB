@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <cstdint>
 #include "ts_mem_segment_mgr.h"
 #include "ts_vgroup.h"
 
@@ -218,7 +219,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
   while (true) {
     TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
                             (filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(0, 0, {nullptr, 0});
+    begin->SetData(INT64_MIN, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;

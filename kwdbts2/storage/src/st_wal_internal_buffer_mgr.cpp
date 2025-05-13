@@ -70,8 +70,8 @@ void WALBufferMgr::ResetMeta() {
   end_block_index_ = init_buffer_size_ - 1;
 }
 
-KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
-                                  TS_LSN start_lsn, TS_LSN end_lsn, uint64_t txn_id) {
+KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn,
+                                  std::vector<uint64_t>& v_lsn, uint64_t txn_id, bool for_chk) {
   if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
     return SUCCESS;
   }
@@ -134,11 +134,11 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
 
     switch (typ) {
       case WALLogType::INSERT: {
-        status = readInsertLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
+        status = readInsertLog(log_entries, current_lsn, txn_id, current_offset, read_queue, for_chk);
         break;
       }
       case WALLogType::DELETE: {
-        status = readDeleteLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
+        status = readDeleteLog(log_entries, current_lsn, txn_id, current_offset, read_queue, for_chk);
         break;
       }
       case WALLogType::CREATE_INDEX: {
@@ -220,7 +220,7 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         break;
       }
       case UPDATE: {
-        status = readUpdateLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
+        status = readUpdateLog(log_entries, current_lsn, txn_id, current_offset, read_queue, for_chk);
         break;
       }
       case TS_BEGIN:
@@ -387,6 +387,34 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
         }
         break;
       }
+      case WALLogType::END_CHECKPOINT: {
+        status = readBytes(current_offset, read_queue, EndCheckpointEntry::fixed_length - sizeof(WALLogType), read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+        uint64_t lsn_len;
+        int location = sizeof(uint64_t);
+        memcpy(&lsn_len, read_buf + location, sizeof(EndCheckpointEntry::lsn_len_));
+        status = readBytes(current_offset, read_queue, lsn_len, read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+        location = 0;
+        uint64_t vgrp_num = lsn_len / sizeof(uint64_t);
+        for (int idx = 0; idx < vgrp_num; idx++) {
+          uint64_t lsn;
+          memcpy(&lsn, read_buf + location, sizeof(uint64_t));
+          location += sizeof(uint64_t);
+          v_lsn.emplace_back(lsn);
+        }
+      }
+        break;
       case DB_SETTING:
 //        break;
       default:
@@ -650,13 +678,17 @@ KStatus WALBufferMgr::flushInternal(bool flush_header) {
 }
 
 KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   char* read_buf;
   WALTableType tbl_typ;
   uint64_t x_id = 0;
+  uint64_t vgrp_id = 0;
+  TS_LSN old_lsn = 0;
+  TS_LSN v_lsn = current_offset;
+
   KStatus status;
 
-  status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(WALTableType),
+  status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn) + sizeof(WALTableType),
                      read_buf);
   if (status == FAIL) {
     delete[] read_buf;
@@ -664,8 +696,17 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
     LOG_ERROR("Failed to parse the WAL log.")
     return FAIL;
   }
+
+  int read_offset = 0;
+
   memcpy(&x_id, read_buf, sizeof(x_id));
-  memcpy(&tbl_typ, read_buf + sizeof(x_id), sizeof(tbl_typ));
+  read_offset += sizeof(x_id);
+  memcpy(&vgrp_id, read_buf + read_offset, sizeof(vgrp_id));
+  read_offset += sizeof(vgrp_id);
+  memcpy(&old_lsn, read_buf + read_offset, sizeof(old_lsn));
+  read_offset += sizeof(old_lsn);
+  memcpy(&tbl_typ, read_buf + read_offset, sizeof(tbl_typ));
+
   delete[] read_buf;
   read_buf = nullptr;
 
@@ -694,7 +735,7 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       read_offset += sizeof(InsertLogTagsEntry::offset_);
       memcpy(&length, read_buf + read_offset,
              sizeof(InsertLogTagsEntry::length_));
-      // read_offset += sizeof(InsertLogTagsEntry::length);
+
       delete[] read_buf;
       read_buf = nullptr;
 
@@ -709,8 +750,11 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       if (txn_id == 0 || txn_id == x_id) {
         InsertLogTagsEntry* insert_tags = nullptr;
         try {
+          if (for_chk) {
+            old_lsn = v_lsn;
+          }
           insert_tags = KNEW InsertLogTagsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ, time_partition,
-                                                      offset, length, read_buf);
+                                                      offset, length, read_buf, vgrp_id, old_lsn);
         } catch (exception &e) {
           LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;
@@ -764,8 +808,12 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       }
 
       if (txn_id == 0 || txn_id == x_id) {
+        if (for_chk) {
+          old_lsn = v_lsn;
+        }
         auto* insert_metrics = KNEW InsertLogMetricsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ,
-                                                          time_partition, offset, length, p_tag_len, read_buf);
+                                                          time_partition, offset, length, p_tag_len, read_buf, vgrp_id,
+                                                          old_lsn);
         if (insert_metrics == nullptr) {
           delete[] read_buf;
           read_buf = nullptr;
@@ -784,13 +832,15 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
 }
 
 KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   char* read_buf;
   WALTableType tbl_typ;
   uint64_t x_id = 0;
+  uint64_t vgrp_id = 0;
+  TS_LSN old_lsn = 0;
   KStatus status;
 
-  status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(WALTableType),
+  status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn) + sizeof(WALTableType),
                      read_buf);
   if (status == FAIL) {
     delete[] read_buf;
@@ -798,8 +848,18 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
     LOG_ERROR("Failed to parse the WAL log.")
     return FAIL;
   }
+  int read_offset = 0;
   memcpy(&x_id, read_buf, sizeof(x_id));
-  memcpy(&tbl_typ, read_buf + sizeof(x_id), sizeof(tbl_typ));
+  read_offset += sizeof(x_id);
+  memcpy(&vgrp_id, read_buf + read_offset, sizeof(vgrp_id));
+  read_offset += sizeof(vgrp_id);
+  memcpy(&old_lsn, read_buf + read_offset, sizeof(old_lsn));
+  read_offset += sizeof(old_lsn);
+  memcpy(&tbl_typ, read_buf + read_offset, sizeof(tbl_typ));
+
+  if (for_chk) {
+    old_lsn = current_offset + sizeof(x_id) + sizeof(vgrp_id);
+  }
   delete[] read_buf;
   read_buf = nullptr;
 
@@ -846,7 +906,7 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
         UpdateLogTagsEntry* update_tags = nullptr;
         try {
           update_tags = KNEW UpdateLogTagsEntry(current_lsn, WALLogType::UPDATE, x_id, tbl_typ, time_partition,
-                                                      offset, length, old_len, read_buf);
+                                                      offset, length, old_len, read_buf, vgrp_id, old_lsn);
         } catch (exception &e) {
           LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;
@@ -871,13 +931,15 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
 }
 
 KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   WALTableType table_type;
   char* res;
   uint64_t x_id = 0;
+  uint64_t vgrp_id = 0;
+  TS_LSN old_lsn = 0;
   KStatus status;
 
-  status = readBytes(current_offset, read_queue, sizeof(x_id), res);
+  status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn), res);
   if (status == FAIL) {
     delete[] res;
     res = nullptr;
@@ -885,7 +947,15 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
     return FAIL;
   }
 
+  int read_offset = 0;
   memcpy(&x_id, res, sizeof(x_id));
+  read_offset += sizeof(x_id);
+  memcpy(&vgrp_id, res + read_offset, sizeof(vgrp_id));
+  read_offset += sizeof(vgrp_id);
+  memcpy(&old_lsn, res + read_offset, sizeof(old_lsn));
+  if (for_chk) {
+    old_lsn = current_offset + sizeof(x_id) + sizeof(vgrp_id);
+  }
   delete[] res;
   res = nullptr;
 
@@ -941,7 +1011,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
         DeleteLogTagsEntry* d_tags_entry = nullptr;
         try {
           d_tags_entry = KNEW DeleteLogTagsEntry(current_lsn, WALLogType::DELETE, x_id, table_type, group_id,
-                                                       entity_id, p_tag_len, tag_len, res);
+                                                       entity_id, p_tag_len, tag_len, res, vgrp_id, old_lsn);
         } catch (exception &e) {
           LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;
@@ -996,7 +1066,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
 
       if (txn_id == 0 || txn_id == x_id) {
         auto* metrics_entry = KNEW DeleteLogMetricsEntry(current_lsn, WALLogType::DELETE, x_id, table_type, p_tag_len,
-                                                         range_size, res);
+                                                         range_size, res, vgrp_id, old_lsn);
         if (metrics_entry == nullptr) {
           delete[] res;
           res = nullptr;

@@ -27,7 +27,7 @@ class TsBlockSpan;
 class TsBlock;
 
 // notice: make sure block_ no free, while TSBlkSpanDataTypeConvert exists.
-class TSBlkSpanDataTypeConvert {
+class TSBlkDataTypeConvert {
  private:
   TsBlock* block_ = nullptr;
   uint32_t start_row_idx_ = 0;
@@ -35,14 +35,14 @@ class TSBlkSpanDataTypeConvert {
   std::list<char*> alloc_mems_;
 
  public:
-  TSBlkSpanDataTypeConvert() = default;
+  TSBlkDataTypeConvert() = default;
 
-  explicit TSBlkSpanDataTypeConvert(TsBlockSpan& blk_span);
+  explicit TSBlkDataTypeConvert(TsBlockSpan& blk_span);
 
-  TSBlkSpanDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num) :
+  TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num) :
       block_(block), start_row_idx_(row_idx), row_num_(row_num) {}
 
-  ~TSBlkSpanDataTypeConvert() {
+  ~TSBlkDataTypeConvert() {
     for (auto mem : alloc_mems_) {
       free(mem);
     }

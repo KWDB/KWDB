@@ -39,7 +39,7 @@ bool Remove(const string& path, ErrorInfo& error_info) {
     LOG_ERROR("%s remove failed: errno message[%s]", path.c_str(), e.what());
     return false;
   }
-  LOG_INFO("Remove path [%s] succeeded", path.c_str());
+//  LOG_INFO("Remove path [%s] succeeded", path.c_str());
   return true;
 }
 

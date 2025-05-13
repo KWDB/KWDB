@@ -33,10 +33,10 @@ WALFileMgr::~WALFileMgr() {
   }
 }
 
-KStatus WALFileMgr::Open(uint16_t start_file_no) {
-  string path = getFilePath(start_file_no);
+KStatus WALFileMgr::Open() {
+  string path = getFilePath();
   if (IsExists(path)) {
-    if (start_file_no == current_file_no_ && file_.is_open()) {
+    if (file_.is_open()) {
       header_block_ = readHeaderBlock();
       return SUCCESS;
     } else {
@@ -45,7 +45,6 @@ KStatus WALFileMgr::Open(uint16_t start_file_no) {
 
     file_.open(path, std::ios::in | std::ios::out);
     if (file_.is_open()) {
-      current_file_no_ = start_file_no;
       header_block_ = readHeaderBlock();
       return SUCCESS;
     }
@@ -61,19 +60,19 @@ KStatus WALFileMgr::Close() {
   return SUCCESS;
 }
 
-KStatus WALFileMgr::initWalFile(uint16_t start_file_no, TS_LSN first_lsn, TS_LSN flush_lsn) {
+KStatus WALFileMgr::initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn) {
   HeaderBlock header = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(),
                                    0, first_lsn, first_lsn, 0);
-  return initWalFileWithHeader(header, start_file_no);
+  return initWalFileWithHeader(header);
 }
 
-KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, uint16_t start_file_no) {
+KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header) {
   // create the wal directory if it doesn't exist
   if (!IsExists(wal_path_)) {
     MakeDirectory(wal_path_);
   }
 
-  string path = getFilePath(start_file_no);
+  string path = getFilePath();
   if (file_.is_open()) {
     // current log file is full. flush and close it.
     file_.close();
@@ -100,14 +99,12 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, uint16_t start_fi
     delete[] header_value;
     delete[] eb_value;
   } else {
-    if (g_engine_version == 1) {
       // we should check the header of the existing log file to ensure it's old enough to been overwritten.
-      HeaderBlock old_header = getHeader(start_file_no);
+      HeaderBlock old_header = getHeader();
       if (old_header.getCheckpointNo() == header.getCheckpointNo()) {
         LOG_ERROR("Failed to init the WAL log file from %s, require checkpoint first", path.c_str())
         return FAIL;
       }
-    }
 
     file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);
     char* header_value = header.encode();
@@ -124,7 +121,6 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, uint16_t start_fi
     file_.flush();
   }
 
-  current_file_no_ = start_file_no;
   header_block_ = header;
   return SUCCESS;
 }
@@ -170,9 +166,8 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
       header = HeaderBlock(table_id_, entry_block->getBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
                            header.getCheckpointLSN(), header.getCheckpointNo());
 
-      uint16_t file_no = (current_file_no_ + 1) % opt_->wal_file_in_group;
-      if (initWalFileWithHeader(header, file_no) == FAIL) {
-        LOG_ERROR("Failed init WAL log file %s", getFilePath(file_no).c_str())
+      if (initWalFileWithHeader(header) == FAIL) {
+        LOG_ERROR("Failed init WAL log file %s", getFilePath().c_str())
         return FAIL;
       }
       file_.seekp(BLOCK_SIZE, std::ios::beg);
@@ -182,6 +177,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
     writeHeaderBlock(header);
   }
   file_.flush();
+  fsync(file_.get());
 
   return SUCCESS;
 }
@@ -200,8 +196,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
   KStatus s = SUCCESS;
   std::ifstream wal_file;
   HeaderBlock header = header_block_;
-  uint16_t file_num = current_file_no_;
-  std::string file_path = getFilePath(file_num);
+  std::string file_path = getFilePath();
   uint16_t min_block_no = header.getStartBlockNo() + 1;
   while (start_block_no < header.getStartBlockNo()) {
     if (header.getStartBlockNo() < min_block_no) {
@@ -215,8 +210,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
       wal_file.close();
     }
 
-    file_num = (file_num + opt_->wal_file_in_group - 1) % opt_->wal_file_in_group;
-    file_path = getFilePath(file_num);
+    file_path = getFilePath();
     wal_file.open(file_path, std::ios::binary);
     if (!wal_file.is_open()) {
       entry_blocks.clear();
@@ -244,8 +238,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
       wal_file.close();
 
       if (index + 1 > header.getStartBlockNo() + header.getBlockNum()) {
-        file_num = (file_num + 1) % opt_->wal_file_in_group;
-        file_path = getFilePath(file_num);
+        file_path = getFilePath();
         wal_file.open(file_path, std::ios::binary);
         wal_file.seekg(BLOCK_SIZE, std::ios::beg);
       }
@@ -290,22 +283,17 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
 }
 
 void WALFileMgr::CleanUp(TS_LSN checkpoint_lsn, TS_LSN current_lsn) {
-  uint16_t end_num = getFileNoFromLSN(checkpoint_lsn);
-  uint16_t start_num = getFileNoFromLSN(current_lsn);
-  uint16_t file_num = (start_num + 1) % opt_->wal_file_in_group;
-  while (file_num != end_num) {
-    string path = getFilePath(file_num);
+  if (checkpoint_lsn == current_lsn) {
+    string path = getFilePath();
     if (IsExists(path)) {
       Remove(path);
     }
-
-    file_num = (file_num + 1) % opt_->wal_file_in_group;
   }
 }
 
 KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recover) {
   for (int i = 0; i < opt_->wal_file_in_group; i++) {
-    string path = getFilePath(i);
+    string path = getFilePath();
     if (IsExists(path)) {
       Remove(path);
     }
@@ -320,7 +308,6 @@ KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recov
 
 TS_LSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
   HeaderBlock header = header_block_;
-  uint16_t file_num = current_file_no_;
   for (int i = 0; i < opt_->wal_file_in_group; i++) {
     if (block_no >= header.getStartBlockNo() && block_no <= header.getEndBlockNo()) {
       // at current file
@@ -333,19 +320,17 @@ TS_LSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
         // at next file, won't across 2 files
         return header.getStartLSN() + (block_no - header.getStartBlockNo() + 2) * BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
       } else if (block_no <= header.getStartBlockNo() - MIN_BLOCK_NUM) {
-        file_num = (file_num + opt_->wal_file_in_group - 1) % opt_->wal_file_in_group;
-        if (!IsExists(getFilePath(file_num))) {
+        if (!IsExists(getFilePath())) {
           break;
         }
-        header = getHeader(file_num);
+        header = getHeader();
         continue;
       }
     }
-    file_num = (file_num + opt_->wal_file_in_group + 1) % opt_->wal_file_in_group;
 
     HeaderBlock old = header;
-    if (IsExists(getFilePath(file_num))) {
-      header = getHeader(file_num);
+    if (IsExists(getFilePath())) {
+      header = getHeader();
       if (header.getStartBlockNo() > old.getStartBlockNo()) {
         continue;
       }
@@ -367,7 +352,6 @@ uint64_t WALFileMgr::GetBlockNoFromLsn(TS_LSN lsn) {
   }
 
   HeaderBlock header = header_block_;
-  uint16_t file_num = current_file_no_;
   TS_LSN min_offset = header.getStartLSN();
   while (lsn < header.getStartLSN()) {
     if (header.getStartLSN() - lsn < min_offset) {
@@ -375,17 +359,16 @@ uint64_t WALFileMgr::GetBlockNoFromLsn(TS_LSN lsn) {
     } else {
       return 0;
     }
-    file_num = (file_num + opt_->wal_file_in_group - 1) % opt_->wal_file_in_group;
-    header = getHeader(file_num);
+    header = getHeader();
   }
 
   return (lsn - header.getStartLSN() - BLOCK_SIZE) / BLOCK_SIZE + header.getStartBlockNo();
 }
 
-HeaderBlock WALFileMgr::getHeader(uint32_t file_num) {
+HeaderBlock WALFileMgr::getHeader() {
   std::ifstream wal_file;
   std::string path;
-  path = getFilePath(file_num);
+  path = getFilePath();
 
   wal_file.open(path, std::ios::binary);
   if (!wal_file.is_open()) {

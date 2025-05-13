@@ -32,16 +32,16 @@ class WALFileMgr {
 
   ~WALFileMgr();
 
-  KStatus Open(uint16_t start_file_no);
+  KStatus Open();
 
   /**
    * Init WAL file, and init HeaderBlock
    * @return
    */
-  KStatus initWalFile(uint16_t start_file_no, TS_LSN first_lsn, TS_LSN flush_lsn = 0);
+  KStatus initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn = 0);
 
 
-  KStatus initWalFileWithHeader(HeaderBlock& header, uint16_t start_file_no);
+  KStatus initWalFileWithHeader(HeaderBlock& header);
 
   /**
    * Close WAL file
@@ -94,10 +94,6 @@ class WALFileMgr {
 
   uint64_t GetBlockNoFromLsn(TS_LSN lsn);
 
-  uint16_t GetCurrentFileNo() {
-    return current_file_no_;
-  }
-
  private:
   /**
    * Write single HeaderBlock into current LogFile.
@@ -106,7 +102,7 @@ class WALFileMgr {
    */
   KStatus writeHeaderBlock(HeaderBlock& hb);
 
-  HeaderBlock getHeader(uint32_t fileNumber);
+  HeaderBlock getHeader();
 
   // This mutex is used to protect the active log file for read/write mutual exclusion.
   using WALFileMgrFileLatch = KLatch;
@@ -115,21 +111,27 @@ class WALFileMgr {
 
   EngineOptions* opt_{nullptr};
   HeaderBlock header_block_{};
-  uint16_t current_file_no_{0};
 
   KTableKey table_id_;
   string wal_path_;
 
   std::fstream file_;
 
-  string getFilePath(uint32_t fileNumber) {
-    return wal_path_ + "kwdb_wal" + to_string(fileNumber);
+ public:
+  string getFilePath() {
+    return wal_path_ + "kwdb_wal.cur";
+  }
+  string getChkFilePath() {
+    return wal_path_ + "kwdb_wal.chk";
+  }
+  string getChkMetaFilePath() {
+    return wal_path_ + "kwdb_wal.meta";
   }
 
-  uint16_t getFileNoFromLSN(TS_LSN lsn) {
-    uint16_t file_no = lsn / (opt_->wal_file_size << 20);
-    file_no = file_no % opt_->wal_file_in_group;
-    return file_no;
-  }
+//  uint16_t getFileNoFromLSN(TS_LSN lsn) {
+//    uint16_t file_no = lsn / (opt_->wal_file_size << 20);
+//    file_no = file_no % opt_->wal_file_in_group;
+//    return file_no;
+//  }
 };
 }  // namespace kwdbts

@@ -737,46 +737,6 @@ func (t *timeSeriesImportInfo) ingest(
 		return nil
 	}
 
-	// In StartSingleNode, use column payloads and write storage directly
-	if t.flowCtx.EvalCtx.StartSinglenode {
-		payload, primaryTagVal, tolerantErr, err := t.BuildPayloadForTsImportStartSingleNode(
-			t.flowCtx.EvalCtx,
-			t.txn,
-			datums,
-			len(datums),
-		)
-
-		if err != nil {
-			for i := range datums {
-				cols := datums[i]
-				rowString := tree.ConvertDatumsToStr(cols, ',')
-				t.handleCoruptedResult(ctx, rowString, err)
-			}
-			return err
-		}
-
-		if len(tolerantErr) > 0 {
-			for _, rowErrmap := range tolerantErr {
-				for k, v := range rowErrmap.(map[string]error) {
-					t.handleCoruptedResult(ctx, k, v)
-				}
-			}
-		}
-		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL)
-		if err != nil {
-			for i := range datums {
-				cols := datums[i]
-				rowString := tree.ConvertDatumsToStr(cols, ',')
-				t.handleCoruptedResult(ctx, rowString, err)
-			}
-			return err
-		}
-		t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(primaryTagVal))
-		return err
-	}
-
-	// In StartDistributeMode, use row payloads and write storage through distributed layers
-	ba := t.txn.NewBatch()
 	payloadNodeMap, tolerantErr, err := t.BuildPayloadForTsImportStartDistributeMode(
 		t.flowCtx.EvalCtx,
 		t.txn,
@@ -799,6 +759,24 @@ func (t *timeSeriesImportInfo) ingest(
 			}
 		}
 	}
+
+	if t.flowCtx.EvalCtx.StartSinglenode {
+		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
+			resp, _, err := t.flowCtx.Cfg.TsEngine.PutRowData(uint64(t.tbID), val.Payload, val.RowBytes, val.ValueSize, uint64(0), t.writeWAL)
+			if err != nil {
+				for i := range datums {
+					cols := datums[i]
+					rowString := tree.ConvertDatumsToStr(cols, ',')
+					t.handleCoruptedResult(ctx, rowString, err)
+				}
+				return err
+			}
+			t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
+			return err
+		}
+	}
+
+	ba := t.txn.NewBatch()
 	for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
 		ba.AddRawRequest(&roachpb.TsRowPutRequest{
 			RequestHeader: roachpb.RequestHeader{

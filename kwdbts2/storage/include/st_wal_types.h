@@ -41,6 +41,7 @@ enum WALLogType : uint8_t {
 //  INDEX = 99,
   CREATE_INDEX = 27,
   DROP_INDEX = 28,
+  END_CHECKPOINT = 29,
   DB_SETTING = 100
 };
 
@@ -57,10 +58,8 @@ enum AlterType : uint8_t {
 };
 
 struct WALMeta {
-  uint16_t current_file_no;
   TS_LSN current_lsn;
   TS_LSN block_flush_to_disk_lsn;
-  uint16_t checkpoint_file_no;
   uint32_t current_checkpoint_no;
   TS_LSN checkpoint_lsn;
 }__attribute__((packed));
