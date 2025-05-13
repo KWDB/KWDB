@@ -119,7 +119,7 @@ std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }
 
 std::string TsVGroupPartition::GetFileName() const {
   char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "db%02d-%010ld", database_id_, start_);
+  std::snprintf(buffer, sizeof(buffer), "db%02d-%014ld", database_id_, start_);
   return buffer;
 }
 

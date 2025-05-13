@@ -56,10 +56,10 @@ class PartitionManager {
   KRWLatch partitions_latch_;
   TsVGroup* vgroup_;
   int database_id_;
-  uint64_t interval_;
+  int64_t interval_;
 
  public:
-  PartitionManager(TsVGroup* vgroup, int database_id, uint64_t interval)
+  PartitionManager(TsVGroup* vgroup, int database_id, int64_t interval)
       : partitions_latch_(RWLATCH_ID_VGROUP_PARTITION_MGR_RWLOCK), vgroup_(vgroup),
         database_id_(database_id), interval_(interval) {}
   std::shared_ptr<TsVGroupPartition> Get(int64_t timestamp, bool create_if_not_exist);

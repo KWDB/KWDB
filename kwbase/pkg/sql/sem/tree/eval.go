@@ -3150,6 +3150,7 @@ type EvalContext struct {
 	StartSinglenode     bool
 	StartDistributeMode bool
 	GroupWindow         *GroupWindow
+	Kwengineversion     string
 }
 
 // GroupWindow record group_window information.

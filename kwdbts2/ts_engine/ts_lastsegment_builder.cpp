@@ -309,12 +309,12 @@ KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint
   parser_ = std::make_unique<TsRawPayloadRowParser>(metric_schema_);
   int ncol = metric_schema_.size() + 2;  // one for entity_id, one for SeqNo
   colblocks_.reserve(ncol);
-  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, false));  // for entity_id;
-  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, false));  // for SeqNo;
+  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, 8, false));  // for entity_id;
+  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, 8, false));  // for SeqNo;
   for (int i = 0; i < metric_schema_.size(); ++i) {
     bool nullable = true;  // TODO(zzr): read from schema;
     colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
-        static_cast<DATATYPE>(metric_schema_[i].type), nullable));
+        static_cast<DATATYPE>(metric_schema_[i].type), metric_schema_[i].size, nullable));
   }
   return KStatus::SUCCESS;
 }
