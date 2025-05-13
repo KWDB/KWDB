@@ -110,19 +110,16 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetLastResult(uint32_t begin_row_idx,
-                               uint32_t row_num,
-                               uint32_t col_id,
-                               const std::vector<AttributeInfo>& schema,
-                               const AttributeInfo& dest_type,
-                               std::vector<Sumfunctype> agg_types,
-                               std::vector<TSSlice>& agg_data,
-                               int64_t* out_ts) {
+KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
+                             uint32_t row_num,
+                             uint32_t col_id,
+                             const std::vector<AttributeInfo>& schema,
+                             const AttributeInfo& dest_type,
+                             int64_t* out_ts,
+                             int* out_row_idx) {
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
-  agg_data.clear();
-  if (out_ts) {
-    *out_ts = INT64_MIN;
-  }
+  if (out_ts) *out_ts = INT64_MIN;
+  if (out_row_idx) *out_row_idx = -1;
 
   if (!isVarLenType(dest_type.type)) {
     char* value = nullptr;
@@ -134,65 +131,24 @@ KStatus TsBlock::GetLastResult(uint32_t begin_row_idx,
     }
 
     int64_t max_ts = INT64_MIN;
-    int last_row_idx = -1;
-
-    for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-      if (bitmap[row_idx] == DataFlags::kNull) {
-        continue;
-      }
-      int64_t ts = GetTS(row_idx);
+    int best_idx = -1;
+    for (int i = 0; i < row_num; ++i) {
+      if (bitmap[i] == DataFlags::kNull) continue;
+      int64_t ts = GetTS(i);
       if (ts > max_ts) {
         max_ts = ts;
-        last_row_idx = row_idx;
+        best_idx = i;
       }
     }
 
-    if (out_ts) {
-      *out_ts = max_ts;
-    }
-
-    for (auto agg_type : agg_types) {
-      TSSlice slice;
-      slice.len = dest_type.size;
-      slice.data = static_cast<char*>(malloc(slice.len));
-      if (!slice.data) {
-        LOG_ERROR("Failed to allocate memory for slice");
-        return KStatus::FAIL;
-      }
-
-      switch (agg_type) {
-        case Sumfunctype::LAST: {
-          if (last_row_idx != -1) {
-            const char* src_ptr = value + last_row_idx * dest_type.size;
-            memcpy(slice.data, src_ptr, dest_type.size);
-          } else {
-            free(slice.data);
-            slice = {nullptr, 0};
-          }
-          break;
-        }
-        case Sumfunctype::LASTTS: {
-          int64_t ts = (last_row_idx != -1) ? GetTS(last_row_idx) : INT64_MIN;
-          memcpy(slice.data, &ts, sizeof(int64_t));
-          slice.len = sizeof(int64_t);
-          break;
-        }
-
-        default:
-          LOG_ERROR("Unsupported aggregation type in GetLastResult: %d", static_cast<int>(agg_type));
-          free(slice.data);
-          return KStatus::FAIL;
-      }
-      agg_data.push_back(slice);
-    }
-
+    if (out_ts) *out_ts = max_ts;
+    if (out_row_idx) *out_row_idx = best_idx;
     return KStatus::SUCCESS;
   }
 
-  LOG_ERROR("VarLenType aggregation not supported yet: type = %d", dest_type.type);
+  LOG_ERROR("VarLenType not supported in GetLastInfo: type = %d", dest_type.type);
   return KStatus::FAIL;
 }
-
 
 TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
             std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
@@ -270,9 +226,9 @@ KStatus TsBlockSpan::GetAggResult(uint32_t col_id, const std::vector<AttributeIn
   return block_->GetAggResult(start_row_, nrow_, col_id, schema, dest_type, agg_types, agg_data);
 }
 
-KStatus TsBlockSpan::GetLastResult(uint32_t col_id, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data, int64_t* out_ts) {
-  return block_->GetLastResult(start_row_, nrow_, col_id, schema, dest_type, agg_types, agg_data, out_ts);
+KStatus TsBlockSpan::GetLastInfo(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+ const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx) {
+  return block_->GetLastInfo(start_row_, nrow_, col_id, schema, dest_type, out_ts, out_row_idx);
 }
 
 void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {

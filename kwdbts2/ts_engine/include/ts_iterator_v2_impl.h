@@ -68,7 +68,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
 
   std::list<TsBlockSpan> ts_block_spans_;
-  std::list<TsBlockSpan> ts_block_spans_for_last_;
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {

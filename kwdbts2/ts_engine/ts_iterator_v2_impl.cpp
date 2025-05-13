@@ -74,9 +74,6 @@ KStatus TsStorageIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
 
 inline KStatus TsStorageIteratorV2Impl::AddMemSegmentBlockSpans() {
   TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-  if (vgroup_->GetMemSegmentMgr()->GetBlockSpans(filter, &ts_block_spans_for_last_) != KStatus::SUCCESS) {
-    return KStatus::FAIL;
-  }
   return vgroup_->GetMemSegmentMgr()->GetBlockSpans(filter, &ts_block_spans_);
 }
 
@@ -446,11 +443,14 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   }
 
   std::vector<TSSlice> final_agg_data(kw_scan_cols_.size(), TSSlice{nullptr, 0});
+  std::vector<k_uint32> first_cols;
   std::vector<k_uint32> last_cols;
   std::vector<k_uint32> normal_cols;
   for (size_t i = 0; i < scan_agg_types_.size(); ++i) {
     if (scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) {
       last_cols.push_back(i);
+    } else if (scan_agg_types_[i] == Sumfunctype::FIRST || scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
+      first_cols.push_back(i);
     } else {
       normal_cols.push_back(i);
     }
@@ -551,16 +551,20 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   return KStatus::SUCCESS;
 }
 
-KStatus TsAggIteratorV2Impl::AggregateLastColumns(
-  const std::vector<k_uint32>& last_cols, std::vector<TSSlice>& final_agg_data) {
-  KStatus ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to add memory block spans.");
-    return ret;
-  }
+struct LastCandidate {
+  int64_t ts = INT64_MIN;
+  int row_idx = -1;
+  TsBlockSpan blk_span;
+  bool valid = false;
+};
 
-  std::vector<int64_t> last_ts(last_cols.size(), INT64_MIN);
-  std::vector<bool> last_found(last_cols.size(), false);
+KStatus TsAggIteratorV2Impl::AggregateLastColumns(
+  const std::vector<k_uint32>& last_cols,
+  std::vector<TSSlice>& final_agg_data) {
+  std::vector<LastCandidate> candidates(last_cols.size());
+
+  KStatus ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) return ret;
 
   while (!ts_block_spans_.empty()) {
     TsBlockSpan blk_span = ts_block_spans_.front();
@@ -572,26 +576,15 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
     for (size_t j = 0; j < last_cols.size(); ++j) {
-      if (last_found[j]) continue;
-
-      uint32_t col_idx = last_cols[j];
-      std::vector<Sumfunctype> agg_types = {scan_agg_types_[col_idx]};
-      std::vector<TSSlice> agg_data;
       int64_t ts = INT64_MIN;
-      ret = blk_span.GetLastResult(
-        kw_scan_cols_[col_idx], schema_info, attrs_[kw_scan_cols_[col_idx]], agg_types, agg_data, &ts);
+      int row_idx = -1;
+      ret = blk_span.GetLastInfo(
+        kw_scan_cols_[last_cols[j]], schema_info, attrs_[kw_scan_cols_[last_cols[j]]], &ts, &row_idx);
       if (ret != KStatus::SUCCESS) return ret;
-      if (agg_data.empty()) return KStatus::FAIL;
 
-      TSSlice& src = agg_data[0];
-      if (src.data != nullptr && ts > last_ts[j]) {
-        last_ts[j] = ts;
-        final_agg_data[col_idx].len = src.len;
-        final_agg_data[col_idx].data = static_cast<char*>(malloc(src.len));
-        memcpy(final_agg_data[col_idx].data, src.data, src.len);
-        last_found[j] = true;
+      if (ts > candidates[j].ts) {
+        candidates[j] = {ts, row_idx, blk_span, row_idx != -1};
       }
-      free(src.data);
     }
   }
 
@@ -607,7 +600,7 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
 
     bool skip = true;
     for (size_t j = 0; j < last_cols.size(); ++j) {
-      if (!last_found[j] && last_ts[j] < end_ts) {
+      if (!candidates[j].valid && candidates[j].ts < end_ts) {
         skip = false;
         break;
       }
@@ -629,30 +622,50 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
       for (size_t j = 0; j < last_cols.size(); ++j) {
-        if (last_found[j]) continue;
-
-        uint32_t col_idx = last_cols[j];
-        std::vector<Sumfunctype> agg_types = {scan_agg_types_[col_idx]};
-        std::vector<TSSlice> agg_data;
         int64_t ts = INT64_MIN;
-        ret = blk_span.GetLastResult(
-          kw_scan_cols_[col_idx], schema_info, attrs_[kw_scan_cols_[col_idx]], agg_types, agg_data, &ts);
+        int row_idx = -1;
+        ret = blk_span.GetLastInfo(
+          kw_scan_cols_[last_cols[j]], schema_info, attrs_[kw_scan_cols_[last_cols[j]]], &ts, &row_idx);
         if (ret != KStatus::SUCCESS) return ret;
-        if (agg_data.empty()) return KStatus::FAIL;
 
-        TSSlice& src = agg_data[0];
-        if (src.data != nullptr && ts > last_ts[j]) {
-          last_ts[j] = ts;
-          if (final_agg_data[col_idx].data) free(final_agg_data[col_idx].data);
-          final_agg_data[col_idx].len = src.len;
-          final_agg_data[col_idx].data = static_cast<char*>(malloc(src.len));
-          memcpy(final_agg_data[col_idx].data, src.data, src.len);
-          last_found[j] = true;
+        if (ts > candidates[j].ts) {
+          candidates[j] = {ts, row_idx, blk_span, row_idx != -1};
         }
-        free(src.data);
       }
     }
   }
+
+  // After determining best candidate per column, resolve value
+  for (size_t j = 0; j < last_cols.size(); ++j) {
+    const auto& c = candidates[j];
+    uint32_t col_idx = last_cols[j];
+    final_agg_data[col_idx].len = attrs_[kw_scan_cols_[col_idx]].size;
+
+    if (!c.valid) {
+      final_agg_data[col_idx] = {nullptr, 0};
+    } else if (scan_agg_types_[col_idx] == Sumfunctype::LASTTS) {
+      final_agg_data[col_idx].data = static_cast<char*>(malloc(sizeof(int64_t)));
+      memcpy(final_agg_data[col_idx].data, &c.ts, sizeof(int64_t));
+      final_agg_data[col_idx].len = sizeof(int64_t);
+    } else if (scan_agg_types_[col_idx] == Sumfunctype::LAST) {
+      std::shared_ptr<MMapMetricsTable> blk_version;
+      ret = table_schema_mgr_->GetMetricSchema(nullptr, c.blk_span.GetTableVersion(), &blk_version);
+      if (ret != KStatus::SUCCESS) return ret;
+      auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+
+      TSBlkDataTypeConvert convert(c.blk_span.GetTsBlock().get(), c.blk_span.GetStartRow(), c.blk_span.GetRowNum());
+      char* value = nullptr;
+      TsBitmap bitmap;
+      ret = convert.GetFixLenColAddr(kw_scan_cols_[col_idx], schema_info,
+        attrs_[kw_scan_cols_[col_idx]], &value, bitmap);
+      if (ret != KStatus::SUCCESS) return ret;
+
+      final_agg_data[col_idx].data = static_cast<char*>(malloc(final_agg_data[col_idx].len));
+      memcpy(final_agg_data[col_idx].data, value + c.row_idx * final_agg_data[col_idx].len,
+             final_agg_data[col_idx].len);
+    }
+  }
+
   return KStatus::SUCCESS;
 }
 
