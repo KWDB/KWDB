@@ -431,7 +431,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return s;
   }
   if (vgroup_lsn.empty()) {
-    LOG_INFO("Cannot detect the expected end checkpoint wal, skipping this file's content.")
+    LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
     logs.clear();
   }
   s = wal_mgr_->SwitchNextFile();
@@ -448,7 +448,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
     if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
-      LOG_ERROR("Failed to CreateCheckpointInternal for vgroup : %d", vgrp->GetVGroupID())
+      LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
     }
     uint32_t vgrp_id = vgrp->GetVGroupID();
@@ -572,7 +572,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     return KStatus::FAIL;
   }
   if (vgroup_lsn.empty()) {
-    LOG_INFO("Failed to detect the expected end checkpoint wal;skipping this file's content.")
+    LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
     logs.clear();
   }
 
@@ -585,7 +585,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     }
 
     if (vgrp->ReadLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
-      LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint for vgroup : %d", vgrp->GetVGroupID())
+      LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
     }
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());

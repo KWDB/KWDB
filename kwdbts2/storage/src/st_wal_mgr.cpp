@@ -895,11 +895,10 @@ KStatus WALMgr::SwitchNextFile() {
       return KStatus::FAIL;
     }
   }
-  HeaderBlock header = buffer_mgr_->getHeaderBlock();
-  TS_LSN start_lsn = header.getStartLSN() + BLOCK_SIZE + header.getBlockNum() * BLOCK_SIZE;
+  TS_LSN start_lsn = FetchCurrentLSN() + BLOCK_SIZE;
   TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-  auto hb = HeaderBlock(table_id_, header.getEndBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
-                        header.getCheckpointLSN(), header.getCheckpointNo());
+  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
+                        start_lsn, 0);
   KStatus s = file_mgr_->initWalFileWithHeader(hb);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initWalFileWithHeader.")
