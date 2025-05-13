@@ -631,13 +631,25 @@ KStatus TsAggIteratorV2Impl::UpdateLastCandidatesFromBlockSpans(
     TsBlockSpan blk_span = ts_block_spans_.front();
     ts_block_spans_.pop_front();
 
+    timestamp64 blk_min_ts, blk_max_ts;
+    blk_span.GetTSRange(&blk_min_ts, &blk_max_ts);
+
+    bool all_skip = true;
+    for (size_t j = 0; j < last_cols.size(); ++j) {
+      if (blk_max_ts > candidates[j].ts) {
+        all_skip = false;
+        break;
+      }
+    }
+    if (all_skip) continue;
+
     std::shared_ptr<MMapMetricsTable> blk_version;
     KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
     if (ret != KStatus::SUCCESS) return ret;
-
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
     for (size_t j = 0; j < last_cols.size(); ++j) {
+      if (blk_max_ts <= candidates[j].ts) continue;
       int64_t ts = INT64_MIN;
       int row_idx = -1;
       ret = blk_span.GetLastInfo(
