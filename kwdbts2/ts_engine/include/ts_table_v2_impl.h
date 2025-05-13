@@ -98,6 +98,17 @@ class TsTableV2Impl : public TsTable {
       }
     }
   }
+
+  KStatus CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                               const uint32_t cur_version, const uint32_t new_version,
+                               const std::vector<uint32_t/* tag column id*/>&) override;
+
+  KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
+                             const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
+
+  vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
+
+  vector<pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t ts_version);
 };
 
 }  // namespace kwdbts

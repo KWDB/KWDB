@@ -216,4 +216,51 @@ KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableK
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                      const uint32_t cur_version, const uint32_t new_version,
+                                      const std::vector<uint32_t/* tag column id*/>& tags) {
+    LOG_INFO("CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+    if (!table_schema_mgr_->CreateNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
+        LOG_ERROR("Failed to create normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
+        return FAIL;
+    }
+
+    auto s = table_schema_mgr_->UpdateVersion(cur_version, new_version);
+    if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Update table version error");
+        return s;
+    }
+    LOG_INFO("CreateNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+    return SUCCESS;
+}
+
+KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
+                                    const uint32_t new_version, const uint64_t index_id) {
+    LOG_INFO("DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+    if (!table_schema_mgr_->DropNormalTagIndex(ctx, transaction_id, cur_version, new_version, index_id)) {
+        LOG_ERROR("Failed to drop normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
+        return FAIL;
+    }
+    auto s = table_schema_mgr_->UpdateVersion(cur_version, new_version);
+    if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Update table version error");
+        return s;
+    }
+    LOG_INFO("DropNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+             this->table_id_, index_id, cur_version, new_version)
+    return SUCCESS;
+}
+
+std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
+    return table_schema_mgr_->GetNTagIndexInfo(ts_version, index_id);
+}
+
+
+std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTableV2Impl::GetAllNTagIndexs(uint32_t ts_version) {
+    return table_schema_mgr_->GetAllNTagIndexs(ts_version);
+}
+
 }  //  namespace kwdbts

@@ -62,6 +62,18 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override { return KStatus::SUCCESS; }
 
+  KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                               const char* transaction_id, const uint32_t cur_version, const uint32_t new_version,
+                               const std::vector<uint32_t/* tag column id*/> &index_schema) override;
+
+  KStatus DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                             const char* transaction_id,  const uint32_t cur_version,
+                             const uint32_t new_version) override;
+
+  KStatus AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                              const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
+                              const std::vector<uint32_t/* tag column id*/> &new_index_schema) override;
+
   KStatus CompressTsTable(kwdbContext_p ctx, const KTableKey& table_id, KTimestamp ts) override {
     return KStatus::SUCCESS;
   }
@@ -291,18 +303,6 @@ class TSEngineV2Impl : public TSEngine {
   KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
-
-  KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                               const char* transaction_id, const uint32_t cur_version, const uint32_t new_version,
-                               const std::vector<uint32_t/* tag column id*/> &index_schema) override {return FAIL; }
-
-  KStatus DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                             const char* transaction_id,  const uint32_t cur_version,
-                             const uint32_t new_version) override {return FAIL; }
-
-  KStatus AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                              const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
-                              const std::vector<uint32_t/* tag column id*/> &new_index_schema) override {return FAIL; }
 
   KStatus SwitchMemSegments(TS_LSN lsn) {
     return flush_mgr_.FlashMemSegment(lsn);

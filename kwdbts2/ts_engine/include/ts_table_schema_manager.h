@@ -76,7 +76,7 @@ class TsTableSchemaManager {
   std::shared_ptr<MMapMetricsTable> cur_metric_schema_;
   // schemas of all versions
   std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_schemas_;
-  std::shared_ptr<TagTable> tag_table_;
+  std::shared_ptr<TagTable> tag_table_{nullptr};
   // Partition interval.
   uint64_t partition_interval_;
   // Compression status.
@@ -114,10 +114,26 @@ class TsTableSchemaManager {
 
   TSTableID GetTableId();
 
+  std::shared_ptr<TagTable> GetTagTable() {
+    return tag_table_;
+  }
+
   KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
                             ErrorInfo& err_info, uint32_t cur_version = 0);
   KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
                       uint32_t ts_version, ErrorInfo& err_info);
+
+  KStatus CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+                                                const uint32_t cur_version, const uint32_t new_version,
+                                                const std::vector<uint32_t/* tag column id*/>& tags);
+
+  KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
+                                              const uint32_t new_version, const uint64_t index_id);
+
+  vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
+
+  vector<pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t ts_version);
+
 
   KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 

@@ -169,6 +169,69 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
   return s;
 }
 
+KStatus TSEngineV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                                           const char* transaction_id, const uint32_t cur_version,
+                                           const uint32_t new_version,
+                                           const std::vector<uint32_t/* tag column id*/> &index_schema) {
+    LOG_INFO("TSEngine CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+             table_id, index_id, cur_version, new_version)
+    std::shared_ptr<TsTable> table;
+    ErrorInfo err_info;
+    KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
+    if (s == KStatus::FAIL) {
+        return s;
+    }
+
+    // Get transaction id.
+    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+    // Write create index DDL into WAL, which type is Create_Normal_TagIndex.
+    s = wal_sys_->WriteCreateIndexWAL(ctx, x_id, table_id, index_id, cur_version, new_version, index_schema);
+    if (s == KStatus::FAIL) {
+        return s;
+    }
+    // create index
+    return table->CreateNormalTagIndex(ctx, x_id, index_id, cur_version, new_version, index_schema);
+}
+
+KStatus TSEngineV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                                         const char* transaction_id,  const uint32_t cur_version,
+                                         const uint32_t new_version) {
+    LOG_INFO("TSEngine DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+             table_id, index_id, cur_version, new_version)
+    std::shared_ptr<TsTable> table;
+    ErrorInfo err_info;
+    KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
+    if (s == KStatus::FAIL) {
+        LOG_ERROR("drop normal tag index, failed to get ts table.")
+        return s;
+    }
+
+    // Get transaction id.
+    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+    std::vector<uint32_t> tags = table->GetNTagIndexInfo(cur_version, index_id);
+    if (tags.empty()) {
+        LOG_ERROR("drop normal tag index, ntag info is empty.")
+        return FAIL;
+    }
+
+    // Write create index DDL into WAL, which type is Create_Normal_TagIndex.
+    s = wal_sys_->WriteDropIndexWAL(ctx, x_id, table_id, index_id, cur_version, new_version, tags);
+    if (s == KStatus::FAIL) {
+        LOG_ERROR("Drop normal tag index write wal failed.")
+        return s;
+    }
+
+    return table->DropNormalTagIndex(ctx, x_id, cur_version, new_version, index_id);
+}
+
+KStatus TSEngineV2Impl::AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
+                                          const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
+                                          const std::vector<uint32_t/* tag column id*/> &new_index_schema) {
+    return SUCCESS;
+}
+
 KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id,
                                    TsRawPayload &payload) {
   ErrorInfo err_info;
