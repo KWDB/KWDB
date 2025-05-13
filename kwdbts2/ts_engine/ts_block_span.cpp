@@ -118,7 +118,7 @@ KStatus TsBlock::GetLastResult(uint32_t begin_row_idx,
                                std::vector<Sumfunctype> agg_types,
                                std::vector<TSSlice>& agg_data,
                                int64_t* out_ts) {
-  TSBlkSpanDataTypeConvert convert(this, begin_row_idx, row_num);
+  TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
   agg_data.clear();
   if (out_ts) {
     *out_ts = INT64_MIN;
