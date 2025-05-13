@@ -335,6 +335,7 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
 
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                                    uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+  return KStatus::SUCCESS;
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
@@ -346,6 +347,7 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
                                     uint64_t range_group_id, uint64_t mtr_id) {
+  return KStatus::SUCCESS;
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
@@ -357,6 +359,7 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
                                       uint64_t range_group_id, uint64_t mtr_id) {
+  return KStatus::SUCCESS;
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -479,7 +482,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
     if (!skip) {
       if (log->getType() != WALLogType::CHECKPOINT) {
-        rewrite.emplace_back(log);
+//        rewrite.emplace_back(log);
       }
     }
   }
