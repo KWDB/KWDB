@@ -1673,8 +1673,8 @@ func GetPayloadMapForMuiltNode(
 		} else {
 			valueSize := int32(0)
 			rowNum := uint32(0)
-			for i := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[i]))
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
 				rowNum++
 			}
 
