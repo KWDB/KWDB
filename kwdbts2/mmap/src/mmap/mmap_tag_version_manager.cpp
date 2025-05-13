@@ -158,7 +158,7 @@ int TagTableVersionManager::RollbackTableVersion(uint32_t need_rollback_version,
      LOG_WARN("tag table need rollback version [%u] does not exist.", need_rollback_version);
      return 0;
   }
-  LOG_INFO("rollback remove file: %s/%s ", version_obj->second->sub_path().c_str(),version_obj->second->name().c_str());
+  LOG_INFO("rollback remove file: %s%s ", version_obj->second->sub_path().c_str(),version_obj->second->name().c_str());
   version_obj->second->remove();
   delete version_obj->second;
   m_version_tables_.erase(version_obj);
