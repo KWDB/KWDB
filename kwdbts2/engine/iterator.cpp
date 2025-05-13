@@ -297,6 +297,7 @@ KStatus TsRawDataIterator::Next(ResultSet* res, k_uint32* count, bool* is_finish
       }
     }
     LOG_DEBUG("block item[%u, %u] scan rows %u.", cur_block_item_->entity_id, cur_block_item_->block_id, *count);
+    assert(cur_block_item_->publish_row_count <= cur_block_item_->alloc_row_count);
     // If the data query within the current BlockItem is completed, switch to the next block.
     if (cur_blockdata_offset_ > cur_block_item_->publish_row_count) {
       cur_blockdata_offset_ = 1;

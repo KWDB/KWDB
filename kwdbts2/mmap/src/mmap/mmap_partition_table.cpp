@@ -535,6 +535,12 @@ int64_t TsTimePartition::push_back_payload(kwdbts::kwdbContext_p ctx, uint32_t e
     CountUpdateTime();
     for (size_t i = 0; i < alloc_spans->size(); i++) {
       (*alloc_spans)[i].block_item->publish_row_count += (*alloc_spans)[i].row_num;
+      // if insert cost over 10 seconds, some data marked deleted. this function also need make sure publish is less than alloc.
+      if ((*alloc_spans)[i].block_item->publish_row_count > (*alloc_spans)[i].block_item->alloc_row_count) {
+        LOG_WARN("block [%u] publish row count [%u] ,alloc row count[%u]", (*alloc_spans)[i].block_item->block_id,
+                  (*alloc_spans)[i].block_item->publish_row_count, (*alloc_spans)[i].block_item->alloc_row_count);
+        (*alloc_spans)[i].block_item->publish_row_count = (*alloc_spans)[i].block_item->alloc_row_count;
+      }
       if ((*alloc_spans)[i].block_item->publish_row_count >= (*alloc_spans)[i].block_item->max_rows_in_block) {
         full_block_idx.push_back(i);
       }
@@ -2177,20 +2183,26 @@ void TsTimePartition::waitBlockItemDataFilled(uint entity_id, BlockItem* block_i
   // offset_row does not exceed the expected number of rows to be read, a loop check is performed.
   while (block_item->alloc_row_count != block_item->publish_row_count && real_row.offset_row < read_count) {
     bool move_step = false;
-    char* ts_addr = reinterpret_cast<char*>(segment_tbl->columnAddr(real_row, 0));
-    // If an LSN is present, verify that it is greater than 0; if not, ascertain if the timestamp is greater than 0
-    if (has_lsn) {
-      uint64_t lsn = KUint64(ts_addr + 8);
-      if (lsn > 0) {
-        move_step = true;
-      }
-    } else {
-      if (KTimestamp(ts_addr) > 0) {  // timestampe is set, so data is inserted ok.
-        move_step = true;
+    bool is_deleted;
+    if (block_item->isDeleted(real_row.offset_row, &is_deleted) < 0 || is_deleted) {
+      move_step = true;
+    }
+    if (!move_step) {
+      char* ts_addr = reinterpret_cast<char*>(segment_tbl->columnAddr(real_row, 0));
+      // If an LSN is present, verify that it is greater than 0; if not, ascertain if the timestamp is greater than 0
+      if (has_lsn) {
+        uint64_t lsn = KUint64(ts_addr + 8);
+        if (lsn > 0) {
+          move_step = true;
+        }
+      } else {
+        if (KTimestamp(ts_addr) > 0) {  // timestampe is set, so data is inserted ok.
+          move_step = true;
+        }
       }
     }
     // If the current row's waiting time exceeds 10 seconds, it is marked as deleted
-    if (time(nullptr) - begin_time > 10) {  // check overtime, mark row deleted.
+    if (!move_step && time(nullptr) - begin_time > 10) {  // check overtime, mark row deleted.
       SetDeleted(entity_id);
       block_item->setDeleted(cur_read_rownum);
       LOG_WARN("check lsn overtime, mark this row deleted. entity:%u, block:%u, row: %u", entity_id,
