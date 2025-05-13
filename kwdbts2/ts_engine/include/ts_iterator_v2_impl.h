@@ -102,6 +102,13 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
 
+struct LastCandidate {
+  int64_t ts = INT64_MIN;
+  int row_idx = -1;
+  TsBlockSpan blk_span;
+  bool valid = false;
+};
+
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
   TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -116,6 +123,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  protected:
   KStatus AggregateBlockSpans(ResultSet* res, k_uint32* count);
   KStatus AggregateLastColumns(const std::vector<k_uint32>& last_cols, std::vector<TSSlice>& final_agg_data);
+  KStatus UpdateLastCandidatesFromBlockSpans(const std::vector<k_uint32>& last_cols,
+                                             std::vector<LastCandidate>& candidates);
 
   std::vector<Sumfunctype> scan_agg_types_;
 };

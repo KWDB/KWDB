@@ -551,13 +551,6 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   return KStatus::SUCCESS;
 }
 
-struct LastCandidate {
-  int64_t ts = INT64_MIN;
-  int row_idx = -1;
-  TsBlockSpan blk_span;
-  bool valid = false;
-};
-
 KStatus TsAggIteratorV2Impl::AggregateLastColumns(
   const std::vector<k_uint32>& last_cols,
   std::vector<TSSlice>& final_agg_data) {
@@ -566,27 +559,8 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
   KStatus ret = AddMemSegmentBlockSpans();
   if (ret != KStatus::SUCCESS) return ret;
 
-  while (!ts_block_spans_.empty()) {
-    TsBlockSpan blk_span = ts_block_spans_.front();
-    ts_block_spans_.pop_front();
-
-    std::shared_ptr<MMapMetricsTable> blk_version;
-    ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
-    if (ret != KStatus::SUCCESS) return ret;
-    auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
-
-    for (size_t j = 0; j < last_cols.size(); ++j) {
-      int64_t ts = INT64_MIN;
-      int row_idx = -1;
-      ret = blk_span.GetLastInfo(
-        kw_scan_cols_[last_cols[j]], schema_info, attrs_[kw_scan_cols_[last_cols[j]]], &ts, &row_idx);
-      if (ret != KStatus::SUCCESS) return ret;
-
-      if (ts > candidates[j].ts) {
-        candidates[j] = {ts, row_idx, blk_span, row_idx != -1};
-      }
-    }
-  }
+  ret = UpdateLastCandidatesFromBlockSpans(last_cols, candidates);
+  if (ret != KStatus::SUCCESS) return ret;
 
   std::vector<std::pair<int, int64_t>> sorted_partitions;
   for (int i = 0; i < ts_partitions_.size(); ++i) {
@@ -612,27 +586,8 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
     ret = AddEntitySegmentBlockSpans();
     if (ret != KStatus::SUCCESS) return ret;
 
-    while (!ts_block_spans_.empty()) {
-      TsBlockSpan blk_span = ts_block_spans_.front();
-      ts_block_spans_.pop_front();
-
-      std::shared_ptr<MMapMetricsTable> blk_version;
-      ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
-      if (ret != KStatus::SUCCESS) return ret;
-      auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
-
-      for (size_t j = 0; j < last_cols.size(); ++j) {
-        int64_t ts = INT64_MIN;
-        int row_idx = -1;
-        ret = blk_span.GetLastInfo(
-          kw_scan_cols_[last_cols[j]], schema_info, attrs_[kw_scan_cols_[last_cols[j]]], &ts, &row_idx);
-        if (ret != KStatus::SUCCESS) return ret;
-
-        if (ts > candidates[j].ts) {
-          candidates[j] = {ts, row_idx, blk_span, row_idx != -1};
-        }
-      }
-    }
+    ret = UpdateLastCandidatesFromBlockSpans(last_cols, candidates);
+    if (ret != KStatus::SUCCESS) return ret;
   }
 
   // After determining best candidate per column, resolve value
@@ -666,6 +621,34 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
     }
   }
 
+  return KStatus::SUCCESS;
+}
+
+KStatus TsAggIteratorV2Impl::UpdateLastCandidatesFromBlockSpans(
+    const std::vector<k_uint32>& last_cols,
+    std::vector<LastCandidate>& candidates) {
+  while (!ts_block_spans_.empty()) {
+    TsBlockSpan blk_span = ts_block_spans_.front();
+    ts_block_spans_.pop_front();
+
+    std::shared_ptr<MMapMetricsTable> blk_version;
+    KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
+    if (ret != KStatus::SUCCESS) return ret;
+
+    auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+
+    for (size_t j = 0; j < last_cols.size(); ++j) {
+      int64_t ts = INT64_MIN;
+      int row_idx = -1;
+      ret = blk_span.GetLastInfo(
+          kw_scan_cols_[last_cols[j]], schema_info, attrs_[kw_scan_cols_[last_cols[j]]], &ts, &row_idx);
+      if (ret != KStatus::SUCCESS) return ret;
+
+      if (ts > candidates[j].ts) {
+        candidates[j] = {ts, row_idx, blk_span, row_idx != -1};
+      }
+    }
+  }
   return KStatus::SUCCESS;
 }
 
