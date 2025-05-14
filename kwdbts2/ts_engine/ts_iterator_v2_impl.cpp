@@ -45,11 +45,11 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   // Update ts_span
   int64_t acceptable_ts = INT64_MIN;
   auto life_time = table_schema_mgr_->GetLifeTime();
-  if (life_time != UINT64_MAX) {
+  if (life_time != 0) {
     auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
     acceptable_ts = now.time_since_epoch().count() - life_time;
+    updateTsSpan(acceptable_ts);
   }
-  updateTsSpan(acceptable_ts);
 
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);

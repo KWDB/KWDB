@@ -34,7 +34,13 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
   auto primary_key = p.GetPrimaryTag();
   auto vgroup = vgroups_[v_group_id - 1].get();
   assert(vgroup != nullptr);
-  auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload, INT64_MIN);
+  int64_t acceptable_ts = INT64_MIN;
+  auto life_time = GetLifeTime();
+  if (life_time != 0) {
+    auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+    acceptable_ts = now.time_since_epoch().count() - life_time;
+  }
+  auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload, acceptable_ts);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%lu]", GetTableId(), v_group_id);
