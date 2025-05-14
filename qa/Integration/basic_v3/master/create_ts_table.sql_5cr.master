@@ -133,6 +133,11 @@ order by k_timestamp;
 --------+-----+-----+------
       9 |  55 |  12 |  13
 (1 row)
+> select last(b), last(a) from test.sjcx01;
+  last | last
+-------+-------
+    13 |   12
+(1 row)
 > select * from test.sjcx01 where t1_attribute = 'F6';
            k_timestamp          |  a   | b  | c | d | t1_attribute
 --------------------------------+------+----+---+---+---------------

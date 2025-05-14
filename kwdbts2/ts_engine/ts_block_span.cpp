@@ -15,45 +15,6 @@
 
 namespace kwdbts {
 
-
-// KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
-// const std::vector<AttributeInfo>& schema,
-// const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
-  // TSBlkSpanDataTypeConvert convert(this, begin_row_idx, row_num);
-//   char* value;
-//   TsBitmap bitmap;
-//   agg_data.resize(agg_types.size());
-//   if (!isVarLenType(dest_type.type)) {
-//     char* allc_mem = reinterpret_cast<char*>(malloc((agg_types.size()) * dest_type.size) + 16);
-//     auto s = GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
-//     if (s != KStatus::SUCCESS) {
-//       LOG_ERROR("GetFixLenColAddr failed.");
-//       return s;
-//     }
-//     for (size_t i = 0; i < agg_types.size(); i++) {
-//       switch (agg_types[i]) {
-//         case Sumfunctype::MAX:
-//           /* code */
-//           break;
-//         case Sumfunctype::MIN:
-//           break;
-//         case Sumfunctype::SUM:
-//           break;
-//         case Sumfunctype::COUNT:
-//           break;
-//         default:
-//           break;
-//       }
-//     }
-//     AggCalculatorV2 v2((void*)value, &bitmap, dest_type.type, dest_type.size, row_num_);
-//     bool overflow = v2.CalcAllAgg(*(reinterpret_cast<uint16_t*>(allc_mem)), allc_mem + 8, allc_mem + 16, allc_mem + 24);
-//     assert(!overflow);
-//   } else {
-//     // VarColAggCalculatorV2 v2()
-//   }
-//   return KStatus::SUCCESS;
-// }
-
 KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
                                uint32_t row_num,
                                uint32_t col_id,
@@ -149,6 +110,45 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
   return KStatus::FAIL;
 }
 
+KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
+                             uint32_t row_num,
+                             uint32_t col_id,
+                             const std::vector<AttributeInfo>& schema,
+                             const AttributeInfo& dest_type,
+                             int64_t* out_ts,
+                             int* out_row_idx) {
+  TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
+  if (out_ts) *out_ts = INT64_MIN;
+  if (out_row_idx) *out_row_idx = -1;
+
+  if (!isVarLenType(dest_type.type)) {
+    char* value = nullptr;
+    TsBitmap bitmap;
+    auto s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetFixLenColAddr failed.");
+      return s;
+    }
+
+    int64_t max_ts = INT64_MIN;
+    int best_idx = -1;
+    for (int i = 0; i < row_num; ++i) {
+      if (bitmap[i] == DataFlags::kNull) continue;
+      int64_t ts = GetTS(i);
+      if (ts > max_ts) {
+        max_ts = ts;
+        best_idx = i;
+      }
+    }
+
+    if (out_ts) *out_ts = max_ts;
+    if (out_row_idx) *out_row_idx = best_idx;
+    return KStatus::SUCCESS;
+  }
+
+  LOG_ERROR("VarLenType not supported in GetLastInfo: type = %d", dest_type.type);
+  return KStatus::FAIL;
+}
 
 TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
             std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
@@ -224,6 +224,11 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, co
 KStatus TsBlockSpan::GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
   return block_->GetAggResult(start_row_, nrow_, col_id, schema, dest_type, agg_types, agg_data);
+}
+
+KStatus TsBlockSpan::GetLastInfo(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+ const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx) {
+  return block_->GetLastInfo(start_row_, nrow_, col_id, schema, dest_type, out_ts, out_row_idx);
 }
 
 void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
