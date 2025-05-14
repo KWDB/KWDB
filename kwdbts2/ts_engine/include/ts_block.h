@@ -41,9 +41,20 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
-  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
-   const std::vector<AttributeInfo>& schema,
-   const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+  // virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
+  //  const std::vector<AttributeInfo>& schema,
+  //  const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+
+  virtual KStatus GetAggResult(uint32_t begin_row_idx,
+                               uint32_t row_num,
+                               uint32_t col_id,
+                               const std::vector<AttributeInfo>& schema,
+                               const AttributeInfo& dest_type,
+                               const std::vector<Sumfunctype>& agg_types,
+                               uint64_t* count_ptr,
+                               void* max_addr,
+                               void* min_addr,
+                               void* sum_addr);
 
   virtual KStatus GetLastInfo(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
     const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
@@ -86,8 +97,12 @@ struct TsBlockSpan {
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
 
-  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+  // KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+  //   std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+
+  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, 
+    const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, uint64_t* count_ptr, 
+    void* max_addr, void* min_addr, void* sum_addr);
 
   KStatus GetLastInfo(uint32_t col_id, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx);

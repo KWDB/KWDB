@@ -8,7 +8,8 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
-
+#include <limits>
+#include <cstring>
 #include "ts_vgroup.h"
 #include "ts_iterator_v2_impl.h"
 
@@ -437,6 +438,236 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   return KStatus::SUCCESS;
 }
 
+// KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count) {
+//   if (ts_block_spans_.empty()) {
+//     return KStatus::FAIL;
+//   }
+
+//   std::vector<TSSlice> final_agg_data(kw_scan_cols_.size(), TSSlice{nullptr, 0});
+//   std::vector<k_uint32> first_cols;
+//   std::vector<k_uint32> last_cols;
+//   std::vector<k_uint32> normal_cols;
+//   for (size_t i = 0; i < scan_agg_types_.size(); ++i) {
+//     if (scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) {
+//       last_cols.push_back(i);
+//     } else if (scan_agg_types_[i] == Sumfunctype::FIRST || scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
+//       first_cols.push_back(i);
+//     } else {
+//       normal_cols.push_back(i);
+//     }
+//   }
+
+//   while (!ts_block_spans_.empty()) {
+//     TsBlockSpan blk_span = ts_block_spans_.front();
+//     ts_block_spans_.pop_front();
+
+//     KStatus ret;
+//     std::shared_ptr<MMapMetricsTable> blk_version;
+//     ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
+//     if (ret != KStatus::SUCCESS) {
+//       LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span.GetTableVersion());
+//       return ret;
+//     }
+//     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+
+//     for (k_uint32 i = 0; i < normal_cols.size(); ++i) {
+//       std::vector<Sumfunctype> agg_types = {scan_agg_types_[i]};
+//       std::vector<TSSlice> agg_data;
+
+//       ret = blk_span.GetAggResult(kw_scan_cols_[i], schema_info, attrs_[kw_scan_cols_[i]], agg_types, agg_data);
+//       if (ret != KStatus::SUCCESS) {
+//         LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[i]);
+//         return ret;
+//       }
+
+//       if (agg_data.empty()) {
+//         LOG_ERROR("Aggregation result is empty for col_id(%u).", kw_scan_cols_[i]);
+//         return KStatus::FAIL;
+//       }
+
+//       TSSlice& src = agg_data[0];
+//       TSSlice& dst = final_agg_data[i];
+
+//       if (dst.data == nullptr) {
+//         dst.len = src.len;
+//         dst.data = static_cast<char*>(malloc(src.len));
+//         memcpy(dst.data, src.data, src.len);
+//       } else {
+//         switch (scan_agg_types_[i]) {
+//           case Sumfunctype::COUNT:
+//             *reinterpret_cast<k_uint64*>(dst.data) += *reinterpret_cast<k_uint64*>(src.data);
+//             break;
+//           case Sumfunctype::SUM:
+//             switch (attrs_[kw_scan_cols_[i]].type) {
+//               case DATATYPE::INT32:
+//                 *reinterpret_cast<int32_t*>(dst.data) += *reinterpret_cast<int32_t*>(src.data);
+//                 break;
+//               case DATATYPE::INT64:
+//                 *reinterpret_cast<int64_t*>(dst.data) += *reinterpret_cast<int64_t*>(src.data);
+//                 break;
+//               case DATATYPE::FLOAT:
+//                 *reinterpret_cast<float*>(dst.data) += *reinterpret_cast<float*>(src.data);
+//                 break;
+//               case DATATYPE::DOUBLE:
+//                 *reinterpret_cast<double*>(dst.data) += *reinterpret_cast<double*>(src.data);
+//                 break;
+//               default:
+//                 LOG_ERROR("Unsupported SUM type in merge: %d", attrs_[kw_scan_cols_[i]].type);
+//                 return KStatus::FAIL;
+//             }
+//             break;
+//           default:
+//             LOG_ERROR("Unsupported aggregation type in merge: %d", scan_agg_types_[i]);
+//             return KStatus::FAIL;
+//         }
+//       }
+
+//       free(src.data);
+//     }
+//   }
+
+//   if (!last_cols.empty()) {
+//     KStatus ret = AggregateLastColumns(last_cols, final_agg_data);
+//     if (ret != KStatus::SUCCESS) return ret;
+//   }
+
+//   res->clear();
+  // for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+  //   TSSlice& slice = final_agg_data[i];
+  //   char* data_copy = static_cast<char*>(malloc(slice.len));
+  //   memcpy(data_copy, slice.data, slice.len);
+
+  //   Batch* b = new AggBatch(data_copy, 1, nullptr);
+  //   b->is_new = true;
+  //   b->need_free_bitmap = true;
+
+  //   res->push_back(i, b);
+  //   free(slice.data);
+  // }
+
+//   res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
+//   res->col_num_ = kw_scan_cols_.size();
+//   *count = 1;
+
+//   return KStatus::SUCCESS;
+// }
+
+void InitMin(void* ptr, DATATYPE type, size_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+      *static_cast<int8_t*>(ptr) = std::numeric_limits<int8_t>::max();
+      break;
+    case DATATYPE::BOOL:
+      *static_cast<bool*>(ptr) = true;
+      break;
+    case DATATYPE::INT16:
+      *static_cast<int16_t*>(ptr) = std::numeric_limits<int16_t>::max();
+      break;
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP:
+      *static_cast<int32_t*>(ptr) = std::numeric_limits<int32_t>::max();
+      break;
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO:
+      *static_cast<int64_t*>(ptr) = std::numeric_limits<int64_t>::max();
+      break;
+    case DATATYPE::FLOAT:
+      *static_cast<float*>(ptr) = std::numeric_limits<float>::max();
+      break;
+    case DATATYPE::DOUBLE:
+      *static_cast<double*>(ptr) = std::numeric_limits<double>::max();
+      break;
+    case DATATYPE::STRING:
+    case DATATYPE::BINARY:
+      memset(ptr, 0xFF, size);  
+      break;
+    case DATATYPE::TIMESTAMP64_LSN:
+    case DATATYPE::TIMESTAMP64_LSN_MICRO:
+    case DATATYPE::TIMESTAMP64_LSN_NANO:
+      static_cast<TimeStamp64LSN*>(ptr)->ts64 = std::numeric_limits<int64_t>::max();
+      break;
+    default:
+      break;
+  }
+}
+
+void InitMax(void* ptr, DATATYPE type, size_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+      *static_cast<int8_t*>(ptr) = std::numeric_limits<int8_t>::min();
+      break;
+    case DATATYPE::BOOL:
+      *static_cast<bool*>(ptr) = false;
+      break;
+    case DATATYPE::INT16:
+      *static_cast<int16_t*>(ptr) = std::numeric_limits<int16_t>::min();
+      break;
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP:
+      *static_cast<int32_t*>(ptr) = std::numeric_limits<int32_t>::min();
+      break;
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO:
+      *static_cast<int64_t*>(ptr) = std::numeric_limits<int64_t>::min();
+      break;
+    case DATATYPE::FLOAT:
+      *static_cast<float*>(ptr) = std::numeric_limits<float>::lowest();  
+      break;
+    case DATATYPE::DOUBLE:
+      *static_cast<double*>(ptr) = std::numeric_limits<double>::lowest();
+      break;
+    case DATATYPE::STRING:
+    case DATATYPE::BINARY:
+      memset(ptr, 0x00, size);  
+      break;
+    case DATATYPE::TIMESTAMP64_LSN:
+    case DATATYPE::TIMESTAMP64_LSN_MICRO:
+    case DATATYPE::TIMESTAMP64_LSN_NANO:
+      static_cast<TimeStamp64LSN*>(ptr)->ts64 = std::numeric_limits<int64_t>::min();
+      break;
+    default:
+      break;
+  }
+}
+
+void InitSum(void* ptr, DATATYPE type) {
+  switch (type) {
+    case DATATYPE::INT8:
+      *static_cast<int8_t*>(ptr) = 0;
+      break;
+    case DATATYPE::INT16:
+      *static_cast<int16_t*>(ptr) = 0;
+      break;
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP:  
+      *static_cast<int32_t*>(ptr) = 0;
+      break;
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO:
+      *static_cast<int64_t*>(ptr) = 0;
+      break;
+    case DATATYPE::FLOAT:
+      *static_cast<float*>(ptr) = 0.0f;
+      break;
+    case DATATYPE::DOUBLE:
+      *static_cast<double*>(ptr) = 0.0;
+      break;
+    default:
+      break;
+  }
+}
+
+
 KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count) {
   if (ts_block_spans_.empty()) {
     return KStatus::FAIL;
@@ -456,6 +687,25 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     }
   }
 
+  struct AggValue {
+    uint64_t count = 0;
+    void* sum = nullptr;
+    void* max = nullptr;
+    void* min = nullptr;
+  };
+  std::vector<AggValue> agg_results(kw_scan_cols_.size());
+
+  for (k_uint32 idx : normal_cols) {
+    size_t size = attrs_[kw_scan_cols_[idx]].size;
+    agg_results[idx].sum = malloc(size);
+    agg_results[idx].max = malloc(size);
+    agg_results[idx].min = malloc(size);
+    // memset(agg_results[idx].sum, 0, size);
+    InitMin(agg_results[idx].min, static_cast<DATATYPE>(attrs_[kw_scan_cols_[idx]].type), attrs_[kw_scan_cols_[idx]].size);
+    InitMax(agg_results[idx].max, static_cast<DATATYPE>(attrs_[kw_scan_cols_[idx]].type), attrs_[kw_scan_cols_[idx]].size);
+    InitSum(agg_results[idx].sum, static_cast<DATATYPE>(attrs_[kw_scan_cols_[idx]].type));
+  }
+
   while (!ts_block_spans_.empty()) {
     TsBlockSpan blk_span = ts_block_spans_.front();
     ts_block_spans_.pop_front();
@@ -469,59 +719,20 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     }
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-    for (k_uint32 i = 0; i < normal_cols.size(); ++i) {
-      std::vector<Sumfunctype> agg_types = {scan_agg_types_[i]};
-      std::vector<TSSlice> agg_data;
+    for (k_uint32 idx : normal_cols) {
+      std::vector<Sumfunctype> agg_types = {scan_agg_types_[idx]};
 
-      ret = blk_span.GetAggResult(kw_scan_cols_[i], schema_info, attrs_[kw_scan_cols_[i]], agg_types, agg_data);
+      ret = blk_span.GetAggResult(
+        kw_scan_cols_[idx], schema_info, attrs_[kw_scan_cols_[idx]], agg_types,
+        &agg_results[idx].count,
+        agg_results[idx].max,
+        agg_results[idx].min,
+        agg_results[idx].sum);
+
       if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[i]);
+        LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[idx]);
         return ret;
       }
-
-      if (agg_data.empty()) {
-        LOG_ERROR("Aggregation result is empty for col_id(%u).", kw_scan_cols_[i]);
-        return KStatus::FAIL;
-      }
-
-      TSSlice& src = agg_data[0];
-      TSSlice& dst = final_agg_data[i];
-
-      if (dst.data == nullptr) {
-        dst.len = src.len;
-        dst.data = static_cast<char*>(malloc(src.len));
-        memcpy(dst.data, src.data, src.len);
-      } else {
-        switch (scan_agg_types_[i]) {
-          case Sumfunctype::COUNT:
-            *reinterpret_cast<k_uint64*>(dst.data) += *reinterpret_cast<k_uint64*>(src.data);
-            break;
-          case Sumfunctype::SUM:
-            switch (attrs_[kw_scan_cols_[i]].type) {
-              case DATATYPE::INT32:
-                *reinterpret_cast<int32_t*>(dst.data) += *reinterpret_cast<int32_t*>(src.data);
-                break;
-              case DATATYPE::INT64:
-                *reinterpret_cast<int64_t*>(dst.data) += *reinterpret_cast<int64_t*>(src.data);
-                break;
-              case DATATYPE::FLOAT:
-                *reinterpret_cast<float*>(dst.data) += *reinterpret_cast<float*>(src.data);
-                break;
-              case DATATYPE::DOUBLE:
-                *reinterpret_cast<double*>(dst.data) += *reinterpret_cast<double*>(src.data);
-                break;
-              default:
-                LOG_ERROR("Unsupported SUM type in merge: %d", attrs_[kw_scan_cols_[i]].type);
-                return KStatus::FAIL;
-            }
-            break;
-          default:
-            LOG_ERROR("Unsupported aggregation type in merge: %d", scan_agg_types_[i]);
-            return KStatus::FAIL;
-        }
-      }
-
-      free(src.data);
     }
   }
 
@@ -533,20 +744,60 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   res->clear();
   for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
     TSSlice& slice = final_agg_data[i];
-    char* data_copy = static_cast<char*>(malloc(slice.len));
-    memcpy(data_copy, slice.data, slice.len);
+    size_t size = attrs_[kw_scan_cols_[i]].size;
+    switch (scan_agg_types_[i]) {
+      case Sumfunctype::COUNT:
+        slice.len = sizeof(uint64_t);
+        slice.data = static_cast<char*>(malloc(slice.len));
+        memset(slice.data, 0, slice.len);
+        memcpy(slice.data, &agg_results[i].count, slice.len);
+        break;
+      case Sumfunctype::SUM:
+        slice.len = sizeof(uint64_t);
+        slice.data = static_cast<char*>(malloc(slice.len));
+        memset(slice.data, 0, slice.len);
+        memcpy(slice.data, agg_results[i].sum, size);
+        break;
+      case Sumfunctype::MAX:
+        slice.len = size;
+        slice.data = static_cast<char*>(malloc(size));
+        memset(slice.data, 0, size);
+        memcpy(slice.data, agg_results[i].max, size);
+        break;
+      case Sumfunctype::MIN:
+        slice.len = size;
+        slice.data = static_cast<char*>(malloc(size));
+        memset(slice.data, 0, size);
+        memcpy(slice.data, agg_results[i].min, size);
+        break;
+      default:
+        if (slice.data && slice.len > 0) {
+          char* data_copy = (char*)malloc(slice.len);
+          memcpy(data_copy, slice.data, slice.len);
+          Batch* b = new AggBatch(data_copy, 1, nullptr);
+          b->is_new = true;
+          b->need_free_bitmap = true;
+          res->push_back(i, b);
+        }
+        continue;
+    }
 
-    Batch* b = new AggBatch(data_copy, 1, nullptr);
+    Batch* b = new AggBatch(slice.data, 1, nullptr);
     b->is_new = true;
     b->need_free_bitmap = true;
 
     res->push_back(i, b);
-    free(slice.data);
   }
 
   res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
   res->col_num_ = kw_scan_cols_.size();
   *count = 1;
+
+  for (auto& val : agg_results) {
+    free(val.sum);
+    free(val.max);
+    free(val.min);
+  }
 
   return KStatus::SUCCESS;
 }
