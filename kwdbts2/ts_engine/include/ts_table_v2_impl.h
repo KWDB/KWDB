@@ -84,6 +84,20 @@ class TsTableV2Impl : public TsTable {
   void SetLifeTime(uint64_t ts) {
     table_schema_mgr_->SetLifeTime(ts);
   }
+
+  inline void updateTsSpan(int64_t ts, std::vector<KwTsSpan>& ts_spans) {
+    // Delete all spans that ts > span.end
+    auto new_end = std::remove_if(ts_spans.begin(), ts_spans.end(),
+        [ts](const KwTsSpan& span) { return ts > span.end; });
+    ts_spans.erase(new_end, ts_spans.end());
+
+    // Update the begin for the remaining spans
+    for (auto& span : ts_spans) {
+      if (ts > span.begin) {
+        span.begin = ts;
+      }
+    }
+  }
 };
 
 }  // namespace kwdbts

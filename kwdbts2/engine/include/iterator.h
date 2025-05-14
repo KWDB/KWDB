@@ -301,20 +301,6 @@ class TsStorageIterator {
     return false;
   }
 
-  inline void updateTsSpan(int64_t ts) {
-    // Delete all spans that ts > span.end
-    auto new_end = std::remove_if(ts_spans_.begin(), ts_spans_.end(),
-        [ts](const KwTsSpan& span) { return ts > span.end; });
-    ts_spans_.erase(new_end, ts_spans_.end());
-
-    // Update the begin for the remaining spans
-    for (auto& span : ts_spans_) {
-      if (ts > span.begin) {
-        span.begin = ts;
-      }
-    }
-  }
-
   // ts is used for block filter for orderbylimit queries
   int nextBlockItem(k_uint32 entity_id, timestamp64 ts = INVALID_TS);
 
