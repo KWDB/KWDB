@@ -160,7 +160,12 @@ class TsMMapFile final : public TsFile {
   KStatus Append(const TSSlice& data) override {
     size_t newlen = len_;
     while (newlen - size_ < data.len) {
-      newlen *= 2;
+      uint64_t threshold = 4UL << 20;
+      if (len_ < threshold) {
+        newlen *= 2;
+      } else {
+        newlen += threshold;
+      }
     }
 
     if (newlen != len_) {
