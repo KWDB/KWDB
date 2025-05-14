@@ -693,8 +693,10 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         return SUCCESS;
       }
       int end = FindUpperBound({entity_id, current_span.end}, entities, ts, start, info.nrow);
-      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start,
-                          end - start);
+      if (end - start > 0) {
+        spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start,
+                            end - start);
+      }
 
       if (end == info.nrow) {
         // We reach the end of current block
