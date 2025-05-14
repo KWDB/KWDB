@@ -237,6 +237,9 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         return s;
       }
       for (int i = row_spans.size() - 1; i >= 0; --i) {
+        if (row_spans[i].second <= 0) {
+          continue;
+        }
         TsBlockSpan block_span(filter.table_id, cur_blk_item.table_version, filter.entity_id, block,
                                row_spans[i].first, row_spans[i].second);
         // Because block item traverses from back to front, use push_front

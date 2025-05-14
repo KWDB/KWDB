@@ -352,8 +352,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
       size_t var_off = varchar_buffer_.size();
       colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, is_null ? kNull : kValid);
       uint16_t len = data.len;
-      varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
-      varchar_buffer_.append(data.data, data.len);
+      if (!is_null) {
+        varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
+        varchar_buffer_.append(data.data, data.len);
+      }
     }
   }
 }
