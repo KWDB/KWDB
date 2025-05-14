@@ -18,7 +18,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -1376,7 +1375,11 @@ func GetSingleDatum(
 		}
 
 		if rawValue == "now" {
-			return tree.NewDInt(tree.DInt(timeutil.Now().UnixNano() / int64(time.Millisecond))), nil
+			dVal, err := tree.LimitTsTimestampWidth(timeutil.Now(), &column.Type, "", column.Name)
+			if err != nil {
+				return nil, err
+			}
+			return tree.NewDInt(*dVal), nil
 		}
 
 		in, err := strconv.ParseInt(rawValue, 10, 64)
