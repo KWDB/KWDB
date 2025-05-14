@@ -1,0 +1,76 @@
+> drop database if exists db cascade;
+DROP DATABASE
+> create database db;
+CREATE DATABASE
+> create table db.t1(a int, b int, c int);
+CREATE TABLE
+> insert into db.t1 values(1,10,10),(1,20,30),(1, 30, 30),(2,89, 90),(2, 80, 99),(2,80,100),(2, 80, 10);
+INSERT 7
+> select  b , sum(b) over(order by b) from db.t1;
+  b  | sum
+-----+------
+  10 |  10
+  20 |  30
+  30 |  60
+  80 | 300
+  80 | 300
+  80 | 300
+  89 | 389
+(7 rows)
+> select  b , sum(b) over(order by b desc) from db.t1;
+  b  | sum
+-----+------
+  89 |  89
+  80 | 329
+  80 | 329
+  80 | 329
+  30 | 359
+  20 | 379
+  10 | 389
+(7 rows)
+> select  a, b , sum(b) over(partition by a order by b) from db.t1;
+  a | b  | sum
+----+----+------
+  1 | 10 |  10
+  1 | 20 |  30
+  1 | 30 |  60
+  2 | 80 | 240
+  2 | 80 | 240
+  2 | 80 | 240
+  2 | 89 | 329
+(7 rows)
+> select  a, b , sum(b) over(partition by a order by b desc) from db.t1;
+  a | b  | sum
+----+----+------
+  1 | 30 |  30
+  1 | 20 |  50
+  1 | 10 |  60
+  2 | 89 |  89
+  2 | 80 | 329
+  2 | 80 | 329
+  2 | 80 | 329
+(7 rows)
+> select  a, b ,c, sum(b) over(partition by a order by b desc, c desc) from db.t1;
+  a | b  |  c  | sum
+----+----+-----+------
+  1 | 30 |  30 |  30
+  1 | 20 |  30 |  50
+  1 | 10 |  10 |  60
+  2 | 89 |  90 |  89
+  2 | 80 | 100 | 169
+  2 | 80 |  99 | 249
+  2 | 80 |  10 | 329
+(7 rows)
+> select  a, b ,c, sum(b) over(partition by a order by b desc, c asc) from db.t1;
+  a | b  |  c  | sum
+----+----+-----+------
+  1 | 30 |  30 |  30
+  1 | 20 |  30 |  50
+  1 | 10 |  10 |  60
+  2 | 89 |  90 |  89
+  2 | 80 |  10 | 169
+  2 | 80 |  99 | 249
+  2 | 80 | 100 | 329
+(7 rows)
+> drop database if exists db cascade;
+DROP DATABASE

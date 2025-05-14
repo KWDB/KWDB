@@ -12,39 +12,13 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 
 #include "data_type.h"
 #include "libkwdbts2.h"
-#include "lt_rw_latch.h"
 #include "ts_bitmap.h"
-
-#define COMP_OVERFLOW_BYTES 2
-#define BITS_PER_BYTE 8
-// Masks
-#define INT64MASK(_x) ((((uint64_t)1) << _x) - 1)
-#define INT32MASK(_x) (((uint32_t)1 << _x) - 1)
-#define INT8MASK(_x) (((uint8_t)1 << _x) - 1)
-// Compression algorithm
-#define NO_COMPRESSION 0
-#define ONE_STAGE_COMP 1
-#define TWO_STAGE_COMP 2
-
-#define BUILDIN_CLZL(val) __builtin_clzl(val)
-#define BUILDIN_CTZL(val) __builtin_ctzl(val)
-#define BUILDIN_CLZ(val) __builtin_clz(val)
-#define BUILDIN_CTZ(val) __builtin_ctz(val)
-
-#define CHAR_BYTES sizeof(char)
-#define SHORT_BYTES sizeof(int16_t)
-#define INT_BYTES sizeof(int32_t)
-#define LONG_BYTES sizeof(int64_t)
-#define FLOAT_BYTES sizeof(float)
-#define DOUBLE_BYTES sizeof(double)
-#define POINTER_BYTES sizeof(void*)  // 8 by default  assert(sizeof(ptrdiff_t) == sizseof(void*)
 
 namespace kwdbts {
 
@@ -128,6 +102,11 @@ class CompressorManager {
   TwoLevelCompressor GetCompressor(TsCompAlg first, GenCompAlg second) const;
   std::tuple<TsCompAlg, GenCompAlg> GetDefaultAlgorithm(DATATYPE dtype) const;
   TwoLevelCompressor GetDefaultCompressor(DATATYPE dtype) const;
+
+  bool CompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, std::string* output,
+                    TsCompAlg fisrt, GenCompAlg second) const;
+  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count,
+                      std::string* output) const;
 };
 
 }  //  namespace kwdbts

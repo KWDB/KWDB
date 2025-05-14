@@ -43,7 +43,7 @@ struct TSTableFileMetadata {
   int struct_version;       ///< object structure version number
   int struct_type;          ///< structure type
   uint32_t schema_version;       ///< data version number
-  uint64_t life_time ;          /// unit: second, over time data will be deleted.
+  uint64_t db_id ;          /// database id
   uint64_t partition_interval;  /// unit: second
   int cols_num;                    ///< number of cols.
   uint32_t schema_version_of_latest_data;  // table version of the last data

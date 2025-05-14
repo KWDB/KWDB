@@ -45,7 +45,7 @@ KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
       return s;
     }
     *data_schema = schema_tbl->getSchemaInfoExcludeDropped();
-    s = schema->GetTagAttr(version, *tag_schema);
+    s = schema->GetTagMeta(version, *tag_schema);
     if (s != KStatus::SUCCESS) {
       return s;
     }

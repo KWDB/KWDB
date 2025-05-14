@@ -76,6 +76,10 @@ type RelExpr interface {
 	// tree.
 	RequiredPhysical() *physical.Required
 
+	// ClearRequiredPhysical clears the physical.Required, only be used in tsInsertSelect with
+	// order by clause.
+	ClearRequiredPhysical()
+
 	// ProvidedPhysical is the set of provided physical properties (which must be
 	// compatible with the set of required physical properties).
 	//

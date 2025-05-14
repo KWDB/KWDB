@@ -1,0 +1,61 @@
+> select  
+  subq_0.c2 as c0, 
+  subq_0.c0 as c1, 
+  subq_0.c7 as c2, 
+  subq_0.c4 as c3, 
+  subq_0.c1 as c4, 
+  subq_0.c5 as c5, 
+  case when (subq_0.c0 is not NULL) 
+      and (cast(coalesce(subq_0.c7,
+          subq_0.c7) as "timestamptz") is not NULL) then subq_0.c8 else subq_0.c8 end
+     as c6, 
+  cast(nullif(subq_0.c8,
+    subq_0.c8) as float8) as c7, 
+  subq_0.c1 as c8, 
+  80 as c9, 
+  subq_0.c0 as c10
+from 
+  (select distinct 
+        91 as c0, 
+        ref_4.allrenergy2_c as c1, 
+        ref_3.pallenergy_c as c2, 
+        ref_1.allrenergy1_a as c3, 
+        ref_0.brand as c4, 
+        ref_2.cnc_alivetime as c5, 
+        ref_7.cur_c as c6, 
+        ref_1.k_timestamp as c7, 
+        case when 38 is not NULL then ref_7.powerf_a else ref_7.powerf_a end
+           as c8
+      from 
+        public.t_cnc as ref_0
+            inner join public.t_electmeter as ref_1
+                  left join public.t_cnc as ref_2
+                  on (cast(null as _time) IS NOT DISTINCT FROM cast(null as _time))
+                inner join public.t_electmeter as ref_3
+                on ((ref_3.allpower is not NULL) 
+                    and (cast(null as _jsonb) IS NOT DISTINCT FROM cast(null as _jsonb)))
+              left join public.t_electmeter as ref_4
+                inner join public.t_electmeter as ref_5
+                on (ref_4.k_timestamp < ref_4.k_timestamp)
+              on (EXISTS (
+                  select  
+                      ref_3.powerr_c as c0, 
+                      ref_2.cur_tool_len_val as c1, 
+                      ref_3.allpower as c2, 
+                      ref_4.cnc_number as c3, 
+                      ref_4.rallpower as c4, 
+                      ref_6.powerr_b as c5
+                    from 
+                      public.t_electmeter as ref_6
+                    where false
+                    limit 114))
+            on (ref_0.cnc_unuse_mem = ref_5.elect_name )
+          inner join public.t_electmeter as ref_7
+          on (79 is not NULL)
+      where ref_1.powerf_b IS DISTINCT FROM ref_4.powerr_b
+      limit 26) as subq_0
+where pg_catalog.oid(
+    cast(pg_catalog.inet_client_port() as int8)) > pg_catalog.pg_my_temp_schema();
+  c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | c9 | c10
+-----+----+----+----+----+----+----+----+----+----+------
+(0 rows)

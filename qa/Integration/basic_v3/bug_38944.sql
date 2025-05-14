@@ -1,0 +1,11 @@
+drop database if exists db cascade;
+create database db;
+create table db.t1(a int, b int, c int);
+insert into db.t1 values(1,10,10),(1,20,30),(1, 30, 30),(2,89, 90),(2, 80, 99),(2,80,100),(2, 80, 10);
+select  b , sum(b) over(order by b) from db.t1;
+select  b , sum(b) over(order by b desc) from db.t1;
+select  a, b , sum(b) over(partition by a order by b) from db.t1;
+select  a, b , sum(b) over(partition by a order by b desc) from db.t1;
+select  a, b ,c, sum(b) over(partition by a order by b desc, c desc) from db.t1;
+select  a, b ,c, sum(b) over(partition by a order by b desc, c asc) from db.t1;
+drop database if exists db cascade;

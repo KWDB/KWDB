@@ -14,6 +14,7 @@ package sql
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -285,24 +286,19 @@ func getSingleRecord(
 			if valueType == parser.NUMTYPE {
 				return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
 			}
-			if valueType == parser.NORMALTYPE {
-				return pgerror.Newf(pgcode.Syntax, errUnsupportedType, rawValue, column.Name)
+
+			if width := column.Type.Width(); width > 0 {
+				length := len(rawValue)
+				if length > int(width) {
+					return pgerror.Newf(pgcode.StringDataRightTruncation, errTooLong, rawValue, column.Type.SQLString(), column.Name)
+				}
+			}
+			if valueType == parser.BYTETYPE {
+				rawValue = strings.Trim(tree.NewDBytes(tree.DBytes(rawValue)).String(), "'")
 			}
 			v, err := tree.ParseDByte(rawValue)
 			if err != nil {
 				return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
-			}
-			// bytes(n)/varbytes(n) calculate length by byte
-			if column.Type.Width() > 0 && len(rawValue) > int(column.Type.Width()) {
-				return pgerror.Newf(pgcode.StringDataRightTruncation,
-					"value '%s' too long for type %s (column %s)", rawValue, column.Type.SQLString(), column.Name)
-			}
-			if valueType == parser.BYTETYPE {
-				rawValue = strings.Trim(tree.NewDBytes(tree.DBytes(rawValue)).String(), "'")
-				v, err = tree.ParseDByte(rawValue)
-				if err != nil {
-					return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
-				}
 			}
 			inputValues[row][col] = v
 
@@ -481,7 +477,9 @@ func BuildpriTagValMap(di DirectInsert) map[string][]int {
 		builder.Reset()
 		var priVal string
 		for _, col := range di.PrimaryTagCols {
-			builder.WriteString(sqlbase.DatumToString(di.InputValues[i][di.ColIndexs[int(col.ID)]]))
+			vString := sqlbase.DatumToString(di.InputValues[i][di.ColIndexs[int(col.ID)]])
+			// Distinguish aa + bb = a + abb
+			builder.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 		}
 		priVal = builder.String()
 		priTagValMap[priVal] = append(priTagValMap[priVal], i)
@@ -1343,7 +1341,9 @@ func getSingleRowBytes(
 
 		// Build primary tag key
 		if i < pTagNum {
-			buf.WriteString(sqlbase.DatumToString(datum))
+			vString := sqlbase.DatumToString(datum)
+			// Distinguish aa + bb = a + abb
+			buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
 		}
 	}
 
@@ -1668,8 +1668,8 @@ func GetPayloadMapForMuiltNode(
 		} else {
 			valueSize := int32(0)
 			rowNum := uint32(0)
-			for i := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[i]))
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
 				rowNum++
 			}
 

@@ -278,7 +278,7 @@ func (uc *UDFCache) refreshUDFCacheEntry(ctx context.Context, udfName string) {
 	}
 
 	e.Fn, e.err = fn, err
-	tree.FunDefs[udfName] = fn
+	tree.ConcurrentFunDefs.RegisterFunc(udfName, fn)
 	e.refreshing = false
 
 	if !found {
@@ -331,7 +331,7 @@ func (uc *UDFCache) DeleteUDF(ctx context.Context, udfName string) {
 	} else {
 		log.VEventf(ctx, 0, "udf '%s' not found in cache, no need to delete", udfName)
 	}
-	delete(tree.FunDefs, udfName)
+	tree.ConcurrentFunDefs.DeleteFunc(udfName)
 	const deleteUdfQuery = `
 	   Delete 
 	   FROM system.user_defined_function
@@ -426,7 +426,7 @@ func (uc *UDFCache) LoadUDF(ctx context.Context, stopper *stop.Stopper) error {
 			}
 
 			// Add the loaded UDF to the global function definitions cache.
-			tree.FunDefs[udfName] = udfFn
+			tree.ConcurrentFunDefs.RegisterFunc(udfName, udfFn)
 
 			// Create a new UDFEntry for the loaded UDF.
 			entry := &UDFEntry{

@@ -1,0 +1,124 @@
+> create user u1;
+CREATE USER
+> create user u2;
+CREATE USER
+> create user u3;
+CREATE USER
+> create role r1;
+CREATE ROLE
+> create role r2;
+CREATE ROLE
+> create role r3;
+CREATE ROLE
+> create user u4 with nologin;
+CREATE USER
+> create role r4 with login;
+CREATE ROLE
+> create user u5 with valid until '2025-01-22';
+CREATE USER
+> create user r5 with valid until '2025-01-22';
+CREATE USER
+> create user u6 with nologin valid until '2025-01-22';
+CREATE USER
+> create user r6 with login valid until '2025-01-22';
+CREATE USER
+> grant r1 to u1;
+GRANT
+> grant u2 to r2;
+GRANT
+> grant r3 to u4 with admin option;
+GRANT
+> export users to sql "nodelocal://1/user";
+  filename | rows | node_id | file_num
+-----------+------+---------+-----------
+  USERS    |    8 |       1 |        1
+(1 row)
+> drop user u1;
+DROP USER 1
+> drop user u2;
+DROP USER 1
+> drop user u3;
+DROP USER 1
+> drop user u4;
+DROP USER 1
+> drop user u5;
+DROP USER 1
+> drop user u6;
+DROP USER 1
+> drop role r1;
+DROP ROLE
+> drop role r2;
+DROP ROLE
+> drop role r3;
+DROP ROLE
+> drop role r4;
+DROP ROLE
+> drop role r5;
+DROP ROLE
+> drop role r6;
+DROP ROLE
+> import users sql data ("nodelocal://1/user/users.sql");
+  job_id |  status   | rows
+---------+-----------+-------
+  -      | succeeded |   15
+(1 row)
+> select * from system.users;
+  username | hashedPassword | isRole
+-----------+----------------+---------
+  admin    | \x             |  true
+  r1       | \x             |  true
+  r2       | \x             |  true
+  r3       | \x             |  true
+  r4       | \x             |  true
+  r5       | \x             | false
+  r6       | \x             | false
+  root     | \x             | false
+  u1       | \x             | false
+  u2       | \x             | false
+  u3       | \x             | false
+  u4       | \x             | false
+  u5       | \x             | false
+  u6       | \x             | false
+(14 rows)
+> show users;
+  username |                    options                     | member_of
+-----------+------------------------------------------------+------------
+  admin    | CREATEROLE                                     | {}
+  r1       | NOLOGIN                                        | {}
+  r2       | NOLOGIN                                        | {u2}
+  r3       | NOLOGIN                                        | {}
+  r4       |                                                | {}
+  r5       | VALID UNTIL=2025-01-22 00:00:00+00:00          | {}
+  r6       | VALID UNTIL=2025-01-22 00:00:00+00:00          | {}
+  root     | CREATEROLE                                     | {admin}
+  u1       |                                                | {r1}
+  u2       |                                                | {}
+  u3       |                                                | {}
+  u4       | NOLOGIN                                        | {r3}
+  u5       | VALID UNTIL=2025-01-22 00:00:00+00:00          | {}
+  u6       | NOLOGIN, VALID UNTIL=2025-01-22 00:00:00+00:00 | {}
+(14 rows)
+> drop user u1;
+DROP USER 1
+> drop user u2;
+DROP USER 1
+> drop user u3;
+DROP USER 1
+> drop user u4;
+DROP USER 1
+> drop user u5;
+DROP USER 1
+> drop user u6;
+DROP USER 1
+> drop role r1;
+DROP ROLE
+> drop role r2;
+DROP ROLE
+> drop role r3;
+DROP ROLE
+> drop role r4;
+DROP ROLE
+> drop role r5;
+DROP ROLE
+> drop role r6;
+DROP ROLE

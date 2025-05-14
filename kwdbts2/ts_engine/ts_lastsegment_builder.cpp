@@ -10,9 +10,12 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_lastsegment_builder.h"
+#include <algorithm>
+#include <cstdint>
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
@@ -73,7 +76,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
   auto s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   std::vector<AttributeInfo> data_schema;
-  table_mgr->GetMetricAttr(data_schema);
+  table_mgr->GetColumnsExcludeDropped(data_schema);
 
   int left = cols_data_buffer_.buffer.size();
   data_block_builder_->Reset(table_id_, version_);
@@ -82,7 +85,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
 
   for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
     const EntityColData& p = cols_data_buffer_.buffer[idx];
-    data_block_builder_->Add(p.entity_id, p.seq_no, p.col_data);
+    data_block_builder_->Add(p.entity_id, p.seq_no, p.col_data, p.data_flags);
     --left;
 
     if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == cols_data_buffer_.buffer.size()) {
@@ -112,7 +115,7 @@ KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, T
       return FAIL;
     }
     std::vector<AttributeInfo> data_schema;
-    s = table_mgr->GetMetricAttr(data_schema, version);
+    s = table_mgr->GetColumnsExcludeDropped(data_schema, version);
     if (s == FAIL) {
       LOG_ERROR("can not get schema, table id: %lu, version: %u", table_id, version);
       return FAIL;
@@ -121,19 +124,22 @@ KStatus TsLastSegmentBuilder::PutRowData(TSTableID table_id, uint32_t version, T
   }
   table_id_ = table_id;
   version_ = version;
+  bloom_filter_->Add(entity_id);
   payload_buffer_.push_back({seq_no, entity_id, row_data});
   return KStatus::SUCCESS;
 }
 
 KStatus TsLastSegmentBuilder::PutColData(TSTableID table_id, uint32_t version, TSEntityID entity_id,
-                                         kwdbts::TS_LSN seq_no, std::vector<TSSlice> col_data) {
+                                         kwdbts::TS_LSN seq_no, std::vector<TSSlice> col_data,
+                                         std::vector<DataFlags> data_flags) {
   if (table_id != table_id_ || version != version_) {
     auto s = FlushColDataBuffer();
     if (s != SUCCESS) return FAIL;
   }
   table_id_ = table_id;
   version_ = version;
-  cols_data_buffer_.push_back({seq_no, entity_id, std::move(col_data)});
+  bloom_filter_->Add(entity_id);
+  cols_data_buffer_.push_back({seq_no, entity_id, std::move(col_data), std::move(data_flags)});
   return KStatus::SUCCESS;
 }
 
@@ -198,23 +204,42 @@ KStatus TsLastSegmentBuilder::Finalize() {
          nblock_ * sizeof(TsLastSegmentBlockIndex));
 
   // TODO(zzr) meta block API
-  size_t meta_block_offset = last_segment_->GetFileSize();
-  size_t meta_index_offset = meta_block_offset;
+  int nmeta = meta_blocks_.size();
+  std::vector<uint64_t> meta_offset(nmeta);
+  std::vector<uint64_t> meta_len(nmeta);
+
+  for (int i = 0; i < nmeta; ++i) {
+    meta_offset[i] = last_segment_->GetFileSize();
+    std::string serialized;
+    meta_blocks_[i]->Serialize(&serialized);
+    last_segment_->Append(serialized);
+    meta_len[i] = serialized.size();
+  }
+  size_t meta_index_offset = last_segment_->GetFileSize();
+  std::string meta_idx_data;
+  meta_idx_data.reserve(nmeta * 16);
+  for (int i = 0; i < nmeta; ++i) {
+    PutFixed64(&meta_idx_data, meta_offset[i]);
+    PutFixed64(&meta_idx_data, meta_len[i]);
+  }
+  s = last_segment_->Append(meta_idx_data);
+  if (s == FAIL) {
+    return s;
+  }
 
   TsLastSegmentFooter footer;
   footer.block_info_idx_offset = index_block_offset;
   footer.n_data_block = nblock_;
   footer.meta_block_idx_offset = meta_index_offset;
-  footer.n_meta_block = 0;
+  footer.n_meta_block = nmeta;
   footer.file_version = 1;
-  auto ss =
-      last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
-  if (ss != KStatus::SUCCESS) {
+  s = last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
+  if (s != KStatus::SUCCESS) {
     LOG_ERROR("IO error when write lastsegment.");
     return FAIL;
   }
-  ss = last_segment_->Flush();
-  if (ss == FAIL) {
+  s = last_segment_->Flush();
+  if (s == FAIL) {
     LOG_ERROR("IO error when flush lastsegment.");
     return FAIL;
   }
@@ -223,13 +248,13 @@ KStatus TsLastSegmentBuilder::Finalize() {
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
-    const TSSlice& col_data) noexcept {
+    const TSSlice& col_data, DataFlags data_flag) noexcept {
 #ifndef NDEBUG
   // assert(getDataTypeSize(dtype_) == col_data.len);
 #endif
   // TODO(zzr): parse bitmap from payload;
   if (has_bitmap_) {
-    bitmap_[row_cnt_] = kValid;
+    bitmap_[row_cnt_] = data_flag;
   }
   row_cnt_++;
   data_buffer_.append(col_data.data, dsize_);
@@ -243,25 +268,14 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
     auto slice = bitmap_.GetData();
     bitmap_buffer_.append(slice.data, slice.len);
   }
-
-  const auto& mgr = CompressorManager::GetInstance();
-  auto compressor = mgr.GetDefaultCompressor(dtype_);
-  TSSlice plain{data_buffer_.data(), data_buffer_.size()};
-  std::string compressed;
   TsBitmap* bm = has_bitmap_ ? &bitmap_ : nullptr;
-  bool ok = compressor.Compress(plain, bm, row_cnt_, &compressed);
-  std::string tmp;
-  if (ok) {
-    auto [first, second] = compressor.GetAlgorithms();
-    tmp.push_back(static_cast<char>(first));
-    tmp.push_back(static_cast<char>(second));
-    tmp.append(compressed);
-  } else {
-    tmp.push_back(static_cast<char>(TsCompAlg::kPlain));
-    tmp.push_back(static_cast<char>(GenCompAlg::kPlain));
-    tmp.append(data_buffer_);
-  }
-  data_buffer_.swap(tmp);
+
+  std::string compressed;
+  const auto& mgr = CompressorManager::GetInstance();
+  auto [first, second] = mgr.GetDefaultAlgorithm(dtype_);
+  TSSlice plain{data_buffer_.data(), data_buffer_.size()};
+  mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
+  data_buffer_.swap(compressed);
 }
 
 auto TsLastSegmentBuilder::MetricBlockBuilder::GetBlockInfo() const -> BlockInfo {
@@ -295,12 +309,12 @@ KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint
   parser_ = std::make_unique<TsRawPayloadRowParser>(metric_schema_);
   int ncol = metric_schema_.size() + 2;  // one for entity_id, one for SeqNo
   colblocks_.reserve(ncol);
-  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, false));  // for entity_id;
-  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, false));  // for SeqNo;
+  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, 8, false));  // for entity_id;
+  colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, 8, false));  // for SeqNo;
   for (int i = 0; i < metric_schema_.size(); ++i) {
     bool nullable = true;  // TODO(zzr): read from schema;
     colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
-        static_cast<DATATYPE>(metric_schema_[i].type), nullable));
+        static_cast<DATATYPE>(metric_schema_[i].type), metric_schema_[i].size, nullable));
   }
   return KStatus::SUCCESS;
 }
@@ -331,11 +345,12 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     int col_id = i - 2;
     TSSlice data;
     parser_->GetColValueAddr(metric_data, col_id, &data);
+    bool is_null = parser_->IsColNull(metric_data, col_id);
     if (!isVarLenType(metric_schema_[col_id].type)) {
-      colblocks_[i]->Add(data);
+      colblocks_[i]->Add(data, is_null ? kNull : kValid);
     } else {
       size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8});
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, is_null ? kNull : kValid);
       uint16_t len = data.len;
       varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
       varchar_buffer_.append(data.data, data.len);
@@ -344,7 +359,8 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
 }
 
 void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN seq_no,
-                                                   const std::vector<TSSlice>& col_data) {
+                                                   const std::vector<TSSlice>& col_data,
+                                                   const std::vector<DataFlags>& data_flags) {
   assert(!finished_);
   assert(parser_ != nullptr);
   info_.nrow++;
@@ -367,10 +383,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     int col_id = i - 2;
     TSSlice data = col_data[col_id];
     if (!isVarLenType(metric_schema_[col_id].type)) {
-      colblocks_[i]->Add(data);
+      colblocks_[i]->Add(data, data_flags[col_id]);
     } else {
       size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8});
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, data_flags[col_id]);
       uint16_t len = data.len;
       varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
       varchar_buffer_.append(data.data, data.len);

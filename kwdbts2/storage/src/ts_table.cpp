@@ -777,6 +777,17 @@ KStatus TsEntityGroup::TierMigrate() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsEntityGroup::Count(kwdbContext_p ctx, ErrorInfo &err_info) {
+  RW_LATCH_S_LOCK(drop_mutex_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
+  ebt_manager_->Count(ctx, err_info);
+  if (err_info.errcode < 0) {
+    LOG_ERROR("TsEntityGroup::Count error : %s", err_info.errmsg.c_str());
+    return FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsEntityGroup::GetIterator(kwdbContext_p ctx, SubGroupID sub_group_id, vector<uint32_t> entity_ids,
                                    std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
                                    std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
@@ -966,7 +977,7 @@ KStatus TsEntityGroup::UndoAlterTableTag(kwdbContext_p ctx, uint32_t cur_version
     LOG_ERROR("getTagTable error ");
     return KStatus::FAIL;
   }
-  if (new_tag_bt_->undoAlterTagTable(cur_version, new_version, err_info) < 0) {
+  if (new_tag_bt_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
     LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
     return KStatus::FAIL;
   }
@@ -1053,7 +1064,9 @@ TsEntityGroup::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColu
 
   attr_info.size = getDataTypeSize(attr_info);
   attr_info.id = col.column_id();
-  strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN);
+  if (col.has_name()) {
+    strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN);
+  }
   attr_info.length = col.storage_len();
   if (!col.nullable()) {
     attr_info.setFlag(AINFO_NOT_NULL);
@@ -1061,7 +1074,7 @@ TsEntityGroup::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColu
   if (col.dropped()) {
     attr_info.setFlag(AINFO_DROPPED);
   }
-  attr_info.col_flag = (ColumnFlag) col.col_type();
+  attr_info.col_flag = static_cast<ColumnFlag>(col.col_type());
   attr_info.version = 1;
 
   return KStatus::SUCCESS;
@@ -1508,7 +1521,8 @@ KStatus TsTable::GetTagSchemaIncludeDropped(kwdbContext_p ctx, RangeGroup range,
 
 KStatus TsTable::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
                                          std::vector<AttributeInfo>& metric_schema,
-                                         std::vector<TagInfo>& tag_schema) {
+                                         std::vector<TagInfo>& tag_schema,
+                                         uint32_t schema_version) {
   EnterFunc()
   // Traverse metric schema and use attribute info to construct metric column info of meta.
   for (auto col_var : metric_schema) {
@@ -1537,7 +1551,7 @@ KStatus TsTable::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* m
     }
   }
 
-  auto tag_infos = GetAllNTagIndexs();
+  auto tag_infos = GetAllNTagIndexs(schema_version);
   for (auto tag_info : tag_infos) {
       roachpb::NTagIndexInfo* idx_info = meta->add_index_info();
       idx_info->set_index_id(tag_info.first);
@@ -1966,6 +1980,36 @@ KStatus TsTable::TierMigrate() {
   }
   entity_bt_manager_->ResetMigrateStatus();
   return KStatus::SUCCESS;
+}
+
+KStatus TsTable::Count(kwdbContext_p ctx, ErrorInfo& err_info) {
+  if (entity_bt_manager_ == nullptr) {
+    LOG_ERROR("TsTable not created : %s", tbl_sub_path_.c_str());
+    err_info.setError(KWENOOBJ, "table not created");
+    return KStatus::FAIL;
+  }
+  KStatus s = KStatus::SUCCESS;
+  std::vector<std::shared_ptr<TsEntityGroup>> count_entity_groups;
+  {
+    RW_LATCH_S_LOCK(entity_groups_mtx_);
+    Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
+    // get all entity groups
+    for (auto& [fst, snd] : entity_groups_) {
+      count_entity_groups.push_back(snd);
+    }
+  }
+
+  for (auto& entity_group : count_entity_groups) {
+    if (!entity_group) {
+      continue;
+    }
+    s = entity_group->Count(ctx, err_info);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsTableRange count failed : %s", tbl_sub_path_.c_str());
+      break;
+    }
+  }
+  return s;
 }
 
 KStatus TsTable::GetEntityIndex(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
@@ -2479,28 +2523,25 @@ KStatus TsTable::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityRe
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
   DATATYPE ts_col_type = GetRootTableManager()->GetTsColDataType();
-  std::map<uint64_t, std::map<SubGroupID, std::vector<EntityID>>> group_ids;
-  for (auto& entity : entity_ids) {
-    group_ids[entity.entityGroupId][entity.subGroupId].push_back(entity.entityId);
-  }
+  std::vector<SubgroupEntities> subgroups;
+  s = SplitEntityBySubgroup(ctx, entity_ids, &subgroups);
   std::shared_ptr<TsEntityGroup> entity_group;
-  for (auto& group_iter : group_ids) {
-    s = GetEntityGroup(ctx, group_iter.first, &entity_group);
+  for (auto& subgroup : subgroups) {
+    s = GetEntityGroup(ctx, subgroup.entity_group_id, &entity_group);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("can not found entitygroup [%lu].", group_iter.first);
+      LOG_ERROR("can not found entitygroup [%lu].", subgroup.entity_group_id);
       return s;
     }
-    for (auto& sub_group_iter : group_iter.second) {
-      TsStorageIterator* ts_iter;
-      s = entity_group->GetIterator(ctx, sub_group_iter.first, sub_group_iter.second, ts_spans, ts_col_type,
-                                    scan_cols, ts_scan_cols, scan_agg_types, table_version,
-                                    &ts_iter, entity_group, ts_points, reverse, sorted);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot create iterator for entitygroup[%lu], subgroup[%u]", group_iter.first, sub_group_iter.first);
-        return s;
-      }
-      ts_table_iterator->AddEntityIterator(ts_iter);
+    TsStorageIterator* ts_iter;
+    s = entity_group->GetIterator(ctx, subgroup.subgroup_id, subgroup.entity_ids, ts_spans, ts_col_type,
+                                  scan_cols, ts_scan_cols, scan_agg_types, table_version,
+                                  &ts_iter, entity_group, ts_points, reverse, sorted);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("cannot create iterator for entitygroup[%lu], subgroup[%u]",
+                subgroup.entity_group_id, subgroup.subgroup_id);
+      return s;
     }
+    ts_table_iterator->AddEntityIterator(ts_iter);
   }
   LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
               scan_agg_types.size(), ts_table_iterator->GetIterNumber());
@@ -2991,20 +3032,23 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   std::vector<AttributeInfo> metric_schema;
   for (int i = 0; i < meta->k_column_size(); i++) {
     const auto& col = meta->k_column(i);
-    struct AttributeInfo col_var;
-    s = TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, i == 0);
+    struct AttributeInfo attr;
+    s = TsEntityGroup::GetColAttributeInfo(ctx, col, attr, i == 0);
     if (s != KStatus::SUCCESS) {
       return s;
     }
     // TagInfo struct add member,set value
-    if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
-      tag_schema.push_back(std::move(TagInfo{col.column_id(), col_var.type,
-                                             static_cast<uint32_t>(col_var.length), 0,
-                                             static_cast<uint32_t>(col_var.size),
-                                             col_var.isAttrType(COL_PRIMARY_TAG) ? PRIMARY_TAG : GENERAL_TAG,
-                                             col_var.flag & AINFO_DROPPED}));
+    if (attr.isAttrType(COL_GENERAL_TAG) || attr.isAttrType(COL_PRIMARY_TAG)) {
+      if (attr.isFlag(AINFO_DROPPED)) {
+        continue;
+      }
+      tag_schema.push_back(std::move(TagInfo{col.column_id(), attr.type,
+                                             static_cast<uint32_t>(attr.length), 0,
+                                             static_cast<uint32_t>(attr.size),
+                                             attr.isAttrType(COL_PRIMARY_TAG) ? PRIMARY_TAG : GENERAL_TAG,
+                                             attr.flag & AINFO_DROPPED}));
     } else {
-      metric_schema.push_back(std::move(col_var));
+      metric_schema.push_back(std::move(attr));
     }
   }
   if (upper_version > latest_version) {
@@ -3028,7 +3072,8 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   for (int i = 0; i < meta->index_info_size(); i++) {
     idx_info.emplace_back(meta->index_info(i));
   }
-  s = AddTagSchemaVersion(tag_schema, upper_version);
+  // Note:: "idx_info" is the index that exists in the current version.
+  s = AddTagSchemaVersion(tag_schema, upper_version, idx_info);
   return s;
 }
 
@@ -3391,11 +3436,11 @@ std::vector<uint32_t> TsTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t in
   return std::vector<uint32_t>();
 }
 
-std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndexs() {
+std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndexs(uint32_t schema_version) {
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (auto& entity_group : entity_groups_) {
-    auto ret = entity_group.second->GetAllNTagIndexs(GetCurrentTableVersion());
+    auto ret = entity_group.second->GetAllNTagIndexs(schema_version);
     return ret;
   }
   return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
@@ -3429,6 +3474,24 @@ KStatus TsTable::AlterNormalTagIndex(kwdbContext_p ctx, const uint64_t index_id,
                                      const uint32_t old_version, const uint32_t new_version,
                                      const vector<uint32_t> &new_index_schema) {
     return SUCCESS;
+}
+
+KStatus TsTable::SplitEntityBySubgroup(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_results,
+                                       std::vector<SubgroupEntities>* subgroups) {
+  std::vector<uint32_t> entity_ids;
+  uint64_t entity_group_id = entity_results[0].entityGroupId;
+  uint32_t subgroup_id = entity_results[0].subGroupId;
+  for (auto& entity : entity_results) {
+    if (entity_group_id != entity.entityGroupId || subgroup_id != entity.subGroupId) {
+      subgroups->push_back({entity_group_id, subgroup_id, entity_ids});
+      entity_ids.clear();
+      entity_group_id = entity.entityGroupId;
+      subgroup_id = entity.subGroupId;
+    }
+    entity_ids.push_back(entity.entityId);
+  }
+  subgroups->push_back({entity_group_id, subgroup_id, entity_ids});
+  return SUCCESS;
 }
 
 KStatus TsEntityGroup::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,

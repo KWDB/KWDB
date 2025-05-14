@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <cstdint>
 #include "ts_mem_segment_mgr.h"
 #include "ts_vgroup.h"
 
@@ -38,29 +39,7 @@ void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segmen
 
 void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
   segment_lock_.lock();
-  bool found_seg = false;
-  // remove deleted mem segments.
-  while (segment_.size() > 0) {
-    std::shared_ptr<TsMemSegment>& cur_seg = segment_.front();
-    if (cur_seg == nullptr) {
-      segment_.pop_front();
-    } else if (cur_seg.get() == mem_seg.get()) {
-      found_seg = true;
-      segment_.pop_front();
-    } else {
-      break;
-    }
-  }
-  if (!found_seg) {
-    auto it = segment_.begin();
-    while (it != segment_.end()) {
-      if (it->get() == mem_seg.get()) {
-        it->reset();
-        break;
-      }
-      it++;
-    }
-  }
+  segment_.remove(mem_seg);
   segment_lock_.unlock();
 }
 
@@ -71,7 +50,7 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
     LOG_ERROR("cannot found table [%lu] schema manager.", table_id);
     return false;
   }
-  s = schema_mgr->GetMetricAttr(schema, version);
+  s = schema_mgr->GetColumnsExcludeDropped(schema, version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
     return false;
@@ -246,7 +225,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
   while (true) {
     TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
                             (filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(0, 0, {nullptr, 0});
+    begin->SetData(INT64_MIN, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;

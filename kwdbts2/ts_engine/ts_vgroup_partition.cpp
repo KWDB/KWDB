@@ -14,8 +14,9 @@
 #include <filesystem>
 #include <memory>
 #include <utility>
+#include <regex>
 
-#include "ts_block_segment.h"
+#include "ts_entity_segment.h"
 #include "ts_vgroup_partition.h"
 #include "ts_lastsegment.h"
 #include "ts_lastsegment_manager.h"
@@ -37,14 +38,30 @@ TsVGroupPartition::~TsVGroupPartition() {}
 
 KStatus TsVGroupPartition::Open() {
   std::filesystem::create_directories(path_);
-  blk_segment_ = std::make_unique<TsBlockSegment>(path_);
+  entity_segment_ = std::make_unique<TsEntitySegment>(path_);
+
+  // reload lastsegments
+  std::error_code ec;
+  std::filesystem::directory_iterator dir_iter{path_, ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("TsVGroupPartition::Open fail, reason: %s", ec.message().c_str());
+  }
+  std::regex re("last.ver-([0-9]{12})");
+  for (const auto& it : dir_iter) {
+    std::string fname = it.path().filename();
+    std::smatch res;
+    bool ok = std::regex_match(fname, res, re);
+    if (!ok) {
+      continue;
+    }
+    uint64_t file_number = std::stoi(res.str(1));
+    std::shared_ptr<TsLastSegment> last;
+    last_segment_mgr_.OpenLastSegmentFile(file_number, &last);
+  }
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroupPartition::Compact() {
-  if (!last_segment_mgr_.NeedCompact()) {
-    return KStatus::SUCCESS;
-  }
   // 1. Get all the last segments that need to be compacted.
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
   last_segment_mgr_.GetCompactLastSegments(last_segments);
@@ -52,7 +69,7 @@ KStatus TsVGroupPartition::Compact() {
     return KStatus::SUCCESS;
   }
   // 2. Build the column block.
-  TsBlockSegmentBuilder builder(last_segments, this);
+  TsEntitySegmentBuilder builder(last_segments, this);
   KStatus s = builder.BuildAndFlush();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("partition[%s] compact failed", path_.c_str());
@@ -63,11 +80,15 @@ KStatus TsVGroupPartition::Compact() {
   return KStatus::SUCCESS;
 }
 
+bool TsVGroupPartition::NeedCompact() {
+  return last_segment_mgr_.NeedCompact();
+}
+
 KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,
                                                 uint32_t col_num, uint32_t row_num, timestamp64 max_ts, timestamp64 min_ts,
                                                 TSSlice block_data, TSSlice block_agg) {
   // generating new block item info ,and append to block segment.
-  TsBlockSegmentBlockItem blk_item;
+  TsEntitySegmentBlockItem blk_item;
   blk_item.entity_id = entity_id;
   blk_item.table_version = table_version;
   blk_item.n_cols = col_num;
@@ -75,7 +96,7 @@ KStatus TsVGroupPartition::AppendToBlockSegment(TSTableID table_id, TSEntityID e
   blk_item.max_ts = max_ts;
   blk_item.min_ts = min_ts;
 
-  KStatus s = blk_segment_->AppendBlockData(blk_item, block_data, block_agg);
+  KStatus s = entity_segment_->AppendBlockData(blk_item, block_data, block_agg);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("insert into block segment of partition[%s] failed.", path_.c_str());
     return s;
@@ -98,7 +119,7 @@ std::filesystem::path TsVGroupPartition::GetPath() const { return path_; }
 
 std::string TsVGroupPartition::GetFileName() const {
   char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "db%02d-%010ld", database_id_, start_);
+  std::snprintf(buffer, sizeof(buffer), "db%02d-%014ld", database_id_, start_);
   return buffer;
 }
 

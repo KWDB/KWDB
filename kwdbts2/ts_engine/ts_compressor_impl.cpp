@@ -15,8 +15,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -26,6 +29,7 @@
 #include <vector>
 
 #include "data_type.h"
+#include "ee_field_common.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
@@ -230,17 +234,18 @@ static int leading_mapping[] = {0, 8, 12, 16, 18, 20, 22, 24};
 template <class T>
 bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
   assert(data.len == sizeof(T) * count);
+  auto sz = sizeof(T) * 8;
   out->clear();
-  if (count == 0 || count == 1) {
+  if (count <= 1) {
     return false;
   }
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   const utype *ptr = reinterpret_cast<utype *>(data.data);
   TsBitWriter writer(out);
 
-  writer.WriteBits(64, ptr[0]);
+  writer.WriteBits(sz, ptr[0]);
   utype prev = ptr[0];
-  uint64_t buffer = 0, pos = 0;
+  uint64_t buffer = 0;
   int prev_lead_idx = 0;
   for (int i = 1; i < count; ++i) {
     utype xored = ptr[i] ^ prev;
@@ -261,7 +266,7 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
     p--;
     int lead_idx = p - leading_mapping;
     if (trail > 6) {
-      int center_bits = 64 - *p - trail;
+      int center_bits = sz - *p - trail;
       buffer = (((0b01 << 3) + lead_idx) << 6) + center_bits;
       writer.WriteBits(11, buffer);
       writer.WriteBits(center_bits, xored >> trail);
@@ -273,7 +278,7 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
         buffer = (0b11 << 3) + lead_idx;
         writer.WriteBits(5, buffer);
       }
-      writer.WriteBits(64 - *p, xored);
+      writer.WriteBits(sz - *p, xored);
     }
     prev_lead_idx = lead_idx;
   }
@@ -282,17 +287,22 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
 
 template <class T>
 bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+  auto sz = sizeof(T) * 8;
   out->clear();
   if (count == 0) {
     return true;
   }
   TsBitReader reader(std::string_view{data.data, data.len});
   uint64_t v;
-  bool ok = reader.ReadBits(64, &v);
+  bool ok = reader.ReadBits(sz, &v);
   if (!ok) {
     return false;
   }
-  PutFixed64(out, v);
+  if constexpr (std::is_same_v<T, double>) {
+    PutFixed64(out, v);
+  } else {
+    PutFixed32(out, v);
+  }
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   utype prev = v, prev_lead_idx = 0;
   for (int i = 1; i < count; ++i) {
@@ -311,13 +321,13 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
         int center_bits = v & 0x3F;
         ok = reader.ReadBits(center_bits, &v);
         if (!ok) return false;
-        int trail = 64 - leading_mapping[idx] - center_bits;
+        int trail = sz - leading_mapping[idx] - center_bits;
         xored = v << trail;
         prev_lead_idx = idx;
         break;
       }
       case 0b10: {
-        ok = reader.ReadBits(64 - leading_mapping[prev_lead_idx], &v);
+        ok = reader.ReadBits(sz - leading_mapping[prev_lead_idx], &v);
         xored = v;
         if (!ok) return false;
         break;
@@ -327,7 +337,7 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
         ok = reader.ReadBits(3, &idx);
         if (!ok) return false;
         prev_lead_idx = idx;
-        ok = reader.ReadBits(64 - leading_mapping[idx], &v);
+        ok = reader.ReadBits(sz - leading_mapping[idx], &v);
         xored = v;
         if (!ok) return false;
         break;
@@ -335,8 +345,12 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
       default:
         assert(false);
     }
-    uint64_t current = prev ^ xored;
-    PutFixed64(out, current);
+    utype current = prev ^ xored;
+    if constexpr (std::is_same_v<T, double>) {
+      PutFixed64(out, current);
+    } else {
+      PutFixed32(out, current);
+    }
     prev = current;
   }
   return true;
@@ -481,7 +495,10 @@ static inline T Restore(uint64_t n, int width) {
 
 template <typename T>
 bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
-  out->reserve(sizeof(T) * count * 8);
+  if (data.len % 8 != 0) {
+    return false;
+  }
+  out->reserve(sizeof(T) * count);
   const char *cursor = data.data;
   while (cursor < data.data + data.len) {
     uint64_t batch = *reinterpret_cast<const uint64_t *>(cursor);
@@ -525,7 +542,6 @@ bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string
 bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmap *bitmap,
                                                      uint32_t count, std::string *out) const {
   if (IsPlain()) return false;
-  out->clear();
   std::string buf;
   TSSlice data;
   bool ok = true;
@@ -572,6 +588,17 @@ std::tuple<TsCompAlg, GenCompAlg> CompressorManager::TwoLevelCompressor::GetAlgo
 }
 
 CompressorManager::CompressorManager() {
+  const char *twolevelenv = getenv("KW_TWOLEVEL_COMPRESS");
+  bool twolevel = false;
+  if (twolevelenv) {
+    std::string config;
+    std::transform(twolevelenv, twolevelenv + std::strlen(twolevelenv), std::back_inserter(config),
+                   [](char c) { return std::tolower(c); });
+    if (config == "on" || config == "true") {
+      twolevel = true;
+    }
+  }
+  GenCompAlg second = twolevel ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
   const std::vector<DATATYPE> timestamp_type{
       DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
       DATATYPE::TIMESTAMP64_LSN, DATATYPE::TIMESTAMP64_LSN_MICRO, DATATYPE::TIMESTAMP64_LSN_NANO};
@@ -589,20 +616,23 @@ CompressorManager::CompressorManager() {
   ts_comp_[TsCompAlg::kSimple8B_u32] = &ConcreateTsCompressor<Simple8BInt<uint32_t>>::GetInstance();
   ts_comp_[TsCompAlg::kSimple8B_u64] = &ConcreateTsCompressor<Simple8BInt<uint64_t>>::GetInstance();
 
-  default_algs_[DATATYPE::INT16] = {TsCompAlg::kSimple8B_s16, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::INT32] = {TsCompAlg::kSimple8B_s32, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::INT64] = {TsCompAlg::kSimple8B_s64, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::INT16] = {TsCompAlg::kSimple8B_s16, second};
+  default_algs_[DATATYPE::INT32] = {TsCompAlg::kSimple8B_s32, second};
+  default_algs_[DATATYPE::INT64] = {TsCompAlg::kSimple8B_s64, second};
 
   // Float
   ts_comp_[TsCompAlg::kChimp_32] = &ConcreateTsCompressor<Chimp<float>>::GetInstance();
   ts_comp_[TsCompAlg::kChimp_64] = &ConcreateTsCompressor<Chimp<double>>::GetInstance();
-  default_algs_[DATATYPE::FLOAT] = {TsCompAlg::kChimp_32, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::DOUBLE] = {TsCompAlg::kChimp_64, GenCompAlg::kPlain};
+  default_algs_[DATATYPE::FLOAT] = {TsCompAlg::kChimp_32, second};
+  default_algs_[DATATYPE::DOUBLE] = {TsCompAlg::kChimp_64, second};
 
   general_compressor_[GenCompAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
 
-  // Varchar..
+  // varchar varstring
+  default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
   default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
+  default_algs_[DATATYPE::CHAR] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
+  default_algs_[DATATYPE::BINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
 }
 auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
     -> TwoLevelCompressor {
@@ -629,6 +659,49 @@ auto CompressorManager::GetDefaultAlgorithm(DATATYPE dtype) const
 auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCompressor {
   auto [first, second] = GetDefaultAlgorithm(dtype);
   return GetCompressor(first, second);
+}
+
+bool CompressorManager::CompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
+                                     std::string *output, TsCompAlg first,
+                                     GenCompAlg second) const {
+  static_assert(sizeof(first) == sizeof(uint16_t));
+  static_assert(sizeof(second) == sizeof(uint16_t));
+  auto compressor = GetCompressor(first, second);
+  std::string tmp;
+  bool ok = compressor.Compress(input, bitmap, count, &tmp);
+  if (!ok) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
+  }
+  PutFixed16(output, static_cast<uint16_t>(first));
+  PutFixed16(output, static_cast<uint16_t>(second));
+  if (ok) {
+    output->append(tmp);
+  } else {
+    output->append(input.data, input.len);
+  }
+  return true;
+}
+
+bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
+                                       std::string *output) const {
+  if (input.len < 4) {
+    return false;
+  }
+  uint16_t v;
+  GetFixed16(&input, &v);
+  TsCompAlg first = static_cast<TsCompAlg>(v);
+  GetFixed16(&input, &v);
+  GenCompAlg second = static_cast<GenCompAlg>(v);
+  if (first >= TsCompAlg::TS_COMP_ALG_LAST || second >= GenCompAlg::GEN_COMP_ALG_LAST) {
+    return false;
+  }
+  if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {
+    output->assign(input.data, input.len);
+    return true;
+  }
+  auto compressor = GetCompressor(first, second);
+  return compressor.Decompress(input, bitmap, count, output);
 }
 
 }  // namespace kwdbts

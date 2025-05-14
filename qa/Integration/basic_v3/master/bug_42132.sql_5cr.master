@@ -1,0 +1,106 @@
+> DROP DATABASE IF exists test_select_subquery cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_select_subquery;
+CREATE TS DATABASE
+> CREATE TABLE test_select_subquery.t1(
+                                        k_timestamp TIMESTAMPTZ NOT NULL,
+                                        id INT NOT NULL,
+                                        e1 INT2,
+                                        e2 INT,
+                                        e3 INT8,
+                                        e4 FLOAT4,
+                                        e5 FLOAT8,
+                                        e6 BOOL,
+                                        e7 TIMESTAMPTZ,
+                                        e8 CHAR(1023),
+                                        e9 NCHAR(255),
+                                        e10 VARCHAR(4096),
+                                        e11 CHAR,
+                                        e12 CHAR(255),
+                                        e13 NCHAR,
+                                        e14 NVARCHAR(4096),
+                                        e15 VARCHAR(1023),
+                                        e16 NVARCHAR(200),
+                                        e17 NCHAR(255),
+                                        e18 CHAR(200),
+                                        e19 VARBYTES,
+                                        e20 VARBYTES(60),
+                                        e21 VARCHAR,
+                                        e22 NVARCHAR)
+    ATTRIBUTES (code1 INT2 NOT NULL,code2 INT,code3 INT8,code4 FLOAT4 ,code5 FLOAT8,code6 BOOL,code7 VARCHAR,code8 VARCHAR(128) NOT NULL,code9 VARBYTES,code10 VARBYTES(60),code11 VARCHAR,code12 VARCHAR(60),code13 CHAR(2),code14 CHAR(1023) NOT NULL,code15 NCHAR,code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> INSERT INTO test_select_subquery.t1 VALUES(0,1,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> CREATE TABLE test_select_subquery.t2(
+                                        k_timestamp TIMESTAMPTZ NOT NULL,
+                                        id INT NOT NULL,
+                                        e1 INT2,
+                                        e2 INT,
+                                        e3 INT8,
+                                        e4 FLOAT4,
+                                        e5 FLOAT8,
+                                        e6 BOOL,
+                                        e7 TIMESTAMPTZ,
+                                        e8 CHAR(1023),
+                                        e9 NCHAR(255),
+                                        e10 VARCHAR(4096),
+                                        e11 CHAR,
+                                        e12 CHAR(255),
+                                        e13 NCHAR,
+                                        e14 NVARCHAR(4096),
+                                        e15 VARCHAR(1023),
+                                        e16 NVARCHAR(200),
+                                        e17 NCHAR(255),
+                                        e18 CHAR(200),
+                                        e19 VARBYTES,
+                                        e20 VARBYTES(60),
+                                        e21 VARCHAR,
+                                        e22 NVARCHAR)
+    ATTRIBUTES (code1 INT2 NOT NULL,code2 INT,code3 INT8,code4 FLOAT4 ,code5 FLOAT8,code6 BOOL,code7 VARCHAR,code8 VARCHAR(128) NOT NULL,code9 VARBYTES,code10 VARBYTES(60),code11 VARCHAR,code12 VARCHAR(60),code13 CHAR(2),code14 CHAR(1023) NOT NULL,code15 NCHAR,code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> SELECT e9 FROM test_select_subquery.t1 GROUP BY e9 HAVING min(e9)>=(select min(e9) from test_select_subquery.t2 WHERE id=9);
+  e9
+------
+(0 rows)
+> explain SELECT e9 FROM test_select_subquery.t1 GROUP BY e9 HAVING min(e9)>=(select min(e9) from test_select_subquery.t2 WHERE id=9);
+             tree             |      field       |                        description
+------------------------------+------------------+-------------------------------------------------------------
+                              | distributed      | true
+                              | vectorized       | false
+  root                        |                  |
+   ├── render                 |                  |
+   │    │                     | engine type      | time series
+   │    │                     | e9               | e9
+   │    └── filter            |                  |
+   │         │                | engine type      | time series
+   │         │                | filter           | min >= @S1
+   │         └── group        |                  |
+   │              │           | engine type      | time series
+   │              │           | aggregate 0      | e9
+   │              │           | aggregate 1      | min(e9)
+   │              │           | group by         | e9
+   │              │           | addSynchronizer  | true
+   │              └── ts scan |                  |
+   │                          | ts-table         | t1
+   │                          | access mode      | metaTable
+   └── subquery               |                  |
+        │                     | id               | @S1
+        │                     | original sql     | (SELECT min(e9) FROM test_select_subquery.t2 WHERE id = 9)
+        │                     | exec mode        | one row
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | min(e9)
+             │                | scalar           |
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | e9               | e9
+                  └── ts scan |                  |
+                              | ts-table         | t2
+                              | access mode      | metaTable
+                              | filter           | id = 9
+(34 rows)
+> DROP DATABASE IF exists test_select_subquery cascade;
+DROP DATABASE

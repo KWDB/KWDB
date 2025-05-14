@@ -43,9 +43,12 @@ class TSEngineV2Impl : public TSEngine {
   std::vector<std::shared_ptr<TsVGroup>> vgroups_;
   int vgroup_max_num_{0};
   EngineOptions options_;
-  std::unordered_map<TSTableID, std::shared_ptr<TsTableV2Impl>> tables_;
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
+  std::unique_ptr<WALMgr> wal_mgr_ = nullptr;
+  std::map<uint64_t, uint64_t> range_indexes_map_{};
+  std::unique_ptr<WALMgr> wal_sys_{nullptr};
+  std::unique_ptr<TSxMgr> tsx_manager_sys_{nullptr};
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -75,7 +78,6 @@ class TSEngineV2Impl : public TSEngine {
       if (s == KStatus::SUCCESS) {
         auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
         if (table.get() != nullptr) {
-          tables_[table_id] = table;
           ts_table = table;
           tables_cache_->Put(table_id, ts_table);
         } else {
@@ -86,7 +88,6 @@ class TSEngineV2Impl : public TSEngine {
         LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
         s = KStatus::FAIL;
       }
-      table_mutex_.unlock();
     }
 
     // if table no exist. try get schema from go level.
@@ -210,30 +211,48 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus FlushBuffer(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
 
-  KStatus CreateCheckpoint(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus CreateCheckpoint(kwdbContext_p ctx) override;
 
   KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override { return KStatus::SUCCESS; }
 
-  KStatus Recover(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus Recover(kwdbContext_p ctx) override;
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                     uint64_t range_id, uint64_t index, uint64_t& mtr_id) override { return KStatus::SUCCESS; }
+                     uint64_t range_id, uint64_t index, uint64_t& mtr_id) override;
 
   KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                      uint64_t range_group_id, uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                      uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                        uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
-    return KStatus::SUCCESS;
+    return tsx_manager_sys_->TSxBegin(ctx, transaction_id);
   }
 
   KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
+    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+    if (mtr_id != 0) {
+      if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
+        LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
+        return KStatus::FAIL;
+      }
+    }
     return KStatus::SUCCESS;
   }
 
   KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
+    KStatus s;
+
+    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+    if (mtr_id == 0) {
+      return KStatus::SUCCESS;
+    }
+    s = tsx_manager_sys_->TSxRollback(ctx, transaction_id);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("TSxRollback failed, TSxRollback failed, table id: %lu", table_id)
+      return s;
+    }
     return KStatus::SUCCESS;
   }
 
@@ -295,6 +314,14 @@ class TSEngineV2Impl : public TSEngine {
 
   // TODO(liangbo01)  To be implemented
   KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
+
+  static uint64_t GetAppliedIndex(const uint64_t range_id, const std::map<uint64_t, uint64_t>& range_indexes_map) {
+    const auto iter = range_indexes_map.find(range_id);
+    if (iter == range_indexes_map.end()) {
+      return 0;
+    }
+    return iter->second;
+  }
 
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);

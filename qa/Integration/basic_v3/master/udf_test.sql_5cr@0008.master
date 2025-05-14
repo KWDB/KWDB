@@ -1,0 +1,171 @@
+> drop database if exists test_udf_varchar cascade;
+DROP DATABASE
+> drop database if exists test_udf_re_varchar cascade;
+DROP DATABASE
+> CREATE FUNCTION check_substring(str varchar, substr varchar)
+    RETURNs int
+    LANGUAGE LUA
+BEGIN
+'
+function check_substring(str, substr)
+    local start_pos, end_pos = string.find(str, substr)
+    if start_pos then
+        return start_pos
+    else
+        return -1
+    end
+end
+'
+END;
+CREATE FUNCTION
+> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+   function_name  | argument_types | return_type | types_length |                      function_body                      | function_type | language |  db_name  | creator | version | comments
+------------------+----------------+-------------+--------------+---------------------------------------------------------+---------------+----------+-----------+---------+---------+-----------
+  check_substring | {10,10}        | {2}         | {0,0,0}      |                                                         |             1 | LUA      | defaultdb | root    | 1.0     |
+                  |                |             |              | function check_substring(str, substr)                   |               |          |           |         |         |
+                  |                |             |              |     local start_pos, end_pos = string.find(str, substr) |               |          |           |         |         |
+                  |                |             |              |     if start_pos then                                   |               |          |           |         |         |
+                  |                |             |              |         return start_pos                                |               |          |           |         |         |
+                  |                |             |              |     else                                                |               |          |           |         |         |
+                  |                |             |              |         return -1                                       |               |          |           |         |         |
+                  |                |             |              |     end                                                 |               |          |           |         |         |
+                  |                |             |              | end                                                     |               |          |           |         |         |
+                  |                |             |              |                                                         |               |          |           |         |         |
+(1 row)
+> SHOW FUNCTIONS;
+   function_name
+-------------------
+  check_substring
+(1 row)
+> SHOW FUNCTION check_substring;
+   function_name  |  argument_types  | return_type | function_type | language
+------------------+------------------+-------------+---------------+-----------
+  check_substring | VARCHAR, VARCHAR | INT         | function      | LUA
+(1 row)
+> select check_substring('abcdefg', 'cde');
+  check_substring
+-------------------
+                3
+(1 row)
+> create ts database test_udf_varchar;
+CREATE TS DATABASE
+> create table test_udf_varchar.tb1(ts timestamptz not null,e1 varchar(10), e2 varchar(10))tags(tag1 int not null)primary tags(tag1);
+CREATE TABLE
+> insert into test_udf_varchar.tb1 values('2024-01-01 11:00:00','abc', 'b', 1);
+INSERT 1
+> insert into test_udf_varchar.tb1 values('2024-01-01 12:00:00','def', 'e' ,2);
+INSERT 1
+> insert into test_udf_varchar.tb1 values('2024-01-01 13:00:00','ghi', 'h' ,3);
+INSERT 1
+> select check_substring(e1, e2) from test_udf_varchar.tb1 order by e1;
+  check_substring
+-------------------
+                2
+                2
+                2
+(3 rows)
+> select count(e1), check_substring(e1, e2) as loc ,last_row(e1) from test_udf_varchar.tb1 group by e1, e2 having check_substring(e1, e2) >= 0 order by e1;
+  count | loc | last_row
+--------+-----+-----------
+      1 |   2 | abc
+      1 |   2 | def
+      1 |   2 | ghi
+(3 rows)
+> drop table test_udf_varchar.tb1;
+DROP TABLE
+> drop database test_udf_varchar cascade;
+DROP DATABASE
+> create  database test_udf_re_varchar;
+CREATE DATABASE
+> create table test_udf_re_varchar.r1(e1 char(10), e2 char(10));
+CREATE TABLE
+> insert into  test_udf_re_varchar.r1 values('abc', 'b');
+INSERT 1
+> insert into  test_udf_re_varchar.r1 values('def', 'e');
+INSERT 1
+> insert into  test_udf_re_varchar.r1 values('ghi', 'h');
+INSERT 1
+> select check_substring(e1, e2) from test_udf_re_varchar.r1 order by e1;
+  check_substring
+-------------------
+                2
+                2
+                2
+(3 rows)
+> select count(e1), check_substring(e1, e2) as loc from test_udf_re_varchar.r1 group by e1, e2 having check_substring(e1, e2) >= 0 order by e1;
+  count | loc
+--------+------
+      1 |   2
+      1 |   2
+      1 |   2
+(3 rows)
+> drop table test_udf_re_varchar.r1 ;
+DROP TABLE
+> drop database test_udf_re_varchar cascade;
+DROP DATABASE
+> select check_substring('abcdef', 'a');
+  check_substring
+-------------------
+                1
+(1 row)
+> select check_substring('abcdef', 'f');
+  check_substring
+-------------------
+                6
+(1 row)
+> select check_substring('abcdef', 'g');
+  check_substring
+-------------------
+               -1
+(1 row)
+> select check_substring('abcdef', ' ');
+  check_substring
+-------------------
+               -1
+(1 row)
+> select check_substring('abcdef', '' );
+  check_substring
+-------------------
+                1
+(1 row)
+> select check_substring('  '    , ' ');
+  check_substring
+-------------------
+                1
+(1 row)
+> select check_substring('  '    , '' );
+  check_substring
+-------------------
+                1
+(1 row)
+> select check_substring(''      , '' );
+  check_substring
+-------------------
+                1
+(1 row)
+> select check_substring(''      , ' ');
+  check_substring
+-------------------
+               -1
+(1 row)
+> select check_substring(-1, 1);
+ERROR: unknown signature: check_substring(INT8, INT8)
+SQLSTATE: 42883
+> select check_substring('test');
+ERROR: unknown signature: check_substring(STRING)
+SQLSTATE: 42883
+> select check_substring(123456, 'a');
+ERROR: unknown signature: check_substring(INT8, STRING)
+SQLSTATE: 42883
+> select check_substring(1.1, '2');
+ERROR: unknown signature: check_substring(DECIMAL, STRING)
+SQLSTATE: 42883
+> select check_substring(false);
+ERROR: unknown signature: check_substring(BOOL)
+SQLSTATE: 42883
+> DROP FUNCTION check_substring;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)

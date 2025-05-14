@@ -1,0 +1,354 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS test_SELECT_col_geo cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_SELECT_col_geo;
+CREATE TS DATABASE
+> USE defaultdb;DROP DATABASE IF EXISTS test_SELECT_col_geo cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_SELECT_col_geo;
+CREATE TS DATABASE
+> CREATE TABLE test_SELECT_col_geo.t1(
+  k_timestamp timestamptz NOT NULL,
+  a1 geometry ,
+  b1 geometry ,
+  c1 geometry ,
+  a2 geometry ,
+  b2 geometry ,
+  c2 geometry
+  ) ATTRIBUTES (code1 int2 NOT NULL) primary tags(code1);
+CREATE TABLE
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 0.0)', 'Linestring(1.0 1.0, 2.0 2.0)', 'Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))','Point(0.0 0.0)', 'Linestring(1.0 1.0, 5.0 5.0)','Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))',1);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 2.0)', 'Linestring(1.0 1.0, 4.0 4.0)', 'Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0))','Point( 6.6 1.3)', 'Linestring(1.1 1.0, 4.0 4.0)','Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))',2);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 3.0)', 'Linestring(1.0 1.0, 2.0 3.0)', 'Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0))','Point(1.0 2.0)', 'Linestring(1.2 1.2, 8.0 8.0)','Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))',3);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 4.0)', 'Linestring(4.0 6.0, 5.0 1.0)', 'Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0))','Point(4.1 7.8)', 'Linestring(1.2 3.0, 5.0 5.0)','Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))',4);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 5.0)', 'Linestring(7.0 3.0, 2.0 0.0)', 'Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0))','Point(5.6 6.5)', 'Linestring(1.4 4.0, 6.0 5.2)','Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))',5);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(1.0 3.0)', 'Linestring(4.0 1.0, 7.0 7.0)', 'Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0))','Point(8.1 1.2)', 'Linestring(6.0 4.0, 5.7 5.4)','Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))',6);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(1.0 8.0)', 'Linestring(4.0 2.0, 5.0 5.0)', 'Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0))','Point(3.3 1.9)', 'Linestring(7.0 1.0, 3.2 4.5)','Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))',7);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,a1,b1,c1,a2,b2,c2,code1) VALUES(2021681353000,'Point(2.5 3.6)', 'Linestring(1.0 1.5, 2.6 3.8)', 'Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0))','Point(11.5 12.0)', 'Linestring(3.0 8.0, 5.4 8.0)','Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))',8);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,a1,code1) VALUES(2021684953000,'Point(0.0 0.0)',9);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,a2,code1) VALUES(2021688553000,'Point(1.0 1.0)',10);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,b1,code1) VALUES(2021774953000,'Linestring(1.0 1.0, 2.0 2.0)',11);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(c1,code1) VALUES('Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))',12);
+ERROR: null value in column "k_timestamp" violates not-null constraint
+SQLSTATE: 23502
+> INSERT INTO test_SELECT_col_geo.t1(code1) VALUES(13);
+INSERT 1
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL                                                            |    10
+  NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL                                                            |    11
+(11 rows)
+> SELECT k_timestamp,a1,b1,c1,a2,b2,c2 FROM test_SELECT_col_geo.t1 WHERE k_timestamp > now() order by k_timestamp;
+         k_timestamp        |       a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2
+----------------------------+----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+------------------------------------------------------------------
+  2034-01-24 02:09:13+00:00 | Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))
+  2034-01-24 03:09:13+00:00 | Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL
+  2034-01-24 04:09:13+00:00 | NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL
+  2034-01-25 04:09:13+00:00 | NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL
+(4 rows)
+> SELECT code1,a1,b1,c1,a2,b2,c2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+  code1 |       a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2
+--------+----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+------------------------------------------------------------------
+      1 | Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))
+      2 | Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))
+      3 | Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))
+      4 | Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))
+      5 | Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))
+      6 | Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))
+      7 | Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))
+      8 | Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))
+      9 | Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL
+     10 | NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL
+     11 | NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL
+(11 rows)
+> SELECT a1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+        a1
+------------------
+  Point(0.0 0.0)
+  Point(0.0 2.0)
+  Point(0.0 3.0)
+  Point(0.0 4.0)
+  Point(0.0 5.0)
+  Point(1.0 3.0)
+  Point(1.0 8.0)
+  Point(2.5 3.6)
+  Point(0.0 0.0)
+  NULL
+  NULL
+(11 rows)
+> SELECT b1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+               b1
+--------------------------------
+  Linestring(1.0 1.0, 2.0 2.0)
+  Linestring(1.0 1.0, 4.0 4.0)
+  Linestring(1.0 1.0, 2.0 3.0)
+  Linestring(4.0 6.0, 5.0 1.0)
+  Linestring(7.0 3.0, 2.0 0.0)
+  Linestring(4.0 1.0, 7.0 7.0)
+  Linestring(4.0 2.0, 5.0 5.0)
+  Linestring(1.0 1.5, 2.6 3.8)
+  NULL
+  NULL
+  Linestring(1.0 1.0, 2.0 2.0)
+(11 rows)
+> SELECT c1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+                       c1
+-------------------------------------------------
+  Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))
+  Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0))
+  Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0))
+  Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0))
+  Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0))
+  Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0))
+  Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0))
+  Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0))
+  NULL
+  NULL
+  NULL
+(11 rows)
+> SELECT a2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+         a2
+--------------------
+  Point(0.0 0.0)
+  Point( 6.6 1.3)
+  Point(1.0 2.0)
+  Point(4.1 7.8)
+  Point(5.6 6.5)
+  Point(8.1 1.2)
+  Point(3.3 1.9)
+  Point(11.5 12.0)
+  NULL
+  Point(1.0 1.0)
+  NULL
+(11 rows)
+> SELECT b2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+               b2
+--------------------------------
+  Linestring(1.0 1.0, 5.0 5.0)
+  Linestring(1.1 1.0, 4.0 4.0)
+  Linestring(1.2 1.2, 8.0 8.0)
+  Linestring(1.2 3.0, 5.0 5.0)
+  Linestring(1.4 4.0, 6.0 5.2)
+  Linestring(6.0 4.0, 5.7 5.4)
+  Linestring(7.0 1.0, 3.2 4.5)
+  Linestring(3.0 8.0, 5.4 8.0)
+  NULL
+  NULL
+  NULL
+(11 rows)
+> SELECT c2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+                                c2
+-------------------------------------------------------------------
+  Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))
+  Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))
+  Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))
+  Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))
+  Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))
+  Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))
+  Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))
+  Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))
+  NULL
+  NULL
+  NULL
+(11 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE k_timestamp IS NULL order by k_timestamp;
+  a1 | b1 | c1 | a2 | b2 | c2 | code1
+-----+----+----+----+----+----+--------
+(0 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE k_timestamp IS NOT NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL                                                            |    10
+  NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL                                                            |    11
+(11 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+(9 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL and b1 is NULL order by k_timestamp;
+        a1       |  b1  |  c1  |  a2  |  b2  |  c2  | code1
+-----------------+------+------+------+------+------+--------
+  Point(0.0 0.0) | NULL | NULL | NULL | NULL | NULL |     9
+(1 row)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL or b1 is NOT NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL                                                            |    11
+(10 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL OR b1 IS NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL                                                            |    10
+(10 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL AND b1 IS NULL AND a2 IS NOT NULL AND b2 IS NULL AND c1 IS NOT NULL AND c2 IS NULL order by k_timestamp;
+  a1 | b1 | c1 | a2 | b2 | c2 | code1
+-----+----+----+----+----+----+--------
+(0 rows)
+> SELECT concat(a1,b1) FROM test_SELECT_col_geo.t1 where concat(a1,b1) IS NULL order by k_timestamp;
+  concat
+----------
+  NULL
+  NULL
+  NULL
+(3 rows)
+> select a1,b1,c1,a2,b2,c2,code1 from test_select_col_geo.t1 where st_equals(a1,a2) order by k_timestamp;
+        a1       |              b1              |                      c1                       |       a2       |              b2              |                      c2                       | code1
+-----------------+------------------------------+-----------------------------------------------+----------------+------------------------------+-----------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0) | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0)) |     1
+(1 row)
+> select a1,b1,c1,a2,b2,c2,code1 from test_select_col_geo.t1 where st_distance(a1,c1) < 10 order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+(8 rows)
+> SELECT a1+a2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> + <geometry>
+SQLSTATE: 22023
+> SELECT b1+c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> + <geometry>
+SQLSTATE: 22023
+> SELECT a1+NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> + <unknown>
+SQLSTATE: 22023
+> SELECT b1-b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> - <geometry>
+SQLSTATE: 22023
+> SELECT c1-NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> - <unknown>
+SQLSTATE: 22023
+> SELECT a1*c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> * <geometry>
+SQLSTATE: 22023
+> SELECT b2*NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> * <unknown>
+SQLSTATE: 22023
+> SELECT a1/c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> / <geometry>
+SQLSTATE: 22023
+> SELECT c1/0 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> / <int>
+SQLSTATE: 22023
+> SELECT a1/NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> / <unknown>
+SQLSTATE: 22023
+> SELECT b1//b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <geometry>
+SQLSTATE: 22023
+> SELECT a1//8 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <int>
+SQLSTATE: 22023
+> SELECT b1//0 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <int>
+SQLSTATE: 22023
+> SELECT c1//NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <unknown>
+SQLSTATE: 22023
+> SELECT c1%c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> % <geometry>
+SQLSTATE: 22023
+> SELECT b1%2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> % <int>
+SQLSTATE: 22023
+> SELECT a1%NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> % <unknown>
+SQLSTATE: 22023
+> SELECT a1^2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <int>
+SQLSTATE: 22023
+> SELECT b1^0 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <int>
+SQLSTATE: 22023
+> SELECT c1^NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <unknown>
+SQLSTATE: 22023
+> SELECT a1^9223372036854775807 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <int>
+SQLSTATE: 22023
+> SELECT c1&c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> & <geometry>
+SQLSTATE: 22023
+> SELECT a1&b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> & <geometry>
+SQLSTATE: 22023
+> SELECT b1||b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+                          ?column?
+------------------------------------------------------------
+  Linestring(1.0 1.0, 2.0 2.0)Linestring(1.0 1.0, 5.0 5.0)
+  Linestring(1.0 1.0, 4.0 4.0)Linestring(1.1 1.0, 4.0 4.0)
+  Linestring(1.0 1.0, 2.0 3.0)Linestring(1.2 1.2, 8.0 8.0)
+  Linestring(4.0 6.0, 5.0 1.0)Linestring(1.2 3.0, 5.0 5.0)
+  Linestring(7.0 3.0, 2.0 0.0)Linestring(1.4 4.0, 6.0 5.2)
+  Linestring(4.0 1.0, 7.0 7.0)Linestring(6.0 4.0, 5.7 5.4)
+  Linestring(4.0 2.0, 5.0 5.0)Linestring(7.0 1.0, 3.2 4.5)
+  Linestring(1.0 1.5, 2.6 3.8)Linestring(3.0 8.0, 5.4 8.0)
+  NULL
+  NULL
+  NULL
+(11 rows)
+> drop database test_SELECT_col_geo cascade;
+DROP DATABASE

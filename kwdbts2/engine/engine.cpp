@@ -433,7 +433,7 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, 
     return s;
   }
   // Use data schema and tag schema to construct meta.
-  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info);
+  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("generateMetaSchema failed during GetMetaData, table id is %ld.", table_id)
     return s;
@@ -754,7 +754,8 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
     }
   }};
 
-  s = wal_sys_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn);
+  std::vector<uint64_t> ignore;
+  s = wal_sys_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn, ignore);
   if (s == KStatus::FAIL && !redo_logs.empty()) {
     LOG_ERROR("Failed to read the TS Engine WAL logs.")
 #ifdef WITH_TESTS
@@ -1275,7 +1276,8 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   }
 
   std::vector<LogEntry*> logs;
-  s = wal_sys_->ReadWALLogForMtr(mtr_id, logs);
+  std::vector<uint64_t> ignore;
+  s = wal_sys_->ReadWALLogForMtr(mtr_id, logs, ignore);
   if (s == KStatus::FAIL && !logs.empty()) {
     for (auto log : logs) {
       delete log;
@@ -1373,13 +1375,16 @@ KStatus TSEngineImpl::parseMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable*
     }
 
     if (attr_info.isAttrType(COL_GENERAL_TAG) || attr_info.isAttrType(COL_PRIMARY_TAG)) {
-      tag_schema.push_back(std::move(TagInfo{col.column_id(), attr_info.type,
+      if (attr_info.isFlag(AINFO_DROPPED)) {
+        continue;
+      }
+      tag_schema.push_back(TagInfo{col.column_id(), attr_info.type,
                                              static_cast<uint32_t>(attr_info.length), 0,
                                              static_cast<uint32_t>(attr_info.size),
                                              attr_info.isAttrType(COL_PRIMARY_TAG) ? PRIMARY_TAG : GENERAL_TAG,
-                                             attr_info.flag}));
+                                             attr_info.flag});
     } else {
-      metric_schema.push_back(std::move(attr_info));
+      metric_schema.push_back(attr_info);
     }
   }
   return KStatus::SUCCESS;

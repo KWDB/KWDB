@@ -1,0 +1,71 @@
+> drop database test_SELECT_col cascade;
+ERROR: database "test_select_col" does not exist
+SQLSTATE: 3D000
+> create ts database test_SELECT_col;
+CREATE TS DATABASE
+> create table test_SELECT_col.t1(
+                k_timestamp timestamptz not null,
+                e1 int2  not null,
+				e2 int,
+				e3 int8 not null,
+				e4 float4,
+				e5 float8 not null,
+				e6 bool,
+				e7 timestamptz not null,
+				e8 char(1023),
+				e9 nchar(255) not null,
+				e10 varchar(4096),
+				e11 char not null,
+				e12 varchar(255),
+				e13 nchar not null,
+				e14 varchar,
+				e15 varchar(4096) not null, 
+                e16 varbytes(200),
+                e17 varchar(255) not null,
+                e18 varchar,           
+                e19 varbytes not null,
+                e20 varbytes(1023),
+                e21 varbytes(200) not null,
+                e22 varbytes(200)
+				) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location VARCHAR(128),color VARCHAR(128) not null,name varbytes,state varbytes(1023),tall VARBYTES,screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:33.123',0,0,0,0,0,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',100,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:34.223',20002,1000002,20000000002,1047200.0000,-109810.0,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',200,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:35.323',20002,2000003,-30000000003,22845.87,200.123456,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',300,400,100,false,400.0,300.0,'tianjin','yellow',b'\x28','aisaiebiyazhou','183','small','3','社会性别男','7','matureandgentle');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:36.423',30003,3000000,-40000000004,39845.87,-200.123456,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',400,400,100,false,400.0,300.0,'hebei','blue',b'\x28','aisaiebiyazhou','183','small','3','社会性别男','7','matureandgentle');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:37.523',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:38.623',-20002,-2000002,-30000000003,-29845.87,-200.123456,true,'2020-1-1 12:00:00.000','\0test时间精度通用查询！！！@TEST1\0\0\0','\0test时间精度通用查询！！！@TEST1\0\0\0','\0test时间精度通用查询！！！@TEST1\0\0\0','0','\0test时间精度通用查询！！！@TEST1\0\0\0','\','\0test时间精度通用查询！！！@TEST1\0\0\0','\0test时间精度通用查询！！！@TEST1','0test时间精度通用查询！！！@TEST1','\0test时间精度通用查询！！！@TEST1\0\0\0','\0test时间精度通用查询！！！@TEST1\0\0\0','0','0test时间精度通用查询！！！@TEST1000','0test时间精度通用查询！！！@TEST1','0test时间精度通用查询！！！@TEST1',400,400,100,false,400.0,300.0,'hebei','blue',b'\x28','aisaiebiyazhou','183','small','3','社会性别男','7','matureandgentle');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:39.723',-30003,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000','     ','     ','     ',' ','     ',' ','     ','     ','     ','     ','     ',' ','     ','     ','     ',0,0,0,false,0,0,' ',' ',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:40.823',-30004,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000',e'\\',e'\\',e'\\',e'\\',e'\\',e'\\',e'\\',e'\\',e'\\\\',e'\\',e'\\','0',e'\\\\',e'\\\\',e'\\\\',0,0,0,false,0,0,' ',e'\\',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:41.923',-30005,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000','\','\','\','\','\','\','\','\','\\','\','\','0','\\','\\','\\',0,0,0,false,0,0,' ','\',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:42.221',-30006,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000',e'\\\\',e'\\\\',e'\\\\',e'\\',e'\\\\',e'\\',e'\\\\',e'\\\\',e'\\\\',e'\\\\',e'\\\\','0',e'\\\\',e'\\\\',e'\\\\',0,0,0,false,0,0,' ',e'\\\\',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:43.222',-30007,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000','\\','\\','\\','\','\\','\','\\','\\','\\','\\','\\','0','\\','\\','\\',0,0,0,false,0,0,' ','\\',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:44.224',-30008,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\',e'\\\\\\\\',e'\\',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\','0',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',0,0,0,false,0,0,' ',e'\\\\\\\\',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:45.225',-30009,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000','\\\\','\\\\','\\\\','\','\\\\','\','\\\\','\\\\','\\\\','\\\\','\\\\','0','\\\\','\\\\','\\\\',0,0,0,false,0,0,' ','\\\\',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1 VALUES('2024-2-21 16:32:46.226',-30010,-1000001,-10000000001,-19845.87,-200.123456,true,'2020-1-1 12:00:00.000',e'\ ',e'\ ',e'\ ','\',e'\ ','\',e'\ ',e'\ ',e'\ \ ',e'\ ',e'\ ','0',e'\ \ ',e'\ \ ',e'\ \ ',0,0,0,false,0,0,' ',e'\ ',' ',' ',' ',' ',' ',' ',' ',' ');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1(k_timestamp,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19,e20,e21,e22,code1,flag,color) VALUES(2021681353000,32767,2147483647,9223372036854775807,9845.87,200.123456,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',500,false,'red');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1(k_timestamp,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19,e20,e21,e22,code1,flag,color) VALUES(2021684953000,-32768,-2147483648,-9223372036854775808,9842323145.87,200.123456,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',600,false,'red');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1(k_timestamp,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19,e20,e21,e22,code1,flag,color) VALUES(2021688553000,32050,NULL,4000,9845.87,200.123456,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1\0','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',700,false,'red');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1(k_timestamp,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19,e20,e21,e22,code1,flag,color) VALUES(2021774953000,32767,NULL,9223372036854775807,NULL,20435435343430.123434356,NULL,'2020-1-1 12:00:00.000',NULL,'test时间精度通用查询测试！！！@TEST1',NULL,'t',NULL,'中',NULL,'test时间精度通用查询测试！！！@TEST1',NULL,'test时间精度通用查询测试！！！@TEST1',NULL,'b',NULL,'test时间精度通用查询测试！！！@TEST1',NULL,800,false,'red');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1(code1,code2,code3,flag,val1,val2,location,color,name,state,tall,screen,age,sex,year,type) VALUES(900,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely');
+INSERT 1
+> INSERT INTO test_SELECT_col.t1(code1,flag,color,tall) VALUES(1000,false,'red','183');
+INSERT 1

@@ -19,6 +19,8 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_blkspan_type_convert.h"
+
 namespace kwdbts {
 class TsBlock {
  public:
@@ -36,28 +38,66 @@ class TsBlock {
   virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) = 0;
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
+
+  virtual uint64_t* GetLSNAddr(int row_num) = 0;
+
+  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
+   const std::vector<AttributeInfo>& schema,
+   const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+
+  virtual KStatus GetLastInfo(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
+    const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+    int64_t* out_ts, int* out_row_idx);
 };
 
 struct TsBlockSpan {
-  TSEntityID entity_id;
+ private:
+  std::shared_ptr<TsBlock> block_ = nullptr;
+  TSEntityID entity_id_ = 0;
+  int start_row_ = 0, nrow_ = 0;
+  TSBlkDataTypeConvert convert_;
 
-  std::shared_ptr<TsBlock> block;
-  int start_row, nrow;
+  friend TSBlkDataTypeConvert;
+
+ public:
+  TsBlockSpan() = default;
 
   TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-              std::shared_ptr<TsBlock> block, int start, int nrow)
-      : entity_id(entity_id), block(block), start_row(start), nrow(nrow) {
-    assert(nrow >= 1);
-  }
+              std::shared_ptr<TsBlock> block, int start, int nrow);
 
-  TSEntityID GetEntityID() const { return entity_id; }
-  TSTableID GetTableID() const { return block->GetTableId(); }
-  TSTableID GetTableVersion() const { return block->GetTableVersion(); }
+  bool operator<(const TsBlockSpan& other) const;
+
+  TSEntityID GetEntityID() const;
+  int GetRowNum() const;
+  int GetStartRow() const;
+  std::shared_ptr<TsBlock> GetTsBlock() const;
+  TSTableID GetTableID() const;
+  uint32_t GetTableVersion() const;
+  timestamp64 GetTS(uint32_t row_idx) const;
+  uint64_t* GetLSNAddr(int row_idx) const;
 
   // if just get timestamp, these function return fast.
-  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
-    *min_ts = block->GetTS(start_row);
-    *max_ts = block->GetTS(start_row + nrow - 1);
-  }
+  void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
+
+  // dest type is fixed len datatype.
+  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+                             char** value, TsBitmap& bitmap);
+  // dest type is varlen datatype.
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
+    const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
+
+  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+
+  KStatus GetLastInfo(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+    const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx);
+
+  void SplitFront(int row_num, TsBlockSpan* front_span);
+
+  void SplitBack(int row_num, TsBlockSpan* back_span);
+
+  void Truncate(int row_num);
+
+  void Clear();
 };
 }  // namespace kwdbts

@@ -1030,6 +1030,21 @@ message TableDescriptor {
   // as a table. The data on disk is refreshed with the REFRESH MATERIALIZED
   // VIEW command. This flag is only set when ViewQuery != "".
   optional bool is_materialized_view = 48 [(gogoproto.nullable) = false];
+  // used to store dropped ts columns
+  repeated KWDBTSColumn dropped_ts_columns = 49 [(gogoproto.nullable) = false];
+}
+
+// KWDBTSColumn is a dropped column of time-series table .
+message KWDBTSColumn {
+  option (gogoproto.equal) = true;
+  // column ID
+  required uint32 column_id = 1 [(gogoproto.nullable) = false];
+  // Storage type
+  optional DataType storage_type = 2 [(gogoproto.nullable) = false];
+  // column type
+  optional ColumnType col_type = 3 [(gogoproto.nullable) = false];
+  // The column has been marked dropped
+  optional bool dropped = 4 [(gogoproto.nullable) = false];
 }
 
 message TSTable {

@@ -24,7 +24,12 @@
 
 package tree
 
-import "gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
+import (
+	"strings"
+
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+)
 
 // FunctionDefinition implements a reference to the (possibly several)
 // overloads for a built-in function.
@@ -178,3 +183,43 @@ func (fd *FunctionDefinition) Format(ctx *FmtCtx) {
 	ctx.WriteString(fd.Name)
 }
 func (fd *FunctionDefinition) String() string { return AsString(fd) }
+
+// ConcurrentFunDefs holds FunctionDefinition instances for every custom function
+// in concurrent safety.
+var ConcurrentFunDefs = NewConcurrentFuncRegistry()
+
+// NewConcurrentFuncRegistry init registry structure.
+func NewConcurrentFuncRegistry() *ConcurrentFuncRegistry {
+	return &ConcurrentFuncRegistry{
+		funcs: make(map[string]*FunctionDefinition),
+	}
+}
+
+// ConcurrentFuncRegistry is a custom function registry structure for concurrent safety.
+type ConcurrentFuncRegistry struct {
+	mu syncutil.RWMutex
+	// Custom function storage
+	funcs map[string]*FunctionDefinition
+}
+
+// RegisterFunc registers custom function.
+func (r *ConcurrentFuncRegistry) RegisterFunc(name string, fn *FunctionDefinition) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.funcs[strings.ToLower(name)] = fn
+}
+
+// DeleteFunc drops custom function.
+func (r *ConcurrentFuncRegistry) DeleteFunc(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.funcs, strings.ToLower(name))
+}
+
+// LookupFunc finds custom function.
+func (r *ConcurrentFuncRegistry) LookupFunc(name string) (*FunctionDefinition, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	fn, exists := r.funcs[strings.ToLower(name)]
+	return fn, exists
+}

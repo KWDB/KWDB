@@ -71,7 +71,7 @@ func (n *dropFunctionNode) startExec(params runParams) error {
 			case <-timeout:
 				return pgerror.Newf(pgcode.Warning, "remove %s function timeout, Please wait", v)
 			case <-ticker.C:
-				if _, ok := tree.FunDefs[v]; !ok {
+				if _, ok := tree.ConcurrentFunDefs.LookupFunc(v); !ok {
 					deleted = true
 					break
 				}

@@ -1,0 +1,66 @@
+> SELECT e1 IS NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+(18 rows)
+> SELECT e2 IS NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+  ?column?
+------------
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    true
+    true
+(18 rows)
+> SELECT e7 IS NOT NULL AND e2 IS NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
+  ?column?
+------------
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    true
+    true
+(18 rows)

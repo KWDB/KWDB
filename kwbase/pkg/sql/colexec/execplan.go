@@ -1921,29 +1921,8 @@ func planProjectionExpr(
 	// projection operator. See the comment below for more details.
 	actualOutputType := outputType
 	if outputType.Identical(types.Int) {
-		// Currently, SQL type system does not respect the width of integers
-		// when figuring out the type of the output of a projection expression
-		// (for example, INT2 + INT2 will be typed as INT8); however,
-		// vectorized operators do respect the width when both operands have
-		// the same width. In order to go around this limitation, we explicitly
-		// check whether output type is INT8, and if so, we override the output
-		// physical types to be what the vectorized projection operators will
-		// actually output.
-		//
-		// Note that in mixed-width scenarios (i.e. INT2 + INT4) the vectorized
-		// engine will output INT8, so no overriding is needed.
-		//
-		// We do, however, need to plan a cast to the expected logical type and
-		// we will do that below.
-		leftPhysType := typeconv.FromColumnType(left.ResolvedType())
-		rightPhysType := typeconv.FromColumnType(right.ResolvedType())
-		if leftPhysType == coltypes.Int16 && rightPhysType == coltypes.Int16 {
-			actualOutputType = types.Int2
-			outputPhysType = coltypes.Int16
-		} else if leftPhysType == coltypes.Int32 && rightPhysType == coltypes.Int32 {
-			actualOutputType = types.Int4
-			outputPhysType = coltypes.Int32
-		}
+		actualOutputType = types.Int
+		outputPhysType = coltypes.Int64
 	}
 	// There are 3 cases. Either the left is constant, the right is constant,
 	// or neither are constant.
