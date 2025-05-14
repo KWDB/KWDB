@@ -382,7 +382,10 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
     }
     CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
     table = tables_cache_->Get(table_id);
-    if (table == nullptr || table->IsDropped()) {
+    if (table == nullptr) {
+      LOG_INFO("Unable to get the created table, try to get it again");
+      return GetTsTable(ctx, table_id, ts_table, create_if_not_exist, err_info, version);
+    } else if (table->IsDropped()) {
       LOG_ERROR("failed during upper version.");
       return KStatus::FAIL;
     }
