@@ -286,24 +286,19 @@ func getSingleRecord(
 			if valueType == parser.NUMTYPE {
 				return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
 			}
-			if valueType == parser.NORMALTYPE {
-				return pgerror.Newf(pgcode.Syntax, errUnsupportedType, rawValue, column.Name)
+
+			if width := column.Type.Width(); width > 0 {
+				length := len(rawValue)
+				if length > int(width) {
+					return pgerror.Newf(pgcode.StringDataRightTruncation, errTooLong, rawValue, column.Type.SQLString(), column.Name)
+				}
+			}
+			if valueType == parser.BYTETYPE {
+				rawValue = strings.Trim(tree.NewDBytes(tree.DBytes(rawValue)).String(), "'")
 			}
 			v, err := tree.ParseDByte(rawValue)
 			if err != nil {
 				return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
-			}
-			// bytes(n)/varbytes(n) calculate length by byte
-			if column.Type.Width() > 0 && len(rawValue) > int(column.Type.Width()) {
-				return pgerror.Newf(pgcode.StringDataRightTruncation,
-					"value '%s' too long for type %s (column %s)", rawValue, column.Type.SQLString(), column.Name)
-			}
-			if valueType == parser.BYTETYPE {
-				rawValue = strings.Trim(tree.NewDBytes(tree.DBytes(rawValue)).String(), "'")
-				v, err = tree.ParseDByte(rawValue)
-				if err != nil {
-					return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
-				}
 			}
 			inputValues[row][col] = v
 
