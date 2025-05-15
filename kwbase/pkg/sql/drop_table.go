@@ -27,10 +27,8 @@ package sql
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
-	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -40,7 +38,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
-	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
@@ -434,30 +431,30 @@ func (p *planner) initiateDropTable(
 
 	// Unsplit all manually split ranges in the table so they can be
 	// automatically merged by the merge queue.
-	ranges, err := ScanMetaKVs(ctx, p.txn, tableDesc.TableSpan())
-	if err != nil {
-		return err
-	}
-	for _, r := range ranges {
-		var desc roachpb.RangeDescriptor
-		if err := r.ValueProto(&desc); err != nil {
-			return err
-		}
-		if (desc.GetStickyBit() != hlc.Timestamp{}) || desc.GetRangeType() == roachpb.TS_RANGE {
-			_, keyTableID, _ := keys.DecodeTablePrefix(roachpb.Key(desc.StartKey))
-			// TODO(replica): When dropping a relational table, avoid sending unSplit requests to the time-series range.
-			// Modify the usage of default_replica later
-			if uint64(tableDesc.ID) != keyTableID {
-				continue
-			}
-			// Swallow "key is not the start of a range" errors because it would mean
-			// that the sticky bit was removed and merged concurrently. DROP TABLE
-			// should not fail because of this.
-			if err := p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
-				return err
-			}
-		}
-	}
+	//ranges, err := ScanMetaKVs(ctx, p.txn, tableDesc.TableSpan())
+	//if err != nil {
+	//	return err
+	//}
+	//for _, r := range ranges {
+	//	var desc roachpb.RangeDescriptor
+	//	if err := r.ValueProto(&desc); err != nil {
+	//		return err
+	//	}
+	//	if (desc.GetStickyBit() != hlc.Timestamp{}) || desc.GetRangeType() == roachpb.TS_RANGE {
+	//		_, keyTableID, _ := keys.DecodeTablePrefix(roachpb.Key(desc.StartKey))
+	//		// TODO(replica): When dropping a relational table, avoid sending unSplit requests to the time-series range.
+	//		// Modify the usage of default_replica later
+	//		if uint64(tableDesc.ID) != keyTableID {
+	//			continue
+	//		}
+	//		// Swallow "key is not the start of a range" errors because it would mean
+	//		// that the sticky bit was removed and merged concurrently. DROP TABLE
+	//		// should not fail because of this.
+	//		if err := p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
+	//			return err
+	//		}
+	//	}
+	//}
 
 	tableDesc.State = sqlbase.TableDescriptor_DROP
 	if drainName {

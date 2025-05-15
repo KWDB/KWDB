@@ -63,5 +63,8 @@ INSERT INTO db.t1 values('2023-12-1 12:00:12.000+00:00',null, '基础测试',1);
 INSERT INTO db.t1 values('2023-12-2 12:00:12.000+00:00',null, '基础测试',1);
 EXPORT INTO CSV "nodelocal://1/test_sql" FROM TABLE db.t1;
 IMPORT INTO db.t1 SQL DATA ("nodelocal://1/test_sql");
+DROP TABLE t1;
+IMPORT TABLE CREATE USING "nodelocal://1/test_sql/meta.sql" SQL DATA ("nodelocal://1/test_sql");
+IMPORT TABLE CREATE USING "nodelocal://1/test_sql/meta.sql";
 USE defaultdb;
 DROP DATABASE db;

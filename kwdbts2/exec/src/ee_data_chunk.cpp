@@ -1178,7 +1178,7 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
     data_info->capacity_ = capacity_;
     data_info->data_ = data_;
     data_info->is_data_owner_ = is_data_owner_;
-
+    is_data_owner_ = false;
     ret = EEIteratorErrCode::EE_OK;
   } while (0);
 

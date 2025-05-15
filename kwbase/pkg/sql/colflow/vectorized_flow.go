@@ -378,6 +378,10 @@ func (f *vectorizedFlow) Cleanup(ctx context.Context) {
 	if unreleased := atomic.LoadInt64(&f.countingSemaphore.count); unreleased > 0 {
 		f.countingSemaphore.Release(int(unreleased))
 	}
+	for _, processor := range f.TsTableReaders {
+		tsTableReader := processor.(*colexec.TsReaderOp)
+		tsTableReader.ConsumerClosed()
+	}
 	f.FlowBase.Cleanup(ctx)
 	f.Release()
 }
@@ -845,6 +849,7 @@ func (s *vectorizedFlowCreator) setupInput(
 			if tsReader == nil {
 				return nil, nil, errors.Errorf("uncreated ts reader")
 			}
+			flowCtx.TsTableReaders = append(flowCtx.TsTableReaders, tsReader.(execinfra.Processor))
 			op = tsReader
 			if s.recordingStats {
 				var err2 error

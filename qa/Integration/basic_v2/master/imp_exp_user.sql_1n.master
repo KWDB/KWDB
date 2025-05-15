@@ -139,6 +139,15 @@ INSERT 1
 (1 row)
 > IMPORT INTO db.t1 SQL DATA ("nodelocal://1/test_sql");
 ERROR: Import regular data only supports CSV format
+> DROP TABLE t1;
+DROP TABLE
+> IMPORT TABLE CREATE USING "nodelocal://1/test_sql/meta.sql" SQL DATA ("nodelocal://1/test_sql");
+ERROR: Import regular data only supports CSV format
+> IMPORT TABLE CREATE USING "nodelocal://1/test_sql/meta.sql";
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    0 | 0            | 0           | None
+(1 row)
 > USE defaultdb;
 SET
 > DROP DATABASE db;
