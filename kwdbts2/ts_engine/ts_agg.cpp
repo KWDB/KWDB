@@ -24,12 +24,18 @@ int AggCalculatorV2::cmp(void* l, void* r) {
       return ret;
     }
     case DATATYPE::INT16: {
-      k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
-      return ret;
+      // k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
+      k_int16 lv = *(static_cast<k_int16*>(l));
+      k_int16 rv = *(static_cast<k_int16*>(r));
+      k_int32 diff = static_cast<k_int32>(lv) - static_cast<k_int32>(rv);
+      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
     }
     case DATATYPE::INT32:
     case DATATYPE::TIMESTAMP: {
-      k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
+      // k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
+      k_int32 lv = *(static_cast<k_int32*>(l));
+      k_int32 rv = *(static_cast<k_int32*>(r));
+      k_int64 diff = static_cast<k_int64>(lv) - static_cast<k_int64>(rv);
       return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
     }
     case DATATYPE::INT64:
@@ -137,21 +143,112 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
   return is_overflow;
 }
 
+// MergeAggResultFromBlock
+//
+// This function performs aggregation (COUNT, MIN, MAX, SUM) over a single data block
+// and updates the provided aggregation result buffers in-place.
+//
+// Unlike `CalcAllAgg`, which initializes aggregation state internally and returns a local result,
+// this function **accumulates into pre-initialized global results** (`max_addr`, `min_addr`, `sum_addr`, and `count`).
+//
+// Preconditions:
+// - `max_addr`, `min_addr`, `sum_addr` must point to valid memory initialized to extreme values.
+// - `count` is an accumulated counter that will be incremented.
+// - This function is designed to be called repeatedly across multiple blocks.
+bool AggCalculatorV2::MergeAggResultFromBlock(uint64_t& count, void* max_addr, void* min_addr, void* sum_addr) {
+  bool is_overflow = false;
+
+  for (int i = 0; i < count_; ++i) {
+    if (isnull(i)) {
+      continue;
+    }
+
+    ++count;
+    void* current = reinterpret_cast<void*>((intptr_t)(mem_) + i * size_);
+
+    // === MAX ===
+    if (max_addr != nullptr && cmp(current, max_addr) > 0) {
+      memcpy(max_addr, current, size_);
+    }
+
+    // === MIN ===
+    if (min_addr != nullptr && cmp(current, min_addr) < 0) {
+      memcpy(min_addr, current, size_);
+    }
+
+    // === SUM ===
+    if (isSumType(type_) && sum_addr != nullptr) {
+      if (is_overflow) {
+        continue;
+      }
+
+      switch (type_) {
+        case DATATYPE::INT8:
+          is_overflow = AddAggInteger<int8_t>(
+              *reinterpret_cast<int8_t*>(sum_addr),
+              *reinterpret_cast<int8_t*>(current));
+          break;
+        case DATATYPE::INT16:
+          is_overflow = AddAggInteger<int16_t>(
+              *reinterpret_cast<int16_t*>(sum_addr),
+              *reinterpret_cast<int16_t*>(current));
+          break;
+        case DATATYPE::INT32:
+          is_overflow = AddAggInteger<int32_t>(
+              *reinterpret_cast<int32_t*>(sum_addr),
+              *reinterpret_cast<int32_t*>(current));
+          break;
+        case DATATYPE::INT64:
+          is_overflow = AddAggInteger<int64_t>(
+              *reinterpret_cast<int64_t*>(sum_addr),
+              *reinterpret_cast<int64_t*>(current));
+          break;
+        case DATATYPE::FLOAT:
+          AddAggFloat<float>(
+              *reinterpret_cast<float*>(sum_addr),
+              *reinterpret_cast<float*>(current));
+          break;
+        case DATATYPE::DOUBLE:
+          AddAggFloat<double>(
+              *reinterpret_cast<double*>(sum_addr),
+              *reinterpret_cast<double*>(current));
+          break;
+        case DATATYPE::TIMESTAMP:
+        case DATATYPE::TIMESTAMP64:
+        case DATATYPE::TIMESTAMP64_LSN:
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return is_overflow;
+}
+
+
+bool VarColAggCalculatorV2::isnull(size_t row) {
+  if (!bitmap_) {
+    return false;
+  }
+  size_t byte = row >> 3;
+  size_t bit = 1 << (row & 7);
+  return static_cast<char*>(bitmap_)[byte] & bit;
+}
+
 void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint16_t& count) {
-  // for (int i = 0; i < count_; ++i) {
-  //   if (isnull(i)) {
-  //     continue;
-  //   }
-  //   if (count_addr) {
-  //     *reinterpret_cast<uint16_t*>(count_addr) += 1;
-  //   }
-  // }
-  // TODO(zqh): calc count by isnull
+  count = 0;
+  for (int i = 0; i < count_; ++i) {
+    if (isnull(i)) {
+      continue;
+    }
+    ++count;
+  }
+
   if (var_rows_.empty()) {
     count = 0;
     return;
   }
-  count = count_;
 
   auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
   max = *max_it;
