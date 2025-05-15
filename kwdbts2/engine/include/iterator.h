@@ -300,7 +300,6 @@ class TsStorageIterator {
     }
     return false;
   }
-
   // ts is used for block filter for orderbylimit queries
   int nextBlockItem(k_uint32 entity_id, timestamp64 ts = INVALID_TS);
 
