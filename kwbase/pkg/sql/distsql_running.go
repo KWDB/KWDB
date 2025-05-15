@@ -468,7 +468,6 @@ func (dsp *DistSQLPlanner) Run(
 	// TODO(radu): this should go through the flow scheduler.
 	if err := flow.Run(ctx, func() {}); err != nil {
 		recv.SetError(err)
-		return func() {}
 	}
 	dsp.RowStats = flow.GetStats()
 
