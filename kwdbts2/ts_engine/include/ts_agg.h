@@ -35,6 +35,7 @@ class AggCalculatorV2 {
   }
 
   bool CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
+  bool CalcAllAgg2(uint64_t& count, void* max_addr, void* min_addr, void* sum_addr);
 
  private:
   int cmp(void* l, void* r);

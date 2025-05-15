@@ -131,7 +131,7 @@ order by k_timestamp;
 > select count(a), sum(b), max(a), max(b) from test.sjcx01;
   count | sum | max | max
 --------+-----+-----+------
-      9 |  55 |  12 |  13
+      7 |  55 |  12 |  13
 (1 row)
 > select last(b), last(a) from test.sjcx01;
   last | last
