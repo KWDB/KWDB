@@ -556,7 +556,7 @@ void InitSum(void* ptr, DATATYPE type) {
 
 KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count) {
   if (ts_block_spans_.empty()) {
-    return KStatus::FAIL;
+    return KStatus::SUCCESS;
   }
 
   std::vector<TSSlice> final_agg_data(kw_scan_cols_.size(), TSSlice{nullptr, 0});

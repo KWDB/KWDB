@@ -12,6 +12,7 @@
 #include "ts_agg.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
 
@@ -21,46 +22,87 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
                                void* max_addr, void* min_addr, void* sum_addr) {
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
 
-  if (isVarLenType(dest_type.type)) {
-    LOG_ERROR("VarLenType aggregation not supported yet: type = %d", dest_type.type);
-    return KStatus::FAIL;
-  }
-
-  bool need_max = false, need_min = false, need_sum = false, need_count = false;
-  for (auto agg_type : agg_types) {
-    switch (agg_type) {
-      case Sumfunctype::MAX:   need_max = true; break;
-      case Sumfunctype::MIN:   need_min = true; break;
-      case Sumfunctype::SUM:   need_sum = true; break;
-      case Sumfunctype::COUNT: need_count = true; break;
-      default:
-        LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(agg_type));
-        return KStatus::FAIL;
+  if (!isVarLenType(dest_type.type)) {
+    bool need_max = false, need_min = false, need_sum = false, need_count = false;
+    for (auto agg_type : agg_types) {
+      switch (agg_type) {
+        case Sumfunctype::MAX:   need_max = true; break;
+        case Sumfunctype::MIN:   need_min = true; break;
+        case Sumfunctype::SUM:   need_sum = true; break;
+        case Sumfunctype::COUNT: need_count = true; break;
+        default:
+          LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(agg_type));
+          return KStatus::FAIL;
+      }
     }
+
+    char* value = nullptr;
+    TsBitmap bitmap;
+    auto s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetFixLenColAddr failed.");
+      return s;
+    }
+
+    AggCalculatorV2 calc(value, &bitmap, static_cast<DATATYPE>(dest_type.type), dest_type.size, row_num);
+    uint64_t local_count = 0;
+
+    bool overflow = calc.MergeAggResultFromBlock(
+        need_count ? *count_ptr : local_count,
+        need_max ? max_addr : nullptr,
+        need_min ? min_addr : nullptr,
+        need_sum ? sum_addr : nullptr);
+
+    assert(!overflow);
+
+    return KStatus::SUCCESS;
+  } else {
+    bool need_count = false;
+    for (auto agg_type : agg_types) {
+      if (agg_type == Sumfunctype::COUNT) {
+        need_count = true;
+      } else {
+        LOG_ERROR("VarLenType only supports COUNT currently: type = %d", dest_type.type);
+        return KStatus::FAIL;
+      }
+    }
+
+    if (!need_count) {
+      LOG_ERROR("No supported aggregation type for VarLenType");
+      return KStatus::FAIL;
+    }
+
+    std::vector<std::string> var_mem(row_num);
+    unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(row_num)));
+    if (bitmap == nullptr) {
+      return KStatus::FAIL;
+    }
+    memset(bitmap, 0x00, KW_BITMAP_SIZE(row_num));
+    for (uint32_t i = 0; i < row_num; ++i) {
+      TSSlice var_data;
+      DataFlags flag;
+
+      auto s = convert.GetVarLenTypeColAddr(i + begin_row_idx, col_id, schema, dest_type, flag, var_data);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetVarLenTypeColAddr failed at row %u", i);
+        return s;
+      }
+      if (flag != DataFlags::kValid) {
+        set_null_bitmap(bitmap, i);
+      }
+    }
+
+    VarColAggCalculatorV2 calc(var_mem, bitmap, dest_type.size, row_num);
+    std::string dummy_max, dummy_min;
+    uint16_t local_count = 0;
+    calc.CalcAllAgg(dummy_max, dummy_min, local_count);
+
+    if (count_ptr) {
+      *count_ptr += local_count;
+    }
+    return KStatus::SUCCESS;
   }
-
-  char* value = nullptr;
-  TsBitmap bitmap;
-  auto s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetFixLenColAddr failed.");
-    return s;
-  }
-
-  AggCalculatorV2 calc(value, &bitmap, static_cast<DATATYPE>(dest_type.type), dest_type.size, row_num);
-  uint64_t local_count = 0;
-
-  bool overflow = calc.CalcAllAgg2(
-      need_count ? *count_ptr : local_count,
-      need_max ? max_addr : nullptr,
-      need_min ? min_addr : nullptr,
-      need_sum ? sum_addr : nullptr);
-
-  assert(!overflow);
-
-  return KStatus::SUCCESS;
 }
-
 
 
 KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,

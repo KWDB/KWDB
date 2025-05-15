@@ -143,7 +143,19 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
   return is_overflow;
 }
 
-bool AggCalculatorV2::CalcAllAgg2(uint64_t& count, void* max_addr, void* min_addr, void* sum_addr) {
+// MergeAggResultFromBlock
+//
+// This function performs aggregation (COUNT, MIN, MAX, SUM) over a single data block
+// and updates the provided aggregation result buffers in-place.
+//
+// Unlike `CalcAllAgg`, which initializes aggregation state internally and returns a local result,
+// this function **accumulates into pre-initialized global results** (`max_addr`, `min_addr`, `sum_addr`, and `count`).
+//
+// Preconditions:
+// - `max_addr`, `min_addr`, `sum_addr` must point to valid memory initialized to extreme values.
+// - `count` is an accumulated counter that will be incremented.
+// - This function is designed to be called repeatedly across multiple blocks.
+bool AggCalculatorV2::MergeAggResultFromBlock(uint64_t& count, void* max_addr, void* min_addr, void* sum_addr) {
   bool is_overflow = false;
 
   for (int i = 0; i < count_; ++i) {
@@ -215,21 +227,28 @@ bool AggCalculatorV2::CalcAllAgg2(uint64_t& count, void* max_addr, void* min_add
 }
 
 
+bool VarColAggCalculatorV2::isnull(size_t row) {
+  if (!bitmap_) {
+    return false;
+  }
+  size_t byte = row >> 3;
+  size_t bit = 1 << (row & 7);
+  return static_cast<char*>(bitmap_)[byte] & bit;
+}
+
 void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint16_t& count) {
-  // for (int i = 0; i < count_; ++i) {
-  //   if (isnull(i)) {
-  //     continue;
-  //   }
-  //   if (count_addr) {
-  //     *reinterpret_cast<uint16_t*>(count_addr) += 1;
-  //   }
-  // }
-  // TODO(zqh): calc count by isnull
+  count = 0;
+  for (int i = 0; i < count_; ++i) {
+    if (isnull(i)) {
+      continue;
+    }
+    ++count;
+  }
+
   if (var_rows_.empty()) {
     count = 0;
     return;
   }
-  count = count_;
 
   auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
   max = *max_it;
