@@ -401,6 +401,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     *is_finished = true;
     return KStatus::SUCCESS;
   }
+
   KStatus ret;
   ret = AddMemSegmentBlockSpans();
   if (ret != KStatus::SUCCESS) {
@@ -430,6 +431,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     LOG_ERROR("Failed to aggregate spans for entity(%d).", entity_ids_[cur_entity_index_]);
     return ret;
   }
+
   *is_finished = false;
   ++cur_entity_index_;
   return KStatus::SUCCESS;
