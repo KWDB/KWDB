@@ -323,21 +323,14 @@ EEIteratorErrCode HashTagScanOperator::BuildRelIndex(kwdbContext_p ctx) {
 
   while ((code = rel_batch_queue_->Next(ctx, rel_data_chunk)) != EEIteratorErrCode::EE_END_OF_RECORD) {
     // Check for cancellation within the loop
-    if (CheckCancel(ctx) != SUCCESS) {
-      Return(EEIteratorErrCode::EE_ERROR);
+    if (code != EEIteratorErrCode::EE_OK) {
+      Return(code);
     }
-
-    if (code == EEIteratorErrCode::EE_OK) {
-      if (batch_data_container_->AddRelDataChunkAndBuildLinkedList(dynamic_hash_index_, rel_data_chunk,
+    if (batch_data_container_->AddRelDataChunkAndBuildLinkedList(dynamic_hash_index_, rel_data_chunk,
                                                             primary_rel_cols_, join_column_lengths_,
                                                             rel_join_column_value, total_join_column_length_)
                                                             == KStatus::FAIL) {
-        Return(EEIteratorErrCode::EE_ERROR);
-      }
-    } else if (code == EEIteratorErrCode::EE_TIMESLICE_OUT) {
-      // Continue to get next relational batch
-    } else {
-      Return(code)
+      Return(EEIteratorErrCode::EE_ERROR);
     }
   }
 
@@ -538,11 +531,7 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
 
     DataChunkPtr rel_data_chunk;
     do {
-      while ((code = rel_batch_queue_->Next(ctx, rel_data_chunk)) == EEIteratorErrCode::EE_TIMESLICE_OUT) {
-        if (CheckCancel(ctx) != SUCCESS) {
-          Return(EEIteratorErrCode::EE_ERROR);
-        }
-      }
+      code = rel_batch_queue_->Next(ctx, rel_data_chunk);
       if (code != EEIteratorErrCode::EE_OK) {
         Return(code);
       }
