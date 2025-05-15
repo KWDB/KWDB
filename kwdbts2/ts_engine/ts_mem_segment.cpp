@@ -43,7 +43,8 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
   segment_lock_.unlock();
 }
 
-bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema) {
+bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema,
+                                                int64_t* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
   auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
   if (s != KStatus::SUCCESS) {
@@ -55,16 +56,25 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
     LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
     return false;
   }
+  *lifetime = schema_mgr->GetLifeTime();
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, int64_t acceptable_ts) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
+  // get column info and life time
   std::vector<AttributeInfo> schema;
-  if (!GetMetricSchema(table_id, table_version, schema)) {
-    LOG_ERROR("GetMetricSchema failed.");
+  int64_t life_time = 0;
+  if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &life_time)) {
+    LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
+  }
+  // calculate acceptable timestamp with life time
+  int64_t acceptable_ts = INT64_MIN;
+  if (life_time != 0) {
+    auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+    acceptable_ts = now.time_since_epoch().count() - life_time;
   }
   TSMemSegRowData row_data(vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id), table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);

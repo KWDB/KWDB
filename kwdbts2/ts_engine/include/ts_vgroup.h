@@ -129,7 +129,7 @@ class TsVGroup {
   }
 
   KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
-                  TSEntityID entity_id, TSSlice* payload, int64_t acceptable_ts);
+                  TSEntityID entity_id, TSSlice* payload);
 
   std::filesystem::path GetPath() const;
 

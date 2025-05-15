@@ -139,7 +139,7 @@ class TsTableSchemaManager {
 
   uint64_t GetLifeTime() const;
 
-  void SetLifeTime(uint64_t life_time) const;
+  void SetLifeTime(int64_t life_time) const;
 
   uint64_t GetPartitionInterval() const;
 

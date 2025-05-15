@@ -162,7 +162,7 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
   std::shared_ptr<MMapMetricsTable> blk_version;
   ret = table_schema_mgr_->GetMetricSchema(nullptr, ts_blk_span.GetTableVersion(), &blk_version);
   if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("GetMetricSchema faile. table version [%u]", ts_blk_span.GetTableVersion());
+    LOG_ERROR("GetMetricSchemaAndMeta faile. table version [%u]", ts_blk_span.GetTableVersion());
     return ret;
   }
   auto& blk_version_schema_all = blk_version->getSchemaInfoIncludeDropped();
@@ -401,37 +401,34 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     *is_finished = true;
     return KStatus::SUCCESS;
   }
+  KStatus ret;
+  ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
+              cur_partition_index_, entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
 
-  if (!ts_partitions_.empty()) {
-    KStatus ret;
-    ret = AddMemSegmentBlockSpans();
+  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    ret = AddLastSegmentBlockSpans();
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
+      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
                 cur_partition_index_, entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
     }
 
-    for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-      ret = AddLastSegmentBlockSpans();
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
-                  cur_partition_index_, entity_ids_[cur_entity_index_]);
-        return KStatus::FAIL;
-      }
-
-      ret = AddEntitySegmentBlockSpans();
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
-                  cur_partition_index_, entity_ids_[cur_entity_index_]);
-        return ret;
-      }
-    }
-
-    ret = AggregateBlockSpans(res, count);
+    ret = AddEntitySegmentBlockSpans();
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to aggregate spans for entity(%d).", entity_ids_[cur_entity_index_]);
+      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
       return ret;
     }
+  }
+
+  ret = AggregateBlockSpans(res, count);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to aggregate spans for entity(%d).", entity_ids_[cur_entity_index_]);
+    return ret;
   }
   *is_finished = false;
   ++cur_entity_index_;
@@ -465,7 +462,7 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     std::shared_ptr<MMapMetricsTable> blk_version;
     ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span.GetTableVersion());
+      LOG_ERROR("GetMetricSchemaAndMeta failed. table version [%u]", blk_span.GetTableVersion());
       return ret;
     }
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();

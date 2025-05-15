@@ -87,7 +87,7 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   timestamp64 GetLifeTime() { return meta_data_->life_time; }
 
-  void SetLifeTime(uint64_t ts) { meta_data_->life_time = ts; }
+  void SetLifeTime(int64_t ts) { meta_data_->life_time = ts; }
 
   uint32_t& tableVersionOfLatestData() { return meta_data_->schema_version_of_latest_data;}
 

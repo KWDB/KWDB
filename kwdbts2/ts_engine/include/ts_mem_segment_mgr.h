@@ -303,9 +303,10 @@ class TsMemSegmentManager {
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, int64_t acceptable_ts);
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
 
-  bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
+  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
+                              int64_t* lifetime = nullptr);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks);
 };

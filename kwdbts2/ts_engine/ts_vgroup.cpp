@@ -115,7 +115,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 }
 
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
-                          TSEntityID entity_id, TSSlice* payload, int64_t acceptable_ts) {
+                          TSEntityID entity_id, TSSlice* payload) {
   TS_LSN current_lsn = 1;
   if (engine_options_.wal_level != WALMode::OFF) {
     TS_LSN entry_lsn = 0;
@@ -135,7 +135,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
       return KStatus::FAIL;
     }
   }
-  return mem_segment_mgr_.PutData(*payload, entity_id, current_lsn, acceptable_ts);
+  return mem_segment_mgr_.PutData(*payload, entity_id, current_lsn);
 }
 
 std::filesystem::path TsVGroup::GetPath() const {
@@ -317,7 +317,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
     // TODO(qinlipeng): WARNNING!!!! Since this function is currently not in use, INT64_MIN is temporarily passed in.
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, INT64_MIN);
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
   }
   return s;
 }
@@ -764,23 +764,10 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::T
     LOG_WARN("cannot find tag info for this parimary key.");
     return KStatus::SUCCESS;
   }
-  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
-  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Get table schema manager failed, table id[%ld]", table_id);
-    return s;
-  }
-
-  uint64_t acceptable_ts;
-  auto life_time = tb_schema_mgr->GetLifeTime();
-  if (life_time != 0) {
-    auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-    acceptable_ts = now.time_since_epoch().count() - life_time;
-  }
   assert(vgroup_id == GetVGroupID());
   uint8_t payload_data_flag = p.GetRowType();
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, acceptable_ts);
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
   } else {
     LOG_WARN("no data need inserted.");
   }

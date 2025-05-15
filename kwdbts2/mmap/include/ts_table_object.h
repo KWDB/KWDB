@@ -77,7 +77,7 @@ struct TSTableFileMetadata {
   size_t actul_size;        ///< Actual table size.
   // Possibly depreciated
   size_t checksum;          ///< Weak checksum.
-  size_t life_time;
+  size_t life_time;         // life time: The precision of this value is consistent with the precision of the table.
   char reserved_7[60];
   timestamp64 min_ts;       // minimum timestamp partition
   timestamp64 max_ts;       // maximum timestamp partition

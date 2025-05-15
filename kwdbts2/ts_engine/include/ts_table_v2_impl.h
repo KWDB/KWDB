@@ -81,7 +81,7 @@ class TsTableV2Impl : public TsTable {
     return table_schema_mgr_->GetLifeTime();
   }
 
-  void SetLifeTime(uint64_t ts) {
+  void SetLifeTime(int64_t ts) {
     table_schema_mgr_->SetLifeTime(ts);
   }
 
