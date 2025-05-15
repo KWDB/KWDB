@@ -22,7 +22,7 @@ where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-
 order by k_timestamp;
 select count(*) from test.sjcx01;
 select sum(a), min(b) from test.sjcx01;
-select count(a), sum(b), max(a), max(b) from test.sjcx01;
+select count(a), sum(b), max(a), max(b), min(c), max(c), min(d), max(d) from test.sjcx01;
 select last(b), last(a) from test.sjcx01;
 select * from test.sjcx01 where t1_attribute = 'F6';
 

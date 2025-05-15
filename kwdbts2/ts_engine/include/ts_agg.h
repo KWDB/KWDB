@@ -59,17 +59,10 @@ class VarColAggCalculatorV2 {
     count_ = var_rows.size();
   }
 
-  VarColAggCalculatorV2(const std::vector<string>& var_mem, TsBitmap* bitmap,
-                        int32_t size, int32_t count) :
-                        var_rows_(var_mem), bitmap_(bitmap), size_(size), count_(count) {
-  }
-
   void CalcAllAgg(string& max, string& min, uint16_t& count);
 
  private:
   std::vector<string> var_rows_;
-  TsBitmap* bitmap_ = nullptr;
-  int32_t size_;
   uint16_t count_;
 };
 

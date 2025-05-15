@@ -535,11 +535,15 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     TSSlice& slice = final_agg_data[i];
     char* data_copy = static_cast<char*>(malloc(slice.len));
     memcpy(data_copy, slice.data, slice.len);
-
-    Batch* b = new AggBatch(data_copy, 1, nullptr);
-    b->is_new = true;
-    b->need_free_bitmap = true;
-
+    Batch* b;
+    if (!isVarLenType(attrs_[kw_scan_cols_[i]].type)) {
+      b = new AggBatch(data_copy, 1, nullptr);
+      b->is_new = true;
+      b->need_free_bitmap = true;
+    } else {
+      std::shared_ptr<void> ptr(data_copy, free);
+      b = new AggBatch(ptr, 1, nullptr); 
+    }
     res->push_back(i, b);
     free(slice.data);
   }

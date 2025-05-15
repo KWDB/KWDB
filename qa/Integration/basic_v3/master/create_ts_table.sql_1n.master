@@ -128,10 +128,10 @@ order by k_timestamp;
 ------+------
    35 |   1
 (1 row)
-> select count(a), sum(b), max(a), max(b) from test.sjcx01;
-  count | sum | max | max
---------+-----+-----+------
-      9 |  55 |  12 |  13
+> select count(a), sum(b), max(a), max(b), min(c), max(c), min(d), max(d) from test.sjcx01;
+  count | sum | max | max | min | max | min | max
+--------+-----+-----+-----+-----+-----+-----+------
+      9 |  55 |  12 |  13 |     | H   | A   | G
 (1 row)
 > select last(b), last(a) from test.sjcx01;
   last | last

@@ -104,10 +104,70 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
 
     free(allc_mem);
     return KStatus::SUCCESS;
-  }
+  } else {
+    std::vector<string> var_rows;
+    TsBitmap blk_bitmap;
+    KStatus ret = this->GetColBitmap(col_id, schema, blk_bitmap);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetColBitmap failed. col id [%u]", col_id);
+      return ret;
+    }
+    for (int i = 0; i < row_num; ++i) {
+      TSSlice slice;
+      DataFlags flag;
+      ret = convert.GetVarLenTypeColAddr(i, col_id, schema, dest_type, flag, slice);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetVarLenTypeColAddr failed.");
+        return ret;
+      }
+      if (flag == DataFlags::kValid) {
+        var_rows.emplace_back(slice.data, slice.len);
+      }
+    }
+    VarColAggCalculatorV2 calc(var_rows);
+    string min, max;
+    uint16_t count;
+    calc.CalcAllAgg(min, max, count);
+    for (auto agg_type : agg_types) {
+      TSSlice slice;
 
-  LOG_ERROR("VarLenType aggregation not supported yet: type = %d", dest_type.type);
-  return KStatus::FAIL;
+      if (agg_type == Sumfunctype::COUNT) {
+        slice.len = sizeof(k_uint64);
+        slice.data = static_cast<char*>(malloc(slice.len));
+        if (!slice.data) {
+          LOG_ERROR("Failed to allocate memory for COUNT slice");
+          return KStatus::FAIL;
+        }
+        k_uint64 count_value = static_cast<k_uint64>(count);
+        memcpy(slice.data, &count_value, slice.len);
+      } else {
+        switch (agg_type) {
+          case Sumfunctype::MAX: {
+              slice.len = max.length() + 1 + MMapStringColumn::kStringLenLen;
+              slice.data = static_cast<char*>(malloc(slice.len));
+              KUint16(slice.data) = max.length();
+              memcpy(slice.data + MMapStringColumn::kStringLenLen, max.c_str(), max.length());
+              slice.data[MMapStringColumn::kStringLenLen + max.length()] = 0;
+            }
+            break;
+          case Sumfunctype::MIN: {
+              slice.len = min.length() + 1 + MMapStringColumn::kStringLenLen;
+              slice.data = static_cast<char*>(malloc(slice.len));
+              KUint16(slice.data) = min.length();
+              memcpy(slice.data + MMapStringColumn::kStringLenLen, min.c_str(), min.length());
+              slice.data[MMapStringColumn::kStringLenLen + min.length()] = 0;
+            }
+            break;
+          default:
+            LOG_ERROR("Failed to allocate memory for agg slice");
+            return KStatus::FAIL;
+            break;
+        }
+      }
+      agg_data.push_back(slice);
+    }
+    return KStatus::SUCCESS;
+  }
 }
 
 KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,

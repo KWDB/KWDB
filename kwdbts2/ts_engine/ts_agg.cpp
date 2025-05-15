@@ -138,15 +138,6 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
 }
 
 void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint16_t& count) {
-  // for (int i = 0; i < count_; ++i) {
-  //   if (isnull(i)) {
-  //     continue;
-  //   }
-  //   if (count_addr) {
-  //     *reinterpret_cast<uint16_t*>(count_addr) += 1;
-  //   }
-  // }
-  // TODO(zqh): calc count by isnull
   if (var_rows_.empty()) {
     count = 0;
     return;
