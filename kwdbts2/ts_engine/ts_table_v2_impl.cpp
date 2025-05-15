@@ -170,9 +170,9 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
     vgroup = (*ts_vgroups)[vgroup_iter.first];
     TsStorageIterator* ts_iter;
     // Update ts_span
-    int64_t acceptable_ts = INT64_MIN;
     auto life_time = table_schema_mgr_->GetLifeTime();
     if (life_time != 0) {
+      int64_t acceptable_ts = INT64_MIN;
       auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
       acceptable_ts = now.time_since_epoch().count() - life_time;
       updateTsSpan(acceptable_ts, ts_spans);

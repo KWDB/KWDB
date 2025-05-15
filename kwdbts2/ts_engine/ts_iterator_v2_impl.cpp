@@ -41,7 +41,6 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
 
