@@ -80,25 +80,28 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
   return 0;
 }
 
-KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
                                                const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
   assert(!isVarLenType(dest_type.type));
-  assert(col_id < schema.size());
+  if (blk_col_idx == UINT32_MAX) {
+    *value = nullptr;
+    return SUCCESS;
+  }
   uint32_t dest_type_size = dest_type.size;
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(col_id, schema, blk_bitmap);
+  auto s = block_->GetColBitmap(blk_col_idx, schema, blk_bitmap);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetColBitmap failed. col id [%u]", col_id);
+    LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
   char* blk_value;
-  s = block_->GetColAddr(col_id, schema, &blk_value);
+  s = block_->GetColAddr(blk_col_idx, schema, &blk_value);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetColAddr failed. col id [%u]", col_id);
+    LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
     return s;
   }
   bitmap.SetCount(row_num_);
-  if (isSameType(schema[col_id], dest_type)) {
+  if (isSameType(schema[blk_col_idx], dest_type)) {
     for (size_t i = 0; i < row_num_; i++) {
       DataFlags flag = blk_bitmap[start_row_idx_+ i];
       bitmap[i] = flag;
@@ -118,8 +121,8 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vecto
       }
       void* old_mem = nullptr;
       std::shared_ptr<void> old_var_mem = nullptr;
-      if (!isVarLenType(schema[col_id].type)) {
-        old_mem = blk_value + schema[col_id].size * (start_row_idx_+ i);
+      if (!isVarLenType(schema[blk_col_idx].type)) {
+        old_mem = blk_value + schema[blk_col_idx].size * (start_row_idx_+ i);
       } else {
         // old_var_mem = segment_tbl->varColumnAddr(real_row, ts_col);
         LOG_ERROR("no implementtion");
@@ -127,11 +130,11 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vecto
       }
       // table altered. column type changes.
       std::shared_ptr<void> new_mem;
-      int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[col_id].type),
+      int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[blk_col_idx].type),
                                                 static_cast<DATATYPE>(dest_type.type),
                                                 dest_type_size, old_mem, old_var_mem, &new_mem);
       if (err_code < 0) {
-        LOG_WARN("failed ConvertDataType from %u to %u", schema[col_id].type, dest_type.type);
+        LOG_WARN("failed ConvertDataType from %u to %u", schema[blk_col_idx].type, dest_type.type);
         // todo(liangbo01) make sure if convert failed. value is null.
         bitmap[i] = DataFlags::kNull;
       } else {
@@ -143,17 +146,17 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t col_id, const std::vecto
   return KStatus::SUCCESS;
 }
 
-KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx,
+KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx,
                                                    const std::vector<AttributeInfo>& schema,
                                                    const AttributeInfo& dest_type, DataFlags& flag,
                                                    TSSlice& data) {
   assert(isVarLenType(dest_type.type));
   assert(row_idx < row_num_);
-  assert(col_idx < schema.size());
+  assert(blk_col_idx < schema.size());
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(col_idx, schema, blk_bitmap);
+  auto s = block_->GetColBitmap(blk_col_idx, schema, blk_bitmap);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetColBitmap failed. col id [%u]", col_idx);
+    LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
   flag = blk_bitmap[start_row_idx_+ row_idx];
@@ -162,22 +165,22 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t co
     return KStatus::SUCCESS;
   }
   TSSlice orig_value;
-  s = block_->GetValueSlice(row_idx, col_idx, schema, orig_value);
+  s = block_->GetValueSlice(row_idx, blk_col_idx, schema, orig_value);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, col_idx);
+    LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, blk_col_idx);
     return s;
   }
-  if (isSameType(schema[col_idx], dest_type)) {
+  if (isSameType(schema[blk_col_idx], dest_type)) {
     data = orig_value;
   } else {
-    assert(!isVarLenType(schema[col_idx].type));
+    assert(!isVarLenType(schema[blk_col_idx].type));
     // table altered. column type changes.
     std::shared_ptr<void> new_mem;
-    int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[col_idx].type),
+    int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(schema[blk_col_idx].type),
                                               static_cast<DATATYPE>(dest_type.type),
                                               dest_type.size, orig_value.data, nullptr, &new_mem);
     if (err_code < 0) {
-      LOG_WARN("failed ConvertDataType from %u to %u", schema[col_idx].type, dest_type.type);
+      LOG_WARN("failed ConvertDataType from %u to %u", schema[blk_col_idx].type, dest_type.type);
       // todo(liangbo01) make sure if convert failed. value is null.
       flag = DataFlags::kNull;
     } else {

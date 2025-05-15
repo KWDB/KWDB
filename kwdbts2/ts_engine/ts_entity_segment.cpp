@@ -483,7 +483,7 @@ KStatus TsEntityBlock::Flush(TsVGroupPartition* partition) {
       VarColAggCalculatorV2 aggCalc(block.var_rows);
       string max;
       string min;
-      uint16_t count = 0;
+      uint64_t count = 0;
       aggCalc.CalcAllAgg(max, min, count);
       if (0 == count) {
         continue;

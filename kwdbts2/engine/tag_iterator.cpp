@@ -178,6 +178,10 @@ KStatus EntityGroupTagIterator::Init() {
   }
   // 2. init TagPartitionIterator
   TagVersionObject* result_ver_obj = tag_bt_->GetTagTableVersionManager()->GetVersionObject(table_version_);
+  if (nullptr == result_ver_obj) {
+      LOG_ERROR("GetTagVersionObject failed, version id: %d", table_version_);
+      return FAIL;
+  }
   std::vector<uint32_t> result_scan_tags;
   for (const auto& tag_idx : scan_tags_) {
     result_scan_tags.emplace_back(result_ver_obj->getValidSchemaIdxs()[tag_idx]);

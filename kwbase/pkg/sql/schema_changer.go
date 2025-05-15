@@ -33,6 +33,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -515,6 +516,37 @@ func (sc *SchemaChanger) exec(ctx context.Context) error {
 		if err := startGCJob(
 			ctx, sc.db, sc.jobRegistry, sc.job.Payload().Username, sc.job.Payload().Description, gcDetails,
 		); err != nil {
+			return err
+		}
+		// Unsplit all manually split ranges in the table so they can be
+		// automatically merged by the merge queue.
+		if err := sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			ranges, err := ScanMetaKVs(ctx, txn, tableDesc.TableSpan())
+			if err != nil {
+				return err
+			}
+			for _, r := range ranges {
+				var desc roachpb.RangeDescriptor
+				if err := r.ValueProto(&desc); err != nil {
+					return err
+				}
+				if (desc.GetStickyBit() != hlc.Timestamp{}) || desc.GetRangeType() == roachpb.TS_RANGE {
+					_, keyTableID, _ := keys.DecodeTablePrefix(roachpb.Key(desc.StartKey))
+					// TODO(replica): When dropping a relational table, avoid sending unSplit requests to the time-series range.
+					// Modify the usage of default_replica later
+					if uint64(tableDesc.ID) != keyTableID {
+						continue
+					}
+					// Swallow "key is not the start of a range" errors because it would mean
+					// that the sticky bit was removed and merged concurrently. DROP TABLE
+					// should not fail because of this.
+					if err := sc.db.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
+						return err
+					}
+				}
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 	}

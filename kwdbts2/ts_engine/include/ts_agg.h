@@ -35,10 +35,12 @@ class AggCalculatorV2 {
   }
 
   bool CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
+  bool MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type);
 
  private:
   int cmp(void* l, void* r);
-
+  void InitSumValue(void* ptr);
+  void InitAggData(TSSlice& agg_data);
   bool isnull(size_t row);
 
  private:
@@ -56,14 +58,14 @@ class AggCalculatorV2 {
 class VarColAggCalculatorV2 {
  public:
   explicit VarColAggCalculatorV2(const std::vector<string>& var_rows) : var_rows_(var_rows) {
-    count_ = var_rows.size();
   }
 
-  void CalcAllAgg(string& max, string& min, uint16_t& count);
+  void CalcAllAgg(string& max, string& min, uint64_t& count);
+  void MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type);
 
  private:
   std::vector<string> var_rows_;
-  uint16_t count_;
+  DATATYPE type_;
 };
 
 

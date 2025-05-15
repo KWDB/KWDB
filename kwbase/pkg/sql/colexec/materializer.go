@@ -109,7 +109,7 @@ func NewMaterializer(
 	}
 	if post.Filter.Empty() && len(post.RenderExprs) == 0 && post.Limit == 0 {
 		if v, ok := m.input.(*noopOperator); ok {
-			if _, ok := v.input.(*tsReaderOp); ok {
+			if _, ok := v.input.(*TsReaderOp); ok {
 				m.canShortCircuitForPgEncode = true
 			}
 		}
@@ -258,7 +258,7 @@ func (m *Materializer) ConsumerClosed() {
 // NextPgWire get data from AE by short citcuit.
 func (m *Materializer) NextPgWire() (val []byte, code int, err error) {
 	if v, ok := m.input.(*noopOperator); ok {
-		if v1, ok := v.input.(*tsReaderOp); ok {
+		if v1, ok := v.input.(*TsReaderOp); ok {
 			return v1.NextPgWire()
 		}
 	}

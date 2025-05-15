@@ -12,110 +12,37 @@
 #include "ts_agg.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
 
-KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
-                               uint32_t row_num,
-                               uint32_t col_id,
-                               const std::vector<AttributeInfo>& schema,
-                               const AttributeInfo& dest_type,
-                               std::vector<Sumfunctype> agg_types,
-                               std::vector<TSSlice>& agg_data) {
+KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
+                               const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+                               const Sumfunctype agg_type, TSSlice& agg_data) {
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
-  agg_data.clear();
 
   if (!isVarLenType(dest_type.type)) {
-    bool need_max = false, need_min = false, need_sum = false;
-    for (auto agg_type : agg_types) {
-      switch (agg_type) {
-        case Sumfunctype::MAX: need_max = true; break;
-        case Sumfunctype::MIN: need_min = true; break;
-        case Sumfunctype::SUM: need_sum = true; break;
-        case Sumfunctype::COUNT: break;
-        default:
-          LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(agg_type));
-          return KStatus::FAIL;
-      }
-    }
-
-    // size_t value_size = dest_type.size;
-    size_t value_size = sizeof(int64_t);;
-    size_t total_size = 2 + 3 * value_size;
-    char* allc_mem = reinterpret_cast<char*>(malloc(total_size));
-    if (!allc_mem) {
-      LOG_ERROR("Failed to allocate memory for aggregation result.");
-      return KStatus::FAIL;
-    }
-    memset(allc_mem, 0, total_size);
-
     char* value = nullptr;
     TsBitmap bitmap;
-    auto s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
+    auto s = convert.GetFixLenColAddr(blk_col_idx, schema, dest_type, &value, bitmap);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetFixLenColAddr failed.");
-      free(allc_mem);
       return s;
     }
 
     AggCalculatorV2 calc(value, &bitmap, static_cast<DATATYPE>(dest_type.type), dest_type.size, row_num);
-    bool overflow = calc.CalcAllAgg(
-      *reinterpret_cast<uint16_t*>(allc_mem),
-      need_max ? allc_mem + 2 : nullptr,
-      need_min ? allc_mem + 2 + value_size : nullptr,
-      need_sum ? allc_mem + 2 + 2 * value_size : nullptr);
+    uint64_t local_count = 0;
+
+    bool overflow = calc.MergeAggResultFromBlock(agg_data, agg_type);
+
     assert(!overflow);
-
-    for (auto agg_type : agg_types) {
-      TSSlice slice;
-
-      if (agg_type == Sumfunctype::COUNT) {
-        slice.len = sizeof(k_uint64);
-        slice.data = static_cast<char*>(malloc(slice.len));
-        if (!slice.data) {
-          LOG_ERROR("Failed to allocate memory for COUNT slice");
-          free(allc_mem);
-          return KStatus::FAIL;
-        }
-        k_uint64 count_value = static_cast<k_uint64>(row_num);
-        memcpy(slice.data, &count_value, slice.len);
-      } else {
-        slice.len = value_size;
-        slice.data = static_cast<char*>(malloc(value_size));
-        if (!slice.data) {
-          LOG_ERROR("Failed to allocate memory for agg slice");
-          free(allc_mem);
-          return KStatus::FAIL;
-        }
-
-        size_t offset = 0;
-        switch (agg_type) {
-          case Sumfunctype::MAX: offset = 2; break;
-          case Sumfunctype::MIN: offset = 2 + value_size; break;
-          case Sumfunctype::SUM: offset = 2 + 2 * value_size; break;
-          default: break;
-        }
-
-        memcpy(slice.data, allc_mem + offset, value_size);
-      }
-
-      agg_data.push_back(slice);
-    }
-
-    free(allc_mem);
-    return KStatus::SUCCESS;
   } else {
     std::vector<string> var_rows;
-    TsBitmap blk_bitmap;
-    KStatus ret = this->GetColBitmap(col_id, schema, blk_bitmap);
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetColBitmap failed. col id [%u]", col_id);
-      return ret;
-    }
+    KStatus ret;
     for (int i = 0; i < row_num; ++i) {
       TSSlice slice;
       DataFlags flag;
-      ret = convert.GetVarLenTypeColAddr(i, col_id, schema, dest_type, flag, slice);
+      ret = convert.GetVarLenTypeColAddr(i, blk_col_idx, schema, dest_type, flag, slice);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetVarLenTypeColAddr failed.");
         return ret;
@@ -125,49 +52,9 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx,
       }
     }
     VarColAggCalculatorV2 calc(var_rows);
-    string min, max;
-    uint16_t count;
-    calc.CalcAllAgg(min, max, count);
-    for (auto agg_type : agg_types) {
-      TSSlice slice;
-
-      if (agg_type == Sumfunctype::COUNT) {
-        slice.len = sizeof(k_uint64);
-        slice.data = static_cast<char*>(malloc(slice.len));
-        if (!slice.data) {
-          LOG_ERROR("Failed to allocate memory for COUNT slice");
-          return KStatus::FAIL;
-        }
-        k_uint64 count_value = static_cast<k_uint64>(count);
-        memcpy(slice.data, &count_value, slice.len);
-      } else {
-        switch (agg_type) {
-          case Sumfunctype::MAX: {
-              slice.len = max.length() + 1 + MMapStringColumn::kStringLenLen;
-              slice.data = static_cast<char*>(malloc(slice.len));
-              KUint16(slice.data) = max.length();
-              memcpy(slice.data + MMapStringColumn::kStringLenLen, max.c_str(), max.length());
-              slice.data[MMapStringColumn::kStringLenLen + max.length()] = 0;
-            }
-            break;
-          case Sumfunctype::MIN: {
-              slice.len = min.length() + 1 + MMapStringColumn::kStringLenLen;
-              slice.data = static_cast<char*>(malloc(slice.len));
-              KUint16(slice.data) = min.length();
-              memcpy(slice.data + MMapStringColumn::kStringLenLen, min.c_str(), min.length());
-              slice.data[MMapStringColumn::kStringLenLen + min.length()] = 0;
-            }
-            break;
-          default:
-            LOG_ERROR("Failed to allocate memory for agg slice");
-            return KStatus::FAIL;
-            break;
-        }
-      }
-      agg_data.push_back(slice);
-    }
-    return KStatus::SUCCESS;
+    calc.MergeAggResultFromBlock(agg_data, agg_type);
   }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
@@ -270,25 +157,26 @@ void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
 }
 
 // dest type is fixed len datatype.
-KStatus TsBlockSpan::GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+KStatus TsBlockSpan::GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
-  return convert_.GetFixLenColAddr(col_id, schema, dest_type, value, bitmap);
+  return convert_.GetFixLenColAddr(blk_col_idx, schema, dest_type, value, bitmap);
 }
 
 // dest type is varlen datatype.
-KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
+KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data) {
-  return convert_.GetVarLenTypeColAddr(row_idx, col_idx, schema, dest_type, flag, data);
+  return convert_.GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, dest_type, flag, data);
 }
 
-KStatus TsBlockSpan::GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data) {
-  return block_->GetAggResult(start_row_, nrow_, col_id, schema, dest_type, agg_types, agg_data);
+KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
+ const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data) {
+  return block_->GetAggResult(
+    start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data);
 }
 
-KStatus TsBlockSpan::GetLastInfo(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+KStatus TsBlockSpan::GetLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx) {
-  return block_->GetLastInfo(start_row_, nrow_, col_id, schema, dest_type, out_ts, out_row_idx);
+  return block_->GetLastInfo(start_row_, nrow_, blk_col_idx, schema, dest_type, out_ts, out_row_idx);
 }
 
 void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {

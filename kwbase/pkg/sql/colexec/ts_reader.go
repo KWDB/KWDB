@@ -37,8 +37,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
-// tsReaderOp is an operator that executes ts flow.
-type tsReaderOp struct {
+// TsReaderOp is an operator that executes ts flow.
+type TsReaderOp struct {
 	execinfra.ProcessorBase
 	internalBatch coldata.Batch
 	NonExplainable
@@ -64,11 +64,11 @@ type tsReaderOp struct {
 	Rcv tse.TsDataChunkToGo
 }
 
-var _ Operator = &tsReaderOp{}
+var _ Operator = &TsReaderOp{}
 
 // outputStatsToTrace outputs the collected tableReader stats to the trace. Will
 // fail silently if the tableReader is not collecting stats.
-func (tro *tsReaderOp) outputStatsToTrace() {
+func (tro *TsReaderOp) outputStatsToTrace() {
 	var tsi rowexec.TsInputStats
 	for _, stats := range tro.statsList {
 		tsi.SetTsInputStats(stats)
@@ -89,7 +89,7 @@ func NewTsReaderOp(
 	sid execinfrapb.StreamID,
 	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 ) Operator {
-	tro := &tsReaderOp{sid: sid, tsProcessorSpecs: tsProcessorSpecs, tsHandle: nil,
+	tro := &TsReaderOp{sid: sid, tsProcessorSpecs: tsProcessorSpecs, tsHandle: nil,
 		FlowCtx: flowCtx, EvalCtx: flowCtx.NewEvalCtx(), Ctx: ctx, types: types,
 	}
 	if sp := opentracing.SpanFromContext(flowCtx.EvalCtx.Ctx()); sp != nil && tracing.IsRecording(sp) {
@@ -120,7 +120,8 @@ func NewTSFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfra
 	return spec
 }
 
-func (tro *tsReaderOp) Init() {
+// Init helps implement the Operator interface.
+func (tro *TsReaderOp) Init() {
 	tro.done = false
 	var tsProcessorSpecs = tro.tsProcessorSpecs
 	var randomNumber int
@@ -198,7 +199,8 @@ func (tro *tsReaderOp) Init() {
 	}
 }
 
-func (tro *tsReaderOp) Next(ctx context.Context) coldata.Batch {
+// Next helps implement the Operator interface.
+func (tro *TsReaderOp) Next(ctx context.Context) coldata.Batch {
 	tro.internalBatch.ResetInternalBatch()
 	if tro.done {
 		return coldata.ZeroBatch
@@ -296,7 +298,7 @@ func (tro *tsReaderOp) Next(ctx context.Context) coldata.Batch {
 }
 
 // NextPgWire get data from AE by short citcuit.
-func (tro *tsReaderOp) NextPgWire() (val []byte, code int, err error) {
+func (tro *TsReaderOp) NextPgWire() (val []byte, code int, err error) {
 	var tsQueryInfo = tse.TsQueryInfo{
 		ID:       int(tro.sid),
 		Handle:   tro.tsHandle,
@@ -338,11 +340,12 @@ func (tro *tsReaderOp) NextPgWire() (val []byte, code int, err error) {
 	return respInfo.Buf, respInfo.Code, nil
 }
 
-func (tro *tsReaderOp) ChildCount(verbose bool) int {
+// ChildCount helps implement the Operator interface.
+func (tro *TsReaderOp) ChildCount(verbose bool) int {
 	return 0
 }
 
-func (tro *tsReaderOp) cleanup(ctx context.Context) {
+func (tro *TsReaderOp) cleanup(ctx context.Context) {
 	if tro.tsHandle != nil {
 		var tsCloseInfo tse.TsQueryInfo
 		tsCloseInfo.Handle = tro.tsHandle
@@ -356,6 +359,15 @@ func (tro *tsReaderOp) cleanup(ctx context.Context) {
 	}
 }
 
-func (tro *tsReaderOp) Child(nth int, verbose bool) execinfra.OpNode {
+// Child helps implement the Operator interface.
+func (tro *TsReaderOp) Child(nth int, verbose bool) execinfra.OpNode {
 	return nil
 }
+
+// ConsumerClosed is part of the execinfra.RowSource interface.
+func (tro *TsReaderOp) ConsumerClosed() {
+	tro.cleanup(context.Background())
+}
+
+// RunTS is part of the processor interface.
+func (tro *TsReaderOp) RunTS(ctx context.Context) {}

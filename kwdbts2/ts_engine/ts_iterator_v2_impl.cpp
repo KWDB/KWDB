@@ -8,7 +8,8 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
-
+#include <limits>
+#include <cstring>
 #include "ts_vgroup.h"
 #include "ts_iterator_v2_impl.h"
 
@@ -439,10 +440,10 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
 KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count) {
   if (ts_block_spans_.empty()) {
-    return KStatus::FAIL;
+    return KStatus::SUCCESS;
   }
 
-  std::vector<TSSlice> final_agg_data(kw_scan_cols_.size(), TSSlice{nullptr, 0});
+  std::vector<TSSlice> final_agg_data(ts_scan_cols_.size(), TSSlice{nullptr, 0});
   std::vector<k_uint32> first_cols;
   std::vector<k_uint32> last_cols;
   std::vector<k_uint32> normal_cols;
@@ -460,68 +461,57 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     TsBlockSpan blk_span = ts_block_spans_.front();
     ts_block_spans_.pop_front();
 
-    KStatus ret;
     std::shared_ptr<MMapMetricsTable> blk_version;
-    ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
-    if (ret != KStatus::SUCCESS) {
+    KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
+    if (ret != SUCCESS) {
       LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span.GetTableVersion());
       return ret;
     }
-    auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+    auto& blk_schema_all = blk_version->getSchemaInfoIncludeDropped();
+    auto& blk_schema_valid = blk_version->getSchemaInfoExcludeDropped();
+    auto blk_valid_cols = blk_version->getIdxForValidCols();
 
-    for (k_uint32 i = 0; i < normal_cols.size(); ++i) {
-      std::vector<Sumfunctype> agg_types = {scan_agg_types_[i]};
-      std::vector<TSSlice> agg_data;
+    // calculate columns in current tsblock need to scan.
+    std::vector<uint32_t> blk_scan_cols;
+    blk_scan_cols.resize(ts_scan_cols_.size());
+    for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
+      if (!blk_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
+        bool found = false;
+        size_t j = 0;
+        for (; j < blk_valid_cols.size(); j++) {
+          if (blk_valid_cols[j] == ts_scan_cols_[i]) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          blk_scan_cols[i] = UINT32_MAX;
+          LOG_INFO("not found blk col index for col idx[%u].", ts_scan_cols_[i]);
+        } else {
+          blk_scan_cols[i] = j;
+        }
+      } else {
+        // column is dropped at block version.
+        LOG_INFO("column is dropped at[%u] index for col idx[%u].", blk_span.GetTableVersion(), ts_scan_cols_[i]);
+        blk_scan_cols[i] = UINT32_MAX;
+      }
+    }
 
-      ret = blk_span.GetAggResult(kw_scan_cols_[i], schema_info, attrs_[kw_scan_cols_[i]], agg_types, agg_data);
+    for (k_uint32 idx : normal_cols) {
+      if (scan_agg_types_[idx] == Sumfunctype::COUNT) {
+        final_agg_data[idx].len = sizeof(uint64_t);
+        final_agg_data[idx].data = static_cast<char*>(malloc(final_agg_data[idx].len));
+        memset(final_agg_data[idx].data, 0, final_agg_data[idx].len);
+      }
+
+      ret = blk_span.GetAggResult(
+        blk_scan_cols[idx], blk_schema_valid, attrs_[ts_scan_cols_[idx]], scan_agg_types_[idx], final_agg_data[idx]);
+
       if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to compute aggregation for col_id(%u).", kw_scan_cols_[i]);
+        LOG_ERROR("Failed to compute aggregation for col_idx(%u), block idx[%u]",
+                  ts_scan_cols_[idx], blk_scan_cols[idx]);
         return ret;
       }
-
-      if (agg_data.empty()) {
-        LOG_ERROR("Aggregation result is empty for col_id(%u).", kw_scan_cols_[i]);
-        return KStatus::FAIL;
-      }
-
-      TSSlice& src = agg_data[0];
-      TSSlice& dst = final_agg_data[i];
-
-      if (dst.data == nullptr) {
-        dst.len = src.len;
-        dst.data = static_cast<char*>(malloc(src.len));
-        memcpy(dst.data, src.data, src.len);
-      } else {
-        switch (scan_agg_types_[i]) {
-          case Sumfunctype::COUNT:
-            *reinterpret_cast<k_uint64*>(dst.data) += *reinterpret_cast<k_uint64*>(src.data);
-            break;
-          case Sumfunctype::SUM:
-            switch (attrs_[kw_scan_cols_[i]].type) {
-              case DATATYPE::INT32:
-                *reinterpret_cast<int32_t*>(dst.data) += *reinterpret_cast<int32_t*>(src.data);
-                break;
-              case DATATYPE::INT64:
-                *reinterpret_cast<int64_t*>(dst.data) += *reinterpret_cast<int64_t*>(src.data);
-                break;
-              case DATATYPE::FLOAT:
-                *reinterpret_cast<float*>(dst.data) += *reinterpret_cast<float*>(src.data);
-                break;
-              case DATATYPE::DOUBLE:
-                *reinterpret_cast<double*>(dst.data) += *reinterpret_cast<double*>(src.data);
-                break;
-              default:
-                LOG_ERROR("Unsupported SUM type in merge: %d", attrs_[kw_scan_cols_[i]].type);
-                return KStatus::FAIL;
-            }
-            break;
-          default:
-            LOG_ERROR("Unsupported aggregation type in merge: %d", scan_agg_types_[i]);
-            return KStatus::FAIL;
-        }
-      }
-
-      free(src.data);
     }
   }
 
@@ -531,25 +521,24 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   }
 
   res->clear();
-  for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+  for (k_uint32 i = 0; i < ts_scan_cols_.size(); ++i) {
     TSSlice& slice = final_agg_data[i];
-    char* data_copy = static_cast<char*>(malloc(slice.len));
-    memcpy(data_copy, slice.data, slice.len);
     Batch* b;
-    if (!isVarLenType(attrs_[kw_scan_cols_[i]].type)) {
-      b = new AggBatch(data_copy, 1, nullptr);
+    if (slice.data == nullptr) {
+      b = new AggBatch(nullptr, 0, nullptr);
+    } else if (!isVarLenType(attrs_[kw_scan_cols_[i]].type)) {
+      b = new AggBatch(slice.data, 1, nullptr);
       b->is_new = true;
-      b->need_free_bitmap = true;
     } else {
-      std::shared_ptr<void> ptr(data_copy, free);
+      std::shared_ptr<void> ptr(slice.data, free);
       b = new AggBatch(ptr, 1, nullptr); 
+      b->is_new = true;
     }
     res->push_back(i, b);
-    free(slice.data);
   }
 
   res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-  res->col_num_ = kw_scan_cols_.size();
+  res->col_num_ = ts_scan_cols_.size();
   *count = 1;
 
   return KStatus::SUCCESS;

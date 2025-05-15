@@ -41,9 +41,9 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
-  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
-   const std::vector<AttributeInfo>& schema,
-   const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
+                               const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+                               const Sumfunctype agg_type, TSSlice& agg_data);
 
   virtual KStatus GetLastInfo(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
     const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
@@ -80,16 +80,16 @@ struct TsBlockSpan {
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+  KStatus GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
                              char** value, TsBitmap& bitmap);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t col_idx, const std::vector<AttributeInfo>& schema,
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
 
-  KStatus GetAggResult(uint32_t col_id, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-    std::vector<Sumfunctype> agg_types, std::vector<TSSlice>& agg_data);
+  KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
+    const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data);
 
-  KStatus GetLastInfo(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+  KStatus GetLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx);
 
   void SplitFront(int row_num, TsBlockSpan* front_span);
