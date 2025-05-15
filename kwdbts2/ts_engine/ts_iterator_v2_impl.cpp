@@ -497,20 +497,28 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
       }
     }
 
-    for (k_uint32 idx : normal_cols) {
-      if (scan_agg_types_[idx] == Sumfunctype::COUNT) {
-        final_agg_data[idx].len = sizeof(uint64_t);
-        final_agg_data[idx].data = static_cast<char*>(malloc(final_agg_data[idx].len));
-        memset(final_agg_data[idx].data, 0, final_agg_data[idx].len);
+    for (size_t i = 0; i < blk_scan_cols.size(); i++) {
+      if (blk_scan_cols[i] == UINT32_MAX) {
+        continue;
       }
+      if (scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) {
+        last_cols.push_back(i);
+      } else if (scan_agg_types_[i] == Sumfunctype::FIRST || scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
+        first_cols.push_back(i);
+      } else {
+        if (scan_agg_types_[i] == Sumfunctype::COUNT) {
+          final_agg_data[i].len = sizeof(uint64_t);
+          final_agg_data[i].data = static_cast<char*>(malloc(final_agg_data[i].len));
+          memset(final_agg_data[i].data, 0, final_agg_data[i].len);
+        }
 
-      ret = blk_span.GetAggResult(
-        blk_scan_cols[idx], blk_schema_valid, attrs_[ts_scan_cols_[idx]], scan_agg_types_[idx], final_agg_data[idx]);
+        ret = blk_span.GetAggResult(
+          blk_scan_cols[i], blk_schema_valid, attrs_[blk_scan_cols[i]], scan_agg_types_[i], final_agg_data[i]);
 
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to compute aggregation for col_idx(%u), block idx[%u]",
-                  ts_scan_cols_[idx], blk_scan_cols[idx]);
-        return ret;
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("Failed to compute aggregation for col_idx(%u)", blk_scan_cols[i]);
+          return ret;
+        }
       }
     }
   }
