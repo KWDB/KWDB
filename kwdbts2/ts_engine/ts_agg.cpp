@@ -156,6 +156,9 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
 // - `count` is an accumulated counter that will be incremented.
 // - This function is designed to be called repeatedly across multiple blocks.
 bool AggCalculatorV2::MergeAggResultFromBlock(uint64_t& count, void* max_addr, void* min_addr, void* sum_addr) {
+  if (mem_ == nullptr) {
+    return false;
+  }
   bool is_overflow = false;
 
   for (int i = 0; i < count_; ++i) {
