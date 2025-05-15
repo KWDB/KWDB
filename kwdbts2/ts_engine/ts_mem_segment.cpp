@@ -44,7 +44,7 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema,
-                                                int64_t* lifetime) {
+                                                LifeTime* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
   auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
   if (s != KStatus::SUCCESS) {
@@ -65,16 +65,35 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time
   std::vector<AttributeInfo> schema;
-  int64_t life_time = 0;
+  LifeTime life_time{};
   if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &life_time)) {
     LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
   }
   // calculate acceptable timestamp with life time
   int64_t acceptable_ts = INT64_MIN;
-  if (life_time != 0) {
-    auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-    acceptable_ts = now.time_since_epoch().count() - life_time;
+  if (life_time.ts != 0) {
+    int32_t cal_precision = 0;
+    switch (life_time.precision) {
+      case TIMESTAMP64_LSN:
+      case TIMESTAMP64:
+        cal_precision = 1000;
+      break;
+      case TIMESTAMP64_LSN_MICRO:
+      case TIMESTAMP64_MICRO:
+        cal_precision = 1000000;
+      break;
+      case TIMESTAMP64_LSN_NANO:
+      case TIMESTAMP64_NANO:
+        cal_precision = 1000000000;
+      break;
+      default:
+        assert(false);
+      break;
+
+    }
+    auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+    acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * cal_precision;
   }
   TSMemSegRowData row_data(vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id), table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);

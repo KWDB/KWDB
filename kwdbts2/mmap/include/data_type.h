@@ -183,6 +183,10 @@ enum DATATYPE {
   STRING_CONST = 20002,
 };
 
+struct LifeTime {
+  int64_t ts;  // second
+  int32_t precision;  // TIMESTAMP64, TIMESTAMP64_MICRO, TIMESTAMP64_NANO and LSN type
+};
 
 typedef uint32_t    timestamp;
 typedef int64_t    timestamp64;

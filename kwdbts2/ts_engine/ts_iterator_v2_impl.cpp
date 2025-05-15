@@ -162,7 +162,7 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
   std::shared_ptr<MMapMetricsTable> blk_version;
   ret = table_schema_mgr_->GetMetricSchema(nullptr, ts_blk_span.GetTableVersion(), &blk_version);
   if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("GetMetricSchemaAndMeta faile. table version [%u]", ts_blk_span.GetTableVersion());
+    LOG_ERROR("GetMetricSchema faile. table version [%u]", ts_blk_span.GetTableVersion());
     return ret;
   }
   auto& blk_version_schema_all = blk_version->getSchemaInfoIncludeDropped();
@@ -462,7 +462,7 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     std::shared_ptr<MMapMetricsTable> blk_version;
     ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetMetricSchemaAndMeta failed. table version [%u]", blk_span.GetTableVersion());
+      LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span.GetTableVersion());
       return ret;
     }
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();

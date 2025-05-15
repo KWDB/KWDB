@@ -316,7 +316,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    // TODO(qinlipeng): WARNNING!!!! Since this function is currently not in use, INT64_MIN is temporarily passed in.
     s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
   }
   return s;

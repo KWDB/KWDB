@@ -137,9 +137,9 @@ class TsTableSchemaManager {
 
   void GetAllVersions(std::vector<uint32_t>* table_versions);
 
-  uint64_t GetLifeTime() const;
+  LifeTime GetLifeTime() const;
 
-  void SetLifeTime(int64_t life_time) const;
+  void SetLifeTime(LifeTime life_time) const;
 
   uint64_t GetPartitionInterval() const;
 
