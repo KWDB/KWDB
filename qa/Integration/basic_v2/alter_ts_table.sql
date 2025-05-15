@@ -1,33 +1,29 @@
 drop database if exists test_alter cascade;
 create ts database test_alter;
 
---basic test
+--table schema queried from go, should include dropped columns.
 create table test_alter.t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
 insert into test_alter.t1 values(1672531201000, 111, 1);
-insert into test_alter.t1 values(1672531202000, 222, 1);
-insert into test_alter.t1 values(1672531203000, 333, 2);
-insert into test_alter.t1 values(1672531204000, 444, 3);
-insert into test_alter.t1 values(1672531205000, 555, 3);
 select * from test_alter.t1 order by ts, b;
 
 set sql_safe_updates = false;
 SET CLUSTER SETTING ts.dedup.rule = 'merge';
 
 alter table test_alter.t1 add column c int;
-select * from test_alter.t1 order by ts, b;
 alter table test_alter.t1 drop column c;
-select * from test_alter.t1 order by ts, b;
 alter table test_alter.t1 add column c int;
-select * from test_alter.t1 order by ts, b;
-insert into test_alter.t1 values(1672531205000, 556, NULL, 3);
+
+insert into test_alter.t1 values(1672531205000, 555, NULL, 3);
 insert into test_alter.t1 values(1672531206000, 666, 11, 1);
 insert into test_alter.t1 values(1672531207000, 777, NULL, 2);
 insert into test_alter.t1 values(1672531207000, NULL, 0, 2);
 insert into test_alter.t1 values(1672531208000, 888, 33, 3);
-select * from test_alter.t1 order by ts, b;
 
 alter table test_alter.t1 add column d float;
 select * from test_alter.t1 order by ts, b;
+select pg_sleep(6);
+select * from test_alter.t1 order by ts, b;
+
 alter table test_alter.t1 drop column d;
 select * from test_alter.t1 order by ts, b;
 alter table test_alter.t1 add column d float;

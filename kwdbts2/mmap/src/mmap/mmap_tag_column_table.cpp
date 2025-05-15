@@ -696,9 +696,7 @@ int MMapTagColumnTable::remove() {
   m_meta_data_ = nullptr;
 
   NtagIndexRWMutexXLock();
-  for (const auto& n_index : m_ntag_indexes_) {
-    n_index->clear();
-  }
+  m_ntag_indexes_.clear();
   NtagIndexRWMutexUnLock();
 
   return err_code;
@@ -786,19 +784,6 @@ int MMapTagColumnTable::linkNTagHashIndex(uint32_t table_id, MMapTagColumnTable 
         err_info.errcode = symlink(old_index->realFilePath().c_str(), new_index_path.c_str());
         if (err_info.errcode != 0) {
           LOG_ERROR("create hash index symlink failed")
-          return err_info.errcode;
-        }
-        auto new_index = new MMapNTagHashIndex(old_index->keySize(), old_index->getIndexID(), old_index->getColIDs());
-        err_info.errcode = new_index->open(new_index_file_name, m_db_path_, m_db_name_,
-                                           MMAP_OPEN, err_info);
-        if (err_info.errcode < 0) {
-          delete new_index;
-          new_index = nullptr;
-          old_part->NtagIndexRWMutexUnLock();
-          old_part->stopRead();
-          err_info.errmsg = "create Hash Index failed.";
-          LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
-                    m_db_name_.c_str(), new_index_file_name.c_str(), err_info.errmsg.c_str())
           return err_info.errcode;
         }
         NtagIndexRWMutexXLock();

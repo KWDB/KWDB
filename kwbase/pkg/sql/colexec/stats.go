@@ -141,7 +141,7 @@ func (vsc *VectorizedStatsCollector) FinalizeStats() {
 func (vsc *VectorizedStatsCollector) FinalizeTsStats(span opentracing.Span) rowexec.TsInputStats {
 	if noop, ok := vsc.Operator.(*noopOperator); ok {
 		if vecStats, ok1 := noop.input.(*VectorizedStatsCollector); ok1 {
-			if tsReader, ok2 := vecStats.Operator.(*tsReaderOp); ok2 {
+			if tsReader, ok2 := vecStats.Operator.(*TsReaderOp); ok2 {
 				var tsi rowexec.TsInputStats
 				for _, stats := range tsReader.statsList {
 					tsi.SetTsInputStats(stats)

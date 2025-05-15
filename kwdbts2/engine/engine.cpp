@@ -356,7 +356,15 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
         // Load into cache
         ts_table = table;
       } else {
-        LOG_INFO("open table [%lu] failed.", table_id)
+        // move table directory to tmp directory for parsing error later.
+        string dir_path = options_.db_path + "/" + std::to_string(table_id);
+        if (IsExists(dir_path)) {
+          std::string cmd = "mv " + dir_path + " " + dir_path + "_" + std::to_string(time(0));
+          System(cmd, true, err_info);
+          LOG_WARN("open table failed. cmd:[%s], err info: [%s]", cmd.c_str(), err_info.errmsg.c_str());
+        } else {
+          LOG_INFO("open table [%lu] failed. table no exist.", table_id)
+        }
       }
     }
   }
@@ -380,7 +388,10 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
     }
     CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
     table = tables_cache_->Get(table_id);
-    if (table == nullptr || table->IsDropped()) {
+    if (table == nullptr) {
+      LOG_INFO("Unable to get the created table, try to get it again");
+      return GetTsTable(ctx, table_id, ts_table, create_if_not_exist, err_info, version);
+    } else if (table->IsDropped()) {
       LOG_ERROR("failed during upper version.");
       return KStatus::FAIL;
     }

@@ -711,24 +711,41 @@ int TsSubEntityGroup::RemoveAll(bool is_force, ErrorInfo& err_info) {
     tables.emplace_back(mt_table);
   }
 
+  for (auto it = deleted_partitions_.begin() ; it != deleted_partitions_.end() ; it++) {
+    err_info.clear();
+    TsTimePartition* mt_table = getPartitionTable(it->first, it->second, err_info, false);
+    if (err_info.errcode == KWEDROPPEDOBJ) {  // Ignoring non-existent partition tables (deleted or file corrupted)
+      err_info.clear();
+      continue;
+    }
+    if (err_info.errcode < 0) {
+      break;
+    }
+    tables.emplace_back(mt_table);
+  }
+
   if (err_info.errcode >= 0) {
     // Release all partition tables in cache
     partition_cache_.Clear();
     for (int i = 0 ; i < tables.size() ; i++) {
       if (removePartitionTable(tables[i], is_force, err_info) < 0) {
+        LOG_ERROR("remove partition [%s] failed.", tables[i]->GetPath().c_str());
         break;
       }
       tables[i] = nullptr;
     }
-    // Delete metadata and subgroup directory
-    err_info.errcode = entity_block_meta_->remove();
-    delete entity_block_meta_;
-    entity_block_meta_ = nullptr;
-    partitions_ts_.clear();
+    if (err_info.errcode >= 0) {
+      // Delete metadata and subgroup directory
+      err_info.errcode = entity_block_meta_->remove();
+      delete entity_block_meta_;
+      entity_block_meta_ = nullptr;
+      partitions_ts_.clear();
+      deleted_partitions_.clear();
 
-    err_info.errcode = fs::remove_all(real_path_.c_str());
-    if (err_info.errcode < 0) {
-      LOG_ERROR("remove[%s] error : %s", real_path_.c_str(), strerror(errno));
+      err_info.errcode = fs::remove_all(real_path_.c_str());
+      if (err_info.errcode < 0) {
+        LOG_ERROR("remove[%s] error : %s", real_path_.c_str(), strerror(errno));
+      }
     }
   }
 

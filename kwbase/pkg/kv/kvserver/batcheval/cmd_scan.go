@@ -33,6 +33,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
 func init() {
@@ -81,6 +83,10 @@ func Scan(
 	case roachpb.KEY_VALUES:
 		if args.IsScanAllMvccVerForOneTable {
 			if err := reader.Iterate(args.Key, args.EndKey, func(kv storage.MVCCKeyValue) (bool, error) {
+				if kv.Key.Timestamp.Equal(hlc.Timestamp{}) {
+					log.Infof(ctx, "Find write intent.")
+					return false, nil
+				}
 				v := roachpb.Value{RawBytes: kv.Value}
 				if len(v.RawBytes) != 0 {
 					scanRes.KVs = append(scanRes.KVs, roachpb.KeyValue{Key: kv.Key.Key, Value: roachpb.Value{RawBytes: kv.Value, Timestamp: kv.Key.Timestamp}})

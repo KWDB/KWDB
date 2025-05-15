@@ -764,8 +764,8 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 	//	newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
 	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType,
 		alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
-		log.Infof(ctx, "%s job start, name: %s, id: %d, column/tag name: %s, jobID: %d",
-			opType, d.SNTable.Name, d.SNTable.ID, d.AlterTag.Name, sw.job.ID())
+		log.Infof(ctx, "%s job start, name: %s, id: %d, column/tag name: %s, jobID: %d, current tsVersion: %d",
+			opType, d.SNTable.Name, d.SNTable.ID, d.AlterTag.Name, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 
 		//needCheckReplica := d.Type == alterKwdbAddTag || d.Type == alterKwdbDropTag ||
 		//	d.Type == alterKwdbAlterTagType
@@ -803,7 +803,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
 	case alterKwdbAlterPartitionInterval:
-		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID())
+		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d, current tsVersion: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID
 		var retErr error

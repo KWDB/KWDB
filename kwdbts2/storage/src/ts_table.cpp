@@ -1452,7 +1452,26 @@ KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& ta
   }
 
   if (entity_bt_manager_->GetRootTable(version, true) != nullptr) {
-    return KStatus::SUCCESS;
+    int retry = 6;
+    while (retry > 0) {
+      bool all_ready = true;
+      for (auto& e_grp : entity_groups_) {
+        TagVersionObject* tagVersionObject = e_grp.second->GetSubEntityGroupNewTagbt()->
+                GetTagTableVersionManager()->GetVersionObject(version);
+        if (!tagVersionObject || !tagVersionObject->isValid()) {
+          all_ready = false;
+          break;
+        }
+      }
+      if (all_ready) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      retry--;
+    }
+    if (retry > 0) {
+      return KStatus::SUCCESS;
+    }
   }
 
   char* error;
@@ -3017,17 +3036,6 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
   ErrorInfo err_info;
   auto latest_version = entity_bt_manager_->GetCurrentTableVersion();
   auto upper_version = meta->ts_table().ts_version();
-  // skip in case current table has that schema version
-  LOG_DEBUG("upper version[%u], latest schema version [%u]", upper_version, latest_version);
-  if (upper_version <= latest_version) {
-    auto root_table = entity_bt_manager_->GetRootTable(upper_version, true);
-    if (root_table != nullptr) {
-      *version_schema = root_table;
-      return KStatus::SUCCESS;
-    }
-    LOG_DEBUG("upper version[%u] no exists, need create.", upper_version);
-  }
-
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
   for (int i = 0; i < meta->k_column_size(); i++) {
