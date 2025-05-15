@@ -300,6 +300,10 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
     return;
   }
 
+  if (agg_type == Sumfunctype::COUNT) {
+    KUint64(agg_data.data) += var_rows_.size();
+  }
+
   if (agg_type == Sumfunctype::MAX) {
     auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
     if (agg_data.data) {
