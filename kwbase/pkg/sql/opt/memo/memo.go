@@ -1066,44 +1066,67 @@ func (m *Memo) addOrderedColumn(src *bestProps) {
 // for multiple model processing
 func (m *Memo) IsTsColsJoinPredicate(jp FiltersItem) bool {
 	md := m.Metadata()
-	var tsTypeLeft, tsTypeRight int
-
-	getTsType := func(expr opt.Expr) int {
-		switch e := expr.(type) {
-		case *VariableExpr:
-			colID := e.Col
-			if md.ColumnMeta(colID).Table != 0 {
-				return md.ColumnMeta(colID).TSType
-			}
-			return opt.ColNormal
-		case *MultExpr:
-			for i := 0; i < 2; i++ {
-				if varExpr, ok := e.Child(i).(*VariableExpr); ok {
-					colID := varExpr.Col
-					if md.ColumnMeta(colID).Table != 0 {
-						return md.ColumnMeta(colID).TSType
-					}
-					return opt.ColNormal
-				}
-			}
-		}
-		return opt.ColNormal
-	}
 
 	switch expr := jp.Condition.(type) {
 	case *EqExpr, *LtExpr, *LeExpr, *GtExpr, *GeExpr, *LikeExpr:
-		tsTypeLeft = getTsType(expr.Child(0))
-		tsTypeRight = getTsType(expr.Child(1))
+		existTSColNormalLeft, existTSColLeft := checkJoinFilter(expr.Child(0), md)
+		existTSColNormalRight, existTSColRight := checkJoinFilter(expr.Child(1), md)
+
+		// can not join on TSColNormal.
+		if existTSColNormalLeft || existTSColNormalRight {
+			m.MultimodelHelper.ResetReasons[JoinOnTSMetricsColumn] = struct{}{}
+			return true
+		}
+
+		// can not join on both TSCols.
+		if existTSColLeft && existTSColRight {
+			m.MultimodelHelper.ResetReasons[JoinBetweenTimeSeriesTables] = struct{}{}
+			return true
+		}
+	default:
+		// can not join on TSColNormal.
+		if existTSColNormal, _ := checkJoinFilter(jp.Condition, md); existTSColNormal {
+			m.MultimodelHelper.ResetReasons[JoinOnTSMetricsColumn] = struct{}{}
+			return true
+		}
+		if expr.ChildCount() == 2 {
+			_, existTSColLeft := checkJoinFilter(expr.Child(0), md)
+			_, existTSColRight := checkJoinFilter(expr.Child(1), md)
+
+			// can not join on both TSCols.
+			if existTSColLeft && existTSColRight {
+				m.MultimodelHelper.ResetReasons[JoinBetweenTimeSeriesTables] = struct{}{}
+				return true
+			}
+		}
 	}
 
-	if tsTypeLeft == opt.TSColNormal || tsTypeRight == opt.TSColNormal {
-		m.MultimodelHelper.ResetReasons[JoinOnTSMetricsColumn] = struct{}{}
-		return true
-	} else if tsTypeLeft > opt.ColNormal && tsTypeRight > opt.ColNormal {
-		m.MultimodelHelper.ResetReasons[JoinBetweenTimeSeriesTables] = struct{}{}
-		return true
-	}
 	return false
+}
+
+// checkJoinFilter check if the child of on filter exist TSColNormal or TSCol.
+func checkJoinFilter(expr opt.Expr, md *opt.Metadata) (existTSColNormal, existTSCol bool) {
+	if e, ok := expr.(*VariableExpr); ok {
+		colID := e.Col
+		if md.ColumnMeta(colID).Table != 0 {
+			if md.ColumnMeta(colID).TSType == opt.TSColNormal {
+				return true, true
+			}
+			if md.ColumnMeta(colID).TSType > opt.ColNormal {
+				return false, true
+			}
+		}
+	} else {
+		for i := 0; i < expr.ChildCount(); i++ {
+			existTSColNormal, existTSCol = checkJoinFilter(expr.Child(i), md)
+			if existTSColNormal {
+				return true, true
+			} else if existTSCol {
+				return false, true
+			}
+		}
+	}
+	return false, false
 }
 
 // checkOptPruneFinalAgg checkout can prune final agg for single node mode
