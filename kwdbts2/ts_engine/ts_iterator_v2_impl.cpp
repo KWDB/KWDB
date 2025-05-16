@@ -160,42 +160,14 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
                                                               ResultSet* res, k_uint32* count) {
   *count = ts_blk_span.GetRowNum();
   KStatus ret;
-  std::shared_ptr<MMapMetricsTable> blk_version;
-  ret = table_schema_mgr_->GetMetricSchema(nullptr, ts_blk_span.GetTableVersion(), &blk_version);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("GetMetricSchema faile. table version [%u]", ts_blk_span.GetTableVersion());
-    return ret;
-  }
-  auto& blk_version_schema_all = blk_version->getSchemaInfoIncludeDropped();
-  auto& blk_version_schema_valid = blk_version->getSchemaInfoExcludeDropped();
-  auto blk_version_valid = blk_version->getIdxForValidCols();
-  // calculate columns in current tsblock need to scan.
   std::vector<uint32_t> blk_scan_cols;
-  blk_scan_cols.resize(ts_scan_cols_.size());
-  for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
-    if (!blk_version_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
-      bool found = false;
-      size_t j = 0;
-      for (; j < blk_version_valid.size(); j++) {
-        if (blk_version_valid[j] == ts_scan_cols_[i]) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        blk_scan_cols[i] = UINT32_MAX;
-        LOG_INFO("not found blk col index for col id[%u].", ts_scan_cols_[i]);
-      } else {
-        blk_scan_cols[i] = j;
-      }
-    } else {
-      // column is dropped at block version.
-      LOG_INFO("column is dropped at[%u] index for col id[%u].", ts_blk_span.GetTableVersion(), ts_scan_cols_[i]);
-      blk_scan_cols[i] = UINT32_MAX;
-    }
+  std::vector<AttributeInfo> blk_schema_valid;
+  auto s = GetBlkScanColsInfo(ts_blk_span.GetTableVersion(), blk_scan_cols, blk_schema_valid);
+  if (s != KStatus::SUCCESS) {
+    return s;
   }
 
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+  for (int i = 0; i < ts_scan_cols_.size(); ++i) {
     k_uint32 col_idx = ts_scan_cols_[i];
     auto blk_col_idx = blk_scan_cols[i];
     Batch* batch;
@@ -213,7 +185,7 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
         TsBitmap ts_bitmap;
         char* value;
         char* res_value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
-        ret = ts_blk_span.GetFixLenColAddr(blk_col_idx, blk_version_schema_valid, attrs_[col_idx], &value, ts_bitmap);
+        ret = ts_blk_span.GetFixLenColAddr(blk_col_idx, blk_schema_valid, attrs_[col_idx], &value, ts_bitmap);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
@@ -234,7 +206,7 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
         TSSlice var_data;
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
           ret = ts_blk_span.GetVarLenTypeColAddr(
-            row_idx, blk_col_idx, blk_version_schema_valid, attrs_[col_idx], bitmap_var, var_data);
+            row_idx, blk_col_idx, blk_schema_valid, attrs_[col_idx], bitmap_var, var_data);
           if (bitmap_var != DataFlags::kValid) {
             set_null_bitmap(bitmap, row_idx);
             batch->push_back(nullptr);
@@ -254,6 +226,50 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
   }
   res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
 
+  return KStatus::SUCCESS;
+}
+
+KStatus TsStorageIteratorV2Impl::GetBlkScanColsInfo(uint32_t version,
+                                 std::vector<uint32_t>& scan_cols, vector<AttributeInfo>& valid_schema) {
+  std::shared_ptr<MMapMetricsTable> blk_version;
+  KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, version, &blk_version);
+  if (ret != SUCCESS) {
+    LOG_ERROR("GetMetricSchema failed. table version [%u]", version);
+    return ret;
+  }
+  auto& blk_schema_all = blk_version->getSchemaInfoIncludeDropped();
+  valid_schema = blk_version->getSchemaInfoExcludeDropped();
+  auto blk_valid_cols = blk_version->getIdxForValidCols();
+
+  if (const auto it = blk_scan_cols_.find(version); it != blk_scan_cols_.end()) {
+    scan_cols = it->second;
+    return KStatus::SUCCESS;
+  }
+
+  // calculate column index in current block
+  std::vector<uint32_t> blk_scan_cols;
+  blk_scan_cols.resize(ts_scan_cols_.size());
+  for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
+    if (!blk_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
+      bool found = false;
+      size_t j = 0;
+      for (; j < blk_valid_cols.size(); j++) {
+        if (blk_valid_cols[j] == ts_scan_cols_[i]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        blk_scan_cols[i] = UINT32_MAX;
+      } else {
+        blk_scan_cols[i] = j;
+      }
+    } else {
+      blk_scan_cols[i] = UINT32_MAX;
+    }
+  }
+  blk_scan_cols_.insert({version, blk_scan_cols});
+  scan_cols = blk_scan_cols;
   return KStatus::SUCCESS;
 }
 
@@ -595,46 +611,16 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     TsBlockSpan blk_span = ts_block_spans_.front();
     ts_block_spans_.pop_front();
 
-    std::shared_ptr<MMapMetricsTable> blk_version;
-    KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
-    if (ret != SUCCESS) {
-      LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_span.GetTableVersion());
-      return ret;
-    }
-    auto& blk_schema_all = blk_version->getSchemaInfoIncludeDropped();
-    auto& blk_schema_valid = blk_version->getSchemaInfoExcludeDropped();
-    auto blk_valid_cols = blk_version->getIdxForValidCols();
-
-    // calculate columns in current tsblock need to scan.
     std::vector<uint32_t> blk_scan_cols;
-    blk_scan_cols.resize(ts_scan_cols_.size());
-    for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
-      if (!blk_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
-        bool found = false;
-        size_t j = 0;
-        for (; j < blk_valid_cols.size(); j++) {
-          if (blk_valid_cols[j] == ts_scan_cols_[i]) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          blk_scan_cols[i] = UINT32_MAX;
-          LOG_INFO("not found blk col index for col idx[%u].", ts_scan_cols_[i]);
-        } else {
-          blk_scan_cols[i] = j;
-        }
-      } else {
-        // column is dropped at block version.
-        LOG_INFO("column is dropped at[%u] index for col idx[%u].", blk_span.GetTableVersion(), ts_scan_cols_[i]);
-        blk_scan_cols[i] = UINT32_MAX;
-      }
+    std::vector<AttributeInfo> blk_schema_valid;
+    auto s = GetBlkScanColsInfo(blk_span.GetTableVersion(), blk_scan_cols, blk_schema_valid);
+    if (s != KStatus::SUCCESS) {
+      return s;
     }
-
     for (k_uint32 idx : normal_cols) {
       std::vector<Sumfunctype> agg_types = {scan_agg_types_[idx]};
 
-      ret = blk_span.GetAggResult(
+      auto ret = blk_span.GetAggResult(
         blk_scan_cols[idx], blk_schema_valid, attrs_[ts_scan_cols_[idx]], agg_types,
         &agg_results[idx].count,
         agg_results[idx].max,
@@ -700,7 +686,6 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
 
     Batch* b = new AggBatch(slice.data, 1, nullptr);
     b->is_new = true;
-    // b->need_free_bitmap = true;
 
     res->push_back(i, b);
   }

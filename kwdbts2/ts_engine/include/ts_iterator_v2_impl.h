@@ -57,6 +57,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans();
   KStatus ScanPartitionBlockSpans();
+  KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
+                              vector<AttributeInfo>& valid_schema);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -68,6 +70,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
 
   std::list<TsBlockSpan> ts_block_spans_;
+  std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
