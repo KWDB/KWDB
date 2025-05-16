@@ -143,6 +143,42 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
   return is_overflow;
 }
 
+inline void AggCalculatorV2::InitSumValue(void* ptr) {
+  switch (type_) {
+    case DATATYPE::INT8:
+      *static_cast<int8_t*>(ptr) = 0;
+      break;
+    case DATATYPE::INT16:
+      *static_cast<int16_t*>(ptr) = 0;
+      break;
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP:
+      *static_cast<int32_t*>(ptr) = 0;
+      break;
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO:
+      *static_cast<int64_t*>(ptr) = 0;
+      break;
+    case DATATYPE::FLOAT:
+      *static_cast<float*>(ptr) = 0.0f;
+      break;
+    case DATATYPE::DOUBLE:
+      *static_cast<double*>(ptr) = 0.0;
+      break;
+    default:
+      break;
+  }
+}
+
+
+inline void AggCalculatorV2::InitAggData(TSSlice& agg_data) {
+  agg_data.len = sizeof(uint64_t);
+  agg_data.data = static_cast<char*>(malloc(agg_data.len));
+  memset(agg_data.data, 0, agg_data.len);
+}
+
 // MergeAggResultFromBlock
 //
 // This function performs aggregation (COUNT, MIN, MAX, SUM) over a single data block
@@ -155,7 +191,7 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
 // - `max_addr`, `min_addr`, `sum_addr` must point to valid memory initialized to extreme values.
 // - `count` is an accumulated counter that will be incremented.
 // - This function is designed to be called repeatedly across multiple blocks.
-bool AggCalculatorV2::MergeAggResultFromBlock(uint64_t& count, void* max_addr, void* min_addr, void* sum_addr) {
+bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type) {
   if (mem_ == nullptr) {
     return false;
   }
@@ -166,54 +202,71 @@ bool AggCalculatorV2::MergeAggResultFromBlock(uint64_t& count, void* max_addr, v
       continue;
     }
 
-    ++count;
+    if (agg_type == Sumfunctype::COUNT) {
+      ++(KUint64(agg_data.data));
+    }
+
     void* current = reinterpret_cast<void*>((intptr_t)(mem_) + i * size_);
 
     // === MAX ===
-    if (max_addr != nullptr && cmp(current, max_addr) > 0) {
-      memcpy(max_addr, current, size_);
+    if (agg_type == Sumfunctype::MAX) {
+      if (agg_data.data == nullptr) {
+        InitAggData(agg_data);
+        memcpy(agg_data.data, current, size_);
+      } else if (cmp(current, agg_data.data) > 0) {
+        memcpy(agg_data.data, current, size_);
+      }
     }
 
     // === MIN ===
-    if (min_addr != nullptr && cmp(current, min_addr) < 0) {
-      memcpy(min_addr, current, size_);
+    if (agg_type == Sumfunctype::MIN) {
+      if (agg_data.data == nullptr) {
+        InitAggData(agg_data);
+        memcpy(agg_data.data, current, size_);
+      } else if (cmp(current, agg_data.data) < 0) {
+        memcpy(agg_data.data, current, size_);
+      }
     }
 
     // === SUM ===
-    if (isSumType(type_) && sum_addr != nullptr) {
+    if (agg_type == Sumfunctype::SUM && isSumType(type_)) {
       if (is_overflow) {
         continue;
+      }
+      if (agg_data.data == nullptr) {
+        InitAggData(agg_data);
+        InitSumValue(agg_data.data);
       }
 
       switch (type_) {
         case DATATYPE::INT8:
           is_overflow = AddAggInteger<int8_t>(
-              *reinterpret_cast<int8_t*>(sum_addr),
+              *reinterpret_cast<int8_t*>(agg_data.data),
               *reinterpret_cast<int8_t*>(current));
           break;
         case DATATYPE::INT16:
           is_overflow = AddAggInteger<int16_t>(
-              *reinterpret_cast<int16_t*>(sum_addr),
+              *reinterpret_cast<int16_t*>(agg_data.data),
               *reinterpret_cast<int16_t*>(current));
           break;
         case DATATYPE::INT32:
           is_overflow = AddAggInteger<int32_t>(
-              *reinterpret_cast<int32_t*>(sum_addr),
+              *reinterpret_cast<int32_t*>(agg_data.data),
               *reinterpret_cast<int32_t*>(current));
           break;
         case DATATYPE::INT64:
           is_overflow = AddAggInteger<int64_t>(
-              *reinterpret_cast<int64_t*>(sum_addr),
+              *reinterpret_cast<int64_t*>(agg_data.data),
               *reinterpret_cast<int64_t*>(current));
           break;
         case DATATYPE::FLOAT:
           AddAggFloat<float>(
-              *reinterpret_cast<float*>(sum_addr),
+              *reinterpret_cast<float*>(agg_data.data),
               *reinterpret_cast<float*>(current));
           break;
         case DATATYPE::DOUBLE:
           AddAggFloat<double>(
-              *reinterpret_cast<double*>(sum_addr),
+              *reinterpret_cast<double*>(agg_data.data),
               *reinterpret_cast<double*>(current));
           break;
         case DATATYPE::TIMESTAMP:
@@ -229,25 +282,7 @@ bool AggCalculatorV2::MergeAggResultFromBlock(uint64_t& count, void* max_addr, v
   return is_overflow;
 }
 
-
-bool VarColAggCalculatorV2::isnull(size_t row) {
-  if (!bitmap_) {
-    return false;
-  }
-  size_t byte = row >> 3;
-  size_t bit = 1 << (row & 7);
-  return static_cast<char*>(bitmap_)[byte] & bit;
-}
-
-void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint16_t& count) {
-  count = 0;
-  for (int i = 0; i < count_; ++i) {
-    if (isnull(i)) {
-      continue;
-    }
-    ++count;
-  }
-
+void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint64_t& count) {
   if (var_rows_.empty()) {
     count = 0;
     return;
@@ -258,6 +293,52 @@ void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint16_t& count
 
   auto min_it = std::min_element(var_rows_.begin(), var_rows_.end());
   min = *min_it;
+}
+
+void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type) {
+  if (var_rows_.empty()) {
+    return;
+  }
+
+  if (agg_type == Sumfunctype::COUNT) {
+    KUint64(agg_data.data) += var_rows_.size();
+  }
+
+  if (agg_type == Sumfunctype::MAX) {
+    auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
+    if (agg_data.data) {
+      string current_max({agg_data.data + kStringLenLen, agg_data.len});
+      if (current_max < *max_it) {
+        free(agg_data.data);
+        agg_data.data = nullptr;
+      }
+    }
+    if (agg_data.data == nullptr) {
+      // Can we use the memory in var_rows?
+      agg_data.len = max_it->length() + kStringLenLen;
+      agg_data.data = static_cast<char*>(malloc(agg_data.len));
+      KUint16(agg_data.data) = max_it->length();
+      memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
+    }
+  }
+
+  if (agg_type == Sumfunctype::MIN) {
+    auto min_it = std::min_element(var_rows_.begin(), var_rows_.end());
+    if (agg_data.data) {
+      string current_min({agg_data.data + kStringLenLen, agg_data.len});
+      if (current_min < *min_it) {
+        free(agg_data.data);
+        agg_data.data = nullptr;
+      }
+    }
+    if (agg_data.data == nullptr) {
+      // Can we use the memory in var_rows?
+      agg_data.len = min_it->length() + kStringLenLen;
+      agg_data.data = static_cast<char*>(malloc(agg_data.len));
+      KUint16(agg_data.data) = min_it->length();
+      memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
+    }
+  }
 }
 
 }  // namespace kwdbts
