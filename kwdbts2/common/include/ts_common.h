@@ -36,6 +36,9 @@ class MMapSegmentTable;
 
 extern uint32_t k_per_null_bitmap_size;
 
+inline constexpr int kStringLenLen = sizeof(uint16_t);
+inline constexpr int kEndCharacterLen = sizeof(char);
+
 template <class T>
 class Defer {
  public:
@@ -279,10 +282,10 @@ struct VarTagBatch : public Batch {
   }
 
   int writeDataExcludeLen(uint32_t row_idx, void* data, uint16_t var_len) {
-    if (next_record_ptr_ + var_len + MMapStringColumn::kStringLenLen + MMapStringColumn::kEndCharacterLen > var_end_) {
+    if (next_record_ptr_ + var_len + kStringLenLen + kEndCharacterLen > var_end_) {
       size_t total_realloc_size = std::max(2 * total_size_, (uint32_t)var_len +
-                                                            MMapStringColumn::kStringLenLen +
-                                                            MMapStringColumn::kEndCharacterLen);
+                                                            kStringLenLen +
+                                                            kEndCharacterLen);
       var_data_ = reinterpret_cast<char*>(std::malloc(total_realloc_size));
       if (nullptr == var_data_) {
         LOG_ERROR("VarTagBatch out of memory. total size: %u extend size: %lu", total_size_, total_realloc_size);
@@ -295,14 +298,14 @@ struct VarTagBatch : public Batch {
     }
     var_data_ptrs_[row_idx] = next_record_ptr_;
 
-    *reinterpret_cast<uint16_t*>(next_record_ptr_) = var_len + MMapStringColumn::kEndCharacterLen;
-    next_record_ptr_ += MMapStringColumn::kStringLenLen;
+    *reinterpret_cast<uint16_t*>(next_record_ptr_) = var_len + kEndCharacterLen;
+    next_record_ptr_ += kStringLenLen;
 
     memcpy(next_record_ptr_, data, var_len);
     next_record_ptr_ += var_len;
 
     *next_record_ptr_ = 0x00;
-    next_record_ptr_ += MMapStringColumn::kEndCharacterLen;
+    next_record_ptr_ += kEndCharacterLen;
     return 0;
   }
 

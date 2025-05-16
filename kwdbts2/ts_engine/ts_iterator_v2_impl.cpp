@@ -239,10 +239,9 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
             set_null_bitmap(bitmap, row_idx);
             batch->push_back(nullptr);
           } else {
-            char* buffer = static_cast<char*>(malloc(var_data.len + 2 + 1));
+            char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
             KUint16(buffer) = var_data.len;
-            memcpy(buffer + 2, var_data.data, var_data.len);
-            *(buffer + var_data.len + 2) = 0;
+            memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
             std::shared_ptr<void> ptr(buffer, free);
             batch->push_back(ptr);
           }

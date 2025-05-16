@@ -494,8 +494,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       m_str_file_->rdLock();
       char* data = m_str_file_->getStringAddr(offset);
       uint16_t len = *(reinterpret_cast<uint16_t*>(data));
-      void* var_data = std::malloc(len + MMapStringColumn::kStringLenLen);
-      memcpy(var_data, data, len + MMapStringColumn::kStringLenLen);
+      void* var_data = std::malloc(len + kStringLenLen);
+      memcpy(var_data, data, len + kStringLenLen);
       std::shared_ptr<void> ptr(var_data, free);
       m_str_file_->unLock();
       return ptr;
@@ -512,8 +512,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       m_str_file_->rdLock();
       char* data = m_str_file_->getStringAddr(offset);
       uint16_t len = *(reinterpret_cast<uint16_t*>(data));
-      void* var_data = std::malloc(len + MMapStringColumn::kStringLenLen);
-      memcpy(var_data, data, len + MMapStringColumn::kStringLenLen);
+      void* var_data = std::malloc(len + kStringLenLen);
+      memcpy(var_data, data, len + kStringLenLen);
       std::shared_ptr<void> ptr(var_data, free);
       m_str_file_->unLock();
       return ptr;
@@ -537,8 +537,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       m_str_file_->rdLock();
       char* data = m_str_file_->getStringAddr(offset);
       uint16_t len = *(reinterpret_cast<uint16_t*>(data));
-      void* var_data = std::malloc(len + MMapStringColumn::kStringLenLen);
-      memcpy(var_data, data, len + MMapStringColumn::kStringLenLen);
+      void* var_data = std::malloc(len + kStringLenLen);
+      memcpy(var_data, data, len + kStringLenLen);
       std::shared_ptr<void> ptr(var_data, free);
       m_str_file_->unLock();
       return ptr;

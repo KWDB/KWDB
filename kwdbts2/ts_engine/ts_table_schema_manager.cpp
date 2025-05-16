@@ -681,16 +681,11 @@ KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::K
       break;
     case roachpb::VARCHAR:
       attr_info.type = DATATYPE::VARSTRING;
-      attr_info.max_len = col.storage_len() - 1;  // because varchar len will +1 when store
+      attr_info.max_len = col.storage_len();
       break;
     case roachpb::NVARCHAR:
     case roachpb::VARBINARY:
       attr_info.type = DATATYPE::VARBINARY;
-      attr_info.max_len = col.storage_len();
-      break;
-    case roachpb::SDECHAR:
-    case roachpb::SDEVARCHAR:
-      attr_info.type = DATATYPE::STRING;
       attr_info.max_len = col.storage_len();
       break;
     default:

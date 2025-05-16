@@ -55,16 +55,11 @@ bool ParseToAttributeInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr
       break;
     case roachpb::VARCHAR:
       attr_info.type = DATATYPE::VARSTRING;
-      attr_info.max_len = col.storage_len() - 1;  // because varchar len will +1 when store
+      attr_info.max_len = col.storage_len();
       break;
     case roachpb::NVARCHAR:
     case roachpb::VARBINARY:
       attr_info.type = DATATYPE::VARBINARY;
-      attr_info.max_len = col.storage_len();
-      break;
-    case roachpb::SDECHAR:
-    case roachpb::SDEVARCHAR:
-      attr_info.type = DATATYPE::STRING;
       attr_info.max_len = col.storage_len();
       break;
     default:
@@ -125,14 +120,10 @@ bool ParseToColumnInfo(struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& 
       break;
     case DATATYPE::VARSTRING:
       col.set_storage_type(roachpb::VARCHAR);
-      col.set_storage_len(attr_info.max_len + 1);  // varchar(len) + 1
+      col.set_storage_len(attr_info.max_len);
       break;
     case DATATYPE::VARBINARY:
       col.set_storage_type(roachpb::VARBINARY);
-      col.set_storage_len(attr_info.max_len);
-      break;
-    case DATATYPE::STRING:
-      col.set_storage_type(roachpb::SDECHAR);
       col.set_storage_len(attr_info.max_len);
       break;
     case DATATYPE::INVALID:
@@ -201,9 +192,6 @@ bool ParseTagColumnInfo(struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col) {
       break;
     case DATATYPE::VARBINARY:
       col.set_storage_type(roachpb::VARBINARY);
-      break;
-    case DATATYPE::STRING:
-      col.set_storage_type(roachpb::SDECHAR);
       break;
     case DATATYPE::INVALID:
     default:

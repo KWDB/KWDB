@@ -141,8 +141,6 @@ std::vector<ZTableColumnMeta> g_all_col_types({
   {roachpb::DataType::NVARCHAR, 8, 21, roachpb::VariableLengthType::ColStorageTypeTuple},  // 11
   {roachpb::DataType::VARBINARY, 8, 23, roachpb::VariableLengthType::ColStorageTypeTuple},
   {roachpb::DataType::TIMESTAMPTZ, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple},
-  // {roachpb::DataType::SDECHAR, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple},
-  // {roachpb::DataType::SDEVARCHAR, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple},
 });
 
 void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uint32_t db_id = 1) {

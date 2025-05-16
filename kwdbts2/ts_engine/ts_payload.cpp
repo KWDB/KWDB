@@ -40,7 +40,7 @@ bool TsRawPayloadRowParser::GetColValueAddr(const TSSlice& row_data, int col_id,
   } else {
     size_t actual_offset = KUint64(row_data.data + col_offset_[col_id]);
     col_data->len = KUint16(row_data.data + actual_offset);
-    col_data->data = row_data.data + actual_offset + 2;
+    col_data->data = row_data.data + actual_offset + kStringLenLen;
   }
   return true;
 }

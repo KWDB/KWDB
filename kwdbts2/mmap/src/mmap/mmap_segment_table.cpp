@@ -74,7 +74,7 @@ KStatus push_back_payload_with_conv(kwdbts::Payload* payload, char* value, const
         }
         void* old_var_mem = old_mem;
         int32_t old_var_len = KUint16(old_var_mem);  // payload->GetVarColumnLen(start_row + idx, col_idx);
-        convertStrToFixed((char*) old_var_mem + MMapStringColumn::kStringLenLen,
+        convertStrToFixed((char*) old_var_mem + kStringLenLen,
                           new_type, value + idx * new_len, old_var_len, err_info);
       }
     } else {
@@ -106,23 +106,23 @@ std::shared_ptr<void> ConvertToVarLenBeforePush(kwdbts::Payload* payload, DATATY
       uint16_t var_c_len = KUint16(var_addr_with_len);
       old_value = {var_addr_with_len + sizeof(uint16_t), var_c_len};
     } else {
-      old_value = {payload->GetVarColumnAddr(start_row, col_idx) + MMapStringColumn::kStringLenLen,
+      old_value = {payload->GetVarColumnAddr(start_row, col_idx) + kStringLenLen,
                    payload->GetVarColumnLen(start_row, col_idx)};
     }
     if (old_type == VARSTRING) {
       auto old_len = uint16_t(old_value.len) - 1;
-      char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen));
-      memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen);
+      char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen));
+      memset(var_data, 0, old_len + kStringLenLen);
       KUint16(var_data) = old_len;
-      memcpy(var_data + MMapStringColumn::kStringLenLen, (char*) old_value.data, old_len);
+      memcpy(var_data + kStringLenLen, (char*) old_value.data, old_len);
       std::shared_ptr<void> ptr(var_data, free);
       data = ptr;
     } else {
       auto old_len = uint16_t(old_value.len);
-      char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen + 1));
-      memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen + 1);
+      char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen + 1));
+      memset(var_data, 0, old_len + kStringLenLen + 1);
       KUint16(var_data) = old_len + 1;
-      memcpy(var_data + MMapStringColumn::kStringLenLen, (char*) old_value.data, old_len);
+      memcpy(var_data + kStringLenLen, (char*) old_value.data, old_len);
       std::shared_ptr<void> ptr(var_data, free);
       data = ptr;
     }
@@ -703,8 +703,8 @@ int MMapSegmentTable::putDataIntoVarFile(char* var_value, DATATYPE type, size_t*
   }
   // When writing data, variable-length data is first written to the string_file file to obtain the offset,
   // and then written to the data block in the data column using memcpy.
-  void* data_start = var_value + MMapStringColumn::kStringLenLen;
-  size_t data_len = var_value_len - MMapStringColumn::kStringLenLen;
+  void* data_start = var_value + kStringLenLen;
+  size_t data_len = var_value_len - kStringLenLen;
   if (type == DATATYPE::VARSTRING) {
     *loc = m_str_file_->push_back(data_start, data_len);
   } else {
@@ -906,9 +906,6 @@ int MMapSegmentTable::push_back_var_payload(kwdbts::Payload* payload, MetricRowI
         if (has_merge_value) {  // reuse string in stringfile.
           var_addr_with_len = reinterpret_cast<char*>(merge_value.value.get());
           var_c_len = KUint16(var_addr_with_len);
-          if (cols_info_include_dropped_[segment_column].type == DATATYPE::VARSTRING) {
-            var_c_len -= 1;
-          }
         } else {
           var_c_len = payload->GetVarColumnLen(payload_start_row, payload_column_idx);
           var_addr_with_len = payload->GetVarColumnAddr(payload_start_row, payload_column_idx);
@@ -938,18 +935,18 @@ int MMapSegmentTable::push_back_var_payload(kwdbts::Payload* payload, MetricRowI
         if (!need_convert) {
           if (cols_info_include_dropped_[segment_column].type == DATATYPE::VARSTRING) {
             loc = m_str_file_->push_back(
-                (void*) (var_addr_with_len + MMapStringColumn::kStringLenLen), var_c_len);
+                (void*) (var_addr_with_len + kStringLenLen), var_c_len);
           } else {
             loc = m_str_file_->push_back_binary(
-                (void*) (var_addr_with_len + MMapStringColumn::kStringLenLen), var_c_len);
+                (void*) (var_addr_with_len + kStringLenLen), var_c_len);
           }
         } else {
           if (cols_info_include_dropped_[segment_column].type == DATATYPE::VARSTRING) {
             loc = m_str_file_->push_back(
-                (void*) ((char*)data.get() + MMapStringColumn::kStringLenLen), var_c_len);
+                (void*) ((char*)data.get() + kStringLenLen), var_c_len);
           } else {
             loc = m_str_file_->push_back_binary(
-                (void*) ((char*)data.get() + MMapStringColumn::kStringLenLen), var_c_len);
+                (void*) ((char*)data.get() + kStringLenLen), var_c_len);
           }
         }
 
@@ -1323,11 +1320,11 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
       if (new_type == DATATYPE::VARSTRING) {
         char_len += 1;
       }
-      k_int16 buffer_len = char_len + MMapStringColumn::kStringLenLen;
+      k_int16 buffer_len = char_len + kStringLenLen;
       var_data = static_cast<char*>(std::malloc(buffer_len));
       memset(var_data, 0, buffer_len);
       KInt16(var_data) = static_cast<k_int16>(char_len);
-      memcpy(var_data + MMapStringColumn::kStringLenLen, data, strlen(data));
+      memcpy(var_data + kStringLenLen, data, strlen(data));
       break;
     }
     default:
@@ -1337,10 +1334,10 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
   if (old_type == DATATYPE::INT16 || old_type == DATATYPE::INT32 || old_type == DATATYPE::INT64 ||
       old_type == DATATYPE::FLOAT || old_type == DATATYPE::DOUBLE) {
     auto act_len = res.size() + 1;
-    var_data = static_cast<char*>(std::malloc(act_len + MMapStringColumn::kStringLenLen));
-    memset(var_data, 0, act_len + MMapStringColumn::kStringLenLen);
+    var_data = static_cast<char*>(std::malloc(act_len + kStringLenLen));
+    memset(var_data, 0, act_len + kStringLenLen);
     KUint16(var_data) = act_len;
-    strcpy(var_data + MMapStringColumn::kStringLenLen, res.data());
+    strcpy(var_data + kStringLenLen, res.data());
   }
   std::shared_ptr<void> ptr(var_data, free);
   return ptr;

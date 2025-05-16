@@ -2019,8 +2019,8 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
   }
 
   uint16_t len = *(reinterpret_cast<uint16_t*>(max));
-  void* data = std::malloc(len + MMapStringColumn::kStringLenLen);
-  memcpy(data, max, len + MMapStringColumn::kStringLenLen);
+  void* data = std::malloc(len + kStringLenLen);
+  memcpy(data, max, len + kStringLenLen);
   std::shared_ptr<void> ptr(data, free);
   return ptr;
 }
@@ -2040,8 +2040,8 @@ std::shared_ptr<void> VarColAggCalculator::GetMin(std::shared_ptr<void> base) {
     min = base.get();
   }
   uint16_t len = *(reinterpret_cast<uint16_t*>(min));
-  void* data = std::malloc(len + MMapStringColumn::kStringLenLen);
-  memcpy(data, min, len + MMapStringColumn::kStringLenLen);
+  void* data = std::malloc(len + kStringLenLen);
+  memcpy(data, min, len + kStringLenLen);
   std::shared_ptr<void> ptr(data, free);
   return ptr;
 }

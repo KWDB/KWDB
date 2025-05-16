@@ -584,7 +584,21 @@ func BuildRowBytesForPrepareTsInsert(
 			arg := Args[argIdx]
 			argLen := len(arg)
 			switch col.Type.Oid() {
-			case oid.T_varchar, types.T_nvarchar, oid.T_varbytea:
+			case oid.T_varchar:
+				vardataOffset := varDataOffset - bitmapOffset
+				binary.LittleEndian.PutUint32(Payload[offset:], uint32(vardataOffset))
+
+				addSize := argLen + execbuilder.VarDataLenSize + 1 // \0
+				if varDataOffset+addSize > len(Payload) {
+					newPayload := make([]byte, len(Payload)+addSize)
+					copy(newPayload, Payload)
+					Payload = newPayload
+				}
+				binary.LittleEndian.PutUint16(Payload[varDataOffset:], uint16(argLen+1)) // \0
+				copy(Payload[varDataOffset+execbuilder.VarDataLenSize:], arg)
+				varDataOffset += addSize
+
+			case types.T_nvarchar, oid.T_varbytea:
 				vardataOffset := varDataOffset - bitmapOffset
 				binary.LittleEndian.PutUint32(Payload[offset:], uint32(vardataOffset))
 
