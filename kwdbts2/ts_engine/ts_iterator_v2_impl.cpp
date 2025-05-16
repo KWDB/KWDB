@@ -487,13 +487,13 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
       return s;
     }
     for (k_uint32 idx : normal_cols) {
-      ret = blk_span.GetAggResult(
+      s = blk_span.GetAggResult(
         blk_scan_cols[idx], blk_schema_valid, attrs_[blk_scan_cols[idx]], scan_agg_types_[idx], final_agg_data[idx]);
 
-      if (ret != KStatus::SUCCESS) {
+      if (s != KStatus::SUCCESS) {
         LOG_ERROR("Failed to compute aggregation for col_idx(%u)",
                   blk_scan_cols[idx]);
-        return ret;
+        return s;
       }
     }
   }
