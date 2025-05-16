@@ -20,15 +20,29 @@ select * from test.sjcx01
 where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
-select count(*) from test.sjcx01;
+
+select count(*), count(c) from test.sjcx01;
+select count(*), count(c) from test.sjcx01 where a is not null;
+select count(a), count(distinct a) from test.sjcx01;
+select max(b), sum(a) from test.sjcx01 where k_timestamp < k_timestamp;
 select sum(a), min(b) from test.sjcx01;
 select count(a), sum(b), max(a), max(b) from test.sjcx01;
+select t1_attribute, count(c), sum(a), max(b), last(a) from test.sjcx01 group by t1_attribute order by t1_attribute;;
+select max(a+3), min(a+b) from test.sjcx01;
+select a+b, sum(b) from test.sjcx01 group by a+b order by a+b;
 select last(b), last(a) from test.sjcx01;
 select * from test.sjcx01 where t1_attribute = 'F6';
 
 SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
 drop database test cascade;
 
+create ts database test_null;
+create table test_null.t1(k_timestamp timestamp not null,A INT4 null,B INT4 not null,C VARCHAR(10) null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+insert into test_null.t1 values (1681111110000, null, 2, null, 'ABC', 'tag1');
+insert into test_null.t1 values (1681111110001, null ,3, null, 'Xyz', 'tag2');
+select count(*), count(a), sum(a), min(a), max(a), last(a) from test_null.t1;
+select max(a+b) from test_null.t1;
+drop database test_null cascade;
 
 create ts database test_alter;
 create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
