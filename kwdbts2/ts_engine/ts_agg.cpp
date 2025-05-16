@@ -315,11 +315,11 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
     }
     if (agg_data.data == nullptr) {
       // Can we use the memory in var_rows?
-      agg_data.len = max_it->length() + 1 + MMapStringColumn::kStringLenLen;
+      agg_data.len = max_it->length() + 1 + kStringLenLen;
       agg_data.data = static_cast<char*>(malloc(agg_data.len));
       KUint16(agg_data.data) = max_it->length();
-      memcpy(agg_data.data + MMapStringColumn::kStringLenLen, max_it->c_str(), max_it->length());
-      agg_data.data[MMapStringColumn::kStringLenLen + max_it->length()] = 0;
+      memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
+      agg_data.data[kStringLenLen + max_it->length()] = 0;
     }
   }
 
@@ -334,11 +334,11 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
     }
     if (agg_data.data == nullptr) {
       // Can we use the memory in var_rows?
-      agg_data.len = min_it->length() + 1 + MMapStringColumn::kStringLenLen;
+      agg_data.len = min_it->length() + 1 + kStringLenLen;
       agg_data.data = static_cast<char*>(malloc(agg_data.len));
       KUint16(agg_data.data) = min_it->length();
-      memcpy(agg_data.data + MMapStringColumn::kStringLenLen, min_it->c_str(), min_it->length());
-      agg_data.data[MMapStringColumn::kStringLenLen + min_it->length()] = 0;
+      memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
+      agg_data.data[kStringLenLen + min_it->length()] = 0;
     }
   }
 }
