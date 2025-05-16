@@ -46,7 +46,7 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
       }
     } else {
       uint16_t var_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-      std::string var_value(reinterpret_cast<char*>(old_var_mem.get()) + MMapStringColumn::kStringLenLen);
+      std::string var_value(reinterpret_cast<char*>(old_var_mem.get()) + kStringLenLen);
       convertStrToFixed(var_value, new_type, reinterpret_cast<char*>(temp_new_mem), var_len, err_info);
     }
     std::shared_ptr<void> ptr(temp_new_mem, free);
@@ -58,20 +58,20 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
     } else {
       if (old_type == VARSTRING) {
         auto old_len = *reinterpret_cast<uint16_t*>(old_var_mem.get()) - 1;
-        char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen));
-        memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen);
+        char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen));
+        memset(var_data, 0, old_len + kStringLenLen);
         *reinterpret_cast<uint16_t*>(var_data) = old_len;
-        memcpy(var_data + MMapStringColumn::kStringLenLen,
-               reinterpret_cast<char*>(old_var_mem.get()) + MMapStringColumn::kStringLenLen, old_len);
+        memcpy(var_data + kStringLenLen,
+               reinterpret_cast<char*>(old_var_mem.get()) + kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       } else {
         auto old_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-        char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen + 1));
-        memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen + 1);
+        char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen + 1));
+        memset(var_data, 0, old_len + kStringLenLen + 1);
         *reinterpret_cast<uint16_t*>(var_data) = old_len + 1;
-        memcpy(var_data + MMapStringColumn::kStringLenLen,
-               reinterpret_cast<char*>(old_var_mem.get()) + MMapStringColumn::kStringLenLen, old_len);
+        memcpy(var_data + kStringLenLen,
+               reinterpret_cast<char*>(old_var_mem.get()) + kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       }
@@ -186,7 +186,7 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t bl
     } else {
       uint16_t col_len = KUint16(new_mem.get());
       char* allc_mem = reinterpret_cast<char*>(malloc(col_len));
-      memcpy(allc_mem, reinterpret_cast<char*>(new_mem.get()) + MMapStringColumn::kStringLenLen, col_len);
+      memcpy(allc_mem, reinterpret_cast<char*>(new_mem.get()) + kStringLenLen, col_len);
       data.len = col_len;
       data.data = allc_mem;
       alloc_mems_.push_back(allc_mem);

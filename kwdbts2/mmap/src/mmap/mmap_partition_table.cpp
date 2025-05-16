@@ -2351,7 +2351,7 @@ int TsTimePartition::ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, 
       }
     } else {
       uint16_t var_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-      std::string var_value((char*)old_var_mem.get() + MMapStringColumn::kStringLenLen);
+      std::string var_value((char*)old_var_mem.get() + kStringLenLen);
       convertStrToFixed(var_value, new_type, (char*) temp_new_mem, var_len, err_info);
     }
     std::shared_ptr<void> ptr(temp_new_mem, free);
@@ -2363,20 +2363,20 @@ int TsTimePartition::ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, 
     } else {
       if (old_type == VARSTRING) {
         auto old_len = *reinterpret_cast<uint16_t*>(old_var_mem.get()) - 1;
-        char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen));
-        memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen);
+        char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen));
+        memset(var_data, 0, old_len + kStringLenLen);
         *reinterpret_cast<uint16_t*>(var_data) = old_len;
-        memcpy(var_data + MMapStringColumn::kStringLenLen,
-               (char*) old_var_mem.get() + MMapStringColumn::kStringLenLen, old_len);
+        memcpy(var_data + kStringLenLen,
+               (char*) old_var_mem.get() + kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       } else {
         auto old_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-        char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen + 1));
-        memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen + 1);
+        char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen + 1));
+        memset(var_data, 0, old_len + kStringLenLen + 1);
         *reinterpret_cast<uint16_t*>(var_data) = old_len + 1;
-        memcpy(var_data + MMapStringColumn::kStringLenLen,
-               (char*) old_var_mem.get() + MMapStringColumn::kStringLenLen, old_len);
+        memcpy(var_data + kStringLenLen,
+               (char*) old_var_mem.get() + kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       }

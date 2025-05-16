@@ -826,7 +826,32 @@ func (ts *TsPayload) FillColData(
 		case types.T_nchar:
 			copy(ts.payload[offset:], *v)
 
-		case oid.T_varchar, types.T_nvarchar:
+		case oid.T_varchar:
+			if IsPrimaryTagCol {
+				copy(ts.payload[offset:], *v)
+			} else {
+				//copy len
+				dataOffset := 0
+				if IsTagCol {
+					dataOffset = independentOffset - ts.header.otherTagBitmapOffset
+				} else {
+					dataOffset = independentOffset - columnBitmapOffset
+				}
+				binary.LittleEndian.PutUint32(ts.payload[offset:], uint32(dataOffset))
+				addSize := len(*v) + VarDataLenSize + 1 // \0
+				if independentOffset+addSize > len(ts.payload) {
+					// grow payload size
+					newPayload := make([]byte, len(ts.payload)+addSize)
+					copy(newPayload, ts.payload)
+					ts.payload = newPayload
+				}
+				// next var column offset
+				binary.LittleEndian.PutUint16(ts.payload[independentOffset:], uint16(len(*v)+1)) // \0
+				copy(ts.payload[independentOffset+VarDataLenSize:], *v)
+				independentOffset += addSize
+			}
+
+		case types.T_nvarchar:
 			if IsPrimaryTagCol {
 				copy(ts.payload[offset:], *v)
 			} else {

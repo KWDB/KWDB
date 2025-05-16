@@ -321,7 +321,7 @@ class Payload {
         if (IsNull(col, row)) {
           os << s_NULL << ' ';
         } else if (schema_[col].type == VARSTRING) {
-          os << std::string(GetVarColumnAddr(row, col) + MMapStringColumn::kStringLenLen, GetVarColumnLen(row, col)) << ' ';
+          os << std::string(GetVarColumnAddr(row, col) + kStringLenLen, GetVarColumnLen(row, col)) << ' ';
         } else {
           os << rec_helper_->columnToString(col, GetColumnAddr(row, col)) << ' ';
         }

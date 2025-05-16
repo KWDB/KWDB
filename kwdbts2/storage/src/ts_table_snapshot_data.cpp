@@ -297,9 +297,6 @@ KStatus TsSnapshotProductorByPayload::putResIntoPayload(PayloadBuilder& pl_build
           // Variable-length type
           value_addr = reinterpret_cast<char*>(batch->getVarColData(batch_data_index));
           value_len = batch->getVarColDataLen(batch_data_index);
-          if (metrics_schema_include_dropped_[actual_col].type == VARSTRING && value_len > 0) {
-            value_len -= 1;
-          }
         } else {
           value_len = metrics_schema_include_dropped_[actual_col].size;
           value_addr = reinterpret_cast<char*>(batch->mem) + value_len * batch_data_index;
