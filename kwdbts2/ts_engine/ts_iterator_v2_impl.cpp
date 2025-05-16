@@ -598,15 +598,30 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
       TSBlkDataTypeConvert convert(c.blk_span.GetTsBlock().get(), c.blk_span.GetStartRow(), c.blk_span.GetRowNum());
-      char* value = nullptr;
-      TsBitmap bitmap;
-      ret = convert.GetFixLenColAddr(kw_scan_cols_[col_idx], schema_info,
-        attrs_[kw_scan_cols_[col_idx]], &value, bitmap);
-      if (ret != KStatus::SUCCESS) return ret;
+      if (!isVarLenType(attrs_[ts_scan_cols_[col_idx]].type)) {
+        char* value = nullptr;
+        TsBitmap bitmap;
+        ret = convert.GetFixLenColAddr(kw_scan_cols_[col_idx], schema_info,
+          attrs_[kw_scan_cols_[col_idx]], &value, bitmap);
+        if (ret != KStatus::SUCCESS) return ret;
 
-      final_agg_data[col_idx].data = static_cast<char*>(malloc(final_agg_data[col_idx].len));
-      memcpy(final_agg_data[col_idx].data, value + c.row_idx * final_agg_data[col_idx].len,
-             final_agg_data[col_idx].len);
+        final_agg_data[col_idx].data = static_cast<char*>(malloc(final_agg_data[col_idx].len));
+        memcpy(final_agg_data[col_idx].data, value + c.row_idx * final_agg_data[col_idx].len,
+              final_agg_data[col_idx].len);
+      } else {
+        TSSlice slice;
+        DataFlags flag;
+        ret = convert.GetVarLenTypeColAddr(c.row_idx, kw_scan_cols_[col_idx], schema_info,
+                                            attrs_[kw_scan_cols_[col_idx]], flag, slice);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetVarLenTypeColAddr failed.");
+          return ret;
+        }
+        final_agg_data[col_idx].len = slice.len + kStringLenLen;
+        final_agg_data[col_idx].data = static_cast<char*>(malloc(final_agg_data[col_idx].len));
+        KUint16(final_agg_data[col_idx].data) = slice.len;
+        memcpy(final_agg_data[col_idx].data + kStringLenLen, slice.data, slice.len);
+      }
     }
   }
 
