@@ -246,7 +246,6 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
             batch->push_back(ptr);
           }
         }
-        batch->is_new = true;
         batch->need_free_bitmap = true;
       }
     }
@@ -530,7 +529,6 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     } else {
       std::shared_ptr<void> ptr(slice.data, free);
       b = new AggBatch(ptr, 1, nullptr);
-      b->is_new = true;
     }
     res->push_back(i, b);
   }

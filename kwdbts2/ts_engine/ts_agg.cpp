@@ -307,7 +307,7 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
   if (agg_type == Sumfunctype::MAX) {
     auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
     if (agg_data.data) {
-      string current_max({agg_data.data, agg_data.len});
+      string current_max({agg_data.data + kStringLenLen, agg_data.len});
       if (current_max < *max_it) {
         free(agg_data.data);
         agg_data.data = nullptr;
@@ -315,18 +315,17 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
     }
     if (agg_data.data == nullptr) {
       // Can we use the memory in var_rows?
-      agg_data.len = max_it->length() + 1 + kStringLenLen;
+      agg_data.len = max_it->length() + kStringLenLen;
       agg_data.data = static_cast<char*>(malloc(agg_data.len));
       KUint16(agg_data.data) = max_it->length();
       memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
-      agg_data.data[kStringLenLen + max_it->length()] = 0;
     }
   }
 
   if (agg_type == Sumfunctype::MIN) {
     auto min_it = std::min_element(var_rows_.begin(), var_rows_.end());
     if (agg_data.data) {
-      string current_min({agg_data.data, agg_data.len});
+      string current_min({agg_data.data + kStringLenLen, agg_data.len});
       if (current_min < *min_it) {
         free(agg_data.data);
         agg_data.data = nullptr;
@@ -334,11 +333,10 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
     }
     if (agg_data.data == nullptr) {
       // Can we use the memory in var_rows?
-      agg_data.len = min_it->length() + 1 + kStringLenLen;
+      agg_data.len = min_it->length() + kStringLenLen;
       agg_data.data = static_cast<char*>(malloc(agg_data.len));
       KUint16(agg_data.data) = min_it->length();
       memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
-      agg_data.data[kStringLenLen + min_it->length()] = 0;
     }
   }
 }
