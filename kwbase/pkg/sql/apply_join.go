@@ -161,6 +161,9 @@ func (a *applyJoinNode) Next(params runParams) (bool, error) {
 
 	for {
 		for a.run.curRightRow < a.run.rightRows.Len() {
+			if err := params.p.cancelChecker.Check(); err != nil {
+				return false, err
+			}
 			// We have right rows set up - check the next one for a match.
 			var rrow tree.Datums
 			if len(a.rightCols) != 0 {
