@@ -85,6 +85,13 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   timestamp64& maxTimestamp() { return meta_data_->max_ts; }
 
+  LifeTime GetLifeTime() { return LifeTime{meta_data_->life_time, meta_data_->precision}; }
+
+  void SetLifeTime(LifeTime life_time) {
+    meta_data_->life_time = life_time.ts;
+    meta_data_->precision = life_time.precision;
+  }
+
   uint32_t& tableVersionOfLatestData() { return meta_data_->schema_version_of_latest_data;}
 
   virtual int reserve(size_t size) {

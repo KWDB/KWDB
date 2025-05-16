@@ -305,7 +305,8 @@ class TsMemSegmentManager {
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
 
-  bool GetMetricSchema(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema);
+  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
+                              LifeTime* lifetime = nullptr);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks);
 };
