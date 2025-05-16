@@ -75,6 +75,8 @@ type Materializer struct {
 
 	// canShortCircuitForPgEncode is true, which is a necessary condition for short circuiting.
 	canShortCircuitForPgEncode bool
+
+	src []execinfrapb.MetadataSource
 }
 
 const materializerProcName = "materializer"
@@ -106,6 +108,7 @@ func NewMaterializer(
 		input:   input,
 		row:     make(sqlbase.EncDatumRow, len(typs)),
 		closers: toClose,
+		src:     metadataSourcesQueue,
 	}
 	if post.Filter.Empty() && len(post.RenderExprs) == 0 && post.Limit == 0 {
 		if v, ok := m.input.(*noopOperator); ok {
@@ -235,6 +238,11 @@ func (m *Materializer) InternalClose() bool {
 				if log.V(1) {
 					log.Infof(m.PbCtx(), "error closing Closer: %v", err)
 				}
+			}
+		}
+		if len(m.src) != 0 {
+			for _, s := range m.src {
+				s.DrainMeta(m.PbCtx())
 			}
 		}
 		return true
