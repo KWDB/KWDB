@@ -294,8 +294,26 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   tmp_bt->metaData()->schema_version_of_latest_data = ts_version;
   tmp_bt->metaData()->db_id = db_id;
   // Set lifetime(ms)
+  int32_t precision = 1;
+  switch (metric_schema[0].type) {
+    case TIMESTAMP64_LSN:
+    case TIMESTAMP64:
+          precision = 1000;
+    break;
+    case TIMESTAMP64_LSN_MICRO:
+    case TIMESTAMP64_MICRO:
+      precision = 1000000;
+    break;
+    case TIMESTAMP64_LSN_NANO:
+    case TIMESTAMP64_NANO:
+      precision = 1000000000;
+    break;
+    default:
+      assert(false);
+      break;
+  }
   int64_t ts = meta->ts_table().life_time();
-  LifeTime life_time {ts, metric_schema[0].type};
+  LifeTime life_time {ts, precision};
   tmp_bt->SetLifeTime(life_time);
   tmp_bt->setObjectReady();
   // Save to map cache

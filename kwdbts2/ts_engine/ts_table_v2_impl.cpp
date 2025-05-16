@@ -159,28 +159,10 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
     // Update ts_span
     auto life_time = table_schema_mgr_->GetLifeTime();
     if (life_time.ts != 0) {
-      int32_t cal_precision = 0;
       int64_t acceptable_ts = INT64_MIN;
-      switch (life_time.precision) {
-        case TIMESTAMP64_LSN:
-        case TIMESTAMP64:
-          cal_precision = 1000;
-        break;
-        case TIMESTAMP64_LSN_MICRO:
-        case TIMESTAMP64_MICRO:
-          cal_precision = 1000000;
-        break;
-        case TIMESTAMP64_LSN_NANO:
-        case TIMESTAMP64_NANO:
-          cal_precision = 1000000000;
-        break;
-        default:
-          assert(false);
-          break;
-      }
       auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
       acceptable_ts = now.time_since_epoch().count() - life_time.ts;
-      updateTsSpan(acceptable_ts * cal_precision, ts_spans);
+      updateTsSpan(acceptable_ts * life_time.precision, ts_spans);
     }
     s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], ts_spans, ts_col_type,
                               scan_cols, ts_scan_cols, scan_agg_types, table_schema_mgr_,
