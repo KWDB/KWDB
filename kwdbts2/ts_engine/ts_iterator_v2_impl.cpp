@@ -454,6 +454,11 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
       first_cols.push_back(i);
     } else {
       normal_cols.push_back(i);
+      if (scan_agg_types_[i] == Sumfunctype::COUNT) {
+        final_agg_data[i].len = sizeof(uint64_t);
+        final_agg_data[i].data = static_cast<char*>(malloc(final_agg_data[i].len));
+        memset(final_agg_data[i].data, 0, final_agg_data[i].len);
+      }
     }
   }
 
@@ -498,12 +503,6 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     }
 
     for (k_uint32 idx : normal_cols) {
-      if (scan_agg_types_[idx] == Sumfunctype::COUNT) {
-        final_agg_data[idx].len = sizeof(uint64_t);
-        final_agg_data[idx].data = static_cast<char*>(malloc(final_agg_data[idx].len));
-        memset(final_agg_data[idx].data, 0, final_agg_data[idx].len);
-      }
-
       ret = blk_span.GetAggResult(
         blk_scan_cols[idx], blk_schema_valid, attrs_[blk_scan_cols[idx]], scan_agg_types_[idx], final_agg_data[idx]);
 
