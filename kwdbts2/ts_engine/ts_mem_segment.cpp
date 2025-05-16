@@ -90,7 +90,6 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       default:
         assert(false);
       break;
-
     }
     auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
     acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * cal_precision;

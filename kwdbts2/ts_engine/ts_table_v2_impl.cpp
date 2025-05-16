@@ -177,7 +177,6 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
         default:
           assert(false);
           break;
-
       }
       auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
       acceptable_ts = now.time_since_epoch().count() - life_time.ts;
