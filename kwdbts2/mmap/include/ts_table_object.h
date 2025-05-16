@@ -62,7 +62,7 @@ struct TSTableFileMetadata {
   off_t record_size;        ///< size of record (in bytes).
   off_t description;        ///< Description.
   int encoding;             ///< Encoding scheme.
-  int32_t reserved_3;
+  int32_t precision;        // precision of life time
   bool is_dropped;
   char reserved[12];
   // Updatable data, start from 512 bytes for recoverability.
@@ -77,7 +77,7 @@ struct TSTableFileMetadata {
   size_t actul_size;        ///< Actual table size.
   // Possibly depreciated
   size_t checksum;          ///< Weak checksum.
-  size_t life_cycle;
+  int64_t life_time;         // life time: second type
   char reserved_7[60];
   timestamp64 min_ts;       // minimum timestamp partition
   timestamp64 max_ts;       // maximum timestamp partition

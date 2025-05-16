@@ -293,6 +293,28 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
   tmp_bt->metaData()->schema_version_of_latest_data = ts_version;
   tmp_bt->metaData()->db_id = db_id;
+  // Set lifetime(ms)
+  int32_t precision = 1;
+  switch (metric_schema[0].type) {
+    case TIMESTAMP64_LSN:
+    case TIMESTAMP64:
+          precision = 1000;
+    break;
+    case TIMESTAMP64_LSN_MICRO:
+    case TIMESTAMP64_MICRO:
+      precision = 1000000;
+    break;
+    case TIMESTAMP64_LSN_NANO:
+    case TIMESTAMP64_NANO:
+      precision = 1000000000;
+    break;
+    default:
+      assert(false);
+      break;
+  }
+  int64_t ts = meta->ts_table().life_time();
+  LifeTime life_time {ts, precision};
+  tmp_bt->SetLifeTime(life_time);
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({ts_version, tmp_bt});
@@ -363,6 +385,9 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
     tmp_bt->metaData()->schema_version_of_latest_data = new_version;
     tmp_bt->metaData()->db_id = GetDbID();
   }
+
+  // The current version must already exist.
+  tmp_bt->SetLifeTime(metric_schemas_[cur_version]->GetLifeTime());
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({new_version, tmp_bt});
@@ -479,8 +504,12 @@ void TsTableSchemaManager::GetAllVersions(std::vector<uint32_t> *table_versions)
   }
 }
 
-uint32_t TsTableSchemaManager::GetCurrentVersion() const {
-  return cur_schema_version_;
+LifeTime TsTableSchemaManager::GetLifeTime() const {
+  return cur_metric_schema_->GetLifeTime();
+}
+
+void TsTableSchemaManager::SetLifeTime(LifeTime life_time) const {
+  cur_metric_schema_->SetLifeTime(life_time);
 }
 
 uint64_t TsTableSchemaManager::GetPartitionInterval() const {

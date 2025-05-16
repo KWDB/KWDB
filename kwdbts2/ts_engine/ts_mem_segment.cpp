@@ -43,7 +43,8 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
   segment_lock_.unlock();
 }
 
-bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema) {
+bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema,
+                                                LifeTime* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
   auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
   if (s != KStatus::SUCCESS) {
@@ -55,16 +56,25 @@ bool TsMemSegmentManager::GetMetricSchema(TSTableID table_id, uint32_t version, 
     LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
     return false;
   }
+  *lifetime = schema_mgr->GetLifeTime();
   return true;
 }
 
 KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
+  // get column info and life time
   std::vector<AttributeInfo> schema;
-  if (!GetMetricSchema(table_id, table_version, schema)) {
-    LOG_ERROR("GetMetricSchema failed.");
+  LifeTime life_time{};
+  if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &life_time)) {
+    LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
+  }
+  // calculate acceptable timestamp with life time
+  int64_t acceptable_ts = INT64_MIN;
+  if (life_time.ts != 0) {
+    auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+    acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
   }
   TSMemSegRowData row_data(vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id), table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);
@@ -78,9 +88,15 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   auto cur_mem_seg = cur_mem_seg_;
   cur_mem_seg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
+    auto row_ts = pd.GetTS(i);
+    if (row_ts < acceptable_ts) {
+      // TODO(qinlipeng): add reject row_num
+      cur_mem_seg->AllocRowNum(-1);
+      continue;
+    }
     // todo(liangbo01) add lsn of wal.
     // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(pd.GetTS(i), lsn, pd.GetRowData(i));
+    row_data.SetData(row_ts, lsn, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);

@@ -43,8 +43,7 @@ class TsBlock {
 
   virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                                const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                               const std::vector<Sumfunctype>& agg_types, uint64_t* count_ptr,
-                               void* max_addr, void* min_addr, void* sum_addr);
+                               const Sumfunctype agg_type, TSSlice& agg_data);
 
   virtual KStatus GetLastInfo(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
     const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
@@ -88,8 +87,7 @@ struct TsBlockSpan {
     const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
 
   KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, uint64_t* count_ptr,
-    void* max_addr, void* min_addr, void* sum_addr);
+    const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data);
 
   KStatus GetLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx);

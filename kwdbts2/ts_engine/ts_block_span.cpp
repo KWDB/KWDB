@@ -18,24 +18,10 @@ namespace kwdbts {
 
 KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                                const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                               const std::vector<Sumfunctype>& agg_types, uint64_t* count_ptr,
-                               void* max_addr, void* min_addr, void* sum_addr) {
+                               const Sumfunctype agg_type, TSSlice& agg_data) {
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
 
   if (!isVarLenType(dest_type.type)) {
-    bool need_max = false, need_min = false, need_sum = false, need_count = false;
-    for (auto agg_type : agg_types) {
-      switch (agg_type) {
-        case Sumfunctype::MAX:   need_max = true; break;
-        case Sumfunctype::MIN:   need_min = true; break;
-        case Sumfunctype::SUM:   need_sum = true; break;
-        case Sumfunctype::COUNT: need_count = true; break;
-        default:
-          LOG_ERROR("Unsupported aggregation type: %d", static_cast<int>(agg_type));
-          return KStatus::FAIL;
-      }
-    }
-
     char* value = nullptr;
     TsBitmap bitmap;
     auto s = convert.GetFixLenColAddr(blk_col_idx, schema, dest_type, &value, bitmap);
@@ -47,63 +33,29 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
     AggCalculatorV2 calc(value, &bitmap, static_cast<DATATYPE>(dest_type.type), dest_type.size, row_num);
     uint64_t local_count = 0;
 
-    bool overflow = calc.MergeAggResultFromBlock(
-        need_count ? *count_ptr : local_count,
-        need_max ? max_addr : nullptr,
-        need_min ? min_addr : nullptr,
-        need_sum ? sum_addr : nullptr);
+    bool overflow = calc.MergeAggResultFromBlock(agg_data, agg_type);
 
     assert(!overflow);
-
-    return KStatus::SUCCESS;
   } else {
-    bool need_count = false;
-    for (auto agg_type : agg_types) {
-      if (agg_type == Sumfunctype::COUNT) {
-        need_count = true;
-      } else {
-        LOG_ERROR("VarLenType only supports COUNT currently: type = %d", dest_type.type);
-        return KStatus::FAIL;
-      }
-    }
-
-    if (!need_count) {
-      LOG_ERROR("No supported aggregation type for VarLenType");
-      return KStatus::FAIL;
-    }
-
-    std::vector<std::string> var_mem(row_num);
-    unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(row_num)));
-    if (bitmap == nullptr) {
-      return KStatus::FAIL;
-    }
-    memset(bitmap, 0x00, KW_BITMAP_SIZE(row_num));
-    for (uint32_t i = 0; i < row_num; ++i) {
-      TSSlice var_data;
+    std::vector<string> var_rows;
+    KStatus ret;
+    for (int i = 0; i < row_num; ++i) {
+      TSSlice slice;
       DataFlags flag;
-
-      auto s = convert.GetVarLenTypeColAddr(i + begin_row_idx, blk_col_idx, schema, dest_type, flag, var_data);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetVarLenTypeColAddr failed at row %u", i);
-        return s;
+      ret = convert.GetVarLenTypeColAddr(i, blk_col_idx, schema, dest_type, flag, slice);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetVarLenTypeColAddr failed.");
+        return ret;
       }
-      if (flag != DataFlags::kValid) {
-        set_null_bitmap(bitmap, i);
+      if (flag == DataFlags::kValid) {
+        var_rows.emplace_back(slice.data, slice.len);
       }
     }
-
-    VarColAggCalculatorV2 calc(var_mem, bitmap, dest_type.size, row_num);
-    std::string dummy_max, dummy_min;
-    uint16_t local_count = 0;
-    calc.CalcAllAgg(dummy_max, dummy_min, local_count);
-
-    if (count_ptr) {
-      *count_ptr += local_count;
-    }
-    return KStatus::SUCCESS;
+    VarColAggCalculatorV2 calc(var_rows);
+    calc.MergeAggResultFromBlock(agg_data, agg_type);
   }
+  return KStatus::SUCCESS;
 }
-
 
 KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
                              uint32_t row_num,
@@ -115,6 +67,8 @@ KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
   if (out_ts) *out_ts = INT64_MIN;
   if (out_row_idx) *out_row_idx = -1;
+  int64_t max_ts = INT64_MIN;
+  int best_idx = -1;
 
   if (!isVarLenType(dest_type.type)) {
     char* value = nullptr;
@@ -125,8 +79,6 @@ KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
       return s;
     }
 
-    int64_t max_ts = INT64_MIN;
-    int best_idx = -1;
     for (int i = 0; i < row_num; ++i) {
       if (bitmap[i] == DataFlags::kNull) continue;
       int64_t ts = GetTS(i);
@@ -135,14 +87,31 @@ KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
         best_idx = i;
       }
     }
-
-    if (out_ts) *out_ts = max_ts;
-    if (out_row_idx) *out_row_idx = best_idx;
-    return KStatus::SUCCESS;
+  } else {
+    KStatus ret;
+    for (int i = 0; i < row_num; ++i) {
+      TSSlice slice;
+      DataFlags flag;
+      /* We don't need to read the value right now, so we should be able
+       * to optimize only bitmap reading later.
+       */
+      ret = convert.GetVarLenTypeColAddr(i, col_id, schema, dest_type, flag, slice);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetVarLenTypeColAddr failed.");
+        return ret;
+      }
+      if (flag == DataFlags::kValid) {
+        int64_t ts = GetTS(i);
+        if (ts > max_ts) {
+          max_ts = ts;
+          best_idx = i;
+        }
+      }
+    }
   }
-
-  LOG_ERROR("VarLenType not supported in GetLastInfo: type = %d", dest_type.type);
-  return KStatus::FAIL;
+  if (out_ts) *out_ts = max_ts;
+  if (out_row_idx) *out_row_idx = best_idx;
+  return KStatus::SUCCESS;
 }
 
 TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
@@ -217,10 +186,9 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx
 }
 
 KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, std::vector<Sumfunctype> agg_types, uint64_t* count_ptr,
- void* max_addr, void* min_addr, void* sum_addr) {
+ const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data) {
   return block_->GetAggResult(
-    start_row_, nrow_, blk_col_idx, schema, dest_type, agg_types, count_ptr, max_addr, min_addr, sum_addr);
+    start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data);
 }
 
 KStatus TsBlockSpan::GetLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
