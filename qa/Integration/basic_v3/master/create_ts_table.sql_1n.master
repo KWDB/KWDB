@@ -2,6 +2,18 @@
 CREATE TS DATABASE
 > create table test.sjcx01(k_timestamp timestamp not null,A INT4 null,B INT4 not null,C VARCHAR(10) null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
+> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d) from test.sjcx01;
+  count | sum  | max  | max  | count | min  | max  | min  | max
+--------+------+------+------+-------+------+------+------+-------
+      0 | NULL | NULL | NULL |     0 | NULL | NULL | NULL | NULL
+(1 row)
+> insert into test.sjcx01 values (1681111110005,null,7,null,'D', 'D4');
+INSERT 1
+> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d) from test.sjcx01;
+  count | sum | max  | max | count | min  | max  | min | max
+--------+-----+------+-----+-------+------+------+-----+------
+      0 |   7 | NULL |   7 |     0 | NULL | NULL | D   | D
+(1 row)
 > insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq');
 INSERT 1
 > insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD', 'qqq1');
@@ -11,8 +23,6 @@ INSERT 1
 > insert into test.sjcx01 values (1681111110003,4,4,'D','B', 'B2');
 INSERT 1
 > insert into test.sjcx01 values (1681111110004,5,5,'E','C', 'C3');
-INSERT 1
-> insert into test.sjcx01 values (1681111110005,null,7,null,'D', 'D4');
 INSERT 1
 > insert into test.sjcx01 values (1681111110006,8,9,'G','E', 'E5');
 INSERT 1
@@ -143,10 +153,10 @@ order by k_timestamp;
 ------+------
    35 |   1
 (1 row)
-> select count(a), sum(b), max(a), max(b) from test.sjcx01;
-  count | sum | max | max
---------+-----+-----+------
-      7 |  55 |  12 |  13
+> select count(a), sum(b), max(a), max(b), min(c), max(c), min(d), max(d) from test.sjcx01;
+  count | sum | max | max | min | max | min | max
+--------+-----+-----+-----+-----+-----+-----+------
+      7 |  55 |  12 |  13 | A   | H   | A   | G
 (1 row)
 > select t1_attribute, count(c), sum(a), max(b), last(a) from test.sjcx01 group by t1_attribute order by t1_attribute;;
   t1_attribute | count | sum  | max | last
