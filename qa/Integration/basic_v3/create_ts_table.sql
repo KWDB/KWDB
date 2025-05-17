@@ -49,6 +49,19 @@ select count(*), count(a), sum(a), min(a), max(a), last(a) from test_null.t1;
 select max(a+b) from test_null.t1;
 drop database test_null cascade;
 
+create ts database test_datatype;
+create table test_datatype.t1(
+   k_timestamp timestamp not null,
+   A INT2 null, B INT8 null, C INT8 null)
+   attributes (tag1 varchar not null) primary tags(tag1);
+insert into test_datatype.t1 values (1681111110000, 32767, 2147483647, 9223372036854775807, 'tag1');
+insert into test_datatype.t1 values (1681111110001, null, null, null, 'tag2');
+insert into test_datatype.t1 values (1681111110002, -32768, -2147483648, -9223372036854775808, 'tag3');
+select max(A), max(B), max(C) from test_datatype.t1;
+select min(A), min(B), min(C) from test_datatype.t1;
+select last(A), last(B), last(C) from test_datatype.t1;
+drop database test_datatype cascade;
+
 create ts database test_alter;
 create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
 insert into test_alter.t2 values(1672531211005, 100, 200, 300, 1);

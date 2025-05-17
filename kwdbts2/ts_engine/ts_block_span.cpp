@@ -81,7 +81,7 @@ KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
 
     for (int i = 0; i < row_num; ++i) {
       if (bitmap[i] == DataFlags::kNull) continue;
-      int64_t ts = GetTS(i);
+      int64_t ts = GetTS(begin_row_idx + i);
       if (ts > max_ts) {
         max_ts = ts;
         best_idx = i;
@@ -101,7 +101,7 @@ KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
         return ret;
       }
       if (flag == DataFlags::kValid) {
-        int64_t ts = GetTS(i);
+        int64_t ts = GetTS(begin_row_idx + i);
         if (ts > max_ts) {
           max_ts = ts;
           best_idx = i;
