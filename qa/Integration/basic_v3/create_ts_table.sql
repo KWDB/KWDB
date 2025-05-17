@@ -47,6 +47,8 @@ insert into test_null.t1 values (1681111110000, null, 2, null, 'ABC', 'tag1');
 insert into test_null.t1 values (1681111110001, null ,3, null, 'Xyz', 'tag2');
 select count(*), count(a), sum(a), min(a), max(a), last(a) from test_null.t1;
 select max(a+b) from test_null.t1;
+insert into test_null.t1 values (1681111110002, null, 4, null, 'ABC1', 'tag1');
+select min(k_timestamp), max(k_timestamp) from test_null.t1;
 drop database test_null cascade;
 
 create ts database test_alter;

@@ -191,7 +191,7 @@ inline void AggCalculatorV2::InitAggData(TSSlice& agg_data) {
 // - `max_addr`, `min_addr`, `sum_addr` must point to valid memory initialized to extreme values.
 // - `count` is an accumulated counter that will be incremented.
 // - This function is designed to be called repeatedly across multiple blocks.
-bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type) {
+bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx) {
   if (mem_ == nullptr) {
     return false;
   }
@@ -206,7 +206,8 @@ bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg
       ++(KUint64(agg_data.data));
     }
 
-    void* current = reinterpret_cast<void*>((intptr_t)(mem_) + i * size_);
+    // Currently the size of first column which must be timestamp is 16 bytes after the conversion.
+    void* current = reinterpret_cast<void*>((intptr_t)(mem_) + i * (col_idx == 0 ? 16 : size_));
 
     // === MAX ===
     if (agg_type == Sumfunctype::MAX) {

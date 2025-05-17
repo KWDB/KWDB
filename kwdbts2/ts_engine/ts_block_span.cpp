@@ -33,7 +33,7 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
     AggCalculatorV2 calc(value, &bitmap, static_cast<DATATYPE>(dest_type.type), dest_type.size, row_num);
     uint64_t local_count = 0;
 
-    bool overflow = calc.MergeAggResultFromBlock(agg_data, agg_type);
+    bool overflow = calc.MergeAggResultFromBlock(agg_data, agg_type, blk_col_idx);
 
     assert(!overflow);
   } else {
