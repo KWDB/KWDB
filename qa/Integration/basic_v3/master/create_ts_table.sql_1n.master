@@ -238,6 +238,13 @@ INSERT 1
 --------
   NULL
 (1 row)
+> insert into test_null.t1 values (1681111110002, null, 4, null, 'ABC1', 'tag1');
+INSERT 1
+> select min(k_timestamp), max(k_timestamp) from test_null.t1;
+             min            |              max
+----------------------------+--------------------------------
+  2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30.002+00:00
+(1 row)
 > drop database test_null cascade;
 DROP DATABASE
 > create ts database test_datatype;
