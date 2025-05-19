@@ -179,7 +179,8 @@ inline void AggCalculatorV2::InitAggData(TSSlice& agg_data) {
 // - `max_addr`, `min_addr`, `sum_addr` must point to valid memory initialized to extreme values.
 // - `count` is an accumulated counter that will be incremented.
 // - This function is designed to be called repeatedly across multiple blocks.
-KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx, bool& is_overflow) {
+KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type,
+                                                  uint32_t col_idx, bool& is_overflow) {
   if (mem_ == nullptr) {
     return KStatus::FAIL;
   }
