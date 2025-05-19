@@ -509,7 +509,18 @@ func getTimeWithPrecision(time *tree.DTimestampTZ, precision int64) (bool, int64
 	default:
 		prec = 1e9
 	}
-	return int64(nanosecond)%(1e9/prec) != 0, second*prec + int64(nanosecond)/(1e9/prec)
+	var res int64
+	res = second*prec + int64(nanosecond)/(1e9/prec)
+	low, up := getLimitOfTimestampWithPrecision(precision)
+	// determine whether the given timestamp exceeds the time range corresponding to the precision
+	if second < low/prec || (second == low/prec && nanosecond < int(low-low/prec)) {
+		res = low
+	} else if second > up/prec || (second == up/prec && nanosecond > int(up-up/prec)) {
+		res = up
+	} else {
+		res = second*prec + int64(nanosecond)/(1e9/prec)
+	}
+	return int64(nanosecond)%(1e9/prec) != 0, res
 }
 
 // checkComExpr resolve comparison expr and get durition and primary tag values
