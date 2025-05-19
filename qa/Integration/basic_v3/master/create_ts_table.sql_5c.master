@@ -1,97 +1,108 @@
 > create ts database test;
 CREATE TS DATABASE
-> create table test.sjcx01(k_timestamp timestamp not null,A INT4 null,B INT4 not null,C VARCHAR(10) null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+> create table test.sjcx01(k_timestamp timestamp not null,A INT2 null,B INT4 not null,C VARCHAR(100) null,D VARCHAR(10) not null,E CHAR(1000) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
-> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d) from test.sjcx01;
-  count | sum  | max  | max  | count | min  | max  | min  | max
---------+------+------+------+-------+------+------+------+-------
-      0 | NULL | NULL | NULL |     0 | NULL | NULL | NULL | NULL
+> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
+  count | sum  | max  | max  | count | min  | max  | min  | max  | min  | max
+--------+------+------+------+-------+------+------+------+------+------+-------
+      0 | NULL | NULL | NULL |     0 | NULL | NULL | NULL | NULL | NULL | NULL
 (1 row)
-> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b) from test.sjcx01;
-  last | last | last | last | lastts | lastts | lastts | lastts
--------+------+------+------+--------+--------+--------+---------
-  NULL | NULL | NULL | NULL | NULL   | NULL   | NULL   | NULL
+> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
+  last | last | last | last | lastts | lastts | lastts | lastts | last | lastts
+-------+------+------+------+--------+--------+--------+--------+------+---------
+  NULL | NULL | NULL | NULL | NULL   | NULL   | NULL   | NULL   | NULL | NULL
 (1 row)
-> insert into test.sjcx01 values (1681111110005,null,7,null,'D', 'D4');
+> insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
 INSERT 1
-> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d) from test.sjcx01;
-  count | sum | max  | max | count | min  | max  | min | max
---------+-----+------+-----+-------+------+------+-----+------
-      0 |   7 | NULL |   7 |     0 | NULL | NULL | D   | D
+> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
+  count | sum | max  | max | count | min  | max  | min | max |  min  |  max
+--------+-----+------+-----+-------+------+------+-----+-----+-------+--------
+      0 |   7 | NULL |   7 |     0 | NULL | NULL | D   | D   | test1 | test1
 (1 row)
-> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b) from test.sjcx01;
-  last | last | last | last | lastts |            lastts             | lastts |            lastts
--------+------+------+------+--------+-------------------------------+--------+--------------------------------
-  NULL | D    | NULL |    7 | NULL   | 2023-04-10 07:18:30.005+00:00 | NULL   | 2023-04-10 07:18:30.005+00:00
+> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
+  last | last | last | last | lastts |            lastts             | lastts |            lastts             | last  |            lastts
+-------+------+------+------+--------+-------------------------------+--------+-------------------------------+-------+--------------------------------
+  NULL | D    | NULL |    7 | NULL   | 2023-04-10 07:18:30.005+00:00 | NULL   | 2023-04-10 07:18:30.005+00:00 | test1 | 2023-04-10 07:18:30.005+00:00
 (1 row)
-> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq');
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG','test2数据库语法查询测试！！！@TEST10-10', 'qqq');
 INSERT 1
-> insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD', 'qqq1');
+> insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD','test3数据库语法查询测试！！！@TEST10-10', 'qqq1');
 INSERT 1
-> insert into test.sjcx01 values (1681111110002,3,3,'C','A', 'A1');
+> insert into test.sjcx01 values (1681111110002,3,3,'C','A','test4数据库语法查询测试！！！@TEST10-10', 'A1');
 INSERT 1
-> insert into test.sjcx01 values (1681111110003,4,4,'D','B', 'B2');
+> insert into test.sjcx01 values (1681111110003,4,4,'D','B','test5数据库语法查询测试！！！@TEST10-10', 'B2');
 INSERT 1
-> insert into test.sjcx01 values (1681111110004,5,5,'E','C', 'C3');
+> insert into test.sjcx01 values (1681111110004,5,5,'E','C','test6数据库语法查询测试！！！@TEST10-10', 'C3');
 INSERT 1
-> insert into test.sjcx01 values (1681111110006,8,9,'G','E', 'E5');
+> insert into test.sjcx01 values (1681111110006,8,9,'G','E','test7数据库语法查询测试！！！@TEST10-10', 'E5');
 INSERT 1
-> insert into test.sjcx01 values (1681111110007,null,11,'H','F', 'F6');
+> insert into test.sjcx01 values (1681111110007,null,11,'H','F','test8数据库语法查询测试！！！@TEST10-10', 'F6');
 INSERT 1
-> insert into test.sjcx01 values (1681111110008,12,13,null,'G', 'G7');
+> insert into test.sjcx01 values (1681111110008,12,13,null,'G','test9数据库语法查询测试！！！@TEST10-10', 'G7');
 INSERT 1
+> insert into test.sjcx01 values (1681111110009,32767,13,null,'G','test9数据库语法查询测试！！！@TEST10-10', 'G7');
+INSERT 1
+> select sum(a) from test.sjcx01;
+   sum
+---------
+  32802
+(1 row)
 > select * from test.sjcx01 order by k_timestamp;
-           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
---------------------------------+------+----+------+----------+---------------
-  2023-04-10 07:18:30+00:00     |    1 |  1 | A    | DFFDARG  | qqq
-  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
-  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
-  2023-04-10 07:18:30.003+00:00 |    4 |  4 | D    | B        | B2
-  2023-04-10 07:18:30.004+00:00 |    5 |  5 | E    | C        | C3
-  2023-04-10 07:18:30.005+00:00 | NULL |  7 | NULL | D        | D4
-  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
-  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
-  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
-(9 rows)
+           k_timestamp          |   a   | b  |  c   |    d     |                    e                    | t1_attribute
+--------------------------------+-------+----+------+----------+-----------------------------------------+---------------
+  2023-04-10 07:18:30+00:00     |     1 |  1 | A    | DFFDARG  | test2数据库语法查询测试！！！@TEST10-10 | qqq
+  2023-04-10 07:18:30.001+00:00 |     2 |  2 | B    | DFFDARGD | test3数据库语法查询测试！！！@TEST10-10 | qqq1
+  2023-04-10 07:18:30.002+00:00 |     3 |  3 | C    | A        | test4数据库语法查询测试！！！@TEST10-10 | A1
+  2023-04-10 07:18:30.003+00:00 |     4 |  4 | D    | B        | test5数据库语法查询测试！！！@TEST10-10 | B2
+  2023-04-10 07:18:30.004+00:00 |     5 |  5 | E    | C        | test6数据库语法查询测试！！！@TEST10-10 | C3
+  2023-04-10 07:18:30.005+00:00 | NULL  |  7 | NULL | D        | test1                                   | D4
+  2023-04-10 07:18:30.006+00:00 |     8 |  9 | G    | E        | test7数据库语法查询测试！！！@TEST10-10 | E5
+  2023-04-10 07:18:30.007+00:00 | NULL  | 11 | H    | F        | test8数据库语法查询测试！！！@TEST10-10 | F6
+  2023-04-10 07:18:30.008+00:00 |    12 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
+  2023-04-10 07:18:30.009+00:00 | 32767 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
+(10 rows)
 > select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
-           k_timestamp          |  a   | b
---------------------------------+------+-----
-  2023-04-10 07:18:30+00:00     |    1 |  1
-  2023-04-10 07:18:30.001+00:00 |    2 |  2
-  2023-04-10 07:18:30.002+00:00 |    3 |  3
-  2023-04-10 07:18:30.003+00:00 |    4 |  4
-  2023-04-10 07:18:30.004+00:00 |    5 |  5
-  2023-04-10 07:18:30.005+00:00 | NULL |  7
-  2023-04-10 07:18:30.006+00:00 |    8 |  9
-  2023-04-10 07:18:30.007+00:00 | NULL | 11
-  2023-04-10 07:18:30.008+00:00 |   12 | 13
-(9 rows)
+           k_timestamp          |   a   | b
+--------------------------------+-------+-----
+  2023-04-10 07:18:30+00:00     |     1 |  1
+  2023-04-10 07:18:30.001+00:00 |     2 |  2
+  2023-04-10 07:18:30.002+00:00 |     3 |  3
+  2023-04-10 07:18:30.003+00:00 |     4 |  4
+  2023-04-10 07:18:30.004+00:00 |     5 |  5
+  2023-04-10 07:18:30.005+00:00 | NULL  |  7
+  2023-04-10 07:18:30.006+00:00 |     8 |  9
+  2023-04-10 07:18:30.007+00:00 | NULL  | 11
+  2023-04-10 07:18:30.008+00:00 |    12 | 13
+  2023-04-10 07:18:30.009+00:00 | 32767 | 13
+(10 rows)
 > select A, B from test.sjcx01 order by k_timestamp;
-   a   | b
--------+-----
-     1 |  1
-     2 |  2
-     3 |  3
-     4 |  4
-     5 |  5
-  NULL |  7
-     8 |  9
-  NULL | 11
-    12 | 13
-(9 rows)
+    a   | b
+--------+-----
+      1 |  1
+      2 |  2
+      3 |  3
+      4 |  4
+      5 |  5
+  NULL  |  7
+      8 |  9
+  NULL  | 11
+     12 | 13
+  32767 | 13
+(10 rows)
 > select A from test.sjcx01 order by k_timestamp;
-   a
---------
-     1
-     2
-     3
-     4
-     5
+    a
+---------
+      1
+      2
+      3
+      4
+      5
   NULL
-     8
+      8
   NULL
-    12
-(9 rows)
+     12
+  32767
+(10 rows)
 > select C from test.sjcx01 order by k_timestamp;
    c
 --------
@@ -104,54 +115,57 @@ INSERT 1
   G
   H
   NULL
-(9 rows)
+  NULL
+(10 rows)
 > select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
-           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
---------------------------------+------+----+------+----------+---------------
-  2023-04-10 07:18:30+00:00     |    1 |  1 | A    | DFFDARG  | qqq
-  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
-  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
-  2023-04-10 07:18:30.003+00:00 |    4 |  4 | D    | B        | B2
-  2023-04-10 07:18:30.004+00:00 |    5 |  5 | E    | C        | C3
-  2023-04-10 07:18:30.005+00:00 | NULL |  7 | NULL | D        | D4
-  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
-  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
-  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
-(9 rows)
+           k_timestamp          |   a   | b  |  c   |    d     |                    e                    | t1_attribute
+--------------------------------+-------+----+------+----------+-----------------------------------------+---------------
+  2023-04-10 07:18:30+00:00     |     1 |  1 | A    | DFFDARG  | test2数据库语法查询测试！！！@TEST10-10 | qqq
+  2023-04-10 07:18:30.001+00:00 |     2 |  2 | B    | DFFDARGD | test3数据库语法查询测试！！！@TEST10-10 | qqq1
+  2023-04-10 07:18:30.002+00:00 |     3 |  3 | C    | A        | test4数据库语法查询测试！！！@TEST10-10 | A1
+  2023-04-10 07:18:30.003+00:00 |     4 |  4 | D    | B        | test5数据库语法查询测试！！！@TEST10-10 | B2
+  2023-04-10 07:18:30.004+00:00 |     5 |  5 | E    | C        | test6数据库语法查询测试！！！@TEST10-10 | C3
+  2023-04-10 07:18:30.005+00:00 | NULL  |  7 | NULL | D        | test1                                   | D4
+  2023-04-10 07:18:30.006+00:00 |     8 |  9 | G    | E        | test7数据库语法查询测试！！！@TEST10-10 | E5
+  2023-04-10 07:18:30.007+00:00 | NULL  | 11 | H    | F        | test8数据库语法查询测试！！！@TEST10-10 | F6
+  2023-04-10 07:18:30.008+00:00 |    12 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
+  2023-04-10 07:18:30.009+00:00 | 32767 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
+(10 rows)
 > select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
-           k_timestamp          |  a   | b |  c   | d | t1_attribute
---------------------------------+------+---+------+---+---------------
-  2023-04-10 07:18:30.003+00:00 |    4 | 4 | D    | B | B2
-  2023-04-10 07:18:30.004+00:00 |    5 | 5 | E    | C | C3
-  2023-04-10 07:18:30.005+00:00 | NULL | 7 | NULL | D | D4
-  2023-04-10 07:18:30.006+00:00 |    8 | 9 | G    | E | E5
+           k_timestamp          |  a   | b |  c   | d |                    e                    | t1_attribute
+--------------------------------+------+---+------+---+-----------------------------------------+---------------
+  2023-04-10 07:18:30.003+00:00 |    4 | 4 | D    | B | test5数据库语法查询测试！！！@TEST10-10 | B2
+  2023-04-10 07:18:30.004+00:00 |    5 | 5 | E    | C | test6数据库语法查询测试！！！@TEST10-10 | C3
+  2023-04-10 07:18:30.005+00:00 | NULL | 7 | NULL | D | test1                                   | D4
+  2023-04-10 07:18:30.006+00:00 |    8 | 9 | G    | E | test7数据库语法查询测试！！！@TEST10-10 | E5
 (4 rows)
 > select * from test.sjcx01
 where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
-           k_timestamp          |  a   | b  |  c   |    d     | t1_attribute
---------------------------------+------+----+------+----------+---------------
-  2023-04-10 07:18:30.001+00:00 |    2 |  2 | B    | DFFDARGD | qqq1
-  2023-04-10 07:18:30.002+00:00 |    3 |  3 | C    | A        | A1
-  2023-04-10 07:18:30.006+00:00 |    8 |  9 | G    | E        | E5
-  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H    | F        | F6
-  2023-04-10 07:18:30.008+00:00 |   12 | 13 | NULL | G        | G7
-(5 rows)
+           k_timestamp          |   a   | b  |  c   |    d     |                    e                    | t1_attribute
+--------------------------------+-------+----+------+----------+-----------------------------------------+---------------
+  2023-04-10 07:18:30.001+00:00 |     2 |  2 | B    | DFFDARGD | test3数据库语法查询测试！！！@TEST10-10 | qqq1
+  2023-04-10 07:18:30.002+00:00 |     3 |  3 | C    | A        | test4数据库语法查询测试！！！@TEST10-10 | A1
+  2023-04-10 07:18:30.006+00:00 |     8 |  9 | G    | E        | test7数据库语法查询测试！！！@TEST10-10 | E5
+  2023-04-10 07:18:30.007+00:00 | NULL  | 11 | H    | F        | test8数据库语法查询测试！！！@TEST10-10 | F6
+  2023-04-10 07:18:30.008+00:00 |    12 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
+  2023-04-10 07:18:30.009+00:00 | 32767 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
+(6 rows)
 > select count(*), count(c) from test.sjcx01;
   count | count
 --------+--------
-      9 |     7
+     10 |     7
 (1 row)
 > select count(*), count(c) from test.sjcx01 where a is not null;
   count | count
 --------+--------
-      7 |     6
+      8 |     6
 (1 row)
 > select count(a), count(distinct a) from test.sjcx01;
   count | count
 --------+--------
-      7 |     7
+      8 |     8
 (1 row)
 > select max(b), sum(a) from test.sjcx01 where k_timestamp < k_timestamp;
   max  | sum
@@ -159,37 +173,37 @@ order by k_timestamp;
   NULL | NULL
 (1 row)
 > select sum(a), min(b) from test.sjcx01;
-  sum | min
-------+------
-   35 |   1
+   sum  | min
+--------+------
+  32802 |   1
 (1 row)
-> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d) from test.sjcx01;
-  count | sum | max | max | count | min | max | min | max
---------+-----+-----+-----+-------+-----+-----+-----+------
-      7 |  55 |  12 |  13 |     7 | A   | H   | A   | G
+> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
+  count | sum |  max  | max | count | min | max | min | max |  min  |                   max
+--------+-----+-------+-----+-------+-----+-----+-----+-----+-------+------------------------------------------
+      8 |  68 | 32767 |  13 |     7 | A   | H   | A   | G   | test1 | test9数据库语法查询测试！！！@TEST10-10
 (1 row)
 > select t1_attribute, count(c), sum(a), max(b), last(a) from test.sjcx01 group by t1_attribute order by t1_attribute;
-  t1_attribute | count | sum  | max | last
----------------+-------+------+-----+-------
-  A1           |     1 |    3 |   3 |    3
-  B2           |     1 |    4 |   4 |    4
-  C3           |     1 |    5 |   5 |    5
-  D4           |     0 | NULL |   7 | NULL
-  E5           |     1 |    8 |   9 |    8
-  F6           |     1 | NULL |  11 | NULL
-  G7           |     0 |   12 |  13 |   12
-  qqq          |     1 |    1 |   1 |    1
-  qqq1         |     1 |    2 |   2 |    2
+  t1_attribute | count |  sum  | max | last
+---------------+-------+-------+-----+--------
+  A1           |     1 |     3 |   3 |     3
+  B2           |     1 |     4 |   4 |     4
+  C3           |     1 |     5 |   5 |     5
+  D4           |     0 | NULL  |   7 | NULL
+  E5           |     1 |     8 |   9 |     8
+  F6           |     1 | NULL  |  11 | NULL
+  G7           |     0 | 32779 |  13 | 32767
+  qqq          |     1 |     1 |   1 |     1
+  qqq1         |     1 |     2 |   2 |     2
 (9 rows)
-> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b) from test.sjcx01;
-  last | last | last | last |            lastts             |            lastts             |            lastts             |            lastts
--------+------+------+------+-------------------------------+-------------------------------+-------------------------------+--------------------------------
-  H    | G    |   12 |   13 | 2023-04-10 07:18:30.007+00:00 | 2023-04-10 07:18:30.008+00:00 | 2023-04-10 07:18:30.008+00:00 | 2023-04-10 07:18:30.008+00:00
+> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
+  last | last | last  | last |            lastts             |            lastts             |            lastts             |            lastts             |                  last                   |            lastts
+-------+------+-------+------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------------------------------+--------------------------------
+  H    | G    | 32767 |   13 | 2023-04-10 07:18:30.007+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | test9数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30.009+00:00
 (1 row)
 > select max(a+3), min(a+b) from test.sjcx01;
-  max | min
-------+------
-   15 |   2
+   max  | min
+--------+------
+  32770 |   2
 (1 row)
 > select a+b, sum(b) from test.sjcx01 group by a+b order by a+b;
   ?column? | sum
@@ -202,21 +216,22 @@ order by k_timestamp;
         10 |   5
         17 |   9
         25 |  13
-(8 rows)
+     32780 |  13
+(9 rows)
 > select last(b), last(a) from test.sjcx01;
   last | last
--------+-------
-    13 |   12
+-------+--------
+    13 | 32767
 (1 row)
 > select * from test.sjcx01 where t1_attribute = 'F6';
-           k_timestamp          |  a   | b  | c | d | t1_attribute
---------------------------------+------+----+---+---+---------------
-  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | F6
+           k_timestamp          |  a   | b  | c | d |                    e                    | t1_attribute
+--------------------------------+------+----+---+---+-----------------------------------------+---------------
+  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | test8数据库语法查询测试！！！@TEST10-10 | F6
 (1 row)
 > SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
-         time_bucket        | max
-----------------------------+------
-  2023-04-10 07:18:00+00:00 |  12
+         time_bucket        |  max
+----------------------------+--------
+  2023-04-10 07:18:00+00:00 | 32767
 (1 row)
 > drop database test cascade;
 DROP DATABASE

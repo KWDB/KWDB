@@ -174,7 +174,6 @@ inline void AggCalculatorV2::InitSumValue(void* ptr) {
 
 
 inline void AggCalculatorV2::InitAggData(TSSlice& agg_data) {
-  agg_data.len = sizeof(uint64_t);
   agg_data.data = static_cast<char*>(malloc(agg_data.len));
   memset(agg_data.data, 0, agg_data.len);
 }
@@ -212,6 +211,7 @@ bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg
     // === MAX ===
     if (agg_type == Sumfunctype::MAX) {
       if (agg_data.data == nullptr) {
+        agg_data.len = size_;
         InitAggData(agg_data);
         memcpy(agg_data.data, current, size_);
       } else if (cmp(current, agg_data.data) > 0) {
@@ -222,6 +222,7 @@ bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg
     // === MIN ===
     if (agg_type == Sumfunctype::MIN) {
       if (agg_data.data == nullptr) {
+        agg_data.len = size_;
         InitAggData(agg_data);
         memcpy(agg_data.data, current, size_);
       } else if (cmp(current, agg_data.data) < 0) {
@@ -235,24 +236,25 @@ bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg
         continue;
       }
       if (agg_data.data == nullptr) {
+        agg_data.len = sizeof(int64_t);
         InitAggData(agg_data);
         InitSumValue(agg_data.data);
       }
 
       switch (type_) {
         case DATATYPE::INT8:
-          is_overflow = AddAggInteger<int8_t>(
-              *reinterpret_cast<int8_t*>(agg_data.data),
+          is_overflow = AddAggInteger<int64_t>(
+              *reinterpret_cast<int64_t*>(agg_data.data),
               *reinterpret_cast<int8_t*>(current));
           break;
         case DATATYPE::INT16:
-          is_overflow = AddAggInteger<int16_t>(
-              *reinterpret_cast<int16_t*>(agg_data.data),
+          is_overflow = AddAggInteger<int64_t>(
+              *reinterpret_cast<int64_t*>(agg_data.data),
               *reinterpret_cast<int16_t*>(current));
           break;
         case DATATYPE::INT32:
-          is_overflow = AddAggInteger<int32_t>(
-              *reinterpret_cast<int32_t*>(agg_data.data),
+          is_overflow = AddAggInteger<int64_t>(
+              *reinterpret_cast<int64_t*>(agg_data.data),
               *reinterpret_cast<int32_t*>(current));
           break;
         case DATATYPE::INT64:
