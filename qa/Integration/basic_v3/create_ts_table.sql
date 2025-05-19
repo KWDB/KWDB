@@ -2,6 +2,7 @@ create ts database test;
 create table test.sjcx01(k_timestamp timestamp not null,A INT2 null,B INT4 not null,C VARCHAR(100) null,D VARCHAR(10) not null,E CHAR(1000) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
 select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
+select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
 insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
 select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
 select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
@@ -26,7 +27,6 @@ select * from test.sjcx01
 where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
    or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
 order by k_timestamp;
-
 select count(*), count(c) from test.sjcx01;
 select count(*), count(c) from test.sjcx01 where a is not null;
 select count(a), count(distinct a) from test.sjcx01;
@@ -35,6 +35,7 @@ select sum(a), min(b) from test.sjcx01;
 select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
 select t1_attribute, count(c), sum(a), max(b), last(a) from test.sjcx01 group by t1_attribute order by t1_attribute;
 select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
+select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
 select max(a+3), min(a+b) from test.sjcx01;
 select a+b, sum(b) from test.sjcx01 group by a+b order by a+b;
 select last(b), last(a) from test.sjcx01;
