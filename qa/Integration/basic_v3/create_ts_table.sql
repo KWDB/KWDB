@@ -61,6 +61,10 @@ create table test_datatype.t1(
 insert into test_datatype.t1 values (1681111110000, 32767, 2147483647, 9223372036854775807, 'tag1');
 insert into test_datatype.t1 values (1681111110001, null, null, null, 'tag2');
 insert into test_datatype.t1 values (1681111110002, -32768, -2147483648, -9223372036854775808, 'tag3');
+select max(A), max(B), max(C) from test_datatype.t1;
+select min(A), min(B), min(C) from test_datatype.t1;
+select sum(A), sum(B), sum(C) from test_datatype.t1;
+select last(A), last(B), last(C) from test_datatype.t1;
 insert into test_datatype.t1 values (1681111110100, 32767, 2147483647, 2223372036854775807, 'tag1');
 insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 822332036854775807, 'tag1');
 insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 3223372036854775807, 'tag1');
