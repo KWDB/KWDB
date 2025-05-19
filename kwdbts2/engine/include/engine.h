@@ -920,7 +920,7 @@ bool AddAggInteger(T& a, T b) {
   if (__builtin_add_overflow(a, b, &c)) {
     return true;
   }
-  a = a + b;
+  a = c;
   return false;
 }
 
@@ -930,7 +930,7 @@ bool AddAggInteger(T1& a, T2 b) {
   if (__builtin_add_overflow(a, b, &c)) {
     return true;
   }
-  a = a + b;
+  a = c;
   return false;
 }
 

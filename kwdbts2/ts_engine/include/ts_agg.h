@@ -35,7 +35,7 @@ class AggCalculatorV2 {
   }
 
   bool CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
-  bool MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx);
+  KStatus MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx, bool& is_overflow);
 
  private:
   int cmp(void* l, void* r);

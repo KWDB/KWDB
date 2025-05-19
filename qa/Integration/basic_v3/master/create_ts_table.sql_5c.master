@@ -275,20 +275,20 @@ INSERT 1
 INSERT 1
 > insert into test_datatype.t1 values (1681111110002, -32768, -2147483648, -9223372036854775808, 'tag3');
 INSERT 1
-> select max(A), max(B), max(C) from test_datatype.t1;
-   max  |    max     |         max
---------+------------+----------------------
-  32767 | 2147483647 | 9223372036854775807
-(1 row)
-> select min(A), min(B), min(C) from test_datatype.t1;
-   min   |     min     |         min
+> insert into test_datatype.t1 values (1681111110100, 32767, 2147483647, 2223372036854775807, 'tag1');
+INSERT 1
+> insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 822332036854775807, 'tag1');
+INSERT 1
+> insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 3223372036854775807, 'tag1');
+INSERT 1
+> insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 1223372036854775807, 'tag1');
+INSERT 1
+> insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 7223372036854775807, 'tag1');
+INSERT 1
+> select sum(A), sum(B), sum(C) from test_datatype.t1;
+   sum   |     sum     |         sum
 ---------+-------------+-----------------------
-  -32768 | -2147483648 | -9223372036854775808
-(1 row)
-> select last(A), last(B), last(C) from test_datatype.t1;
-   last  |    last     |         last
----------+-------------+-----------------------
-  -32768 | -2147483648 | -9223372036854775808
+  163834 | 10737418234 | 14715820184273880000
 (1 row)
 > drop database test_datatype cascade;
 DROP DATABASE

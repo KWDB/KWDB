@@ -18,7 +18,7 @@ namespace kwdbts {
 
 KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                                const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                               const Sumfunctype agg_type, TSSlice& agg_data) {
+                               const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
 
   if (!isVarLenType(dest_type.type)) {
@@ -33,9 +33,10 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
     AggCalculatorV2 calc(value, &bitmap, static_cast<DATATYPE>(dest_type.type), dest_type.size, row_num);
     uint64_t local_count = 0;
 
-    bool overflow = calc.MergeAggResultFromBlock(agg_data, agg_type, blk_col_idx);
-
-    assert(!overflow);
+    s = calc.MergeAggResultFromBlock(agg_data, agg_type, blk_col_idx, is_overflow);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
   } else {
     std::vector<string> var_rows;
     KStatus ret;
@@ -186,9 +187,9 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx
 }
 
 KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data) {
+ const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
   return block_->GetAggResult(
-    start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data);
+    start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data, is_overflow);
 }
 
 KStatus TsBlockSpan::GetLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,

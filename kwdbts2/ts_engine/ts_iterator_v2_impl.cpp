@@ -458,6 +458,7 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
   }
 
   std::vector<TSSlice> final_agg_data(ts_scan_cols_.size(), TSSlice{nullptr, 0});
+  std::vector<bool> is_overflow(ts_scan_cols_.size(), false);
   std::vector<k_uint32> first_cols;
   std::vector<k_uint32> last_cols;
   std::vector<k_uint32> normal_cols;
@@ -487,14 +488,16 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
       return s;
     }
     for (k_uint32 idx : normal_cols) {
-      s = blk_span.GetAggResult(
-        blk_scan_cols[idx], blk_schema_valid, attrs_[blk_scan_cols[idx]], scan_agg_types_[idx], final_agg_data[idx]);
+      bool overflow = is_overflow[idx];
+      s = blk_span.GetAggResult(blk_scan_cols[idx], blk_schema_valid, attrs_[blk_scan_cols[idx]],
+                                scan_agg_types_[idx], final_agg_data[idx], overflow);
 
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Failed to compute aggregation for col_idx(%u)",
                   blk_scan_cols[idx]);
         return s;
       }
+      is_overflow[idx] = overflow;
     }
   }
 
@@ -512,6 +515,7 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     } else if (!isVarLenType(attrs_[ts_scan_cols_[i]].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
       b = new AggBatch(slice.data, 1, nullptr);
       b->is_new = true;
+      b->is_overflow = is_overflow[i];
     } else {
       std::shared_ptr<void> ptr(slice.data, free);
       b = new AggBatch(ptr, 1, nullptr);
