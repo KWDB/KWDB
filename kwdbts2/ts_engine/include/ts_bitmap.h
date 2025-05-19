@@ -23,11 +23,7 @@ namespace kwdbts {
 enum DataFlags : uint8_t { kValid = 0b00, kNull = 0b01, kNone = 0b10 };
 
 class TsBitmap {
- private:
-  constexpr static int nbit_per_row = 2;
-  size_t nrows_, nvalid_;
-  std::string rep_;
-
+ public:
   struct Proxy {
     TsBitmap *p;
     uint32_t charidx;
@@ -44,6 +40,11 @@ class TsBitmap {
       return static_cast<DataFlags>((p->rep_[charidx] >> charoff) & 0b11);
     }
   };
+
+ private:
+  constexpr static int nbit_per_row = 2;
+  size_t nrows_, nvalid_;
+  std::string rep_;
 
  public:
   TsBitmap() : nrows_(0), nvalid_(0) {}

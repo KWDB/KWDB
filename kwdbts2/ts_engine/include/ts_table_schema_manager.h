@@ -131,7 +131,7 @@ class TsTableSchemaManager {
 
   KStatus GetTagMeta(uint32_t version, std::vector<TagInfo>& info);
 
-  KStatus GetMetricSchema(kwdbContext_p ctx, uint32_t version, std::shared_ptr<MMapMetricsTable>* schema);
+  KStatus GetMetricSchema(uint32_t version, std::shared_ptr<MMapMetricsTable>* schema);
 
   KStatus GetTagSchema(kwdbContext_p ctx, std::shared_ptr<TagTable>* schema);
 

@@ -475,19 +475,13 @@ KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>&
   return SUCCESS;
 }
 
-KStatus TsTableSchemaManager::GetMetricSchema(kwdbContext_p ctx, uint32_t version,
+KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
                                               std::shared_ptr<MMapMetricsTable>* schema) {
-  if (version == 0) {
-    version = cur_schema_version_;
-  }
-  wrLock();
-  auto it = metric_schemas_.find(version);
-  if (it == metric_schemas_.end()) {
-    unLock();
+  *schema = Get(version);
+  if (!schema) {
+    LOG_ERROR("schema version [%u] does not exists", version);
     return FAIL;
   }
-  *schema = it->second;
-  unLock();
   return SUCCESS;
 }
 
