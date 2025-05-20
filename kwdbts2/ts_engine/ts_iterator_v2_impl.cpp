@@ -562,13 +562,16 @@ KStatus TsAggIteratorV2Impl::AggregateFirstOrLastColumns(
 
     bool skip = true;
     for (size_t j = 0; j < cols.size(); ++j) {
-      int64_t candidate_ts = candidates[j].ts;
       if (!candidates[j].valid) {
-        if ((is_first && candidate_ts > part_ts) ||
-            (!is_first && candidate_ts < part_ts)) {
-          skip = false;
-          break;
-        }
+        skip = false;
+        break;
+      }
+
+      int64_t candidate_ts = candidates[j].ts;
+      if ((is_first && candidate_ts > part_ts) ||
+          (!is_first && candidate_ts < part_ts)) {
+        skip = false;
+        break;
       }
     }
     if (skip) continue;
