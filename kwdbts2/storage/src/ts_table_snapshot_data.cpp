@@ -146,15 +146,15 @@ SnapshotPayloadDataBlockPart SnapshotPayloadDataBlockPart::ParseData(TSSlice dat
   return SnapshotPayloadDataBlockPart(primary_key, block_max_row_num, res_list, true);
 }
 
-KStatus TsSnapshotProductorByPayload::SerializeData(kwdbContext_p ctx,
-      const std::list<SnapshotBlockDataInfo>& res_list, TSSlice* data, TsSnapshotDataType* type) {
+KStatus TsSnapshotProductorByPayload::SerializeData(kwdbContext_p ctx, const std::list<SnapshotBlockDataInfo>& res_list,
+                                                    TSSlice* data, TsSnapshotDataType* type, bool is_only_tag_data) {
   *type = TsSnapshotDataType::PAYLOAD_COL_BASED_DATA;
   size_t  cur_rows_in_res = 0;
   for (auto& res : res_list) {
     cur_rows_in_res += res.count;
   }
   // create payload builder with tag info.
-  auto pl_template = getPlBuilderTemplate(res_list.front().res->entity_index);
+  auto pl_template = getPlBuilderTemplate(res_list.front().res->entity_index, is_only_tag_data);
   if (UNLIKELY(pl_template == nullptr)) {
     LOG_ERROR("pl_template is null pointer");
     return KStatus::FAIL;
@@ -244,9 +244,12 @@ PayloadBuilder* TsSnapshotProductorByPayload::genPayloadWithTag(const TagRowNum&
   return cur_entity_pl_builder;
 }
 
-PayloadBuilder* TsSnapshotProductorByPayload::getPlBuilderTemplate(const EntityResultIndex& idx) {
-  assert(egrp_iter_->first == idx.entityGroupId);
-  assert(subgrp_iter_->first == idx.subGroupId);
+PayloadBuilder* TsSnapshotProductorByPayload::getPlBuilderTemplate(const EntityResultIndex& idx,
+                                                                   bool is_only_tag_data) {
+  if (!is_only_tag_data) {
+    assert(egrp_iter_->first == idx.entityGroupId);
+    assert(subgrp_iter_->first == idx.subGroupId);
+  }
   if (cur_entity_pl_builder_ != nullptr) {
     if (cur_pl_builder_entity_.equalsWithoutMem(idx)) {
       // same entity id as payload builder.
@@ -473,7 +476,7 @@ TSSlice TsSnapshotProductorByBlock::getPrimaryKey(EntityResultIndex* entity_id) 
 }
 
 KStatus TsSnapshotProductorByBlock::SerializeData(kwdbContext_p ctx, const std::list<SnapshotBlockDataInfo>& res_list,
-            TSSlice* data, TsSnapshotDataType* type) {
+                                                  TSSlice* data, TsSnapshotDataType* type, bool is_only_tag_data) {
   *type = TsSnapshotDataType::BLOCK_ITEM_BASED_DATA;
   if (res_list.size() == 0) {
     LOG_WARN("SerializeData empty list.");

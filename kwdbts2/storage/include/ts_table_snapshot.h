@@ -55,8 +55,9 @@ enum TsSnapshotDataType : uint8_t {
 enum TsSnapshotStatus : uint8_t {
   INVAILD_STATUS = 0,
   SENDING_USING_SCHEMA = 1,
-  SENDING_METRIC = 2,
-  SENDING_ALL_SCHEMAS = 3,
+  SENDING_TAG = 2,
+  SENDING_METRIC = 3,
+  SENDING_ALL_SCHEMAS = 4,
 };
 
 /*  snapshot data structure
@@ -176,6 +177,47 @@ class TsSnapshotProductor : public TsTableEntitiesSnapshot {
     TagTableRowID tag_row_id{0};
   };
 
+  class TagMapIter {
+   public:
+    TagMapIter(std::unordered_map<uint64_t, std::unordered_map<SubGroupID,
+        std::vector<std::pair<EntityID, TagRowNum>>>>& entity_map) : entity_map_(entity_map) {
+        if (!entity_map_.empty()) {
+          entity_group_iter_ = entity_map_.begin();
+          if (!entity_group_iter_->second.empty()) {
+            subgroup_iter_ = entity_group_iter_->second.begin();
+            if (!subgroup_iter_->second.empty()) {
+              entity_iter_ = subgroup_iter_->second.begin();
+              no_entity_ = false;
+            }
+          }
+        }
+    }
+
+    EntityResultIndex NextEntityResultIndex() {
+      if (no_entity_ || entity_group_iter_ == entity_map_.end()) return {};
+      EntityResultIndex res = EntityResultIndex(entity_group_iter_->first, entity_iter_->first, subgroup_iter_->first);
+      if (++entity_iter_ == subgroup_iter_->second.end()) {
+        if (++subgroup_iter_ == entity_group_iter_->second.end()) {
+          if (++entity_group_iter_ != entity_map_.end()) {
+            subgroup_iter_ = entity_group_iter_->second.begin();
+            entity_iter_ = subgroup_iter_->second.begin();
+          }
+        } else {
+          entity_iter_ = subgroup_iter_->second.begin();
+        }
+      }
+      return res;
+    }
+
+   private:
+    bool no_entity_ = true;
+    std::unordered_map<uint64_t, std::unordered_map<SubGroupID, std::vector<std::pair<EntityID, TagRowNum>>>> entity_map_;
+    std::unordered_map<uint64_t, std::unordered_map<SubGroupID,
+                                 std::vector<std::pair<EntityID, TagRowNum>>>>::iterator entity_group_iter_;
+    std::unordered_map<SubGroupID, std::vector<std::pair<EntityID, TagRowNum>>>::iterator subgroup_iter_;
+    std::vector<std::pair<EntityID, TagRowNum>>::iterator entity_iter_;
+  };
+
  public:
   TsSnapshotProductor() {}
 
@@ -198,11 +240,13 @@ class TsSnapshotProductor : public TsTableEntitiesSnapshot {
 
   // gen data that can migrate by network.
   virtual KStatus SerializeData(kwdbContext_p ctx, const std::list<SnapshotBlockDataInfo>& res_list,
-                                TSSlice* data, TsSnapshotDataType* type) = 0;
+                                TSSlice* data, TsSnapshotDataType* type, bool is_only_tag_data = false) = 0;
 
  protected:
   virtual KStatus getEnoughRows(kwdbContext_p ctx, std::list<SnapshotBlockDataInfo>* res_list,
                                 bool* need_change_subgroup) = 0;
+  // construct tag data using payload struct.
+  KStatus nextTagSerializedData(kwdbContext_p ctx, TSSlice* data, TsSnapshotDataType* type);
   // construct data using payload struct.
   KStatus nextSerializedData(kwdbContext_p ctx, TSSlice* data, TsSnapshotDataType* type);
   // generate subgroup iterator of next sub group
@@ -217,6 +261,7 @@ class TsSnapshotProductor : public TsTableEntitiesSnapshot {
  protected:
   // entity group --> sub entity group --> pair < entity_id, tag_row_id>
   std::unordered_map<uint64_t, std::unordered_map<SubGroupID, std::vector<std::pair<EntityID, TagRowNum>>>> entity_map_;
+  TagMapIter* tag_map_iter_;
   std::unordered_map<uint64_t, std::unordered_map<kwdbts::SubGroupID,
                     std::vector<std::pair<kwdbts::EntityID, TagRowNum>>>>::iterator egrp_iter_{nullptr};
   std::unordered_map<kwdbts::SubGroupID,
@@ -304,7 +349,7 @@ class TsSnapshotProductorByBlock : public TsSnapshotProductor {
   }
 
   KStatus SerializeData(kwdbContext_p ctx, const std::list<SnapshotBlockDataInfo>& res_list,
-                        TSSlice* data, TsSnapshotDataType* type) override;
+                        TSSlice* data, TsSnapshotDataType* type, bool is_only_tag_data = false) override;
   KStatus getEnoughRows(kwdbContext_p ctx, std::list<SnapshotBlockDataInfo>* res_list,
                         bool* need_change_subgroup) override;
 
@@ -341,7 +386,7 @@ class TsSnapshotProductorByPayload : public TsSnapshotProductor {
   }
 
   KStatus SerializeData(kwdbContext_p ctx, const std::list<SnapshotBlockDataInfo>& res_list,
-                        TSSlice* data, TsSnapshotDataType* type) override;
+                        TSSlice* data, TsSnapshotDataType* type, bool is_only_tag_data = false) override;
 
   KStatus getEnoughRows(kwdbContext_p ctx, std::list<SnapshotBlockDataInfo>* res_list,
                         bool* need_change_subgroup) override;
@@ -350,7 +395,7 @@ class TsSnapshotProductorByPayload : public TsSnapshotProductor {
   // parse data of res and put into payload.
   KStatus putResIntoPayload(PayloadBuilder& py_builder, const ResultSet &res, uint32_t count, uint32_t start_pos);
   // get payload builder using template pattern.
-  PayloadBuilder* getPlBuilderTemplate(const EntityResultIndex& idx);
+  PayloadBuilder* getPlBuilderTemplate(const EntityResultIndex& idx, bool is_only_tag_data = false);
   // generate payload builder with tag info filled.
   PayloadBuilder* genPayloadWithTag(const TagRowNum& tag_row);
 

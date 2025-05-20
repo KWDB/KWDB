@@ -27,6 +27,10 @@ TsSnapshotProductor::~TsSnapshotProductor() {
   if (!scan_over_ || status_ != TsSnapshotStatus::SENDING_ALL_SCHEMAS) {
     LOG_WARN("snapshot[%s] not scan over. status: %d.", Print().c_str(), status_);
   }
+  if (tag_map_iter_ != nullptr) {
+    delete tag_map_iter_;
+    tag_map_iter_ = nullptr;
+  }
 }
 
 TsSnapshotConsumer::~TsSnapshotConsumer() {
@@ -156,6 +160,7 @@ KStatus TsSnapshotProductor::Init(kwdbContext_p ctx, const TsSnapshotInfo& info)
     entity_map_[item.second.entityGroupId][item.second.subGroupId].push_back(
                           {item.second.entityId, std::move(TagRowNum{item.second.ts_version, uint32_t(item.first)})});
   }
+  tag_map_iter_ = new TagMapIter(entity_map_);
   egrp_iter_ = entity_map_.begin();
   if (egrp_iter_ == entity_map_.end()) {
     // maybe convert empty range from this node to other.
@@ -241,8 +246,20 @@ KStatus TsSnapshotProductor::NextData(kwdbContext_p ctx, TSSlice* data) {
     type = TsSnapshotDataType::STORAGE_SCHEMA;
     // need include normal tag index.
     s = getSchemaInfo(ctx, using_storage_schema_version_, &payload_data);
-    status_ = TsSnapshotStatus::SENDING_METRIC;
+    status_ = TsSnapshotStatus::SENDING_TAG;
     break;
+  case TsSnapshotStatus::SENDING_TAG:
+    LOG_DEBUG("sending tag data to desc. size[%lu]", data->len);
+    s = nextTagSerializedData(ctx, &payload_data, &type);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("nextTagSerializedData tag data failed. %s", Print().c_str());
+      return s;
+    }
+    if (payload_data.data == nullptr) {
+      status_ = TsSnapshotStatus::SENDING_METRIC;
+    } else {
+      break;
+    }
   case TsSnapshotStatus::SENDING_METRIC:
     LOG_DEBUG("sending data to desc. size[%lu]", data->len);
     s = nextSerializedData(ctx, &payload_data, &type);
@@ -304,6 +321,37 @@ KStatus TsSnapshotProductor::nextSubGrpDataIter(kwdbContext_p ctx, bool &finishe
   subgrp_data_scan_ctx_.entity_first_batch = {nullptr, 0};
   subgrp_data_scan_ctx_.sub_grp_data_iter =
          new TsSubGroupIteratorEntityBased(subgrp_data_scan_ctx_.cur_sub_group, params);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsSnapshotProductor::nextTagSerializedData(kwdbContext_p ctx, TSSlice* data, TsSnapshotDataType* type) {
+  data->data = nullptr;
+  data->len = 0;
+  std::list<SnapshotBlockDataInfo> batch_list;
+  Defer defer{[&]() {
+    for (auto& res : batch_list) {
+      delete res.res;
+      delete res.blk_item;
+    }
+  }};
+
+  EntityResultIndex entity_index_res = tag_map_iter_->NextEntityResultIndex();
+  if (0 == entity_index_res.entityGroupId) {
+    LOG_INFO("entity scan over.");
+    return KStatus::SUCCESS;
+  }
+  k_uint32 col_num = ts_scan_cols_.size();
+  ResultSet* res = new ResultSet(col_num);
+  res->entity_index = entity_index_res;
+  for (k_uint32 i = 0; i < col_num; ++i) {
+    res->push_back(i, new Batch(nullptr, 0, nullptr));
+  }
+  batch_list.push_back({res, 0});
+  KStatus s = SerializeData(ctx, batch_list, data, type, true);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("next failed during Serialize payload Data, subgroup_id[%u]", subgrp_iter_->first);
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 
