@@ -4,31 +4,55 @@
 
 ## 了解 KWDB
 
-KWDB 是由开放原子开源基金会孵化及运营的开源项目，是一款**面向 AIoT 场景的分布式多模数据库**产品，支持在同一实例同时建立时序库和关系库并融合处理多模数据，具备千万级设备接入、百万级数据秒级写入、亿级数据秒级读取等时序数据高效处理能力，具有稳定安全、高可用、易运维等特点。
+KWDB 是开放原子开源基金会孵化及运营的**面向 AIoT 物联网场景的分布式多模数据库**项目。基于浪潮 KaiwuDB 开源，支持在同一实例同时建立时序库和关系库并融合处理多模数据，具备千万级设备接入、百万级数据秒级写入、亿级数据秒级读取等时序数据高效处理能力，具有稳定安全、高可用、易运维等特点。典型应用场景包括但不限于物联网、能源电力、交通车联网等，旨在为各行业领域提供一站式数据存储、管理与分析的基座，助力企业数智化建设，以更低的成本挖掘更大的数据价值。
 
 ![img](./static/arch.png)
 
-KWDB 基于浪潮 KaiwuDB 分布式多模数据库研发开源，典型应用场景包括但不限于物联网、能源电力、交通车联网、智慧政务、IT 运维、金融证券等，旨在为各行业领域提供一站式数据存储、管理与分析的基座，助力企业数智化建设，以更低的成本挖掘更大的数据价值。
+KWDB 适配多种场景，为开发者提供：
 
-KWDB 为不同角色开发者提供以下支持（包括但不限于）：
-
-- 为开发者提供通用连接接口，具备高速写入、极速查询、SQL 支持、随需压缩、数据生命周期管理、集群部署等特性，与第三方工具无缝集成，降低开发及学习难度，提升开发使用效率。
-- 为运维管理人员提供快速安装部署、升级、迁移、监控等能力，降低数据库运维管理成本。
+- 多种通用连接接口，具备高速写入、极速查询、SQL 支持、随需压缩、数据生命周期管理、集群部署等特性，与第三方工具无缝集成，降低开发及学习难度，提升开发使用效率。
+- 快速安装部署、升级、迁移、监控等能力，提升数据库运维效率，降低数据库运维管理成本。
+- 数据库可视化管理工具、时序数据库基准测试工具、监控指标模板等多种生态工具。
+- MCP Server、AI 智能助手和 AI 智能体等多种 AI 赋能工具，帮助用户更高效、更智能的开发和维护 KWDB。
 
  **关键词**：物联网（IoT）、多模数据库、分布式、时序数据处理、云边端协同
 
-## 资源下载
+## 快速开始
 
-**获取资源**：拥有 Gitee 账户的用户登陆后可以直接访问并下载本社区的资源，资源类型包括文章、文档、源代码、二进制可执行文件。
+推荐使用 Docker 快速体验 KWDB：
 
-**使用资源**：用户可以直接使用下载的资源。KWDB 文章和文档的引用应当注明来源；源代码的修改应当遵守 [MulanPSL2](http://license.coscl.org.cn/MulanPSL2) 协议约束；二进制文件使用过程中遇到的问题，可通过 [Issue 提报](https://gitee.com/kwdb/kwdb/issues)的方式反馈给社区。
+```bash
+docker run -d --privileged --name kwdb \
+  -p 26257:26257 \
+  -p 8080:8080 \
+  -v /var/lib/kaiwudb:/kaiwudb/deploy/kaiwudb-container \
+  --ipc shareable \
+  -w /kaiwudb/bin \
+  kwdb/kwdb \
+  ./kwbase start-single-node \
+    --insecure \
+    --listen-addr=0.0.0.0:26257 \
+    --http-addr=0.0.0.0:8080 \
+    --store=/kaiwudb/deploy/kaiwudb-container
+```
+
+kwbase 是 KWDB 提供的内置命令行工具。用户可以通过 kwbase 连接 KaiwuDB，进行数据库操作和维护。
+
+使用 Docker 连接 KWDB 并开启交互式 SQL Shell：
+
+```bash
+docker exec -it kwdb ./kwbase sql --insecure --host=127.0.0.1
+```
 
 ## 编译和安装
 
-KWDB 支持用户根据需求选择二进制安装包、容器和源码安装与试用 KWDB 数据库：
+KWDB 支持用户根据需求选择二进制安装包、容器和源码安装 KWDB 数据库：
 
 - **二进制安装包**：支持单机和集群以及安全和非安全部署模式，更多信息见[单节点部署](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/quickstart/install-kaiwudb/quickstart-bare-metal.html)和[集群部署](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/deployment/overview.html)。
-- **容器镜像**：KWDB 暂未提供可供下载的容器镜像，如需以容器方式部署 KWDB， 请联系 [KWDB 技术支持人员](https://www.kaiwudb.com/support/)。
+- **容器镜像**：KWDB 提供了多种容器镜像下载渠道，用户可以根据当前网络环境选择合适的镜像。
+  - 官方仓库：[kwdb/kwdb](https://hub.docker.com/r/kwdb/kwdb)
+  - 国内镜像：[swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/kwdb/kwdb](https://docker.aityp.com/r/docker.io/kwdb/kwdb)
+  - Github 容器镜像：[ghcr.io/kwdb/kwdb](https://github.com/KWDB/KWDB/pkgs/container/kwdb)
 - **源码**：源码编译目前支持单节点非安全模式部署。
 
 以下指南以 Ubuntu 22.04 操作系统为例说明如何编译源码和安装 KWDB。
@@ -242,13 +266,7 @@ KWDB 支持在 Linux 操作系统进行安装部署，下表列出了编译和�
 
 ## 社区
 
-### 社区组织
-
-欢迎各位开发者加入我们的社区组织，详情请参阅我们的[社区组织架构](https://gitee.com/kwdb/community#社区组织架构)。
-
-### 社区贡献
-
-欢迎大家参与贡献，详情请参阅我们的[社区贡献](https://gitee.com/kwdb/community/blob/master/Contribution_process.md)。
+欢迎广大社区用户及开源爱好者 Star & Fork KWDB，并踊跃参与到我们的社区活动之中，携手共同建设社区。若需了解详情，请查阅我们的[社区贡献](https://gitee.com/kwdb/community/blob/master/Contribution_process.md)相关内容。开发者可通过 [Issue]((https://gitee.com/kwdb/kwdb/issues))、[PR](https://gitee.com/kwdb/kwdb/pulls) 以及技术交流群等方式展开沟通协作，助力社区实现更为良好的发展。
 
 ## 案例
 
@@ -260,20 +278,24 @@ KWDB 典型应用场景包括但不限于物联网、能源电力、交通车联
 
 ## 许可证
 
-[MulanPSL2](http://license.coscl.org.cn/MulanPSL2)
+本项目根据 [MulanPSL2](http://license.coscl.org.cn/MulanPSL2) 许可证授权。
 
-## 联系我们
+## 声明
 
-### 加入技术交流群
+KWDB 是由开放原子开源基金会（OpenAtom Foundation）孵化及运营的开源项目。
+
+<img src="./static/openatom-logo.svg" alt="OpenAtom Foundation" width=50% height=50% />
+
+## 合作交流
 
 如果你想和更多 KWDB 的用户互动交流，请扫下方二维码（备注：Gitee），KWDB 官方小助手将协助你加入官方技术交流群。
 
 ![img](./static/community.png)
 
-### KaiwuDB 账号
+### 官方渠道
 
-官网：https://www.kaiwudb.com/
-
-扫码关注公众号：KaiwuDB
+- 官网：https://www.kaiwudb.com
+- 开源运营专区：https://kwdb.atomgit.com
+- 公众号：KaiwuDB
 
 ![img](./static/wechat.png)
