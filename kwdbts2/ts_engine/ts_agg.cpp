@@ -146,24 +146,13 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
 inline void AggCalculatorV2::InitSumValue(void* ptr) {
   switch (type_) {
     case DATATYPE::INT8:
-      *static_cast<int8_t*>(ptr) = 0;
-      break;
     case DATATYPE::INT16:
-      *static_cast<int16_t*>(ptr) = 0;
-      break;
     case DATATYPE::INT32:
     case DATATYPE::TIMESTAMP:
-      *static_cast<int32_t*>(ptr) = 0;
-      break;
     case DATATYPE::INT64:
-    case DATATYPE::TIMESTAMP64:
-    case DATATYPE::TIMESTAMP64_MICRO:
-    case DATATYPE::TIMESTAMP64_NANO:
       *static_cast<int64_t*>(ptr) = 0;
       break;
     case DATATYPE::FLOAT:
-      *static_cast<float*>(ptr) = 0.0f;
-      break;
     case DATATYPE::DOUBLE:
       *static_cast<double*>(ptr) = 0.0;
       break;
@@ -190,11 +179,11 @@ inline void AggCalculatorV2::InitAggData(TSSlice& agg_data) {
 // - `max_addr`, `min_addr`, `sum_addr` must point to valid memory initialized to extreme values.
 // - `count` is an accumulated counter that will be incremented.
 // - This function is designed to be called repeatedly across multiple blocks.
-bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx) {
+KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type,
+                                                  uint32_t col_idx, bool& is_overflow) {
   if (mem_ == nullptr) {
-    return false;
+    return KStatus::FAIL;
   }
-  bool is_overflow = false;
 
   for (int i = 0; i < count_; ++i) {
     if (isnull(i)) {
@@ -232,57 +221,93 @@ bool AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg
 
     // === SUM ===
     if (agg_type == Sumfunctype::SUM && isSumType(type_)) {
-      if (is_overflow) {
-        continue;
-      }
       if (agg_data.data == nullptr) {
         agg_data.len = sizeof(int64_t);
         InitAggData(agg_data);
         InitSumValue(agg_data.data);
       }
 
-      switch (type_) {
-        case DATATYPE::INT8:
-          is_overflow = AddAggInteger<int64_t>(
-              *reinterpret_cast<int64_t*>(agg_data.data),
-              *reinterpret_cast<int8_t*>(current));
-          break;
-        case DATATYPE::INT16:
-          is_overflow = AddAggInteger<int64_t>(
-              *reinterpret_cast<int64_t*>(agg_data.data),
-              *reinterpret_cast<int16_t*>(current));
-          break;
-        case DATATYPE::INT32:
-          is_overflow = AddAggInteger<int64_t>(
-              *reinterpret_cast<int64_t*>(agg_data.data),
-              *reinterpret_cast<int32_t*>(current));
-          break;
-        case DATATYPE::INT64:
-          is_overflow = AddAggInteger<int64_t>(
-              *reinterpret_cast<int64_t*>(agg_data.data),
-              *reinterpret_cast<int64_t*>(current));
-          break;
-        case DATATYPE::FLOAT:
-          AddAggFloat<float>(
-              *reinterpret_cast<float*>(agg_data.data),
-              *reinterpret_cast<float*>(current));
-          break;
-        case DATATYPE::DOUBLE:
-          AddAggFloat<double>(
-              *reinterpret_cast<double*>(agg_data.data),
-              *reinterpret_cast<double*>(current));
-          break;
-        case DATATYPE::TIMESTAMP:
-        case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
-          break;
-        default:
-          break;
+      if (!is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int8_t*>(current));
+            break;
+          case DATATYPE::INT16:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int16_t*>(current));
+            break;
+          case DATATYPE::INT32:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int32_t*>(current));
+            break;
+          case DATATYPE::INT64:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int64_t*>(current));
+            break;
+          case DATATYPE::FLOAT:
+            AddAggFloat<double>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<float*>(current));
+            break;
+          case DATATYPE::DOUBLE:
+            AddAggFloat<double>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<double*>(current));
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+        }
+        if (is_overflow) {
+          *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
+        }
+      }
+      if (is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int8_t*>(current));
+            break;
+          case DATATYPE::INT16:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int16_t*>(current));
+            break;
+          case DATATYPE::INT32:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int32_t*>(current));
+            break;
+          case DATATYPE::INT64:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int64_t*>(current));
+            break;
+          case DATATYPE::FLOAT:
+          case DATATYPE::DOUBLE:
+            LOG_ERROR("Overflow not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+        }
       }
     }
   }
 
-  return is_overflow;
+  return KStatus::SUCCESS;
 }
 
 void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint64_t& count) {
