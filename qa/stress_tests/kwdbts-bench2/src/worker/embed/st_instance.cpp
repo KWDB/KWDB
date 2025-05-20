@@ -40,7 +40,7 @@ KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
     }
     auto version = schema->GetCurrentVersion();
     std::shared_ptr<MMapMetricsTable> schema_tbl;
-    s = schema->GetMetricSchema(ctx, version, &schema_tbl);
+    s = schema->GetMetricSchema(version, &schema_tbl);
     if (s != KStatus::SUCCESS) {
       return s;
     }

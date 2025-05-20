@@ -231,7 +231,7 @@ KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk
 KStatus TsStorageIteratorV2Impl::GetBlkScanColsInfo(uint32_t version,
                                  std::vector<uint32_t>& scan_cols, vector<AttributeInfo>& valid_schema) {
   std::shared_ptr<MMapMetricsTable> blk_version;
-  KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, version, &blk_version);
+  KStatus ret = table_schema_mgr_->GetMetricSchema(version, &blk_version);
   if (ret != SUCCESS) {
     LOG_ERROR("GetMetricSchema failed. table version [%u]", version);
     return ret;
@@ -583,7 +583,7 @@ KStatus TsAggIteratorV2Impl::AggregateLastColumns(
       final_agg_data[col_idx].len = sizeof(int64_t);
     } else if (scan_agg_types_[col_idx] == Sumfunctype::LAST) {
       std::shared_ptr<MMapMetricsTable> blk_version;
-      ret = table_schema_mgr_->GetMetricSchema(nullptr, c.blk_span.GetTableVersion(), &blk_version);
+      ret = table_schema_mgr_->GetMetricSchema(c.blk_span.GetTableVersion(), &blk_version);
       if (ret != KStatus::SUCCESS) return ret;
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
@@ -638,7 +638,7 @@ KStatus TsAggIteratorV2Impl::UpdateLastCandidatesFromBlockSpans(
     if (all_skip) continue;
 
     std::shared_ptr<MMapMetricsTable> blk_version;
-    KStatus ret = table_schema_mgr_->GetMetricSchema(nullptr, blk_span.GetTableVersion(), &blk_version);
+    KStatus ret = table_schema_mgr_->GetMetricSchema(blk_span.GetTableVersion(), &blk_version);
     if (ret != KStatus::SUCCESS) return ret;
     auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 

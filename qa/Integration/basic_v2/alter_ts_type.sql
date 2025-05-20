@@ -291,10 +291,10 @@ insert into test_alter.t14 values(1000000006, '-9999999999', 2, 'c');
 insert into test_alter.t14 values(1000000007, '8', 3, 'c');
 insert into test_alter.t14 values(1000000008, '3.45', 3, 'c');
 insert into test_alter.t14 values(1000000009, NULL, 3, 'c');
-select * from test_alter.t14 order by ts,ptag;;
+select * from test_alter.t14 order by ts,ptag;
 select * from test_alter.t14 where cast_check(a as int2)=false order by ts,ptag;
 alter table test_alter.t14 alter column a type int2;
-select * from test_alter.t14 order by ts,ptag;;
+select * from test_alter.t14 order by ts,ptag;
 
 -- cast_check varchar->float4
 create table test_alter.t15(ts timestamp not null, a varchar(20)) tags(ptag int not null, attr1 varchar(100)) primary tags(ptag);
@@ -308,7 +308,7 @@ insert into test_alter.t15 values(1000000007, NULL, 3, 'c');
 insert into test_alter.t15 values(1000000008, '-1.23', 3, 'c');
 insert into test_alter.t15 values(1000000009, '3.4e+100', 3, 'c');
 insert into test_alter.t15 values(1000000010, '3.4e+38', 4, 'd');
-select * from test_alter.t15 order by ts,ptag;;
+select * from test_alter.t15 order by ts,ptag;
 select * from test_alter.t15 where cast_check(a as float4)=false order by ts,ptag;
 alter table test_alter.t15 alter column a type float4;
 select * from test_alter.t15 order by ts,ptag;
@@ -321,10 +321,10 @@ insert into test_alter.t16 values(1000000003, '4', 2, 'bb');
 insert into test_alter.t16 values(1000000004, '3', 2, 'bb');
 insert into test_alter.t16 values(1000000005, '6', 3, 'cc');
 insert into test_alter.t16 values(1000000006, '9999999999999', 3, 'cc');
-select * from test_alter.t16 order by ts,ptag;;
+select * from test_alter.t16 order by ts,ptag;
 alter table test_alter.t16 alter column a type varchar;
 alter table test_alter.t16 alter column a type int;
-select * from test_alter.t16 order by ts,ptag;;
+select * from test_alter.t16 order by ts,ptag;
 
 
 -- invalid data: varchar->bigint & query in time span

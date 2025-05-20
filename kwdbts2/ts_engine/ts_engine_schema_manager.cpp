@@ -129,21 +129,21 @@ KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID
   if (it != table_schema_mgrs_.end()) {
     std::shared_ptr<TsTableSchemaManager> tb_schema = it->second;
     unLock();
-    return tb_schema->GetMetricSchema(ctx, version, metric_schema);
+    return tb_schema->GetMetricSchema(version, metric_schema);
   } else {
     unLock();
     wrLock();
     Defer defer([&]() { unLock(); });
     it = table_schema_mgrs_.find(tbl_id);
     if (it != table_schema_mgrs_.end()) {
-      return it->second->GetMetricSchema(ctx, version, metric_schema);
+      return it->second->GetMetricSchema(version, metric_schema);
     }
     auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
     KStatus s = schema_mgr->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    s = schema_mgr->GetMetricSchema(ctx, version, metric_schema);
+    s = schema_mgr->GetMetricSchema(version, metric_schema);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", tbl_id, version);
       return s;

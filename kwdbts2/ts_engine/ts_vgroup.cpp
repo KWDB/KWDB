@@ -99,7 +99,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
       continue;
     }
     uint32_t dbid = std::stoi(res.str(1));
-    timestamp64 ptime = std::stoi(res.str(2));
+    timestamp64 ptime = std::stoll(res.str(2));
     if (partitions_.find(dbid) == partitions_.end()) {
       partitions_[dbid] = std::make_unique<PartitionManager>(this, dbid, interval);
     }

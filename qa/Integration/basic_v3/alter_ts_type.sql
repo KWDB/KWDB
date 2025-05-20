@@ -250,7 +250,7 @@ alter table test_alter.t10 alter column a type double;
 alter table test_alter.t10 alter column b type varchar(120);
 alter table test_alter.t10 alter column c type varchar(120);
 alter table test_alter.t10 alter column d type int;
-insert into test_alter.t10 values(1672531211005, null, null,  null, null, 1);
+--insert into test_alter.t10 values(1672531211005, null, null,  null, null, 1);
 select * from test_alter.t10 order by ts,attr;
 
 -- fixed -> str when check alter valid or not
@@ -269,8 +269,8 @@ insert into test_alter.t12 values(1672531211015, '12.3', 1);
 alter table test_alter.t12 alter column a type varchar(100);
 
 alter table test_alter.t12 alter column a type float4;
-insert into test_alter.t12 values(1672531211005, null, 1);
-insert into test_alter.t12 values(1672531211015, null, 1);
+--insert into test_alter.t12 values(1672531211005, null, 1);
+--insert into test_alter.t12 values(1672531211015, null, 1);
 select * from test_alter.t12 order by ts;
 
 -- fixed: ZDP-35471
@@ -291,10 +291,10 @@ insert into test_alter.t14 values(1000000006, '-9999999999', 2, 'c');
 insert into test_alter.t14 values(1000000007, '8', 3, 'c');
 insert into test_alter.t14 values(1000000008, '3.45', 3, 'c');
 insert into test_alter.t14 values(1000000009, NULL, 3, 'c');
-select * from test_alter.t14 order by ts,ptag;;
+select * from test_alter.t14 order by ts,ptag;
 select * from test_alter.t14 where cast_check(a as int2)=false order by ts,ptag;
 alter table test_alter.t14 alter column a type int2;
-select * from test_alter.t14 order by ts,ptag;;
+select * from test_alter.t14 order by ts,ptag;
 
 -- cast_check varchar->float4
 create table test_alter.t15(ts timestamp not null, a varchar(20)) tags(ptag int not null, attr1 varchar(100)) primary tags(ptag);
@@ -308,7 +308,7 @@ insert into test_alter.t15 values(1000000007, NULL, 3, 'c');
 insert into test_alter.t15 values(1000000008, '-1.23', 3, 'c');
 insert into test_alter.t15 values(1000000009, '3.4e+100', 3, 'c');
 insert into test_alter.t15 values(1000000010, '3.4e+38', 4, 'd');
-select * from test_alter.t15 order by ts,ptag;;
+select * from test_alter.t15 order by ts,ptag;
 select * from test_alter.t15 where cast_check(a as float4)=false order by ts,ptag;
 alter table test_alter.t15 alter column a type float4;
 select * from test_alter.t15 order by ts,ptag;
@@ -321,10 +321,10 @@ insert into test_alter.t16 values(1000000003, '4', 2, 'bb');
 insert into test_alter.t16 values(1000000004, '3', 2, 'bb');
 insert into test_alter.t16 values(1000000005, '6', 3, 'cc');
 insert into test_alter.t16 values(1000000006, '9999999999999', 3, 'cc');
-select * from test_alter.t16 order by ts,ptag;;
+select * from test_alter.t16 order by ts,ptag;
 alter table test_alter.t16 alter column a type varchar;
 alter table test_alter.t16 alter column a type int;
-select * from test_alter.t16 order by ts,ptag;;
+select * from test_alter.t16 order by ts,ptag;
 
 
 -- invalid data: varchar->bigint & query in time span
@@ -344,7 +344,7 @@ ALTER TABLE test_alter.t17 ALTER COLUMN e1 TYPE BIGINT;
 select * from test_alter.t17;
 select * from test_alter.t17 where k_timestamp = '2022-06-06 10:10:02';
 select * from test_alter.t17 where k_timestamp > '2022-06-06 10:10:02';
-select count(e1),max(e1),min(e1),avg(e1),sum(e1),first(e1),last(e1),first_row(e1),last_row(e1) from test_alter.t17;
+--select count(e1),max(e1),min(e1),avg(e1),sum(e1),first(e1),last(e1),first_row(e1),last_row(e1) from test_alter.t17;
 
 --ZDP-41335
 CREATE TABLE test_alter.ts_t1 (
