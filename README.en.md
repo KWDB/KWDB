@@ -299,7 +299,7 @@ For the latest updates and changes, please see [Release Notes](https://gitee.com
 
 KWDB is a [OpenAtom Foundation](https://openatom.org/) incubation project.
 
-![img](./static/openatom-logo.svg){ width="50%" height="50%" }
+<img src="./static/openatom-logo.svg" alt="OpenAtom Foundation" width=50% height=50% />
 
 ## Contact
 

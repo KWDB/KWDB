@@ -284,7 +284,7 @@ KWDB 典型应用场景包括但不限于物联网、能源电力、交通车联
 
 KWDB 是由[开放原子开源基金会（OpenAtom Foundation）](https://openatom.org/)孵化及运营的开源项目。
 
-![OpenAtom Foundation](./static/openatom-logo.svg){ width="50%" height="50%" }
+<img src="./static/openatom-logo.svg" alt="OpenAtom Foundation" width=50% height=50% />
 
 ## 合作交流
 
