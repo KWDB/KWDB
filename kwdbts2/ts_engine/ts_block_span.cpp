@@ -70,12 +70,43 @@ KStatus TsBlock::GetFirstAndLastInfo(
 
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
 
-  int64_t best_ts = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS)
-                        ? INT64_MAX
-                        : INT64_MIN;
+  bool is_first = (
+      agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS ||
+      agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS);
+
+  bool is_row_based = (
+      agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS ||
+      agg_type == Sumfunctype::LAST_ROW  || agg_type == Sumfunctype::LASTROWTS);
+
+  int64_t best_ts = is_first ? INT64_MAX : INT64_MIN;
   int best_idx = -1;
 
-  if (!isVarLenType(dest_type.type)) {
+  // Unified scan logic: forward for FIRST, backward for LAST
+  auto scan = [&](auto getter) {
+    if (is_first) {
+      for (int i = 0; i < row_num; ++i) {
+        if (!getter(i)) continue;
+        int64_t ts = GetTS(begin_row_idx + i);
+        best_ts = ts;
+        best_idx = i;
+        break;  // earliest match found
+      }
+    } else {
+      for (int i = row_num - 1; i >= 0; --i) {
+        if (!getter(i)) continue;
+        int64_t ts = GetTS(begin_row_idx + i);
+        best_ts = ts;
+        best_idx = i;
+        break;  // latest match found
+      }
+    }
+  };
+
+  if (is_row_based) {
+    // All rows are eligible regardless of column nullability
+    scan([](int) { return true; });
+  } else if (!isVarLenType(dest_type.type)) {
+    // Fixed-length column: use bitmap to check nulls
     char* value = nullptr;
     TsBitmap bitmap;
     KStatus s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
@@ -84,37 +115,17 @@ KStatus TsBlock::GetFirstAndLastInfo(
       return s;
     }
 
-    for (int i = 0; i < row_num; ++i) {
-      if (bitmap[i] == DataFlags::kNull) continue;
-      int64_t ts = GetTS(begin_row_idx + i);
-      bool better = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS)
-                        ? (ts < best_ts)
-                        : (ts > best_ts);
-      if (better) {
-        best_ts = ts;
-        best_idx = i;
-      }
-    }
+    scan([&](int i) {
+      return bitmap[i] != DataFlags::kNull;
+    });
   } else {
-    for (int i = 0; i < row_num; ++i) {
+    // Variable-length column: use per-row flag to check nulls
+    scan([&](int i) {
       TSSlice slice;
       DataFlags flag;
       KStatus ret = convert.GetVarLenTypeColAddr(i, col_id, schema, dest_type, flag, slice);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("GetVarLenTypeColAddr failed.");
-        return ret;
-      }
-      if (flag == DataFlags::kValid) {
-        int64_t ts = GetTS(begin_row_idx + i);
-        bool better = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS)
-                          ? (ts < best_ts)
-                          : (ts > best_ts);
-        if (better) {
-          best_ts = ts;
-          best_idx = i;
-        }
-      }
-    }
+      return ret == KStatus::SUCCESS && flag == DataFlags::kValid;
+    });
   }
 
   if (out_ts) *out_ts = best_ts;
