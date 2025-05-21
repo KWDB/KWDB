@@ -54,7 +54,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus AddMemSegmentBlockSpans();
   KStatus AddLastSegmentBlockSpans();
   KStatus AddEntitySegmentBlockSpans();
-  KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
+  KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans();
   KStatus ScanPartitionBlockSpans();
   KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
@@ -69,7 +69,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
 
-  std::list<TsBlockSpan> ts_block_spans_;
+  std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
   std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
 };
 
@@ -105,13 +105,6 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
 
-struct FirstOrLastCandidate {
-  int64_t ts;
-  int row_idx = -1;;
-  TsBlockSpan blk_span;
-  bool valid = false;;
-};
-
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
   TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -121,14 +114,29 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                       std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
   ~TsAggIteratorV2Impl();
 
+  KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  KStatus AggregateBlockSpans(ResultSet* res, k_uint32* count);
-  KStatus AggregateFirstOrLastColumns(const std::vector<k_uint32>& cols, std::vector<TSSlice>& final_agg_data);
-  KStatus UpdateFirstAndLastCandidates(const std::vector<k_uint32>& cols, std::vector<FirstOrLastCandidate>& candidates);
+  KStatus AggregateBlockSpans(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow);
+  KStatus AggregateFirstLastOnly(std::vector<TSSlice>& final_agg_data);
+  KStatus UpdateFirstLastCandidates(std::list<uint32_t>& first_col_idxs, std::list<uint32_t>& last_col_idxs,
+                                    std::vector<AggCandidate>& candidates);
+  KStatus UpdateFirstLastCandidates(std::shared_ptr<TsBlockSpan>& block_span, const std::vector<AttributeInfo>& schema,
+                                    std::list<uint32_t>& first_col_idxs, std::list<uint32_t>& last_col_idxs,
+                                    bool do_not_remove_last_col, std::vector<AggCandidate>& candidates);
+  bool onlyHasFirstLastAggType();
+  bool onlyCountTs();
 
   std::vector<Sumfunctype> scan_agg_types_;
+  bool only_first_type_{false};
+  bool no_first_row_type_ = true;
+  bool only_last_type_{false};
+  bool only_last_row_type_{false};
+  bool no_last_row_type_ = true;
+  bool only_first_last_type_{false};
+  bool all_agg_cols_not_null_{false};
+  bool only_count_ts_{false};
 };
 
 }  //  namespace kwdbts

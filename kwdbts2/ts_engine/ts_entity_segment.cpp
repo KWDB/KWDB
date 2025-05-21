@@ -212,7 +212,7 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
-                                                 std::list<TsBlockSpan>* block_spans) {
+                                                 std::list<shared_ptr<TsBlockSpan>>& block_spans) {
   uint64_t last_blk_id;
   KStatus s = entity_header_.GetEntityCurBlockId(filter.entity_id, last_blk_id);
   if (s != KStatus::SUCCESS) {
@@ -240,10 +240,10 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         if (row_spans[i].second <= 0) {
           continue;
         }
-        TsBlockSpan block_span(filter.table_id, cur_blk_item.table_version, filter.entity_id, block,
-                               row_spans[i].first, row_spans[i].second);
         // Because block item traverses from back to front, use push_front
-        block_spans->push_front(block_span);
+        block_spans.push_front(make_shared<TsBlockSpan>(filter.table_id, cur_blk_item.table_version,
+                                                        filter.entity_id, block, row_spans[i].first,
+                                                        row_spans[i].second));
       }
     }
     last_blk_id = cur_blk_item.prev_block_id;
@@ -348,10 +348,10 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
-  size_t written_rows = span.GetRowNum() + n_rows_ > EngineOptions::max_rows_per_block ?
-                   EngineOptions::max_rows_per_block - n_rows_ : span.GetRowNum();
-  assert(span.GetRowNum() >= written_rows);
+KStatus TsEntityBlock::Append(shared_ptr<TsBlockSpan> span, bool& is_full) {
+  size_t written_rows = span->GetRowNum() + n_rows_ > EngineOptions::max_rows_per_block ?
+                   EngineOptions::max_rows_per_block - n_rows_ : span->GetRowNum();
+  assert(span->GetRowNum() >= written_rows);
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
@@ -364,7 +364,7 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
     char* col_val = nullptr;
     TsBitmap bitmap;
     if (!is_var_col && has_bitmap) {
-      KStatus s = span.GetFixLenColAddr(col_idx - 1, metric_schema_, metric_schema_[col_idx - 1], &col_val, bitmap);
+      KStatus s = span->GetFixLenColAddr(col_idx - 1, metric_schema_, metric_schema_[col_idx - 1], &col_val, bitmap);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetColBitmap failed");
         return s;
@@ -377,7 +377,7 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
       if (is_var_col) {
         DataFlags data_flag;
         TSSlice value;
-        KStatus s = span.GetVarLenTypeColAddr(span_row_idx, col_idx - 1, metric_schema_, metric_schema_[col_idx - 1],
+        KStatus s = span->GetVarLenTypeColAddr(span_row_idx, col_idx - 1, metric_schema_, metric_schema_[col_idx - 1],
                                               data_flag, value);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetValueSlice failed");
@@ -398,7 +398,7 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
       memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
     } else {
       if (col_idx == 0) {
-        char* lsn_col_value = reinterpret_cast<char *>(span.GetLSNAddr(0));
+        char* lsn_col_value = reinterpret_cast<char *>(span->GetLSNAddr(0));
         block.buffer.append(lsn_col_value, written_rows * d_size);
       } else if (col_idx != 1) {
         block.buffer.append(col_val, written_rows * d_size);
@@ -406,7 +406,7 @@ KStatus TsEntityBlock::Append(TsBlockSpan& span, bool& is_full) {
     }
   }
   n_rows_ += written_rows;
-  span.Truncate(written_rows);
+  span->Truncate(written_rows);
   is_full = n_rows_ == EngineOptions::max_rows_per_block;
   return KStatus::SUCCESS;
 }
@@ -779,8 +779,8 @@ KStatus TsEntitySegment::GetAllBlockItems(TSEntityID entity_id,
 }
 
 KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                      std::list<TsBlockSpan>* blocks) {
-  return meta_mgr_.GetBlockSpans(filter, this, blocks);
+                                      std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+  return meta_mgr_.GetBlockSpans(filter, this, block_spans);
 }
 
 KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
@@ -827,7 +827,7 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
 KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   KStatus s;
   // 1. The iterator will be used to read MAX_COMPACT_NUM last segment data
-  TsBlockSpan block_span;
+  shared_ptr<TsBlockSpan> block_span;
   bool is_finished = false;
   TsEngineSchemaManager* schema_mgr = partition_->GetSchemaMgr();
   // 2. Create a new last segment
@@ -840,10 +840,10 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   }
   TsLastSegmentBuilder builder(schema_mgr, std::move(last_segment), file_number);
   // 3. Traverse the last segment data and write the data to the block segment
-  std::vector<std::list<TsBlockSpan>> block_spans;
+  std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;
   block_spans.resize(last_segments_.size());
   for (int i = 0; i < last_segments_.size(); ++i) {
-    s = last_segments_[i]->GetBlockSpans(&block_spans[i]);
+    s = last_segments_[i]->GetBlockSpans(block_spans[i]);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get block spans failed.")
       return s;
@@ -855,8 +855,8 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   std::shared_ptr<TsEntityBlock> block = nullptr;
   std::vector<std::shared_ptr<TsEntityBlock>> cached_blocks;
   while (true) {
-    if (block_span.GetRowNum() == 0) {
-      s = iter.Next(&block_span, &is_finished);
+    if (block_span->GetRowNum() == 0) {
+      s = iter.Next(block_span, &is_finished);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, iterate last segments failed.")
         return s;
@@ -865,7 +865,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
         break;
       }
     }
-    TsEntityKey cur_entity_key = {block_span.GetTableID(), block_span.GetTableVersion(), block_span.GetEntityID()};
+    TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key != cur_entity_key) {
       if (block && block->HasData()) {
         if (block->GetRowNum() >= EngineOptions::min_rows_per_block) {
@@ -905,10 +905,10 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
       if (block == nullptr || entity_key.table_id != cur_entity_key.table_id ||
           entity_key.table_version != cur_entity_key.table_version) {
         std::shared_ptr<MMapMetricsTable> table_schema_;
-        s = schema_mgr->GetTableMetricSchema({}, block_span.GetTableID(), block_span.GetTableVersion(), &table_schema_);
+        s = schema_mgr->GetTableMetricSchema({}, block_span->GetTableID(), block_span->GetTableVersion(), &table_schema_);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("get table schema failed. table id: %lu, table version: %u.",
-                    block_span.GetTableID(), block_span.GetTableVersion());
+                    block_span->GetTableID(), block_span->GetTableVersion());
           return s;
         }
         metric_schema = table_schema_->getSchemaInfoExcludeDropped();
@@ -916,8 +916,8 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
         metric_schema = block->GetMetricSchema();
       }
       // init the block segment block
-      block = std::make_shared<TsEntityBlock>(block_span.GetTableID(), block_span.GetTableVersion(),
-                                              block_span.GetEntityID(), metric_schema);
+      block = std::make_shared<TsEntityBlock>(block_span->GetTableID(), block_span->GetTableVersion(),
+                                              block_span->GetEntityID(), metric_schema);
       entity_key = cur_entity_key;
     }
 

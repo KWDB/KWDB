@@ -196,10 +196,10 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
-  KStatus GetBlockSpans(std::list<TsBlockSpan>* spans);
+  KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                        std::list<TsBlockSpan>* spans) override;
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans) override;
 
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)

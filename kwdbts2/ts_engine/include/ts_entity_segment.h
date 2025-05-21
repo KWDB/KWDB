@@ -177,7 +177,7 @@ class TsEntitySegmentMetaManager {
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
-                        std::list<TsBlockSpan>* block_spans);
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans);
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -255,7 +255,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
 
-  KStatus Append(TsBlockSpan& span, bool& is_full);
+  KStatus Append(shared_ptr<TsBlockSpan> span, bool& is_full);
 
   KStatus Flush(TsVGroupPartition* partition);
 
@@ -307,7 +307,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans) override;
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsEntityBlock* block);

@@ -79,6 +79,11 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
   return 0;
 }
 
+KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
+                                            TsBitmap& bitmap) {
+  return block_->GetColBitmap(blk_col_idx, schema, bitmap);
+}
+
 KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
                                                const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
   assert(!isVarLenType(dest_type.type));
