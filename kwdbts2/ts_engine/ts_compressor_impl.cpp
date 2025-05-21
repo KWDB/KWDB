@@ -379,15 +379,7 @@ template <typename T>
 static inline int GetValidBits(T v) {
   static_assert(std::is_unsigned_v<T>);
   if (v == 0) return 1;
-  if constexpr (sizeof(T) == sizeof(unsigned int)) {
-    return sizeof(T) * 8 - __builtin_clz(v);
-  } else if constexpr (sizeof(T) == sizeof(unsigned long)) {  // NOLINT
-    return sizeof(T) * 8 - __builtin_clzl(v);
-  } else if (sizeof(T) == sizeof(unsigned long long)) {
-    return sizeof(T) * 8 - __builtin_clzll(v);
-  }
-  // for uint16 and uint8
-  return sizeof(unsigned int) * 8 - __builtin_clz(v);
+  return 64 - __builtin_clzll(v);
 }
 
 template <class T>
