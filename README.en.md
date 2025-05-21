@@ -4,33 +4,65 @@ English | [简体中文](./README.md)
 
 ## About KWDB
 
-**KWDB is a distributed multi-model database tailored for AIoT scenarios.** It supports the concurrent creation of time-series and relational databases within the same instance and the integrated processing of multi-model data. KWDB can process time-series data with high efficiency. It supports tens of millions of device connections, millions of data points written per second, and hundreds of millions of data points read per second. It features stability & security, high availability, and easy maintenance. 
+**KWDB is a distributed multi-model database designed for AIoT scenarios and incubated by the OpenAtom Foundation**.​​ Originating from Inspur's KaiwuDB project, it supports the concurrent creation of time-series and relational databases within the same instance and the integrated processing of multi-model data. KWDB can process time-series data with high efficiency. It supports tens of millions of device connections, millions of data points written per second, and hundreds of millions of data points read per second. It features stability & security, high availability, and easy maintenance.
+
+**It is mainly used in fields such as IoT, energy, power, IoV (Internet of Vehicles), smart government, IT operation management, and securities.**  KWDB is dedicated to offer a comprehensive platform for data storage, management, and analysis across various industries, supporting enterprises in their digital transformation and unlocking greater value from their data at lower costs.
 
 ![img](./static/arch_en.png)
 
-KWDB is the community version of KaiwuDB, a distributed multi-model database developed by Inspur. **It is mainly used in fields such as IoT, energy, power, IoV (Internet of Vehicles), smart government, IT operation management, and securities.**  KWDB is dedicated to offer a comprehensive platform for data storage, management, and analysis across various industries, supporting enterprises in their digital transformation and unlocking greater value from their data at lower costs.
-
 **KWDB offers** extensive support for different roles:
 
-- **For developers:** KWDB offers general connectivity interfaces with features such as high-speed writing & querying, SQL support, on-demand compression, data lifecycle management, and cluster deployment. Its seamless integration with third-party tools can help reduce the difficulty of development and learning while enhancing development efficiency.
-- **For operation specialists**: KWDB provides quick installation, deployment, upgrade, migration, and monitoring, significantly reducing the costs for database operations management.
+- KWDB offers general connectivity interfaces with features such as high-speed writing & querying, SQL support, on-demand compression, data lifecycle management, and cluster deployment. Its seamless integration with third-party tools can help reduce the difficulty of development and learning while enhancing development efficiency.
+- KWDB provides quick installation, deployment, upgrade, migration, and monitoring, significantly reducing the costs for database operations management.
+- Database visualization and management tools, time-series database benchmarking tools, monitoring metrics templates, and many other ecological tools.
+- MCP Server, AI assistant, and AI agent, which help users develop and maintain KWDB more efficiently and effectively.
 
 **Keywords**
 
 IoT, multi-model database, distributed, time-series data processing, cloud-edge synchronization.
 
-## Resource Download
+<!-- ## Resource Download
 
 **Accessing Resources**: To access and download KWDB community resources, including articles, documentation, source code, and binary executables, you only need to log in with your Gitee account.
 
-**Using Resources**: You can use the downloaded resources directly. Be sure to cite KWDB articles and documents appropriately. Any modifications to the source code must comply with the [MulanPSL2 license](http://license.coscl.org.cn/MulanPSL2). If you encounter issues with binary files, report them to the community through [Issue Reports](https://gitee.com/kwdb/kwdb/issues).
+**Using Resources**: You can use the downloaded resources directly. Be sure to cite KWDB articles and documents appropriately. Any modifications to the source code must comply with the [MulanPSL2 license](http://license.coscl.org.cn/MulanPSL2). If you encounter issues with binary files, report them to the community through [Issue Reports](https://gitee.com/kwdb/kwdb/issues). -->
+
+## Quick Start
+
+You can quickly experience KWDB using Docker:
+
+```bash
+docker run -d --privileged --name kwdb \
+  -p 26257:26257 \
+  -p 8080:8080 \
+  -v /var/lib/kaiwudb:/kaiwudb/deploy/kaiwudb-container \
+  --ipc shareable \
+  -w /kaiwudb/bin \
+  kwdb/kwdb \
+  ./kwbase start-single-node \
+    --insecure \
+    --listen-addr=0.0.0.0:26257 \
+    --http-addr=0.0.0.0:8080 \
+    --store=/kaiwudb/deploy/kaiwudb-container
+```
+
+kwbase is a built-in CLI tool provided by KWDB. Users can use kwbase to connect to KaiwuDB and perform database operations and maintenance.
+
+Use Docker to connect to KWDB and start an interactive SQL Shell:
+
+```bash
+docker exec -it kwdb./kwbase sql --insecure --host=127.0.0.1
+```
 
 ## Compilation and Installation
 
 KWDB supports installation and trial use via binary packages, container images, and source code according to your needs.
 
 - **Binary Packages**: Support single-node and cluster deployments in both secure and non-secure modes. For more information, see [Single-Node Deployment](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/quickstart/install-kaiwudb/quickstart-bare-metal.html) and [Cluster Deployment](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/deployment/overview.html).
-- **Container Images**: Currently, KWDB does not provide downloadable container images. For container deployment, please contact [KWDB Technical Support](https://www.kaiwudb.com/support/).
+- **Container Images**: KWDB provides multiple container image download channels. You can select the appropriate image based on their current network environment or [directly download](https://gitee.com/kwdb/kwdb/releases/) the corresponding version of the suffix `-docker.tar.gz` compressed package and use the `docker load` command to load the image.
+  - Dockerhub: `kwdb/kwdb`
+  - Chinese Mirror: `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/kwdb/kwdb`
+  - Github container registry: `ghcr.io/kwdb/kwdb`
 - **Source Code**: Source code compilation currently supports single-node non-secure deployment.
 
 The following guide is only applicable for compiling and installing KWDB from source code.
@@ -249,13 +281,7 @@ Download the code from the [KWDB code repository](https://gitee.com/kwdb/kwdb) a
 
 ## Community
 
-### Community Organization
-
-You are more than welcome to join our community organization! For details, please see our [Community Structure](https://gitee.com/kwdb/community#社区组织架构).
-
-### Community Contribution
-
-Everyone is welcome to contribute. For details, please see our [Community Contribution Guideline](https://gitee.com/kwdb/community/blob/master/Contribution_process.md).
+KWDB welcomes all community users and open-source enthusiasts to join our community and participate in our community activities. For details, please see our [Community Contribution Guideline](https://gitee.com/kwdb/community/blob/master/Contribution_process.md). Developers can communicate and collaborate through [Issues](https://gitee.com/link?target=(https%3A%2F%2Fgitee.com%2Fkwdb%2Fkwdb%2Fissues)), [PRs](https://gitee.com/kwdb/kwdb/pulls), and technical exchange groups to help the community achieve better development.
 
 ## Use Cases
 
@@ -269,9 +295,13 @@ For the latest updates and changes, please see [Release Notes](https://gitee.com
 
 [MulanPSL2](http://license.coscl.org.cn/MulanPSL2)
 
-## Contact Us
+## Acknowledgments
 
-### **Join KWDB Community**
+KWDB is a [OpenAtom Foundation](https://openatom.org/) incubation project.
+
+![img](./static/openatom-logo.svg){ width="50%" height="50%" }
+
+## Contact
 
 To interact and connect with KWDB users, scan the QR code below (note: Gitee). Our assistant will help you join the community.
 
@@ -279,8 +309,8 @@ To interact and connect with KWDB users, scan the QR code below (note: Gitee). O
 
 ### KaiwuDB Accounts
 
-Official Website: https://www.kaiwudb.com/
-
-Follow us on WeChat: Scan the QR code to follow our WeChat account: KaiwuDB
+- Official Website: https://www.kaiwudb.com
+- Community Website: https://kwdb.atomgit.com
+- WeChat account: KaiwuDB
 
 ![img](./static/wechat.png)

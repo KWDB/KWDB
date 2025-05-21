@@ -36,7 +36,7 @@ docker run -d --privileged --name kwdb \
     --store=/kaiwudb/deploy/kaiwudb-container
 ```
 
-kwbase 是 KWDB 提供的内置命令行工具。用户可以通过 kwbase 连接 KaiwuDB，进行数据库操作和维护。
+kwbase 是 KWDB 提供的内置命令行工具，用户可以通过 kwbase 连接 KaiwuDB，进行数据库操作和维护。
 
 使用 Docker 连接 KWDB 并开启交互式 SQL Shell：
 
@@ -49,10 +49,10 @@ docker exec -it kwdb ./kwbase sql --insecure --host=127.0.0.1
 KWDB 支持用户根据需求选择二进制安装包、容器和源码安装 KWDB 数据库：
 
 - **二进制安装包**：支持单机和集群以及安全和非安全部署模式，更多信息见[单节点部署](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/quickstart/install-kaiwudb/quickstart-bare-metal.html)和[集群部署](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/deployment/overview.html)。
-- **容器镜像**：KWDB 提供了多种容器镜像下载渠道，用户可以根据当前网络环境选择合适的镜像。
-  - 官方仓库：[kwdb/kwdb](https://hub.docker.com/r/kwdb/kwdb)
-  - 国内镜像：[swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/kwdb/kwdb](https://docker.aityp.com/r/docker.io/kwdb/kwdb)
-  - Github 容器镜像：[ghcr.io/kwdb/kwdb](https://github.com/KWDB/KWDB/pkgs/container/kwdb)
+- **容器镜像**：KWDB 提供了多种容器镜像下载渠道，用户可以根据当前网络环境选择合适的镜像，或者直接在 [Release 页面](https://gitee.com/kwdb/kwdb/releases)下载对应版本的后缀为 `-docker.tar.gz` 的压缩包并使用 `docker load` 命令加载镜像。
+  - 官方仓库：`kwdb/kwdb`
+  - 国内镜像：`swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/kwdb/kwdb`
+  - Github 容器镜像：`ghcr.io/kwdb/kwdb`
 - **源码**：源码编译目前支持单节点非安全模式部署。
 
 以下指南以 Ubuntu 22.04 操作系统为例说明如何编译源码和安装 KWDB。
@@ -282,9 +282,9 @@ KWDB 典型应用场景包括但不限于物联网、能源电力、交通车联
 
 ## 声明
 
-KWDB 是由开放原子开源基金会（OpenAtom Foundation）孵化及运营的开源项目。
+KWDB 是由[开放原子开源基金会（OpenAtom Foundation）](https://openatom.org/)孵化及运营的开源项目。
 
-<img src="./static/openatom-logo.svg" alt="OpenAtom Foundation" width=50% height=50% />
+![OpenAtom Foundation](./static/openatom-logo.svg){ width="50%" height="50%" }
 
 ## 合作交流
 
