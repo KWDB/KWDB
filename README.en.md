@@ -21,12 +21,6 @@ English | [简体中文](./README.md)
 
 IoT, multi-model database, distributed, time-series data processing, cloud-edge synchronization.
 
-<!-- ## Resource Download
-
-**Accessing Resources**: To access and download KWDB community resources, including articles, documentation, source code, and binary executables, you only need to log in with your Gitee account.
-
-**Using Resources**: You can use the downloaded resources directly. Be sure to cite KWDB articles and documents appropriately. Any modifications to the source code must comply with the [MulanPSL2 license](http://license.coscl.org.cn/MulanPSL2). If you encounter issues with binary files, report them to the community through [Issue Reports](https://gitee.com/kwdb/kwdb/issues). -->
-
 ## Quick Start
 
 You can quickly experience KWDB using Docker:
@@ -59,7 +53,7 @@ docker exec -it kwdb./kwbase sql --insecure --host=127.0.0.1
 KWDB supports installation and trial use via binary packages, container images, and source code according to your needs.
 
 - **Binary Packages**: Support single-node and cluster deployments in both secure and non-secure modes. For more information, see [Single-Node Deployment](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/quickstart/install-kaiwudb/quickstart-bare-metal.html) and [Cluster Deployment](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/deployment/overview.html).
-- **Container Images**: KWDB provides multiple container image download channels. You can select the appropriate image based on their current network environment or [directly download](https://gitee.com/kwdb/kwdb/releases/) the corresponding version of the suffix `-docker.tar.gz` compressed package and use the `docker load` command to load the image.
+- **Container Images**: KWDB provides multiple container image download channels. You can select the appropriate image based on their current network environment or [directly download](https://gitee.com/kwdb/kwdb/releases/) the corresponding version of the suffix `-docker.tar.gz` compressed package and use the `docker load < KaiwuDB.tar` command to load the image in `kaiwudb_install/packages`.
   - Dockerhub: `kwdb/kwdb`
   - Chinese Mirror: `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/kwdb/kwdb`
   - Github container registry: `ghcr.io/kwdb/kwdb`

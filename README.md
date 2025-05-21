@@ -49,7 +49,7 @@ docker exec -it kwdb ./kwbase sql --insecure --host=127.0.0.1
 KWDB 支持用户根据需求选择二进制安装包、容器和源码安装 KWDB 数据库：
 
 - **二进制安装包**：支持单机和集群以及安全和非安全部署模式，更多信息见[单节点部署](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/quickstart/install-kaiwudb/quickstart-bare-metal.html)和[集群部署](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/deployment/overview.html)。
-- **容器镜像**：KWDB 提供了多种容器镜像下载渠道，用户可以根据当前网络环境选择合适的镜像，或者直接在 [Release 页面](https://gitee.com/kwdb/kwdb/releases)下载对应版本的后缀为 `-docker.tar.gz` 的压缩包并使用 `docker load` 命令加载镜像。
+- **容器镜像**：KWDB 提供了多种容器镜像下载渠道，用户可以根据当前网络环境选择合适的镜像，或者直接在 [Release 页面](https://gitee.com/kwdb/kwdb/releases)下载对应版本的后缀为 `-docker.tar.gz` 的压缩包解压并使用 `docker load < KaiwuDB.tar` 命令加载 `kaiwudb_install/packages` 中的镜像。
   - 官方仓库：`kwdb/kwdb`
   - 国内镜像：`swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/kwdb/kwdb`
   - Github 容器镜像：`ghcr.io/kwdb/kwdb`
