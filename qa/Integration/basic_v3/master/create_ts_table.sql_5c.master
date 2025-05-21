@@ -12,6 +12,11 @@ CREATE TABLE
 -------+------+------+------+--------+--------+--------+--------+------+---------
   NULL | NULL | NULL | NULL | NULL   | NULL   | NULL   | NULL   | NULL | NULL
 (1 row)
+> select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
+  first | first | first | first | firstts | firstts | firstts | firstts | first | firstts
+--------+-------+-------+-------+---------+---------+---------+---------+-------+----------
+  NULL  | NULL  | NULL  | NULL  | NULL    | NULL    | NULL    | NULL    | NULL  | NULL
+(1 row)
 > insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
 INSERT 1
 > select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
@@ -199,6 +204,11 @@ order by k_timestamp;
   last | last | last  | last |            lastts             |            lastts             |            lastts             |            lastts             |                  last                   |            lastts
 -------+------+-------+------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------------------------------+--------------------------------
   H    | G    | 32767 |   13 | 2023-04-10 07:18:30.007+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | test9数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30.009+00:00
+(1 row)
+> select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
+  first |  first  | first | first |          firstts          |          firstts          |          firstts          |          firstts          |                  first                  |          firstts
+--------+---------+-------+-------+---------------------------+---------------------------+---------------------------+---------------------------+-----------------------------------------+----------------------------
+  A     | DFFDARG |     1 |     1 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | test2数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30+00:00
 (1 row)
 > select max(a+3), min(a+b) from test.sjcx01;
    max  | min

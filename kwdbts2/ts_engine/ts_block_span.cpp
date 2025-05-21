@@ -58,23 +58,27 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
-                             uint32_t row_num,
-                             uint32_t col_id,
-                             const std::vector<AttributeInfo>& schema,
-                             const AttributeInfo& dest_type,
-                             int64_t* out_ts,
-                             int* out_row_idx) {
+KStatus TsBlock::GetFirstAndLastInfo(
+    uint32_t begin_row_idx,
+    uint32_t row_num,
+    uint32_t col_id,
+    const std::vector<AttributeInfo>& schema,
+    const AttributeInfo& dest_type,
+    Sumfunctype agg_type,
+    int64_t* out_ts,
+    int* out_row_idx) {
+
   TSBlkDataTypeConvert convert(this, begin_row_idx, row_num);
-  if (out_ts) *out_ts = INT64_MIN;
-  if (out_row_idx) *out_row_idx = -1;
-  int64_t max_ts = INT64_MIN;
+
+  int64_t best_ts = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS)
+                        ? INT64_MAX
+                        : INT64_MIN;
   int best_idx = -1;
 
   if (!isVarLenType(dest_type.type)) {
     char* value = nullptr;
     TsBitmap bitmap;
-    auto s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
+    KStatus s = convert.GetFixLenColAddr(col_id, schema, dest_type, &value, bitmap);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetFixLenColAddr failed.");
       return s;
@@ -83,34 +87,37 @@ KStatus TsBlock::GetLastInfo(uint32_t begin_row_idx,
     for (int i = 0; i < row_num; ++i) {
       if (bitmap[i] == DataFlags::kNull) continue;
       int64_t ts = GetTS(begin_row_idx + i);
-      if (ts > max_ts) {
-        max_ts = ts;
+      bool better = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS)
+                        ? (ts < best_ts)
+                        : (ts > best_ts);
+      if (better) {
+        best_ts = ts;
         best_idx = i;
       }
     }
   } else {
-    KStatus ret;
     for (int i = 0; i < row_num; ++i) {
       TSSlice slice;
       DataFlags flag;
-      /* We don't need to read the value right now, so we should be able
-       * to optimize only bitmap reading later.
-       */
-      ret = convert.GetVarLenTypeColAddr(i, col_id, schema, dest_type, flag, slice);
+      KStatus ret = convert.GetVarLenTypeColAddr(i, col_id, schema, dest_type, flag, slice);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetVarLenTypeColAddr failed.");
         return ret;
       }
       if (flag == DataFlags::kValid) {
         int64_t ts = GetTS(begin_row_idx + i);
-        if (ts > max_ts) {
-          max_ts = ts;
+        bool better = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS)
+                          ? (ts < best_ts)
+                          : (ts > best_ts);
+        if (better) {
+          best_ts = ts;
           best_idx = i;
         }
       }
     }
   }
-  if (out_ts) *out_ts = max_ts;
+
+  if (out_ts) *out_ts = best_ts;
   if (out_row_idx) *out_row_idx = best_idx;
   return KStatus::SUCCESS;
 }
@@ -192,9 +199,10 @@ KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<Attrib
     start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data, is_overflow);
 }
 
-KStatus TsBlockSpan::GetLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, int64_t* out_ts, int* out_row_idx) {
-  return block_->GetLastInfo(start_row_, nrow_, blk_col_idx, schema, dest_type, out_ts, out_row_idx);
+KStatus TsBlockSpan::GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
+ const AttributeInfo& dest_type, Sumfunctype agg_type, int64_t* out_ts, int* out_row_idx) {
+  return block_->GetFirstAndLastInfo(
+    start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, out_ts, out_row_idx);
 }
 
 void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
