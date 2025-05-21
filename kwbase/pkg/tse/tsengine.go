@@ -341,7 +341,7 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
 	"ts WAL checkpoint interval in TsEngine",
-	time.Minute,
+	2 * time.Minute,
 )
 
 // SQLTimeseriesTrace set trace for timeseries.
