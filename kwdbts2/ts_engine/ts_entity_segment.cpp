@@ -713,11 +713,12 @@ uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {
 
 void TsEntityBlock::Clear() {
   n_rows_ = 0;
-  for (size_t col_idx = 0; col_idx < n_cols_; ++col_idx) {
+  if (n_cols_ > 0) {
+    column_blocks_[0].buffer.clear();
+  }
+  for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
     TsEntitySegmentColumnBlock& column_block = column_blocks_[col_idx];
-    if (col_idx != 0) {
-      column_block.bitmap.Reset(EngineOptions::max_rows_per_block);
-    }
+    column_block.bitmap.Reset(EngineOptions::max_rows_per_block);
     column_block.buffer.clear();
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     if (isVarLenType(d_type)) {
