@@ -328,6 +328,22 @@ TEST(Simple8B, Bug1) {
   }
 }
 
+TEST(Simple8B, Bug2) {
+  std::vector<int16_t> data{5079, 8477, 1760, 3220, 4244, 4374, 4749, 6412, 5194,
+                            1631, 5734, 4339, 7815, 5237, 8829, 1245, 7099, 9217,
+                            9274, 8227, 8881, 1461, 5528, 2946, 8872, 9103, 5161};
+
+  std::string out;
+  ASSERT_TRUE(Simple8BEncode<int16_t>(data, &out));
+  std::string raw;
+  ASSERT_TRUE(Simple8BDecode<int16_t>(out, data.size(), &raw));
+  ASSERT_EQ(raw.size(), data.size() * sizeof(int16_t));
+  auto p = reinterpret_cast<int16_t *>(raw.data());
+  for (int i = 0; i < data.size(); ++i) {
+    EXPECT_EQ(p[i], data[i]) << i;
+  }
+}
+
 // Snappy
 
 TEST(Snappy, CompressDecompress) {

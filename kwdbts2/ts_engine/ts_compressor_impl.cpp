@@ -379,12 +379,7 @@ template <typename T>
 static inline int GetValidBits(T v) {
   static_assert(std::is_unsigned_v<T>);
   if (v == 0) return 1;
-  if constexpr (sizeof(T) == sizeof(unsigned int)) {
-    return sizeof(T) * 8 - __builtin_clz(v);
-  } else if constexpr (sizeof(T) == sizeof(unsigned long)) {  // NOLINT
-    return sizeof(T) * 8 - __builtin_clzl(v);
-  }
-  return sizeof(T) * 8 - __builtin_clzll(v);
+  return 64 - __builtin_clzll(v);
 }
 
 template <class T>
@@ -529,7 +524,7 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
 
 template <class T>
 bool Simple8BInt<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
-  assert(data.len >= sizeof(T) * count);
+  assert(data.len == sizeof(T) * count);
   const T *p_data = reinterpret_cast<const T *>(data.data);
   return __simple8b_detail::CompressImplGreedy<T>(p_data, count, out);
 }
@@ -629,8 +624,6 @@ CompressorManager::CompressorManager() {
   general_compressor_[GenCompAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
 
   // varchar varstring
-  default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
-  default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
   default_algs_[DATATYPE::CHAR] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
   default_algs_[DATATYPE::BINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
 }
