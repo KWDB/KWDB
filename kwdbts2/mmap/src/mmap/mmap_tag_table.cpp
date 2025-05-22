@@ -1251,7 +1251,8 @@ std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t i
 
 std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TagTable::GetAllNTagIndexs(uint32_t ts_version) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
-  if (nullptr == obj) {
+  if (nullptr == obj || !obj->isValid()) {
+      // TODO: return error
       return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
   }
   std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret;
