@@ -3,6 +3,8 @@ create table test.sjcx01(k_timestamp timestamp not null,A INT2 null,B INT4 not n
 select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
 select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
 select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
+select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
+select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
 insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
 select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
 select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
