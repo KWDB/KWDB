@@ -17,6 +17,16 @@ CREATE TABLE
 --------+-------+-------+-------+---------+---------+---------+---------+-------+----------
   NULL  | NULL  | NULL  | NULL  | NULL    | NULL    | NULL    | NULL    | NULL  | NULL
 (1 row)
+> select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
+  last_row | last_row | last_row | last_row | last_row_ts | last_row_ts | last_row_ts | last_row_ts | last_row | last_row_ts
+-----------+----------+----------+----------+-------------+-------------+-------------+-------------+----------+--------------
+  NULL     | NULL     | NULL     | NULL     | NULL        | NULL        | NULL        | NULL        | NULL     | NULL
+(1 row)
+> select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
+  first_row | first_row | first_row | first_row | first_row_ts | first_row_ts | first_row_ts | first_row_ts | first_row | first_row_ts
+------------+-----------+-----------+-----------+--------------+--------------+--------------+--------------+-----------+---------------
+  NULL      | NULL      | NULL      | NULL      | NULL         | NULL         | NULL         | NULL         | NULL      | NULL
+(1 row)
 > insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
 INSERT 1
 > select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
@@ -204,6 +214,16 @@ order by k_timestamp;
   last | last | last  | last |            lastts             |            lastts             |            lastts             |            lastts             |                  last                   |            lastts
 -------+------+-------+------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------------------------------+--------------------------------
   H    | G    | 32767 |   13 | 2023-04-10 07:18:30.007+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | test9数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30.009+00:00
+(1 row)
+> select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
+  last_row | last_row | last_row | last_row |          last_row_ts          |          last_row_ts          |          last_row_ts          |          last_row_ts          |                last_row                 |          last_row_ts
+-----------+----------+----------+----------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------------------------------+--------------------------------
+  NULL     | G        |    32767 |       13 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | test9数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30.009+00:00
+(1 row)
+> select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
+  first_row | first_row | first_row | first_row |       first_row_ts        |       first_row_ts        |       first_row_ts        |       first_row_ts        |                first_row                |       first_row_ts
+------------+-----------+-----------+-----------+---------------------------+---------------------------+---------------------------+---------------------------+-----------------------------------------+----------------------------
+  A         | DFFDARG   |         1 |         1 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | test2数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30+00:00
 (1 row)
 > select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
   first |  first  | first | first |          firstts          |          firstts          |          firstts          |          firstts          |                  first                  |          firstts
