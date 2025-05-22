@@ -223,6 +223,9 @@ type hashJoiner struct {
 		rightExported      int
 		rightWindowedBatch coldata.Batch
 	}
+
+	// Context cancellation checker.
+	cancelChecker *sqlbase.CancelChecker
 }
 
 var _ bufferingInMemoryOperator = &hashJoiner{}
@@ -247,7 +250,13 @@ func (hj *hashJoiner) Init() {
 
 func (hj *hashJoiner) Next(ctx context.Context) coldata.Batch {
 	hj.resetOutput()
+	if hj.cancelChecker == nil {
+		hj.cancelChecker = sqlbase.NewCancelChecker(ctx)
+	}
 	for {
+		if err := hj.cancelChecker.Check(); err != nil {
+			execerror.VectorizedInternalPanic(err)
+		}
 		switch hj.state {
 		case hjBuilding:
 			hj.build(ctx)
