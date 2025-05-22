@@ -226,35 +226,23 @@ class TSEngineV2Impl : public TSEngine {
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
                         uint64_t range_group_id, uint64_t mtr_id) override;
 
-  KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
-    return tsx_manager_sys_->TSxBegin(ctx, transaction_id);
-  }
+  /**
+ * @brief DDL WAL recover.
+ * @return KStatus
+*/
+  KStatus recover(kwdbContext_p ctx);
 
-  KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
-    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
-    if (mtr_id != 0) {
-      if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
-        LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
-        return KStatus::FAIL;
-      }
-    }
-    return KStatus::SUCCESS;
-  }
+  /**
+ * @brief ts engine WAL checkpoint.
+ * @return KStatus
+*/
+  KStatus checkpoint(kwdbContext_p ctx);
 
-  KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override {
-    KStatus s;
+  KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 
-    uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
-    if (mtr_id == 0) {
-      return KStatus::SUCCESS;
-    }
-    s = tsx_manager_sys_->TSxRollback(ctx, transaction_id);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("TSxRollback failed, TSxRollback failed, table id: %lu", table_id)
-      return s;
-    }
-    return KStatus::SUCCESS;
-  }
+  KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
+
+  KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 
   void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override { exit(0); }
 
