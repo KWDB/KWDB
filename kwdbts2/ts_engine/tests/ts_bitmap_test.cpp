@@ -1,6 +1,8 @@
 #include "ts_bitmap.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <random>
 TEST(TsBitmap, Write) {
   {
     kwdbts::TsBitmap b1(4);
@@ -47,5 +49,30 @@ TEST(TsBitmap, Rep) {
   const kwdbts::TsBitmap bm2({exp.data(), exp.size()}, 10);
   for (int i = 0; i < 10; ++i) {
     EXPECT_EQ(bm[i], bm2[i]);
+  }
+}
+
+TEST(TsBitmap, Assign) {
+  int n = 10000;
+  int offset = 7;
+  std::default_random_engine drng(0);
+  std::vector<kwdbts::DataFlags> flags(n);
+  std::array<kwdbts::DataFlags, 3> choises{kwdbts::DataFlags::kValid, kwdbts::DataFlags::kNone,
+                                           kwdbts::DataFlags::kNull};
+  for (int i = 0; i < n; ++i) {
+    flags[i] = choises[drng() % choises.size()];
+  }
+  kwdbts::TsBitmap bitmap1(n);
+  for (int i = 0; i < n; ++i) {
+    bitmap1[i] = flags[i];
+  }
+  for (int i = 0; i < n; ++i) {
+    EXPECT_EQ(bitmap1[i], flags[i]);
+  }
+
+  kwdbts::TsBitmap bitmap2(offset + n);
+  for (int i = 0; i < n; ++i) {
+    bitmap2[i + offset] = bitmap1[i];
+    EXPECT_EQ(bitmap1[i], bitmap2[i + offset]);
   }
 }
