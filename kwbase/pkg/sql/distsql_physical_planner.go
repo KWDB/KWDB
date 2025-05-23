@@ -3900,14 +3900,14 @@ func getAggFuncAndType(
 
 			if ti, ok1 := argument.(*tree.DTimestampTZ); ok1 {
 				switch precision {
-				case 3:
+				case 0, 3:
 					aggs[i].TimestampConstant[j] = ti.UnixMilli()
 				case 6:
 					aggs[i].TimestampConstant[j] = ti.UnixMicro()
 				case 9:
 					aggs[i].TimestampConstant[j] = ti.UnixNano()
 				default:
-					return aggs, aggColTyps, false, pgerror.Newf(pgcode.Warning, "unknown timestamp precision %d when exec %s function", precision, funcStr)
+					return aggs, aggColTyps, false, pgerror.Newf(pgcode.Warning, "failed to parse %s aggregate argument during the execution stage: invalid timestamp precision %d", funcStr, precision)
 				}
 			}
 
