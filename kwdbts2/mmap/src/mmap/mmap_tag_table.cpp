@@ -1115,7 +1115,7 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
 
 int TagTable::cleanPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo, ErrorInfo &err_info) {
 
-    string partition_path = m_db_path_ + m_tbl_sub_path_ + "tag_version" + "_" + std::to_string(version) + "/";
+    string partition_path = m_db_path_ + m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(version) + "/";
 
     // find max index id
     uint32_t max_idx_id = 0;
@@ -1158,7 +1158,7 @@ int TagTable::cleanPartition(uint32_t version, const uint32_t drop_index_id, Err
     m_partition_mgr_->RollbackPartitionTableVersion(version, err_info);
 
     // clear directory
-    string partition_path = m_db_path_ + m_tbl_sub_path_ + "tag_version" + "_" + std::to_string(version) + "/";
+    string partition_path = m_db_path_ + m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(version) + "/";
     if (fs::is_directory(partition_path) && !fs::is_empty(partition_path)) {
         fs::remove_all(partition_path);
     }
@@ -1249,10 +1249,10 @@ std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t i
   return std::vector<uint32_t>{};
 }
 
+// For 2.x, 3.0 is deprecated.
 std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TagTable::GetAllNTagIndexs(uint32_t ts_version) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
   if (nullptr == obj || !obj->isValid()) {
-      // TODO: return error
       return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
   }
   std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret;
@@ -2079,7 +2079,7 @@ TagPartitionTableManager::~TagPartitionTableManager() {
 int TagPartitionTableManager::CreateTagPartitionTable(const std::vector<TagInfo>& schema, uint32_t ts_version,
                                                       ErrorInfo& err_info, uint32_t newest_part_file_version) {
   // 1. check path
-  std::string partition_table_path = m_tbl_sub_path_ + "tag_version" + "_" + std::to_string(ts_version) + "/";
+  std::string partition_table_path = m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(ts_version) + "/";
   std::string real_path = m_db_path_ + partition_table_path;
   wrLock();
   // check partition table
@@ -2154,7 +2154,7 @@ int TagPartitionTableManager::OpenTagPartitionTable(TableVersion table_version, 
      return 0;
   }
   // set partition table path
-  std::string partition_table_path = m_tbl_sub_path_ + "tag_version" + "_" + std::to_string(table_version) + "/";
+  std::string partition_table_path = m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(table_version) + "/";
   std::string real_path = m_db_path_ + partition_table_path;
   if (access(real_path.c_str(), 0)) {
     // path does not exist
@@ -2239,7 +2239,7 @@ int TagPartitionTableManager::RollbackPartitionTableVersion(TableVersion need_ro
   part_table->second->remove();
   delete part_table->second;
   m_partition_tables_.erase(part_table);
-  std::string real_path = m_db_path_ + m_tbl_sub_path_ + "tag_version" + "_" + std::to_string(need_rollback_version) + "/";
+  std::string real_path = m_db_path_ + m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(need_rollback_version) + "/";
   fs::remove_all(real_path);
   LOG_INFO("Rollback partitionTable version, remove directory: %s", real_path.c_str());
   unLock();

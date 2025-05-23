@@ -257,10 +257,4 @@ KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t tran
 std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
     return table_schema_mgr_->GetNTagIndexInfo(ts_version, index_id);
 }
-
-
-std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTableV2Impl::GetAllNTagIndexs(uint32_t ts_version) {
-    return table_schema_mgr_->GetAllNTagIndexs(ts_version);
-}
-
 }  //  namespace kwdbts

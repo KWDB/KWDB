@@ -133,8 +133,6 @@ class TsTableSchemaManager {
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
-  vector<pair<uint32_t, std::vector<uint32_t>>> GetAllNTagIndexs(uint32_t ts_version);
-
   KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);

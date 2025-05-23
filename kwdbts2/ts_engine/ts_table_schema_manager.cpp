@@ -777,11 +777,5 @@ vector<uint32_t> TsTableSchemaManager::GetNTagIndexInfo(uint32_t ts_version, uin
     ret = tag_table_->GetNTagIndexInfo(ts_version, index_id);
     return ret;
 }
-
-vector<pair<uint32_t, std::vector<uint32_t>>> TsTableSchemaManager::GetAllNTagIndexs(uint32_t ts_version) {
-    std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret{};
-    ret = tag_table_->GetAllNTagIndexs(ts_version);
-    return ret;
-}
 }  //  namespace kwdbts
 
