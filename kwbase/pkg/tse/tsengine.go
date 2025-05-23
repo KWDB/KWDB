@@ -633,6 +633,16 @@ func (r *TsEngine) DropNormalTagIndex(
 	return nil
 }
 
+// AlterLifetime alter lifetime interval for this table.
+func (r *TsEngine) AlterLifetime(tableID uint64, lifeTime uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterLifetime(r.tdb, C.TSTableID(tableID), C.uint64_t(lifeTime))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to set table lifetime")
+	}
+	return nil
+}
+
 // AlterPartitionInterval alter partition interval for ts table.
 func (r *TsEngine) AlterPartitionInterval(tableID uint64, partitionInterval uint64) error {
 	r.checkOrWaitForOpen()

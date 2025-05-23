@@ -1,4 +1,3 @@
-alter schedule scheduled_table_retention Recurring  '*/10 * * * * * *';
 CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000 YEAR;
 CREATE ts DATABASE d_lifetime RETENTIONS 1001Y;
 CREATE ts DATABASE d_lifetime RETENTIONS 13000MONTH;
@@ -52,7 +51,7 @@ insert into test1.t1 values('2024-01-24 10:33:40',101, 2, 3, 5, 1);
 insert into test1.t1 values('1900-01-01 01:01:01',101, 2, 3, 5, 1);
 insert into test1.t1 values('1930-01-01 01:01:01',101, 2, 3, 5, 1);
 insert into test1.t1 values('1900-05-01 01:01:01',101, 2, 3, 5, 1);
--- select count(*) from test1.t1;
+select count(*) from test1.t1;
 
 create ts database tsdb;
 create table tsdb.t(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag); --t: 0
@@ -89,7 +88,7 @@ INSERT into tb VALUES( '2024-01-28 00:10:45.137+00:00', 5555555555000,5000,50000
 INSERT into tb VALUES( '0000-01-01 00:00:00.000+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT into tb VALUES( '0010-01-01 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT into tb VALUES( '0020-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
--- select count(*) from tb;
+select count(*) from tb;
 
 CREATE TS DATABASE test_lifetime;
 create table test_lifetime.tb(
@@ -122,9 +121,9 @@ INSERT INTO test_lifetime.tb values('2024-02-02 01:02:00+00:00',5,null,1000,null
 INSERT INTO test_lifetime.tb VALUES('2024-02-02 01:01:00+00:00',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
 INSERT INTO test_lifetime.tb values('1024-02-02 01:02:00+00:00',5,null,1000,null,100.0,null,'2020-1-7 12:00:00.000',null,'test时间精度通用查询测试,！！！@TEST1',null,'t',null,'中',null,'test时间精度通用查询测试,！！！@TEST1',null,'test时间精度通用查询测试,！！！@TEST1',null,b'\xaa',null,'test时间精度通用查询测试',null, 1, 2, 3, false, 1.1, 1.2,'a', 'red', 'T','China', 'a', 'b', '1', '女', '1', 'pria');
 INSERT INTO test_lifetime.tb VALUES('1124-02-02 01:01:00+00:00',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
--- SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
+SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
 ALTER TABLE test_lifetime.tb SET RETENTIONS=1week;
-SELECT pg_sleep(60);
+SELECT pg_sleep(5);
 
 select count(*) from test1.t1;
 drop database test1;
@@ -137,5 +136,3 @@ SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
 DROP TABLE test_lifetime.tb;
 
 DROP DATABASE test_lifetime CASCADE;
-
-alter schedule scheduled_table_retention Recurring  '@hourly';

@@ -193,7 +193,7 @@ KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
               tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
     return FAIL;
   }
-
+  LOG_INFO("++++++++++++++++++Table schema manager init success")
   return SUCCESS;
 }
 
@@ -293,7 +293,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
   tmp_bt->metaData()->schema_version_of_latest_data = ts_version;
   tmp_bt->metaData()->db_id = db_id;
-  // Set lifetime(ms)
+  // Set lifetime
   int32_t precision = 1;
   switch (metric_schema[0].type) {
     case TIMESTAMP64_LSN:
@@ -315,6 +315,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   int64_t ts = meta->ts_table().life_time();
   LifeTime life_time {ts, precision};
   tmp_bt->SetLifeTime(life_time);
+  LOG_INFO("Create table %lu with life time[%ld:%d]", table_id_, life_time.ts, life_time.precision);
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({ts_version, tmp_bt});

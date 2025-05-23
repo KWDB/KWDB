@@ -1371,6 +1371,20 @@ TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t
   return kTsSuccess;
 }
 
+TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t life_time) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->AlterLifetime(ctx_p, table_id, life_time);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("AlterLifetime Error!");
+  }
+  return kTsSuccess;
+}
+
 TSStatus TSDeleteRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroup range) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;

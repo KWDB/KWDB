@@ -63,6 +63,7 @@ const (
 	alterKwdbDropColumn
 	alterKwdbAlterColumnType
 	alterKwdbAlterPartitionInterval
+	alterKwdbAlterRetentions
 	compress
 	deleteExpiredData
 	alterCompressInterval
@@ -803,6 +804,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
 	case alterKwdbAlterPartitionInterval:
+	case alterKwdbAlterRetentions:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d, current tsVersion: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID

@@ -446,6 +446,8 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
 
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
 
+TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
+
 void UpdateTsTraceConfig(TSSlice cfg);
 /**
  * @brief Set AE cluster setting, save into map and notify modules.
