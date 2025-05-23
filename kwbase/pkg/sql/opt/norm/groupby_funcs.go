@@ -437,6 +437,10 @@ func (c *CustomFuncs) ChangeTSTableScanTypeForProject(projectExpr memo.RelExpr) 
 func (c *CustomFuncs) CheckForLastRowOpt(
 	tsScan *memo.TSScanPrivate, aggs memo.AggregationsExpr, private *memo.GroupingPrivate,
 ) bool {
+	if c.f.evalCtx.Kwengineversion == "2" {
+		return false
+	}
+
 	if tsScan.HintType == keys.LastRowOptHint || tsScan.PrimaryTagFilter != nil || tsScan.TagFilter != nil ||
 		!private.GroupingCols.Empty() {
 		return false
