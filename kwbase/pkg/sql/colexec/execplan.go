@@ -1595,7 +1595,14 @@ func planTypedMaybeNullProjectionOperators(
 ) (op Operator, resultIdx int, ct []types.T, internalMemUsed int, err error) {
 	if expr == tree.DNull {
 		resultIdx = len(columnTypes)
-		op = NewConstNullOp(NewAllocator(ctx, acc), input, resultIdx, typeconv.FromColumnType(exprTyp))
+		outputPhysType := typeconv.FromColumnType(exprTyp)
+		if outputPhysType == coltypes.Unhandled {
+			return nil, resultIdx, ct, internalMemUsed, errors.Errorf(
+				"unsupported output type %q of %s",
+				exprTyp.String(), expr.String(),
+			)
+		}
+		op = NewConstNullOp(NewAllocator(ctx, acc), input, resultIdx, outputPhysType)
 		ct = make([]types.T, len(columnTypes)+1)
 		copy(ct, columnTypes)
 		ct[len(columnTypes)] = *exprTyp
