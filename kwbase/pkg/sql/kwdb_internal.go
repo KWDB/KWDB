@@ -3466,7 +3466,7 @@ CREATE TABLE kwdb_internal.predefined_comments (
 	TYPE      INT8,
 	OBJECT_ID INT8,
 	SUB_ID    INT8,
-	COMMENT   STRING
+	"COMMENT" STRING
 )`,
 	populate: func(
 		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,

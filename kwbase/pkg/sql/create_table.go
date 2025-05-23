@@ -39,6 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
@@ -533,6 +534,39 @@ func (n *createTableNode) startExec(params runParams) error {
 
 	if err := desc.Validate(params.ctx, params.p.txn); err != nil {
 		return err
+	}
+
+	if n.n.Comment != "" {
+		_, err := params.p.extendedEvalCtx.ExecCfg.InternalExecutor.ExecEx(
+			params.ctx,
+			"set-table-comment",
+			params.p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"UPSERT INTO system.comments VALUES ($1, $2, 0, $3)",
+			keys.TableCommentType,
+			desc.ID,
+			n.n.Comment)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, def := range n.n.Defs {
+		if colDef, ok := def.(*tree.ColumnTableDef); ok {
+			if colDef.Comment != "" {
+				if err := commentOnColumn(params, desc, colDef.Name, colDef.Comment); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, tag := range n.n.Tags {
+		if tag.Comment != "" {
+			if err := commentOnColumn(params, desc, tag.TagName, tag.Comment); err != nil {
+				return err
+			}
+		}
 	}
 
 	params.p.SetAuditTarget(uint32(desc.GetID()), desc.GetName(), nil)
@@ -2760,6 +2794,30 @@ func incTelemetryForNewColumn(d *tree.ColumnTableDef) {
 	if d.Unique {
 		telemetry.Inc(sqltelemetry.SchemaNewColumnTypeQualificationCounter("unique"))
 	}
+}
+
+// commentOnColumn writes column/tag comment to system.comments
+func commentOnColumn(
+	params runParams, desc sqlbase.MutableTableDescriptor, colName tree.Name, comment string,
+) error {
+	col, _, err := desc.FindColumnByName(colName)
+	if err != nil {
+		return err
+	}
+	_, err = params.p.extendedEvalCtx.ExecCfg.InternalExecutor.ExecEx(
+		params.ctx,
+		"set-column-comment",
+		params.p.Txn(),
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		"UPSERT INTO system.comments VALUES ($1, $2, $3, $4)",
+		keys.ColumnCommentType,
+		desc.ID,
+		col.ID,
+		comment)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // generate storage type for table record in memory.

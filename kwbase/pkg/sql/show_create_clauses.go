@@ -52,7 +52,7 @@ type comment struct {
 // selectComment retrieves all the comments pertaining to a table (comments on the table
 // itself but also column and index comments.)
 func selectComment(ctx context.Context, p PlanHookState, tableID sqlbase.ID) (tc *tableComments) {
-	query := fmt.Sprintf("SELECT type, object_id, sub_id, comment FROM system.comments WHERE object_id = %d", tableID)
+	query := fmt.Sprintf(`SELECT type, object_id, sub_id, "comment" FROM system.comments WHERE object_id = %d`, tableID)
 
 	commentRows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.Query(
 		ctx, "show-tables-with-comment", p.Txn(), query)

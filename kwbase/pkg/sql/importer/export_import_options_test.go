@@ -37,7 +37,7 @@ func TestNullAndEmptyString(t *testing.T) {
 	defer srv.Stopper().Stop(context.Background())
 	sqlDB := sqlutils.MakeSQLRunner(db)
 
-	sqlDB.Exec(t, `CREATE TABLE user_info (id int PRIMARY KEY,name string NOT NULL,comment string)`)
+	sqlDB.Exec(t, `CREATE TABLE user_info (id int PRIMARY KEY,name string NOT NULL,"comment" string)`)
 
 	sqlDB.Exec(t, `INSERT INTO user_info VALUES (1,'SDXX','A big boss, rich'),(2,'DXXX','')`)
 	sqlDB.Exec(t, `INSERT INTO user_info VALUES (3,'XXDXX')`)
@@ -62,7 +62,7 @@ func TestStrWithDelimiter(t *testing.T) {
 	defer srv.Stopper().Stop(context.Background())
 	sqlDB := sqlutils.MakeSQLRunner(db)
 
-	sqlDB.Exec(t, `CREATE TABLE user_info (id int PRIMARY KEY,name string NOT NULL,comment string)`)
+	sqlDB.Exec(t, `CREATE TABLE user_info (id int PRIMARY KEY,name string NOT NULL,"comment" string)`)
 	sqlDB.Exec(t, `INSERT INTO user_info VALUES (1,'comma_in_str','ddsddadd,dddas');`)
 	sqlDB.Exec(t, `INSERT INTO user_info VALUES (2,'no_comma_in_str','ddsddadddddas');`)
 	exp := sqlDB.QueryStr(t, `SELECT * FROM user_info`)
@@ -93,7 +93,7 @@ func TestInvalidDelimiter(t *testing.T) {
 	defer srv.Stopper().Stop(context.Background())
 	sqlDB := sqlutils.MakeSQLRunner(db)
 	t.Run(`relational`, func(t *testing.T) {
-		sqlDB.Exec(t, `CREATE TABLE user_info (id int PRIMARY KEY,name string NOT NULL,comment string)`)
+		sqlDB.Exec(t, `CREATE TABLE user_info (id int PRIMARY KEY,name string NOT NULL,"comment" string)`)
 
 		// export relational table test.
 		sqlDB.ExpectErr(t, `pq: invalid delimiter value: must be only one character`, `EXPORT INTO CSV 'nodelocal://1/' FROM TABLE user_info with delimiter=',,'`)
