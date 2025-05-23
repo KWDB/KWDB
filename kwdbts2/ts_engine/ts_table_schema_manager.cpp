@@ -748,5 +748,34 @@ TSTableID TsTableSchemaManager::GetTableId() {
   return table_id_;
 }
 
+KStatus TsTableSchemaManager::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
+                                                   const uint64_t index_id, const uint32_t cur_version,
+                                                   const uint32_t new_version,
+                                                   const std::vector<uint32_t/* tag column id*/>& tags) {
+    ErrorInfo errorInfo;
+    errorInfo.errcode = tag_table_->CreateHashIndex(O_CREAT, tags, index_id, cur_version, new_version, errorInfo);
+    if (errorInfo.errcode < 0) {
+        return FAIL;
+    }
+    return SUCCESS;
+}
+
+KStatus TsTableSchemaManager::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
+                                                 const uint32_t cur_version, const uint32_t new_version,
+                                                 const uint64_t index_id) {
+    LOG_INFO("DropNormalTagIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+    ErrorInfo errorInfo;
+    errorInfo.errcode = tag_table_->DropHashIndex(index_id, cur_version, new_version, errorInfo);
+    if (errorInfo.errcode < 0) {
+        return FAIL;
+    }
+    return SUCCESS;
+}
+
+vector<uint32_t> TsTableSchemaManager::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
+    std::vector<uint32_t> ret{};
+    ret = tag_table_->GetNTagIndexInfo(ts_version, index_id);
+    return ret;
+}
 }  //  namespace kwdbts
 
