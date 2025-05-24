@@ -460,9 +460,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   std::vector<bool> is_overflow(ts_scan_cols_.size(), false);
 
   KStatus ret;
-  // If only queries related to first/last aggregation types are involved, the optimization process can be followed.
-  ret = only_first_last_type_ ? AggregateFirstLastOnly(final_agg_data)
-                              : AggregateBlockSpans(final_agg_data, is_overflow);
+  ret = Aggregate(final_agg_data, is_overflow);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
@@ -567,15 +565,30 @@ inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& a, std::shared
   return a->StartTs() < b->StartTs();
 }
 
-KStatus TsAggIteratorV2Impl::AggregateFirstLastOnly(std::vector<TSSlice>& final_agg_data) {
+KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow) {
   std::vector<AggCandidate> candidates(scan_agg_types_.size());
   std::list<k_uint32> first_col_idxs;
+  std::map<k_uint32, k_uint32> first_map;
   std::list<k_uint32> last_col_idxs;
+  std::map<k_uint32, k_uint32> last_map;
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
-    if (scan_agg_types_[i] == Sumfunctype::FIRST || scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
-      first_col_idxs.push_back(i);
-    } else if (scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) {
-      last_col_idxs.push_back(i);
+    switch (scan_agg_types_[i]) {
+      case Sumfunctype::FIRST:
+      case Sumfunctype::FIRSTTS:
+        if (first_map.find(ts_scan_cols_[i]) == first_map.end()) {
+          first_col_idxs.push_back(i);
+          first_map[ts_scan_cols_[i]] = i;
+        }
+        break;
+      case Sumfunctype::LAST:
+      case Sumfunctype::LASTTS:
+        if (last_map.find(ts_scan_cols_[i]) == last_map.end()) {
+          last_col_idxs.push_back(i);
+          last_map[ts_scan_cols_[i]] = i;
+        }
+        break;
+      default:
+        break;
     }
   }
   KStatus ret = AddMemSegmentBlockSpans();
@@ -637,7 +650,10 @@ KStatus TsAggIteratorV2Impl::AggregateFirstLastOnly(std::vector<TSSlice>& final_
   }
 
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
-    const auto& c = candidates[i];
+    const auto& c = (scan_agg_types_[i] == Sumfunctype::FIRST || scan_agg_types_[i] == Sumfunctype::FIRSTTS) ?
+                    candidates[first_map[ts_scan_cols_[i]]] :
+                      ((scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) ?
+                      candidates[last_map[ts_scan_cols_[i]]] : candidates[i]);
     const k_uint32 col_idx = ts_scan_cols_[i];
     final_agg_data[i].len = attrs_[col_idx].size;
     if (c.blk_span == nullptr) {
@@ -726,15 +742,20 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
     for (int i = 0; i < first_col_num; ++i) {
       uint32_t first_col_idx = first_col_idxs.front();
       first_col_idxs.pop_front();
-      uint32_t blk_col_idx = ts_scan_cols_[first_col_idx];
       AggCandidate& candidate = candidates[first_col_idx];
+      if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
+        // No need to scan this first agg anymore for the rest block spans.
+        continue;
+      }
+      uint32_t blk_col_idx = ts_scan_cols_[first_col_idx];
       TsBitmap bitmap;
       ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
-      for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[i] == DataFlags::kNull) {
+      int row_idx;
+      for (row_idx = 0; row_idx < row_num; ++row_idx) {
+        if (bitmap[i] != DataFlags::kValid) {
           continue;
         }
         int64_t ts = block_span->GetTS(row_idx);
@@ -746,8 +767,8 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
           break;
         }
       }
-      if (!candidate.blk_span) {
-        // Candidate is not found yet, so need to put first col index back.
+      if (row_idx > 0) {
+        // Need to continue to scan the rest block spans
         first_col_idxs.push_back(first_col_idx);
       }
     }
@@ -758,15 +779,19 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
     for (int i = 0; i < last_col_num; ++i) {
       uint32_t last_col_idx = last_col_idxs.front();
       last_col_idxs.pop_front();
-      uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
       AggCandidate& candidate = candidates[last_col_idx];
+      if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
+        // No need to scan this last agg anymore for the rest block spans.
+        continue;
+      }
+      uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
       TsBitmap bitmap;
       ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
       for (int row_idx = row_num - 1; row_idx >= 0; --row_idx) {
-        if (bitmap[i] == DataFlags::kNull) {
+        if (bitmap[i] != DataFlags::kValid) {
           continue;
         }
         int64_t ts = block_span->GetTS(row_idx);
@@ -778,10 +803,7 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
           break;
         }
       }
-      if (!candidate.blk_span || !remove_last_col_with_candidate) {
-        // Candidate is not found yet, so need to put last col index back.
-        last_col_idxs.push_back(last_col_idx);
-      }
+      last_col_idxs.push_back(last_col_idx);
     }
   }
   return KStatus::SUCCESS;
@@ -803,6 +825,7 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& firs
   }
   KStatus ret;
   std::vector<shared_ptr<TsBlockSpan>> ts_block_spans;
+  ts_block_spans.reserve(ts_block_spans_.size());
   while (!ts_block_spans_.empty()) {
     ts_block_spans.push_back(ts_block_spans_.front());
     ts_block_spans_.pop_front();

@@ -119,7 +119,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus AggregateBlockSpans(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow);
-  KStatus AggregateFirstLastOnly(std::vector<TSSlice>& final_agg_data);
+  KStatus Aggregate(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow);
   KStatus UpdateFirstLastCandidates(std::list<uint32_t>& first_col_idxs, std::list<uint32_t>& last_col_idxs,
                                     std::vector<AggCandidate>& candidates);
   KStatus UpdateFirstLastCandidates(std::shared_ptr<TsBlockSpan>& block_span, const std::vector<AttributeInfo>& schema,
