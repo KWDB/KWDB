@@ -642,9 +642,9 @@ KStatus TsAggIteratorV2Impl::AggregateFirstLastOnly(std::vector<TSSlice>& final_
     if (c.blk_span == nullptr) {
       final_agg_data[i] = {nullptr, 0};
     } else if (scan_agg_types_[i] == Sumfunctype::FIRSTTS || scan_agg_types_[i] == Sumfunctype::LASTTS) {
-      final_agg_data[i].data = static_cast<char*>(malloc(sizeof(int64_t)));
-      memcpy(final_agg_data[i].data, &c.ts, sizeof(int64_t));
-      final_agg_data[i].len = sizeof(int64_t);
+      final_agg_data[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
+      memcpy(final_agg_data[i].data, &c.ts, sizeof(timestamp64));
+      final_agg_data[i].len = sizeof(timestamp64);
     } else {
       std::shared_ptr<MMapMetricsTable> blk_version;
       ret = table_schema_mgr_->GetMetricSchema(c.blk_span->GetTableVersion(), &blk_version);
@@ -756,12 +756,12 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
   return KStatus::SUCCESS;
 }
         
-inline bool BlockSpanLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& b) {
+inline bool FirstTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& b) {
   return a->GetFirstTS() < b->GetFirstTS();
 }
 
-inline bool BlockSpanGreaterThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& b) {
-  return a->GetLastTS() > b->GetLastTS();
+inline bool LastTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& b) {
+  return a->GetLastTS() < b->GetLastTS();
 }
                                                   
 KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& first_col_idxs,
@@ -779,7 +779,7 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& firs
 
   int block_span_idx = 0;
   if (!first_col_idxs.empty()) {
-    sort(ts_block_spans.begin(), ts_block_spans.end(), BlockSpanLessThan);
+    sort(ts_block_spans.begin(), ts_block_spans.end(), FirstTSLessThan);
     while (!first_col_idxs.empty() && block_span_idx < ts_block_spans.size()) {
       shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_idx];
 
@@ -799,7 +799,7 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& firs
   }
 
   if (!last_col_idxs.empty()) {
-    sort(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), BlockSpanGreaterThan);
+    sort(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
     int block_span_backward_idx = ts_block_spans.size() - 1;
     while (last_col_idxs.size() > 0 && block_span_backward_idx >= block_span_idx) {
       shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_backward_idx];
