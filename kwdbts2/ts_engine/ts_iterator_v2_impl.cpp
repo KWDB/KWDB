@@ -407,44 +407,18 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
-inline bool TsAggIteratorV2Impl::onlyHasFirstLastAggType() {
-  for (auto& agg_type : scan_agg_types_) {
-    if (!(IsFirstAggType(agg_type) || IsLastAggType(agg_type))) {
-      return false;
-    }
-  }
-  return true;
-}
-
-inline bool TsAggIteratorV2Impl::onlyCountTs() {
-  if (CLUSTER_SETTING_COUNT_USE_STATISTICS && scan_agg_types_.size() == 1
-      && scan_agg_types_[0] == Sumfunctype::COUNT && ts_scan_cols_.size() == 1 && ts_scan_cols_[0] == 0) {
-    return true;
-  }
-  return false;
-}
-
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   KStatus s = TsStorageIteratorV2Impl::Init(is_reversed);
   if (s != KStatus::SUCCESS) {
     return s;
   }
-  all_agg_cols_not_null_ = true;
-  for (size_t i = 0; i < scan_agg_types_.size(); i++) {
-    k_int32 col_idx = -1;
-    if (i < ts_scan_cols_.size()) {
-      col_idx = ts_scan_cols_[i];
-    }
-    if (!attrs_[col_idx].isFlag(AINFO_NOT_NULL)) {
-      all_agg_cols_not_null_ = false;
-    }
-    /* if a col is not null type, we can change the first/last to first_row/last_row to speed up the aggregation
-     * which also can be done during query optimization.
-     */
-  }
-  only_first_last_type_ = onlyHasFirstLastAggType();
-  only_count_ts_ = onlyCountTs();
-  cur_entity_index_ = 0;
+  /* if a col is not null type, we can change the first/last to first_row/last_row to speed up the aggregation
+   * which also can be done during query optimization.
+   */
+
+  final_agg_data_.reserve(ts_scan_cols_.size());
+  is_overflow_.reserve(ts_scan_cols_.size());
+
   return KStatus::SUCCESS;
 }
 
@@ -456,25 +430,27 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
   min_last_ts = INT64_MAX;
   max_first_ts = INT64_MIN;
-  std::vector<TSSlice> final_agg_data(ts_scan_cols_.size(), TSSlice{nullptr, 0});
-  std::vector<bool> is_overflow(ts_scan_cols_.size(), false);
+  final_agg_data_.clear();
+  final_agg_data_.resize(ts_scan_cols_.size(), TSSlice{nullptr, 0});
+  is_overflow_.clear();
+  is_overflow_.resize(ts_scan_cols_.size(), false);
 
   KStatus ret;
-  ret = Aggregate(final_agg_data, is_overflow);
+  ret = Aggregate();
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
 
   res->clear();
   for (k_uint32 i = 0; i < ts_scan_cols_.size(); ++i) {
-    TSSlice& slice = final_agg_data[i];
+    TSSlice& slice = final_agg_data_[i];
     Batch* b;
     if (slice.data == nullptr) {
       b = new AggBatch(nullptr, 0, nullptr);
     } else if (!isVarLenType(attrs_[ts_scan_cols_[i]].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
       b = new AggBatch(slice.data, 1, nullptr);
       b->is_new = true;
-      b->is_overflow = is_overflow[i];
+      b->is_overflow = is_overflow_[i];
     } else {
       std::shared_ptr<void> ptr(slice.data, free);
       b = new AggBatch(ptr, 1, nullptr);
@@ -491,95 +467,22 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   return KStatus::SUCCESS;
 }
 
-KStatus TsAggIteratorV2Impl::AggregateBlockSpans(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow) {
-  KStatus ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
-
-  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    ret = AddLastSegmentBlockSpans();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
-      return KStatus::FAIL;
-    }
-
-    ret = AddEntitySegmentBlockSpans();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
-      return ret;
-    }
-  }
-
-
-  std::vector<k_uint32> first_cols;
-  std::vector<k_uint32> last_cols;
-  std::vector<k_uint32> normal_cols;
-  for (size_t i = 0; i < scan_agg_types_.size(); ++i) {
-    if (scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) {
-      last_cols.push_back(i);
-    } else if (scan_agg_types_[i] == Sumfunctype::FIRST || scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
-      first_cols.push_back(i);
-    } else {
-      normal_cols.push_back(i);
-      if (scan_agg_types_[i] == Sumfunctype::COUNT) {
-        final_agg_data[i].len = sizeof(uint64_t);
-        final_agg_data[i].data = static_cast<char*>(malloc(final_agg_data[i].len));
-        memset(final_agg_data[i].data, 0, final_agg_data[i].len);
-      }
-    }
-  }
-
-  while (!ts_block_spans_.empty()) {
-    shared_ptr<TsBlockSpan> blk_span = ts_block_spans_.front();
-    ts_block_spans_.pop_front();
-
-    std::vector<uint32_t> blk_scan_cols;
-    std::vector<AttributeInfo> blk_schema_valid;
-    auto s = GetBlkScanColsInfo(blk_span->GetTableVersion(), blk_scan_cols, blk_schema_valid);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    for (k_uint32 idx : normal_cols) {
-      bool overflow = is_overflow[idx];
-      s = blk_span->GetAggResult(blk_scan_cols[idx], blk_schema_valid, attrs_[blk_scan_cols[idx]],
-                                scan_agg_types_[idx], final_agg_data[idx], overflow);
-
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Failed to compute aggregation for col_idx(%u)",
-                  blk_scan_cols[idx]);
-        return s;
-      }
-      is_overflow[idx] = overflow;
-    }
-  }
-
-  return KStatus::SUCCESS;
-}
-
 inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& a, std::shared_ptr<TsVGroupPartition> b) {
   return a->StartTs() < b->StartTs();
 }
 
-KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow) {
+KStatus TsAggIteratorV2Impl::Aggregate() {
   std::vector<AggCandidate> candidates(scan_agg_types_.size());
   std::list<k_uint32> first_col_idxs;
   std::map<k_uint32, k_uint32> first_map;
   std::list<k_uint32> last_col_idxs;
   std::map<k_uint32, k_uint32> last_map;
+  std::vector<k_uint32> count_col_idxs;
+  std::vector<k_uint32> sum_col_idxs;
+  std::vector<k_uint32> max_col_idxs;
+  std::vector<k_uint32> min_col_idxs;
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
     switch (scan_agg_types_[i]) {
-      case Sumfunctype::FIRST:
-      case Sumfunctype::FIRSTTS:
-        if (first_map.find(ts_scan_cols_[i]) == first_map.end()) {
-          first_col_idxs.push_back(i);
-          first_map[ts_scan_cols_[i]] = i;
-        }
-        break;
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS:
         if (last_map.find(ts_scan_cols_[i]) == last_map.end()) {
@@ -587,20 +490,45 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
           last_map[ts_scan_cols_[i]] = i;
         }
         break;
+      case Sumfunctype::FIRST:
+      case Sumfunctype::FIRSTTS:
+        if (first_map.find(ts_scan_cols_[i]) == first_map.end()) {
+          first_col_idxs.push_back(i);
+          first_map[ts_scan_cols_[i]] = i;
+        }
+        break;
+      case Sumfunctype::COUNT:
+        count_col_idxs.push_back(i);
+        final_agg_data_[i].len = sizeof(uint64_t);
+        final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+        memset(final_agg_data_[i].data, 0, final_agg_data_[i].len);
+        break;
+      case Sumfunctype::SUM:
+        sum_col_idxs.push_back(i);
+        break;
+      case Sumfunctype::MAX:
+        max_col_idxs.push_back(i);
+        break;
+      case Sumfunctype::MIN:
+        min_col_idxs.push_back(i);
+        break;
       default:
+        LOG_ERROR("Agg function type is not supported in storage engine: %d.", scan_agg_types_[i]);
+        return KStatus::FAIL;
         break;
     }
   }
+
   KStatus ret = AddMemSegmentBlockSpans();
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
 
-  ret = UpdateFirstLastCandidates(first_col_idxs, last_col_idxs, candidates);
+  ret = UpdateAggregation(first_col_idxs, last_col_idxs, count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
   if (ret != KStatus::SUCCESS) {
     return ret;
   }
-  
+
   std::sort(ts_partitions_.begin(), ts_partitions_.end(), PartitionLessThan);
 
   int first_partition_idx;
@@ -616,7 +544,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
-      ret = UpdateFirstLastCandidates(first_col_idxs, last_col_idxs, candidates);
+      ret = UpdateAggregation(first_col_idxs, last_col_idxs, count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -639,7 +567,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
-      ret = UpdateFirstLastCandidates(first_col_idxs, last_col_idxs, candidates);
+      ret = UpdateAggregation(first_col_idxs, last_col_idxs, count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -655,18 +583,18 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
                       ((scan_agg_types_[i] == Sumfunctype::LAST || scan_agg_types_[i] == Sumfunctype::LASTTS) ?
                       candidates[last_map[ts_scan_cols_[i]]] : candidates[i]);
     const k_uint32 col_idx = ts_scan_cols_[i];
-    final_agg_data[i].len = attrs_[col_idx].size;
+    final_agg_data_[i].len = attrs_[col_idx].size;
     if (c.blk_span == nullptr) {
-      final_agg_data[i] = {nullptr, 0};
+      final_agg_data_[i] = {nullptr, 0};
       if (scan_agg_types_[i] == Sumfunctype::LASTTS) {
         min_last_ts = INT64_MIN;
       } else if (scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
         max_first_ts = INT64_MAX;
       }
     } else if (scan_agg_types_[i] == Sumfunctype::FIRSTTS || scan_agg_types_[i] == Sumfunctype::LASTTS) {
-      final_agg_data[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
-      memcpy(final_agg_data[i].data, &c.ts, sizeof(timestamp64));
-      final_agg_data[i].len = sizeof(timestamp64);
+      final_agg_data_[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
+      memcpy(final_agg_data_[i].data, &c.ts, sizeof(timestamp64));
+      final_agg_data_[i].len = sizeof(timestamp64);
     } else {
       std::shared_ptr<MMapMetricsTable> blk_version;
       ret = table_schema_mgr_->GetMetricSchema(c.blk_span->GetTableVersion(), &blk_version);
@@ -682,10 +610,10 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
                                        attrs_[col_idx], &value, bitmap);
         if (ret != KStatus::SUCCESS) return ret;
 
-        final_agg_data[i].data = static_cast<char*>(malloc(final_agg_data[i].len));
-        memcpy(final_agg_data[i].data,
-               value + c.row_idx * final_agg_data[i].len,
-               final_agg_data[i].len);
+        final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+        memcpy(final_agg_data_[i].data,
+               value + c.row_idx * final_agg_data_[i].len,
+               final_agg_data_[i].len);
       } else {
         TSSlice slice;
         DataFlags flag;
@@ -695,10 +623,10 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
           LOG_ERROR("GetVarLenTypeColAddr failed.");
           return ret;
         }
-        final_agg_data[i].len = slice.len + kStringLenLen;
-        final_agg_data[i].data = static_cast<char*>(malloc(final_agg_data[i].len));
-        KUint16(final_agg_data[i].data) = slice.len;
-        memcpy(final_agg_data[i].data + kStringLenLen, slice.data, slice.len);
+        final_agg_data_[i].len = slice.len + kStringLenLen;
+        final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+        KUint16(final_agg_data_[i].data) = slice.len;
+        memcpy(final_agg_data_[i].data + kStringLenLen, slice.data, slice.len);
       }
     }
   }
@@ -729,81 +657,242 @@ KStatus TsAggIteratorV2Impl::Aggregate(std::vector<TSSlice>& final_agg_data, std
   return KStatus::SUCCESS;
 }
 
-KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSpan>& block_span,
-                                                        const std::vector<AttributeInfo>& schema,
-                                                        std::list<uint32_t>& first_col_idxs,
-                                                        std::list<uint32_t>& last_col_idxs,
-                                                        bool remove_last_col_with_candidate,
-                                                        std::vector<AggCandidate>& candidates) {
+inline void TsAggIteratorV2Impl::InitSumValue(void* data, int32_t type) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::INT16:
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP:
+    case DATATYPE::INT64:
+      *static_cast<int64_t*>(data) = 0;
+      break;
+    case DATATYPE::FLOAT:
+    case DATATYPE::DOUBLE:
+      *static_cast<double*>(data) = 0.0;
+      break;
+    default:
+      break;
+  }
+}
+
+KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
+                                                const std::vector<AttributeInfo>& schema,
+                                                std::list<uint32_t>& first_col_idxs,
+                                                std::list<uint32_t>& last_col_idxs,
+                                                bool remove_last_col_with_candidate,
+                                                std::vector<uint32_t>& count_col_idxs,
+                                                std::vector<uint32_t>& sum_col_idxs,
+                                                std::vector<uint32_t>& max_col_idxs,
+                                                std::vector<uint32_t>& min_col_idxs,
+                                                std::vector<AggCandidate>& candidates) {
   KStatus ret;
+  int row_idx;
   int row_num = block_span->GetRowNum();
-  if (!first_col_idxs.empty()) {
-    int first_col_num = first_col_idxs.size();
-    for (int i = 0; i < first_col_num; ++i) {
-      uint32_t first_col_idx = first_col_idxs.front();
-      first_col_idxs.pop_front();
-      AggCandidate& candidate = candidates[first_col_idx];
-      if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
-        // No need to scan this first agg anymore for the rest block spans.
+
+  // Aggregate first col
+  int first_col_num = first_col_idxs.size();
+  for (int i = 0; i < first_col_num; ++i) {
+    uint32_t first_col_idx = first_col_idxs.front();
+    first_col_idxs.pop_front();
+    AggCandidate& candidate = candidates[first_col_idx];
+    if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
+      // No need to scan this first agg anymore for the rest block spans.
+      continue;
+    }
+    uint32_t blk_col_idx = ts_scan_cols_[first_col_idx];
+    TsBitmap bitmap;
+    ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+    for (row_idx = 0; row_idx < row_num; ++row_idx) {
+      if (bitmap[i] != DataFlags::kValid) {
         continue;
       }
-      uint32_t blk_col_idx = ts_scan_cols_[first_col_idx];
-      TsBitmap bitmap;
-      ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
+      int64_t ts = block_span->GetTS(row_idx);
+      if (!candidate.blk_span || candidate.ts > ts) {
+        candidate.blk_span = block_span;
+        candidate.ts = ts;
+        candidate.row_idx = row_idx;
+        max_first_ts = max(max_first_ts, ts);
+        break;
       }
-      int row_idx;
-      for (row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[i] != DataFlags::kValid) {
-          continue;
-        }
-        int64_t ts = block_span->GetTS(row_idx);
-        if (!candidate.blk_span || candidate.ts > ts) {
-          candidate.blk_span = block_span;
-          candidate.ts = ts;
-          candidate.row_idx = row_idx;
-          max_first_ts = max(max_first_ts, ts);
-          break;
-        }
-      }
-      if (row_idx > 0) {
-        // Need to continue to scan the rest block spans
-        first_col_idxs.push_back(first_col_idx);
-      }
+    }
+    if (row_idx > 0) {
+      // Need to continue to scan the rest block spans
+      first_col_idxs.push_back(first_col_idx);
     }
   }
 
-  if (!last_col_idxs.empty()) {
-    int last_col_num = last_col_idxs.size();
-    for (int i = 0; i < last_col_num; ++i) {
-      uint32_t last_col_idx = last_col_idxs.front();
-      last_col_idxs.pop_front();
-      AggCandidate& candidate = candidates[last_col_idx];
-      if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
-        // No need to scan this last agg anymore for the rest block spans.
+  // Aggregate last col
+  int last_col_num = last_col_idxs.size();
+  for (int i = 0; i < last_col_num; ++i) {
+    uint32_t last_col_idx = last_col_idxs.front();
+    last_col_idxs.pop_front();
+    AggCandidate& candidate = candidates[last_col_idx];
+    if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
+      // No need to scan this last agg anymore for the rest block spans.
+      continue;
+    }
+    uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
+    TsBitmap bitmap;
+    ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+    for (int row_idx = row_num - 1; row_idx >= 0; --row_idx) {
+      if (bitmap[i] != DataFlags::kValid) {
         continue;
       }
-      uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
-      TsBitmap bitmap;
-      ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
+      int64_t ts = block_span->GetTS(row_idx);
+      if (!candidate.blk_span || candidate.ts < ts) {
+        candidate.blk_span = block_span;
+        candidate.ts = ts;
+        candidate.row_idx = row_idx;
+        min_last_ts = min(min_last_ts, ts);
+        break;
       }
-      for (int row_idx = row_num - 1; row_idx >= 0; --row_idx) {
-        if (bitmap[i] != DataFlags::kValid) {
-          continue;
+    }
+    last_col_idxs.push_back(last_col_idx);
+  }
+
+  // Aggregate count col
+  for (int i = 0; i < count_col_idxs.size(); ++i) {
+    uint32_t count_col_idx = count_col_idxs[i];
+    uint32_t blk_col_idx = ts_scan_cols_[count_col_idx];
+    TsBitmap bitmap;
+    ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+    for (row_idx = 0; row_idx < row_num; ++row_idx) {
+      if (bitmap[i] != DataFlags::kValid) {
+        continue;
+      }
+      ++KUint64(final_agg_data_[count_col_idx].data);
+    }
+  }
+
+  // Aggregate sum col
+  for (int i = 0; i < sum_col_idxs.size(); ++i) {
+    uint32_t sum_col_idx = sum_col_idxs[i];
+    uint32_t blk_col_idx = ts_scan_cols_[sum_col_idx];
+    char* value = nullptr;
+    TsBitmap bitmap;
+    auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, schema[blk_col_idx], &value, bitmap);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetFixLenColAddr failed.");
+      return s;
+    }
+
+    int size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
+    void* current = reinterpret_cast<void*>((intptr_t)(value));
+    for (row_idx = 0; row_idx < row_num; ++row_idx) {
+      current += size;
+      if (bitmap[i] != DataFlags::kValid) {
+        continue;
+      TSSlice& agg_data = final_agg_data_[sum_col_idx];
+      if (agg_data.data == nullptr) {
+        agg_data.len = sizeof(int64_t);
+        agg_data.data = static_cast<char*>(malloc(agg_data.len));
+        memset(agg_data.data, 0, agg_data.len);
+        InitSumValue(agg_data.data, schema[blk_col_idx].type);
+      }
+
+      bool& is_overflow = is_overflow_[sum_col_idx];
+      if (!is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int8_t*>(current));
+            break;
+          case DATATYPE::INT16:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int16_t*>(current));
+            break;
+          case DATATYPE::INT32:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int32_t*>(current));
+            break;
+          case DATATYPE::INT64:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *reinterpret_cast<int64_t*>(current));
+            break;
+          case DATATYPE::FLOAT:
+            AddAggFloat<double>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<float*>(current));
+            break;
+          case DATATYPE::DOUBLE:
+            AddAggFloat<double>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<double*>(current));
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
         }
-        int64_t ts = block_span->GetTS(row_idx);
-        if (!candidate.blk_span || candidate.ts < ts) {
-          candidate.blk_span = block_span;
-          candidate.ts = ts;
-          candidate.row_idx = row_idx;
-          min_last_ts = min(min_last_ts, ts);
-          break;
+        if (is_overflow) {
+          *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
         }
       }
-      last_col_idxs.push_back(last_col_idx);
+      if (is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int8_t*>(current));
+            break;
+          case DATATYPE::INT16:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int16_t*>(current));
+            break;
+          case DATATYPE::INT32:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int32_t*>(current));
+            break;
+          case DATATYPE::INT64:
+            AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *reinterpret_cast<int64_t*>(current));
+            break;
+          case DATATYPE::FLOAT:
+          case DATATYPE::DOUBLE:
+            LOG_ERROR("Overflow not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+        }
+      }
+
+      auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
+      if (agg_data.data) {
+        string current_max({agg_data.data + kStringLenLen, agg_data.len});
+        if (current_max < *max_it) {
+          free(agg_data.data);
+          agg_data.data = nullptr;
+        }
+      }
+      if (agg_data.data == nullptr) {
+        // Can we use the memory in var_rows?
+        agg_data.len = max_it->length() + kStringLenLen;
+        agg_data.data = static_cast<char*>(malloc(agg_data.len));
+        KUint16(agg_data.data) = max_it->length();
+        memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
+      }
     }
   }
   return KStatus::SUCCESS;
@@ -817,9 +906,13 @@ inline bool LastTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& 
   return a->GetLastTS() < b->GetLastTS();
 }
                                                   
-KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& first_col_idxs,
-                                                        std::list<k_uint32>& last_col_idxs,
-                                                        std::vector<AggCandidate>& candidates) {
+KStatus TsAggIteratorV2Impl::UpdateAggregation(std::list<k_uint32>& first_col_idxs,
+                                                std::list<k_uint32>& last_col_idxs,
+                                                std::vector<uint32_t>& count_col_idxs,
+                                                std::vector<uint32_t>& sum_col_idxs,
+                                                std::vector<uint32_t>& max_col_idxs,
+                                                std::vector<uint32_t>& min_col_idxs,
+                                                std::vector<AggCandidate>& candidates) {
   if (ts_block_spans_.empty()) {
     return KStatus::SUCCESS;
   }
@@ -844,7 +937,8 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& firs
       }
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-      ret = UpdateFirstLastCandidates(blk_span, schema_info, first_col_idxs, last_col_idxs, false, candidates);
+      ret = UpdateAggregation(blk_span, schema_info, first_col_idxs, last_col_idxs, false,
+                                      count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -866,7 +960,8 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::list<k_uint32>& firs
       }
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-      ret = UpdateFirstLastCandidates(blk_span, schema_info, first_col_idxs, last_col_idxs, true, candidates);
+      ret = UpdateAggregation(blk_span, schema_info, first_col_idxs, last_col_idxs, true,
+                                      count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }

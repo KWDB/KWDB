@@ -118,25 +118,30 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  KStatus AggregateBlockSpans(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow);
-  KStatus Aggregate(std::vector<TSSlice>& final_agg_data, std::vector<bool>& is_overflow);
-  KStatus UpdateFirstLastCandidates(std::list<uint32_t>& first_col_idxs, std::list<uint32_t>& last_col_idxs,
-                                    std::vector<AggCandidate>& candidates);
-  KStatus UpdateFirstLastCandidates(std::shared_ptr<TsBlockSpan>& block_span, const std::vector<AttributeInfo>& schema,
-                                    std::list<uint32_t>& first_col_idxs, std::list<uint32_t>& last_col_idxs,
-                                    bool do_not_remove_last_col, std::vector<AggCandidate>& candidates);
-  bool onlyHasFirstLastAggType();
-  bool onlyCountTs();
+  KStatus Aggregate();
+  KStatus UpdateAggregation(std::list<uint32_t>& first_col_idxs,
+                            std::list<uint32_t>& last_col_idxs,
+                            std::vector<uint32_t>& count_col_idxs,
+                            std::vector<uint32_t>& sum_col_idxs,
+                            std::vector<uint32_t>& max_col_idxs,
+                            std::vector<uint32_t>& min_col_idxs,
+                            std::vector<AggCandidate>& candidates);
+  KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
+                            const std::vector<AttributeInfo>& schema,
+                            std::list<uint32_t>& first_col_idxs,
+                            std::list<uint32_t>& last_col_idxs,
+                            bool do_not_remove_last_col,
+                            std::vector<uint32_t>& count_col_idxs,
+                            std::vector<uint32_t>& sum_col_idxs,
+                            std::vector<uint32_t>& max_col_idxs,
+                            std::vector<uint32_t>& min_col_idxs,
+                            std::vector<AggCandidate>& candidates);
+  void InitSumValue(void* data, int32_t type);
 
   std::vector<Sumfunctype> scan_agg_types_;
-  bool only_first_type_{false};
-  bool no_first_row_type_ = true;
-  bool only_last_type_{false};
-  bool only_last_row_type_{false};
-  bool no_last_row_type_ = true;
-  bool only_first_last_type_{false};
-  bool all_agg_cols_not_null_{false};
-  bool only_count_ts_{false};
+
+  std::vector<TSSlice> final_agg_data_;
+  std::vector<bool> is_overflow_;
 
   int64_t min_last_ts;
   int64_t max_first_ts;
