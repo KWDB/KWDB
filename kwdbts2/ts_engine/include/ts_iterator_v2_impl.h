@@ -137,6 +137,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   bool only_first_last_type_{false};
   bool all_agg_cols_not_null_{false};
   bool only_count_ts_{false};
+
+  int64_t min_last_ts;
+  int64_t max_first_ts;
 };
 
 }  //  namespace kwdbts

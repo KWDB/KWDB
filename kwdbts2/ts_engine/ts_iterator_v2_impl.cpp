@@ -454,7 +454,8 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     *is_finished = true;
     return KStatus::SUCCESS;
   }
-
+  min_last_ts = INT64_MAX;
+  max_first_ts = INT64_MIN;
   std::vector<TSSlice> final_agg_data(ts_scan_cols_.size(), TSSlice{nullptr, 0});
   std::vector<bool> is_overflow(ts_scan_cols_.size(), false);
 
@@ -641,6 +642,11 @@ KStatus TsAggIteratorV2Impl::AggregateFirstLastOnly(std::vector<TSSlice>& final_
     final_agg_data[i].len = attrs_[col_idx].size;
     if (c.blk_span == nullptr) {
       final_agg_data[i] = {nullptr, 0};
+      if (scan_agg_types_[i] == Sumfunctype::LASTTS) {
+        min_last_ts = INT64_MIN;
+      } else if (scan_agg_types_[i] == Sumfunctype::FIRSTTS) {
+        max_first_ts = INT64_MAX;
+      }
     } else if (scan_agg_types_[i] == Sumfunctype::FIRSTTS || scan_agg_types_[i] == Sumfunctype::LASTTS) {
       final_agg_data[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
       memcpy(final_agg_data[i].data, &c.ts, sizeof(timestamp64));
@@ -681,6 +687,29 @@ KStatus TsAggIteratorV2Impl::AggregateFirstLastOnly(std::vector<TSSlice>& final_
     }
   }
 
+  if (max_first_ts < min_last_ts) {
+    int ts_span_idx = 0;
+    while (ts_span_idx < ts_spans_.size() && ts_spans_[ts_span_idx].end < max_first_ts) {
+      ++ts_span_idx;
+    }
+
+    if (ts_span_idx < ts_spans_.size()) {
+      int64_t end = ts_spans_[ts_span_idx].end;
+      if (ts_spans_[ts_span_idx].end > min_last_ts) {
+        ts_spans_.insert(ts_spans_.begin() + ts_span_idx + 1, {min_last_ts + 1, ts_spans_[ts_span_idx].end});
+        ts_spans_[ts_span_idx].end = max_first_ts - 1;
+      } else {
+        ts_spans_[ts_span_idx].end = max_first_ts - 1;
+        while (ts_span_idx < ts_spans_.size() && ts_spans_[ts_span_idx].end <= min_last_ts) {
+          ts_spans_.erase(ts_spans_.begin() + ts_span_idx);
+        }
+        if (ts_span_idx < ts_spans_.size()) {
+          ts_spans_[ts_span_idx].begin = max(ts_spans_[ts_span_idx].begin, min_last_ts + 1);
+        }
+      }
+    }
+  }
+
   return KStatus::SUCCESS;
 }
 
@@ -713,6 +742,7 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
           candidate.blk_span = block_span;
           candidate.ts = ts;
           candidate.row_idx = row_idx;
+          max_first_ts = max(max_first_ts, ts);
           break;
         }
       }
@@ -744,6 +774,7 @@ KStatus TsAggIteratorV2Impl::UpdateFirstLastCandidates(std::shared_ptr<TsBlockSp
           candidate.blk_span = block_span;
           candidate.ts = ts;
           candidate.row_idx = row_idx;
+          min_last_ts = min(min_last_ts, ts);
           break;
         }
       }
