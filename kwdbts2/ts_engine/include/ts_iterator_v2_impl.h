@@ -142,6 +142,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   std::vector<TSSlice> final_agg_data_;
   std::vector<bool> is_overflow_;
+  bool first_last_only_agg_;
 
   int64_t min_last_ts;
   int64_t max_first_ts;
