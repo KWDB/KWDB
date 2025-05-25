@@ -266,7 +266,7 @@ int TagTable::InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, in
   return 0;
 }
 
-// insert tag record
+// V3 insert tag record
 int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id) {
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
@@ -296,7 +296,42 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     return -1;
   }
 
-  // 4. set undelete mark
+  // 4. insert normal index data
+  // 1) check exist normal index, loop insert
+  tag_partition_table->NtagIndexRWMutexSLock();
+  for (auto ntag_index : tag_partition_table->getMmapNTagHashIndex()) {
+      std::vector<TSSlice> index_cols;
+      size_t len = 0;
+      auto col_ids = ntag_index->getColIDs();
+      for (auto col_id : col_ids) {
+          uint32_t col_size = tag_partition_table->getTagColSize(col_id);
+          uint32_t off = tag_partition_table->getTagColOff(col_id);
+          auto col_val = payload.GetNormalTag(off, col_size);
+          index_cols.emplace_back(col_val);
+          len += col_val.len;
+      }
+      char index_key[len];
+      int num = 0;
+      for(auto r:index_cols){
+          memcpy(&index_key[num], r.data, r.len);
+          num += r.len;
+      }
+      if (ntag_index->insert(index_key, len, tag_partition_version, row_no) < 0) {
+          tag_partition_table->NtagIndexRWMutexUnLock();
+          LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
+          return -1;
+      }
+  }
+  tag_partition_table->NtagIndexRWMutexUnLock();
+
+  // 5. insert entity row index
+  uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | sub_group_id;
+  if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t), tag_partition_version, row_no) < 0) {
+      LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
+      return -1;
+  }
+
+  // 6. set undelete mark
   tag_partition_table->startRead();
   tag_partition_table->unsetDeleteMark(row_no);
   tag_partition_table->stopRead();
@@ -1080,7 +1115,7 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
 
 int TagTable::cleanPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo, ErrorInfo &err_info) {
 
-    string partition_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(version) + "/";
+    string partition_path = m_db_path_ + m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(version) + "/";
 
     // find max index id
     uint32_t max_idx_id = 0;
@@ -1123,7 +1158,7 @@ int TagTable::cleanPartition(uint32_t version, const uint32_t drop_index_id, Err
     m_partition_mgr_->RollbackPartitionTableVersion(version, err_info);
 
     // clear directory
-    string partition_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(version) + "/";
+    string partition_path = m_db_path_ + m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(version) + "/";
     if (fs::is_directory(partition_path) && !fs::is_empty(partition_path)) {
         fs::remove_all(partition_path);
     }
@@ -1199,6 +1234,7 @@ int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info
 std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
   if (nullptr == obj) {
+      LOG_WARN("tag table this version not exist.")
       return std::vector<uint32_t>{};
   }
   auto tag_part = GetTagPartitionTableManager()->GetPartitionTable(obj->metaData()->m_real_used_version_);
@@ -1213,9 +1249,10 @@ std::vector<uint32_t> TagTable::GetNTagIndexInfo(uint32_t ts_version, uint32_t i
   return std::vector<uint32_t>{};
 }
 
+// For 2.x, 3.0 is deprecated.
 std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TagTable::GetAllNTagIndexs(uint32_t ts_version) {
   TagVersionObject *obj = m_version_mgr_->GetVersionObject(ts_version);
-  if (nullptr == obj) {
+  if (nullptr == obj || !obj->isValid()) {
       return std::vector<std::pair<uint32_t, std::vector<uint32_t>>>{};
   }
   std::vector<std::pair<uint32_t, std::vector<uint32_t>>> ret;
@@ -2042,7 +2079,7 @@ TagPartitionTableManager::~TagPartitionTableManager() {
 int TagPartitionTableManager::CreateTagPartitionTable(const std::vector<TagInfo>& schema, uint32_t ts_version,
                                                       ErrorInfo& err_info, uint32_t newest_part_file_version) {
   // 1. check path
-  std::string partition_table_path = m_tbl_sub_path_ + "tag" + "_" + std::to_string(ts_version) + "/";
+  std::string partition_table_path = m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(ts_version) + "/";
   std::string real_path = m_db_path_ + partition_table_path;
   wrLock();
   // check partition table
@@ -2117,7 +2154,7 @@ int TagPartitionTableManager::OpenTagPartitionTable(TableVersion table_version, 
      return 0;
   }
   // set partition table path
-  std::string partition_table_path = m_tbl_sub_path_ + "tag" + "_" + std::to_string(table_version) + "/";
+  std::string partition_table_path = m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(table_version) + "/";
   std::string real_path = m_db_path_ + partition_table_path;
   if (access(real_path.c_str(), 0)) {
     // path does not exist
@@ -2202,7 +2239,7 @@ int TagPartitionTableManager::RollbackPartitionTableVersion(TableVersion need_ro
   part_table->second->remove();
   delete part_table->second;
   m_partition_tables_.erase(part_table);
-  std::string real_path = m_db_path_ + m_tbl_sub_path_ + "tag" + "_" + std::to_string(need_rollback_version) + "/";
+  std::string real_path = m_db_path_ + m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(need_rollback_version) + "/";
   fs::remove_all(real_path);
   LOG_INFO("Rollback partitionTable version, remove directory: %s", real_path.c_str());
   unLock();

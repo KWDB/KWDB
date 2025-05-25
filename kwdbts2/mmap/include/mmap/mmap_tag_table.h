@@ -40,6 +40,8 @@ using TagPartitionTable = MMapTagColumnTable;
 
 #define INVALID_COL_IDX UINT32_MAX
 
+const string TAG_VERSION_NAME = "tag_version";
+
 class TagPartitionTableManager;
 
 class TagTable {

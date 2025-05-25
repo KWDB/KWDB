@@ -249,10 +249,6 @@ KStatus TsLastSegmentBuilder::Finalize() {
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
     const TSSlice& col_data, DataFlags data_flag) noexcept {
-#ifndef NDEBUG
-  // assert(getDataTypeSize(dtype_) == col_data.len);
-#endif
-  // TODO(zzr): parse bitmap from payload;
   if (has_bitmap_) {
     bitmap_[row_cnt_] = data_flag;
   }
