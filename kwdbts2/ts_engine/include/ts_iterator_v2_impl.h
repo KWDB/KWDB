@@ -136,7 +136,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                             std::vector<uint32_t>& max_col_idxs,
                             std::vector<uint32_t>& min_col_idxs,
                             std::vector<AggCandidate>& candidates);
+  void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
+  int valcmp(void* l, void* r, int32_t type, int32_t size);
 
   std::vector<Sumfunctype> scan_agg_types_;
 

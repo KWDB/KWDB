@@ -76,8 +76,7 @@ struct TsBlockSpan {
  public:
   TsBlockSpan() = default;
 
-  TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-              std::shared_ptr<TsBlock> block, int start, int nrow);
+  TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow);
 
   bool operator<(const TsBlockSpan& other) const;
 

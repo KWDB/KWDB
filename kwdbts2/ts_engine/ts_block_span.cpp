@@ -131,8 +131,7 @@ KStatus TsBlock::GetFirstAndLastInfo(
   return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-            std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
+TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
     : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {  // NOLINT(runtime/init)
   assert(nrow_ >= 1);
 }
@@ -236,12 +235,7 @@ KStatus TsBlockSpan::GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
-  front_span->block_ = block_;
-  front_span->entity_id_ = entity_id_;
-  front_span->start_row_ = start_row_;
-  front_span->nrow_ = row_num;
-  front_span->convert_ = TSBlkDataTypeConvert(*front_span);
-  convert_ = TSBlkDataTypeConvert(*this);
+  front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -249,11 +243,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
-  back_span->block_ = block_;
-  back_span->entity_id_ = entity_id_;
-  back_span->start_row_ = start_row_ + nrow_ - row_num;
-  back_span->nrow_ = row_num;
-  back_span->convert_ = TSBlkDataTypeConvert(*back_span);
+  back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num);
   convert_ = TSBlkDataTypeConvert(*this);
   // change current span info
   nrow_ -= row_num;
