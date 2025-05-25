@@ -826,7 +826,7 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
 KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   KStatus s;
   // 1. The iterator will be used to read MAX_COMPACT_NUM last segment data
-  shared_ptr<TsBlockSpan> block_span;
+  shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
   TsEngineSchemaManager* schema_mgr = partition_->GetSchemaMgr();
   // 2. Create a new last segment
@@ -854,7 +854,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   std::shared_ptr<TsEntityBlock> block = nullptr;
   std::vector<std::shared_ptr<TsEntityBlock>> cached_blocks;
   while (true) {
-    if (block_span->GetRowNum() == 0) {
+    if (!block_span || block_span->GetRowNum() == 0) {
       s = iter.Next(block_span, &is_finished);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, iterate last segments failed.")
