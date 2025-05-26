@@ -34,7 +34,7 @@ WALBufferMgr::~WALBufferMgr() {
 
 KStatus WALBufferMgr::init(TS_LSN start_lsn) {
   // last_write_block_no: The last block number written
-  uint32_t last_write_block_no = file_mgr_->GetBlockNoFromLsn(start_lsn);
+  uint64_t last_write_block_no = file_mgr_->GetBlockNoFromLsn(start_lsn);
 
   // init new buffer_
   vector<EntryBlock*> first_block;
