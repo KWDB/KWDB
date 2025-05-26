@@ -14,6 +14,7 @@ package importer
 import (
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"io/ioutil"
 	"math"
 	"os"
@@ -631,11 +632,10 @@ func (r *importResumer) Resume(
 	} else {
 		p.ExtendedEvalContext().EvalContext.StartSinglenode = true
 	}
-	Kwengineversion := os.Getenv("KW_ENGINE_VERSION")
-	if Kwengineversion != "" {
-		p.ExtendedEvalContext().EvalContext.Kwengineversion = Kwengineversion
-	} else {
+	if Kwengineversion, ok := envutil.EnvString("KW_ENGINE_VERSION", 0); !ok {
 		p.ExtendedEvalContext().EvalContext.Kwengineversion = tse.KwEngineVersion
+	} else {
+		p.ExtendedEvalContext().EvalContext.Kwengineversion = Kwengineversion
 	}
 
 	cfg := p.ExecCfg()
