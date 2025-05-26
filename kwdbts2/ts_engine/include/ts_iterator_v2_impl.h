@@ -148,6 +148,16 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   int64_t min_last_ts;
   int64_t max_first_ts;
+
+  bool has_first_row_col_;
+  bool has_last_row_col_;
+  bool first_row_need_candidate_;
+  bool last_row_need_candidate_;
+  AggCandidate first_row_candidate;
+  AggCandidate last_row_candidate;
+
+  std::list<k_uint32> first_row_col_idxs_;
+  std::list<k_uint32> last_row_col_idxs_;
 };
 
 }  //  namespace kwdbts

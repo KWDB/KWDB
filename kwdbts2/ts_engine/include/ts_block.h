@@ -27,8 +27,8 @@ class TsBlockSpan;
 
 struct AggCandidate {
   int64_t ts;
-  int row_idx = -1;
-  shared_ptr<TsBlockSpan> blk_span;
+  int row_idx;
+  shared_ptr<TsBlockSpan> blk_span{nullptr};
 };
 
 class TsBlock {

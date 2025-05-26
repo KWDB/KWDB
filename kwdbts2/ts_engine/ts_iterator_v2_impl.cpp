@@ -485,6 +485,11 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   std::vector<k_uint32> sum_col_idxs;
   std::vector<k_uint32> max_col_idxs;
   std::vector<k_uint32> min_col_idxs;
+  first_row_col_idxs_.clear();
+  last_row_col_idxs_.clear();
+
+  has_first_row_col_ = false;
+  has_last_row_col_ = false;
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
@@ -516,6 +521,14 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       case Sumfunctype::MIN:
         min_col_idxs.push_back(i);
         break;
+      case Sumfunctype::LAST_ROW:
+      case Sumfunctype::LASTROWTS:
+        has_last_row_col_ = true;
+        break;
+      case Sumfunctype::FIRST_ROW:
+      case Sumfunctype::FIRSTROWTS:
+        has_first_row_col_ = true;
+        break;
       default:
         LOG_ERROR("Agg function type is not supported in storage engine: %d.", scan_agg_types_[i]);
         return KStatus::FAIL;
@@ -523,6 +536,16 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     }
   }
   first_last_only_agg_ = (count_col_idxs.size() + sum_col_idxs.size() + max_col_idxs.size() + min_col_idxs.size() == 0);
+  if (has_first_row_col_) {
+    first_row_candidate.blk_span = nullptr;
+    first_row_need_candidate_ = true;
+    first_last_only_agg_ = false;
+  }
+  if (has_last_row_col_) {
+    last_row_candidate.blk_span = nullptr;
+    last_row_need_candidate_ = true;
+    first_last_only_agg_ = false;
+  }
 
   KStatus ret = AddMemSegmentBlockSpans();
   if (ret != KStatus::SUCCESS) {
@@ -534,13 +557,21 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     return ret;
   }
 
+  if (has_first_row_col_) {
+    first_row_need_candidate_ = true;
+  }
+  if (has_last_row_col_) {
+    last_row_need_candidate_ = true;
+  }
+
+
   std::sort(ts_partitions_.begin(), ts_partitions_.end(), PartitionLessThan);
 
   int first_partition_idx = 0;
-  if (first_col_idxs.size() > 0) {
+  if (!first_col_idxs.empty() || first_row_need_candidate_) {
     for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
-      if (first_col_idxs.size() > 0) {
-        // There are still some first agg functions without candidates, so we need to scan current partition.
+      if (!first_col_idxs.empty() || first_row_need_candidate_) {
+        // There are still some first/first_row agg functions without candidates, so we need to scan current partition.
         cur_partition_index_ = first_partition_idx;
         ret = AddLastSegmentBlockSpans();
         if (ret != KStatus::SUCCESS) {
@@ -555,17 +586,17 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
           return ret;
         }
       } else {
-        // We already got the first candidates for all first agg functions
+        // We already got the candidates for all first/first_row agg functions
         break;
       }
     }
   }
 
   int last_partition_idx = ts_partitions_.size() - 1;
-  if (last_col_idxs.size() > 0) {
+  if (!last_col_idxs.empty() || last_row_need_candidate_) {
     for (; last_partition_idx >= first_partition_idx; --last_partition_idx) {
-      if (last_col_idxs.size() > 0) {
-        // There are still some last agg functions without candidates, so we need to scan current partition.
+      if (!last_col_idxs.empty() || last_row_need_candidate_) {
+        // There are still some last/last_row agg functions without candidates, so we need to scan current partition.
         cur_partition_index_ = last_partition_idx;
         ret = AddLastSegmentBlockSpans();
         if (ret != KStatus::SUCCESS) {
@@ -580,7 +611,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
           return ret;
         }
       } else {
-        // We already got the last candidates for all last agg functions
+        // We already got the candidates for all last/last_row agg functions
         break;
       }
     }
@@ -613,7 +644,9 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     const auto& c = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
                     candidates[first_map[ts_scan_cols_[i]]] :
                       ((agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
-                      candidates[last_map[ts_scan_cols_[i]]] : candidates[i]);
+                      candidates[last_map[ts_scan_cols_[i]]] :
+                        ((agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
+                          first_row_candidate : last_row_candidate));
     const k_uint32 col_idx = ts_scan_cols_[i];
     final_agg_data_[i].len = attrs_[col_idx].size;
     if (c.blk_span == nullptr) {
@@ -623,7 +656,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       } else if (agg_type == Sumfunctype::FIRSTTS) {
         max_first_ts = INT64_MAX;
       }
-    } else if (agg_type == Sumfunctype::FIRSTTS || agg_type == Sumfunctype::LASTTS) {
+    } else if (agg_type == Sumfunctype::FIRSTTS || agg_type == Sumfunctype::LASTTS
+              || agg_type == Sumfunctype::FIRSTROWTS || agg_type == Sumfunctype::LASTROWTS) {
       final_agg_data_[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
       memcpy(final_agg_data_[i].data, &c.ts, sizeof(timestamp64));
       final_agg_data_[i].len = sizeof(timestamp64);
@@ -663,7 +697,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     }
   }
 
-  if (first_last_only_agg_ && max_first_ts < min_last_ts) {
+  if (first_last_only_agg_ && max_first_ts < min_last_ts && max_first_ts != INT64_MIN && min_last_ts != INT64_MAX) {
     int ts_span_idx = 0;
     while (ts_span_idx < ts_spans_.size() && ts_spans_[ts_span_idx].end < max_first_ts) {
       ++ts_span_idx;
@@ -1128,46 +1162,82 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::list<k_uint32>& first_col_id
   }
 
   int block_span_idx = 0;
-  if (!first_col_idxs.empty() && block_span_idx < ts_block_spans.size()) {
-    sort(ts_block_spans.begin(), ts_block_spans.end(), FirstTSLessThan);
-    while (!first_col_idxs.empty() && block_span_idx < ts_block_spans.size()) {
-      shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_idx];
-
-      std::shared_ptr<MMapMetricsTable> blk_version;
-      ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
+  if ((!first_col_idxs.empty() || first_row_need_candidate_) && block_span_idx < ts_block_spans.size()) {
+    if (first_col_idxs.empty()) {
+      auto min_it = std::min_element(ts_block_spans.begin(), ts_block_spans.end(), LastTSLessThan);
+      if (!first_row_candidate.blk_span || first_row_candidate.ts > (*min_it)->GetFirstTS()) {
+        first_row_candidate.blk_span = *min_it;
+        first_row_candidate.ts = first_row_candidate.blk_span->GetFirstTS();
+        first_row_candidate.row_idx = 0;
       }
-      auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
-
-      ret = UpdateAggregation(blk_span, schema_info, first_col_idxs, last_col_idxs, false,
-                              count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
+      first_row_need_candidate_ = false;
+    } else {
+      sort(ts_block_spans.begin(), ts_block_spans.end(), FirstTSLessThan);
+      if (first_row_need_candidate_) {
+        if (!first_row_candidate.blk_span || first_row_candidate.ts > ts_block_spans[0]->GetFirstTS()) {
+          first_row_candidate.blk_span = ts_block_spans[0];
+          first_row_candidate.ts = first_row_candidate.blk_span->GetFirstTS();
+          first_row_candidate.row_idx = 0;
+        }
+        first_row_need_candidate_ = false;
       }
-      ++block_span_idx;
+      while (!first_col_idxs.empty() && block_span_idx < ts_block_spans.size()) {
+        shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_idx];
+
+        std::shared_ptr<MMapMetricsTable> blk_version;
+        ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+        auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+
+        ret = UpdateAggregation(blk_span, schema_info, first_col_idxs, last_col_idxs, false,
+                                count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+        ++block_span_idx;
+      }
     }
   }
 
   int block_span_backward_idx = ts_block_spans.size() - 1;;
-  if (!last_col_idxs.empty() && block_span_idx <= block_span_backward_idx) {
-    sort(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
-    while (!last_col_idxs.empty() && block_span_idx <= block_span_backward_idx) {
-      shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_backward_idx];
-
-      std::shared_ptr<MMapMetricsTable> blk_version;
-      KStatus ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
+  if ((!last_col_idxs.empty() || last_row_need_candidate_) && block_span_idx <= block_span_backward_idx) {
+    if (last_col_idxs.empty()) {
+      auto max_it = std::max_element(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
+      if (!last_row_candidate.blk_span || last_row_candidate.ts < (*max_it)->GetLastTS()) {
+        last_row_candidate.blk_span = *max_it;
+        last_row_candidate.ts = last_row_candidate.blk_span->GetLastTS();
+        last_row_candidate.row_idx = last_row_candidate.blk_span->GetRowNum() - 1;
       }
-      auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
-
-      ret = UpdateAggregation(blk_span, schema_info, first_col_idxs, last_col_idxs, true,
-                              count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
+      last_row_need_candidate_ = false;
+    } else {
+      sort(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
+      if (has_last_row_col_) {
+        if (!last_row_candidate.blk_span || last_row_candidate.ts < ts_block_spans[block_span_backward_idx]->GetLastTS()) {
+          last_row_candidate.blk_span = ts_block_spans[block_span_backward_idx];
+          last_row_candidate.ts = last_row_candidate.blk_span->GetLastTS();
+          last_row_candidate.row_idx = last_row_candidate.blk_span->GetRowNum() - 1;
+        }
+        last_row_need_candidate_ = false;
       }
-      --block_span_backward_idx;
+      while (!last_col_idxs.empty() && block_span_idx <= block_span_backward_idx) {
+        shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_backward_idx];
+
+        std::shared_ptr<MMapMetricsTable> blk_version;
+        KStatus ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+        auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
+
+        ret = UpdateAggregation(blk_span, schema_info, first_col_idxs, last_col_idxs, true,
+                                count_col_idxs, sum_col_idxs, max_col_idxs, min_col_idxs, candidates);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+        --block_span_backward_idx;
+      }
     }
   }
 
