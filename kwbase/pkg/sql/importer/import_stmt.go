@@ -14,7 +14,6 @@ package importer
 import (
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"io/ioutil"
 	"math"
 	"os"
@@ -45,6 +44,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
+	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
