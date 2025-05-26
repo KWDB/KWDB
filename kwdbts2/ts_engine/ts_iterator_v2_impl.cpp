@@ -429,14 +429,14 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS:
         if (last_map_.find(ts_scan_cols_[i]) == last_map_.end()) {
-          origin_last_col_idxs_.push_back(i);
+          last_col_idxs_.push_back(i);
           last_map_[ts_scan_cols_[i]] = i;
         }
         break;
       case Sumfunctype::FIRST:
       case Sumfunctype::FIRSTTS:
         if (first_map_.find(ts_scan_cols_[i]) == first_map_.end()) {
-          origin_first_col_idxs_.push_back(i);
+          first_col_idxs_.push_back(i);
           first_map_[ts_scan_cols_[i]] = i;
         }
         break;
@@ -485,9 +485,6 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     *is_finished = true;
     return KStatus::SUCCESS;
   }
-
-  first_col_idxs_ = origin_first_col_idxs_;
-  last_col_idxs_ = origin_last_col_idxs_;
 
   first_row_col_idxs_.clear();
   last_row_col_idxs_.clear();
@@ -822,8 +819,7 @@ inline int TsAggIteratorV2Impl::valcmp(void* l, void* r, int32_t type, int32_t s
 }
 
 KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
-                                                const std::vector<AttributeInfo>& schema,
-                                                bool remove_last_col_with_candidate) {
+                                                const std::vector<AttributeInfo>& schema) {
   KStatus ret;
   int row_idx;
   int row_num = block_span->GetRowNum();
@@ -831,8 +827,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
   // Aggregate first col
   int first_col_num = first_col_idxs_.size();
   for (int i = 0; i < first_col_num; ++i) {
-    uint32_t first_col_idx = first_col_idxs_.front();
-    first_col_idxs_.pop_front();
+    uint32_t first_col_idx = first_col_idxs_[i];
     AggCandidate& candidate = candidates_[first_col_idx];
     if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
       // No need to scan this first agg anymore for the rest block spans.
@@ -857,17 +852,12 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         break;
       }
     }
-    if (row_idx > 0) {
-      // Need to continue to scan the rest block spans
-      first_col_idxs_.push_back(first_col_idx);
-    }
   }
 
   // Aggregate last col
   int last_col_num = last_col_idxs_.size();
   for (int i = 0; i < last_col_num; ++i) {
-    uint32_t last_col_idx = last_col_idxs_.front();
-    last_col_idxs_.pop_front();
+    uint32_t last_col_idx = last_col_idxs_[i];
     AggCandidate& candidate = candidates_[last_col_idx];
     if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
       // No need to scan this last agg anymore for the rest block spans.
@@ -892,7 +882,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         break;
       }
     }
-    last_col_idxs_.push_back(last_col_idx);
   }
 
   // Aggregate count col
@@ -1200,7 +1189,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
         }
         auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-        ret = UpdateAggregation(blk_span, schema_info, false);
+        ret = UpdateAggregation(blk_span, schema_info);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
@@ -1210,9 +1199,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
   }
 
   int block_span_backward_idx = ts_block_spans.size() - 1;;
-  if ((!last_col_idxs_.empty() || last_row_need_candidate_) && block_span_idx <= block_span_backward_idx) {
+  if ((!last_col_idxs_.empty() && block_span_idx <= block_span_backward_idx)
+      || (last_row_need_candidate_ && ts_block_spans.size() > 0)) {
     if (last_col_idxs_.empty()) {
-      auto max_it = std::max_element(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
+      auto max_it = std::max_element(ts_block_spans.begin(), ts_block_spans.end(), LastTSLessThan);
       if (!last_row_candidate_.blk_span || last_row_candidate_.ts < (*max_it)->GetLastTS()) {
         last_row_candidate_.blk_span = *max_it;
         last_row_candidate_.ts = last_row_candidate_.blk_span->GetLastTS();
@@ -1239,7 +1229,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
         }
         auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-        ret = UpdateAggregation(blk_span, schema_info, true);
+        ret = UpdateAggregation(blk_span, schema_info);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
@@ -1259,7 +1249,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
       }
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-      ret = UpdateAggregation(blk_span, schema_info, false);
+      ret = UpdateAggregation(blk_span, schema_info);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
