@@ -630,6 +630,7 @@ func (r *importResumer) Resume(
 	} else {
 		p.ExtendedEvalContext().EvalContext.StartSinglenode = true
 	}
+	p.ExtendedEvalContext().EvalContext.Kwengineversion = os.Getenv("KW_ENGINE_VERSION")
 	cfg := p.ExecCfg()
 	if details.TimeSeriesImport {
 		return r.timeSeriesResume(ctx, p, details, cfg, resultsCh)

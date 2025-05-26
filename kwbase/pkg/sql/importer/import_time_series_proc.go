@@ -761,8 +761,14 @@ func (t *timeSeriesImportInfo) ingest(
 	}
 
 	if t.flowCtx.EvalCtx.StartSinglenode {
-		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
-			resp, _, err := t.flowCtx.Cfg.TsEngine.PutRowData(uint64(t.tbID), val.Payload, val.RowBytes, val.ValueSize, uint64(0), t.writeWAL)
+		if t.flowCtx.EvalCtx.Kwengineversion == "1" {
+			payload, primaryTagVal, tolerantErr, err := t.BuildPayloadForTsImportStartSingleNode(
+				t.flowCtx.EvalCtx,
+				t.txn,
+				datums,
+				len(datums),
+			)
+
 			if err != nil {
 				for i := range datums {
 					cols := datums[i]
@@ -771,8 +777,39 @@ func (t *timeSeriesImportInfo) ingest(
 				}
 				return err
 			}
-			t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
+
+			if len(tolerantErr) > 0 {
+				for _, rowErrmap := range tolerantErr {
+					for k, v := range rowErrmap.(map[string]error) {
+						t.handleCoruptedResult(ctx, k, v)
+					}
+				}
+			}
+			resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL)
+			if err != nil {
+				for i := range datums {
+					cols := datums[i]
+					rowString := tree.ConvertDatumsToStr(cols, ',')
+					t.handleCoruptedResult(ctx, rowString, err)
+				}
+				return err
+			}
+			t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(primaryTagVal))
 			return err
+		} else {
+			for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
+				resp, _, err := t.flowCtx.Cfg.TsEngine.PutRowData(uint64(t.tbID), val.Payload, val.RowBytes, val.ValueSize, uint64(0), t.writeWAL)
+				if err != nil {
+					for i := range datums {
+						cols := datums[i]
+						rowString := tree.ConvertDatumsToStr(cols, ',')
+						t.handleCoruptedResult(ctx, rowString, err)
+					}
+					return err
+				}
+				t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
+				return err
+			}
 		}
 	}
 
