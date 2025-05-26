@@ -20,10 +20,11 @@
 
 #include "data_type.h"
 #include "kwdb_type.h"
-#include "ts_engine_schema_manager.h"
-#include "ts_vgroup_partition.h"
-#include "ts_mem_segment_mgr.h"
 #include "st_wal_mgr.h"
+#include "ts_engine_schema_manager.h"
+#include "ts_mem_segment_mgr.h"
+#include "ts_version.h"
+#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
@@ -81,7 +82,9 @@ class PartitionManager {
 class TsVGroup {
  private:
   uint32_t vgroup_id_{0};
-  TsEngineSchemaManager* schema_mgr_{nullptr};
+  TsEngineSchemaManager* schema_mgr_ = nullptr;
+  TsVersionManager* version_mgr_ = nullptr;
+
   //  <database_id, Manager>
   std::map<uint32_t, std::unique_ptr<PartitionManager>> partitions_;
   std::shared_mutex s_mu_;
@@ -113,7 +116,8 @@ class TsVGroup {
  public:
   TsVGroup() = delete;
 
-  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
+           TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
            bool enable_compact_thread = true);
 
   ~TsVGroup();

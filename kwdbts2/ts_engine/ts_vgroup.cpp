@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_vgroup.h"
+#include "ts_version.h"
 
 #include <cstdint>
 #include <cstring>
@@ -37,10 +38,12 @@ static const uint64_t interval = 3600 * 24 * 30;  // 30 days.
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
-                   TsEngineSchemaManager* schema_mgr, bool enable_compact_thread)
+                   TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
+                   bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
+      version_mgr_(version_mgr),
       path_(engine_options.db_path + "/" + GetFileName()),
       entity_counter_(0),
       engine_options_(engine_options),
@@ -434,6 +437,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   };
   LastRowInfo last_row_info;
   bool flush_success = true;
+  TsVersionUpdate update;
 
   mem_seg->Traversal([&](TSMemSegRowData* tbl) -> bool {
     // 1. get table schema manager.
@@ -470,7 +474,10 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       auto result = builders.insert(
           {partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment), file_number}});
       it = result.first;
+
+      update.AddLastSegment(last_row_info.database_id, partition->StartTs(), file_number);
     }
+
     // 4. insert data into segment builder.
     TsLastSegmentBuilder& builder = it->second;
     auto s = builder.PutRowData(tbl->table_id, tbl->table_version, tbl->entity_id, tbl->lsn, tbl->row_data);
@@ -496,7 +503,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     kv.first->PublicLastSegment(kv.second.GetFileNumber());
   }
   // todo(liangbo01) add all new files into new_file_list.
-  std::list<TsLastSegment> new_file_list;
+  version_mgr_->UpdateVersion(update);
   //  todo(liangbo01) atomic: mem segment delete, and last segments load.
   mem_seg->SetDeleting();
   mem_segment_mgr_.RemoveMemSegment(mem_seg);

@@ -8,78 +8,64 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
+#pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <string>
 #include <utility>
 
 #include "data_type.h"
+#include "kwdb_type.h"
 #include "ts_entity_segment.h"
+#include "ts_lastsegment.h"
+#include "ts_mem_segment_mgr.h"
 #include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
-class TsVGroupVersion;
-class TsEngineVersion {
- private:
-  std::vector<std::shared_ptr<const TsVGroupVersion>> children_;
+using PartitionInfo = std::pair<uint32_t, timestamp64>;  // (dbid, ptime);
+class TsVersion {
+  friend class TsVersionManager;
 
  public:
-  int GetNumOfVGroups() const;
-  std::shared_ptr<const TsVGroupVersion> GetVGroupVersion(int id) const;
-};
-
-class TsVGroupVersion {
- private:
-  using PartitionInfo = std::pair<uint32_t, timestamp64>;
-  std::map<PartitionInfo, std::vector<uint64_t>> valid_lastseg_;
-
- public:
-  std::shared_ptr<TsVGroupPartition> GetPartition(uint32_t db_id, timestamp64 p_time) const;
-  std::vector<PartitionInfo> GetAllValidPartitions() const;
+  std::map<PartitionInfo, std::shared_ptr<TsLastSegment>> GetAllLastSegments() const;
 };
 
 class TsVersionUpdate {
-  friend class TsVGroupVersionManager;
+  friend class TsVersionManager;
 
  private:
- public:
-  void AddLastSegmentFile(uint32_t db_id, timestamp64 ptime, uint32_t file_number);
-  void DeleteFile(const std::string& path);
-};
-
-class TsVGroupVersionManager;
-class TsEngineVersionManager {
-  friend TsVGroupVersionManager;
-
- private:
-  uint64_t version_seqno_;
-
-  void ApplyUpdateInner(uint64_t);
+  std::map<PartitionInfo, uint64_t> valid_lastsegs_;
+  std::map<PartitionInfo, uint64_t> delete_lastsegs_;
+  std::shared_ptr<TsMemSegment> valid_memseg_;
 
  public:
-  std::shared_ptr<const TsEngineVersion> Current() const;
-};
-
-class TsVGroupVersionManager {
- private:
-  int vgroup_id_;
-  std::filesystem::path path_;
-  TsEngineVersionManager* root_;
-
- public:
-  explicit TsVGroupVersionManager(int vgroup_id) : vgroup_id_(vgroup_id) {}
-  void ApplyUpdate(const TsVersionUpdate& update) {
-    auto current = root_->Current();
-    auto vg_version = current->GetVGroupVersion(vgroup_id_);
-    auto all_partitions = vg_version->GetAllValidPartitions();
+  void AddLastSegment(uint32_t dbid, timestamp64 ptime, uint64_t file_no) {
+    valid_lastsegs_.insert({PartitionInfo{dbid, ptime}, file_no});
   }
+  void DeleteLastSegment(uint32_t dbid, timestamp64 ptime, uint64_t file_no) {
+    delete_lastsegs_.insert({PartitionInfo{dbid, ptime}, file_no});
+  }
+  void ResetMemSegment(std::shared_ptr<TsMemSegment> mem) { valid_memseg_ = mem; }
 };
 
-enum class RecordType {
-  k,
+class TsVersionManager {
+ private:
+  mutable std::mutex mu_;
+
+  std::shared_ptr<const TsVersion> current_;
+
+ public:
+  void UpdateVersion(const TsVersionUpdate &update) { std::unique_lock lk{mu_}; }
+  std::shared_ptr<const TsVersion> Current() const {
+    std::unique_lock lk{mu_};
+    return current_;
+  }
 };
 
 }  // namespace kwdbts
