@@ -502,16 +502,13 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   is_overflow_.resize(ts_scan_cols_.size(), false);
 
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
-    switch (scan_agg_types_[i]) {
-      case Sumfunctype::COUNT:
-        final_agg_data_[i].len = sizeof(uint64_t);
-        final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-        memset(final_agg_data_[i].data, 0, final_agg_data_[i].len);
-        break;
-      default:;
+    if (scan_agg_types_[i] == Sumfunctype::COUNT) {
+      final_agg_data_[i].len = sizeof(uint64_t);
+      final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+      memset(final_agg_data_[i].data, 0, final_agg_data_[i].len);
     }
   }
-  
+
   if (has_first_row_col_) {
     first_row_candidate_.blk_span = nullptr;
     first_row_need_candidate_ = true;
@@ -1159,7 +1156,7 @@ inline bool FirstTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>&
 inline bool LastTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& b) {
   return a->GetLastTS() < b->GetLastTS();
 }
-                                                  
+
 KStatus TsAggIteratorV2Impl::UpdateAggregation() {
   if (ts_block_spans_.empty()) {
     return KStatus::SUCCESS;

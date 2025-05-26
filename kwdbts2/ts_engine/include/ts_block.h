@@ -111,7 +111,7 @@ struct TsBlockSpan {
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates);
-                                                
+
   KStatus GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
                               const AttributeInfo& dest_type, Sumfunctype agg_type, int64_t* out_ts,
                               int* out_row_idx);

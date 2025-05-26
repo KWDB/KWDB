@@ -64,7 +64,6 @@ KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates) {
   return KStatus::SUCCESS;
-
 }
 
 KStatus TsBlock::GetFirstAndLastInfo(

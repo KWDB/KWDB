@@ -325,7 +325,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     }
   }
   for (auto& mem_blk : mem_blocks) {
-    blocks.push_back(make_shared<TsBlockSpan>( mem_blk->GetEntityId(),
+    blocks.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(),
                                   mem_blk, 0, mem_blk->GetRowNum()));
   }
   return KStatus::SUCCESS;
