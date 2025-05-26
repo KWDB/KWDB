@@ -801,7 +801,7 @@ func (t *timeSeriesImportInfo) ingest(
 	// start && single-node KW_ENGINE_VERSION=2 (行存)
 	if t.flowCtx.EvalCtx.StartSinglenode && t.flowCtx.EvalCtx.Kwengineversion == "2" {
 		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
-			resp, _, err := t.flowCtx.Cfg.TsEngine.PutRowData(uint64(t.tbID), val.Payload, val.RowBytes, val.ValueSize, uint64(0), t.writeWAL)
+			resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{val.Payload}, uint64(0), t.writeWAL)
 			if err != nil {
 				for i := range datums {
 					cols := datums[i]
