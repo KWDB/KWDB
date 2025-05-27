@@ -673,8 +673,8 @@ CompressorManager::CompressorManager() {
   default_algs_[DATATYPE::BINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
 
   // varchar varstring
-  default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
-  default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
+  // default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
+  // default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
 }
 auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
     -> TwoLevelCompressor {

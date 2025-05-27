@@ -269,6 +269,9 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
   std::string compressed;
   const auto& mgr = CompressorManager::GetInstance();
   auto [first, second] = mgr.GetDefaultAlgorithm(dtype_);
+  if (isVarLenType(dtype_)) {
+    first = TsCompAlg::kGorilla_32;
+  }
   TSSlice plain{data_buffer_.data(), data_buffer_.size()};
   mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
   data_buffer_.swap(compressed);
