@@ -122,7 +122,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Aggregate();
   KStatus UpdateAggregation();
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
-                            const std::vector<AttributeInfo>& schema);
+                            const std::vector<AttributeInfo>& schema,
+                            bool remove_last_col);
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
   int valcmp(void* l, void* r, int32_t type, int32_t size);
@@ -132,8 +133,11 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<TSSlice> final_agg_data_;
   std::vector<AggCandidate> candidates_;
   std::vector<bool> is_overflow_;
-  std::vector<k_uint32> first_col_idxs_;
-  std::vector<k_uint32> last_col_idxs_;
+  std::list<k_uint32> origin_first_col_idxs_;
+  std::list<k_uint32> origin_last_col_idxs_;
+  std::list<k_uint32> first_col_idxs_;
+  std::list<k_uint32> last_col_idxs_;
+
   std::map<k_uint32, k_uint32> first_map_;
   std::map<k_uint32, k_uint32> last_map_;
   std::vector<uint32_t> count_col_idxs_;
