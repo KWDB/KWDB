@@ -44,7 +44,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
-	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -632,12 +631,7 @@ func (r *importResumer) Resume(
 	} else {
 		p.ExtendedEvalContext().EvalContext.StartSinglenode = true
 	}
-	if Kwengineversion, ok := envutil.EnvString("KW_ENGINE_VERSION", 0); !ok {
-		p.ExtendedEvalContext().EvalContext.Kwengineversion = tse.KwEngineVersion
-	} else {
-		p.ExtendedEvalContext().EvalContext.Kwengineversion = Kwengineversion
-	}
-
+	p.ExtendedEvalContext().EvalContext.Kwengineversion = tse.KwEngineVersion
 	cfg := p.ExecCfg()
 	if details.TimeSeriesImport {
 		return r.timeSeriesResume(ctx, p, details, cfg, resultsCh)
