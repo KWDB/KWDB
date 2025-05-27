@@ -739,16 +739,17 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       if (ts_span_idx < ts_spans_.size()) {
         int64_t end = ts_spans_[ts_span_idx].end;
         if (ts_spans_[ts_span_idx].end > min_last_ts_) {
-          if (ts_spans_[ts_span_idx].begin > min_last_ts_) {
-            ts_spans_.insert(ts_spans_.begin() + ts_span_idx + 1, {min_last_ts_ + 1, ts_spans_[ts_span_idx].end});
-            ts_spans_[ts_span_idx].end = max_first_ts_ - 1;
+          if (ts_spans_[ts_span_idx].begin < max_first_ts_) {
+            ts_spans_.insert(ts_spans_.begin() + ts_span_idx + 1, {min_last_ts_, ts_spans_[ts_span_idx].end});
+            ts_spans_[ts_span_idx].end = max_first_ts_;
+            ++ts_span_idx;
           }
         }
         while (ts_span_idx < ts_spans_.size() && ts_spans_[ts_span_idx].end <= min_last_ts_) {
           ts_spans_.erase(ts_spans_.begin() + ts_span_idx);
         }
         if (ts_span_idx < ts_spans_.size()) {
-          ts_spans_[ts_span_idx].begin = max(ts_spans_[ts_span_idx].begin, min_last_ts_ + 1);
+          ts_spans_[ts_span_idx].begin = max(ts_spans_[ts_span_idx].begin, min_last_ts_);
         }
       }
     }
@@ -1008,7 +1009,9 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     last_col_idxs_.pop_front();
     AggCandidate& candidate = candidates_[last_col_idx];
     if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
-      // No need to scan this last agg anymore for the rest block spans.
+      if (!remove_last_col) {
+        last_col_idxs_.push_back(last_col_idx);
+      }
       continue;
     }
     uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
@@ -1034,6 +1037,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     }
     if (row_idx < row_num - 1) {
       last_col_idxs_.push_back(last_col_idx);
+    } else {
+      if (!remove_last_col) {
+        last_col_idxs_.push_back(last_col_idx);
+      }
     }
   }
 
