@@ -337,7 +337,11 @@ func ShowCreatePartitioning(
 	indentStr := strings.Repeat("\t", indent)
 	buf.WriteString(` PARTITION BY `)
 	if len(partDesc.List) > 0 {
-		buf.WriteString(`LIST`)
+		if partDesc.IsHash {
+			buf.WriteString(`HASH`)
+		} else {
+			buf.WriteString(`LIST`)
+		}
 	} else if len(partDesc.Range) > 0 {
 		buf.WriteString(`RANGE`)
 	} else {

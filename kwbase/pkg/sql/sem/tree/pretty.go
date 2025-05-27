@@ -1402,7 +1402,11 @@ func (node *PartitionBy) doc(p *PrettyCfg) pretty.Doc {
 
 	var kw string
 	if len(node.List) > 0 {
-		kw = `PARTITION BY LIST`
+		if node.IsHash {
+			kw = `PARTITION BY HASH`
+		} else {
+			kw = `PARTITION BY LIST`
+		}
 	} else if len(node.Range) > 0 {
 		kw = `PARTITION BY RANGE`
 	}

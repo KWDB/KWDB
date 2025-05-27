@@ -207,6 +207,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.orderedType = private.OrderedScanType
 	tsScan.ScanAggArray = private.ScanAggs
 	tsScan.TableMetaID = private.Table
+	tsScan.hashNum = table.GetTSHashNum()
 	tsScan.estimatedRowCount = uint64(rowCount)
 
 	// bind tag filter and primary filter to tsScanNode.
@@ -1584,6 +1585,7 @@ func (ef *execFactory) ConstructTSInsert(
 func (ef *execFactory) ConstructTSDelete(
 	nodeIDs []roachpb.NodeID,
 	tblID uint64,
+	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
 	primaryTagKey, primaryTagValues [][]byte,
@@ -1592,6 +1594,7 @@ func (ef *execFactory) ConstructTSDelete(
 	tsDel := tsDeleteNodePool.Get().(*tsDeleteNode)
 	tsDel.nodeIDs = nodeIDs
 	tsDel.tableID = tblID
+	tsDel.hashNum = hashNum
 	tsDel.delTyp = delTyp
 	tsDel.primaryTagKey = primaryTagKey
 	tsDel.primaryTagValue = primaryTagValues

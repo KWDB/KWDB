@@ -1052,6 +1052,7 @@ type PartitionBy struct {
 	List      []ListPartition
 	Range     []RangePartition
 	HashPoint []HashPointPartition
+	IsHash    bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -1061,7 +1062,11 @@ func (node *PartitionBy) Format(ctx *FmtCtx) {
 		return
 	}
 	if len(node.List) > 0 {
-		ctx.WriteString(` PARTITION BY LIST (`)
+		if node.IsHash {
+			ctx.WriteString(` PARTITION BY HASH (`)
+		} else {
+			ctx.WriteString(` PARTITION BY LIST (`)
+		}
 	} else if len(node.Range) > 0 {
 		ctx.WriteString(` PARTITION BY RANGE (`)
 	}
@@ -1314,6 +1319,7 @@ type CreateTable struct {
 	PrimaryTagList    NameList
 	PartitionInterval *TimeInput
 	Comment           string
+	HashNum           int64
 }
 
 // Retention including Resolution and KeepDuration
@@ -1443,6 +1449,12 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 			ctx.WriteString(" ACTIVETIME ")
 			ctx.Printf("%d", node.ActiveTime.Value)
 			ctx.WriteString(node.ActiveTime.Unit)
+		}
+		if node.HashNum != 0 {
+			ctx.WriteString(" WITH HASH (")
+			ctx.Printf("%d", node.HashNum)
+			ctx.WriteString(strconv.FormatInt(node.HashNum, 10))
+			ctx.WriteByte(')')
 		}
 		if node.DownSampling != nil {
 			ctx.FormatNode(node.DownSampling)

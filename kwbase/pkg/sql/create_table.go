@@ -43,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
+	hashroutersettings "gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -686,24 +687,39 @@ func (n *createTableNode) startExec(params runParams) error {
 		if splitInfo, err = distributeAndDuplicateOfCreateTSTable(params, desc); err != nil {
 			return err
 		}
-		if splitInfo != nil && params.ExecCfg().StartMode == StartSingleReplica {
-			var wg sync.WaitGroup
-			log.Infof(params.ctx, "will relocate for MPP mode, location: %+v", splitInfo)
-			for i := range splitInfo {
-				wg.Add(1)
-				go func(info *roachpb.AdminSplitInfoForTs) {
-					target := []roachpb.ReplicationTarget{{
-						NodeID:  info.PreDist[0].NodeID,
-						StoreID: info.PreDist[0].StoreID,
-					}}
-					if err = params.extendedEvalCtx.ExecCfg.DB.AdminRelocateRange(params.ctx, info.SplitKey, target); err != nil {
-						log.Errorf(params.ctx, "failed relocate range for key %v, target %+v, err: %v", info.SplitKey, target, err)
-					}
-					wg.Done()
-				}(&splitInfo[i])
+		if splitInfo != nil {
+			if params.ExecCfg().StartMode == StartSingleReplica || hashroutersettings.AutoRelocateTsLeaseholderSettings.Get(&params.p.execCfg.Settings.SV) {
+				var wg sync.WaitGroup
+				log.Infof(params.ctx, "will relocate leaseholder, location: %+v", splitInfo)
+				for i := range splitInfo {
+					wg.Add(1)
+					go func(info *roachpb.AdminSplitInfoForTs) {
+						// When there is only one node in the target, there is actually an operation to
+						// reduce the number of replicas to one. When we execute rellocate, we expand
+						// the target to the normal number.
+						var target []roachpb.ReplicationTarget
+						if params.ExecCfg().StartMode == StartSingleReplica {
+							target = []roachpb.ReplicationTarget{{
+								NodeID:  info.PreDist[0].NodeID,
+								StoreID: info.PreDist[0].StoreID,
+							}}
+						} else {
+							for _, replica := range info.PreDist {
+								target = append(target, roachpb.ReplicationTarget{
+									NodeID:  replica.NodeID,
+									StoreID: replica.StoreID,
+								})
+							}
+						}
+						if err = params.extendedEvalCtx.ExecCfg.DB.AdminRelocateRange(params.ctx, info.SplitKey, target); err != nil {
+							log.Errorf(params.ctx, "failed relocate range for key %v, target %+v, err: %v", info.SplitKey, target, err)
+						}
+						wg.Done()
+					}(&splitInfo[i])
+				}
+				wg.Wait()
+				log.Infof(params.ctx, "done relocate leaseholder for creating ts table ")
 			}
-			wg.Wait()
-			log.Infof(params.ctx, "done relocate for MPP mode")
 		}
 
 		if updateErr := params.p.ExecCfg().DB.Txn(params.ctx, func(ctx context.Context, txn *kv.Txn) error {
@@ -1301,37 +1317,6 @@ func (p *planner) finalizeInterleave(
 	return nil
 }
 
-// CreatePartitioning constructs the partitioning descriptor for an index that
-// is partitioned into ranges, each addressable by zone configs.
-func CreatePartitioning(
-	ctx context.Context,
-	st *cluster.Settings,
-	evalCtx *tree.EvalContext,
-	tableDesc *sqlbase.MutableTableDescriptor,
-	indexDesc *sqlbase.IndexDescriptor,
-	partBy *tree.PartitionBy,
-) (sqlbase.PartitioningDescriptor, error) {
-	if partBy == nil {
-		// No CCL necessary if we're looking at PARTITION BY NOTHING.
-		return sqlbase.PartitioningDescriptor{}, nil
-	}
-	return CreatePartitioningCCL(ctx, st, evalCtx, tableDesc, indexDesc, partBy)
-}
-
-// CreatePartitioningCCL is the public hook point for the CCL-licensed
-// partitioning creation code.
-var CreatePartitioningCCL = func(
-	ctx context.Context,
-	st *cluster.Settings,
-	evalCtx *tree.EvalContext,
-	tableDesc *sqlbase.MutableTableDescriptor,
-	indexDesc *sqlbase.IndexDescriptor,
-	partBy *tree.PartitionBy,
-) (sqlbase.PartitioningDescriptor, error) {
-	return sqlbase.PartitioningDescriptor{}, sqlbase.NewCCLRequiredError(errors.New(
-		"creating or manipulating partitions requires a CCL binary"))
-}
-
 // InitTableDescriptor returns a blank TableDescriptor.
 func InitTableDescriptor(
 	id, parentID, parentSchemaID sqlbase.ID,
@@ -1531,6 +1516,12 @@ func buildTSTableDesc(
 	desc.TsTable.PartitionInterval = uint64(partitionInterval)
 	desc.TsTable.TsVersion = 1
 	desc.TsTable.NextTsVersion = desc.TsTable.TsVersion + 1
+
+	if n.HashNum == 0 {
+		desc.TsTable.HashNum = api.HashParamV2
+	} else {
+		desc.TsTable.HashNum = uint64(n.HashNum)
+	}
 
 	// The default primary tag for template tables is the instance table name
 	if len(n.PrimaryTagList) == 0 {
@@ -1771,7 +1762,7 @@ func buildIndexForDesc(
 		return err
 	}
 	if d.PartitionBy != nil {
-		partitioning, err := CreatePartitioning(ctx, st, evalCtx, desc, &idx, d.PartitionBy)
+		partitioning, err := NewPartitioningDescriptor(ctx, evalCtx, desc, &idx, d.PartitionBy)
 		if err != nil {
 			return err
 		}
@@ -1817,7 +1808,7 @@ func buildUniqueForDesc(
 		return err
 	}
 	if d.PartitionBy != nil {
-		partitioning, err := CreatePartitioning(ctx, st, evalCtx, desc, &idx, d.PartitionBy)
+		partitioning, err := NewPartitioningDescriptor(ctx, evalCtx, desc, &idx, d.PartitionBy)
 		if err != nil {
 			return err
 		}
@@ -2187,8 +2178,8 @@ func MakeTableDesc(
 	}
 
 	if n.PartitionBy != nil {
-		partitioning, err := CreatePartitioning(
-			ctx, st, evalCtx, &desc, &desc.PrimaryIndex, n.PartitionBy)
+		partitioning, err := NewPartitioningDescriptor(
+			ctx, evalCtx, &desc, &desc.PrimaryIndex, n.PartitionBy)
 		if err != nil {
 			return desc, err
 		}
@@ -3029,6 +3020,7 @@ func createInstanceTable(
 		uint32(tmplTblID),
 		false,
 		uint32(tmplTbl.TsTable.TsVersion),
+		tmplTbl.TsTable.HashNum,
 	)
 	if err != nil {
 		return err
@@ -3344,18 +3336,17 @@ func checkPrimaryTag(tagColumn sqlbase.ColumnDescriptor) error {
 func distributeAndDuplicateOfCreateTSTable(
 	params runParams, desc sqlbase.MutableTableDescriptor,
 ) ([]roachpb.AdminSplitInfoForTs, error) {
-	var preDistReplicas []roachpb.ReplicaDescriptor
-	partitions, err := api.GetDistributeInfo(params.ctx, uint32(desc.ID))
+	var preDistReplicas [][]roachpb.ReplicaDescriptor
+	hashNum := desc.TsTable.HashNum
+	partitions, err := api.GetDistributeInfo(params.ctx, uint32(desc.ID), hashNum)
 	if err != nil {
 		return nil, errors.Wrap(err, "PreDistributionError: get distribute info failed")
 	}
-	if params.ExecCfg().StartMode == StartSingleReplica {
-		preDist, err := api.PreDistributeBySingleReplica(params.ctx, params.p.txn, partitions)
-		if err != nil {
-			return nil, errors.Wrap(err, "PreDistributionError: get pre distribute info failed")
-		}
-		preDistReplicas = preDist
+	preDist, err := api.PreLeaseholderDistribute(params.ctx, params.p.txn, partitions)
+	if err != nil {
+		return nil, errors.Wrap(err, "PreDistributionError: get pre distribute info failed")
 	}
+	preDistReplicas = preDist
 
 	type pointGroup struct {
 		point     int32
@@ -3367,29 +3358,22 @@ func distributeAndDuplicateOfCreateTSTable(
 		startPoint := hashPartition.StartPoint
 		var info roachpb.AdminSplitInfoForTs
 		pointGroups = append(pointGroups, pointGroup{int32(startPoint), hashPartition.StartTimeStamp})
-		splitKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(startPoint), hashPartition.StartTimeStamp)
-		if params.ExecCfg().StartMode == StartSingleReplica {
-			info = roachpb.AdminSplitInfoForTs{
-				SplitKey: splitKey,
-				PreDist:  []roachpb.ReplicaDescriptor{preDistReplicas[index]},
-			}
-		} else {
-			info = roachpb.AdminSplitInfoForTs{
-				SplitKey: splitKey,
-			}
+		splitKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(startPoint), hashPartition.StartTimeStamp, hashNum)
+		info = roachpb.AdminSplitInfoForTs{
+			SplitKey: splitKey,
+			PreDist:  preDistReplicas[index],
 		}
-
 		splitInfo = append(splitInfo, info)
 	}
 
 	// split ts range
 	sort.Slice(pointGroups, func(i, j int) bool { return pointGroups[i].point < pointGroups[j].point })
 	for _, p := range pointGroups {
-		spanKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(p.point), p.timestamp)
+		spanKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(p.point), p.timestamp, hashNum)
 		// TODO(kang): send split key
 		var tmp = []int32{p.point}
 		var timestamps = []int64{p.timestamp}
-		if err := params.extendedEvalCtx.ExecCfg.DB.AdminSplitTs(params.ctx, spanKey, uint32(desc.ID), tmp, timestamps, false); err != nil {
+		if err := params.extendedEvalCtx.ExecCfg.DB.AdminSplitTs(params.ctx, spanKey, uint32(desc.ID), hashNum, tmp, timestamps, false); err != nil {
 			return nil, errors.Wrap(err, "PreDistributionError: split failed")
 		}
 	}
@@ -3398,5 +3382,5 @@ func distributeAndDuplicateOfCreateTSTable(
 	if params.extendedEvalCtx.ExecCfg.StartMode == StartSingleReplica {
 		return splitInfo, nil
 	}
-	return nil, nil
+	return splitInfo, nil
 }

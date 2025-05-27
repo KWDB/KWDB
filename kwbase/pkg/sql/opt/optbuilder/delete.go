@@ -76,6 +76,7 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 	if tab.GetTableType() == tree.TemplateTable {
 		panic(sqlbase.TemplateUnsupportedError("delete"))
 	} else if tab.GetTableType() == tree.InstanceTable || tab.GetTableType() == tree.TimeseriesTable {
+		hashNum := tab.GetTSHashNum()
 		_, ok := del.Returning.(*tree.NoReturningClause)
 		// time series and instance does not support operator except filter
 		if del.OrderBy != nil || del.Limit != nil || !ok || del.With != nil {
@@ -86,10 +87,9 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 				if err != nil {
 					panic(err)
 				}
-
-				return b.buildTSDelete(inScope, tab, del, alias, cn.InstTableID)
+				return b.buildTSDelete(inScope, tab, del, alias, cn.InstTableID, int(hashNum))
 			}
-			return b.buildTSDelete(inScope, tab, del, alias, sqlbase.ID(tab.ID()))
+			return b.buildTSDelete(inScope, tab, del, alias, sqlbase.ID(tab.ID()), int(hashNum))
 		}
 	}
 
@@ -185,7 +185,12 @@ func getLimitOfTimestampWithPrecision(precision int64) (int64, int64) {
 // output: outScope
 // build delete outScope of time-series table through table and delete message
 func (b *Builder) buildTSDelete(
-	inScope *scope, table cat.Table, del *tree.Delete, alias tree.TableName, tblID sqlbase.ID,
+	inScope *scope,
+	table cat.Table,
+	del *tree.Delete,
+	alias tree.TableName,
+	tblID sqlbase.ID,
+	hashNum int,
 ) (outScope *scope) {
 	id := b.factory.Metadata().AddTable(table, &alias)
 	tsType := table.Column(0).DatumType()
@@ -209,6 +214,7 @@ func (b *Builder) buildTSDelete(
 				DeleteType: int(execinfrapb.OperatorType_TsDeleteMultiEntitiesData),
 				ID:         opt.TableID(tblID),
 				STable:     id,
+				HashNum:    hashNum,
 				Spans:      spans,
 			})
 		return outScope
@@ -286,6 +292,7 @@ func (b *Builder) buildTSDelete(
 				DeleteType: int(execinfrapb.OperatorType_TsDeleteMultiEntitiesData),
 				ID:         opt.TableID(tblID),
 				STable:     id,
+				HashNum:    hashNum,
 				Spans:      spans,
 			})
 		return outScope
@@ -335,6 +342,7 @@ func (b *Builder) buildTSDelete(
 			DeleteType: delTyp,
 			ID:         opt.TableID(tblID),
 			STable:     id,
+			HashNum:    hashNum,
 			Spans:      spans,
 		})
 	return outScope

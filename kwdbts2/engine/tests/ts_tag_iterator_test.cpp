@@ -231,7 +231,7 @@ TEST_F(TestEngine, updatetag) {
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
   std::vector<k_uint32> hps;
-  for (uint32_t i =0; i< HASHPOINT_RANGE; i++) {
+  for (uint32_t i =0; i< g_testcase_hash_num; i++) {
     hps.push_back(i);
   }
   TagIterator *iter;

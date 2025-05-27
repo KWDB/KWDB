@@ -174,7 +174,7 @@ KStatus TsSnapshotProductorByPayload::SerializeData(kwdbContext_p ctx, const std
   }
   LOG_DEBUG("SerializeData payload row data: %lu.", cur_rows_in_res);
   // construct payload
-  if (!py_builder.Build(data)) {
+  if (!py_builder.Build(data, snapshot_info_.table->GetHashNum())) {
     LOG_ERROR("Payload build failed when build snapshot, snapshot id[%lu].", snapshot_info_.id);
     return KStatus::FAIL;
   }

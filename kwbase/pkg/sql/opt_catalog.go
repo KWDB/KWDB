@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -641,6 +642,14 @@ func (ot *optTable) GetTableType() tree.TableType {
 // GetTSVersion return ts_version.
 func (ot *optTable) GetTSVersion() uint32 {
 	return uint32(ot.desc.TsTable.TsVersion)
+}
+
+// GetTSHashNum return ts_hash_num.
+func (ot *optTable) GetTSHashNum() uint64 {
+	if ot.desc.TsTable.HashNum == 0 {
+		return api.HashParamV2
+	}
+	return ot.desc.TsTable.HashNum
 }
 
 // SetTableName set table name.
@@ -1413,6 +1422,14 @@ func (ot *optVirtualTable) GetTableType() tree.TableType {
 // GetTSVersion return ts_version.
 func (ot *optVirtualTable) GetTSVersion() uint32 {
 	return uint32(ot.desc.TsTable.TsVersion)
+}
+
+// GetTSHashNum return ts_hash_num.
+func (ot *optVirtualTable) GetTSHashNum() uint64 {
+	if ot.desc.TsTable.HashNum == 0 {
+		return api.HashParamV2
+	}
+	return ot.desc.TsTable.HashNum
 }
 
 // SetTableName set table name.

@@ -691,7 +691,7 @@ KStatus TsSnapshotConsumerByBlock::GenEmptyTagForPrimaryKey(kwdbContext_p ctx,
   Defer defer{([&]{
     free(tag_data.data);
   })};
-  if (!pl_builder.Build(&tag_data)) {
+  if (!pl_builder.Build(&tag_data, snapshot_info_.table->GetHashNum())) {
     LOG_ERROR("Payload build failed when build snapshot, snapshot id[%lu].", snapshot_info_.id);
     return KStatus::FAIL;
   }

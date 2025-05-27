@@ -1135,4 +1135,16 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
   return ts * precision;
 }
 
+inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
+  const uint32_t offset_basis = 2166136261;  // 32位offset basis
+  const uint32_t prime = 16777619;
+  uint32_t hash_val = offset_basis;
+  for (int i = 0; i < length; i++) {
+    unsigned char b = data[i];
+    hash_val *= prime;
+    hash_val ^= b;
+  }
+  return hash_val % hash_num;
+}
+
 }  //  namespace kwdbts

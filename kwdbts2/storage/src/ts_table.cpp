@@ -33,9 +33,10 @@ extern bool g_go_start_service;
 namespace kwdbts {
 
 TsEntityGroup::TsEntityGroup(kwdbContext_p ctx, MMapRootTableManager*& root_table_manager, const string& db_path,
-                             const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path) :
+                             const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path,
+                             uint64_t hash_num) :
     root_bt_manager_(root_table_manager), db_path_(db_path), table_id_(table_id),
-    range_(range), tbl_sub_path_(tbl_sub_path) {
+    range_(range), tbl_sub_path_(tbl_sub_path), hash_num_(hash_num) {
   cur_subgroup_id_ = 1;
   mutex_ = new KLatch(LATCH_ID_TSENTITY_GROUP_MUTEX);
   drop_mutex_ = new KRWLatch(RWLATCH_ID_TS_ENTITY_GROUP_DROP_RWLOCK);
@@ -293,7 +294,7 @@ KStatus TsEntityGroup::allocateEntityGroupId(kwdbContext_p ctx, Payload& payload
     }
     // not found
     std::string tmp_str = std::to_string(table_id_);
-    uint64_t tag_hash = TsTable::GetConsistentHashId(tmp_str.data(), tmp_str.size());
+    uint64_t tag_hash = GetConsistentHashId(tmp_str.data(), tmp_str.size(), hash_num_);
     std::string primary_tags;
     err_info.errcode = ebt_manager_->AllocateEntity(primary_tags, tag_hash, &groupid, &entityid);
     if (err_info.errcode < 0) {
@@ -1257,24 +1258,6 @@ KStatus TsTable::GetLastRowEntity(EntityResultIndex& entity_id) {
   return KStatus::SUCCESS;
 }
 
-/// @brief RangeGroupID compute function. new used in hashPoint. RangeGroupID % 65535. hashPoint % 10
-/// @param data primaryKey to compute which HashPoint it belongs to
-/// @param length how long the primaryKey to compute
-/// @return hashPoint ID
-uint32_t TsTable::GetConsistentHashId(const char* data, size_t length) {
-  // TODO(jiadx): 使用与GO层相同的一致性hashID算法，可能还需要一些方法参数
-//  uint64_t hash_id = std::hash<string>()(primary_tags);
-  const uint32_t offset_basis = 2166136261;  // 32位offset basis
-  const uint32_t prime = 16777619;
-  uint32_t hash_val = offset_basis;
-  for (int i = 0; i < length; i++) {
-    unsigned char b = data[i];
-    hash_val *= prime;
-    hash_val ^= b;
-  }
-  return hash_val % HASHPOINT_RANGE;
-}
-
 MMapRootTableManager* TsTable::CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
                                                           uint64_t partition_interval, ErrorInfo& err_info) {
@@ -1402,12 +1385,12 @@ KStatus TsTable::Init(kwdbContext_p ctx, std::unordered_map<uint64_t, int8_t>& r
 
 KStatus TsTable::newEntityGroup(kwdbContext_p ctx, RangeGroup hash_range, const string& range_tbl_sub_path,
                                 std::shared_ptr<TsEntityGroup>* ent_group) {
-  constructEntityGroup(ctx, hash_range, range_tbl_sub_path, ent_group);
+  constructEntityGroup(ctx, hash_range, range_tbl_sub_path, ent_group, GetHashNum());
   return (*ent_group)->OpenInit(ctx);
 }
 
 KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
-                        uint32_t ts_version, uint64_t partition_interval) {
+                        uint32_t ts_version, uint64_t partition_interval, uint64_t hash_num) {
   if (entity_bt_manager_ != nullptr) {
     LOG_ERROR("Entity Bigtable already exist.");
     return KStatus::FAIL;
@@ -1431,6 +1414,8 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
   if (entity_bt_manager_ == nullptr) {
     return KStatus::FAIL;
   }
+
+  hash_num_ = hash_num;
 
   return KStatus::SUCCESS;
 }
@@ -1592,7 +1577,7 @@ KStatus TsTable::CreateEntityGroup(kwdbContext_p ctx, RangeGroup range, vector<T
     return KStatus::FAIL;
   }
   std::shared_ptr<TsEntityGroup> t_group;
-  constructEntityGroup(ctx, range, range_tbl_sub_path, &t_group);
+  constructEntityGroup(ctx, range, range_tbl_sub_path, &t_group, GetHashNum());
 
   KStatus s = t_group->Create(ctx, tag_schema, entity_bt_manager_->GetCurrentTableVersion());
   if (s != KStatus::SUCCESS) {
@@ -3490,6 +3475,29 @@ KStatus TsTable::SplitEntityBySubgroup(kwdbContext_p ctx, const std::vector<Enti
   }
   subgroups->push_back({entity_group_id, subgroup_id, entity_ids});
   return SUCCESS;
+}
+
+uint64_t TsTable::GetHashNum() {
+  // Check if hash_num_ has been initialized. If not, search and assign a value
+  if (hash_num_ == 0) {
+#ifdef WITH_TESTS
+    return 2000;
+#endif
+    char* error;
+    size_t data_len = 0;
+    char* data = getTableMetaByVersion(table_id_, entity_bt_manager_->GetCurrentTableVersion(), &data_len, &error);
+    if (error != nullptr) {
+      LOG_ERROR(error);
+      return KStatus::FAIL;
+    }
+    roachpb::CreateTsTable meta;
+    if (!meta.ParseFromString({data, data_len})) {
+      LOG_ERROR("Parse schema From String failed.");
+      return KStatus::FAIL;
+    }
+    hash_num_ = meta.ts_table().hash_num();
+  }
+  return hash_num_;
 }
 
 KStatus TsEntityGroup::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,

@@ -607,12 +607,6 @@ func (expr *ColumnItem) Walk(_ Visitor) Expr {
 func (expr DefaultVal) Walk(_ Visitor) Expr { return expr }
 
 // Walk implements the Expr interface.
-func (expr PartitionMaxVal) Walk(_ Visitor) Expr { return expr }
-
-// Walk implements the Expr interface.
-func (expr PartitionMinVal) Walk(_ Visitor) Expr { return expr }
-
-// Walk implements the Expr interface.
 func (expr *NumVal) Walk(_ Visitor) Expr { return expr }
 
 // Walk implements the Expr interface.

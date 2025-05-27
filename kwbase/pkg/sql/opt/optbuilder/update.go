@@ -540,11 +540,13 @@ func (b *Builder) buildTSUpdate(
 		}
 	}
 
+	hashNum := table.GetTSHashNum()
 	outScope.expr = b.factory.ConstructTSUpdate(
 		&memo.TSUpdatePrivate{
 			UpdateRows:        tagValue,
 			ColsMap:           colMap,
 			ID:                id,
+			HashNum:           int(hashNum),
 			PTagValueNotExist: false,
 		})
 	return outScope

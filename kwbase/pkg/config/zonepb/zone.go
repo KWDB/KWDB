@@ -401,6 +401,9 @@ func (z *ZoneConfig) InheritFromParent(parent *ZoneConfig) {
 			z.InheritedLeasePreferences = false
 		}
 	}
+	if !z.Rebalance {
+		z.Rebalance = parent.Rebalance
+	}
 }
 
 // CopyFromZone copies over the specified fields from the other zone.
@@ -439,6 +442,7 @@ func (z *ZoneConfig) CopyFromZone(other ZoneConfig, fieldList []tree.Name) {
 			z.LeasePreferences = other.LeasePreferences
 			z.InheritedLeasePreferences = other.InheritedLeasePreferences
 		}
+		z.Rebalance = other.Rebalance
 	}
 }
 

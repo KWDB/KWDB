@@ -33,13 +33,13 @@ import (
 )
 
 // GetDistributeInfo get distribute info on create table
-var GetDistributeInfo func(ctx context.Context, tableID uint32) ([]HashPartition, error)
+var GetDistributeInfo func(ctx context.Context, tableID uint32, hashNum uint64) ([]HashPartition, error)
 
-// PreDistributeBySingleReplica get the pre distribute on single replica mode
-var PreDistributeBySingleReplica func(ctx context.Context, txn *kv.Txn, partitions []HashPartition) ([]roachpb.ReplicaDescriptor, error)
+// PreLeaseholderDistribute get the leaseholder pre distribute.
+var PreLeaseholderDistribute func(ctx context.Context, txn *kv.Txn, partitions []HashPartition) ([][]roachpb.ReplicaDescriptor, error)
 
 // GetHashPointByPrimaryTag get hashPoint by primaryTag
-func GetHashPointByPrimaryTag(primaryTags ...[]byte) ([]HashPoint, error) {
+func GetHashPointByPrimaryTag(hashNum uint64, primaryTags ...[]byte) ([]HashPoint, error) {
 	fnv32 := fnv.New32()
 	var hashPoints []HashPoint
 	for _, primaryTag := range primaryTags {
@@ -47,8 +47,8 @@ func GetHashPointByPrimaryTag(primaryTags ...[]byte) ([]HashPoint, error) {
 		if err != nil {
 			return nil, err
 		}
-		hashPoints = append(hashPoints, HashPoint(fnv32.Sum32()%HashParamV2))
-		log.Eventf(context.TODO(), "hashID: +%v , primaryTag: +%v", HashPoint(fnv32.Sum32()%HashParamV2), primaryTag)
+		hashPoints = append(hashPoints, HashPoint(fnv32.Sum32()%uint32(hashNum)))
+		log.Eventf(context.TODO(), "hashID: +%v , primaryTag: +%v", HashPoint(fnv32.Sum32()%uint32(hashNum)), primaryTag)
 		fnv32.Reset()
 	}
 
@@ -59,7 +59,7 @@ func GetHashPointByPrimaryTag(primaryTags ...[]byte) ([]HashPoint, error) {
 var GetHealthyNodeIDs func(ctx context.Context) ([]roachpb.NodeID, error)
 
 // GetTableNodeIDs get all healthy nodes
-var GetTableNodeIDs func(ctx context.Context, db *kv.DB, tableID uint32) ([]roachpb.NodeID, error)
+var GetTableNodeIDs func(ctx context.Context, db *kv.DB, tableID uint32, hashNum uint64) ([]roachpb.NodeID, error)
 
 // CreateTSTable ...
-var CreateTSTable func(ctx context.Context, tableID uint32, nodeID roachpb.NodeID, tsMeta []byte) error
+var CreateTSTable func(ctx context.Context, tableID uint32, hashNum uint64, nodeID roachpb.NodeID, tsMeta []byte) error

@@ -334,6 +334,7 @@ void constructRoachpbTable(roachpb::CreateTsTable* meta, uint64_t table_id, cons
   table->set_ts_table_id(table_id);
   table->set_table_name("table_" + std::to_string(table_id));
   table->set_partition_interval(partition_interval);
+  table->set_hash_num(2000);
   meta->set_allocated_ts_table(table);
 
   // first column name: k_timestamp
@@ -521,7 +522,7 @@ void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> 
       }
     }
   }
-  pay_build.Build(payload);
+  pay_build.Build(payload, 2000);
 }
 
 }  // namespace kwdbts

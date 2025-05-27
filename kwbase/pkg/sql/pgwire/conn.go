@@ -44,6 +44,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/setting"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/optbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -948,6 +949,10 @@ func (c *conn) handleSimpleQuery(
 
 				evalCtx.StartSinglenode = (server.GetCFG().StartMode == sql.StartSingleNode)
 				dit.DbID, dit.TabID = uint32(table.TableDescriptor.ParentID), uint32(table.TableDescriptor.ID)
+				if table.TsTable.HashNum == 0 {
+					table.TsTable.HashNum = api.HashParamV2
+				}
+				dit.HashNum = table.TsTable.HashNum
 				dit.ColsDesc = table.TableDesc().Columns
 				// Get column information
 				if err = sql.GetColsInfo(ctx, evalCtx, &dit.ColsDesc, ins, &di, &stmts[0]); err != nil {

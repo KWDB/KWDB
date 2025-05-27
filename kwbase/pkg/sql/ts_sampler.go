@@ -93,6 +93,7 @@ func createTsScanNode(tsSamplerCfg TsSamplerConfig) *tsScanNode {
 			zone:     nil,
 		},
 		resultColumns: tsSamplerCfg.StatsCols,
+		hashNum:       tsSamplerCfg.TabDesc.TsTable.HashNum,
 	}
 
 	// Add meta id, because of the physical ID of a column will change due to adding or deleting columns

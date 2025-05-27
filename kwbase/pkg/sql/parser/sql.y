@@ -536,6 +536,12 @@ func (u *sqlSymUnion) hashPointPartition() tree.HashPointPartition {
 func (u *sqlSymUnion) hashPointPartitions() []tree.HashPointPartition {
     return u.val.([]tree.HashPointPartition)
 }
+func (u *sqlSymUnion) hashPartition() tree.ListPartition {
+    return u.val.(tree.ListPartition)
+}
+func (u *sqlSymUnion) hashPartitions() []tree.ListPartition {
+    return u.val.([]tree.ListPartition)
+}
 func (u *sqlSymUnion) iconst32() int32 {
     return u.val.(int32)
 }
@@ -1029,7 +1035,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.TableDefs> opt_table_elem_list table_elem_list create_as_opt_col_list create_as_table_defs
 %type <tree.FuncArgDefs> arg_def_list
 %type <tree.TimeInput> resolution keep_duration
-%type <*tree.TimeInput> opt_active_time opt_partition_interval
+%type <*tree.TimeInput> opt_active_time opt_partition_interval opt_hash_num
 %type <tree.Retention> retentions_elem
 %type <tree.RetentionList> retentions_elems
 %type <str> method
@@ -1045,8 +1051,8 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <*tree.InterleaveDef> opt_interleave
 %type <*tree.PartitionBy> opt_partition_by partition_by
 %type <str> partition opt_partition
-%type <tree.ListPartition> list_partition
-%type <[]tree.ListPartition> list_partitions
+%type <tree.ListPartition> list_partition hash_partition
+%type <[]tree.ListPartition> list_partitions hash_partitions
 %type <tree.RangePartition> range_partition
 %type <[]tree.RangePartition> range_partitions
 %type <tree.HashPointPartition> hash_point_partition
@@ -1678,6 +1684,10 @@ set_zone_config:
   {
     $$.val = &tree.SetZoneConfig{YAMLConfig: tree.DNull}
   }
+| CONFIGURE ZONE USING REBALANCE
+{
+    $$.val = &tree.SetZoneConfig{Rebalance: true}
+}
 
 alter_zone_database_stmt:
   ALTER DATABASE database_name set_zone_config
@@ -5271,7 +5281,7 @@ table_tag_val_list:
   }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause
+  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
 	{
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5288,6 +5298,7 @@ create_ts_table_stmt:
       PrimaryTagList: $15.nameList(),
       PartitionInterval: $20.partitionInterval(),
       Comment: $21,
+      HashNum: $22.int64(),
     }
 	}
 
@@ -5572,6 +5583,14 @@ partition_by:
       HashPoint: $5.hashPointPartitions(),
     }
   }
+| PARTITION BY HASH '(' name_list ')' '(' hash_partitions ')'
+  {
+    $$.val = &tree.PartitionBy{
+      Fields: $5.nameList(),
+      List: $8.hashPartitions(),
+      IsHash: true,
+    }
+  }
 | PARTITION BY NOTHING
   {
     $$.val = (*tree.PartitionBy)(nil)
@@ -5626,6 +5645,26 @@ hash_point_partitions:
 | hash_point_partitions ',' hash_point_partition
   {
     $$.val = append($1.hashPointPartitions(), $3.hashPointPartition())
+  }
+
+hash_partitions:
+  hash_partition
+  {
+    $$.val = []tree.ListPartition{$1.hashPartition()}
+  }
+| hash_partitions ',' hash_partition
+  {
+    $$.val = append($1.hashPartitions(), $3.hashPartition())
+  }
+
+hash_partition:
+  partition VALUES IN '(' expr_list ')' opt_partition_by
+  {
+    $$.val = tree.ListPartition{
+      Name: tree.UnrestrictedName($1),
+      Exprs: $5.exprs(),
+      Subpartition: $7.partitionBy(),
+    }
   }
 
 iconst32_list:
@@ -6331,6 +6370,21 @@ opt_partition_interval:
 	{
 		$$.val = (*tree.TimeInput)(nil)
 	}
+
+opt_hash_num:
+  WITH HASH '(' signed_iconst64 ')'
+  {
+    num := $4.int64()
+    if num <= 0 || num > 50000 {
+      sqllex.Error(fmt.Sprintf("The hash num %d must be > 0 and <= 50000.", num))
+      return 1
+    }
+    $$.val = num
+  }
+| /* EMPTY */
+  {
+    $$.val = int64(0)
+  }
 
 opt_sequence_option_list:
   sequence_option_list

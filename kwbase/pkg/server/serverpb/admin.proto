@@ -821,6 +821,7 @@ message DeleteReplicaTSDataResponse {
 message CreateTSTableRequest {
   uint64 table_id = 1 [(gogoproto.customname) = "TableID"];
   bytes  meta = 2 [(gogoproto.customname) = "Meta"];
+  uint64 hash_num = 3 [(gogoproto.customname) = "HashNum"];
 }
 
 // CreateTSTableResponse ...

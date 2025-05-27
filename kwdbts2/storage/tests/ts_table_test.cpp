@@ -94,6 +94,7 @@ class TestTsTable : public TestBigTableInstance {
     table->set_ts_table_id(table_id_);
     table->set_table_name("table_" + std::to_string(table_id_));
     table->set_partition_interval(partition_interval);
+    table->set_hash_num(g_testcase_hash_num);
     meta->set_allocated_ts_table(table);
 
     for (int i = 0; i < clumn_num; i++) {

@@ -36,7 +36,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     table_ = new TsTable(ctx_, kDbPath, 10086);
-    for (size_t i = 0; i <= HASHPOINT_RANGE; i++) {
+    for (size_t i = 0; i <= g_testcase_hash_num; i++) {
       hps_total_.push_back(i);
     }
   }
@@ -107,6 +107,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
     roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
     table->set_ts_table_id(table_id_);
     table->set_table_name("table_" + std::to_string(table_id_));
+    table->set_hash_num(g_testcase_hash_num);
     meta->set_allocated_ts_table(table);
 
     for (int i = 0; i < clumn_num; i++) {
@@ -139,6 +140,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
     roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
     table->set_ts_table_id(table_id_);
     table->set_table_name("table_" + std::to_string(table_id_));
+    table->set_hash_num(g_testcase_hash_num);
     meta->set_allocated_ts_table(table);
 
     for (int i = 0; i < clumn_num; i++) {
@@ -200,7 +202,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
       }
     }
     TSSlice payload_slice;
-    bool s = pay_build.Build(&payload_slice);
+    bool s = pay_build.Build(&payload_slice, g_testcase_hash_num);
     EXPECT_EQ(s, true);
     return payload_slice;
   }

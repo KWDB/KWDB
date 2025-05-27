@@ -138,7 +138,7 @@ bool PayloadBuilder::SetColumnNull(int row_num, int col_idx) {
   return true;
 }
 
-bool PayloadBuilder::Build(TSSlice *payload) {
+bool PayloadBuilder::Build(TSSlice *payload, uint64_t hash_num) {
   if (tag_schema_.empty() || data_schema_.empty() || primary_tags_.empty()) {
     return false;
   }
@@ -198,7 +198,7 @@ bool PayloadBuilder::Build(TSSlice *payload) {
   payload->data = value;
   payload->len = value_idx - value;
     // set hashpoint
-  uint32_t hashpoint = TsTable::GetConsistentHashId(value + primary_offset_, primary_tag_len);
+  uint32_t hashpoint = GetConsistentHashId(value + primary_offset_, primary_tag_len, hash_num);
   memcpy(&payload->data[Payload::hash_point_id_offset_], &hashpoint, sizeof(uint16_t));
 
   free(primary_keys_mem);

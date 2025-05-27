@@ -38,6 +38,7 @@ import (
 // DirectInsertTable is related struct of ts tables in insert_direct
 type DirectInsertTable struct {
 	DbID, TabID uint32
+	HashNum     uint64
 	ColsDesc    []sqlbase.ColumnDescriptor
 	Tname       *tree.TableName
 	Desc        tree.NameList
@@ -380,13 +381,14 @@ func BuildPayload(
 		di.PArgs,
 		dit.DbID,
 		dit.TabID,
+		dit.HashNum,
 	)
 	if err != nil {
 		return err
 	}
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
-	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey)
+	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
 	return nil
 }
 
@@ -409,6 +411,7 @@ func BuildPreparePayload(
 		di.PArgs,
 		dit.DbID,
 		dit.TabID,
+		dit.HashNum,
 		qargs,
 		di.ColNum,
 	)
@@ -417,7 +420,7 @@ func BuildPreparePayload(
 	}
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
-	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey)
+	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
 	return nil
 }
 
@@ -428,11 +431,13 @@ func BuildPerNodePayloads(
 	payload []byte,
 	priTagRowIdx []int,
 	primaryTagKey roachpb.Key,
+	hashNum uint64,
 ) {
 	payloadInfo := &sqlbase.SinglePayloadInfo{
 		Payload:       payload,
 		RowNum:        uint32(len(priTagRowIdx)),
 		PrimaryTagKey: primaryTagKey,
+		HashNum:       hashNum,
 	}
 
 	nodeIDInt := int(nodeID[0])
@@ -652,6 +657,7 @@ func BuildRowBytesForPrepareTsInsert(
 			di.PArgs,
 			Dit.DbID,
 			Dit.TabID,
+			Dit.HashNum,
 			Args,
 			di.ColNum,
 		)
@@ -683,15 +689,17 @@ func BuildRowBytesForPrepareTsInsert(
 			}
 		}
 
+		hashNum := Dit.HashNum
 		allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
 			Payload:       payload,
 			RowNum:        uint32(groupLen),
 			PrimaryTagKey: primaryTagKey,
 			RowBytes:      groupBytes,
 			RowTimestamps: groupTimes,
-			StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), minTs),
-			EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), maxTs+1),
+			StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), minTs, hashNum),
+			EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), maxTs+1, hashNum),
 			ValueSize:     valueSize,
+			HashNum:       hashNum,
 		})
 	}
 
@@ -1578,6 +1586,7 @@ func GetPayloadMapForMuiltNode(
 
 	cols := di.PArgs.PrettyCols[:di.PArgs.PTagNum+di.PArgs.AllTagNum]
 	tabID := sqlbase.ID(dit.TabID)
+	hashNum := dit.HashNum
 
 	for _, priTagRowIdx := range priTagValMap {
 		// Payload is the encoding of a complete line, which is the first line in a line with the same ptag
@@ -1591,6 +1600,7 @@ func GetPayloadMapForMuiltNode(
 			di.PArgs,
 			dit.DbID,
 			uint32(table.ID),
+			hashNum,
 		)
 		if err != nil {
 			return err
@@ -1624,11 +1634,11 @@ func GetPayloadMapForMuiltNode(
 		hashPoint := uint64(hashPoints[0])
 		var startKey, endKey roachpb.Key
 		if di.PArgs.RowType == execbuilder.OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(tabID, hashPoint)
-			endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, math.MaxInt64)
+			startKey = sqlbase.MakeTsHashPointKey(tabID, hashPoint, hashNum)
+			endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, math.MaxInt64, hashNum)
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, minTs)
-			endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, maxTs+1)
+			startKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, minTs, hashNum)
+			endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, maxTs+1, hashNum)
 		}
 
 		allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
@@ -1640,6 +1650,7 @@ func GetPayloadMapForMuiltNode(
 			StartKey:      startKey,
 			EndKey:        endKey,
 			ValueSize:     valueSize,
+			HashNum:       hashNum,
 		})
 	}
 

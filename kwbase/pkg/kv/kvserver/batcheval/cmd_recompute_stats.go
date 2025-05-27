@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rditer"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
@@ -112,11 +113,14 @@ func RecomputeStats(
 	delta.Subtract(currentStats)
 
 	if desc.GetRangeType() == roachpb.TS_RANGE && cArgs.EvalCtx.TsEngine() != nil && !cArgs.EvalCtx.TsEngine().IsSingleNode() {
-
 		// call GetDataVolume to re compute rangeSize for ts range.
 		// GetDataVolume for relational range may cause err.
-		startTableID, startHashPoint, startTimestamp, err1 := sqlbase.DecodeTsRangeKey(desc.StartKey, true)
-		_, EndHashPoint, endTimestamp, err2 := sqlbase.DecodeTsRangeKey(desc.EndKey, false)
+		hashNum := desc.HashNum
+		if hashNum == 0 {
+			hashNum = api.HashParamV2
+		}
+		startTableID, startHashPoint, startTimestamp, err1 := sqlbase.DecodeTsRangeKey(desc.StartKey, true, hashNum)
+		_, EndHashPoint, endTimestamp, err2 := sqlbase.DecodeTsRangeKey(desc.EndKey, false, hashNum)
 
 		if err1 != nil || err2 != nil {
 			delta = enginepb.MVCCStats{}

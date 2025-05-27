@@ -1582,7 +1582,7 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id,
 
 }
 
-int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id,
+int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
 		    const TSSlice& primary_tag, const TSSlice& tag_pack) {
     // 1. search primary tag
   auto ret = m_index_->get(primary_tag.data, primary_tag.len);
@@ -1648,7 +1648,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id,
     LOG_ERROR("primary tag's tag partition table [%u] does not exist.", tag_partition_version);
     return -1;
   }
-  uint32_t tag_hash_point = TsTable::GetConsistentHashId(primary_tag.data, primary_tag.len);
+  uint32_t tag_hash_point = GetConsistentHashId(primary_tag.data, primary_tag.len, hash_num);
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, tag_pack.data, tag_pack.len);
 
@@ -1816,8 +1816,8 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id,
   return InsertTagRecord(payload, group_id, entity_id);
 }
 
-int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, const TSSlice& primary_tag,
-                    const TSSlice& old_tag) {
+int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
+                    const TSSlice& primary_tag, const TSSlice& old_tag) {
   int rc = 0;
   ErrorInfo err_info;
   // 1. check
@@ -1842,7 +1842,7 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, const TSSlice
   if (rc < 0) {
     return rc;
   }
-  uint32_t tag_hash_point = TsTable::GetConsistentHashId(primary_tag.data, primary_tag.len);
+  uint32_t tag_hash_point = GetConsistentHashId(primary_tag.data, primary_tag.len, hash_num);
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, old_tag.data, old_tag.len);
   size_t row_no = 0;

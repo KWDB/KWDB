@@ -3126,6 +3126,7 @@ func addPartitioningRows(
 			colNames,
 			partitionValue,
 			tree.DNull, /* null value for partition range */
+			tree.DNull, /* null value for partition hash */
 			tree.NewDInt(tree.DInt(zoneID)),
 			tree.NewDInt(tree.DInt(subzoneID)),
 		); err != nil {
@@ -3182,6 +3183,58 @@ func addPartitioningRows(
 			colNames,
 			tree.DNull, /* null value for partition list */
 			partitionRange,
+			tree.DNull, /* null value for partition hash */
+			tree.NewDInt(tree.DInt(zoneID)),
+			tree.NewDInt(tree.DInt(subzoneID)),
+		); err != nil {
+			return err
+		}
+	}
+
+	// This produces the hash_value column.
+	for _, r := range partitioning.HashPoint {
+		var buff bytes.Buffer
+		if r.HashPoints != nil {
+			for j, point := range r.HashPoints {
+				if j != 0 {
+					buff.WriteString(`, `)
+				}
+				buff.WriteString("(" + strconv.Itoa(int(point)) + ")")
+			}
+		} else if r.ToPoint-r.FromPoint > 0 {
+			from := strconv.Itoa(int(r.FromPoint))
+			buff.WriteString("(" + from + ")")
+			buff.WriteString(" TO ")
+			to := strconv.Itoa(int(r.ToPoint))
+			buff.WriteString("(" + to + ")")
+		}
+		partitionHash := tree.NewDString(buff.String())
+
+		// Figure out which zone and subzone this partition should correspond to.
+		zoneID, zone, subzone, err := GetZoneConfigInTxn(
+			ctx, p.txn, uint32(table.ID), index, r.Name, false /* getInheritedDefault */)
+		if err != nil {
+			return err
+		}
+		subzoneID := base.SubzoneID(0)
+		if subzone != nil {
+			for i, s := range zone.Subzones {
+				if s.IndexID == subzone.IndexID && s.PartitionName == subzone.PartitionName {
+					subzoneID = base.SubzoneIDFromIndex(i)
+				}
+			}
+		}
+
+		if err := addRow(
+			tableID,
+			indexID,
+			parentName,
+			tree.NewDString(r.Name),
+			numColumns,
+			colNames,
+			tree.DNull, /* null value for partition list */
+			tree.DNull, /* null value for partition list */
+			partitionHash,
 			tree.NewDInt(tree.DInt(zoneID)),
 			tree.NewDInt(tree.DInt(subzoneID)),
 		); err != nil {
@@ -3208,6 +3261,7 @@ CREATE TABLE kwdb_internal.partitions (
 	column_names STRING,
 	list_value  STRING,
 	range_value STRING,
+	hash_value  STRING,
 	zone_id INT8, -- references a zone id in the kwdb_internal.zones table
 	subzone_id INT8 -- references a subzone id in the kwdb_internal.zones table
 )

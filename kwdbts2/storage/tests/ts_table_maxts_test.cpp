@@ -77,6 +77,7 @@ class TestTsTableMaxTS : public testing::Test {
     roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
     table->set_ts_table_id(table_id_);
     table->set_table_name("table_" + std::to_string(table_id_));
+    table->set_hash_num(g_testcase_hash_num);
     meta->set_allocated_ts_table(table);
 
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
@@ -107,7 +108,7 @@ class TestTsTableMaxTS : public testing::Test {
         payload_gen.SetColumnValue(j, i, reinterpret_cast<char*>(&col_value), sizeof(KTimestamp));
       }
     }
-    auto ret = payload_gen.Build(payload);
+    auto ret = payload_gen.Build(payload, g_testcase_hash_num);
     EXPECT_TRUE(ret);
   }
 };
