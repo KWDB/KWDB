@@ -415,7 +415,7 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      const size_t* data = reinterpret_cast<const size_t*>(ptr);
+      const uint32_t* data = reinterpret_cast<const uint32_t*>(ptr);
       size_t offset = data[row_num];
       TSSlice result{column_cache_->GetColumnBlock(VARCHAR_CACHE_ID)->data->data() + offset, 2};
       uint16_t len;
