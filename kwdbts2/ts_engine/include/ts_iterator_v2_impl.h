@@ -127,16 +127,19 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
   int valcmp(void* l, void* r, int32_t type, int32_t size);
+  void UpdateTsSpans();
 
   std::vector<Sumfunctype> scan_agg_types_;
 
   std::vector<TSSlice> final_agg_data_;
   std::vector<AggCandidate> candidates_;
   std::vector<bool> is_overflow_;
-  std::list<k_uint32> origin_first_col_idxs_;
-  std::list<k_uint32> origin_last_col_idxs_;
-  std::list<k_uint32> first_col_idxs_;
-  std::list<k_uint32> last_col_idxs_;
+  std::vector<k_uint32> first_col_idxs_;
+  std::vector<int64_t> first_col_ts_;
+  std::vector<k_uint32> last_col_idxs_;
+  std::vector<int64_t> last_col_ts_;
+  int64_t max_first_ts_{INT64_MIN};
+  int64_t min_last_ts_{INT64_MAX};
 
   std::map<k_uint32, k_uint32> first_map_;
   std::map<k_uint32, k_uint32> last_map_;
@@ -147,18 +150,12 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   bool first_last_only_agg_;
 
-  int64_t min_last_ts_;
-  int64_t max_first_ts_;
-
   bool has_first_row_col_;
   bool has_last_row_col_;
   bool first_row_need_candidate_;
   bool last_row_need_candidate_;
-  AggCandidate first_row_candidate_;
-  AggCandidate last_row_candidate_;
-
-  std::list<k_uint32> first_row_col_idxs_;
-  std::list<k_uint32> last_row_col_idxs_;
+  AggCandidate first_row_candidate_{INT_MAX, 0, nullptr};
+  AggCandidate last_row_candidate_{INT_MIN, 0, nullptr};
 };
 
 }  //  namespace kwdbts

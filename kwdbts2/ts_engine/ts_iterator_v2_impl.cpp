@@ -410,6 +410,10 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
+inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& a, std::shared_ptr<TsVGroupPartition> b) {
+  return a->StartTs() < b->StartTs();
+}
+
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   KStatus s = TsStorageIteratorV2Impl::Init(is_reversed);
   if (s != KStatus::SUCCESS) {
@@ -429,14 +433,14 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS:
         if (last_map_.find(ts_scan_cols_[i]) == last_map_.end()) {
-          origin_last_col_idxs_.push_back(i);
+          last_col_idxs_.push_back(i);
           last_map_[ts_scan_cols_[i]] = i;
         }
         break;
       case Sumfunctype::FIRST:
       case Sumfunctype::FIRSTTS:
         if (first_map_.find(ts_scan_cols_[i]) == first_map_.end()) {
-          origin_first_col_idxs_.push_back(i);
+          first_col_idxs_.push_back(i);
           first_map_[ts_scan_cols_[i]] = i;
         }
         break;
@@ -466,7 +470,13 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         break;
     }
   }
+  first_col_ts_.resize(first_col_idxs_.size(), INT_MAX);
+  last_col_ts_.resize(last_col_idxs_.size(), INT_MIN);
   first_last_only_agg_ = (count_col_idxs_.size() + sum_col_idxs_.size() + max_col_idxs_.size() + min_col_idxs_.size() == 0);
+
+  if (origin_first_col_idxs_.size() > 0) {
+    std::sort(ts_partitions_.begin(), ts_partitions_.end(), PartitionLessThan);
+  }
 
   cur_entity_index_ = 0;
 
@@ -478,17 +488,6 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   if (cur_entity_index_ >= entity_ids_.size()) {
     *is_finished = true;
     return KStatus::SUCCESS;
-  }
-
-  first_col_idxs_ = origin_first_col_idxs_;
-  last_col_idxs_ = origin_last_col_idxs_;
-
-  first_row_col_idxs_.clear();
-  last_row_col_idxs_.clear();
-
-  if (first_last_only_agg_) {
-    min_last_ts_ = INT64_MAX;
-    max_first_ts_ = INT64_MIN;
   }
 
   final_agg_data_.clear();
@@ -508,13 +507,9 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   if (has_first_row_col_) {
     first_row_candidate_.blk_span = nullptr;
-    first_row_candidate_.ts = INT64_MAX;
-    first_row_need_candidate_ = true;
   }
   if (has_last_row_col_) {
     last_row_candidate_.blk_span = nullptr;
-    last_row_candidate_.ts = INT64_MIN;
-    last_row_need_candidate_ = true;
   }
 
   KStatus ret;
@@ -549,61 +544,56 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   return KStatus::SUCCESS;
 }
 
-inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& a, std::shared_ptr<TsVGroupPartition> b) {
-  return a->StartTs() < b->StartTs();
-}
-
 KStatus TsAggIteratorV2Impl::Aggregate() {
-  std::sort(ts_partitions_.begin(), ts_partitions_.end(), PartitionLessThan);
-  KStatus ret;
+  KStatus ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
+
+  ret = UpdateAggregation();
+  if (ret != KStatus::SUCCESS) {
+    return ret;
+  }
 
   int first_partition_idx = 0;
-  if (!first_col_idxs_.empty() || first_row_need_candidate_) {
-    for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
-      if (!first_col_idxs_.empty() || first_row_need_candidate_) {
-        // There are still some first/first_row agg functions without candidates, so we need to scan current partition.
-        cur_partition_index_ = first_partition_idx;
-        ret = AddLastSegmentBlockSpans();
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-        ret = AddEntitySegmentBlockSpans();
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-        ret = UpdateAggregation();
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-      } else {
-        // We already got the candidates for all first/first_row agg functions
-        break;
+  for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
+    if (ts_partitions_[first_partition_idx]->StartTs() < max_first_ts_) {
+      cur_partition_index_ = first_partition_idx;
+      ret = AddLastSegmentBlockSpans();
+      if (ret != KStatus::SUCCESS) {
+        return ret;
       }
+      ret = AddEntitySegmentBlockSpans();
+      if (ret != KStatus::SUCCESS) {
+        return ret;
+      }
+      ret = UpdateAggregation();
+      if (ret != KStatus::SUCCESS) {
+        return ret;
+      }
+    } else {
+      break;
     }
   }
 
   int last_partition_idx = ts_partitions_.size() - 1;
-  if (!last_col_idxs_.empty() || last_row_need_candidate_) {
-    for (; last_partition_idx >= first_partition_idx; --last_partition_idx) {
-      if (!last_col_idxs_.empty() || last_row_need_candidate_) {
-        // There are still some last/last_row agg functions without candidates, so we need to scan current partition.
-        cur_partition_index_ = last_partition_idx;
-        ret = AddLastSegmentBlockSpans();
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-        ret = AddEntitySegmentBlockSpans();
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-        ret = UpdateAggregation();
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-      } else {
-        // We already got the candidates for all last/last_row agg functions
-        break;
+  for (; last_partition_idx >= first_partition_idx; --last_partition_idx) {
+    if (ts_partitions_[last_partition_idx]->EndTs() > min_last_ts_) {
+      cur_partition_index_ = last_partition_idx;
+      ret = AddLastSegmentBlockSpans();
+      if (ret != KStatus::SUCCESS) {
+        return ret;
       }
+      ret = AddEntitySegmentBlockSpans();
+      if (ret != KStatus::SUCCESS) {
+        return ret;
+      }
+      ret = UpdateAggregation();
+      if (ret != KStatus::SUCCESS) {
+        return ret;
+      }
+    } else {
+      break;
     }
   }
 
@@ -623,27 +613,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
         return ret;
       }
     }
-  }
-
-  if (has_first_row_col_) {
-    first_row_need_candidate_ = true;
-  }
-  if (has_last_row_col_) {
-    last_row_need_candidate_ = true;
-  }
-
-  // We need to check first col for block spans in memory segment.
-  first_col_idxs_ = origin_first_col_idxs_;
-  last_col_idxs_ = origin_last_col_idxs_;
-
-  ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    return ret;
-  }
-
-  ret = UpdateAggregation();
-  if (ret != KStatus::SUCCESS) {
-    return ret;
   }
 
   if (first_last_only_agg_) {
@@ -671,13 +640,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     final_agg_data_[i].len = attrs_[col_idx].size;
     if (c.blk_span == nullptr) {
       final_agg_data_[i] = {nullptr, 0};
-      if (first_last_only_agg_) {
-        if (agg_type == Sumfunctype::LASTTS || agg_type == Sumfunctype::LASTROWTS) {
-          min_last_ts_ = INT64_MIN;
-        } else if (agg_type == Sumfunctype::FIRSTTS || agg_type == Sumfunctype::FIRSTROWTS) {
-          max_first_ts_ = INT64_MAX;
-        }
-      }
     } else if (agg_type == Sumfunctype::FIRSTTS || agg_type == Sumfunctype::LASTTS
               || agg_type == Sumfunctype::FIRSTROWTS || agg_type == Sumfunctype::LASTROWTS) {
       final_agg_data_[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
@@ -728,7 +690,16 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       }
     }
   }
+  return KStatus::SUCCESS;
+}
 
+inline void TsAggIteratorV2Impl::UpdateTsSpans() {
+  if (first_col_idxs_.size() > 0) {
+    max_first_ts_ = first_col_ts_.size() > 0 ? max_element(first_col_ts_.begin(), first_col_ts_.end) : INT_MIN;
+  }
+  if (last_col_idxs_.size() > 0) {
+    min_last_ts_ = last_col_ts_.size() > 0 ? min_element(last_col_ts_.begin(), last_col_ts_.end) : INT_MAX;
+  }
   if (first_last_only_agg_) {
     if (max_first_ts_ < min_last_ts_) {
       int ts_span_idx = 0;
@@ -754,8 +725,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       }
     }
   }
-
-  return KStatus::SUCCESS;
 }
 
 inline bool FirstTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& b) {
@@ -771,77 +740,62 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
     return KStatus::SUCCESS;
   }
   KStatus ret;
-  std::vector<shared_ptr<TsBlockSpan>> ts_block_spans;
-  ts_block_spans.reserve(ts_block_spans_.size());
-  while (!ts_block_spans_.empty()) {
-    shared_ptr<TsBlockSpan> block_span(ts_block_spans_.front());
-    ts_block_spans.push_back(block_span);
-    ts_block_spans_.pop_front();
-  }
+  std::vector<shared_ptr<TsBlockSpan>> ts_block_spans(ts_block_spans_.begin(), ts_block_spans_.end());
 
   int block_span_idx = 0;
-  if ((!first_col_idxs_.empty() || first_row_need_candidate_) && block_span_idx < ts_block_spans.size()) {
+  if (!first_col_idxs_.empty() || has_first_row_col_) {
     if (first_col_idxs_.empty()) {
       auto min_it = std::min_element(ts_block_spans.begin(), ts_block_spans.end(), LastTSLessThan);
-      if (!first_row_candidate_.blk_span || first_row_candidate_.ts > (*min_it)->GetFirstTS()) {
+      if (first_row_candidate_.ts > (*min_it)->GetFirstTS()) {
         first_row_candidate_.blk_span = *min_it;
         first_row_candidate_.ts = first_row_candidate_.blk_span->GetFirstTS();
         first_row_candidate_.row_idx = 0;
       }
-      first_row_need_candidate_ = false;
     } else {
       sort(ts_block_spans.begin(), ts_block_spans.end(), FirstTSLessThan);
-      if (first_row_need_candidate_) {
-        if (!first_row_candidate_.blk_span || first_row_candidate_.ts > ts_block_spans[0]->GetFirstTS()) {
+      if (has_first_row_col_) {
+        if (first_row_candidate_.ts > ts_block_spans[0]->GetFirstTS()) {
           first_row_candidate_.blk_span = ts_block_spans[0];
           first_row_candidate_.ts = first_row_candidate_.blk_span->GetFirstTS();
           first_row_candidate_.row_idx = 0;
         }
-        first_row_need_candidate_ = false;
       }
-      while (!first_col_idxs_.empty() && block_span_idx < ts_block_spans.size()) {
+      while (block_span_idx < ts_block_spans.size()) {
         shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_idx];
+        if (blk_span->GetFirstTS() < max_first_ts_) {
+          std::shared_ptr<MMapMetricsTable> blk_version;
+          ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
+          if (ret != KStatus::SUCCESS) {
+            return ret;
+          }
+          auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 
-        std::shared_ptr<MMapMetricsTable> blk_version;
-        ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
-        if (ret != KStatus::SUCCESS) {
-          return ret;
+          ret = UpdateAggregation(blk_span, schema_info, false);
+          if (ret != KStatus::SUCCESS) {
+            return ret;
+          }
+          ++block_span_idx;
+        } else {
+          break;
         }
-        auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
-
-        ret = UpdateAggregation(blk_span, schema_info, false);
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-        ++block_span_idx;
       }
     }
   }
 
   int block_span_backward_idx = ts_block_spans.size() - 1;;
-  if ((!last_col_idxs_.empty() && block_span_idx <= block_span_backward_idx)
-      || (last_row_need_candidate_ && ts_block_spans.size() > 0)) {
-    if (last_col_idxs_.empty()) {
-      auto max_it = std::max_element(ts_block_spans.begin(), ts_block_spans.end(), LastTSLessThan);
-      if (!last_row_candidate_.blk_span || last_row_candidate_.ts < (*max_it)->GetLastTS()) {
-        last_row_candidate_.blk_span = *max_it;
-        last_row_candidate_.ts = last_row_candidate_.blk_span->GetLastTS();
-        last_row_candidate_.row_idx = last_row_candidate_.blk_span->GetRowNum() - 1;
-      }
-      last_row_need_candidate_ = false;
-    } else {
-      sort(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
-      if (has_last_row_col_) {
-        if (!last_row_candidate_.blk_span || last_row_candidate_.ts < ts_block_spans[block_span_backward_idx]->GetLastTS()) {
-          last_row_candidate_.blk_span = ts_block_spans[block_span_backward_idx];
-          last_row_candidate_.ts = last_row_candidate_.blk_span->GetLastTS();
-          last_row_candidate_.row_idx = last_row_candidate_.blk_span->GetRowNum() - 1;
-        }
-        last_row_need_candidate_ = false;
-      }
-      while (!last_col_idxs_.empty() && block_span_idx <= block_span_backward_idx) {
-        shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_backward_idx];
-
+  if (has_last_row_col_) {
+    auto max_it = std::max_element(ts_block_spans.begin(), ts_block_spans.end(), LastTSLessThan);
+    if (last_row_candidate_.ts < (*max_it)->GetLastTS()) {
+      last_row_candidate_.blk_span = *max_it;
+      last_row_candidate_.ts = last_row_candidate_.blk_span->GetLastTS();
+      last_row_candidate_.row_idx = last_row_candidate_.blk_span->GetRowNum() - 1;
+    }
+  }
+  if (last_col_idxs_.size() > 0) {
+    sort(ts_block_spans.begin() + block_span_idx, ts_block_spans.end(), LastTSLessThan);
+    while (block_span_idx <= block_span_backward_idx) {
+      shared_ptr<TsBlockSpan> blk_span = ts_block_spans[block_span_backward_idx];
+      if (blk_span->GetLastTS() > min_last_ts_) {
         std::shared_ptr<MMapMetricsTable> blk_version;
         KStatus ret = table_schema_mgr_->GetMetricSchema(blk_span->GetTableVersion(), &blk_version);
         if (ret != KStatus::SUCCESS) {
@@ -854,6 +808,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
           return ret;
         }
         --block_span_backward_idx;
+      } else {
+        break;
       }
     }
   }
@@ -875,6 +831,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
       }
     }
   }
+  UpdateTsSpans();
   return KStatus::SUCCESS;
 }
 
@@ -966,39 +923,34 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
   int row_num = block_span->GetRowNum();
 
   // Aggregate first col
-  int first_col_num = first_col_idxs_.size();
-  for (int i = 0; i < first_col_num; ++i) {
-    uint32_t first_col_idx = first_col_idxs_.front();
-    first_col_idxs_.pop_front();
-    AggCandidate& candidate = candidates_[first_col_idx];
-    if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
-      // No need to scan this first agg anymore for the rest block spans.
-      continue;
-    }
-    uint32_t blk_col_idx = ts_scan_cols_[first_col_idx];
-    TsBitmap bitmap;
-    ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
-    if (ret != KStatus::SUCCESS) {
-      return ret;
-    }
-    for (row_idx = 0; row_idx < row_num; ++row_idx) {
-      if (bitmap[row_idx] != DataFlags::kValid) {
+  if (first_col_idxs_.size() > 0 && block_span->GetFirstTS() < max_first_ts_) {
+    for (auto first_col_idx : first_col_idxs_) {
+      AggCandidate& candidate = candidates_[first_col_idx];
+      if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
+        // No need to scan this first agg anymore for the rest block spans.
         continue;
       }
-      int64_t ts = block_span->GetTS(row_idx);
-      if (!candidate.blk_span || candidate.ts > ts) {
-        candidate.blk_span = block_span;
-        candidate.ts = ts;
-        candidate.row_idx = row_idx;
-        if (first_last_only_agg_) {
-          max_first_ts_ = max(max_first_ts_, ts);
-        }
-        break;
+      uint32_t blk_col_idx = ts_scan_cols_[first_col_idx];
+      TsBitmap bitmap;
+      ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
+      if (ret != KStatus::SUCCESS) {
+        return ret;
       }
-    }
-    if (row_idx > 0) {
-      // We need to check first col for the coming block span
-      first_col_idxs_.push_back(first_col_idx);
+      for (row_idx = 0; row_idx < row_num; ++row_idx) {
+        if (bitmap[row_idx] != DataFlags::kValid) {
+          continue;
+        }
+        int64_t ts = block_span->GetTS(row_idx);
+        if (!candidate.blk_span || candidate.ts > ts) {
+          candidate.blk_span = block_span;
+          candidate.ts = ts;
+          candidate.row_idx = row_idx;
+          if (first_last_only_agg_) {
+            max_first_ts_ = max(max_first_ts_, ts);
+          }
+          break;
+        }
+      }
     }
   }
 
