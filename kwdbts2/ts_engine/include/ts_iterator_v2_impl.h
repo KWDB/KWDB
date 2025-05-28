@@ -39,6 +39,12 @@ class TsVGroup;
 class TsMemSegmentIterator;
 class TsLastSegmentIterator;
 class TsEntitySegmentIterator;
+
+struct TsPartition {
+  std::shared_ptr<TsVGroupPartition> ts_vgroup_partition;
+  KwTsSpan ts_partition_range;
+};
+
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
@@ -68,7 +74,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  std::vector<std::shared_ptr<TsVGroupPartition>> ts_partitions_;
+  std::vector<TsPartition> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
   std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;

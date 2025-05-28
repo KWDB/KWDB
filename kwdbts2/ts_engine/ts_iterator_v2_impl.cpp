@@ -56,14 +56,16 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
     partition_manager->GetPartitions(&partitions);
 
     ts_partitions_.clear();
-    if (!partitions.empty()) {
-      for (const auto& [idx, partition_ptr] : partitions) {
-        if (!partition_ptr) continue;
-        timestamp64 p_start = convertSecondToPrecisionTS(partition_ptr->StartTs(), ts_col_type_);
-        timestamp64 p_end = convertSecondToPrecisionTS(partition_ptr->EndTs(), ts_col_type_);
-        if (isTimestampInSpans(ts_spans_, p_start, p_end)) {
-          ts_partitions_.emplace_back(partition_ptr);
-        }
+    for (const auto& [idx, partition_ptr] : partitions) {
+      if (!partition_ptr) {
+        continue;
+      }
+      TsPartition ts_partition;
+      ts_partition.ts_partition_range.begin = convertSecondToPrecisionTS(partition_ptr->StartTs(), ts_col_type_);
+      ts_partition.ts_partition_range.end = convertSecondToPrecisionTS(partition_ptr->EndTs(), ts_col_type_);
+      if (isTimestampInSpans(ts_spans_, ts_partition.ts_partition_range.begin, ts_partition.ts_partition_range.end)) {
+        ts_partition.ts_vgroup_partition = partition_ptr;
+        ts_partitions_.emplace_back(ts_partition);
       }
     }
   }
@@ -83,7 +85,7 @@ inline KStatus TsStorageIteratorV2Impl::AddMemSegmentBlockSpans() {
 inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans() {
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     std::vector<std::shared_ptr<TsLastSegment>> last_segments =
-      ts_partitions_[cur_partition_index_]->GetLastSegmentMgr()->GetAllLastSegments();
+      ts_partitions_[cur_partition_index_].ts_vgroup_partition->GetLastSegmentMgr()->GetAllLastSegments();
     TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
     for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
       if (last_segment->GetBlockSpans(filter, ts_block_spans_) != KStatus::SUCCESS) {
@@ -97,7 +99,7 @@ inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans() {
 inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    return ts_partitions_[cur_partition_index_]->GetEntitySegment()->GetBlockSpans(filter, ts_block_spans_);
+    return ts_partitions_[cur_partition_index_].ts_vgroup_partition->GetEntitySegment()->GetBlockSpans(filter, ts_block_spans_);
   }
   return KStatus::SUCCESS;
 }
@@ -410,8 +412,8 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
-inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& a, std::shared_ptr<TsVGroupPartition> b) {
-  return a->StartTs() < b->StartTs();
+inline bool PartitionLessThan(TsPartition& a, TsPartition& b) {
+  return a.ts_vgroup_partition->StartTs() < b.ts_vgroup_partition->StartTs();
 }
 
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
@@ -567,7 +569,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
 
   int first_partition_idx = 0;
   for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
-    if (ts_partitions_[first_partition_idx]->StartTs() < max_first_ts_) {
+    if (ts_partitions_[first_partition_idx].ts_partition_range.begin < max_first_ts_) {
       cur_partition_index_ = first_partition_idx;
       ret = AddLastSegmentBlockSpans();
       if (ret != KStatus::SUCCESS) {
@@ -588,7 +590,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
 
   int last_partition_idx = ts_partitions_.size() - 1;
   for (; last_partition_idx >= first_partition_idx; --last_partition_idx) {
-    if (ts_partitions_[last_partition_idx]->EndTs() > min_last_ts_) {
+    if (ts_partitions_[last_partition_idx].ts_partition_range.end > min_last_ts_) {
       cur_partition_index_ = last_partition_idx;
       ret = AddLastSegmentBlockSpans();
       if (ret != KStatus::SUCCESS) {
@@ -746,6 +748,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
         first_row_candidate_.blk_span = *min_it;
         first_row_candidate_.ts = first_row_candidate_.blk_span->GetFirstTS();
         first_row_candidate_.row_idx = 0;
+        max_first_ts_ = first_row_candidate_.ts;
       }
     } else {
       sort(ts_block_spans.begin(), ts_block_spans.end(), FirstTSLessThan);
@@ -785,6 +788,9 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
       last_row_candidate_.blk_span = *max_it;
       last_row_candidate_.ts = last_row_candidate_.blk_span->GetLastTS();
       last_row_candidate_.row_idx = last_row_candidate_.blk_span->GetRowNum() - 1;
+      if (last_col_idxs_.size() == 0) {
+        min_last_ts_ = last_row_candidate_.ts;
+      }
     }
   }
   if (last_col_idxs_.size() > 0) {
@@ -941,9 +947,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             candidate.blk_span = block_span;
             candidate.ts = ts;
             candidate.row_idx = row_idx;
-            if (first_last_only_agg_) {
-              max_first_ts_ = max(max_first_ts_, ts);
-            }
             break;
           }
         }
@@ -960,26 +963,24 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       AggCandidate& candidate = candidates_[last_col_idx];
       if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
         // No need to scan the rows
-      }
-      uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
-      TsBitmap bitmap;
-      ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
-      }
-      for (row_idx = row_num - 1; row_idx >= 0; --row_idx) {
-        if (bitmap[row_idx] != DataFlags::kValid) {
-          continue;
+      } else {
+        uint32_t blk_col_idx = ts_scan_cols_[last_col_idx];
+        TsBitmap bitmap;
+        ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
         }
-        int64_t ts = block_span->GetTS(row_idx);
-        if (!candidate.blk_span || candidate.ts < ts) {
-          candidate.blk_span = block_span;
-          candidate.ts = ts;
-          candidate.row_idx = row_idx;
-          if (first_last_only_agg_) {
-            min_last_ts_ = min(min_last_ts_, ts);
+        for (row_idx = row_num - 1; row_idx >= 0; --row_idx) {
+          if (bitmap[row_idx] != DataFlags::kValid) {
+            continue;
           }
-          break;
+          int64_t ts = block_span->GetTS(row_idx);
+          if (!candidate.blk_span || candidate.ts < ts) {
+            candidate.blk_span = block_span;
+            candidate.ts = ts;
+            candidate.row_idx = row_idx;
+            break;
+          }
         }
       }
       min_last_ts_ = min(min_last_ts_, candidate.ts);
