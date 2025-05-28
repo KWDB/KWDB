@@ -83,6 +83,9 @@ struct TSMemSegRowData {
   bool SameEntityAndTableVersion(TSMemSegRowData* b) {
     return memcmp(this, b, 24) == 0;
   }
+  bool SameEntityAndTs(TSMemSegRowData* b) {
+    return entity_id == b->entity_id && ts == b->ts;
+  }
   bool SameTableId(TSMemSegRowData* b) {
     return this->table_id == b->table_id;
   }

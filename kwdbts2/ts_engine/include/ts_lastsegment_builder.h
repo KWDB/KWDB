@@ -48,15 +48,26 @@ class TsLastSegmentBuilder {
 
   size_t nblock_ = 0;
   struct EntityPayload {
-    TS_LSN seq_no;
+    TS_LSN lsn;
     TSEntityID entity_id;
     TSSlice metric;
+
+    bool IsSameEntityAndTs(std::unique_ptr<TsRawPayloadRowParser>& parser, const EntityPayload& rhs) const {
+      timestamp64 ts_lhs = parser->GetTimestamp(metric);
+      timestamp64 ts_rhs = parser->GetTimestamp(rhs.metric);
+      return entity_id == rhs.entity_id && ts_lhs == ts_rhs;
+    }
   };
   struct EntityColData {
-    TS_LSN seq_no;
+    TS_LSN lsn;
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
     std::vector<DataFlags> data_flags;
+    bool IsSameEntityAndTs(const EntityColData& rhs) const {
+      timestamp64 ts_lhs = DecodeFixed64(col_data[0].data);
+      timestamp64 ts_rhs = DecodeFixed64(rhs.col_data[0].data);
+      return entity_id == rhs.entity_id && ts_lhs == ts_rhs;
+    }
   };
 
   struct PayloadBuffer {
@@ -71,7 +82,8 @@ class TsLastSegmentBuilder {
     bool Compare(const EntityPayload& lhs, const EntityPayload& rhs) const {
       auto ts_lhs = parser->GetTimestamp(lhs.metric);
       auto ts_rhs = parser->GetTimestamp(rhs.metric);
-      return lhs.entity_id < rhs.entity_id || (lhs.entity_id == rhs.entity_id && ts_lhs < ts_rhs);
+      return lhs.entity_id < rhs.entity_id || (lhs.entity_id == rhs.entity_id && ts_lhs < ts_rhs) ||
+             (lhs.entity_id == rhs.entity_id && ts_lhs == ts_rhs && lhs.lsn < rhs.lsn);
     }
     void push_back(const EntityPayload& v) {
       assert(buffer.empty() || buffer.back().entity_id <= v.entity_id);
@@ -283,6 +295,12 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   void Reserve(size_t nrow) {
     data_buffer_.reserve(nrow * dsize_);
     bitmap_.Reset(has_bitmap_ ? nrow : 0);
+  }
+  void Truncate() {
+    if (bitmap_.GetCount() != row_cnt_) {
+      data_buffer_.resize(row_cnt_ * dsize_);
+      bitmap_.Truncate(row_cnt_);
+    }
   }
   TSSlice GetData() { return TSSlice{data_buffer_.data(), data_buffer_.size()}; }
 

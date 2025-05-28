@@ -22,7 +22,7 @@
 
 // V2
 int EngineOptions::vgroup_max_num = 6;
-DedupRule EngineOptions::g_dedup_rule = DedupRule::KEEP;
+DedupRule EngineOptions::g_dedup_rule = DedupRule::OVERRIDE;
 size_t EngineOptions::mem_segment_max_size = 64 << 20;
 int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 2;

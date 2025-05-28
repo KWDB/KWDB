@@ -121,7 +121,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
     wal_manager_->Lock();
-    TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
+    current_lsn = wal_manager_->FetchCurrentLSN();
     KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn, vgroup_id_);
     if (s == KStatus::FAIL) {
       wal_manager_->Unlock();
@@ -503,13 +503,13 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
   // TS_LSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
   if (scan_agg_types.empty()) {
-    if (sorted) {
-      ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
+//    if (sorted) {
+    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
                                                   ts_scan_cols, table_schema_mgr, table_version, ASC);
-    } else {
-      ts_iter = new TsRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
-                                            ts_scan_cols, table_schema_mgr, table_version);
-    }
+//    } else {
+//      ts_iter = new TsRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
+//                                            ts_scan_cols, table_schema_mgr, table_version);
+//    }
   } else {
     ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols, ts_scan_cols,
                                       scan_agg_types, ts_points, table_schema_mgr, table_version);

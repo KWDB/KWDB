@@ -64,19 +64,18 @@ KStatus TsVGroupPartition::Open() {
 KStatus TsVGroupPartition::Compact() {
   // 1. Get all the last segments that need to be compacted.
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
-  last_segment_mgr_.GetCompactLastSegments(last_segments);
-  if (last_segments.empty()) {
-    return KStatus::SUCCESS;
+  while (last_segment_mgr_.GetCompactLastSegments(last_segments) && !last_segments.empty()) {
+    // 2. Build the column block.
+    TsEntitySegmentBuilder builder(last_segments, this);
+    KStatus s = builder.BuildAndFlush();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("partition[%s] compact failed", path_.c_str());
+      return s;
+    }
+    // 3. Set the compacted version.
+    last_segment_mgr_.ClearLastSegments(last_segments.back()->GetVersion());
+    last_segments.clear();
   }
-  // 2. Build the column block.
-  TsEntitySegmentBuilder builder(last_segments, this);
-  KStatus s = builder.BuildAndFlush();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("partition[%s] compact failed", path_.c_str());
-    return s;
-  }
-  // 3. Set the compacted version.
-  last_segment_mgr_.ClearLastSegments(last_segments.back()->GetVersion());
   return KStatus::SUCCESS;
 }
 

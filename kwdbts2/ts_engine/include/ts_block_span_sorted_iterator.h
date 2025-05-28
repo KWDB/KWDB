@@ -25,33 +25,39 @@ class TsBlockSpanSortedIterator {
   struct TsBlockSpanRowInfo {
     uint64_t entity_id = 0;
     timestamp64 ts = 0;
-    uint64_t seq_no = 0;
+    TS_LSN lsn = 0;
     shared_ptr<TsBlockSpan> block_span = nullptr;
     int row_idx = 0;
 
+    inline bool IsSameEntityAndTs(const TsBlockSpanRowInfo& other) const {
+      return entity_id == other.entity_id && ts == other.ts;
+    }
+
     inline bool operator<(const TsBlockSpanRowInfo& other) const {
       return entity_id != other.entity_id ? entity_id < other.entity_id
-                                          : ts != other.ts ? ts < other.ts : seq_no < other.seq_no;
+                                          : ts != other.ts ? ts < other.ts : lsn < other.lsn;
     }
     inline bool operator==(const TsBlockSpanRowInfo& other) const {
-      return entity_id == other.entity_id && ts == other.ts && seq_no == other.seq_no;
+      return entity_id == other.entity_id && ts == other.ts && lsn == other.lsn;
     }
     inline bool operator<=(const TsBlockSpanRowInfo& other) const {
       return *this < other || *this == other;
     }
     inline bool operator>(const TsBlockSpanRowInfo& other) const {
       return entity_id != other.entity_id ? entity_id > other.entity_id
-                                          : ts != other.ts ? ts > other.ts : seq_no > other.seq_no;
+                                          : ts != other.ts ? ts > other.ts : lsn > other.lsn;
     }
     inline bool operator>=(const TsBlockSpanRowInfo& other) const {
       return *this > other || *this == other;
     }
   };
   std::list<shared_ptr<TsBlockSpan>> block_spans_;
+  DedupRule dedup_rule_ = DedupRule::OVERRIDE;
   bool is_reverse_ = false;
   std::list<TsBlockSpanRowInfo> span_row_infos_;
 
   void insertRowInfo(TsBlockSpanRowInfo& row_info) {
+    assert(row_info.block_span->GetRowNum() > 0);
     auto it = span_row_infos_.begin();
     while (it != span_row_infos_.end()) {
       if ((!is_reverse_ && *it >= row_info) || (is_reverse_ && *it <= row_info)) {
@@ -60,6 +66,14 @@ class TsBlockSpanSortedIterator {
       ++it;
     }
     span_row_infos_.insert(it, row_info);
+  }
+
+  inline TsBlockSpanRowInfo defaultBlockSpanRowInfo() {
+    if (!is_reverse_) {
+      return {UINT64_MAX, INT64_MAX, UINT64_MAX};
+    } else {
+      return {0, INT64_MIN, 0};
+    }
   }
 
   inline void binarySearch(TsBlockSpanRowInfo& target_row_info, shared_ptr<TsBlockSpan> block_span, int& row_idx) {
@@ -95,11 +109,24 @@ class TsBlockSpanSortedIterator {
     row_idx = result;
   }
 
+  TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan> block_span, bool is_reverse = false) {
+    if (!is_reverse) {
+      return {block_span->GetEntityID(), block_span->GetTS(0), *block_span->GetLSNAddr(0), block_span, 0};
+    } else {
+      int row_idx = block_span->GetRowNum() - 1;
+      return {block_span->GetEntityID(), block_span->GetTS(row_idx), *block_span->GetLSNAddr(row_idx),
+              block_span, row_idx};
+    }
+  }
+
  public:
-  explicit TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans, bool is_reverse = false) :
-                          block_spans_(block_spans), is_reverse_(is_reverse) {}
-  explicit TsBlockSpanSortedIterator(std::vector<std::list<shared_ptr<TsBlockSpan>>>& block_spans, bool is_reverse = false) :
-    is_reverse_(is_reverse) {
+  explicit TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     DedupRule dedup_rule = DedupRule::OVERRIDE,
+                                     bool is_reverse = false) :
+                                     block_spans_(block_spans), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
+  explicit TsBlockSpanSortedIterator(std::vector<std::list<shared_ptr<TsBlockSpan>>>& block_spans,
+                                     DedupRule dedup_rule = DedupRule::OVERRIDE,
+                                     bool is_reverse = false) : dedup_rule_(dedup_rule), is_reverse_(is_reverse) {
     for (auto& block_span_list : block_spans) {
       block_spans_.merge(block_span_list);
     }
@@ -110,14 +137,8 @@ class TsBlockSpanSortedIterator {
   }
 
   KStatus Init() {
-    for (auto & block_span : block_spans_) {
-      int start_row_idx = 0;
-      if (is_reverse_) {
-        start_row_idx = block_span->GetRowNum() - 1;
-      }
-      timestamp64 ts = block_span->GetTS(start_row_idx);
-      uint64_t seq_no = *(block_span->GetLSNAddr(start_row_idx));
-      span_row_infos_.push_back({block_span->GetEntityID(), ts, seq_no, block_span, start_row_idx});
+    for (auto& block_span : block_spans_) {
+      span_row_infos_.push_back(getFirstRowInfo(block_span, is_reverse_));
     }
     if (!is_reverse_) {
       span_row_infos_.sort();
@@ -131,56 +152,120 @@ class TsBlockSpanSortedIterator {
     if (span_row_infos_.empty()) {
       *is_finished = true;
       return KStatus::SUCCESS;
+    } else {
+      *is_finished = false;
     }
     shared_ptr<TsBlockSpan> cur_block_span = span_row_infos_.front().block_span;
-    TsBlockSpanRowInfo next_span_row_info;
-    if (!is_reverse_) {
-      next_span_row_info = {UINT64_MAX, INT64_MAX, UINT64_MAX};
-    } else {
-      next_span_row_info = {0, INT64_MIN, 0};
-    }
+    TsBlockSpanRowInfo next_span_row_info = defaultBlockSpanRowInfo();
     if (span_row_infos_.size() > 1) {
-      auto iter = span_row_infos_.begin();
-      iter++;
-      next_span_row_info = *iter;
+      next_span_row_info = *(++span_row_infos_.begin());
     }
 
-    int end_row_idx, row_idx;
-    if (!is_reverse_) {
-      end_row_idx = cur_block_span->GetRowNum() - 1;
-    } else {
-      end_row_idx = 0;
-    }
-    TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
-                                                *cur_block_span->GetLSNAddr(end_row_idx)};
-    row_idx = span_row_infos_.begin()->row_idx;
-    if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
-      row_idx = cur_block_span->GetRowNum();
-    } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
-      row_idx = -1;
-    } else {
-      binarySearch(next_span_row_info, cur_block_span, row_idx);
-    }
-
-    if (!is_reverse_) {
-      cur_block_span->SplitFront(row_idx, block_span);
-    } else {
-      cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
-    }
-    *is_finished = false;
-
-    span_row_infos_.pop_front();
-    if (cur_block_span->GetRowNum() != 0) {
-      int start_row_idx = 0;
-      if (is_reverse_) {
-        start_row_idx = cur_block_span->GetRowNum() - 1;
+    if (dedup_rule_ == DedupRule::OVERRIDE) {
+      int end_row_idx, row_idx;
+      if (!is_reverse_) {
+        end_row_idx = cur_block_span->GetRowNum() - 1;
+      } else {
+        end_row_idx = 0;
       }
-      TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(start_row_idx),
-                                           *(cur_block_span->GetLSNAddr(start_row_idx)),
-                                           cur_block_span, start_row_idx};
-      insertRowInfo(next_row_info);
+      TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
+                                                  *cur_block_span->GetLSNAddr(end_row_idx)};
+      if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
+        row_idx = cur_block_span->GetRowNum();
+      } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
+        row_idx = -1;
+      } else {
+        binarySearch(next_span_row_info, cur_block_span, row_idx);
+      }
+
+      auto iter = span_row_infos_.begin()++;
+      TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
+      if (!is_reverse_) {
+        int prev_row_idx = row_idx - 1;
+        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(prev_row_idx),
+                                            *cur_block_span->GetLSNAddr(prev_row_idx)};
+        if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          if (prev_row_idx != 0) {
+            cur_block_span->SplitFront(prev_row_idx, block_span);
+            iter = span_row_infos_.end();
+          } else {
+            dedup_row_info = next_span_row_info;
+            iter++;
+          }
+          cur_block_span->Truncate(1);
+        } else {
+          cur_block_span->SplitFront(row_idx, block_span);
+          iter = span_row_infos_.end();
+        }
+      } else {
+        cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
+        int next_row_idx = row_idx + 1;
+        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(next_row_idx),
+                                            *cur_block_span->GetLSNAddr(next_row_idx)};
+        if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          dedup_row_info = next_row_info;
+        } else {
+          iter = span_row_infos_.end();
+        }
+      }
+
+      while (iter != span_row_infos_.end()) {
+        TsBlockSpanRowInfo first_row_info = getFirstRowInfo(iter->block_span, is_reverse_);
+        if (first_row_info.IsSameEntityAndTs(dedup_row_info)) {
+          if (!is_reverse_) {
+            iter->block_span->SplitFront(1, block_span);
+          } else {
+            iter->block_span->Truncate(1);
+          }
+          if (iter->block_span->GetRowNum() != 0) {
+            TsBlockSpanRowInfo next_row_info = getFirstRowInfo(iter->block_span);
+            insertRowInfo(next_row_info);
+          } else {
+            iter->block_span->Clear();
+          }
+          iter = span_row_infos_.erase(iter);
+        } else {
+          break;
+        }
+      }
+
+      span_row_infos_.pop_front();
+      if (cur_block_span->GetRowNum() != 0) {
+        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+        insertRowInfo(next_row_info);
+      } else {
+        cur_block_span->Clear();
+      }
     } else {
-      cur_block_span->Clear();
+      int end_row_idx, row_idx;
+      if (!is_reverse_) {
+        end_row_idx = cur_block_span->GetRowNum() - 1;
+      } else {
+        end_row_idx = 0;
+      }
+      TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
+                                                  *cur_block_span->GetLSNAddr(end_row_idx)};
+      if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
+        row_idx = cur_block_span->GetRowNum();
+      } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
+        row_idx = -1;
+      } else {
+        binarySearch(next_span_row_info, cur_block_span, row_idx);
+      }
+
+      if (!is_reverse_) {
+        cur_block_span->SplitFront(row_idx, block_span);
+      } else {
+        cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
+      }
+
+      span_row_infos_.pop_front();
+      if (cur_block_span->GetRowNum() != 0) {
+        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+        insertRowInfo(next_row_info);
+      } else {
+        cur_block_span->Clear();
+      }
     }
     return KStatus::SUCCESS;
   }
