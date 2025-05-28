@@ -34,7 +34,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
   auto primary_key = p.GetPrimaryTag();
   auto vgroup = vgroups_[v_group_id - 1].get();
   assert(vgroup != nullptr);
-  auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload);
+  auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload, true);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%lu]", GetTableId(), v_group_id);
@@ -45,7 +45,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
 
 KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
-                  DedupResult* dedup_result, const DedupRule& dedup_rule) {
+                  DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
   uint8_t payload_data_flag = p.GetRowType();
   if (payload_data_flag == DataTagFlag::TAG_ONLY) {
     LOG_DEBUG("tag only. so no need putdata.");
@@ -53,7 +53,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   }
   auto primary_key = p.GetPrimaryTag();
   auto payload = p.GetPayload();
-  auto s = v_group->PutData(ctx, GetTableId(), mtr_id, &primary_key, entity_id, &payload);
+  auto s = v_group->PutData(ctx, GetTableId(), mtr_id, &primary_key, entity_id, &payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", GetTableId(), v_group->GetVGroupID());
