@@ -100,7 +100,7 @@ class TsEntitySegmentAggFile {
 
   KStatus Open();
   KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
-  KStatus ReadAggBlock(uint64_t offset, char* buff, size_t len);
+  KStatus ReadAggData(uint64_t offset, char* buff, size_t len);
 };
 
 }  // namespace kwdbts

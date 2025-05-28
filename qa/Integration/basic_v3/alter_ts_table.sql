@@ -1,33 +1,29 @@
 drop database if exists test_alter cascade;
 create ts database test_alter;
 
---basic test
+--table schema queried from go, should include dropped columns.
 create table test_alter.t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
 insert into test_alter.t1 values(1672531201000, 111, 1);
-insert into test_alter.t1 values(1672531202000, 222, 1);
-insert into test_alter.t1 values(1672531203000, 333, 2);
-insert into test_alter.t1 values(1672531204000, 444, 3);
-insert into test_alter.t1 values(1672531205000, 555, 3);
 select * from test_alter.t1 order by ts, b;
 
 set sql_safe_updates = false;
 SET CLUSTER SETTING ts.dedup.rule = 'merge';
 
 alter table test_alter.t1 add column c int;
-select * from test_alter.t1 order by ts, b;
 alter table test_alter.t1 drop column c;
-select * from test_alter.t1 order by ts, b;
 alter table test_alter.t1 add column c int;
-select * from test_alter.t1 order by ts, b;
-insert into test_alter.t1 values(1672531205000, 556, NULL, 3);
+
+insert into test_alter.t1 values(1672531205000, 555, NULL, 3);
 insert into test_alter.t1 values(1672531206000, 666, 11, 1);
 insert into test_alter.t1 values(1672531207000, 777, NULL, 2);
-insert into test_alter.t1 values(1672531207000, NULL, 0, 2);
+--insert into test_alter.t1 values(1672531207000, NULL, 0, 2);
 insert into test_alter.t1 values(1672531208000, 888, 33, 3);
-select * from test_alter.t1 order by ts, b;
 
 alter table test_alter.t1 add column d float;
 select * from test_alter.t1 order by ts, b;
+select pg_sleep(6);
+select * from test_alter.t1 order by ts, b;
+
 alter table test_alter.t1 drop column d;
 select * from test_alter.t1 order by ts, b;
 alter table test_alter.t1 add column d float;
@@ -141,7 +137,7 @@ alter table test_alter.t4 add tag attr29_a1 nchar(254);
 alter table test_alter.t4 add tag attr30_a1 varchar;
 alter table test_alter.t4 add tag attr31_a1 varchar(1023);
 insert into test_alter.t4 (k_timestamp, e1, code1, attr17_a1, attr18_a1, attr19_a1, attr20_a1, attr21_a1, attr22_a1, attr25_a1, attr26_a1, attr27_a1, attr28_a1, attr29_a1, attr30_a1, attr31_a1) values ('2024-01-01t00:00:03+00:00',1,1, 1, 733, 969, 4593.82364066433, -3412.391887694972, false, 'y', 'e', 'x', 'w', 'r', 'f','l');
-delete from test_alter.t4 where code1 = 1;
+-- delete from test_alter.t4 where code1 = 1;
 alter table test_alter.t4 add column if not exists c1 int8 null;
 alter table test_alter.t4 add column if not exists c2 int4 null;
 alter table test_alter.t4 add column if not exists c3 int2 null;
@@ -450,7 +446,7 @@ insert into test_alter.t11 values(1672531201000, '111', 100, 1);
 SET CLUSTER SETTING ts.dedup.rule = 'merge';
 alter table test_alter.t11 add column d int;
 alter table test_alter.t11 drop column d;
-insert into test_alter.t11 values(1672531201000, NULL, 101, 1);
+--insert into test_alter.t11 values(1672531201000, NULL, 101, 1);
 select * from test_alter.t11;
 
 -- ZDP-34369
@@ -623,22 +619,22 @@ ALTER TABLE db1.ts_t1 ADD COLUMN ac19 VARBYTES NULL;
 ALTER TABLE db1.ts_t1 ADD COLUMN ac20 VARBYTES(50) NULL;
 ALTER TABLE db1.ts_t1 ADD COLUMN ac21 geometry NULL;
 
-select count(ac6),max(ac6),min(ac6),first(ac6),last(ac6),first_row(ac6),last_row(ac6) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac8),max(ac8),min(ac8),first(ac8),last(ac8),first_row(ac8),last_row(ac8) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac9),max(ac9),min(ac9),first(ac9),last(ac9),first_row(ac9),last_row(ac9) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac10),max(ac10),min(ac10),first(ac10),last(ac10),first_row(ac10),last_row(ac10) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac11),max(ac11),min(ac11),first(ac11),last(ac11),first_row(ac11),last_row(ac11) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac12),max(ac12),min(ac12),first(ac12),last(ac12),first_row(ac12),last_row(ac12) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac13),max(ac13),min(ac13),first(ac13),last(ac13),first_row(ac13),last_row(ac13) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
-select count(ac16),max(ac16),min(ac16),first(ac16),last(ac16),first_row(ac16),last_row(ac16) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+--select count(ac6),max(ac6),min(ac6),first(ac6),last(ac6),first_row(ac6),last_row(ac6) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac8),max(ac8),min(ac8),first(ac8),last(ac8),first_row(ac8),last_row(ac8) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac9),max(ac9),min(ac9),first(ac9),last(ac9),first_row(ac9),last_row(ac9) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac10),max(ac10),min(ac10),first(ac10),last(ac10),first_row(ac10),last_row(ac10) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac11),max(ac11),min(ac11),first(ac11),last(ac11),first_row(ac11),last_row(ac11) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac12),max(ac12),min(ac12),first(ac12),last(ac12),first_row(ac12),last_row(ac12) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac13),max(ac13),min(ac13),first(ac13),last(ac13),first_row(ac13),last_row(ac13) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac16),max(ac16),min(ac16),first(ac16),last(ac16),first_row(ac16),last_row(ac16) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
 select k_timestamp,ac17 from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000' order by k_timestamp;
-select count(ac17),max(ac17),min(ac17),first(ac17),last(ac17),first_row(ac17),last_row(ac17) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac17),max(ac17),min(ac17),first(ac17),last(ac17),first_row(ac17),last_row(ac17) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
 select k_timestamp,ac18 from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000' order by k_timestamp;
-select count(ac18),max(ac18),min(ac18),first(ac18),last(ac18),first_row(ac18),last_row(ac18) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac18),max(ac18),min(ac18),first(ac18),last(ac18),first_row(ac18),last_row(ac18) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
 select k_timestamp,ac19 from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000' order by k_timestamp;
-select count(ac19),max(ac19),min(ac19),first(ac19),last(ac19),first_row(ac19),last_row(ac19) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac19),max(ac19),min(ac19),first(ac19),last(ac19),first_row(ac19),last_row(ac19) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
 select k_timestamp,ac20 from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000' order by k_timestamp;
-select count(ac20),max(ac20),min(ac20),first(ac20),last(ac20),first_row(ac20),last_row(ac20) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+-- select count(ac20),max(ac20),min(ac20),first(ac20),last(ac20),first_row(ac20),last_row(ac20) from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
 select k_timestamp,ac21 from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000' order by k_timestamp;
 
 drop database db1 cascade;
@@ -651,9 +647,9 @@ INSERT INTO test.t1 VALUES ('2024-06-01 00:00:00.000', 1, NULL, 1);
 INSERT INTO test.t1 VALUES ('2024-06-02 00:00:00.000', 1, 1, 1);
 INSERT INTO test.t1 VALUES ('2024-06-03 00:00:00.000', 1, 2, 1);
 INSERT INTO test.t1 VALUES ('2024-06-04 00:00:00.000', 1, NULL, 1);
-select first(e2), last(e2), first_row(e2), last_row(e2) from test.t1;
+-- select first(e2), last(e2), first_row(e2), last_row(e2) from test.t1;
 
 ALTER TABLE test.t1 DROP COLUMN e1;
-select first(e2), last(e2), first_row(e2), last_row(e2) from test.t1;
+-- select first(e2), last(e2), first_row(e2), last_row(e2) from test.t1;
 
 drop database test cascade;

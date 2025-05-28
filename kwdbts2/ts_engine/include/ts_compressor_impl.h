@@ -63,6 +63,7 @@ class GorillaInt : public CompressorImpl {
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
 };
 
+template <class T>
 class GorillaIntV2 : public CompressorImpl {
  private:
   GorillaIntV2() = default;
@@ -72,7 +73,7 @@ class GorillaIntV2 : public CompressorImpl {
     static GorillaIntV2 inst;
     return inst;
   }
-  static constexpr int stride = 8;
+  static constexpr int stride = sizeof(T);
   bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
 };
