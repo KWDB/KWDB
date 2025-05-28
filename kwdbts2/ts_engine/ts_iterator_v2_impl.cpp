@@ -99,7 +99,8 @@ inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans() {
 inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    return ts_partitions_[cur_partition_index_].ts_vgroup_partition->GetEntitySegment()->GetBlockSpans(filter, ts_block_spans_);
+    return ts_partitions_[cur_partition_index_].ts_vgroup_partition->GetEntitySegment()->GetBlockSpans(filter,
+                                                                                                      ts_block_spans_);
   }
   return KStatus::SUCCESS;
 }
