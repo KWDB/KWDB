@@ -194,6 +194,14 @@ bool TagTable::hasPrimaryKey(const char* primary_tag_val, int len) {
   return true;
 }
 
+void TagTable::GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id) {
+  std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
+  m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
+  for (auto tag_part_table : tag_part_tables) {
+    tag_part_table.second->getMaxEntityIdByVGroupId(vgroup_id, entity_id);
+  }
+  }
+
 // insert tag record
 int TagTable::InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id) {
   // 1. check version

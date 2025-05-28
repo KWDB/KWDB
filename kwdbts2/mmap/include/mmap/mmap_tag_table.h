@@ -84,6 +84,9 @@ class TagTable {
   // check ptag exist
   bool hasPrimaryKey(const char* primary_tag_val, int len);
 
+  // get max entity id
+  void GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id);
+
   // insert tag record
   int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
   int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id);

@@ -709,4 +709,22 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+// get max entity id
+KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
+  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
+  KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get all schema manager failed.");
+  }
+  std::shared_ptr<TagTable> tag_table;
+  for (auto schema_mgr : tb_schema_manager) {
+    s = schema_mgr->GetTagSchema(ctx, &tag_table);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    tag_table->GetMaxEntityIdByVGroupId(vgroup_id, entity_id);
+  }
+  return KStatus::SUCCESS;
+}
+
 }  // namespace kwdbts

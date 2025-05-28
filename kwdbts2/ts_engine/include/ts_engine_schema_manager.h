@@ -52,6 +52,8 @@ class TsEngineSchemaManager {
 
   KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr);
 
+  KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr);
+
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   // Get or allocate vgroup_id and entity_id
