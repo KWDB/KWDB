@@ -872,7 +872,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			allNodePayloadInfos: [][]*sqlbase.SinglePayloadInfo{payInfo},
 		}
 		newPlanNode = tsIns
-	case compress, deleteExpiredData, autonomy, vacuum:
+	case compress, deleteExpiredData, autonomy, vacuum, count:
 		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
 		if d.Type == vacuum {
 			if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
