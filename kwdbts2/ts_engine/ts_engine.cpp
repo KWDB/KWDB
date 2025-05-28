@@ -853,84 +853,75 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::DDL_ALTER_COLUMN: {
             DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(incomplete[mtr_id]);
             uint64_t table_id = ddl_log->getObjectID();
-            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
-            std::unordered_map<uint64_t, int8_t> range_groups;
-            s = table.Init(ctx, range_groups);
+            std::shared_ptr<TsTable> table;
+            ErrorInfo err_info;
+            KStatus s = GetTsTable(ctx, table_id, table, true, err_info);
             if (s == KStatus::FAIL) {
-              LOG_ERROR("Failed to init table %ld.", table_id)
-              #ifdef WITH_TESTS
               return s;
-              #endif
             }
-            if (table.IsDropped()) {
+            if (table->IsDropped()) {
               LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
               continue;
             }
 
-            s = table.UndoAlterTable(ctx, incomplete[mtr_id]);
+            s = table->UndoAlterTable(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to recover alter table %ld.", table_id)
               #ifdef WITH_TESTS
               return s;
               #endif
             } else {
-              table.TSxClean(ctx);
+              table->TSxClean(ctx);
             }
             break;
           }
           case WALLogType::CREATE_INDEX: {
             CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(incomplete[mtr_id]);
             uint64_t table_id = index_log->getObjectID();
-            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
-            std::unordered_map<uint64_t, int8_t> range_groups;
-            s = table.Init(ctx, range_groups);
+            std::shared_ptr<TsTable> table;
+            ErrorInfo err_info;
+            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
-              LOG_ERROR("Failed to init table %ld.", table_id)
-              #ifdef WITH_TESTS
               return s;
-              #endif
             }
-            if (table.IsDropped()) {
+            if (table->IsDropped()) {
               LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
               continue;
             }
 
-            s = table.UndoCreateIndex(ctx, incomplete[mtr_id]);
+            s = table->UndoCreateIndex(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to recover create index %ld.", table_id)
               #ifdef WITH_TESTS
               return s;
               #endif
             } else {
-              table.TSxClean(ctx);
+              table->TSxClean(ctx);
             }
             break;
           }
           case WALLogType::DROP_INDEX: {
             DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(incomplete[mtr_id]);
             uint64_t table_id = index_log->getObjectID();
-            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
-            std::unordered_map<uint64_t, int8_t> range_groups;
-            s = table.Init(ctx, range_groups);
+            std::shared_ptr<TsTable> table;
+            ErrorInfo err_info;
+            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
-              LOG_ERROR("Failed to init table %ld.", table_id)
-              #ifdef WITH_TESTS
               return s;
-              #endif
             }
-            if (table.IsDropped()) {
+            if (table->IsDropped()) {
               LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
               continue;
             }
 
-            s = table.UndoDropIndex(ctx, incomplete[mtr_id]);
+            s = table->UndoDropIndex(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to recover drop index %ld.", table_id)
               #ifdef WITH_TESTS
               return s;
               #endif
             } else {
-              table.TSxClean(ctx);
+              table->TSxClean(ctx);
             }
             break;
           }
@@ -970,55 +961,49 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
       case WALLogType::CREATE_INDEX: {
         CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(wal_log.second);
         uint64_t table_id = index_log->getObjectID();
-        TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
-        std::unordered_map<uint64_t, int8_t> range_groups;
-        s = table.Init(ctx, range_groups);
+        std::shared_ptr<TsTable> table;
+        ErrorInfo err_info;
+        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to init table %ld.", table_id)
-          #ifdef WITH_TESTS
           return s;
-          #endif
         }
-        if (table.IsDropped()) {
+        if (table->IsDropped()) {
           LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
           continue;
         }
-        s = table.UndoCreateIndex(ctx, index_log);
+        s = table->UndoCreateIndex(ctx, index_log);
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to recover create index %ld.", table_id)
           #ifdef WITH_TESTS
           return s;
           #endif
         } else {
-          table.TSxClean(ctx);
+          table->TSxClean(ctx);
         }
         break;
       }
       case WALLogType::DROP_INDEX: {
         DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(wal_log.second);
         uint64_t table_id = index_log->getObjectID();
-        TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
-        std::unordered_map<uint64_t, int8_t> range_groups;
-        s = table.Init(ctx, range_groups);
+        std::shared_ptr<TsTable> table;
+        ErrorInfo err_info;
+        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to init table %ld.", table_id)
-          #ifdef WITH_TESTS
           return s;
-          #endif
         }
-        if (table.IsDropped()) {
+        if (table->IsDropped()) {
           LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
           continue;
         }
 
-        s = table.UndoDropIndex(ctx, index_log);
+        s = table->UndoDropIndex(ctx, index_log);
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to recover drop index %ld.", table_id)
           #ifdef WITH_TESTS
           return s;
           #endif
         } else {
-          table.TSxClean(ctx);
+          table->TSxClean(ctx);
         }
         break;
       }
