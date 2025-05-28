@@ -224,7 +224,7 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx
 }
 
 KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
+ const AttributeInfo& dest_type, const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
   return block_->GetAggResult(
     start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data, is_overflow);
 }

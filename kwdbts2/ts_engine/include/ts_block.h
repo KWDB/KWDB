@@ -50,7 +50,7 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
-  KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
+  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                                const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
                                const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
 
@@ -104,7 +104,7 @@ struct TsBlockSpan {
     const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
 
   KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
+    const AttributeInfo& dest_type, const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,

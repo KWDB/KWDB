@@ -303,7 +303,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                        const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                       Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) override;
+                       const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) override;
 };
 
 class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
