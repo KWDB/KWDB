@@ -165,67 +165,109 @@ bool GorillaInt::Decompress(const TSSlice &data, uint64_t count, std::string *ou
   return true;
 }
 
-bool GorillaIntV2::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
-  static constexpr int dsize = sizeof(int64_t);
+template <class T>
+static inline bool CheckedSub(const T a, const T b, T *out) {
+  static_assert(std::is_same_v<T, int64_t> || std::is_same_v<T, int32_t>);
+  if constexpr (std::is_same_v<T, int64_t>) {
+    return __builtin_ssubl_overflow(a, b, out);
+  } else {
+    return __builtin_ssub_overflow(a, b, out);
+  }
+  assert(false);
+  return false;
+}
+
+template <class T>
+static inline void TypedPutVarint(std::string *dst, T v) {
+  static_assert(std::is_same_v<T, uint64_t> || std::is_same_v<T, uint32_t>);
+  if constexpr (std::is_same_v<T, uint64_t>) {
+    return PutVarint64(dst, v);
+  } else {
+    return PutVarint32(dst, v);
+  }
+}
+
+template <class T>
+static inline void TypedPutFixed(std::string *dst, T v) {
+  if constexpr (sizeof(T) == 8) {
+    return PutFixed64(dst, v);
+  } else {
+    return PutFixed32(dst, v);
+  }
+}
+
+template <class T>
+static inline const char *TypedDecodeVarint(const char *ptr, const char *limit, T *v) {
+  static_assert(std::is_same_v<T, uint64_t> || std::is_same_v<T, uint32_t>);
+  if constexpr (std::is_same_v<T, uint64_t>) {
+    return DecodeVarint64(ptr, limit, v);
+  } else {
+    return DecodeVarint32(ptr, limit, v);
+  }
+}
+
+template <class T>
+bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
   if (count < 2) {
     return false;
   }
-  assert(data.len == count * dsize);
-  out->reserve(dsize * count);
-  int64_t *ts_data = reinterpret_cast<int64_t *>(data.data);
+  assert(data.len == count * stride);
+  out->reserve(stride * count);
+  T *ts_data = reinterpret_cast<T *>(data.data);
 
   // 1. record the first timestamp;
-  PutVarint64(out, EncodeZigZag(ts_data[0]));
+  TypedPutVarint(out, EncodeZigZag(ts_data[0]));
   // 2. record delta
-  int64_t delta;
-  if (__builtin_ssubl_overflow(ts_data[1], ts_data[0], &delta)) {
+  T delta;
+  if (CheckedSub(ts_data[1], ts_data[0], &delta)) {
     // overflow, return
     return false;
   }
-  PutVarint64(out, EncodeZigZag(delta));
+  TypedPutVarint(out, EncodeZigZag(delta));
 
   for (int i = 2; i < count; ++i) {
-    int64_t current_delta = 0, dod = 0;
-    if (__builtin_ssubl_overflow(ts_data[i], ts_data[i - 1], &current_delta)) {
+    T current_delta = 0, dod = 0;
+    if (CheckedSub(ts_data[i], ts_data[i - 1], &current_delta)) {
       return false;
     }
-    if (__builtin_ssubl_overflow(current_delta, delta, &dod)) {
+    if (CheckedSub(current_delta, delta, &dod)) {
       return false;
     }
-    PutVarint64(out, EncodeZigZag(dod));
+    TypedPutVarint(out, EncodeZigZag(dod));
     delta = current_delta;
   }
   return true;
 }
 
-bool GorillaIntV2::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
-  static constexpr int dsize = sizeof(int64_t);
-  out->reserve(8 * count);
-  uint64_t v;
+template <class T>
+bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+  out->reserve(stride * count);
+  using utype = std::make_unsigned_t<T>;
+  utype v;
   const char *limit = data.data + data.len;
-  const char *ptr = DecodeVarint64(data.data, limit, &v);
+  const char *ptr = TypedDecodeVarint(data.data, limit, &v);
   if (ptr == nullptr) {
     return false;
   }
-  int64_t ts = DecodeZigZag(v);
-  PutFixed64(out, ts);
+  T ts = DecodeZigZag(v);
+  TypedPutFixed(out, ts);
 
-  ptr = DecodeVarint64(ptr, limit, &v);
+  ptr = TypedDecodeVarint(ptr, limit, &v);
   if (ptr == nullptr) {
     return false;
   }
-  int64_t delta = DecodeZigZag(v);
+  T delta = DecodeZigZag(v);
   ts += delta;
-  PutFixed64(out, ts);
+  TypedPutFixed(out, ts);
   for (int i = 2; i < count; ++i) {
-    ptr = DecodeVarint64(ptr, limit, &v);
+    ptr = TypedDecodeVarint(ptr, limit, &v);
     if (ptr == nullptr) {
       return false;
     }
-    int64_t dod = DecodeZigZag(v);
+    T dod = DecodeZigZag(v);
     delta += dod;
     ts += delta;
-    PutFixed64(out, ts);
+    TypedPutFixed(out, ts);
   }
   return true;
 }
@@ -379,12 +421,7 @@ template <typename T>
 static inline int GetValidBits(T v) {
   static_assert(std::is_unsigned_v<T>);
   if (v == 0) return 1;
-  if constexpr (sizeof(T) == sizeof(unsigned int)) {
-    return sizeof(T) * 8 - __builtin_clz(v);
-  } else if constexpr (sizeof(T) == sizeof(unsigned long)) {  // NOLINT
-    return sizeof(T) * 8 - __builtin_clzl(v);
-  }
-  return sizeof(T) * 8 - __builtin_clzll(v);
+  return 64 - __builtin_clzll(v);
 }
 
 template <class T>
@@ -529,7 +566,7 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
 
 template <class T>
 bool Simple8BInt<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
-  assert(data.len >= sizeof(T) * count);
+  assert(data.len == sizeof(T) * count);
   const T *p_data = reinterpret_cast<const T *>(data.data);
   return __simple8b_detail::CompressImplGreedy<T>(p_data, count, out);
 }
@@ -605,7 +642,9 @@ CompressorManager::CompressorManager() {
   for (auto i : timestamp_type) {
     default_algs_[i] = {TsCompAlg::kGorilla_64, GenCompAlg::kPlain};
   }
-  ts_comp_[TsCompAlg::kGorilla_64] = &ConcreateTsCompressor<GorillaIntV2>::GetInstance();
+
+  ts_comp_[TsCompAlg::kGorilla_32] = &ConcreateTsCompressor<GorillaIntV2<int32_t>>::GetInstance();
+  ts_comp_[TsCompAlg::kGorilla_64] = &ConcreateTsCompressor<GorillaIntV2<int64_t>>::GetInstance();
 
   ts_comp_[TsCompAlg::kSimple8B_s8] = &ConcreateTsCompressor<Simple8BInt<int8_t>>::GetInstance();
   ts_comp_[TsCompAlg::kSimple8B_s16] = &ConcreateTsCompressor<Simple8BInt<int16_t>>::GetInstance();
@@ -628,11 +667,14 @@ CompressorManager::CompressorManager() {
 
   general_compressor_[GenCompAlg::kSnappy] = &ConcreateGenCompressor<SnappyString>::GetInstance();
 
-  // varchar varstring
-  default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
-  default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
+  // char string
+  default_algs_[DATATYPE::BYTE] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
   default_algs_[DATATYPE::CHAR] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
   default_algs_[DATATYPE::BINARY] = {TsCompAlg::kPlain, GenCompAlg::kSnappy};
+
+  // varchar varstring
+  // default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
+  // default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
 }
 auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
     -> TwoLevelCompressor {
@@ -652,7 +694,9 @@ auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
 auto CompressorManager::GetDefaultAlgorithm(DATATYPE dtype) const
     -> std::tuple<TsCompAlg, GenCompAlg> {
   auto it = default_algs_.find(dtype);
-  if (it == default_algs_.end()) return {TsCompAlg::kPlain, GenCompAlg::kPlain};
+  if (it == default_algs_.end()) {
+    return {TsCompAlg::kPlain, GenCompAlg::kPlain};
+  }
   return it->second;
 }
 

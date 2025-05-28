@@ -36,8 +36,14 @@ class TsBitmap {
       p->rep_[charidx] |= (flag << charoff);   // set as the given flag;
       p->nvalid_ += (flag == kValid) - (old_flag == kValid);
     }
+
+    void operator=(const Proxy &flag) { *this = static_cast<DataFlags>(flag); }
     operator DataFlags() const {
       return static_cast<DataFlags>((p->rep_[charidx] >> charoff) & 0b11);
+    }
+
+    bool operator==(const Proxy &flag) const {
+      return static_cast<DataFlags>(*this) == static_cast<DataFlags>(flag);
     }
   };
 

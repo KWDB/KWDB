@@ -713,6 +713,9 @@ uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {
 
 void TsEntityBlock::Clear() {
   n_rows_ = 0;
+  if (n_cols_ > 0) {
+    column_blocks_[0].buffer.clear();
+  }
   for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
     TsEntitySegmentColumnBlock& column_block = column_blocks_[col_idx];
     column_block.bitmap.Reset(EngineOptions::max_rows_per_block);

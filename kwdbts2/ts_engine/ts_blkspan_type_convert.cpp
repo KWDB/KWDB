@@ -162,7 +162,7 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t bl
     return KStatus::SUCCESS;
   }
   TSSlice orig_value;
-  s = block_->GetValueSlice(row_idx, blk_col_idx, schema, orig_value);
+  s = block_->GetValueSlice(start_row_idx_ + row_idx, blk_col_idx, schema, orig_value);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, blk_col_idx);
     return s;

@@ -128,6 +128,10 @@ class TsRawPayload {
     return primary_key_;
   }
 
+  TSSlice GetNormalTag(int32_t offset, int32_t len) {
+      return TSSlice{tag_datas_.data + offset, static_cast<size_t>(len)};
+  }
+
   TSSlice GetTags() const {
     return tag_datas_;
   }

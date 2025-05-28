@@ -107,9 +107,9 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
 struct FirstOrLastCandidate {
   int64_t ts;
-  int row_idx = -1;;
+  int row_idx = -1;
   TsBlockSpan blk_span;
-  bool valid = false;;
+  bool valid = false;
 };
 
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {

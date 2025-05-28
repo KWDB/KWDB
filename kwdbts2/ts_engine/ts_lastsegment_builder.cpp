@@ -249,10 +249,6 @@ KStatus TsLastSegmentBuilder::Finalize() {
 
 void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
     const TSSlice& col_data, DataFlags data_flag) noexcept {
-#ifndef NDEBUG
-  // assert(getDataTypeSize(dtype_) == col_data.len);
-#endif
-  // TODO(zzr): parse bitmap from payload;
   if (has_bitmap_) {
     bitmap_[row_cnt_] = data_flag;
   }
@@ -273,6 +269,9 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
   std::string compressed;
   const auto& mgr = CompressorManager::GetInstance();
   auto [first, second] = mgr.GetDefaultAlgorithm(dtype_);
+  if (isVarLenType(dtype_)) {
+    first = TsCompAlg::kGorilla_32;
+  }
   TSSlice plain{data_buffer_.data(), data_buffer_.size()};
   mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
   data_buffer_.swap(compressed);
@@ -313,8 +312,13 @@ KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint
   colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, 8, false));  // for SeqNo;
   for (int i = 0; i < metric_schema_.size(); ++i) {
     bool nullable = true;  // TODO(zzr): read from schema;
-    colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
-        static_cast<DATATYPE>(metric_schema_[i].type), metric_schema_[i].size, nullable));
+    if (isVarLenType(metric_schema_[i].type)) {
+      colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
+          static_cast<DATATYPE>(metric_schema_[i].type), sizeof(uint32_t), nullable));
+    } else {
+      colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
+          static_cast<DATATYPE>(metric_schema_[i].type), metric_schema_[i].size, nullable));
+    }
   }
   return KStatus::SUCCESS;
 }
@@ -349,8 +353,9 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     if (!isVarLenType(metric_schema_[col_id].type)) {
       colblocks_[i]->Add(data, is_null ? kNull : kValid);
     } else {
-      size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, is_null ? kNull : kValid);
+      uint32_t var_off = varchar_buffer_.size();
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), sizeof(var_off)},
+                         is_null ? kNull : kValid);
       uint16_t len = data.len;
       if (!is_null) {
         varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));

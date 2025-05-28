@@ -1089,46 +1089,74 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			return nil, nil, err
 		}
 
-		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tableID), hashPoints)
-		groupRowBytes := make([][]byte, len(priTagRowIdx))
-		groupRowTime := make([]int64, len(priTagRowIdx))
-		// TsRowPutRequest need min and max timestamp.
-		minTimestamp := int64(math.MaxInt64)
-		maxTimeStamp := int64(math.MinInt64)
-		valueSize := int32(0)
-		for i, idx := range priTagRowIdx {
-			groupRowBytes[i] = rowBytes[idx]
-			groupRowTime[i] = rowTimestamps[idx]
-			if rowTimestamps[idx] > maxTimeStamp {
-				maxTimeStamp = rowTimestamps[idx]
+		if !evalCtx.StartSinglenode {
+			groupRowBytes := make([][]byte, len(priTagRowIdx))
+			groupRowTime := make([]int64, len(priTagRowIdx))
+			// TsRowPutRequest need min and max timestamp.
+			minTimestamp := int64(math.MaxInt64)
+			maxTimeStamp := int64(math.MinInt64)
+			valueSize := int32(0)
+			for i, idx := range priTagRowIdx {
+				groupRowBytes[i] = rowBytes[idx]
+				groupRowTime[i] = rowTimestamps[idx]
+				if rowTimestamps[idx] > maxTimeStamp {
+					maxTimeStamp = rowTimestamps[idx]
+				}
+				if rowTimestamps[idx] < minTimestamp {
+					minTimestamp = rowTimestamps[idx]
+				}
+				valueSize += int32(len(groupRowBytes[i]))
 			}
-			if rowTimestamps[idx] < minTimestamp {
-				minTimestamp = rowTimestamps[idx]
+			var startKey roachpb.Key
+			var endKey roachpb.Key
+			if pArgs.RowType == OnlyTag {
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]))
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64)
+			} else {
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1)
 			}
-			valueSize += int32(len(groupRowBytes[i]))
-		}
-		var startKey roachpb.Key
-		var endKey roachpb.Key
-		if pArgs.RowType == OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]))
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64)
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupRowBytes,
+				RowTimestamps: groupRowTime,
+				StartKey:      startKey,
+				EndKey:        endKey,
+				ValueSize:     valueSize,
+			}
+			count++
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1)
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
+				rowNum++
+			}
+
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+			}
+			count++
 		}
-		allPayloads[count] = &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(len(priTagRowIdx)),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupRowBytes,
-			RowTimestamps: groupRowTime,
-			StartKey:      startKey,
-			EndKey:        endKey,
-			ValueSize:     valueSize,
-		}
-		count++
 	}
 	for id, err := range rowIDMapError {
 		if err != nil {
@@ -1520,8 +1548,8 @@ func BuildRowBytesForTsInsert(
 		} else {
 			valueSize := int32(0)
 			rowNum := uint32(0)
-			for i := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[i]))
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
 				rowNum++
 			}
 
