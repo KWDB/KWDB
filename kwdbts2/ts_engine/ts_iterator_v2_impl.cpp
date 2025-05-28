@@ -491,7 +491,7 @@ KStatus TsAggIteratorV2Impl::AggregateBlockSpans(ResultSet* res, k_uint32* count
     }
     for (k_uint32 idx : normal_cols) {
       bool overflow = is_overflow[idx];
-      s = blk_span.GetAggResult(blk_scan_cols[idx], blk_schema_valid, attrs_[blk_scan_cols[idx]],
+      s = blk_span.GetAggResult(blk_scan_cols[idx], blk_schema_valid, attrs_[ts_scan_cols_[idx]],
                                 scan_agg_types_[idx], final_agg_data[idx], overflow);
 
       if (s != KStatus::SUCCESS) {
