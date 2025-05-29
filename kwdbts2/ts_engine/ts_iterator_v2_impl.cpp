@@ -707,12 +707,12 @@ inline void TsAggIteratorV2Impl::UpdateTsSpans() {
 
       if (ts_span_idx < ts_spans_.size()) {
         int64_t end = ts_spans_[ts_span_idx].end;
-        if (ts_spans_[ts_span_idx].end > min_last_ts_) {
-          if (ts_spans_[ts_span_idx].begin < max_first_ts_) {
-            ts_spans_.insert(ts_spans_.begin() + ts_span_idx + 1, {min_last_ts_, ts_spans_[ts_span_idx].end});
-            ts_spans_[ts_span_idx].end = max_first_ts_;
-            ++ts_span_idx;
+        if (ts_spans_[ts_span_idx].begin < max_first_ts_) {
+          if (ts_spans_[ts_span_idx].end > min_last_ts_) {
+            ts_spans_.insert(ts_spans_.begin() + ts_span_idx + 1, {max_first_ts_, ts_spans_[ts_span_idx].end});
           }
+          ts_spans_[ts_span_idx].end = max_first_ts_;
+          ++ts_span_idx;
         }
         while (ts_span_idx < ts_spans_.size() && ts_spans_[ts_span_idx].end <= min_last_ts_) {
           ts_spans_.erase(ts_spans_.begin() + ts_span_idx);
