@@ -13,7 +13,7 @@ package sql
 
 import (
 	"context"
-	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
+
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -21,8 +21,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
-	"github.com/cockroachdb/errors"
-	"strconv"
 )
 
 type alterTSDatabaseNode struct {
@@ -30,7 +28,6 @@ type alterTSDatabaseNode struct {
 	lifeTime          uint64
 	partitionInterval uint64
 	databaseDesc      *DatabaseDescriptor
-	tableDescToAlter  []*MutableTableDescriptor
 }
 
 // AlterTSDatabase validates the new definition of database, returns AlterTSDatabase planNode.
@@ -67,68 +64,7 @@ func (p *planner) AlterTSDatabase(ctx context.Context, n *tree.AlterTSDatabase) 
 			return nil, pgerror.Newf(pgcode.InvalidParameterValue, "lifetime is out of range: %d", lifeTime)
 		}
 	}
-	// find all tables of this database
-	schemas, err := p.Tables().getSchemasForDatabase(ctx, p.txn, dbDesc.ID)
-	if err != nil {
-		return nil, err
-	}
 
-	// the names of all objects in the target database
-	var tableNames TableNames
-	schemasToAlter := make([]*sqlbase.ResolvedSchema, 0, len(schemas))
-	for _, schema := range schemas {
-		_, resSchema, err := p.ResolveUncachedSchemaDescriptor(ctx, dbDesc.ID, schema, true /* required */)
-		if err != nil {
-			return nil, err
-		}
-
-		schemasToAlter = append(schemasToAlter, &resSchema)
-		toAppend, err := GetObjectNames(
-			ctx, p.txn, p, dbDesc, schema, true, /*explicitPrefix*/
-		)
-		if err != nil {
-			return nil, err
-		}
-		tableNames = append(tableNames, toAppend...)
-	}
-
-	toAlters := make([]*MutableTableDescriptor, 0, len(tableNames))
-	for _, tableName := range tableNames {
-		found, desc, err := p.LookupObject(
-			ctx,
-			tree.ObjectLookupFlags{
-				CommonLookupFlags: tree.CommonLookupFlags{Required: true},
-				RequireMutable:    true,
-				IncludeOffline:    true,
-			},
-			tableName.Catalog(),
-			tableName.Schema(),
-			tableName.Table(),
-		)
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			continue
-		}
-		tableDesc, ok := desc.(*sqlbase.MutableTableDescriptor)
-		if !ok {
-			return nil, errors.AssertionFailedf(
-				"descriptor for %q is not MutableTableDescriptor",
-				tableName.String(),
-			)
-		}
-		if tableDesc.State == sqlbase.TableDescriptor_OFFLINE {
-			return nil, pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
-				"cannot alter a database with OFFLINE tables, ensure %s is"+
-					" dropped or made public before aktering database %s",
-				tableName.String(), tree.AsString((*tree.Name)(&dbDesc.Name)))
-		}
-		if tableDesc.TsTable.Lifetime != 0 {
-			continue
-		}
-		toAlters = append(toAlters, tableDesc)
-	}
 	if n.PartitionInterval != nil {
 		switch n.PartitionInterval.Unit {
 		case "s", "second", "m", "minute", "h", "hour":
@@ -146,7 +82,7 @@ func (p *planner) AlterTSDatabase(ctx context.Context, n *tree.AlterTSDatabase) 
 		lifeTime:          lifeTime,
 		partitionInterval: partitionInterval,
 		databaseDesc:      dbDesc,
-		tableDescToAlter:  toAlters}, nil
+	}, nil
 }
 
 func (n *alterTSDatabaseNode) startExec(params runParams) error {
@@ -176,58 +112,6 @@ func (n *alterTSDatabaseNode) startExec(params runParams) error {
 	b.Put(descKey, descDesc)
 	if err1 := p.txn.Run(ctx, b); err1 != nil {
 		return err1
-	}
-
-	for _, tableDesc := range n.tableDescToAlter {
-		if tableDesc.TableType == tree.RelationalTable {
-			return pgerror.Newf(
-				pgcode.WrongObjectType, "can not set retentions on relational table \"%s\"", tableDesc.Name)
-		}
-		if tableDesc.TableType == tree.InstanceTable {
-			return pgerror.Newf(
-				pgcode.WrongObjectType, "can not set retentions on instance table \"%s\"", tableDesc.Name)
-		}
-		tableDesc.TsTable.Lifetime = n.lifeTime
-		var downsampling []string
-		downsampling = append(downsampling, strconv.FormatUint(n.lifeTime, 10))
-		tableDesc.TsTable.Downsampling = downsampling
-		// Create a Job to perform the second stage of ts DDL.
-		syncDetail := jobspb.SyncMetaCacheDetails{
-			Type:    alterKwdbAlterRetentions,
-			SNTable: tableDesc.TableDescriptor,
-		}
-		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
-		if err != nil {
-			return err
-		}
-		// Actively commit a transaction, and read/write system table operations
-		// need to be performed before this.
-		if err = params.p.txn.Commit(params.ctx); err != nil {
-			return err
-		}
-		// After the transaction commits successfully, execute the Job and wait for it to complete.
-		if err = params.p.ExecCfg().JobRegistry.Run(
-			params.ctx,
-			params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
-			[]int64{jobID},
-		); err != nil {
-			return err
-		}
-		// Allocate IDs now, so new IDs are available to subsequent commands
-		if err := tableDesc.AllocateIDs(); err != nil {
-			return err
-		}
-
-		if err := params.p.writeSchemaChange(
-			params.ctx, tableDesc, sqlbase.InvalidMutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
-		); err != nil {
-			return err
-		}
-		// Record this table alteration in the event log. This is an auditable log
-		// event and is recorded in the same transaction as the table descriptor
-		// update.
-		params.p.SetAuditTarget(uint32(tableDesc.GetID()), tableDesc.GetName(), nil)
-		log.Infof(params.ctx, "alter ts table 1st txn finished, id: %d", tableDesc.ID)
 	}
 
 	p.SetAuditTarget(uint32(descID), databaseDesc.GetName(), nil)

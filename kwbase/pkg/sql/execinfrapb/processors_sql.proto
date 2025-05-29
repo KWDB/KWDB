@@ -276,8 +276,8 @@ message TsAlterProSpec {
   optional uint32 currentTSVersion = 9 [(gogoproto.nullable) = false];
   optional bytes vacuumInterval = 10;
   optional uint32 tagIndexID = 11 [(gogoproto.nullable) = false];
-  optional uint64 retentions = 12 [(gogoproto.nullable) = false];
-  repeated uint32 tagIndexColumns = 13;
+  repeated uint32 tagIndexColumns = 12;
+  optional uint64 retentions = 13 [(gogoproto.nullable) = false];
 }
 
 // IndexSkipTableReaderSpec is the specification for a table reader that
