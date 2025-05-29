@@ -2397,7 +2397,13 @@ func makeScanColumnsConfig(table cat.Table, cols exec.ColumnOrdinalSet) scanColu
 // MakeTSSpans make TSSpans and assign it to tsScanNode.
 func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight bool) {
 	out := new(constraint.Constraint)
-	if tn, ok := n.(*tsScanNode); ok {
+	switch tn := n.(type) {
+	case *synchronizerNode:
+		if tsScan, ok := tn.plan.(*tsScanNode); ok {
+			return ef.MakeTSSpans(e, tsScan, m)
+		}
+		return false
+	case *tsScanNode:
 		tabID := m.Metadata().GetTableIDByObjectID(tn.Table.ID())
 		tight := ef.MakeTSSpansForExpr(e, out, tabID)
 		typ := tn.Table.Column(0).DatumType()
@@ -2410,8 +2416,9 @@ func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight
 		tn.tsSpans = out.TransformSpansToTsSpans(precision)
 		tn.tsSpansPre = precision
 		return tight
+	default:
+		return false
 	}
-	return false
 }
 
 // MakeTSSpansForExpr make TSSpans from expr.
@@ -2427,7 +2434,11 @@ func (ef *execFactory) MakeTSSpansForExpr(
 			unconstrained(out)
 			return true
 		case 1:
-			return ef.MakeTSSpansForExpr((*t)[0].Condition, out, tblID)
+			allFilterChangeToSpan := ef.MakeTSSpansForExpr((*t)[0].Condition, out, tblID)
+			if allFilterChangeToSpan && t != nil {
+				*t = nil
+			}
+			return allFilterChangeToSpan
 		default:
 			return ef.makeTSSpansForAnd(t, out, tblID)
 		}

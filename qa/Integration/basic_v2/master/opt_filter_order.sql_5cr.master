@@ -685,22 +685,24 @@ INSERT 1
   11
 (1 row)
 > explain select e1 from d1.t1 where    (ts between '2020-01-01 00:00:00' and '2024-07-01 00:00:00')    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
-             tree             |    field    |                                            description
-------------------------------+-------------+----------------------------------------------------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | metaTable
-                              | filter      | (e5 IN (51.0,)) AND ((ts >= '2020-01-01 00:00:00+00:00') AND (ts <= '2024-07-01 00:00:00+00:00'))
-(13 rows)
+             tree             |     field      |          description
+------------------------------+----------------+--------------------------------
+                              | distributed    | true
+                              | vectorized     | false
+  sort                        |                |
+   │                          | order          | +e1
+   └── render                 |                |
+        │                     | e1             | e1
+        └── filter            |                |
+             │                | filter         | COALESCE(e5, 1.2) IS NOT NULL
+             └── synchronizer |                |
+                  └── ts scan |                |
+                              | ts-table       | t1
+                              | access mode    | metaTable
+                              | spans:fromTime | 2020-01-01 00:00:00 +0000 UTC
+                              | spans:toTime   | 2024-07-01 00:00:00 +0000 UTC
+                              | filter         | e5 IN (51.0,)
+(15 rows)
 > select e1 from d1.t1 where    (ts between '2020-01-01 00:00:00' and '2024-07-01 00:00:00')    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
   e1
 ------
@@ -922,22 +924,24 @@ INSERT 1
   15
 (25 rows)
 > explain select e1 from d1.t1 where    (ts > '2020-01-01 00:00:00' and e1 + e2 < 1000)    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
-             tree             |    field    |                      description
-------------------------------+-------------+---------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | ((e1 + e2) < 1000) AND (COALESCE(e5, 1.2) IS NOT NULL)
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | metaTable
-                              | filter      | (e5 IN (51.0,)) AND (ts > '2020-01-01 00:00:00+00:00')
-(13 rows)
+             tree             |     field      |                      description
+------------------------------+----------------+---------------------------------------------------------
+                              | distributed    | true
+                              | vectorized     | false
+  sort                        |                |
+   │                          | order          | +e1
+   └── render                 |                |
+        │                     | e1             | e1
+        └── filter            |                |
+             │                | filter         | ((e1 + e2) < 1000) AND (COALESCE(e5, 1.2) IS NOT NULL)
+             └── synchronizer |                |
+                  └── ts scan |                |
+                              | ts-table       | t1
+                              | access mode    | metaTable
+                              | spans:fromTime | 2020-01-01 00:00:00.001 +0000 UTC
+                              | spans:toTime   | 2970-01-01 00:00:00 +0000 UTC
+                              | filter         | e5 IN (51.0,)
+(15 rows)
 > select e1 from d1.t1 where    (ts > '2020-01-01 00:00:00' and e1 + e2 < 1000)    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
   e1
 ------
