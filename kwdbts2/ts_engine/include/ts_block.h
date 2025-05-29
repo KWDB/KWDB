@@ -50,6 +50,15 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
+  /*
+  * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
+  */
+  virtual bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num);
+  virtual KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
+  virtual KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
+  virtual KStatus GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
+  virtual KStatus GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
+
   virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                                const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
                                const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
@@ -69,6 +78,7 @@ struct TsBlockSpan {
   std::shared_ptr<TsBlock> block_ = nullptr;
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
+  bool has_pre_agg_{false};
   TSBlkDataTypeConvert convert_;
 
   friend TSBlkDataTypeConvert;
@@ -102,6 +112,12 @@ struct TsBlockSpan {
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
+
+  bool HasPreAgg();
+  KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
+  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
+  KStatus GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
+  KStatus GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
 
   KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);

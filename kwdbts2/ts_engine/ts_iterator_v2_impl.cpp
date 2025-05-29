@@ -918,6 +918,96 @@ inline int TsAggIteratorV2Impl::valcmp(void* l, void* r, int32_t type, int32_t s
   return false;
 }
 
+inline void TsAggIteratorV2Impl::ConvertToDoubleIfOverflow(uint32_t col_idx, TSSlice& agg_data) {
+  if (is_overflow_[col_idx]) {
+    *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
+  }
+}
+
+inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYet(uint32_t col_idx,
+                                                          int32_t type,
+                                                          void* current,
+                                                          TSSlice& agg_data) {
+  switch (type) {
+    case DATATYPE::INT8:
+      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int8_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      break;
+    case DATATYPE::INT16:
+      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int16_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      break;
+    case DATATYPE::INT32:
+      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int32_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      break;
+    case DATATYPE::INT64:
+      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      break;
+    case DATATYPE::FLOAT:
+      AddAggFloat<double>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<float*>(current));
+      break;
+    case DATATYPE::DOUBLE:
+      AddAggFloat<double>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<double*>(current));
+      break;
+    default:
+      LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+  }
+  return KStatus::SUCCESS;
+}
+
+inline KStatus TsAggIteratorV2Impl::AddSumOverflow(int32_t type,
+                                                    void* current,
+                                                    TSSlice& agg_data) {
+  switch (type) {
+    case DATATYPE::INT8:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int8_t*>(current));
+      break;
+    case DATATYPE::INT16:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int16_t*>(current));
+      break;
+    case DATATYPE::INT32:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int32_t*>(current));
+      break;
+    case DATATYPE::INT64:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::FLOAT:
+    case DATATYPE::DOUBLE:
+      LOG_ERROR("Overflow not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+    default:
+      LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                                                 const std::vector<AttributeInfo>& schema) {
   KStatus ret;
@@ -995,16 +1085,26 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     if (schema[blk_col_idx].isFlag(AINFO_NOT_NULL)) {
       KUint64(final_agg_data_[count_col_idx].data) += block_span->GetRowNum();
     } else {
-      TsBitmap bitmap;
-      ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
-      }
-      for (row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[row_idx] != DataFlags::kValid) {
-          continue;
+      if (block_span->HasPreAgg()) {
+        // Use pre agg to calculate count
+        uint16_t block_span_count;
+        ret = block_span->GetPreCount(blk_col_idx, block_span_count);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
         }
-        ++KUint64(final_agg_data_[count_col_idx].data);
+        KUint64(final_agg_data_[count_col_idx].data) += block_span_count;
+      } else {
+        TsBitmap bitmap;
+        ret = block_span->GetColBitmap(blk_col_idx, schema, bitmap);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+        for (row_idx = 0; row_idx < row_num; ++row_idx) {
+          if (bitmap[row_idx] != DataFlags::kValid) {
+            continue;
+          }
+          ++KUint64(final_agg_data_[count_col_idx].data);
+        }
       }
     }
   }
@@ -1013,99 +1113,70 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
   for (int i = 0; i < sum_col_idxs_.size(); ++i) {
     uint32_t sum_col_idx = sum_col_idxs_[i];
     uint32_t blk_col_idx = ts_scan_cols_[sum_col_idx];
-    char* value = nullptr;
-    TsBitmap bitmap;
-    auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, schema[blk_col_idx], &value, bitmap);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetFixLenColAddr failed.");
-      return s;
-    }
-
-    int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
-    for (row_idx = 0; row_idx < row_num; ++row_idx) {
-      if (bitmap[row_idx] != DataFlags::kValid) {
-        continue;
+    if (block_span->HasPreAgg()) {
+      // Use pre agg to calculate sum
+      void* current;
+      bool pre_sum_is_overflow;
+      ret = block_span->GetPreSum(blk_col_idx, schema[blk_col_idx].size, current, pre_sum_is_overflow);
+      if (ret != KStatus::SUCCESS) {
+        return KStatus::FAIL;
       }
-      void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
-      TSSlice& agg_data = final_agg_data_[sum_col_idx];
-      if (agg_data.data == nullptr) {
-        agg_data.len = sizeof(int64_t);
-        InitAggData(agg_data);
-        InitSumValue(agg_data.data, schema[blk_col_idx].type);
+      if (current) {
+        TSSlice& agg_data = final_agg_data_[sum_col_idx];
+        if (agg_data.data == nullptr) {
+          agg_data.len = sizeof(int64_t);
+          InitAggData(agg_data);
+          InitSumValue(agg_data.data, schema[blk_col_idx].type);
+        }
+        if (!is_overflow_[sum_col_idx]) {
+          if (!pre_sum_is_overflow) {
+            ret = AddSumNotOverflowYet(sum_col_idx, schema[sum_col_idx].type, current, agg_data);
+          } else {
+            ret = AddSumNotOverflowYet(sum_col_idx, DATATYPE::DOUBLE, current, agg_data);
+          }
+        } else {
+          if (!pre_sum_is_overflow) {
+            ret = AddSumOverflow(schema[sum_col_idx].type, current, agg_data);
+          } else {
+            ret = AddSumOverflow(DATATYPE::DOUBLE, current, agg_data);
+          }
+        }
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+      }
+    } else {
+      char* value = nullptr;
+      TsBitmap bitmap;
+      auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[blk_col_idx], &value, bitmap);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetFixLenColAddr failed.");
+        return s;
       }
 
-      if (!is_overflow_[sum_col_idx]) {
-        switch (schema[blk_col_idx].type) {
-          case DATATYPE::INT8:
-            is_overflow_[sum_col_idx] = AddAggInteger<int64_t>(
-                *reinterpret_cast<int64_t*>(agg_data.data),
-                *reinterpret_cast<int8_t*>(current));
-            break;
-          case DATATYPE::INT16:
-            is_overflow_[sum_col_idx] = AddAggInteger<int64_t>(
-                *reinterpret_cast<int64_t*>(agg_data.data),
-                *reinterpret_cast<int16_t*>(current));
-            break;
-          case DATATYPE::INT32:
-            is_overflow_[sum_col_idx] = AddAggInteger<int64_t>(
-                *reinterpret_cast<int64_t*>(agg_data.data),
-                *reinterpret_cast<int32_t*>(current));
-            break;
-          case DATATYPE::INT64:
-            is_overflow_[sum_col_idx] = AddAggInteger<int64_t>(
-                *reinterpret_cast<int64_t*>(agg_data.data),
-                *reinterpret_cast<int64_t*>(current));
-            break;
-          case DATATYPE::FLOAT:
-            AddAggFloat<double>(
-                *reinterpret_cast<double*>(agg_data.data),
-                *reinterpret_cast<float*>(current));
-            break;
-          case DATATYPE::DOUBLE:
-            AddAggFloat<double>(
-                *reinterpret_cast<double*>(agg_data.data),
-                *reinterpret_cast<double*>(current));
-            break;
-          default:
-            LOG_ERROR("Not supported for sum, datatype: %d", schema[blk_col_idx].type);
+      int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
+      for (row_idx = 0; row_idx < row_num; ++row_idx) {
+        if (bitmap[row_idx] != DataFlags::kValid) {
+          continue;
+        }
+        void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+        TSSlice& agg_data = final_agg_data_[sum_col_idx];
+        if (agg_data.data == nullptr) {
+          agg_data.len = sizeof(int64_t);
+          InitAggData(agg_data);
+          InitSumValue(agg_data.data, schema[blk_col_idx].type);
+        }
+        if (!is_overflow_[sum_col_idx]) {
+          ret = AddSumNotOverflowYet(sum_col_idx, schema[sum_col_idx].type, current, agg_data);
+          if (ret != KStatus::SUCCESS) {
             return KStatus::FAIL;
-            break;
+          }
         }
         if (is_overflow_[sum_col_idx]) {
-          *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
-        }
-      }
-      if (is_overflow_[sum_col_idx]) {
-        switch (schema[blk_col_idx].type) {
-          case DATATYPE::INT8:
-            AddAggFloat<double, int64_t>(
-                *reinterpret_cast<double*>(agg_data.data),
-                *reinterpret_cast<int8_t*>(current));
-            break;
-          case DATATYPE::INT16:
-            AddAggFloat<double, int64_t>(
-                *reinterpret_cast<double*>(agg_data.data),
-                *reinterpret_cast<int16_t*>(current));
-            break;
-          case DATATYPE::INT32:
-            AddAggFloat<double, int64_t>(
-                *reinterpret_cast<double*>(agg_data.data),
-                *reinterpret_cast<int32_t*>(current));
-            break;
-          case DATATYPE::INT64:
-            AddAggFloat<double, int64_t>(
-                *reinterpret_cast<double*>(agg_data.data),
-                *reinterpret_cast<int64_t*>(current));
-            break;
-          case DATATYPE::FLOAT:
-          case DATATYPE::DOUBLE:
-            LOG_ERROR("Overflow not supported for sum, datatype: %d", schema[blk_col_idx].type);
+          ret = AddSumOverflow(schema[sum_col_idx].type, current, agg_data);
+          if (ret != KStatus::SUCCESS) {
             return KStatus::FAIL;
-            break;
-          default:
-            LOG_ERROR("Not supported for sum, datatype: %d", schema[blk_col_idx].type);
-            return KStatus::FAIL;
-            break;
+          }
         }
       }
     }
@@ -1117,59 +1188,84 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     uint32_t blk_col_idx = ts_scan_cols_[max_col_idx];
     TSSlice& agg_data = final_agg_data_[max_col_idx];
     int32_t type = schema[blk_col_idx].type;
-    if (!isVarLenType(type)) {
-      char* value = nullptr;
-      TsBitmap bitmap;
-      auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, schema[blk_col_idx], &value, bitmap);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetFixLenColAddr failed.");
-        return s;
+    if (isSameType(schema[blk_col_idx], attrs_[max_col_idx]) && block_span->HasPreAgg()) {
+      // Use pre agg to calculate max
+      TSSlice pre_max;
+      ret = block_span->GetPreMax(blk_col_idx, pre_max);
+      if (ret != KStatus::SUCCESS) {
+        return KStatus::FAIL;
       }
-
-      int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
-      for (row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[row_idx] != DataFlags::kValid) {
-          continue;
-        }
-        void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
-        if (agg_data.data == nullptr) {
-          agg_data.len = size;
-          InitAggData(agg_data);
-          memcpy(agg_data.data, current, size);
-        } else if (valcmp(current, agg_data.data, type, size) > 0) {
-          memcpy(agg_data.data, current, size);
-        }
-      }
-    } else {
-      std::vector<string> var_rows;
-      KStatus ret;
-      for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-        TSSlice slice;
-        DataFlags flag;
-        ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, schema[blk_col_idx], flag, slice);
-        if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("GetVarLenTypeColAddr failed.");
-          return ret;
-        }
-        if (flag == DataFlags::kValid) {
-          var_rows.emplace_back(slice.data, slice.len);
-        }
-      }
-      if (!var_rows.empty()) {
-        auto max_it = std::max_element(var_rows.begin(), var_rows.end());
+      if (pre_max.data) {
+        string pre_max_val(pre_max.data, pre_max.len);
         if (agg_data.data) {
           string current_max({agg_data.data + kStringLenLen, agg_data.len});
-          if (current_max < *max_it) {
+          if (current_max < pre_max_val) {
             free(agg_data.data);
             agg_data.data = nullptr;
           }
         }
         if (agg_data.data == nullptr) {
-          // Can we use the memory in var_rows?
-          agg_data.len = max_it->length() + kStringLenLen;
+          agg_data.len = pre_max_val.length() + kStringLenLen;
           agg_data.data = static_cast<char*>(malloc(agg_data.len));
-          KUint16(agg_data.data) = max_it->length();
-          memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
+          KUint16(agg_data.data) = pre_max_val.length();
+          memcpy(agg_data.data + kStringLenLen, pre_max_val.c_str(), pre_max_val.length());
+        }
+      }
+    } else {
+      if (!isVarLenType(type)) {
+        char* value = nullptr;
+        TsBitmap bitmap;
+        auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[max_col_idx], &value, bitmap);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return s;
+        }
+
+        int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
+        for (row_idx = 0; row_idx < row_num; ++row_idx) {
+          if (bitmap[row_idx] != DataFlags::kValid) {
+            continue;
+          }
+          void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+          if (agg_data.data == nullptr) {
+            agg_data.len = size;
+            InitAggData(agg_data);
+            memcpy(agg_data.data, current, size);
+          } else if (valcmp(current, agg_data.data, type, size) > 0) {
+            memcpy(agg_data.data, current, size);
+          }
+        }
+      } else {
+        std::vector<string> var_rows;
+        KStatus ret;
+        for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+          TSSlice slice;
+          DataFlags flag;
+          ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, attrs_[max_col_idx], flag, slice);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarLenTypeColAddr failed.");
+            return ret;
+          }
+          if (flag == DataFlags::kValid) {
+            var_rows.emplace_back(slice.data, slice.len);
+          }
+        }
+        if (!var_rows.empty()) {
+          auto max_it = std::max_element(var_rows.begin(), var_rows.end());
+          if (agg_data.data) {
+            string current_max({agg_data.data + kStringLenLen, agg_data.len});
+            if (current_max < *max_it) {
+              free(agg_data.data);
+              agg_data.data = nullptr;
+            }
+          }
+          if (agg_data.data == nullptr) {
+            // Can we use the memory in var_rows?
+            agg_data.len = max_it->length() + kStringLenLen;
+            agg_data.data = static_cast<char*>(malloc(agg_data.len));
+            KUint16(agg_data.data) = max_it->length();
+            memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
+          }
         }
       }
     }
@@ -1181,59 +1277,84 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     uint32_t blk_col_idx = ts_scan_cols_[min_col_idx];
     TSSlice& agg_data = final_agg_data_[min_col_idx];
     int32_t type = schema[blk_col_idx].type;
-    if (!isVarLenType(type)) {
-      char* value = nullptr;
-      TsBitmap bitmap;
-      auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, schema[blk_col_idx], &value, bitmap);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetFixLenColAddr failed.");
-        return s;
+    if (isSameType(schema[blk_col_idx], attrs_[min_col_idx]) && block_span->HasPreAgg()) {
+      // Use pre agg to calculate min
+      TSSlice pre_min;
+      ret = block_span->GetPreMin(blk_col_idx, pre_min);
+      if (ret != KStatus::SUCCESS) {
+        return KStatus::FAIL;
       }
-
-      int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
-      for (row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[row_idx] != DataFlags::kValid) {
-          continue;
-        }
-        void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
-        if (agg_data.data == nullptr) {
-          agg_data.len = size;
-          InitAggData(agg_data);
-          memcpy(agg_data.data, current, size);
-        } else if (valcmp(current, agg_data.data, type, size) < 0) {
-          memcpy(agg_data.data, current, size);
-        }
-      }
-    } else {
-      std::vector<string> var_rows;
-      KStatus ret;
-      for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-        TSSlice slice;
-        DataFlags flag;
-        ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, schema[blk_col_idx], flag, slice);
-        if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("GetVarLenTypeColAddr failed.");
-          return ret;
-        }
-        if (flag == DataFlags::kValid) {
-          var_rows.emplace_back(slice.data, slice.len);
-        }
-      }
-      if (!var_rows.empty()) {
-        auto min_it = std::min_element(var_rows.begin(), var_rows.end());
+      if (pre_min.data) {
+        string pre_min_val(pre_min.data, pre_min.len);
         if (agg_data.data) {
           string current_min({agg_data.data + kStringLenLen, agg_data.len});
-          if (current_min > *min_it) {
+          if (current_min > pre_min_val) {
             free(agg_data.data);
             agg_data.data = nullptr;
           }
         }
         if (agg_data.data == nullptr) {
-          // Can we use the memory in var_rows?
-          agg_data.len = min_it->length() + kStringLenLen;
+          agg_data.len = pre_min_val.length() + kStringLenLen;
           agg_data.data = static_cast<char*>(malloc(agg_data.len));
-          KUint16(agg_data.data) = min_it->length();
-          memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
+          KUint16(agg_data.data) = pre_min_val.length();
+          memcpy(agg_data.data + kStringLenLen, pre_min_val.c_str(), pre_min_val.length());
+        }
+      }
+    } else {
+      if (!isVarLenType(type)) {
+        char* value = nullptr;
+        TsBitmap bitmap;
+        auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[min_col_idx], &value, bitmap);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return s;
+        }
+
+        int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
+        for (row_idx = 0; row_idx < row_num; ++row_idx) {
+          if (bitmap[row_idx] != DataFlags::kValid) {
+            continue;
+          }
+          void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+          if (agg_data.data == nullptr) {
+            agg_data.len = size;
+            InitAggData(agg_data);
+            memcpy(agg_data.data, current, size);
+          } else if (valcmp(current, agg_data.data, type, size) < 0) {
+            memcpy(agg_data.data, current, size);
+          }
+        }
+      } else {
+        std::vector<string> var_rows;
+        KStatus ret;
+        for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+          TSSlice slice;
+          DataFlags flag;
+          ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, attrs_[min_col_idx], flag, slice);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarLenTypeColAddr failed.");
+            return ret;
+          }
+          if (flag == DataFlags::kValid) {
+            var_rows.emplace_back(slice.data, slice.len);
+          }
+        }
+        if (!var_rows.empty()) {
+          auto min_it = std::min_element(var_rows.begin(), var_rows.end());
+          if (agg_data.data) {
+            string current_min({agg_data.data + kStringLenLen, agg_data.len});
+            if (current_min > *min_it) {
+              free(agg_data.data);
+              agg_data.data = nullptr;
+            }
+          }
+          if (agg_data.data == nullptr) {
+            // Can we use the memory in var_rows?
+            agg_data.len = min_it->length() + kStringLenLen;
+            agg_data.data = static_cast<char*>(malloc(agg_data.len));
+            KUint16(agg_data.data) = min_it->length();
+            memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
+          }
         }
       }
     }

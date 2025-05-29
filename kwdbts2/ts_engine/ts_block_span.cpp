@@ -58,6 +58,26 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
   return KStatus::SUCCESS;
 }
 
+bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
+  return false;
+}
+
+KStatus TsBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+  return KStatus::FAIL;
+}
+
 KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,
                                                 std::vector<k_uint32>& first_col_idxs,
@@ -144,6 +164,7 @@ KStatus TsBlock::GetFirstAndLastInfo(
 TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
     : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {  // NOLINT(runtime/init)
   assert(nrow_ >= 1);
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
 bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
@@ -221,6 +242,26 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<At
 KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
  const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data) {
   return convert_.GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, dest_type, flag, data);
+}
+
+bool TsBlockSpan::HasPreAgg() {
+  return has_pre_agg_;
+}
+
+KStatus TsBlockSpan::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+  return block_->GetPreCount(blk_col_idx, count);
+}
+
+KStatus TsBlockSpan::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+  return block_->GetPreSum(blk_col_idx, size, pre_sum, is_overflow);
+}
+
+KStatus TsBlockSpan::GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  return block_->GetPreMax(blk_col_idx, pre_max);
+}
+
+KStatus TsBlockSpan::GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+  return block_->GetPreMin(blk_col_idx, pre_min);
 }
 
 KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
