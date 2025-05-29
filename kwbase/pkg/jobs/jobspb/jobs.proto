@@ -571,7 +571,7 @@ message RelocateTargets {
 }
 
 message ReplicaRebanalceDetails {
-  repeated RelocateTargets relocate_targets = 2 [(gogoproto.nullable) = false];;
+  repeated RelocateTargets relocate_targets = 1 [(gogoproto.nullable) = false];
 }
 
 message ReplicaRebanalceProgress {
