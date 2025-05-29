@@ -110,7 +110,6 @@ function start_single_node() {
     --store=${DEPLOY_ROOT}/${store} \
     --pid-file=${DEPLOY_ROOT}/${store}/kwbase.pid \
     --background
-    echo "+++++++++++++++${DEPLOY_ROOT}/${store}"
   for c in {1..30};do
     if [ "1" = "$(check_kwbase_available ${store})" ];then
       break

@@ -71,6 +71,14 @@ CREATE TABLE
 ------------
    1296000
 (1 row)
+> select * from tsdb.t;  -- avoid table has not been created by storage
+  ts | a | ptag
+-----+---+-------
+(0 rows)
+> select * from tsdb.t1;
+  ts | a | ptag
+-----+---+-------
+(0 rows)
 > alter ts database tsdb set Retentions = 15d; -- tsdb, t1: 15d, t:10d
 ALTER TS DATABASE
 > SELECT RETENTIONS from tsdb.information_schema.schemata where schema_name='public' order by RETENTIONS;

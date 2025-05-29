@@ -1168,9 +1168,6 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 	}
 
 	ex.sessionTracing.TraceExecStart(ctx, "distributed")
-	if stmt.Statement.SQL == "alter ts database tsdb set Retentions = 15d" {
-		log.Infof(ctx, "+++++")
-	}
 	bytesRead, rowsRead, err := ex.execWithDistSQLEngine(ctx, planner, stmt.AST.StatementType(), res, distributePlan, progAtomic, stmt.SQL)
 	ex.sessionTracing.TraceExecEnd(ctx, res.Err(), res.RowsAffected())
 	ex.statsCollector.phaseTimes[plannerEndExecStmt] = timeutil.Now()
