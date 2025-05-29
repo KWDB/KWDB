@@ -55,6 +55,8 @@ class TSBlkDataTypeConvert {
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& blk_schema,
     const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
+
+  KStatus GetColBitmap(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap);
 };
 
 
