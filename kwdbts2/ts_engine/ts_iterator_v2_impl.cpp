@@ -1190,25 +1190,41 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     int32_t type = schema[blk_col_idx].type;
     if (isSameType(schema[blk_col_idx], attrs_[blk_col_idx]) && block_span->HasPreAgg()) {
       // Use pre agg to calculate max
-      TSSlice pre_max;
-      ret = block_span->GetPreMax(blk_col_idx, pre_max);
-      if (ret != KStatus::SUCCESS) {
-        return KStatus::FAIL;
-      }
-      if (pre_max.data) {
-        string pre_max_val(pre_max.data, pre_max.len);
-        if (agg_data.data) {
-          string current_max({agg_data.data + kStringLenLen, agg_data.len});
-          if (current_max < pre_max_val) {
-            free(agg_data.data);
-            agg_data.data = nullptr;
-          }
+      if (!isVarLenType(type)) {
+        void* pre_max;
+        int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
+        ret = block_span->GetPreMax(blk_col_idx, pre_max);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
         }
         if (agg_data.data == nullptr) {
-          agg_data.len = pre_max_val.length() + kStringLenLen;
-          agg_data.data = static_cast<char*>(malloc(agg_data.len));
-          KUint16(agg_data.data) = pre_max_val.length();
-          memcpy(agg_data.data + kStringLenLen, pre_max_val.c_str(), pre_max_val.length());
+          agg_data.len = size;
+          InitAggData(agg_data);
+          memcpy(agg_data.data, pre_max, size);
+        } else if (valcmp(pre_max, agg_data.data, type, size) > 0) {
+          memcpy(agg_data.data, pre_max, size);
+        }
+      } else {
+        TSSlice pre_max;
+        ret = block_span->GetVarPreMax(blk_col_idx, pre_max);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+        if (pre_max.data) {
+          string pre_max_val(pre_max.data, pre_max.len);
+          if (agg_data.data) {
+            string current_max({agg_data.data + kStringLenLen, agg_data.len});
+            if (current_max < pre_max_val) {
+              free(agg_data.data);
+              agg_data.data = nullptr;
+            }
+          }
+          if (agg_data.data == nullptr) {
+            agg_data.len = pre_max_val.length() + kStringLenLen;
+            agg_data.data = static_cast<char*>(malloc(agg_data.len));
+            KUint16(agg_data.data) = pre_max_val.length();
+            memcpy(agg_data.data + kStringLenLen, pre_max_val.c_str(), pre_max_val.length());
+          }
         }
       }
     } else {
@@ -1279,25 +1295,41 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     int32_t type = schema[blk_col_idx].type;
     if (isSameType(schema[blk_col_idx], attrs_[blk_col_idx]) && block_span->HasPreAgg()) {
       // Use pre agg to calculate min
-      TSSlice pre_min;
-      ret = block_span->GetPreMin(blk_col_idx, pre_min);
-      if (ret != KStatus::SUCCESS) {
-        return KStatus::FAIL;
-      }
-      if (pre_min.data) {
-        string pre_min_val(pre_min.data, pre_min.len);
-        if (agg_data.data) {
-          string current_min({agg_data.data + kStringLenLen, agg_data.len});
-          if (current_min > pre_min_val) {
-            free(agg_data.data);
-            agg_data.data = nullptr;
-          }
+      if (!isVarLenType(type)) {
+        void* pre_min;
+        int32_t size = (blk_col_idx == 0 ? 16 : schema[blk_col_idx].size);
+        ret = block_span->GetPreMin(blk_col_idx, size, pre_min);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
         }
         if (agg_data.data == nullptr) {
-          agg_data.len = pre_min_val.length() + kStringLenLen;
-          agg_data.data = static_cast<char*>(malloc(agg_data.len));
-          KUint16(agg_data.data) = pre_min_val.length();
-          memcpy(agg_data.data + kStringLenLen, pre_min_val.c_str(), pre_min_val.length());
+          agg_data.len = size;
+          InitAggData(agg_data);
+          memcpy(agg_data.data, pre_min, size);
+        } else if (valcmp(pre_min, agg_data.data, type, size) > 0) {
+          memcpy(agg_data.data, pre_min, size);
+        }
+      } else {
+        TSSlice pre_min;
+        ret = block_span->GetVarPreMin(blk_col_idx, pre_min);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+        if (pre_min.data) {
+          string pre_min_val(pre_min.data, pre_min.len);
+          if (agg_data.data) {
+            string current_min({agg_data.data + kStringLenLen, agg_data.len});
+            if (current_min > pre_min_val) {
+              free(agg_data.data);
+              agg_data.data = nullptr;
+            }
+          }
+          if (agg_data.data == nullptr) {
+            agg_data.len = pre_min_val.length() + kStringLenLen;
+            agg_data.data = static_cast<char*>(malloc(agg_data.len));
+            KUint16(agg_data.data) = pre_min_val.length();
+            memcpy(agg_data.data + kStringLenLen, pre_min_val.c_str(), pre_min_val.length());
+          }
         }
       }
     } else {

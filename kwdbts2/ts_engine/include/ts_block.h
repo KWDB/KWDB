@@ -56,8 +56,10 @@ class TsBlock {
   virtual bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num);
   virtual KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
   virtual KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
-  virtual KStatus GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
-  virtual KStatus GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
+  virtual KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max);
+  virtual KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min);
+  virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
+  virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
 
   virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                                const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
@@ -116,8 +118,10 @@ struct TsBlockSpan {
   bool HasPreAgg();
   KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
   KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
-  KStatus GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
-  KStatus GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
+  KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max);
+  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min);
+  KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
+  KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
 
   KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
     const AttributeInfo& dest_type, const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);

@@ -304,8 +304,10 @@ class TsEntityBlock : public TsBlock {
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
   KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count) override;
   KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) override;
-  KStatus GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
-  KStatus GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
+  KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max) override;
+  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_max) override;
+  KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
+  KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
 
   KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
                        const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,

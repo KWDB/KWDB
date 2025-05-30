@@ -70,11 +70,19 @@ KStatus TsBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, b
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   return KStatus::FAIL;
 }
 
@@ -256,12 +264,20 @@ KStatus TsBlockSpan::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_su
   return block_->GetPreSum(blk_col_idx, size, pre_sum, is_overflow);
 }
 
-KStatus TsBlockSpan::GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+KStatus TsBlockSpan::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
   return block_->GetPreMax(blk_col_idx, pre_max);
 }
 
-KStatus TsBlockSpan::GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
-  return block_->GetPreMin(blk_col_idx, pre_min);
+KStatus TsBlockSpan::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+  return block_->GetPreMin(blk_col_idx, size, pre_min);
+}
+
+KStatus TsBlockSpan::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  return block_->GetVarPreMax(blk_col_idx, pre_max);
+}
+
+KStatus TsBlockSpan::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+  return block_->GetVarPreMin(blk_col_idx, pre_min);
 }
 
 KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,

@@ -780,7 +780,29 @@ KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  pre_max = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t));
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  pre_min = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t) + size);
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
   auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
   if (s != SUCCESS) {
     return s;
@@ -793,7 +815,7 @@ KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
   if (s != SUCCESS) {
     return s;
