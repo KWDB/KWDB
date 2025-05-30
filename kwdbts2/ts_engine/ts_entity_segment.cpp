@@ -754,9 +754,83 @@ void TsEntityBlock::Clear() {
   block_info_.col_block_offset.resize(n_cols_ + 1);
 }
 
-  KStatus TsEntityBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
-                                 const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                                 const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
+bool TsEntityBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
+  return 0 == begin_row_idx && row_num == n_rows_;
+}
+
+KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  count = *reinterpret_cast<uint16_t*>(col_blk.agg.data());
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  void* pre_agg_ = static_cast<void*>(col_blk.agg.data());
+  is_overflow = *static_cast<bool*>(pre_agg_ + sizeof(uint16_t) + size * 2);
+  pre_sum = pre_agg_ + sizeof(uint16_t) + size * 2 + 1;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  pre_max = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t));
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  pre_min = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t) + size);
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  void* pre_agg_ = static_cast<void*>(col_blk.agg.data());
+  pre_max.len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
+  pre_max.data = static_cast<char*>(pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2);
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+  auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+  if (s != SUCCESS) {
+    return s;
+  }
+  auto& col_blk = column_blocks_[blk_col_idx + 1];
+  void* pre_agg_ = static_cast<void*>(col_blk.agg.data());
+  uint32_t max_len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
+  pre_min.len = *static_cast<uint32_t *>(pre_agg_+ sizeof(uint16_t) + sizeof(uint32_t));
+  pre_min.data = static_cast<char*>(pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
+                                    const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+                                    const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
   if (0 == begin_row_idx && row_num == n_rows_ && isSameType(schema[blk_col_idx], dest_type) &&
       (agg_type == COUNT || agg_type == MAX || agg_type == MIN || agg_type == SUM)) {
     auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
