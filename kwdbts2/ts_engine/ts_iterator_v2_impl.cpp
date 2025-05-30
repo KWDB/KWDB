@@ -1130,13 +1130,13 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         }
         if (!is_overflow_[sum_col_idx]) {
           if (!pre_sum_is_overflow) {
-            ret = AddSumNotOverflowYet(sum_col_idx, schema[sum_col_idx].type, current, agg_data);
+            ret = AddSumNotOverflowYet(sum_col_idx, schema[blk_col_idx].type, current, agg_data);
           } else {
             ret = AddSumNotOverflowYet(sum_col_idx, DATATYPE::DOUBLE, current, agg_data);
           }
         } else {
           if (!pre_sum_is_overflow) {
-            ret = AddSumOverflow(schema[sum_col_idx].type, current, agg_data);
+            ret = AddSumOverflow(schema[blk_col_idx].type, current, agg_data);
           } else {
             ret = AddSumOverflow(DATATYPE::DOUBLE, current, agg_data);
           }
@@ -1167,13 +1167,13 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           InitSumValue(agg_data.data, schema[blk_col_idx].type);
         }
         if (!is_overflow_[sum_col_idx]) {
-          ret = AddSumNotOverflowYet(sum_col_idx, schema[sum_col_idx].type, current, agg_data);
+          ret = AddSumNotOverflowYet(sum_col_idx, schema[blk_col_idx].type, current, agg_data);
           if (ret != KStatus::SUCCESS) {
             return KStatus::FAIL;
           }
         }
         if (is_overflow_[sum_col_idx]) {
-          ret = AddSumOverflow(schema[sum_col_idx].type, current, agg_data);
+          ret = AddSumOverflow(schema[blk_col_idx].type, current, agg_data);
           if (ret != KStatus::SUCCESS) {
             return KStatus::FAIL;
           }
@@ -1188,7 +1188,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     uint32_t blk_col_idx = ts_scan_cols_[max_col_idx];
     TSSlice& agg_data = final_agg_data_[max_col_idx];
     int32_t type = schema[blk_col_idx].type;
-    if (isSameType(schema[blk_col_idx], attrs_[max_col_idx]) && block_span->HasPreAgg()) {
+    if (isSameType(schema[blk_col_idx], attrs_[blk_col_idx]) && block_span->HasPreAgg()) {
       // Use pre agg to calculate max
       TSSlice pre_max;
       ret = block_span->GetPreMax(blk_col_idx, pre_max);
@@ -1215,7 +1215,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!isVarLenType(type)) {
         char* value = nullptr;
         TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[max_col_idx], &value, bitmap);
+        auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[blk_col_idx], &value, bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1241,7 +1241,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
           TSSlice slice;
           DataFlags flag;
-          ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, attrs_[max_col_idx], flag, slice);
+          ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, attrs_[blk_col_idx], flag, slice);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("GetVarLenTypeColAddr failed.");
             return ret;
@@ -1277,7 +1277,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     uint32_t blk_col_idx = ts_scan_cols_[min_col_idx];
     TSSlice& agg_data = final_agg_data_[min_col_idx];
     int32_t type = schema[blk_col_idx].type;
-    if (isSameType(schema[blk_col_idx], attrs_[min_col_idx]) && block_span->HasPreAgg()) {
+    if (isSameType(schema[blk_col_idx], attrs_[blk_col_idx]) && block_span->HasPreAgg()) {
       // Use pre agg to calculate min
       TSSlice pre_min;
       ret = block_span->GetPreMin(blk_col_idx, pre_min);
@@ -1304,7 +1304,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!isVarLenType(type)) {
         char* value = nullptr;
         TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[min_col_idx], &value, bitmap);
+        auto s = block_span->GetFixLenColAddr(blk_col_idx, schema, attrs_[blk_col_idx], &value, bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1330,7 +1330,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
           TSSlice slice;
           DataFlags flag;
-          ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, attrs_[min_col_idx], flag, slice);
+          ret = block_span->GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, attrs_[blk_col_idx], flag, slice);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("GetVarLenTypeColAddr failed.");
             return ret;
