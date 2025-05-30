@@ -28,7 +28,7 @@ CREATE SCHEDULE
 (1 row)
 > select name from [show schedules] order by name;
             name
------------------------------
+----------------------------
   s1
   scheduled_table_compress
   scheduled_table_count
@@ -38,7 +38,7 @@ CREATE SCHEDULE
 DROP SCHEDULE 1
 > select name from [show schedules] order by name;
             name
------------------------------
+----------------------------
   scheduled_table_compress
   scheduled_table_count
   scheduled_table_vacuum
