@@ -34,7 +34,7 @@ WALBufferMgr::~WALBufferMgr() {
 
 KStatus WALBufferMgr::init(TS_LSN start_lsn) {
   // last_write_block_no: The last block number written
-  uint32_t last_write_block_no = file_mgr_->GetBlockNoFromLsn(start_lsn);
+  uint64_t last_write_block_no = file_mgr_->GetBlockNoFromLsn(start_lsn);
 
   // init new buffer_
   vector<EntryBlock*> first_block;
@@ -76,8 +76,8 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
     return SUCCESS;
   }
 
-  uint start_block = file_mgr_->GetBlockNoFromLsn(start_lsn);
-  uint end_block = file_mgr_->GetBlockNoFromLsn(end_lsn);
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(start_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(end_lsn);
 
   // Read WAL entry blocks form disk.
   std::vector<EntryBlock*> blocks;
@@ -982,7 +982,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
         return FAIL;
       }
 
-      uint32_t construct_offset = 0;
+      uint64_t construct_offset = 0;
 
       uint32_t group_id = 0;
       uint32_t entity_id = 0;
