@@ -169,8 +169,8 @@ KStatus TsBlock::GetFirstAndLastInfo(
   return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
-    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {  // NOLINT(runtime/init)
+TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow)  // NOLINT(runtime/init)
+    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow), convert_(*this) {  // NOLINT(runtime/init)
   assert(nrow_ >= 1);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }

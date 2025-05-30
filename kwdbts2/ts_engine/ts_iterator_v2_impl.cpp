@@ -1306,7 +1306,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           agg_data.len = size;
           InitAggData(agg_data);
           memcpy(agg_data.data, pre_min, size);
-        } else if (valcmp(pre_min, agg_data.data, type, size) > 0) {
+        } else if (valcmp(pre_min, agg_data.data, type, size) < 0) {
           memcpy(agg_data.data, pre_min, size);
         }
       } else {
