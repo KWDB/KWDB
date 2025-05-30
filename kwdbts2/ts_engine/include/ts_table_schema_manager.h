@@ -103,6 +103,8 @@ class TsTableSchemaManager {
 
   virtual ~TsTableSchemaManager();
 
+  bool IsSchemaDirsExist();
+
   KStatus Init(kwdbContext_p ctx);
 
   void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);

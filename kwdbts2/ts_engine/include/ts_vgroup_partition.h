@@ -19,6 +19,7 @@
 #include "ts_entity_segment.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_del_item_manager.h"
 
 namespace kwdbts {
 
@@ -29,6 +30,7 @@ class TsVGroupPartition {
 
   std::filesystem::path path_;
 
+  TsDelItemManager del_info_;
   std::unique_ptr<TsEntitySegment> entity_segment_;
   TsLastSegmentManager last_segment_mgr_;
   std::unique_ptr<KRWLatch> partition_mtx_;

@@ -30,6 +30,7 @@ TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id
       start_(start),
       end_(end),
       path_(root / GetFileName()),
+      del_info_(path_),
       last_segment_mgr_(path_) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
 }

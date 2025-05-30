@@ -506,7 +506,7 @@ KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 
 KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
                                       const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans,
-                                      uint64_t vgrp_id) {
+                                      uint64_t vgrp_id, TS_LSN* entry_lsn) {
   auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA,
                                                    primary_tag.length(), 0, 0, row_spans.size(), primary_tag.data(),
                                                    row_spans.data());
@@ -515,7 +515,11 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
     return KStatus::FAIL;
   }
   size_t log_len = DeleteLogMetricsEntry::fixed_length + row_spans.size() * sizeof(DelRowSpan) + primary_tag.length();
-  KStatus status = WriteWAL(ctx, wal_log, log_len);
+  TS_LSN cur_lsn;
+  KStatus status = WriteWAL(ctx, wal_log, log_len, cur_lsn);
+  if (entry_lsn != nullptr) {
+    *entry_lsn = cur_lsn;
+  }
 
   delete[] wal_log;
   return status;

@@ -138,11 +138,19 @@ TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
   return vgroups_[vgroup_id - 1].get();
 }
 
-KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable *meta) {
+KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
+  std::vector<RangeGroup> ranges) {
+  std::shared_ptr<TsTable> ts_table;
+  return CreateTsTable(ctx, table_id, meta, ts_table);
+}
+
+KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable *meta,
+  std::shared_ptr<TsTable>& ts_table) {
   LOG_INFO("Create TsTable %lu begin.", table_id);
   KStatus s;
-  if (tables_cache_->Get(table_id)) {
-    LOG_INFO("TsTable %lu exist.", table_id);
+  ts_table = tables_cache_->Get(table_id);
+  if (ts_table != nullptr) {
+    LOG_INFO("TsTable %lu exist. no need create again.", table_id);
     return KStatus::SUCCESS;
   }
 
@@ -164,9 +172,73 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
     return s;
   }
-  std::shared_ptr<TsTable> ts_table = std::make_shared<TsTableV2Impl>(table_schema_mgr, vgroups_);
+  ts_table = std::make_shared<TsTableV2Impl>(table_schema_mgr, vgroups_);
   tables_cache_->Put(table_id, ts_table);
   return s;
+}
+
+KStatus TSEngineV2Impl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
+                    bool create_if_not_exist, ErrorInfo& err_info, uint32_t version) {
+  ts_table = tables_cache_->Get(table_id);
+  if (ts_table == nullptr) {
+    // 1. if table exist, open table.
+    if (schema_mgr_->IsTableExist(table_id)) {
+      std::shared_ptr<TsTableSchemaManager> schema;
+      KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
+        return KStatus::FAIL;
+      }
+      auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
+      if (table.get() != nullptr) {
+        ts_table = table;
+        tables_cache_->Put(table_id, ts_table);
+      } else {
+        LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
+        return KStatus::FAIL;
+      }
+    }
+  }
+
+  if (ts_table == nullptr) {
+    if (!create_if_not_exist) {
+      LOG_ERROR("cannot found table[%lu], and cannot create it.", table_id);
+      return KStatus::FAIL;
+    }
+    // 2. if table no exist. try get schema from go level.
+    LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
+    if (!g_go_start_service) {  // unit test from c, just return falsed.
+      return KStatus::FAIL;
+    }
+    char* error;
+    size_t data_len = 0;
+    char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
+    if (error != nullptr) {
+      LOG_ERROR("getTableMetaByVersion error: %s.", error);
+      return KStatus::FAIL;
+    }
+    roachpb::CreateTsTable meta;
+    if (!meta.ParseFromString({data, data_len})) {
+      LOG_ERROR("Parse schema From String failed.");
+      return KStatus::FAIL;
+    }
+    CreateTsTable(ctx, table_id, &meta, ts_table);  // no need check result.
+    if (ts_table == nullptr) {
+      LOG_ERROR("table[%lu] create failed.", table_id);
+      return KStatus::FAIL;
+    }
+  }
+  // 3. check if table has certain version. if not found, add certain version from rocksdb.
+  if (ts_table != nullptr) {
+    if (version != 0 && ts_table->CheckAndAddSchemaVersion(ctx, table_id, version) != KStatus::SUCCESS) {
+      LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", table_id);
+      return KStatus::FAIL;
+    }
+  } else {
+    LOG_ERROR("table[%lu] open failed.", table_id);
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
@@ -618,6 +690,82 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return s;
   }
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                        HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                        uint64_t mtr_id) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
+}
+
+KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                    std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                    uint64_t mtr_id) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
+}
+
+KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id);
+}
+
+KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_grp_id,
+                            const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id);
+}
+
+// check if table is dropped from rocksdb.
+KStatus TSEngineV2Impl::DropResidualTsTable(kwdbContext_p ctx) {
+  std::vector<TSTableID> tables;
+  auto s = schema_mgr_->GetTableList(&tables);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TSEngineV2Impl::DropResidualTsTable failed.");
+    return s;
+  }
+  for (auto table_id : tables) {
+    bool is_exist = checkTableMetaExist(table_id);
+    if (!is_exist) {
+      KStatus s = DropTsTable(ctx, table_id);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("drop table [%ld] failed", table_id);
+        return s;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
+  // todo(liangbo01) to implemented.
+  return KStatus::FAIL;
 }
 
 KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {

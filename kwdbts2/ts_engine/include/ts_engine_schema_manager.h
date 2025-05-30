@@ -50,7 +50,11 @@ class TsEngineSchemaManager {
   KStatus GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
                                std::shared_ptr<MMapMetricsTable>* metric_schema);
 
+  bool IsTableExist(TSTableID tbl_id);
+
   KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr);
+
+  KStatus GetTableList(std::vector<TSTableID>* table_ids);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 

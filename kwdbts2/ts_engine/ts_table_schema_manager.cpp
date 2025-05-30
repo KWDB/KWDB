@@ -142,6 +142,10 @@ TsTableSchemaManager::~TsTableSchemaManager() {
   metric_schemas_.clear();
 }
 
+bool TsTableSchemaManager::IsSchemaDirsExist() {
+  return IsExists(metric_schema_path_) && IsExists(tag_schema_path_);
+}
+
 KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
   uint32_t max_table_version = 0;
   string real_path = schema_root_path_ + metric_schema_path_;

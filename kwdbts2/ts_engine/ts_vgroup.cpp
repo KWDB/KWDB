@@ -708,6 +708,43 @@ uint32_t TsVGroup::GetVGroupID() {
   return vgroup_id_;
 }
 
+KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag, TSEntityID e_id, uint64_t* count, uint64_t mtr_id) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  TagTuplePack* tag_pack = tb_schema_manager->GetTagTable()->GenTagPack(p_tag.data(), p_tag.size());
+  if (UNLIKELY(nullptr == tag_pack)) {
+    return KStatus::FAIL;
+  }
+  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData());
+  delete tag_pack;
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("WriteDeleteTagWAL failed.");
+    return s;
+  }
+  // todo(liangbo01) we should delete current entity metric datas.
+  TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
+
+  return s;
+}
+
+KStatus TsVGroup::DeleteData(kwdbContext_p ctx, std::string& p_tag, TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans,
+  uint64_t* count, uint64_t mtr_id) {
+  std::vector<DelRowSpan> dtp_list;
+  TS_LSN current_lsn;
+  KStatus s = wal_manager_->WriteDeleteMetricsWAL(ctx, mtr_id, p_tag, ts_spans, dtp_list, vgroup_id_, &current_lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("WriteDeleteTagWAL failed.");
+    return s;
+  }
+  // todo(liangbo01) we should delete current entity metric datas.
+
+  return s;
+}
+
 KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
   return KStatus::SUCCESS;
 }
