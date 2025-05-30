@@ -517,9 +517,9 @@ KStatus TSEngineV2Impl::TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, c
 //  s = table->CreateCheckpoint(ctx);
 //  if (s == KStatus::FAIL) {
 //    LOG_ERROR("Failed to CreateCheckpoint table %ld.", table_id)
-//#ifdef WITH_TESTS
+//  #ifdef WITH_TESTS
 //    return s;
-//#endif
+//  #endif
 //  }
 
   return KStatus::SUCCESS;
