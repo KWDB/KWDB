@@ -192,5 +192,3 @@ DROP TABLE
 ------------------------------------------------+------+---------+-----------
   SELECT avg(a) FROM (SELECT tag1 AS a FROM t1) |    1 |       1 |        1
 (1 row)
-> drop database ts_db cascade;
-DROP DATABASE
