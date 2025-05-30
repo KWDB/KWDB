@@ -437,6 +437,11 @@ func (c *CustomFuncs) ChangeTSTableScanTypeForProject(projectExpr memo.RelExpr) 
 func (c *CustomFuncs) CheckForLastRowOpt(
 	tsScan *memo.TSScanPrivate, aggs memo.AggregationsExpr, private *memo.GroupingPrivate,
 ) bool {
+	/*
+	 * TODO(Yongyan): We doesn't implement last row optimization yet, so disable it for now.
+	 * We probably don't need this optimization anymore since the general agg optimization
+	 * which can also boost last row optimization has been implemented.
+	 */
 	if c.f.evalCtx.Kwengineversion == "2" {
 		return false
 	}
