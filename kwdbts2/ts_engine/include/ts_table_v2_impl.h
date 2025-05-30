@@ -52,7 +52,7 @@ class TsTableV2Impl : public TsTable {
 
   KStatus PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
-                  DedupResult* dedup_result, const DedupRule& dedup_rule);
+                  DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal);
 
   KStatus GetTagIterator(kwdbContext_p ctx,
                           std::vector<uint32_t> scan_tags,

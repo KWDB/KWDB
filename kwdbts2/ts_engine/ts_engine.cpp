@@ -285,7 +285,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
     if (new_tag) {
-      if (options_.wal_level != WALMode::OFF) {
+      if (options_.wal_level != WALMode::OFF && write_wal) {
         // no need lock, lock inside.
         s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i], vgroup_id);
         if (s == KStatus::FAIL) {
@@ -305,7 +305,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     //                       mtr_id, reinterpret_cast<uint16_t*>(&entity_id),
     //                       inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule));
     s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, p, entity_id, mtr_id,
-            inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule));
+            inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put data failed. table[%lu].", table_id);
       return s;
@@ -565,13 +565,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   rewrite.clear();
 
   // 5. trig all vgroup flush
-  for (const auto &vgrp : vgroups_) {
-    s = vgrp->Flush();
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to flush metric file.")
-      return s;
-    }
-  }
+  // for (const auto &vgrp : vgroups_) {
+  //   s = vgrp->Flush();
+  //   if (s == KStatus::FAIL) {
+  //     LOG_ERROR("Failed to flush metric file.")
+  //     return s;
+  //   }
+  // }
 
   // 6.write EndWAL to chk file
   TS_LSN lsn;

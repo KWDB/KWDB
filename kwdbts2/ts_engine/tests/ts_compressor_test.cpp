@@ -14,16 +14,28 @@
 
 template <class Compressor>
 class TimestampCompressorTester : public ::testing::Test {};
-using AllTsTypes = ::testing::Types<kwdbts::GorillaInt, kwdbts::GorillaIntV2>;
+using AllTsTypes = ::testing::Types<kwdbts::GorillaInt, kwdbts::GorillaIntV2<int64_t>,
+                                    kwdbts::GorillaIntV2<int32_t>>;
+template <class T>
+struct TargetType {
+  using Type = int64_t;
+};
+
+template <>
+struct TargetType<kwdbts::GorillaIntV2<int32_t>> {
+  using Type = int32_t;
+};
+
 TYPED_TEST_CASE(TimestampCompressorTester, AllTsTypes);
 TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
   int count = 8000;
   int start = 0x12345678;
+  using dtype = typename TargetType<TypeParam>::Type;
   const kwdbts::CompressorImpl &comp = TypeParam::GetInstance();
   {
-    std::vector<int64_t> ts(count);
+    std::vector<dtype> ts(count);
     std::iota(ts.begin(), ts.end(), 1741851161);
-    TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * 8};
+    TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
     std::string out;
     ASSERT_TRUE(comp.Compress(data, count, &out));
@@ -33,15 +45,15 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
     std::string buf;
     ASSERT_TRUE(comp.Decompress(compressed, count, &buf));
 
-    ASSERT_EQ(buf.size(), count * 8);
-    int64_t *p_ts = reinterpret_cast<int64_t *>(buf.data());
+    ASSERT_EQ(buf.size(), count * sizeof(dtype));
+    dtype *p_ts = reinterpret_cast<dtype *>(buf.data());
     for (int i = 0; i < count; ++i) {
       ASSERT_EQ(ts[i], p_ts[i]) << "IDX: " << i;
     }
   }
   {
     count = 8000;
-    std::vector<int64_t> ts(count);
+    std::vector<dtype> ts(count);
     ts[0] = start;
     std::default_random_engine rng{0};
     std::normal_distribution<double> d(0, 2000);
@@ -49,7 +61,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
       ts[i] = ts[i - 1] + d(rng);
     }
 
-    TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * 8};
+    TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
     std::string out;
     ASSERT_TRUE(comp.Compress(data, count, &out));
@@ -59,8 +71,8 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
     std::string buf;
     ASSERT_TRUE(comp.Decompress(compressed, count, &buf));
 
-    ASSERT_EQ(buf.size(), count * 8);
-    int64_t *p_ts = reinterpret_cast<int64_t *>(buf.data());
+    ASSERT_EQ(buf.size(), count * sizeof(dtype));
+    dtype *p_ts = reinterpret_cast<dtype *>(buf.data());
     for (int i = 0; i < count; ++i) {
       ASSERT_EQ(ts[i], p_ts[i]) << "IDX: " << i;
     }
@@ -68,11 +80,12 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
 }
 
 TYPED_TEST(TimestampCompressorTester, CompressDecompressOneRow) {
+  using dtype = typename TargetType<TypeParam>::Type;
   int start = 0x12345678;
   const kwdbts::CompressorImpl &comp = TypeParam::GetInstance();
-  std::vector<int64_t> ts(1);
+  std::vector<dtype> ts(1);
   ts[0] = start;
-  TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * 8};
+  TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
   std::string out;
   ASSERT_FALSE(comp.Compress(data, 1, &out));

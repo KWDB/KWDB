@@ -58,6 +58,42 @@ KStatus TsBlock::GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t
   return KStatus::SUCCESS;
 }
 
+bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
+  return false;
+}
+
+KStatus TsBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+  return KStatus::FAIL;
+}
+
+KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
+                                                const std::vector<AttributeInfo>& schema,
+                                                std::vector<k_uint32>& first_col_idxs,
+                                                std::vector<k_uint32>& last_col_idxs,
+                                                std::vector<AggCandidate>& candidates) {
+  return KStatus::SUCCESS;
+}
+
 KStatus TsBlock::GetFirstAndLastInfo(
     uint32_t begin_row_idx,
     uint32_t row_num,
@@ -133,10 +169,10 @@ KStatus TsBlock::GetFirstAndLastInfo(
   return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-            std::shared_ptr<TsBlock> block, int start, int nrow_)  // NOLINT(runtime/init)
-    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow_), convert_(*this) {  // NOLINT(runtime/init)
+TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow)  // NOLINT(runtime/init)
+    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow), convert_(*this) {  // NOLINT(runtime/init)
   assert(nrow_ >= 1);
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
 bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
@@ -183,6 +219,14 @@ timestamp64 TsBlockSpan::GetTS(uint32_t row_idx) const {
   return block_->GetTS(start_row_ + row_idx);
 }
 
+timestamp64 TsBlockSpan::GetFirstTS() const {
+  return block_->GetTS(start_row_);
+}
+
+timestamp64 TsBlockSpan::GetLastTS() const {
+  return block_->GetTS(start_row_ + nrow_ - 1);
+}
+
 uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
   return block_->GetLSNAddr(start_row_ + row_idx);
 }
@@ -190,6 +234,10 @@ uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
 void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
   *min_ts = block_->GetTS(start_row_);
   *max_ts = block_->GetTS(start_row_ + nrow_ - 1);
+}
+
+KStatus TsBlockSpan::GetColBitmap(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) {
+  return convert_.GetColBitmap(blk_col_idx, schema, bitmap);
 }
 
 // dest type is fixed len datatype.
@@ -204,10 +252,46 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx
   return convert_.GetVarLenTypeColAddr(row_idx, blk_col_idx, schema, dest_type, flag, data);
 }
 
+bool TsBlockSpan::HasPreAgg() {
+  return has_pre_agg_;
+}
+
+KStatus TsBlockSpan::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+  return block_->GetPreCount(blk_col_idx, count);
+}
+
+KStatus TsBlockSpan::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+  return block_->GetPreSum(blk_col_idx, size, pre_sum, is_overflow);
+}
+
+KStatus TsBlockSpan::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
+  return block_->GetPreMax(blk_col_idx, pre_max);
+}
+
+KStatus TsBlockSpan::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+  return block_->GetPreMin(blk_col_idx, size, pre_min);
+}
+
+KStatus TsBlockSpan::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+  return block_->GetVarPreMax(blk_col_idx, pre_max);
+}
+
+KStatus TsBlockSpan::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+  return block_->GetVarPreMin(blk_col_idx, pre_min);
+}
+
 KStatus TsBlockSpan::GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
- const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
+ const AttributeInfo& dest_type, const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) {
   return block_->GetAggResult(
     start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, agg_data, is_overflow);
+}
+
+KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
+                                                const std::vector<AttributeInfo>& schema,
+                                                std::vector<k_uint32>& first_col_idxs,
+                                                std::vector<k_uint32>& last_col_idxs,
+                                                std::vector<AggCandidate>& candidates) {
+  return block_->UpdateFirstLastCandidates(ts_scan_cols, schema, first_col_idxs, last_col_idxs, candidates);
 }
 
 KStatus TsBlockSpan::GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
@@ -216,26 +300,17 @@ KStatus TsBlockSpan::GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector
     start_row_, nrow_, blk_col_idx, schema, dest_type, agg_type, out_ts, out_row_idx);
 }
 
-void TsBlockSpan::SplitFront(int row_num, TsBlockSpan* front_span) {
+void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
-  front_span->block_ = block_;
-  front_span->entity_id_ = entity_id_;
-  front_span->start_row_ = start_row_;
-  front_span->nrow_ = row_num;
-  front_span->convert_ = TSBlkDataTypeConvert(*front_span);
-  convert_ = TSBlkDataTypeConvert(*this);
+  front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
 }
 
-void TsBlockSpan::SplitBack(int row_num, TsBlockSpan* back_span) {
+void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
-  back_span->block_ = block_;
-  back_span->entity_id_ = entity_id_;
-  back_span->start_row_ = start_row_ + nrow_ - row_num;
-  back_span->nrow_ = row_num;
-  back_span->convert_ = TSBlkDataTypeConvert(*back_span);
+  back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num);
   convert_ = TSBlkDataTypeConvert(*this);
   // change current span info
   nrow_ -= row_num;
