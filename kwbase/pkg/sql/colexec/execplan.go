@@ -842,6 +842,11 @@ func NewColOperator(
 					ctx, flowCtx, hashJoinerMemMonitorName,
 				)
 			}
+			if len(core.HashJoiner.LeftEqColumns) == 0 && core.HashJoiner.OnExpr.Empty() {
+				err := errors.New("cannot use col exec when cross join")
+				log.VEventf(ctx, 1, "%v\n", err.Error())
+				return result, err
+			}
 			// It is valid for empty set of equality columns to be considered as
 			// "key" (for example, the input has at most 1 row). However, hash
 			// joiner, in order to handle NULL values correctly, needs to think
