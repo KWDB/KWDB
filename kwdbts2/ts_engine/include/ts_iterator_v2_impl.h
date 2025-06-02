@@ -143,6 +143,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                           TSSlice& agg_data);
 
   std::vector<Sumfunctype> scan_agg_types_;
+  std::vector<timestamp64> last_ts_points_;
 
   std::vector<TSSlice> final_agg_data_;
   std::vector<AggCandidate> candidates_;

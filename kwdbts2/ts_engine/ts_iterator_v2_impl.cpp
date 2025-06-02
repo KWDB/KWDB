@@ -408,6 +408,7 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
                                                                             kw_scan_cols, ts_scan_cols, table_schema_mgr,
                                                                             table_version),
                           scan_agg_types_(scan_agg_types) {
+  last_ts_points_ = ts_points;
 }
 
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
@@ -435,9 +436,13 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS:
-        if (last_map_.find(ts_scan_cols_[i]) == last_map_.end()) {
+        if (last_ts_points_.empty()) {
+          if (last_map_.find(ts_scan_cols_[i]) == last_map_.end()) {
+            last_col_idxs_.push_back(i);
+            last_map_[ts_scan_cols_[i]] = i;
+          }
+        } else {
           last_col_idxs_.push_back(i);
-          last_map_[ts_scan_cols_[i]] = i;
         }
         break;
       case Sumfunctype::FIRST:
@@ -637,7 +642,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     const auto& c = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
                     candidates_[first_map_[ts_scan_cols_[i]]] :
                       ((agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
-                      candidates_[last_map_[ts_scan_cols_[i]]] :
+                      candidates_[last_ts_points_.empty() ? last_map_[ts_scan_cols_[i]] : i] :
                         ((agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
                           first_row_candidate_ : last_row_candidate_));
     const k_uint32 col_idx = ts_scan_cols_[i];
@@ -706,7 +711,6 @@ inline void TsAggIteratorV2Impl::UpdateTsSpans() {
       }
 
       if (ts_span_idx < ts_spans_.size()) {
-        int64_t end = ts_spans_[ts_span_idx].end;
         if (ts_spans_[ts_span_idx].begin < max_first_ts_) {
           if (ts_spans_[ts_span_idx].end > min_last_ts_) {
             ts_spans_.insert(ts_spans_.begin() + ts_span_idx + 1, {max_first_ts_, ts_spans_[ts_span_idx].end});
@@ -1016,8 +1020,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
   // Aggregate first col
   if (first_col_idxs_.size() > 0 && block_span->GetFirstTS() < max_first_ts_) {
-    // update max_first_ts_ at the same time
-    max_first_ts_ = INT64_MIN;
+    if (first_last_only_agg_) {
+      // update max_first_ts_ at the same time if it's first/last only agg
+      max_first_ts_ = INT64_MIN;
+    }
     for (auto first_col_idx : first_col_idxs_) {
       AggCandidate& candidate = candidates_[first_col_idx];
       if (candidate.blk_span && candidate.ts <= block_span->GetFirstTS()) {
@@ -1042,14 +1048,19 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           }
         }
       }
-      max_first_ts_ = max(max_first_ts_, candidate.ts);
+      if (first_last_only_agg_) {
+        // update max_first_ts_ at the same time if it's first/last only agg
+        max_first_ts_ = max(max_first_ts_, candidate.ts);
+      }
     }
   }
 
   // Aggregate last col
   if (last_col_idxs_.size() > 0 && block_span->GetLastTS() > min_last_ts_) {
-    // update min_last_ts_ at the same time
-    min_last_ts_ = INT64_MAX;
+    if (first_last_only_agg_) {
+      // update max_first_ts_ at the same time if it's first/last only agg
+      min_last_ts_ = INT64_MAX;
+    }
     for (auto last_col_idx : last_col_idxs_) {
       AggCandidate& candidate = candidates_[last_col_idx];
       if (candidate.blk_span && candidate.ts >= block_span->GetLastTS()) {
@@ -1066,7 +1077,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             continue;
           }
           int64_t ts = block_span->GetTS(row_idx);
-          if (!candidate.blk_span || candidate.ts < ts) {
+          if ((last_ts_points_.empty() || ts <= last_ts_points_[last_col_idx])
+              && (!candidate.blk_span || candidate.ts < ts)) {
             candidate.blk_span = block_span;
             candidate.ts = ts;
             candidate.row_idx = row_idx;
@@ -1074,7 +1086,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           }
         }
       }
-      min_last_ts_ = min(min_last_ts_, candidate.ts);
+      if (first_last_only_agg_) {
+        // update max_first_ts_ at the same time if it's first/last only agg
+        min_last_ts_ = min(min_last_ts_, candidate.ts);
+      }
     }
   }
 
