@@ -66,6 +66,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus ScanPartitionBlockSpans();
   KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
                               vector<AttributeInfo>& valid_schema);
+  void UpdateTsSpans(timestamp64 ts);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -91,7 +92,7 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  KStatus NextBlockSpan(ResultSet* res, k_uint32* count);
+  KStatus NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts);
 };
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {

@@ -39,6 +39,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 }
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
+  is_reversed_ = is_reversed;
   KStatus ret;
   ret = table_schema_mgr_->GetColumnsIncludeDropped(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {
@@ -70,6 +71,32 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
     }
   }
   return KStatus::SUCCESS;
+}
+
+void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
+  if (!is_reversed_) {
+    int i = ts_spans_.size() - 1;
+    while (i >= 0 && ts_spans_[i].begin > ts) {
+      --i;
+    }
+    if (i >= 0) {
+      ts_spans_[i].end = min(ts_spans_[i].end, ts);
+    }
+    if (i < ts_spans_.size() - 1) {
+      ts_spans_.erase(ts_spans_.begin() + i + 1, ts_spans_.end());
+    }
+  } else {
+    int i = 0;
+    while (i < ts_spans_.size() && ts_spans_[i].end < ts) {
+      ++i;
+    }
+    if (i < ts_spans_.size()) {
+      ts_spans_[i].begin = max(ts_spans_[i].begin, ts);
+    }
+    if (i > 0) {
+      ts_spans_.erase(ts_spans_.begin(), ts_spans_.begin() + i - 1);
+    }
+  }
 }
 
 KStatus TsStorageIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
@@ -294,9 +321,14 @@ TsRawDataIteratorV2Impl::TsRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
 TsRawDataIteratorV2Impl::~TsRawDataIteratorV2Impl() {
 }
 
-inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count) {
+inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts) {
   shared_ptr<TsBlockSpan> ts_block = ts_block_spans_.front();
   ts_block_spans_.pop_front();
+  if (!is_reversed_ && ts_block->GetFirstTS() > ts
+    || is_reversed_ && ts_block->GetLastTS() < ts) {
+    *count = 0;
+    return KStatus::SUCCESS;
+  }
   return ConvertBlockSpanToResultSet(ts_block, res, count);
 }
 
@@ -314,10 +346,11 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
       }
       cur_partition_index_ = 0;
     }
+    UpdateTsSpans(ts);
     ScanPartitionBlockSpans();
   }
   // Return one block span data each time.
-  ret = NextBlockSpan(res, count);
+  ret = NextBlockSpan(res, count, ts);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for entity: %d, cur_partition_index_: %d.",
                 entity_ids_[cur_entity_index_], cur_partition_index_);
@@ -355,7 +388,7 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
       block_span_sorted_iterator_ = nullptr;
     } else {
       // sort the block span data
-      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
+      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_);
       ret = block_span_sorted_iterator_->Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
@@ -392,11 +425,18 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         *is_finished = true;
         return KStatus::SUCCESS;
       }
+      UpdateTsSpans(ts);
       ScanAndSortEntityData();
     }
   } while (is_done);
 
-  return ConvertBlockSpanToResultSet(block_span, res, count);
+  if (!is_reversed_ && block_span->GetFirstTS() > ts
+      || is_reversed_ && block_span->GetLastTS() < ts) {
+    *count = 0;
+    return KStatus::SUCCESS;
+  } else {
+    return ConvertBlockSpanToResultSet(block_span, res, count);
+  }
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
@@ -529,6 +569,8 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   if (has_last_row_col_) {
     last_row_candidate_.blk_span = nullptr;
   }
+
+  TsStorageIteratorV2Impl::UpdateTsSpans(ts);
 
   KStatus ret;
   ret = Aggregate();
