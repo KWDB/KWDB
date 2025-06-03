@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
@@ -31,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/pkg/errors"
 )
 
@@ -50,7 +52,6 @@ type CurrentRange struct {
 	RangeSize float64
 	StartKey  roachpb.RKey
 	EndKey    roachpb.RKey
-	NumRepl   int32
 }
 
 // RebalancedPlan means migration plan
@@ -158,9 +159,14 @@ func BalanceReplica(
 	var ranges []CurrentRange
 	var relocateTargets []jobspb.RelocateTargets
 	for _, tableAndNum := range tables {
-		ranges, err = getTableRanges(ctx, execCfg, tableAndNum.id, tableAndNum.hashNum, len(nodes))
+		var numRepl int
+		ranges, numRepl, err = getTableRanges(ctx, execCfg, tableAndNum.id, tableAndNum.hashNum, len(nodes))
 		if err != nil {
 			return err
+		}
+		if len(ranges) < 1 {
+			// no need to balance the table
+			continue
 		}
 		// assign nodes replicaCount
 		var nodeReplica = make(map[roachpb.NodeID]int, len(nodes))
@@ -182,7 +188,7 @@ func BalanceReplica(
 		}
 		// todo(qzy): 1/3 replicas the most?
 		for i := 0; i < len(initialState.Ranges); i++ {
-			plan, score := greedyFindBestPlan(initialState)
+			plan, score := greedyFindBestPlan(initialState, numRepl)
 			if plan.RangeID == 0 {
 				break
 			}
@@ -194,6 +200,9 @@ func BalanceReplica(
 
 		// alter zone config
 		for _, r := range initialState.Ranges {
+			if numRepl < len(r.Replicas) {
+				r.Replicas = getRandomNTargets(r.Replicas, r.Lease, numRepl)
+			}
 			var targets []roachpb.ReplicationTarget
 			for _, id := range r.Replicas {
 				targets = append(targets, roachpb.ReplicationTarget{
@@ -208,7 +217,7 @@ func BalanceReplica(
 				EndKey:   r.EndKey,
 				Targets:  targets,
 				PreLease: r.Lease,
-				NumRepl:  r.NumRepl,
+				NumRepl:  int32(numRepl),
 			})
 			if err != nil {
 				return err
@@ -233,6 +242,31 @@ func BalanceReplica(
 	}
 	log.Infof(ctx, "replica rebalance job %v start with details %v", *j.ID(), rebalanceDetails)
 	return nil
+}
+
+func getRandomNTargets(targets []roachpb.NodeID, lease roachpb.NodeID, num int) []roachpb.NodeID {
+	rand.Seed(timeutil.Now().UnixNano())
+
+	n := len(targets)
+	if num <= 0 || n == 0 {
+		return nil
+	}
+	if num >= n {
+		return targets
+	}
+	// copy
+	tmp := make([]roachpb.NodeID, n)
+	copy(tmp, targets)
+
+	// select random targets
+	for i := 0; i < num; i++ {
+		r := rand.Intn(n-i) + i
+		tmp[i], tmp[r] = tmp[r], tmp[i]
+	}
+	if !inReplica(tmp, lease) {
+		tmp[0] = lease
+	}
+	return tmp[:num]
 }
 
 func rebalanceLeaseHolder(state clusterState) clusterState {
@@ -289,15 +323,15 @@ func getBestRangeLease(
 }
 
 // find the best plan greedily
-func greedyFindBestPlan(state clusterState) (RebalancedPlan, float64) {
-	bestScore := evaluateBalancePlan(state, RebalancedPlan{})
+func greedyFindBestPlan(state clusterState, numRepl int) (RebalancedPlan, float64) {
+	bestScore := evaluateBalancePlan(state, RebalancedPlan{}, numRepl)
 
 	plans := generateOneStepBalancePlans(state)
 
 	var bestMigration RebalancedPlan
 
 	for _, plan := range plans {
-		score := evaluateBalancePlan(state, plan /*, currentBalance*/)
+		score := evaluateBalancePlan(state, plan, numRepl /*, currentBalance*/)
 		if score > bestScore {
 			bestScore = score
 			bestMigration = plan
@@ -314,12 +348,12 @@ const (
 )
 
 // evaluateBalancePlan evaluate the score of the plan
-func evaluateBalancePlan(state clusterState, p RebalancedPlan) float64 {
+func evaluateBalancePlan(state clusterState, p RebalancedPlan, numRepl int) float64 {
 	// apply the plan
 	newState := applyBalancePlan(state, p)
 
 	// calculate the different scores
-	replicaScore := calculateReplicaBalance(newState)
+	replicaScore := calculateReplicaBalance(newState, numRepl)
 	diskScore := calculateDiskUsageBalance(newState)
 
 	maxData := 0.0
@@ -346,7 +380,6 @@ func deepCopyClusterState(state clusterState) clusterState {
 		newState.Ranges[i].RangeSize = r.RangeSize
 		newState.Ranges[i].StartKey = r.StartKey
 		newState.Ranges[i].EndKey = r.EndKey
-		newState.Ranges[i].NumRepl = r.NumRepl
 		// deep copy Replicas slice
 		newState.Ranges[i].Replicas = make([]roachpb.NodeID, len(r.Replicas))
 		copy(newState.Ranges[i].Replicas, r.Replicas)
@@ -395,8 +428,9 @@ func applyBalancePlan(state clusterState, p RebalancedPlan) clusterState {
 
 func getTableRanges(
 	ctx context.Context, exec *ExecutorConfig, tableID sqlbase.ID, hashNum uint64, nodeNum int,
-) ([]CurrentRange, error) {
+) ([]CurrentRange, int, error) {
 	var curRanges []CurrentRange
+	var numRepl = 3
 	if err := exec.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		ranges, err := ScanMetaKVs(ctx, txn, roachpb.Span{
 			Key:    sqlbase.MakeTsRangeKey(tableID, 0, math.MinInt64, hashNum),
@@ -444,6 +478,7 @@ func getTableRanges(
 				return errors.Errorf("available nodes is not enough for table %d range %d with "+
 					"num_replicas = %d", desc.TableId, desc.TableId, numReplicas)
 			}
+
 			curRanges = append(curRanges, CurrentRange{
 				RangeID:   desc.RangeID,
 				Replicas:  replicas,
@@ -451,14 +486,14 @@ func getTableRanges(
 				StartKey:  desc.StartKey,
 				EndKey:    desc.EndKey,
 				Lease:     lease.Replica.NodeID,
-				NumRepl:   numReplicas,
 			})
+			numRepl = int(numReplicas)
 		}
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return curRanges, nil
+	return curRanges, numRepl, nil
 }
 
 // generate all plans
@@ -496,7 +531,7 @@ func inReplica(replicas []roachpb.NodeID, node roachpb.NodeID) bool {
 }
 
 // calculateReplicaBalance calculate the score replica
-func calculateReplicaBalance(state clusterState) float64 {
+func calculateReplicaBalance(state clusterState, numRepl int) float64 {
 	nodes, ranges := state.Nodes, state.Ranges
 	// get replica num
 	var nodeReplica = make(map[roachpb.NodeID]int, len(nodes))
@@ -509,12 +544,12 @@ func calculateReplicaBalance(state clusterState) float64 {
 		}
 	}
 
-	sum := 3 * len(ranges)
+	sum := numRepl * len(ranges)
 	avg := float64(sum) / float64(len(nodes))
 
 	variance := 0.0
-	for _, count := range nodeReplica {
-		variance += math.Pow(float64(count)-avg, 2)
+	for _, countNum := range nodeReplica {
+		variance += math.Pow(float64(countNum)-avg, 2)
 	}
 	variance /= float64(len(nodeReplica))
 
@@ -655,11 +690,15 @@ func (r *replicaRebalanceResumer) Resume(
 
 		for _, target := range tableTarget {
 			// alter partition set configure zone
-			stmt2 := fmt.Sprintf(`ALTER PARTITION rebalance_replica%d OF TABLE %s
-				CONFIGURE ZONE USING lease_preferences='[[+region=%s]]', 
-				constraints='{"+region=%s":1, "+region=%s":1, "+region=%s":1}', num_replicas=%d;`,
-				target.RangeID, tableName, nodesRegion[target.PreLease], nodesRegion[target.Targets[0].NodeID],
-				nodesRegion[target.Targets[1].NodeID], nodesRegion[target.Targets[2].NodeID], target.NumRepl)
+			var constraints []string
+			for _, t := range target.Targets {
+				constraints = append(constraints,
+					fmt.Sprintf("\"+region=%s\":1", nodesRegion[t.NodeID]))
+			}
+			stmt2 := fmt.Sprintf(`ALTER PARTITION rebalance_replica%d OF TABLE %s CONFIGURE ZONE
+				USING lease_preferences='[[+region=%s]]', constraints='{%s}', num_replicas=%d;`,
+				target.RangeID, tableName, nodesRegion[target.PreLease],
+				strings.Join(constraints, ","), target.NumRepl)
 			log.Infof(ctx, "alter partition with stmt %s", stmt2)
 			_, err = p.ExecCfg().InternalExecutor.Exec(ctx, "alter-partition", nil, stmt2)
 			if err != nil {
