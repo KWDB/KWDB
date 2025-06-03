@@ -506,21 +506,24 @@ KStatus TSEngineV2Impl::TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, c
   std::shared_ptr<TsTable> table;
   KStatus s;
 
-  tsx_manager_sys_->TSxBegin(ctx, transaction_id);
+  s = tsx_manager_sys_->TSxBegin(ctx, transaction_id);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxBegin failed")
+    return s;
+  }
+  s = GetTsTable(ctx, table_id, table);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxBegin failed, The target table is not available, table id: %lu", table_id)
+    return s;
+  }
 
-//  s = GetTsTable(ctx, table_id, table);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("TSxBegin failed, The target table is not available, table id: %lu", table_id)
-//    return s;
-//  }
-
-//  s = table->CreateCheckpoint(ctx);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("Failed to CreateCheckpoint table %ld.", table_id)
-//  #ifdef WITH_TESTS
-//    return s;
-//  #endif
-//  }
+  s = CreateCheckpoint(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to CreateCheckpoint.")
+  #ifdef WITH_TESTS
+    return s;
+  #endif
+  }
 
   return KStatus::SUCCESS;
 }
@@ -536,19 +539,18 @@ KStatus TSEngineV2Impl::TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, 
       return KStatus::FAIL;
     }
   }
-  // todo need interface to TSxClean.
-//
-//  s = GetTsTable(ctx, table_id, table);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("TSxCommit failed, The target table is not available, table id: %lu", table_id)
-//    return s;
-//  }
-//
-//  s = table->TSxClean(ctx);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("TSxCommit failed, Failed to clean the TS transaction, table id: %lu", table->GetTableId())
-//    return s;
-//  }
+
+  s = GetTsTable(ctx, table_id, table);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxCommit failed, The target table is not available, table id: %lu", table_id)
+    return s;
+  }
+
+  s = table->TSxClean(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxCommit failed, Failed to clean the TS transaction, table id: %lu", table->GetTableId())
+    return s;
+  }
 
   if (checkpoint(ctx) == KStatus::FAIL) {
     LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)

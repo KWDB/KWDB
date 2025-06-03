@@ -236,6 +236,12 @@ KStatus TsTableV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t tr
     return SUCCESS;
 }
 
+
+KStatus TsTableV2Impl::TSxClean(kwdbContext_p ctx) {
+  table_schema_mgr_->GetTagTable()->GetTagTableVersionManager()->SyncCurrentTableVersion();
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                     const uint32_t new_version, const uint64_t index_id) {
     LOG_INFO("DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",

@@ -104,6 +104,13 @@ class TsTableV2Impl : public TsTable {
                                const uint32_t cur_version, const uint32_t new_version,
                                const std::vector<uint32_t/* tag column id*/>&) override;
 
+  /**
+    * @brief clean ts table
+    *
+    * @return KStatus
+    */
+  virtual KStatus TSxClean(kwdbContext_p ctx);
+
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                              const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
 
