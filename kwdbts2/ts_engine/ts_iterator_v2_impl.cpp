@@ -145,9 +145,10 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
     return KStatus::FAIL;
   }
 
-  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    if (!is_reversed_ && ts_partitions_[cur_partition_index_].ts_partition_range.begin > ts
-        || is_reversed_ && ts_partitions_[cur_partition_index_].ts_partition_range.end < ts) {
+  for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    if (ts != INVALID_TS
+        && (!is_reversed_ && ts_partitions_[cur_partition_index_].ts_partition_range.begin > ts
+            || is_reversed_ && ts_partitions_[cur_partition_index_].ts_partition_range.end < ts)) {
       continue;
     }
     ret = AddLastSegmentBlockSpans();
@@ -302,8 +303,9 @@ TsRawDataIteratorV2Impl::~TsRawDataIteratorV2Impl() {
 inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts) {
   shared_ptr<TsBlockSpan> ts_block = ts_block_spans_.front();
   ts_block_spans_.pop_front();
-  if (!is_reversed_ && ts_block->GetFirstTS() > ts
-    || is_reversed_ && ts_block->GetLastTS() < ts) {
+  if (ts != INVALID_TS
+      && (!is_reversed_ && ts_block->GetFirstTS() > ts
+          || is_reversed_ && ts_block->GetLastTS() < ts)) {
     *count = 0;
     return KStatus::SUCCESS;
   }
@@ -365,7 +367,7 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
       block_span_sorted_iterator_ = nullptr;
     } else {
       // sort the block span data
-      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_);
+      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
       ret = block_span_sorted_iterator_->Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
@@ -393,7 +395,6 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       ++cur_entity_index_;
       if (cur_entity_index_ >= entity_ids_.size()) {
         // All entities are scanned.
-        *count = 0;
         *is_finished = true;
         return KStatus::SUCCESS;
       }
@@ -401,9 +402,16 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
     }
   } while (is_done);
 
-  if (!is_reversed_ && block_span->GetFirstTS() > ts
-      || is_reversed_ && block_span->GetLastTS() < ts) {
-    *count = 0;
+  if (ts != INVALID_TS
+      && (!is_reversed_ && block_span->GetFirstTS() > ts
+          || is_reversed_ && block_span->GetLastTS() < ts)) {
+    ++cur_entity_index_;
+    if (cur_entity_index_ >= entity_ids_.size()) {
+      // All entities are scanned.
+      *is_finished = true;
+    } else {
+      ScanAndSortEntityData(ts);
+    }
     return KStatus::SUCCESS;
   } else {
     return ConvertBlockSpanToResultSet(block_span, res, count);
