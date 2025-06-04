@@ -106,11 +106,40 @@ inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   return KStatus::SUCCESS;
 }
 
+inline void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
+  if (ts != INVALID_TS && !ts_spans_.empty()) {
+    if (!is_reversed_) {
+      int i = ts_spans_.size() - 1;
+      while (i >= 0 && ts_spans_[i].begin > ts) {
+        --i;
+      }
+      if (i >= 0) {
+        ts_spans_[i].end = min(ts_spans_[i].end, ts);
+      }
+      if (i < ts_spans_.size() - 1) {
+        ts_spans_.erase(ts_spans_.begin() + (i + 1), ts_spans_.end());
+      }
+    } else {
+      int i = 0;
+      while (i < ts_spans_.size() && ts_spans_[i].end < ts) {
+        ++i;
+      }
+      if (i < ts_spans_.size()) {
+        ts_spans_[i].begin = max(ts_spans_[i].begin, ts);
+      }
+      if (i > 0) {
+        ts_spans_.erase(ts_spans_.begin(), ts_spans_.begin() + (i - 1));
+      }
+    }
+  }
+}
+
 inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts) {
   return ts != INVALID_TS && (!is_reversed_ && begin_ts > ts || is_reversed_ && end_ts < ts);
 }
 
 KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans(timestamp64 ts) {
+  UpdateTsSpans(ts);
   KStatus ret;
   if (cur_partition_index_ == 0) {
     // Scan memory segment while scanning first parition.
@@ -146,6 +175,7 @@ KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans(timestamp64 ts) {
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   ts_block_spans_.clear();
+  UpdateTsSpans(ts);
   KStatus ret;
   ret = AddMemSegmentBlockSpans();
   if (ret != KStatus::SUCCESS) {
