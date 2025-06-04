@@ -196,6 +196,9 @@ class TsTableSchemaManager {
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg);
 
+  KStatus UndoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                     uint32_t cur_version, uint32_t new_version);
+
   /**
    * @brief Gets the data type of table first column.
    *

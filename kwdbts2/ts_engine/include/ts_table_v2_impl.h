@@ -119,6 +119,9 @@ class TsTableV2Impl : public TsTable {
   KStatus UndoDropIndex(kwdbContext_p ctx, LogEntry* log) override;
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) override;
+
+  KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
+    uint32_t new_version) override;
 };
 
 }  // namespace kwdbts

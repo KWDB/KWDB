@@ -185,6 +185,11 @@ TsTableV2Impl::AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDB
   return table_schema_mgr_->AlterTable(ctx, alter_type, column, cur_version, new_version, msg);
 }
 
+KStatus TsTableV2Impl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+      uint32_t cur_version, uint32_t new_version) {
+  return table_schema_mgr_->UndoAlterTable(ctx, alter_type, column, cur_version, new_version);
+}
+
 KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
   if (version == GetCurrentTableVersion()) {

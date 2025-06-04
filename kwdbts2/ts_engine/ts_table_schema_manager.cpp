@@ -125,6 +125,36 @@ KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type
   return s;
 }
 
+KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                       uint32_t cur_version, uint32_t new_version) {
+  AttributeInfo attr_info;
+  ErrorInfo err_info;
+  KStatus s = TsEntityGroup::GetColAttributeInfo(ctx, *column, attr_info, false);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  if (alter_type == AlterType::ALTER_COLUMN_TYPE) {
+    getDataTypeSize(attr_info);  // update max_len
+  }
+
+  if (attr_info.isAttrType(COL_GENERAL_TAG)) {
+    if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
+      LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
+      return KStatus::FAIL;
+    }
+  } else if (attr_info.isAttrType(COL_TS_DATA)) {
+    s = RollBack(cur_version, new_version);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    if (tag_table_->GetTagTableVersionManager()->RollbackTableVersion(new_version, err_info) < 0) {
+      LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
+      return FAIL;
+    }
+  }
+  return s;
+}
+
 std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::open(uint32_t ts_version, ErrorInfo& err_info) {
   auto tmp_bt = std::make_shared<MMapMetricsTable>();
   string bt_path = IdToSchemaPath(table_id_, ts_version);
