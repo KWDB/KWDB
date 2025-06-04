@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include <filesystem>
 #include "libkwdbts2.h"
 #include "data_type.h"
 #include "ts_io.h"
@@ -85,9 +86,12 @@ class TsDelItemManager {
  public:
   TsDelItemManager(std::string path);
   ~TsDelItemManager();
+  KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);
   KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem>& del_items);
-
+  KStatus GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range);
+  void DropAll();
+  KStatus Reset();
 };
 
 

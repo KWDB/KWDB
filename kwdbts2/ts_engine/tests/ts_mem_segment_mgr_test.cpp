@@ -15,7 +15,7 @@
 
 using namespace kwdbts;  // NOLINT
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows) {
   TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(payload.data);
   uint32_t row_num = 1;
   segment_lock_.lock();
@@ -106,7 +106,7 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   std::list<TsBlockSpan> blocks;
-  std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
+  std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{tmp_data.database_id, tmp_data.table_id, tmp_data.entity_id, ts_span};
   s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -140,7 +140,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   std::list<TsBlockSpan> blocks;
-  std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
+  std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -181,7 +181,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   }
   
   std::list<TsBlockSpan> blocks;
-  std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
+  std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -221,7 +221,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
   }
   std::list<TsBlockSpan> blocks;
   for (size_t j = 1; j <= entity_num; j++) {
-    std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
+    std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
     TsBlockItemFilterParams params{db_id, table_id, j, ts_span};
     auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -263,7 +263,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
   std::list<TsBlockSpan> blocks;
-  std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
+  std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
   auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
   ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -313,7 +313,7 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
   }
   for (size_t i = 0; i < table_num; i++) {
     std::list<TsBlockSpan> blocks;
-    std::vector<KwTsSpan> ts_span = {{INT64_MIN, INT64_MAX}};
+    std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
     TsBlockItemFilterParams params{db_id, table_id + i, entity_id, ts_span};
     auto s = mem_seg_mgr_.GetBlockSpans(params, &blocks);
     ASSERT_TRUE(s == KStatus::SUCCESS);

@@ -99,8 +99,7 @@ void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& d
   }
 }
 
-TsDelItemManager::TsDelItemManager(std::string path) : path_(path + "/" + DEL_FILE_NAME), mmap_alloc_(path_),
-                index_(&mmap_alloc_, mmap_alloc_.GetStartPos()) {
+TsDelItemManager::TsDelItemManager(std::string path) : path_(path + "/" + DEL_FILE_NAME), mmap_alloc_(path_) {
   rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_MGR_RWLOCK);
 }
 
@@ -108,6 +107,17 @@ TsDelItemManager::~TsDelItemManager(){
   if (rw_lock_) {
     delete rw_lock_;
   }
+}
+
+KStatus TsDelItemManager::Open(){
+  if (mmap_alloc_.Open() == KStatus::SUCCESS) {
+    KStatus s = index_.Init(&mmap_alloc_, &(mmap_alloc_.getHeader()->index_header_offset));
+    if (s == KStatus::SUCCESS) {
+      return s;
+    }
+  }
+  LOG_ERROR("deleteitem open failed.");
+  return KStatus::FAIL;
 }
 
 KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item) {
@@ -141,7 +151,7 @@ KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDel
     RW_LATCH_S_LOCK(rw_lock_);
     auto cur_node_offset = *node;
     while (cur_node_offset != INVALID_POSITION) {
-      auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(*node, sizeof(IndexNode)));
+      auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(cur_node_offset, sizeof(IndexNode)));
       if (cur_node == nullptr) {
         LOG_ERROR("GetAddrForOffset failed. offset [%lu]", *node);
         return KStatus::FAIL;
@@ -151,6 +161,30 @@ KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDel
     }
     RW_LATCH_UNLOCK(rw_lock_);
   }
+  return KStatus::SUCCESS;
+}
+KStatus TsDelItemManager::GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range) {
+  std::list<TsEntityDelItem> del_items;
+  auto s = GetDelItem(entity_id, del_items);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelItem failed. entity_id [%lu]", entity_id);
+    return s;
+  }
+  for (auto& item : del_items) {
+    if (item.status == DEL_ITEM_OK) {
+      del_range.push_back(item.range);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+void TsDelItemManager::DropAll() {
+  index_.Reset();
+  mmap_alloc_.DropAll();
+}
+
+KStatus TsDelItemManager::Reset() {
+  index_.Reset();
   return KStatus::SUCCESS;
 }
 

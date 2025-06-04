@@ -372,7 +372,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
     return KStatus::SUCCESS;
   }
   // write WAL and remove metric datas.
-  auto s = vgroups_[v_group_id]->DeleteEntity(ctx, table_id_, primary_tag, entity_id, count, mtr_id);
+  auto s = vgroups_[v_group_id]->DeleteData(ctx, table_id_, primary_tag, entity_id, ts_spans, count, mtr_id);
   if (s != KStatus::SUCCESS) {
     return s;
   }

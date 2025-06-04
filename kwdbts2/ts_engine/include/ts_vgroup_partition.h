@@ -66,6 +66,10 @@ class TsVGroupPartition {
 
   TsEntitySegment* GetEntitySegment() { return entity_segment_.get(); }
 
+  KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn);
+
+  KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange>& del_items);
+
   TsLastSegmentManager* GetLastSegmentMgr() { return &last_segment_mgr_; }
 
   KStatus AppendToBlockSegment(TSTableID table_id, TSEntityID entity_id, uint32_t table_version,

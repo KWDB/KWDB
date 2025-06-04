@@ -41,7 +41,7 @@ TEST(MMAP, ReadWrite) {
 TEST(MMAP, TsMMapAllocFiletest) {
   std::filesystem::remove("test");
   TsMMapAllocFile* f = new TsMMapAllocFile("test");
-
+  f->Open();
   std::vector<uint64_t> alloc_offsets;
   for (size_t i = 0; i < 100; i++) {
     auto offset = f->AllocateAssigned(10000, 2 + i);
@@ -57,6 +57,7 @@ TEST(MMAP, TsMMapAllocFiletest) {
   }
   delete f;
   f = new TsMMapAllocFile("test");
+  f->Open();
   for (size_t i = 0; i < alloc_offsets.size(); i++) {
     char* addr = f->GetAddrForOffset(alloc_offsets[i], 1);
     uint8_t fill = 2 + i;

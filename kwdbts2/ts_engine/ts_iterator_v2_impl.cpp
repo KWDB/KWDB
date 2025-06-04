@@ -12,6 +12,7 @@
 #include <cstring>
 #include "ts_vgroup.h"
 #include "ts_iterator_v2_impl.h"
+#include "ts_entity_partition.h"
 
 namespace kwdbts {
 
@@ -73,83 +74,38 @@ KStatus TsStorageIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
   return KStatus::FAIL;
 }
 
-inline KStatus TsStorageIteratorV2Impl::AddMemSegmentBlockSpans() {
-  TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-  return vgroup_->GetMemSegmentMgr()->GetBlockSpans(filter, &ts_block_spans_);
-}
-
-inline KStatus TsStorageIteratorV2Impl::AddLastSegmentBlockSpans() {
-  if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
-    std::vector<std::shared_ptr<TsLastSegment>> last_segments =
-      ts_partitions_[cur_partition_index_]->GetLastSegmentMgr()->GetAllLastSegments();
-    TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
-      if (last_segment->GetBlockSpans(filter, &ts_block_spans_) != KStatus::SUCCESS) {
-        return KStatus::FAIL;
-      }
-    }
-  }
-  return KStatus::SUCCESS;
-}
-
-inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
-  if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
-    TsBlockItemFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    return ts_partitions_[cur_partition_index_]->GetEntitySegment()->GetBlockSpans(filter, &ts_block_spans_);
-  }
-  return KStatus::SUCCESS;
-}
-
 KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans() {
-  KStatus ret;
-  if (cur_partition_index_ == 0) {
-    // Scan memory segment while scanning first parition.
-    ret = AddMemSegmentBlockSpans();
+  KStatus ret = KStatus::SUCCESS;
+  if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
+    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
+    TsEntityPartition e_paritition(ts_partitions_[cur_partition_index_], scan_lsn_, ts_col_type_, filter);
+    std::list<std::shared_ptr<TsMemSegment>> mems;
+    vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
+    ret = e_paritition.Init(mems);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
-      return KStatus::FAIL;
+      LOG_ERROR("GetAllMemSegments failed.");
+      return ret;
     }
+    ret = e_paritition.GetBlockSpan(&ts_block_spans_);
   }
-
-  ret = AddLastSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
-
-  ret = AddEntitySegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return ret;
-  }
-
   return ret;
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
-  KStatus ret;
-  ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
-
-  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    ret = AddLastSegmentBlockSpans();
+  KStatus ret = KStatus::SUCCESS;
+  for (cur_partition_index_= 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
+    TsEntityPartition e_paritition(ts_partitions_[cur_partition_index_], scan_lsn_, ts_col_type_, filter);
+    std::list<std::shared_ptr<TsMemSegment>> mems;
+    vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
+    ret = e_paritition.Init(mems);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
-      return KStatus::FAIL;
+      LOG_ERROR("GetAllMemSegments failed.");
+      return ret;
     }
-
-    ret = AddEntitySegmentBlockSpans();
+    ret = e_paritition.GetBlockSpan(&ts_block_spans_);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      LOG_ERROR("e_paritition.GetBlockSpan failed.");
       return ret;
     }
   }
@@ -417,31 +373,26 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     return KStatus::SUCCESS;
   }
 
-  KStatus ret;
-  ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
+  TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
+  std::list<std::shared_ptr<TsMemSegment>> mems;
+  vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
 
-  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    ret = AddLastSegmentBlockSpans();
+  for (cur_partition_index_= 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    // craete entity partition object.
+    TsEntityPartition e_paritition(ts_partitions_[cur_partition_index_], scan_lsn_, ts_col_type_, filter);
+    auto ret = e_paritition.Init(mems);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
-      return KStatus::FAIL;
+      LOG_ERROR("GetAllMemSegments failed.");
+      return ret;
     }
-
-    ret = AddEntitySegmentBlockSpans();
+    ret = e_paritition.GetBlockSpan(&ts_block_spans_);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
-                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      LOG_ERROR("e_paritition.GetBlockSpan failed.");
       return ret;
     }
   }
 
-  ret = AggregateBlockSpans(res, count);
+  auto ret = AggregateBlockSpans(res, count);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to aggregate spans for entity(%d).", entity_ids_[cur_entity_index_]);
     return ret;
@@ -547,13 +498,6 @@ KStatus TsAggIteratorV2Impl::AggregateFirstOrLastColumns(
     agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS ||
     agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS);
 
-  std::vector<FirstOrLastCandidate> candidates(cols.size());
-  KStatus ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) return ret;
-
-  ret = UpdateFirstAndLastCandidates(cols, candidates);
-  if (ret != KStatus::SUCCESS) return ret;
-
   std::vector<std::pair<int, int64_t>> sorted_partitions;
   for (int i = 0; i < ts_partitions_.size(); ++i) {
     int64_t ts = is_first ? ts_partitions_[i]->StartTs() : ts_partitions_[i]->EndTs();
@@ -565,6 +509,10 @@ KStatus TsAggIteratorV2Impl::AggregateFirstOrLastColumns(
               return is_first ? (a.second < b.second) : (a.second > b.second);
             });
 
+  std::vector<FirstOrLastCandidate> candidates(cols.size());
+  TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
+  std::list<std::shared_ptr<TsMemSegment>> mems;
+  vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
   for (const auto& [partition_idx, part_ts] : sorted_partitions) {
     cur_partition_index_ = partition_idx;
 
@@ -583,11 +531,18 @@ KStatus TsAggIteratorV2Impl::AggregateFirstOrLastColumns(
       }
     }
     if (skip) continue;
-
-    ret = AddLastSegmentBlockSpans();
-    if (ret != KStatus::SUCCESS) return ret;
-    ret = AddEntitySegmentBlockSpans();
-    if (ret != KStatus::SUCCESS) return ret;
+    // craete entity partition object.
+    TsEntityPartition e_paritition(ts_partitions_[cur_partition_index_], scan_lsn_, ts_col_type_, filter);
+    auto ret = e_paritition.Init(mems);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetAllMemSegments failed.");
+      return ret;
+    }
+    ret = e_paritition.GetBlockSpan(&ts_block_spans_);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("e_paritition.GetBlockSpan failed.");
+      return ret;
+    }
 
     ret = UpdateFirstAndLastCandidates(cols, candidates);
     if (ret != KStatus::SUCCESS) return ret;
@@ -608,7 +563,7 @@ KStatus TsAggIteratorV2Impl::AggregateFirstOrLastColumns(
     } else if (scan_agg_types_[col_idx] == Sumfunctype::LAST || scan_agg_types_[col_idx] == Sumfunctype::FIRST ||
                scan_agg_types_[col_idx] == Sumfunctype::LAST_ROW || scan_agg_types_[col_idx] == Sumfunctype::FIRST_ROW) {
       std::shared_ptr<MMapMetricsTable> blk_version;
-      ret = table_schema_mgr_->GetMetricSchema(c.blk_span.GetTableVersion(), &blk_version);
+      auto ret = table_schema_mgr_->GetMetricSchema(c.blk_span.GetTableVersion(), &blk_version);
       if (ret != KStatus::SUCCESS) return ret;
       auto& schema_info = blk_version->getSchemaInfoExcludeDropped();
 

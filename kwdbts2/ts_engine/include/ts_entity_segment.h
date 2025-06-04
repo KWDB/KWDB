@@ -44,6 +44,7 @@ struct TsEntitySegmentBlockItem {
   bool is_overflow = false;
   bool is_agg_res_available = false;  //  agg for block is valid.
   char reserved[48] = {0};      // reserved for user-defined information.
+  // todo(liangbo01) add lsn to filter quickyly
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");
@@ -268,6 +269,7 @@ class TsEntityBlock : public TsBlock {
   KStatus LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
   KStatus GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans);
+  KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans);
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                      char** value);

@@ -43,6 +43,12 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
   segment_lock_.unlock();
 }
 
+void TsMemSegmentManager::GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems) {
+  segment_lock_.lock();
+  *mems = segment_;
+  segment_lock_.unlock();
+}
+
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema,
                                                 LifeTime* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
@@ -60,7 +66,7 @@ bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t ve
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows) {
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time
@@ -94,7 +100,6 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       cur_mem_seg->AllocRowNum(-1);
       continue;
     }
-    // todo(liangbo01) add lsn of wal.
     // TODO(Yongyan): Somebody needs to update lsn later.
     row_data.SetData(row_ts, lsn, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
@@ -102,6 +107,9 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);
       cur_mem_seg->AllocRowNum(0 - (row_num - i));
       return KStatus::FAIL;
+    }
+    if (rows != nullptr) {
+      rows->push_back(row_data);
     }
   }
   return KStatus::SUCCESS;
@@ -227,6 +235,44 @@ bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
   return false;
 }
 
+bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
+  InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
+  char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
+  uint32_t cur_version = 1;
+  while (true) {
+    TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
+                            (filter.db_id, filter.table_id, cur_version, filter.entity_id);
+    begin->SetData(INT64_MIN, 0, {nullptr, 0});
+    begin->GenKey(key);
+    iter.Seek(reinterpret_cast<char*>(&key));
+    bool scan_over = false;
+    while (iter.Valid()) {
+      auto cur_row = TSRowDataComparator::decode_key(iter.key());
+      assert(cur_row != nullptr);
+      if (!cur_row->SameTableId(begin)) {
+        scan_over = true;
+        break;
+      }
+      if (cur_row->entity_id > filter.entity_id) {
+        cur_version = cur_row->table_version + 1;
+        break;
+      }
+      if (cur_row->entity_id < filter.entity_id) {
+        cur_version = cur_row->table_version;
+        break;
+      }
+      if (CheckIfTsInSpan(cur_row->ts, filter.ts_spans_)) {
+        return true;
+      }
+      iter.Next();
+    }
+    if (scan_over || !iter.Valid()) {
+      break;
+    }
+  }
+  return false;
+}
+
 bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows) {
   rows->clear();
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
@@ -254,7 +300,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
         cur_version = cur_row->table_version;
         break;
       }
-      if (CheckIfTsInSpan(cur_row->ts, filter.ts_spans_)) {
+      if (IsTsLsnInSpans(cur_row->ts, cur_row->lsn, filter.spans_)) {
         rows->push_back(cur_row);
       }
       iter.Next();

@@ -89,7 +89,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     for (int i = 0; i < 10; ++i) {
       {
         // scan [500, INT64_MAX]
-        std::vector<KwTsSpan> spans{{500, INT64_MAX}};
+        std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
         s = entity_segment->GetBlockSpans(filter, &block_spans);
@@ -133,7 +133,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       }
       {
         // scan [INT64_MIN, 622]
-        std::vector<KwTsSpan> spans{{INT64_MIN, 622}};
+        std::vector<STScanRange> spans{{{INT64_MIN, 622}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
         s = entity_segment->GetBlockSpans(filter, &block_spans);
@@ -174,7 +174,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       }
       {
         // scan [INT64_MIN, INT64_MAX]
-        std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
+        std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<TsBlockSpan> block_spans;
         s = entity_segment->GetBlockSpans(filter, &block_spans);
@@ -219,7 +219,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     ASSERT_EQ(result.size(), 1);
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
-        std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
+        std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<TsBlockSpan> block_span;
         result[0]->GetBlockSpans(filter, &block_span);

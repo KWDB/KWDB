@@ -621,7 +621,7 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<TsBlockSpan>* spans) {
   // spans->clear();
-  if (filter.ts_spans_.empty()) {
+  if (filter.spans_.empty()) {
     return SUCCESS;
   }
   std::vector<TsLastSegmentBlockIndex> block_indices;
@@ -631,7 +631,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   }
 
   TSEntityID entity_id = filter.entity_id;
-  const std::vector<KwTsSpan>& ts_spans = filter.ts_spans_;
   int block_idx = 0;
   int span_idx = 0;
   for (; block_idx < block_indices.size(); ++block_idx) {
@@ -656,55 +655,46 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       // no need to read following blocks
       break;
     }
-    std::shared_ptr<TsLastBlock> block = nullptr;
-    while (span_idx < ts_spans.size()) {
-      const KwTsSpan& current_span = ts_spans[span_idx];
-      if (current_span.end < cur_block.min_ts) {
-        ++span_idx;
-        continue;
-      }
-      if (current_span.begin > cur_block.max_ts) {
+    // todo(liangbo)  store lsn info.
+    if (!IsTsLsnSpanCrossSpans(filter.spans_, {cur_block.min_ts, cur_block.max_ts}, {0, UINT64_MAX})) {
+      continue;
+    }
+    // todo(zhangzirui)  code review.
+    TsLastSegmentBlockInfo info;
+    s = LoadBlockInfo(file_.get(), cur_block, &info);
+    if (s == FAIL) {
+      return FAIL;
+    }
+    auto block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx,
+                                          block_indices[block_idx], info);
+
+    auto row_num = block->GetRowNum();
+    auto ts = block->GetTimestamps();
+    auto lsn = block->GetSeqNos();
+    auto entities = block->GetEntities();
+    int start_idx = 0;
+    bool match_found= false;
+    for (size_t i = 0; i < row_num; i++) {
+      if (entities[i] > entity_id) {
         break;
       }
-      if (block == nullptr) {
-        TsLastSegmentBlockInfo info;
-        s = LoadBlockInfo(file_.get(), cur_block, &info);
-        if (s == FAIL) {
-          return FAIL;
+      if (IsTsLsnInSpans(ts[i], lsn[i], filter.spans_)) {
+        if (!match_found) {
+          start_idx = i;
+          match_found = true;
         }
-        block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx,
-                                              block_indices[block_idx], info);
-      }
-      auto entities = block->GetEntities();
-      auto ts = block->GetTimestamps();
-      const TsLastSegmentBlockInfo& info = block->block_info_;
-      int start = FindLowerBound({entity_id, current_span.begin}, entities, ts, 0, info.nrow);
-
-      if (start >= info.nrow || entities[start] != entity_id) {
-        // The entity cannot be found within this block. At this stage, we already know that
-        // cur_block.max_entity_id >= entity_id >= cur_block.min_entity_id. If the entity with this
-        // entity_id is not present in the current block, it cannot be present in the subsequent
-        // block either. Otherwise, we would reach the conclusion that entity_id >=
-        // next_block.min_entity_id >= cur_block.max_entity_id >= entity_id. In other words,
-        // next_block.min_entity_id would be equal to cur_block.max_entity_id. Given that the
-        // minimum and maximum entity_ids definitely exist within their corresponding blocks, this
-        // would conflict with the previous conclusion. Therefore, if the entity cannot be found in
-        // the current block, we can simply terminate the search.
-        return SUCCESS;
-      }
-      int end = FindUpperBound({entity_id, current_span.end}, entities, ts, start, info.nrow);
-      if (end - start > 0) {
-        spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start,
-                            end - start);
-      }
-
-      if (end == info.nrow) {
-        // We reach the end of current block
-        break;
       } else {
-        // we reach the end of the span, just move to the next span
-        ++span_idx;
+        if (match_found) {
+          match_found = false;
+          spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start_idx,
+                            i - start_idx);
+        }
       }
+    }
+    if (match_found) {
+      match_found = false;
+      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start_idx,
+                        row_num - start_idx);
     }
   }
 

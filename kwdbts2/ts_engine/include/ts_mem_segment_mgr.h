@@ -184,6 +184,8 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   bool AppendOneRow(TSMemSegRowData& row);
 
+  bool HasEntityRows(const TsScanFilterParams& filter);
+
   bool GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
 
   bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
@@ -303,7 +305,9 @@ class TsMemSegmentManager {
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
+  void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems);
+
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows = nullptr);
 
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
                               LifeTime* lifetime = nullptr);

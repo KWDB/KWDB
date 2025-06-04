@@ -28,6 +28,7 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_file_vector_index.h"
+#include "sys_utils.h"
 
 namespace kwdbts {
 
@@ -253,7 +254,8 @@ class TsMMapAllocFile : public FileWithIndex {
   struct FileHeader {
     uint64_t file_len;
     uint64_t alloc_offset;
-    char reserved[112];
+    uint64_t index_header_offset;
+    char reserved[104];
   };
 static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
 
@@ -264,18 +266,22 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
   KRWLatch* rw_lock_;
 
  public:
-  TsMMapAllocFile(const std::string& path) : path_(path) {
+  TsMMapAllocFile(const std::string& path) : path_(path) {}
+  KStatus Open() {
     bool exists = std::filesystem::exists(path_);
     void* base = nullptr;
     size_t file_len;
     if (exists) {
       int oflag = O_RDWR;
-      fd_ = open(path.c_str(), oflag);
+      fd_ = open(path_.c_str(), oflag);
       file_len = lseek(fd_, 0, SEEK_END);
       int prot = PROT_READ | PROT_WRITE;
       base = mmap(nullptr, file_len, prot, MAP_SHARED, fd_, 0);
     } else {
-      fd_ = open(path.c_str(), O_RDWR | O_CREAT, 0644);
+      fd_ = open(path_.c_str(), O_RDWR | O_CREAT, 0644);
+      if (fd_ == -1) {
+        return KStatus::FAIL;
+      }
       file_len = getpagesize();
       ftruncate(fd_, file_len);
       base = mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
@@ -288,6 +294,7 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
     }
     assert(file_len == getHeader()->file_len);
     rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_RWLOCK);
+    return KStatus::SUCCESS;
   }
 
   ~TsMMapAllocFile() {
@@ -390,6 +397,16 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
       addrs_.clear();
     }
     return KStatus::SUCCESS;
+  }
+
+  KStatus DropAll() {
+    if (Close()) {
+      std::string cmd = "rm -rf " + path_;
+      if (System(cmd)) {
+        return KStatus::SUCCESS;
+      }
+    }
+    return KStatus::FAIL;
   }
 
   KStatus Sync() {

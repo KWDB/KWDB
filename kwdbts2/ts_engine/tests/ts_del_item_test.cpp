@@ -11,13 +11,14 @@
 
 #include <gtest/gtest.h>
 #include "ts_del_item_manager.h"
+#include "sys_utils.h"
 
 using namespace kwdbts;  // NOLINT
 
-class TsDelItemMgrTest : public ::testing::Test {
+class TsDelItemUtilTest : public ::testing::Test {
 };
 
-TEST(TsDelItemMgrTest, TsCrossNone) {
+TEST(TsDelItemUtilTest, TsCrossNone) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -33,7 +34,7 @@ TEST(TsDelItemMgrTest, TsCrossNone) {
   ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
 }
 
-TEST(TsDelItemMgrTest, TsCrossOne) {
+TEST(TsDelItemUtilTest, TsCrossOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -53,7 +54,7 @@ TEST(TsDelItemMgrTest, TsCrossOne) {
   ASSERT_TRUE(result[1].lsn_span.end == scan_range.lsn_span.end);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSome) {
+TEST(TsDelItemUtilTest, TsCrossSome) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -69,7 +70,7 @@ TEST(TsDelItemMgrTest, TsCrossSome) {
   ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSome1) {
+TEST(TsDelItemUtilTest, TsCrossSome1) {
   STScanRange scan_range;
   scan_range.ts_span = {11, 100};
   scan_range.lsn_span = {0, 100};
@@ -85,7 +86,7 @@ TEST(TsDelItemMgrTest, TsCrossSome1) {
   ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
 }
 
-TEST(TsDelItemMgrTest, TsCrossLeftOne) {
+TEST(TsDelItemUtilTest, TsCrossLeftOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -101,7 +102,7 @@ TEST(TsDelItemMgrTest, TsCrossLeftOne) {
   ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
 }
 
-TEST(TsDelItemMgrTest, TsCrossAll) {
+TEST(TsDelItemUtilTest, TsCrossAll) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -113,7 +114,7 @@ TEST(TsDelItemMgrTest, TsCrossAll) {
   ASSERT_TRUE(result.size() == 0);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossNull) {
+TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossNull) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -129,7 +130,7 @@ TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossNull) {
   ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossOne) {
+TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -149,7 +150,7 @@ TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossOne) {
   ASSERT_TRUE(result[1].lsn_span.end == 100);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossSome) {
+TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossSome) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {0, 100};
@@ -169,7 +170,7 @@ TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossSome) {
   ASSERT_TRUE(result[1].lsn_span.end == 100);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossLeftOne) {
+TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossLeftOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {1, 100};
@@ -189,7 +190,7 @@ TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossLeftOne) {
   ASSERT_TRUE(result[1].lsn_span.end == 100);
 }
 
-TEST(TsDelItemMgrTest, TsCrossSomeLsnCrossAll) {
+TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossAll) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
   scan_range.lsn_span = {1, 100};

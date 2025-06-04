@@ -21,16 +21,25 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
+#include "ts_del_item_manager.h"
 
 namespace kwdbts {
 
 class TsSegmentBase;
+// conditions used for flitering data.
+struct TsScanFilterParams {
+  uint32_t db_id;
+  TSTableID table_id;
+  TSEntityID entity_id;
+  const std::vector<KwTsSpan>& ts_spans_;
+};
+
 // conditions used for flitering blockitem data.
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
   TSEntityID entity_id;
-  const std::vector<KwTsSpan>& ts_spans_;
+  std::vector<STScanRange> spans_;
 };
 
 // base class for data segment
@@ -44,5 +53,30 @@ class TsSegmentBase {
 
   virtual ~TsSegmentBase() {}
 };
+
+inline bool IsTsLsnInSpans(timestamp64 ts, TS_LSN lsn, const std::vector<STScanRange>& spans) {
+  for (auto& span : spans) {
+    if (ts >= span.ts_span.begin && ts <= span.ts_span.end &&
+        lsn >= span.lsn_span.begin && lsn <= span.lsn_span.end) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool IsLsnInSpan(const STScanRange& span, TS_LSN lsn) {
+  return (span.lsn_span.begin >= lsn && lsn <= span.lsn_span.end);
+}
+
+inline bool IsTsLsnSpanCrossSpans(const std::vector<STScanRange>& spans,
+                                KwTsSpan ts_span, KwLSNSpan lsn_span) {
+  for (auto& span : spans) {
+    if (ts_span.begin <= span.ts_span.end && ts_span.end >= span.ts_span.begin &&
+        lsn_span.begin <= span.lsn_span.end && lsn_span.end >= span.lsn_span.begin) {
+      return true;
+    }
+  }
+  return false;
+}
 
 }  // namespace kwdbts
