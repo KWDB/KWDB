@@ -30,6 +30,11 @@ enum WALMode : uint8_t {
   BYRL = 3    // by raft log
 };
 
+enum WALFlushMethod : uint8_t {
+  FLUSH = 0,
+  FSYNC = 1
+};
+
 inline const string& s_defaultDateFormat()
 { static string s = "%Y-%m-%d"; return s; }
 inline const string& s_defaultDateTimeFormat()
@@ -45,6 +50,8 @@ struct EngineOptions {
   std::string db_path;
   // WAL work level: 0:off, 1:on, 2:sync, default is sync.
   uint8_t wal_level = WALMode::SYNC;
+  // WAL flush data to file method
+  uint8_t wal_flush_method = WALFlushMethod::FLUSH;
   // WAL file size, default is 64Mb
   uint16_t wal_file_size = 64;
   uint16_t wal_file_in_group = 1;

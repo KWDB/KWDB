@@ -344,6 +344,19 @@ var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	2*time.Minute,
 )
 
+// TsWALFlushDiskMethod indicates the method of flush data to disk.
+var TsWALFlushDiskMethod = settings.RegisterPublicValidatedIntSetting(
+	"ts.wal.flush_disk_method",
+	"ts WAL flush data to disk method",
+	0,
+	func(v int64) error {
+    		if v > 1 {
+    			return errors.Errorf("WAL flush disk method only support flush(0) and fsync(1).")
+    		}
+    		return nil
+    	},
+)
+
 // SQLTimeseriesTrace set trace for timeseries.
 var SQLTimeseriesTrace = settings.RegisterStringSetting(
 	"ts.trace.on_off_list",

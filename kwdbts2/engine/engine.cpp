@@ -1431,6 +1431,10 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
     options_.wal_file_in_group = std::stoll(value);
     LOG_INFO("update wal file num in group to %hu", options_.wal_file_in_group)
   }
+  if (GetClusterSetting(ctx, "ts.wal.flush_disk_method", &value) == SUCCESS) {
+    options_.wal_flush_method = std::stoll(value);
+    LOG_INFO("update wal flush method to %hu", options_.wal_flush_method)
+  }
 
   return KStatus::SUCCESS;
 }

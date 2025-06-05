@@ -814,7 +814,18 @@ KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   memcpy(buf, &meta_, size);
   meta_file_.seekg(0, std::ios::beg);
   meta_file_.write(buf, size);
-  meta_file_.sync();
+  if (opt_->wal_flush_method == WALFlushMethod::FSYNC) {
+    auto helper = [](std::filebuf *fb) -> int {
+      class Helper : public std::filebuf {
+       public:
+        int handle() { return _M_file.fd(); }
+      };
+      return static_cast<Helper*>(fb)->handle();
+    };
+    fdatasync(helper(meta_file_.rdbuf()));
+  } else {
+    meta_file_.sync();
+  }
   delete[] buf;
 
   return SUCCESS;

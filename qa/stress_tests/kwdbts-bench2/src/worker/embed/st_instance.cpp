@@ -148,6 +148,7 @@ KBStatus StInstance::Init(BenchParams params, std::vector<uint32_t> table_ids_) 
   ts_opts_.wal_file_in_group = 3;
   ts_opts_.wal_buffer_size = 4;
   ts_opts_.thread_pool_size = 0;
+  ts_opts_.wal_flush_method =0;
   ts_opts_.lg_opts.LogFileVerbosityThreshold = LgSeverity::INFO_K;
   auto index = new AppliedRangeIndex[1]{AppliedRangeIndex{1, 1}};
   TSStatus t_status = TSOpen(&ts_engine_, TSSlice{db_path.data(), db_path.size()}, ts_opts_, index, 1);
