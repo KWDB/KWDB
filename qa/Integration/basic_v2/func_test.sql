@@ -42,3 +42,16 @@ select pg_catalog.date_trunc(cast(case when e1 is NULL then cast(null as text) e
 as text),cast(cast(null as "timestamp") as "timestamp")) from test_function_3.t1;
 select pg_catalog.date_trunc('ms', k_timestamp) from test_function_3.t1;
 drop database test_function_3 cascade;
+
+create ts database db1;
+create table db1.tb(ts timestamp not null,a int)tags(t1 int not null)primary tags(t1);
+insert into db1.tb values(now(),1,1);
+create database db;
+create table db.tb(a int);
+insert into db.tb values(1);
+select current_timestamp(999);
+select current_timestamp(999) from db1.tb;
+select current_timestamp(999) from db.tb;
+
+drop database db1 cascade;
+drop database db cascade;
