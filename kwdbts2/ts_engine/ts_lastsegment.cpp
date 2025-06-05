@@ -678,6 +678,9 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (entities[i] > entity_id) {
         break;
       }
+      if (entities[i] != entity_id) {
+        continue;
+      }
       if (IsTsLsnInSpans(ts[i], lsn[i], filter.spans_)) {
         if (!match_found) {
           start_idx = i;

@@ -22,11 +22,13 @@ class TsDelItemMgrTest : public ::testing::Test {
 
 TEST(TsDelItemMgrTest, empty) {
   TsDelItemManager mgr(del_item_file_path);
+  mgr.Open();
   mgr.DropAll();
 }
 
 TEST(TsDelItemMgrTest, simple) {
   TsDelItemManager mgr(del_item_file_path);
+  mgr.Open();
   TsEntityDelItem del_item({2, 22}, {1, 11}, 1);
   KStatus s = mgr.AddDelItem(1, del_item);
   ASSERT_TRUE(s == KStatus::SUCCESS);
@@ -43,6 +45,7 @@ TEST(TsDelItemMgrTest, simple) {
 
 TEST(TsDelItemMgrTest, simpleInsert) {
   TsDelItemManager mgr(del_item_file_path);
+  mgr.Open();
   mgr.Reset();
   for (size_t i = 0; i < 10; i++) {
     TsEntityDelItem del_item({2 + i, 22 + i}, {1 + i, 11 + i}, 1);
@@ -68,6 +71,7 @@ TEST(TsDelItemMgrTest, simpleInsert) {
 
 TEST(TsDelItemMgrTest, simpleMultiInsert) {
   TsDelItemManager mgr(del_item_file_path);
+  mgr.Open();
   mgr.Reset();
   int thread_num = 0;  //10;
   int entity_del_item_num = 1000000;
