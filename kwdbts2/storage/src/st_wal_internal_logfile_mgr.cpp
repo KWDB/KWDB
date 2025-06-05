@@ -176,7 +176,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
   if (flush_header) {
     writeHeaderBlock(header);
   }
-  if (opt_->wal_flush_method == WALFlushMethod::FSYNC) {
+  if (opt_->wal_level == WALMode::SYNC) {
     auto helper = [](std::filebuf *fb) -> int {
       class Helper : public std::filebuf {
        public:
@@ -184,7 +184,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
       };
       return static_cast<Helper*>(fb)->handle();
     };
-    fdatasync(helper(file_.rdbuf()));
+    fsync(helper(file_.rdbuf()));
   } else {
     file_.flush();
   }
