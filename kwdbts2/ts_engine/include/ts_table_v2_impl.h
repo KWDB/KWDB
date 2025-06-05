@@ -33,7 +33,6 @@ class TsTableV2Impl : public TsTable {
 
   ~TsTableV2Impl();
 
-
   KTableKey GetTableId() override {
     return table_schema_mgr_->GetTableId();
   }
@@ -44,6 +43,11 @@ class TsTableV2Impl : public TsTable {
 
   std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
     return table_schema_mgr_;
+  }
+
+  TsVGroup* GetVGroupByID(uint32_t vgroup_id) {
+    assert(EngineOptions::vgroup_max_num >= vgroup_id);
+    return vgroups_[vgroup_id - 1].get();
   }
 
   KStatus PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSlice* payload, int payload_num,

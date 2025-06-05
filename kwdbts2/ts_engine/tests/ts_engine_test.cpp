@@ -166,8 +166,7 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   TSTableID table_id = 12345;
   CreateTsTable pb_meta;
   kwdbContext_p ctx;
-  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
-                                    roachpb::DOUBLE};
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE, roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);

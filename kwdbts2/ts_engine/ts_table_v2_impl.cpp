@@ -32,7 +32,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
     return KStatus::SUCCESS;
   }
   auto primary_key = p.GetPrimaryTag();
-  auto vgroup = vgroups_[v_group_id - 1].get();
+  auto vgroup = GetVGroupByID(v_group_id);
   assert(vgroup != nullptr);
   auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload);
   if (s != KStatus::SUCCESS) {
@@ -270,7 +270,7 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
       continue;
     }
     // write WAL and remove metric datas.
-    auto s = vgroups_[v_group_id]->DeleteEntity(ctx, table_id_, p_tags, entity_id, count, mtr_id);
+    auto s = GetVGroupByID(v_group_id)->DeleteEntity(ctx, table_id_, p_tags, entity_id, count, mtr_id);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -372,7 +372,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
     return KStatus::SUCCESS;
   }
   // write WAL and remove metric datas.
-  auto s = vgroups_[v_group_id]->DeleteData(ctx, table_id_, primary_tag, entity_id, ts_spans, count, mtr_id);
+  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id, ts_spans, count, mtr_id);
   if (s != KStatus::SUCCESS) {
     return s;
   }
