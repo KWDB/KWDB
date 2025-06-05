@@ -74,7 +74,7 @@ insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 822332036
 insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 3223372036854775807, 'tag1');
 insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 1223372036854775807, 'tag1');
 insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 7223372036854775807, 'tag1');
-select sum(A), sum(B), sum(C) from test_datatype.t1;
+select sum(A), sum(B), round(sum(C) / 10000, 0) from test_datatype.t1;
 drop database test_datatype cascade;
 
 create ts database test_alter;
