@@ -703,7 +703,6 @@ func BuildRowBytesForPrepareTsInsert(
 				}
 			}
 
-
 			hashNum := Dit.HashNum
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
 				Payload:       payload,
