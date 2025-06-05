@@ -536,6 +536,12 @@ func (u *sqlSymUnion) hashPointPartition() tree.HashPointPartition {
 func (u *sqlSymUnion) hashPointPartitions() []tree.HashPointPartition {
     return u.val.([]tree.HashPointPartition)
 }
+func (u *sqlSymUnion) hashPartition() tree.ListPartition {
+    return u.val.(tree.ListPartition)
+}
+func (u *sqlSymUnion) hashPartitions() []tree.ListPartition {
+    return u.val.([]tree.ListPartition)
+}
 func (u *sqlSymUnion) iconst32() int32 {
     return u.val.(int32)
 }
@@ -992,7 +998,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %type <tree.ValidationBehavior> opt_validate_behavior
 
-%type <str> opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+%type <str> opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause opt_comment_clause
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1029,7 +1035,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.TableDefs> opt_table_elem_list table_elem_list create_as_opt_col_list create_as_table_defs
 %type <tree.FuncArgDefs> arg_def_list
 %type <tree.TimeInput> resolution keep_duration
-%type <*tree.TimeInput> opt_active_time opt_partition_interval
+%type <*tree.TimeInput> opt_active_time opt_partition_interval opt_hash_num
 %type <tree.Retention> retentions_elem
 %type <tree.RetentionList> retentions_elems
 %type <str> method
@@ -1045,8 +1051,8 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <*tree.InterleaveDef> opt_interleave
 %type <*tree.PartitionBy> opt_partition_by partition_by
 %type <str> partition opt_partition
-%type <tree.ListPartition> list_partition
-%type <[]tree.ListPartition> list_partitions
+%type <tree.ListPartition> list_partition hash_partition
+%type <[]tree.ListPartition> list_partitions hash_partitions
 %type <tree.RangePartition> range_partition
 %type <[]tree.RangePartition> range_partitions
 %type <tree.HashPointPartition> hash_point_partition
@@ -1678,6 +1684,10 @@ set_zone_config:
   {
     $$.val = &tree.SetZoneConfig{YAMLConfig: tree.DNull}
   }
+| CONFIGURE ZONE USING REBALANCE
+{
+    $$.val = &tree.SetZoneConfig{Rebalance: true}
+}
 
 alter_zone_database_stmt:
   ALTER DATABASE database_name set_zone_config
@@ -2317,6 +2327,15 @@ kv_option:
   {
     $$.val = tree.KVOption{Key: tree.Name($1)}
   }
+|  COMMENT '=' string_or_placeholder
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1), Value: $3.expr()}
+  }
+|  COMMENT
+  {
+    $$.val = tree.KVOption{Key: tree.Name($1)}
+  }
+
 
 kv_option_list:
   kv_option
@@ -5002,10 +5021,10 @@ create_schema_stmt:
 // %Help: CREATE TABLE - create a new table
 // %Category: DDL
 // %Text:
-// CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE [IF NOT EXISTS] <tablename> ( <elements...> ) [<interleave>] [<on_commit>]
-// CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE [IF NOT EXISTS] <tablename> [( <colnames...> )] AS <source> [<interleave>] [<on commit>]
+// CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE [IF NOT EXISTS] <tablename> ( <elements...> ) [<interleave>] [<on_commit>] [<comment_clause>]
+// CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE [IF NOT EXISTS] <tablename> [( <colnames...> )] AS <source> [<interleave>] [<on commit>] [<comment_clause>]
 // CREATE TABLE <tablename> (<elements...>) ATTRIBUTES/TAGS (<elements...>) PRIMARY ATTRIBUTES/TAGS (<name_list>)
-//			[RETENTIONS <duration>] [ACTIVETIME <duration>] [DICT ENCODING] [PARTITION INTERVAL <duration>]
+//			[RETENTIONS <duration>] [ACTIVETIME <duration>] [DICT ENCODING] [PARTITION INTERVAL <duration>] [<comment>]
 //
 // Table elements:
 //    <name> <type> [<qualifiers...>]
@@ -5026,6 +5045,7 @@ create_schema_stmt:
 //   REFERENCES <tablename> [( <colnames...> )] [ON DELETE {NO ACTION | RESTRICT}] [ON UPDATE {NO ACTION | RESTRICT}]
 //   COLLATE <collationname>
 //   AS ( <expr> ) STORED
+//   [<comment_clause>]
 //
 // Interleave clause:
 //    INTERLEAVE IN PARENT <tablename> ( <colnames...> ) [CASCADE | RESTRICT]
@@ -5033,9 +5053,12 @@ create_schema_stmt:
 // On commit clause:
 //    ON COMMIT {PRESERVE ROWS | DROP | DELETE ROWS}
 //
+// Comment clause:
+//    Comment [=] <comment>
+//
 // %SeeAlso: CREATE VIEW, SHOW CREATE, SHOW TABLES
 create_table_stmt:
-  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit
+  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
   {
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5049,9 +5072,10 @@ create_table_stmt:
       StorageParams: $10.storageParams(),
       OnCommit: $11.createTableOnCommitSetting(),
       TableType: tree.RelationalTable,
+      Comment: $12,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit
+| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
   {
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5065,6 +5089,7 @@ create_table_stmt:
       StorageParams: $13.storageParams(),
       OnCommit: $14.createTableOnCommitSetting(),
       TableType: tree.RelationalTable,
+      Comment: $15,
     }
   }
 
@@ -5160,7 +5185,7 @@ table_elem_tag_list:
   }
 
 table_elem_tag:
-	attribute_name typename opt_nullable
+	attribute_name typename opt_nullable opt_comment_clause
   {
   	tagType := $2.colType()
   	nullable := $3.bool()
@@ -5169,6 +5194,7 @@ table_elem_tag:
   		TagType: tagType,
   		Nullable:	nullable,
   		IsSerial: isSerialType(tagType),
+  		Comment: $4,
   	}
   }
 
@@ -5255,7 +5281,7 @@ table_tag_val_list:
   }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval
+  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
 	{
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5271,6 +5297,8 @@ create_ts_table_stmt:
       Sde: $19.bool(),
       PrimaryTagList: $15.nameList(),
       PartitionInterval: $20.partitionInterval(),
+      Comment: $21,
+      HashNum: $22.int64(),
     }
 	}
 
@@ -5386,7 +5414,7 @@ method:
 	}
 
 create_table_as_stmt:
-  CREATE opt_temp_create_table TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit
+  CREATE opt_temp_create_table TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
   {
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5399,9 +5427,10 @@ create_table_as_stmt:
       OnCommit: $10.createTableOnCommitSetting(),
       Temporary: $2.persistenceType(),
       TableType: tree.RelationalTable,
+      Comment: $11,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit
+| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
   {
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5414,6 +5443,7 @@ create_table_as_stmt:
       OnCommit: $13.createTableOnCommitSetting(),
       Temporary: $2.persistenceType(),
       TableType: tree.RelationalTable,
+      Comment: $14,
     }
   }
 
@@ -5553,6 +5583,14 @@ partition_by:
       HashPoint: $5.hashPointPartitions(),
     }
   }
+| PARTITION BY HASH '(' name_list ')' '(' hash_partitions ')'
+  {
+    $$.val = &tree.PartitionBy{
+      Fields: $5.nameList(),
+      List: $8.hashPartitions(),
+      IsHash: true,
+    }
+  }
 | PARTITION BY NOTHING
   {
     $$.val = (*tree.PartitionBy)(nil)
@@ -5607,6 +5645,26 @@ hash_point_partitions:
 | hash_point_partitions ',' hash_point_partition
   {
     $$.val = append($1.hashPointPartitions(), $3.hashPointPartition())
+  }
+
+hash_partitions:
+  hash_partition
+  {
+    $$.val = []tree.ListPartition{$1.hashPartition()}
+  }
+| hash_partitions ',' hash_partition
+  {
+    $$.val = append($1.hashPartitions(), $3.hashPartition())
+  }
+
+hash_partition:
+  partition VALUES IN '(' expr_list ')' opt_partition_by
+  {
+    $$.val = tree.ListPartition{
+      Name: tree.UnrestrictedName($1),
+      Exprs: $5.exprs(),
+      Subpartition: $7.partitionBy(),
+    }
   }
 
 iconst32_list:
@@ -5688,6 +5746,10 @@ col_qualification:
   {
     $$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnFamilyConstraint{Family: tree.Name($6), Create: true, IfNotExists: true}}
   }
+| COMMENT opt_equal non_reserved_word_or_sconst
+	{
+		$$.val = tree.NamedColumnQualification{Qualification: tree.ColumnComment($3)}
+	}
 
 // DEFAULT NULL is already the default for Postgres. But define it here and
 // carry it forward into the system to make it explicit.
@@ -6308,6 +6370,21 @@ opt_partition_interval:
 	{
 		$$.val = (*tree.TimeInput)(nil)
 	}
+
+opt_hash_num:
+  WITH HASH '(' signed_iconst64 ')'
+  {
+    num := $4.int64()
+    if num <= 0 || num > 50000 {
+      sqllex.Error(fmt.Sprintf("The hash num %d must be > 0 and <= 50000.", num))
+      return 1
+    }
+    $$.val = num
+  }
+| /* EMPTY */
+  {
+    $$.val = int64(0)
+  }
 
 opt_sequence_option_list:
   sequence_option_list
@@ -7238,7 +7315,7 @@ transaction_name_stmt:
 // %Text: CREATE DATABASE [IF NOT EXISTS] <name>
 // %SeeAlso:
 create_database_stmt:
-  CREATE DATABASE database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+  CREATE DATABASE database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause opt_comment_clause
   {
     $$.val = &tree.CreateDatabase{
       Name: tree.Name($3),
@@ -7246,9 +7323,10 @@ create_database_stmt:
       Encoding: $6,
       Collate: $7,
       CType: $8,
+      Comment: $9,
     }
   }
-| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause
+| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause opt_comment_clause
   {
     $$.val = &tree.CreateDatabase{
       IfNotExists: true,
@@ -7257,6 +7335,7 @@ create_database_stmt:
       Encoding: $9,
       Collate: $10,
       CType: $11,
+      Comment: $12,
     }
    }
 | CREATE DATABASE error // SHOW HELP: CREATE DATABASE
@@ -7264,9 +7343,9 @@ create_database_stmt:
 // %Help: CREATE TS DATABASE - create a new timeseries database
 // %Category: DDL
 // %Text:
-// CREATE TS DATABASE <name> [RETENTIONS <duration>] [PARTITION INTERVAL <duration>]
+// CREATE TS DATABASE <name> [RETENTIONS <duration>] [PARTITION INTERVAL <duration>] [COMMENT <comment>]
 create_ts_database_stmt:
-	CREATE TS DATABASE database_name opt_retentions_elems opt_partition_interval
+	CREATE TS DATABASE database_name opt_retentions_elems opt_partition_interval opt_comment_clause
   	{
 			tsDB := tree.TSDatabase{
 				DownSampling: $5.downSampling(),
@@ -7276,6 +7355,7 @@ create_ts_database_stmt:
 				Name: tree.Name($4),
 				EngineType: 1,
 				TSDatabase: tsDB,
+				Comment: $7,
       }
   	}
 | CREATE TS DATABASE error // SHOW HELP: CREATE TS DATABASE
@@ -7315,6 +7395,16 @@ opt_lc_ctype_clause:
   {
     $$ = $3
   }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+opt_comment_clause:
+	COMMENT opt_equal non_reserved_word_or_sconst
+	{
+		$$ = $3
+	}
 | /* EMPTY */
   {
     $$ = ""
@@ -12062,7 +12152,6 @@ unreserved_keyword:
 | CLOB
 | CLUSTER
 | COLUMNS
-| COMMENT
 | COMMIT
 | COMMITTED
 | COMPACT
@@ -12504,6 +12593,7 @@ reserved_keyword:
 | CHECK
 | COLLATE
 | COLUMN
+| COMMENT
 | CONCURRENTLY
 | CONSTRAINT
 | CREATE

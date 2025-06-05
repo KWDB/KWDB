@@ -13,6 +13,7 @@
 #include <ee_tag_row_batch.h>
 #include "ee_kwthd_context.h"
 #include "ee_disk_data_container.h"
+#include "ee_data_container.h"
 #include "ee_data_chunk.h"
 #include "ts_utils.h"
 #include "cm_assert.h"
@@ -45,7 +46,6 @@ TEST_F(TestDiskDataContainer, TestDiskDataContainer) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
   InitServerKWDBContext(ctx);
-  std::queue<DataChunkPtr> queue_data_chunk;
   DataChunkPtr chunk = nullptr;
 
   k_uint32 total_sample_rows{1};
@@ -83,38 +83,49 @@ TEST_F(TestDiskDataContainer, TestDiskDataContainer) {
   ASSERT_EQ(chunk->ColumnNum(), 5);
   ASSERT_EQ(chunk->RowSize(), 59);
 
+  std::vector<ColumnOrderInfo> order_info;
+  order_info.push_back(
+      {0, TSOrdering_Column_Direction::TSOrdering_Column_Direction_ASC});
+  order_info.push_back(
+      {3, TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC});
+
   // test single chunk append
   {
     DataContainerPtr tempTable =
-      std::make_unique<kwdbts::DiskDataContainer>(col_info, col_num);
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
     tempTable->Init();
 
-    tempTable->Append(chunk.get());
+    tempTable->Append(chunk);
 
     ASSERT_EQ(tempTable->Count(), 1);
 
-    auto ptr1 = tempTable->GetData(0, 0);
+    DataChunkPtr chunkx = nullptr;
+    tempTable->Sort();
+    tempTable->NextChunk(chunkx);
+
+
+    auto ptr1 = chunkx->GetData(0, 0);
     k_int64 check_ts;
     memcpy(&check_ts, ptr1, col_info[0].storage_len);
     ASSERT_EQ(check_ts, v1);
 
-    auto ptr2 = tempTable->GetData(0, 1);
+    auto ptr2 = chunkx->GetData(0, 1);
     k_double64 check_double;
     memcpy(&check_double, ptr2, col_info[1].storage_len);
     ASSERT_EQ(check_double, v2);
 
-    auto ptr3 = tempTable->GetData(0, 1);
+    auto ptr3 = chunkx->GetData(0, 1);
     memcpy(&check_double, ptr3, col_info[2].storage_len);
     ASSERT_EQ(check_double, v2);
 
     k_uint16 len3 = 0;
-    auto ptr4 = tempTable->GetData(0, 3, len3);
+    auto ptr4 = chunkx->GetData(0, 3, len3);
     char char_v3[len3];
     memcpy(char_v3, ptr4, len3);
     string check_char = string(char_v3, len3);
     ASSERT_EQ(check_char, v3);
 
-    auto ptr5 = tempTable->GetData(0, 4);
+    auto ptr5 = chunkx->GetData(0, 4);
     bool check_bool;
     memcpy(&check_bool, ptr5, col_info[4].storage_len);
     ASSERT_EQ(check_bool, v4);
@@ -133,72 +144,13 @@ TEST_F(TestDiskDataContainer, TestDiskDataContainer) {
     ASSERT_EQ(check_ts, v1);
   }
 
-  queue_data_chunk.push(std::move(chunk));
-  queue_data_chunk.push(std::move(chunk2));
-
   DataContainerPtr tempTable2 =
-    std::make_unique<kwdbts::DiskDataContainer>(col_info, col_num);
+    std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
   tempTable2->Init();
 
-  tempTable2->Append(queue_data_chunk);
+  tempTable2->Append(chunk);
+  tempTable2->Append(chunk2);
 
   ASSERT_EQ(tempTable2->Count(), 2);
 
-  // test the first row
-  {
-    auto ptr1 = tempTable2->GetData(0, 0);
-    k_int64 check_ts;
-    memcpy(&check_ts, ptr1, col_info[0].storage_len);
-    ASSERT_EQ(check_ts, v1);
-
-    auto ptr2 = tempTable2->GetData(0, 1);
-    k_double64 check_double;
-    memcpy(&check_double, ptr2, col_info[1].storage_len);
-    ASSERT_EQ(check_double, v2);
-
-    auto ptr3 = tempTable2->GetData(0, 1);
-    memcpy(&check_double, ptr3, col_info[2].storage_len);
-    ASSERT_EQ(check_double, v2);
-
-    k_uint16 len3 = 0;
-    auto ptr4 = tempTable2->GetData(0, 3, len3);
-    char char_v3[len3];
-    memcpy(char_v3, ptr4, len3);
-    string check_char = string(char_v3, len3);
-    ASSERT_EQ(check_char, v3);
-
-    auto ptr5 = tempTable2->GetData(0, 4);
-    bool check_bool;
-    memcpy(&check_bool, ptr5, col_info[4].storage_len);
-    ASSERT_EQ(check_bool, v4);
-  }
-
-  // test the second row
-  {
-    auto ptr1 = tempTable2->GetData(1, 0);
-    k_int64 check_ts;
-    memcpy(&check_ts, ptr1, col_info[0].storage_len);
-    ASSERT_EQ(check_ts, v1);
-
-    auto ptr2 = tempTable2->GetData(1, 1);
-    k_double64 check_double;
-    memcpy(&check_double, ptr2, col_info[1].storage_len);
-    ASSERT_EQ(check_double, v2);
-
-    auto ptr3 = tempTable2->GetData(1, 1);
-    memcpy(&check_double, ptr3, col_info[2].storage_len);
-    ASSERT_EQ(check_double, v2);
-
-    k_uint16 len3 = 0;
-    auto ptr4 = tempTable2->GetData(1, 3, len3);
-    char char_v3[len3];
-    memcpy(char_v3, ptr4, len3);
-    string check_char = string(char_v3, len3);
-    ASSERT_EQ(check_char, v3);
-
-    auto ptr5 = tempTable2->GetData(1, 4);
-    bool check_bool;
-    memcpy(&check_bool, ptr5, col_info[4].storage_len);
-    ASSERT_EQ(check_bool, v4);
-  }
 }

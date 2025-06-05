@@ -220,6 +220,7 @@ func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Contex
 				Values:       pl.Row,
 				Timestamps:   pl.TimeStamps,
 				ValueSize:    pl.ValueSize,
+				HashNum:      pl.HashNum,
 			})
 		}
 		insertRowSum += int(tri.rowNums[i])
@@ -614,6 +615,7 @@ func (tis *tsInsertSelecter) runTSInsert(
 			uint32(insTable.ID),
 			insTable.TableType == tree.InstanceTable,
 			uint32(insTable.TsTable.TsVersion),
+			insTable.TsTable.HashNum,
 		)
 		if err != nil {
 			return false, 0, err

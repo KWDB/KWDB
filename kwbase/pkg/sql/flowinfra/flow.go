@@ -514,12 +514,14 @@ func (f *FlowBase) Start(ctx context.Context, doneFn func()) error {
 		for _, s := range f.startables {
 			s.Start(ctx, &f.waitGroup, f.ctxCancel)
 		}
-		for i := 0; i < len(f.TsTableReaders); i++ {
-			f.waitGroup.Add(1)
-			go func(i int) {
-				f.TsTableReaders[i].RunTS(ctx)
-				f.waitGroup.Done()
-			}(i)
+		if !f.isVectorized {
+			for i := 0; i < len(f.TsTableReaders); i++ {
+				f.waitGroup.Add(1)
+				go func(i int) {
+					f.TsTableReaders[i].RunTS(ctx)
+					f.waitGroup.Done()
+				}(i)
+			}
 		}
 
 		for i := 0; i < len(f.processors); i++ {
@@ -608,13 +610,15 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 			s.Start(ctx, &f.waitGroup, f.ctxCancel)
 		}
 
-		for i := 0; i < len(f.TsTableReaders); i++ {
-			f.waitGroup.Add(1)
-			go func(i int) {
-				f.TsTableReaders[i].RunTS(ctx)
-				f.waitGroup.Done()
-			}(i)
-			f.startedGoroutines = true
+		if !f.isVectorized {
+			for i := 0; i < len(f.TsTableReaders); i++ {
+				f.waitGroup.Add(1)
+				go func(i int) {
+					f.TsTableReaders[i].RunTS(ctx)
+					f.waitGroup.Done()
+				}(i)
+				f.startedGoroutines = true
+			}
 		}
 
 		for i := 0; i < len(otherProcs); i++ {

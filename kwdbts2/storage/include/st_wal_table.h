@@ -41,9 +41,9 @@ class LoggedTsTable : public TsTable {
   void constructEntityGroup(kwdbContext_p ctx,
                             const RangeGroup& hash_range,
                             const string& range_tbl_sub_path,
-                            std::shared_ptr<TsEntityGroup>* entity_group) override {
+                            std::shared_ptr<TsEntityGroup>* entity_group, uint64_t hash_num) override {
     auto t_range = std::make_shared<LoggedTsEntityGroup>(ctx, entity_bt_manager_, db_path_, table_id_, hash_range,
-                                                         range_tbl_sub_path, engine_opt_);
+                                                         range_tbl_sub_path, engine_opt_, hash_num);
     *entity_group = std::move(t_range);
   }
 

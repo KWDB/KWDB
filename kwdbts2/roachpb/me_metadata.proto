@@ -78,6 +78,8 @@ message KWDBTsTable {
   optional uint64 partition_interval = 12;
   // TsVersion
   optional uint32 ts_version = 13;
+  // hash num
+  optional uint64 hash_num = 14;
 }
 
 // KWDBKTSColumn, TS table column

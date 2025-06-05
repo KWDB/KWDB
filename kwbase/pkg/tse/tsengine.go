@@ -506,7 +506,9 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 }
 
 // CreateTsTable create ts table
-func (r *TsEngine) CreateTsTable(tableID uint64, meta []byte, rangeGroups []api.RangeGroup) error {
+func (r *TsEngine) CreateTsTable(
+	tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup,
+) error {
 	r.checkOrWaitForOpen()
 	nRange := len(rangeGroups)
 	cRanges := make([]C.RangeGroup, nRange)

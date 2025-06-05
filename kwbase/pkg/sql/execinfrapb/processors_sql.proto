@@ -210,6 +210,7 @@ message payloadForDistributeMode {
   optional bytes startKey = 3;
   optional bytes endKey = 4;
   optional int32 valueSize = 5[(gogoproto.nullable) = false];
+  optional uint64 hashNum = 6[(gogoproto.nullable) = false];
 }
 
 message TsInsertProSpec {
@@ -234,6 +235,7 @@ message TsDeleteProSpec {
   repeated Span spans = 6 [(gogoproto.nullable) = false];
   // Delete multi entities for MPP mode
   repeated DeleteEntityGroup entity_groups = 7 [(gogoproto.nullable) = false];
+  optional uint64 hashNum = 8[(gogoproto.nullable) = false];
 }
 
 // DeleteEntityGroup just for delete multi entities.
@@ -256,6 +258,7 @@ message TsTagUpdateProSpec {
 message TsCreateTableProSpec {
   optional uint64 tsTableID = 1[(gogoproto.nullable) = false];
   optional bytes meta = 2;
+  optional uint64 hashNum = 3[(gogoproto.nullable) = false];
 }
 
 message TsProSpec {

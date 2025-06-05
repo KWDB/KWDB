@@ -53,3 +53,11 @@ var TSRangeSplitModeSetting = settings.RegisterIntSetting(
 	"if set 0, ts range split only with hash_id,if set 1 ,ts range split with hash_id and timestamp",
 	0,
 )
+
+// AutoRelocateTsLeaseholderSettings if set to true, ts range leaseholder will be
+// relocated once after created
+var AutoRelocateTsLeaseholderSettings = settings.RegisterBoolSetting(
+	"sql.ts_create.leaseholder_auto_relocated.enabled",
+	"if set to true, ts range leaseholder will be relocated once after created",
+	false,
+)

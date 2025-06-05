@@ -2850,6 +2850,8 @@ bool TsTimePartition::IsSegmentsBusy(const std::vector<BLOCK_ID>& segment_ids) {
 }
 
 KStatus TsTimePartition::Count() {
+  rdLock();
+  Defer defer{[&]() { unLock(); }};
   std::vector<uint32_t> entities = meta_manager_.getEntities();
   for (auto entity_id: entities) {
     TsHashLatch* entity_item_latch = GetEntityItemLatch();

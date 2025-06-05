@@ -44,9 +44,11 @@ INSERT 1
                               | distributed | true
                               | vectorized  | false
   render                      |             |
+   │                          | engine type | time series
    │                          | t6          | t6
    │                          | e5          | e5
    └── sort                   |             |
+        │                     | engine type | time series
         │                     | order       | +t6,+e5
         └── synchronizer      |             |
              └── render       |             |
@@ -57,7 +59,7 @@ INSERT 1
                               | ts-table    | tb
                               | access mode | tableTableMeta
                               | filter      | (e2 = 500) AND (e5 IN (NULL, -500000.5, 500000.5))
-(16 rows)
+(18 rows)
 > select t6,e5 from test_select.tb where e5 in(-500000.5,500000.5,null) and e2=500 order by t6, e5;
       t6     |    e5
 -------------+------------

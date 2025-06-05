@@ -176,7 +176,11 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   if (meta->ts_table().has_partition_interval()) {
     partition_interval = meta->ts_table().partition_interval();
   }
-  s = table->Create(ctx, metric_schema, ts_version, partition_interval);
+  uint64_t hash_num = 2000;
+  if (meta->ts_table().has_hash_num()) {
+    hash_num = meta->ts_table().hash_num();
+  }
+  s = table->Create(ctx, metric_schema, ts_version, partition_interval, hash_num);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -428,6 +432,7 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, 
   ts_table->set_ts_table_id(table_id);
   ts_table->set_ts_version(cur_table_version);
   ts_table->set_partition_interval(table->GetPartitionInterval());
+  ts_table->set_hash_num(table->GetHashNum());
 
   // Get table data schema.
   std::vector<AttributeInfo> data_schema;

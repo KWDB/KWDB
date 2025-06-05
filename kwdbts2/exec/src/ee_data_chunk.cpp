@@ -840,14 +840,12 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         DatumPtr raw = GetData(row, col, val_len);
         std::string val_str = std::string{static_cast<char*>(raw), val_len};
 
-        std::string val = std::string{static_cast<char*>(raw)};
-        k_int32 len = ValueEncoding::EncodeComputeLenString(0, val.size());
         // write the length of col value
-        if (ee_sendint(info, val.length(), 4) != SUCCESS) {
+        if (ee_sendint(info, val_str.length(), 4) != SUCCESS) {
           Return(FAIL);
         }
         // write string
-        if (ee_appendBinaryStringInfo(info, val.c_str(), val.length()) != SUCCESS) {
+        if (ee_appendBinaryStringInfo(info, val_str.c_str(), val_str.length()) != SUCCESS) {
           Return(FAIL);
         }
       } break;

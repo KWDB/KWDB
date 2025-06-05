@@ -267,8 +267,10 @@ func (s *SystemConfig) GetZoneConfigForKey(key roachpb.RKey) (*zonepb.ZoneConfig
 }
 
 // GetZoneConfigForTSKey looks up the zone config for the ts table
-func (s *SystemConfig) GetZoneConfigForTSKey(key roachpb.RKey) (*zonepb.ZoneConfig, error) {
-	tableID, hashPoint, _, err := sqlbase.DecodeTsRangeKey(key, true)
+func (s *SystemConfig) GetZoneConfigForTSKey(
+	key roachpb.RKey, hashNum uint64,
+) (*zonepb.ZoneConfig, error) {
+	tableID, hashPoint, _, err := sqlbase.DecodeTsRangeKey(key, true, hashNum)
 	if err != nil {
 		return nil, err
 	}
@@ -279,12 +281,18 @@ func (s *SystemConfig) GetZoneConfigForTSKey(key roachpb.RKey) (*zonepb.ZoneConf
 	if entry.zone != nil {
 		if entry.placeholder != nil {
 			for _, subZone := range entry.placeholder.Subzones {
-				if subZone.HashPoints != nil {
-					for _, point := range subZone.HashPoints {
+				if subZone.HashPointsList != nil {
+					for _, point := range subZone.HashPointsList {
 						if uint64(point) == hashPoint {
 							subZone.Config.InheritFromParent(entry.zone)
 							return &subZone.Config, nil
 						}
+					}
+				} else if subZone.HashPointsRange != nil && len(subZone.HashPointsRange) == 2 {
+					if hashPoint >= uint64(subZone.HashPointsRange[0]) &&
+						hashPoint <= uint64(subZone.HashPointsRange[1]) {
+						subZone.Config.InheritFromParent(entry.zone)
+						return &subZone.Config, nil
 					}
 				}
 			}

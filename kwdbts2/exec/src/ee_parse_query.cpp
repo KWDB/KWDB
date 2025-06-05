@@ -9,12 +9,15 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <iomanip>
-#include <chrono>
-
 #include "ee_parse_query.h"
-#include "lg_api.h"
+
+#include <math.h>
+
+#include <chrono>
+#include <iomanip>
+
 #include "ee_cast_utils.h"
+#include "lg_api.h"
 
 namespace kwdbts {
 k_int16 forwardToTimeStringEnd(k_char *str) {
@@ -274,13 +277,23 @@ k_bool ParseQuery::ParseNumber(k_int64 factor) {
         return true;
       } else {
         if (data_str.find("FLOAT8") != std::string::npos) {
-          auto node_value = std::stod(read_buffer);
+          k_float64 node_value;
+          if (read_buffer.compare("'NaN'") == 0) {
+            node_value = NAN;
+          } else {
+            node_value = std::stod(read_buffer);
+          }
           auto ele = Element(node_value * factor);
           ele.SetType(FLOAT_TYPE);
           node_list_.push_back(std::make_shared<Element>(ele));
           return true;
         } else if (data_str.find("FLOAT") != std::string::npos) {
-          auto node_value = std::stof(read_buffer);
+          k_float32 node_value;
+          if (read_buffer.compare("'NaN'") == 0) {
+            node_value = NAN;
+          } else {
+            node_value = std::stof(read_buffer);
+          }
           auto ele = Element(node_value * factor);
           ele.SetType(FLOAT_TYPE);
           node_list_.push_back(std::make_shared<Element>(ele));

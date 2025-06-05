@@ -265,6 +265,7 @@ message TsRowPutRequest {
   int32 valueSize = 4;
   repeated int64 timestamps = 5;
   bool closeWAL = 6;
+  uint64  hashNum = 7;
 }
 
 // A TsRowPutResponse is the return value for inserting row values to TS DB
@@ -326,6 +327,7 @@ message TsDeleteMultiEntitiesDataRequest {
   repeated TsSpan TsSpans = 3;
   // just for MPP mode
   repeated DelEntityGroup del_entity_groups = 4 [(gogoproto.nullable) = true];
+  uint64 hashNum = 5;
 }
 
 // DelEntityGroup just for del_multi_entities_req.
@@ -945,6 +947,7 @@ message AdminSplitRequest {
   // Range can be split, when the Range size is actually queried in
   // the time series engine, the corresponding Table cannot be found.
   bool is_create_ts_table = 7;
+  uint64 hash_num = 8;
 }
 
 message AdminSplitInfoForTs {
@@ -966,6 +969,7 @@ message AdminSplitForTsRequest {
   repeated int32 keys = 4;
   repeated int64 timestamps = 5;
   bool is_create_ts_table = 6;
+  uint64 hash_num = 7;
 }
 
 // An AdminSplitResponse is the return value from the AdminSplit()

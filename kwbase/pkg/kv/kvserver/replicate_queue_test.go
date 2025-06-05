@@ -605,8 +605,8 @@ func TestTransferLeaseToLaggingNode(t *testing.T) {
 		s = sqlutils.MakeSQLRunner(tc.Conns[remoteNodeID-1])
 		workerReady <- true
 		for {
-			s.Exec(t, fmt.Sprintf("update system.comments set comment='abc' "+
-				"where type=0 and object_id=0 and sub_id=0"))
+			s.Exec(t, fmt.Sprintf(`update system.comments set "comment"='abc' `+
+				`where type=0 and object_id=0 and sub_id=0`))
 
 			select {
 			case <-ctx.Done():

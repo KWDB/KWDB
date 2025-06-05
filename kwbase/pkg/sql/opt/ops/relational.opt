@@ -1085,6 +1085,7 @@ define TSUpdatePrivate {
   # Table identifies the table to scan. It is an id that can be passed to
   # the Metadata.Table method in order to fetch cat.Table metadata.
   ID TableID
+  HashNum int
 }
 
 # TSDelete is an expression for DELETE ENTITY OR DATA. Applies only to constant value inserts.
@@ -1104,6 +1105,7 @@ define TSDeletePrivate {
   # the Metadata.Table method in order to fetch cat.Table metadata.
   ID TableID
   STable TableID
+  HashNum int
 
   DeleteType int
   PayloadSize int

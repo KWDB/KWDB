@@ -21,7 +21,6 @@ namespace kwdbts {
 #define ENV_KW_HOME                 "KW_HOME"
 #define ENV_CLUSTER_CONFIG_HOME     "KW_CLUSTER_HOME"
 #define ENV_KW_IOT_INTERVAL         "KW_IOT_INTERVAL"
-#define HASHPOINT_RANGE             2000
 
 enum WALMode : uint8_t {
   OFF = 0,

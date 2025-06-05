@@ -76,9 +76,9 @@ func (r *Replica) AdminSplitForTs(
 	var SplitKey roachpb.Key
 	for index, key := range splitKeys {
 		if len(splitTimestamps) == 0 || splitTimestamps[index] == math.MinInt64 {
-			SplitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(args.TableId), uint64(key))
+			SplitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(args.TableId), uint64(key), args.HashNum)
 		} else {
-			SplitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(args.TableId), uint64(key), splitTimestamps[index])
+			SplitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(args.TableId), uint64(key), splitTimestamps[index], args.HashNum)
 		}
 
 		if len(SplitKey) == 0 {
@@ -94,6 +94,7 @@ func (r *Replica) AdminSplitForTs(
 			// todo: Consider ExpirationTime
 			ExpirationTime:  hlc.MaxTimestamp,
 			TableId:         args.TableId,
+			HashNum:         args.HashNum,
 			IsCreateTsTable: args.IsCreateTsTable,
 		}
 		reply, err = r.AdminSplit(ctx, req, reason)
@@ -183,6 +184,7 @@ func prepareSplitDescs(
 	leftDesc *roachpb.RangeDescriptor,
 	splitType roachpb.SplitType,
 	tableID uint32,
+	hashNum uint64,
 ) (*roachpb.RangeDescriptor, *roachpb.RangeDescriptor) {
 	// Create right hand side range descriptor.
 	rightDesc := roachpb.NewRangeDescriptor(rightRangeID, splitKey, leftDesc.EndKey, leftDesc.Replicas())
@@ -205,6 +207,7 @@ func prepareSplitDescs(
 		rightDesc.LastSplitTime = &splitTime
 		rightDesc.SetRangeType(roachpb.TS_RANGE)
 		rightDesc.TableId = tableID
+		rightDesc.HashNum = hashNum
 	} else {
 		rightDesc.SetRangeType(roachpb.DEFAULT_RANGE)
 		rightDesc.TableId = 0
@@ -251,6 +254,7 @@ func splitTxnAttempt(
 	oldDesc *roachpb.RangeDescriptor,
 	splitType roachpb.SplitType,
 	tableID uint32,
+	hashNum uint64,
 	isCreateTable bool,
 ) error {
 	txn.SetDebugName(splitTxnName)
@@ -278,7 +282,6 @@ func splitTxnAttempt(
 	//		second phase, the metadata of the first phase will be rolled back. SplitType is DEFAULT_SPLIT, and
 	//	 	the relational range will be merged quickly due to the split range's rangeSize.
 	if splitType == roachpb.TS_SPLIT && isCreateTable {
-
 		tableDesc, err := sqlbase.GetTableDescFromID(ctx, txn, sqlbase.ID(tableID))
 		if err != nil {
 			// This must be after firse stage. So create ts table failed.
@@ -292,7 +295,6 @@ func splitTxnAttempt(
 				splitType = roachpb.DEFAULT_SPLIT
 			}
 		}
-
 	}
 	// TODO(tbg): return desc from conditionalGetDescValueFromDB and don't pass
 	// in oldDesc any more (just the start key).
@@ -309,6 +311,7 @@ func splitTxnAttempt(
 		desc,
 		splitType,
 		tableID,
+		hashNum,
 	)
 
 	// Update existing range descriptor for left hand side of
@@ -386,6 +389,7 @@ func splitTxnStickyUpdateAttempt(
 		// Todo: splitRequest of split_queue send to ts table.
 		newDesc.SetRangeType(roachpb.TS_RANGE)
 		newDesc.TableId = args.TableId
+		newDesc.HashNum = args.HashNum
 	}
 
 	b := txn.NewBatch()
@@ -547,6 +551,7 @@ func (r *Replica) adminSplitWithDescriptor(
 				desc,
 				args.SplitType,
 				args.TableId,
+				args.HashNum,
 				args.IsCreateTsTable,
 			)
 		})
@@ -1156,11 +1161,12 @@ func (r *Replica) changeReplicasImpl(
 	// If in a joint config, clean up. The assumption here is that the caller
 	// of ChangeReplicas didn't even realize that they were holding on to a
 	// joint descriptor and would rather not have to deal with that fact.
+	log.VEventf(ctx, 3, "changeReplicasImpl begin, desc is %+v, details is %s", desc, details)
 	desc, err = maybeLeaveAtomicChangeReplicas(ctx, r.store, desc)
 	if err != nil {
 		return nil, err
 	}
-
+	log.VEventf(ctx, 3, " validateReplicationChanges begin")
 	if err := validateReplicationChanges(desc, chgs); err != nil {
 		return nil, err
 	}
@@ -1185,7 +1191,11 @@ func (r *Replica) changeReplicasImpl(
 			}
 			for _, add := range adds {
 				log.Infof(ctx, "TsEngine.CreateTSTable create table %d ts meta on node %v, r%v, %v", desc.TableId, add.NodeID, desc.RangeID, len(tsMeta))
-				if err := api.CreateTSTable(ctx, desc.TableId, add.NodeID, tsMeta); err != nil {
+				hashNum := desc.HashNum
+				if hashNum == 0 {
+					hashNum = api.HashParamV2
+				}
+				if err := api.CreateTSTable(ctx, desc.TableId, hashNum, add.NodeID, tsMeta); err != nil {
 					log.Errorf(ctx, "CreateTSTable failed: %v", err)
 					return nil, err
 				}
@@ -1217,7 +1227,7 @@ func (r *Replica) changeReplicasImpl(
 			return nil, err
 		}
 	}
-
+	log.VEventf(ctx, 3, " atomicReplicationChange begin")
 	// Catch up any learners, then run the atomic replication change that adds the
 	// final voters and removes any undesirable replicas.
 	desc, err = r.atomicReplicationChange(ctx, desc, priority, reason, details, chgs)
@@ -2618,6 +2628,38 @@ func (s *Store) AdminRelocateRange(
 		log.Warning(ctx, err)
 		return err
 	}
+	// Expand the relocate operation target in create ts table to the original number.
+	// When creating ts table, we only need to transfer leaseholder and do not need to
+	// change the number of its replicas.
+	// We hope that only the pre-split range during create ts table will go to the branch
+	// below (judged by StickyBit).
+	// In fact, the alter range split operation on the time series range will also happen
+	// because it sets StickyBit. In addition, when changing the num_replicas operation of
+	// zone_config, rangeDesc.InternalReplicas may not be updated in time, resulting in an
+	// inaccurate number of replicas (which should be fixed by replicate_queue later). These
+	// are things that have a small probability of happening.
+	// It may be possible to better solve the problem by adding a new field to AdminRelocateRangeRequest
+	// to indicate that it is a relocate operation during the creation phase of the ts table. This
+	// requires modifying the proto file, which will cause compatibility issues in the current version
+	if rangeDesc.GetRangeType() == roachpb.TS_RANGE && rangeDesc.StickyBit != nil && len(targets) < len(rangeDesc.InternalReplicas) {
+		for _, replicas := range rangeDesc.InternalReplicas {
+			var isContained = false
+			for _, descTargets := range targets {
+				if descTargets.NodeID == replicas.NodeID {
+					isContained = true
+				}
+			}
+			if !isContained {
+				targets = append(targets, roachpb.ReplicationTarget{
+					NodeID: replicas.NodeID, StoreID: replicas.StoreID,
+				})
+			}
+			if len(targets) == len(rangeDesc.InternalReplicas) {
+				break
+			}
+		}
+	}
+
 	rangeDesc = *newDesc
 
 	canRetry := func(err error) bool {
@@ -2635,7 +2677,7 @@ func (s *Store) AdminRelocateRange(
 	}
 
 	startKey := rangeDesc.StartKey.AsRawKey()
-	transferLease := func(target roachpb.ReplicationTarget) error {
+	transferLease := func(target roachpb.ReplicationTarget) {
 		// TODO(tbg): we ignore errors here, but it seems that in practice these
 		// transfers "always work". Some of them are essential (we can't remove
 		// the leaseholder so we'll fail there later if this fails), so it
@@ -2645,7 +2687,6 @@ func (s *Store) AdminRelocateRange(
 			ctx, startKey, target.StoreID,
 		); err != nil {
 			log.Warningf(ctx, "while transferring lease: %+v", err)
-			return err
 		}
 		// after the lease transfer is completed, it is necessary
 		// to determine whether the leaseholder and the raft leader
@@ -2666,7 +2707,6 @@ func (s *Store) AdminRelocateRange(
 		//	}
 		//	time.Sleep(time.Duration(500) * time.Millisecond)
 		//}
-		return nil
 	}
 
 	// Step 2: Repeatedly add and/or remove a replica until we reach the
@@ -2705,9 +2745,7 @@ func (s *Store) AdminRelocateRange(
 				// NB: we may need to transfer even if there are no ops, to make
 				// sure the attempt is made to make the first target the final
 				// leaseholder.
-				if err := transferLease(*leaseTarget); err != nil {
-					break
-				}
+				transferLease(*leaseTarget)
 			}
 			if len(ops) == 0 {
 				// Done.
@@ -2765,7 +2803,11 @@ func (s *Store) relocateOne(
 	var zone *zonepb.ZoneConfig
 	var err error
 	if desc.GetRangeType() == roachpb.TS_RANGE {
-		zone, err = sysCfg.GetZoneConfigForTSKey(desc.StartKey)
+		if desc.HashNum == 0 {
+			desc.HashNum = api.HashParamV2
+		}
+		hashNum := desc.HashNum
+		zone, err = sysCfg.GetZoneConfigForTSKey(desc.StartKey, hashNum)
 	} else {
 		zone, err = sysCfg.GetZoneConfigForKey(desc.StartKey)
 	}

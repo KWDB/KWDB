@@ -1452,6 +1452,10 @@ var charts = []sectionDescription{
 				Metrics: []string{"raft.process.applycommitted.latency"},
 			},
 			{
+				Title:   "Apply Committed Consistent",
+				Metrics: []string{"raft.replica.consistent.latency"},
+			},
+			{
 				Title:   "Command Commit",
 				Metrics: []string{"raft.process.commandcommit.latency"},
 			},

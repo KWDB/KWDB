@@ -35,6 +35,7 @@ import "roachpb/io-formats.proto";
 import "sql/sqlbase/structured.proto";
 import "util/hlc/timestamp.proto";
 import "sql/sqlbase/me_metadata.proto";
+import "roachpb/metadata.proto";
 
 message Lease {
   option (gogoproto.equal) = true;
@@ -557,6 +558,24 @@ message CSTable {
 message SyncMetaCacheProgress {
 
 }
+message RelocateTargets {
+  uint32 table_id = 1 [(gogoproto.customname) = "TableID",
+                        (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase.ID"];
+  int64 range_id = 2 [(gogoproto.customname) = "RangeID",
+                      (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.RangeID"];
+  bytes start_key = 3  [(gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.RKey"];
+  bytes end_key = 4  [(gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.RKey"];
+  repeated roachpb.ReplicationTarget targets = 5 [(gogoproto.nullable) = false];
+  uint32 pre_lease = 6 [(gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.NodeID"];
+  int32 num_repl = 7;
+}
+
+message ReplicaRebanalceDetails {
+  repeated RelocateTargets relocate_targets = 1 [(gogoproto.nullable) = false];
+}
+
+message ReplicaRebanalceProgress {
+}
 
 message Payload {
   string description = 1;
@@ -604,6 +623,7 @@ message Payload {
     RestartDetails restartHistory =26;
     ExportDetails export = 27;
     SqlScheduleDetails sqlSchedule = 28;
+    ReplicaRebanalceDetails replicaRebalance = 29;
   }
 }
 
@@ -629,6 +649,7 @@ message Progress {
     RestartHistoryProgress restarthistory =20;
     ExportProgress export =21;
     SqlScheduleProgress sqlSchedule = 22;
+    ReplicaRebanalceProgress replicaRebalance = 23;
   }
 }
 
@@ -654,6 +675,7 @@ enum Type {
   RETENTION = 15 [(gogoproto.enumvalue_customname) = "TypeRetention"];
   STATISTICS = 16 [(gogoproto.enumvalue_customname) = "TypeStatistics"];
   SQL_SCHEDULE = 17 [(gogoproto.enumvalue_customname) = "TypeSqlSchedule"];
+  REPLICA_REBALANCE = 18 [(gogoproto.enumvalue_customname) = "TypeReplicaRebanalce"];
 }
 
 message Job {

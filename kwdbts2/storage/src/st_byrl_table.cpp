@@ -42,8 +42,8 @@ KStatus RaftLoggedTsTable::CreateCheckpoint(kwdbContext_p ctx) {
 
 RaftLoggedTsEntityGroup::RaftLoggedTsEntityGroup(kwdbContext_p ctx, MMapRootTableManager*& root_bt_manager,
                                          const string& db_path, const KTableKey& table_id, const RangeGroup& range,
-                                         const string& tbl_sub_path)
-    : TsEntityGroup(ctx, root_bt_manager, db_path, table_id, range, tbl_sub_path) {}
+                                         const string& tbl_sub_path, uint64_t hash_num)
+    : TsEntityGroup(ctx, root_bt_manager, db_path, table_id, range, tbl_sub_path, hash_num) {}
 
 RaftLoggedTsEntityGroup::~RaftLoggedTsEntityGroup() {}
 

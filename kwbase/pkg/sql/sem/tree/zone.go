@@ -112,6 +112,7 @@ type SetZoneConfig struct {
 	// all of a tables indexes. (ALTER PARTITION ... OF INDEX <tablename>@*)
 	AllIndexes bool
 	SetDefault bool
+	Rebalance  bool
 	YAMLConfig Expr
 	Options    KVOptions
 }

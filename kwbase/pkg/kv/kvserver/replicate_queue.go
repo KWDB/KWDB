@@ -86,6 +86,13 @@ var considerRebalanceSettings = settings.RegisterBoolSetting(
 	true,
 )
 
+// storeDeadRebalanceSettings is used to enable dead store rebalance
+var storeDeadRebalanceSettings = settings.RegisterBoolSetting(
+	"kv.allocator.ts_store_dead_rebalance.enabled",
+	"if set to true, when the store dead, ts range will be rebalanced background",
+	true,
+)
+
 var (
 	metaReplicateQueueAddReplicaCount = metric.Metadata{
 		Name:        "queue.replicate.addreplica",
@@ -255,13 +262,20 @@ func (rq *replicateQueue) shouldQueue(
 	if action == AllocatorNoop {
 		log.VEventf(ctx, 2, "no action to take")
 		return false, 0
+	} else if action == AllocatorReplaceDead || action == AllocatorRemoveDead {
+		if !storeDeadRebalanceSettings.Get(&rq.store.cfg.Settings.SV) && !zone.Rebalance && desc.GetRangeType() == roachpb.TS_RANGE {
+			log.VEventf(ctx, 2, "repair needed (%s), ignore enqueuing", action)
+			return false, 0
+		}
+		log.VEventf(ctx, 2, "repair needed (%s), enqueuing", action)
+		return true, 0
 	} else if action != AllocatorConsiderRebalance {
 		log.VEventf(ctx, 2, "repair needed (%s), enqueuing", action)
 		return true, priority
 	}
 
-	if action == AllocatorConsiderRebalance && !considerRebalanceSettings.Get(&rq.store.cfg.Settings.SV) && desc.GetRangeType() == roachpb.TS_RANGE {
-		log.Infof(ctx, "replica is not need rebalanced", action)
+	if !considerRebalanceSettings.Get(&rq.store.cfg.Settings.SV) && !zone.Rebalance && desc.GetRangeType() == roachpb.TS_RANGE {
+		log.VEventf(ctx, 2, "repair needed (%s), ignore enqueuing", action)
 		return false, 0
 	}
 
@@ -1050,6 +1064,7 @@ func (rq *replicateQueue) changeReplicas(
 	dryRun bool,
 ) error {
 	if dryRun {
+		log.VEventf(ctx, 3, "changeReplicas return，dryRun is %+v", dryRun)
 		return nil
 	}
 	if _, err := repl.ChangeReplicas(ctx, desc, priority, reason, details, chgs); err != nil {
@@ -1060,7 +1075,7 @@ func (rq *replicateQueue) changeReplicas(
 		rq.allocator.storePool.updateLocalStoreAfterRebalance(
 			chg.Target.StoreID, rangeUsageInfo, chg.ChangeType)
 	}
-
+	log.VEventf(ctx, 3, "changeReplicas end")
 	return nil
 }
 

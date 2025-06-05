@@ -166,6 +166,7 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 	tab := md.Table(tsInsert.STable)
 	dbID := tab.GetParentID()
 	tsVersion := tab.GetTSVersion()
+	hashNum := tab.GetTSHashNum()
 	cols := make([]*sqlbase.ColumnDescriptor, tab.ColumnCount())
 	for i := 0; i < tab.ColumnCount(); i++ {
 		cols[i] = tab.Column(i).(*sqlbase.ColumnDescriptor)
@@ -183,6 +184,7 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 		uint32(tab.ID()),
 		tab.GetTableType() == tree.InstanceTable,
 		tsVersion,
+		hashNum,
 	)
 
 	if err != nil {
@@ -218,6 +220,7 @@ func BuildInputForTSInsert(
 	tabID uint32,
 	isInsertInstTable bool,
 	tsVersion uint32,
+	hashNum uint64,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, error) {
 	colIndexs := make(map[int]int, len(colIndexsInMemo))
 	for k, v := range colIndexsInMemo {
@@ -281,7 +284,7 @@ func BuildInputForTSInsert(
 
 	// For insert in distributed cluster mode, the line format payload needs to be constructed.
 	if evalCtx.StartDistributeMode || evalCtx.Kwengineversion == "2" {
-		return BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID)
+		return BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
 	}
 	// partition input data based on primary tag values
 	priTagValMap := make(map[string][]int)
@@ -350,6 +353,7 @@ func BuildInputForTSInsert(
 			pArgs,
 			dbID,
 			tabID,
+			hashNum,
 		)
 		if err != nil {
 			return nil, err
@@ -369,6 +373,7 @@ func BuildInputForTSInsert(
 				Payload:       payload,
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
 			})
 		} else {
 			rowVal := sqlbase.PayloadForDistTSInsert{
@@ -377,7 +382,9 @@ func BuildInputForTSInsert(
 					Payload:       payload,
 					RowNum:        uint32(len(priTagRowIdx)),
 					PrimaryTagKey: primaryTagKey,
-				}}}
+					HashNum:       hashNum,
+				}},
+			}
 			payloadNodeMap[int(nodeID)] = &rowVal
 		}
 	}
@@ -645,6 +652,7 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 	prettyCols []*sqlbase.ColumnDescriptor,
 	colIndexs map[int]int,
 	tolerant bool,
+	hashNum uint64,
 ) ([]byte, []byte, []interface{}, error) {
 	// payloadSize, otherTagSize, dataColumnSize
 	ComputePayloadSize(&ts.args, rowNum)
@@ -762,7 +770,7 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 		}
 	}
 	// groupID, err := getGroupIDFunc(primaryTagVal)
-	hashPoints, err := api.GetHashPointByPrimaryTag(primaryTagVal)
+	hashPoints, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagVal)
 	log.VEventf(context.TODO(), 3, "hashPoint : %v, primaryTag : %v", hashPoints, primaryTagVal)
 	if err != nil {
 		return nil, nil, importErrorRecord, err
@@ -959,6 +967,7 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 	pArgs PayloadArgs,
 	dbID uint32,
 	tableID uint32,
+	hashNum uint64,
 	tolerant bool,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, []interface{}, error) {
 	var dataCols []*sqlbase.ColumnDescriptor
@@ -1084,11 +1093,13 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			pArgs,
 			dbID,
 			tableID,
+			hashNum,
 		)
 		if err != nil {
 			return nil, nil, err
 		}
 
+		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tableID), hashPoints)
 		if !evalCtx.StartSinglenode {
@@ -1112,11 +1123,11 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			var startKey roachpb.Key
 			var endKey roachpb.Key
 			if pArgs.RowType == OnlyTag {
-				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]))
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64)
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
 			} else {
-				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp)
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1)
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
 			}
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
 				Payload:       payload,
@@ -1127,6 +1138,7 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 				StartKey:      startKey,
 				EndKey:        endKey,
 				ValueSize:     valueSize,
+				HashNum:       hashNum,
 			}
 			count++
 		} else {
@@ -1154,6 +1166,7 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 				Payload:       payloadBytes,
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
 			}
 			count++
 		}
@@ -1196,6 +1209,7 @@ func BuildPrePayloadForTsImport(
 	pArgs PayloadArgs,
 	dbID uint32,
 	tableID uint32,
+	hashNum uint64,
 ) ([]byte, []byte, error) {
 	rowNum := len(primaryTagRowIdx)
 	tsPayload := NewTsPayload()
@@ -1219,6 +1233,7 @@ func BuildPrePayloadForTsImport(
 		prettyCols,
 		colIndexs,
 		false,
+		hashNum,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -1289,6 +1304,7 @@ func BuildPayloadForTsInsert(
 	pArgs PayloadArgs,
 	dbID uint32,
 	tableID uint32,
+	hashNum uint64,
 ) ([]byte, []byte, error) {
 	rowNum := len(primaryTagRowIdx)
 	tsPayload := NewTsPayload()
@@ -1312,6 +1328,7 @@ func BuildPayloadForTsInsert(
 		prettyCols,
 		colIndexs,
 		false,
+		hashNum,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -1357,6 +1374,7 @@ func BuildRowBytesForTsInsert(
 	pArgs PayloadArgs,
 	dbID uint32,
 	tableID uint32,
+	hashNum uint64,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, error) {
 	// collect all columns with default value set.
 	colsWithDefaultValMap, err := CheckDefaultVals(evalCtx, pArgs)
@@ -1494,6 +1512,7 @@ func BuildRowBytesForTsInsert(
 			pArgs,
 			dbID,
 			tableID,
+			hashNum,
 		)
 		if err != nil {
 			return nil, err
@@ -1528,11 +1547,11 @@ func BuildRowBytesForTsInsert(
 			var startKey roachpb.Key
 			var endKey roachpb.Key
 			if pArgs.RowType == OnlyTag {
-				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]))
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64)
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
 			} else {
-				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp)
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1)
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
 			}
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
 				Payload:       payload,
@@ -1543,6 +1562,7 @@ func BuildRowBytesForTsInsert(
 				StartKey:      startKey,
 				EndKey:        endKey,
 				ValueSize:     valueSize,
+				HashNum:       hashNum,
 			}
 			count++
 		} else {
@@ -1570,6 +1590,7 @@ func BuildRowBytesForTsInsert(
 				Payload:       payloadBytes,
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
 			}
 			count++
 		}
@@ -1618,6 +1639,7 @@ func BuildPreparePayloadForTsInsert(
 	pArgs PayloadArgs,
 	dbID uint32,
 	tableID uint32,
+	hashNum uint64,
 	qargs [][]byte,
 	colnum int,
 ) ([]byte, []byte, error) {
@@ -1888,7 +1910,7 @@ func BuildPreparePayloadForTsInsert(
 
 	// primary tag value
 	primaryTagVal = payload[HeadSize+PTagLenSize : HeadSize+PTagLenSize+pArgs.PrimaryTagSize]
-	hashPoints, err := api.GetHashPointByPrimaryTag(primaryTagVal)
+	hashPoints, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagVal)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -2768,7 +2790,6 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (execPlan, error) {
 
 // buildTSDelete builds time series delete node.
 func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
-
 	// prepare metadata used to construct TS delete node.
 	md := b.mem.Metadata()
 	tab := md.Table(tsDelete.STable)
@@ -2781,11 +2802,12 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 			EndTs:   span.End,
 		})
 	}
-
+	hashNum := tsDelete.HashNum
 	if tsDelete.InputRows == nil && tab.GetTableType() == tree.TimeseriesTable {
 		node, err := b.factory.ConstructTSDelete(
 			[]roachpb.NodeID{b.evalCtx.NodeID},
 			uint64(tab.ID()),
+			uint64(hashNum),
 			spans,
 			uint8(tsDelete.DeleteType),
 			[][]byte{}, // primary tag key
@@ -2850,7 +2872,7 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 			return execPlan{}, err
 		}
 	}
-	hashPoints, err := api.GetHashPointByPrimaryTag(primaryTagVal)
+	hashPoints, err := api.GetHashPointByPrimaryTag(uint64(hashNum), primaryTagVal)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -2860,6 +2882,7 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 	node, err := b.factory.ConstructTSDelete(
 		[]roachpb.NodeID{b.evalCtx.NodeID},
 		uint64(tab.ID()),
+		uint64(hashNum),
 		spans,
 		uint8(tsDelete.DeleteType),
 		[][]byte{primaryTagKey},
@@ -2874,7 +2897,6 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 
 // buildTSUpdate builds time series update node.
 func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
-
 	// if primary tag values in filter don't exist，return update 0
 	if tsUpdate.PTagValueNotExist {
 		node, err := b.factory.ConstructTSTagUpdate(
@@ -2896,6 +2918,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 	md := b.mem.Metadata()
 	tab := md.Table(tsUpdate.ID)
 	dbID := tab.GetParentID()
+	hashNum := tsUpdate.HashNum
 
 	cols := make([]*sqlbase.ColumnDescriptor, tab.ColumnCount())
 
@@ -2953,6 +2976,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 		pArgs,
 		uint32(dbID),
 		uint32(tab.ID()),
+		uint64(hashNum),
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -2972,8 +2996,8 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 	var endKey roachpb.Key
 	if b.evalCtx.StartDistributeMode {
 		// StartDistributeMode only exec update in local node.
-		startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]))
-		endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]), math.MaxInt64)
+		startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]), uint64(hashNum))
+		endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]), math.MaxInt64, uint64(hashNum))
 	}
 	node, err := b.factory.ConstructTSTagUpdate(
 		[]roachpb.NodeID{nodeID},

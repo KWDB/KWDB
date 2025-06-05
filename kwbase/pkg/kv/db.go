@@ -555,12 +555,13 @@ func (db *DB) AdminSplitTs(
 	ctx context.Context,
 	spanKey interface{},
 	tableID uint32,
+	hashNum uint64,
 	splitPoints []int32,
 	timestamps []int64,
 	isCreateTable bool,
 ) error {
 	b := &Batch{}
-	b.adminSplitTs(spanKey, tableID, splitPoints, timestamps, isCreateTable)
+	b.adminSplitTs(spanKey, tableID, hashNum, splitPoints, timestamps, isCreateTable)
 	return getOneErr(db.Run(ctx, b), b)
 }
 

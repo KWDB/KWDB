@@ -431,12 +431,14 @@ func (n *createIndexNode) startExec(params runParams) error {
 	indexDesc.Version = encodingVersion
 
 	if n.n.PartitionBy != nil {
-		partitioning, err := CreatePartitioning(params.ctx, params.p.ExecCfg().Settings,
-			params.EvalContext(), n.tableDesc, indexDesc, n.n.PartitionBy)
-		if err != nil {
-			return err
-		}
-		indexDesc.Partitioning = partitioning
+		return errors.AssertionFailedf(
+			"unsupported create index partition:  %+v", n.n.PartitionBy)
+		//partitioning, err := NewPartitioningDescriptor(params.ctx,
+		//	params.EvalContext(), n.tableDesc, indexDesc, n.n.PartitionBy)
+		//if err != nil {
+		//	return err
+		//}
+		//indexDesc.Partitioning = partitioning
 	}
 
 	mutationIdx := len(n.tableDesc.Mutations)

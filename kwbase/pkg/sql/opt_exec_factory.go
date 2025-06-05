@@ -207,6 +207,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.orderedType = private.OrderedScanType
 	tsScan.ScanAggArray = private.ScanAggs
 	tsScan.TableMetaID = private.Table
+	tsScan.hashNum = table.GetTSHashNum()
 	tsScan.estimatedRowCount = uint64(rowCount)
 
 	// bind tag filter and primary filter to tsScanNode.
@@ -1584,6 +1585,7 @@ func (ef *execFactory) ConstructTSInsert(
 func (ef *execFactory) ConstructTSDelete(
 	nodeIDs []roachpb.NodeID,
 	tblID uint64,
+	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
 	primaryTagKey, primaryTagValues [][]byte,
@@ -1592,6 +1594,7 @@ func (ef *execFactory) ConstructTSDelete(
 	tsDel := tsDeleteNodePool.Get().(*tsDeleteNode)
 	tsDel.nodeIDs = nodeIDs
 	tsDel.tableID = tblID
+	tsDel.hashNum = hashNum
 	tsDel.delTyp = delTyp
 	tsDel.primaryTagKey = primaryTagKey
 	tsDel.primaryTagValue = primaryTagValues
@@ -2394,7 +2397,13 @@ func makeScanColumnsConfig(table cat.Table, cols exec.ColumnOrdinalSet) scanColu
 // MakeTSSpans make TSSpans and assign it to tsScanNode.
 func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight bool) {
 	out := new(constraint.Constraint)
-	if tn, ok := n.(*tsScanNode); ok {
+	switch tn := n.(type) {
+	case *synchronizerNode:
+		if tsScan, ok := tn.plan.(*tsScanNode); ok {
+			return ef.MakeTSSpans(e, tsScan, m)
+		}
+		return false
+	case *tsScanNode:
 		tabID := m.Metadata().GetTableIDByObjectID(tn.Table.ID())
 		tight := ef.MakeTSSpansForExpr(e, out, tabID)
 		typ := tn.Table.Column(0).DatumType()
@@ -2407,8 +2416,9 @@ func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight
 		tn.tsSpans = out.TransformSpansToTsSpans(precision)
 		tn.tsSpansPre = precision
 		return tight
+	default:
+		return false
 	}
-	return false
 }
 
 // MakeTSSpansForExpr make TSSpans from expr.
@@ -2424,7 +2434,11 @@ func (ef *execFactory) MakeTSSpansForExpr(
 			unconstrained(out)
 			return true
 		case 1:
-			return ef.MakeTSSpansForExpr((*t)[0].Condition, out, tblID)
+			allFilterChangeToSpan := ef.MakeTSSpansForExpr((*t)[0].Condition, out, tblID)
+			if allFilterChangeToSpan && t != nil {
+				*t = nil
+			}
+			return allFilterChangeToSpan
 		default:
 			return ef.makeTSSpansForAnd(t, out, tblID)
 		}

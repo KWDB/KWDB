@@ -2806,7 +2806,7 @@ func (s *adminServer) CreateTSTable(
 ) (*serverpb.CreateTSTableResponse, error) {
 	exist, _ := s.server.tsEngine.TSIsTsTableExist(req.TableID)
 	if !exist {
-		err := s.createTSTable(ctx, req.TableID, req.Meta)
+		err := s.createTSTable(ctx, req.TableID, req.HashNum, req.Meta)
 		if err != nil {
 			return nil, err
 		}
@@ -2815,9 +2815,11 @@ func (s *adminServer) CreateTSTable(
 }
 
 // createTSTable create ts table
-func (s *adminServer) createTSTable(ctx context.Context, tableID uint64, meta []byte) error {
+func (s *adminServer) createTSTable(
+	ctx context.Context, tableID uint64, hashNum uint64, meta []byte,
+) error {
 	rangeGroups := []api.RangeGroup{{RangeGroupID: 1}}
-	err := s.server.tsEngine.CreateTsTable(tableID, meta, rangeGroups)
+	err := s.server.tsEngine.CreateTsTable(tableID, hashNum, meta, rangeGroups)
 	if err != nil {
 		log.Errorf(ctx, "CreateTSTable failed %v", tableID)
 		return err
