@@ -6488,12 +6488,13 @@ CREATE TABLE
         │                     | count         | 1000
         │                     | useSorterScan | true
         └── sort              |               |
+             │                | engine type   | time series
              │                | order         | -ts
              └── synchronizer |               |
                   └── ts scan |               |
                               | ts-table      | stbl_raw
                               | access mode   | tableTableMeta
-(21 rows)
+(22 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1001;
              tree             |    field     |  description
 ------------------------------+--------------+-----------------
@@ -6512,12 +6513,13 @@ CREATE TABLE
         │                     | engine type  | time series
         │                     | count        | 1001
         └── sort              |              |
+             │                | engine type  | time series
              │                | order        | -ts
              └── synchronizer |              |
                   └── ts scan |              |
                               | ts-table     | stbl_raw
                               | access mode  | tableTableMeta
-(20 rows)
+(21 rows)
 > show max_push_limit_number;
   max_push_limit_number
 -------------------------
@@ -6544,12 +6546,13 @@ SET
         │                     | count         | 1100
         │                     | useSorterScan | true
         └── sort              |               |
+             │                | engine type   | time series
              │                | order         | -ts
              └── synchronizer |               |
                   └── ts scan |               |
                               | ts-table      | stbl_raw
                               | access mode   | tableTableMeta
-(21 rows)
+(22 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1101;
              tree             |    field     |  description
 ------------------------------+--------------+-----------------
@@ -6568,12 +6571,13 @@ SET
         │                     | engine type  | time series
         │                     | count        | 1101
         └── sort              |              |
+             │                | engine type  | time series
              │                | order        | -ts
              └── synchronizer |              |
                   └── ts scan |              |
                               | ts-table     | stbl_raw
                               | access mode  | tableTableMeta
-(20 rows)
+(21 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 1080;
         tree        |       field       |  description
 --------------------+-------------------+-----------------

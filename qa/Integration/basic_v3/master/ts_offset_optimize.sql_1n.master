@@ -78,6 +78,7 @@ CREATE TABLE
         │                     | engine type    | time series
         │                     | count          | 7200020
         └── sort              |                |
+             │                | engine type    | time series
              │                | order          | +ts
              └── synchronizer |                |
                   └── ts scan |                |
@@ -88,7 +89,7 @@ CREATE TABLE
                               | filter         | length(data) < 10
                               | ptag filter[0] | device = '1'
                               | ptag filter[1] | iot_hub_name = 'kaiwu_mqtt'
-(19 rows)
+(20 rows)
 > explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30'  and device='1' and iot_hub_name='kaiwu_mqtt' order by ts limit 2000 offset 7200000;
              tree             |     field      |            description
 ------------------------------+----------------+------------------------------------
@@ -101,6 +102,7 @@ CREATE TABLE
         │                     | engine type    | time series
         │                     | count          | 7202000
         └── sort              |                |
+             │                | engine type    | time series
              │                | order          | +ts
              └── synchronizer |                |
                   └── ts scan |                |
@@ -110,7 +112,7 @@ CREATE TABLE
                               | spans:toTime   | 2024-11-29 23:59:59.999 +0000 UTC
                               | ptag filter[0] | device = '1'
                               | ptag filter[1] | iot_hub_name = 'kaiwu_mqtt'
-(18 rows)
+(19 rows)
 > use defaultdb;
 SET
 > drop database stbl cascade;
