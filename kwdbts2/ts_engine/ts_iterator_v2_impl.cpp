@@ -151,6 +151,10 @@ KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans(timestamp64 ts) {
     }
   }
 
+  /*
+   * TODO(Yongyan): Refacter scanning partition block span to scan
+   * memory segment data under partition after ts version is implemented.
+   */
   if (cur_partition_index_ < ts_partitions_.size() &&
       !IsFilteredOut(ts_partitions_[cur_partition_index_].ts_partition_range.begin,
                       ts_partitions_[cur_partition_index_].ts_partition_range.end,

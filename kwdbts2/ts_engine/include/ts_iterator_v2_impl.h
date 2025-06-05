@@ -62,7 +62,15 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus AddLastSegmentBlockSpans();
   KStatus AddEntitySegmentBlockSpans();
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
+  /*
+   * Update ts_spans_ to reduce the data scanning from storage based on timestamp(ts)
+   * provided by execution engine.
+   */
   void UpdateTsSpans(timestamp64 ts);
+  /*
+   * Convert block span data to result set which will be returned to execution engine
+   * for further process.
+   */
   KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans(timestamp64 ts);
   KStatus ScanPartitionBlockSpans(timestamp64 ts);
