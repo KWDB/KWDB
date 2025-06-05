@@ -102,8 +102,10 @@ bool HasNonConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
 SortRowChunk::~SortRowChunk() {
   SafeDeleteArray(col_offset_);
   SafeDeleteArray(is_encoded_col_);
-  SafeDeleteArray(data_);
-  SafeDeleteArray(non_constant_data_);
+  EE_MemPoolFree(g_pstBufferPoolInfo, data_);
+  data_ = nullptr;
+  EE_MemPoolFree(g_pstBufferPoolInfo, non_constant_data_);
+  non_constant_data_ = nullptr;
 }
 
 /**
@@ -193,14 +195,14 @@ k_bool SortRowChunk::Initialize() {
   data_size_ = row_size_ * capacity_;
   if (!all_constant_ && !force_constant_) {
     non_constant_max_size_ = non_constant_max_row_size_ * capacity_;
-    non_constant_data_ = KNEW char[non_constant_max_size_];
+    non_constant_data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, non_constant_max_size_);
     if (non_constant_data_ == nullptr) {
       LOG_ERROR("Allocate buffer in SortRowChunk failed.");
       return false;
     }
   }
 
-  data_ = KNEW char[data_size_];
+  data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, data_size_);
   if (data_ == nullptr) {
     LOG_ERROR("Allocate buffer in SortRowChunk failed.");
     return false;
@@ -464,7 +466,8 @@ void SortRowChunk::Reset(k_bool force_constant) {
     force_constant_ = force_constant;
     SafeDeleteArray(col_offset_);
     SafeDeleteArray(is_encoded_col_);
-    SafeDeleteArray(non_constant_data_);
+    EE_MemPoolFree(g_pstBufferPoolInfo, non_constant_data_);
+    non_constant_data_ = nullptr;
     non_constant_col_offsets_.clear();
     all_constant_ = true;
     all_constant_in_order_col_ = true;
@@ -833,7 +836,7 @@ KStatus SortRowChunk::Expand(k_uint32 new_count, k_bool copy) {
       memcpy(new_data, data_, data_size_);
     }
     data_size_ = capacity_ * row_size_;
-    SafeDeleteArray(data_);
+    EE_MemPoolFree(g_pstBufferPoolInfo, data_);
     data_ = new_data;
     return SUCCESS;
   }
@@ -1118,6 +1121,12 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
 
     if (bitmap_offset_ == nullptr) {
       bitmap_offset_ = KNEW k_uint32[col_num_];
+      if (bitmap_offset_ == nullptr) {
+        SafeFreePointer(ColInfo);
+        SafeFreePointer(ColData);
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
+                                      "Insufficient memory");
+      }
     }
     for (k_int32 i = 0; i < col_num_; i++) {
       bitmap_offset_[i] = bitmap_offset;
@@ -1148,6 +1157,13 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         k_int32* offset =
             static_cast<k_int32*>(malloc((count_ + 1) * sizeof(k_int32)));
         if (nullptr == offset) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           SafeFreePointer(ColInfo);
           SafeFreePointer(ColData);
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
@@ -1171,6 +1187,13 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         ColData[i].offset_ = offset;
         char* ptr = static_cast<char*>(malloc(total_len));
         if (nullptr == ptr) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
                                         "Insufficient memory");
           SafeFreePointer(ColInfo);
