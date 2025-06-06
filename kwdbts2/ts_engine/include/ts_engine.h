@@ -294,7 +294,7 @@ class TSEngineV2Impl : public TSEngine {
   }
   KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override { return KStatus::SUCCESS; }
   static KStatus CloseTSEngine(kwdbContext_p ctx, TSEngine* engine) { return KStatus::SUCCESS; }
-  KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value) { return KStatus::SUCCESS; }
+  KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value);
   void AlterTableCacheCapacity(int capacity)  override {}
 
   // init all engine.

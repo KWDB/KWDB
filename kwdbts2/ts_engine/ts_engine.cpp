@@ -30,6 +30,11 @@ uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 1000;
 
+extern std::map<std::string, std::string> g_cluster_settings;
+extern DedupRule g_dedup_rule;
+extern std::shared_mutex g_settings_mutex;
+extern bool g_go_start_service;
+
 namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -707,6 +712,17 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   }
 
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value) {
+  std::shared_lock<std::shared_mutex> lock(g_settings_mutex);
+  std::map<std::string, std::string>::iterator iter = g_cluster_settings.find(key);
+  if (iter != g_cluster_settings.end()) {
+    *value = iter->second;
+    return KStatus::SUCCESS;
+  } else {
+    return KStatus::FAIL;
+  }
 }
 
 KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
