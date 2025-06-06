@@ -569,9 +569,11 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     return ret;
   }
 
-  ret = UpdateAggregation();
-  if (ret != KStatus::SUCCESS) {
-    return ret;
+  if (ts_partitions_.empty()) {
+    ret = UpdateAggregation();
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
   }
 
   int first_partition_idx = 0;
