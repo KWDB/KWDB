@@ -232,7 +232,7 @@ TEST_F(TsEngineV2Test, Recover){
   }
   s = engine_->CreateCheckpoint(ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
-  s = engine_->Recover(ctx);
+  s = engine_->recover(ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
 }
 

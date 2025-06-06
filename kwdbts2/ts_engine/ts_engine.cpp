@@ -674,9 +674,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
-    for (auto& log : logs) {
-      delete log;
-    }
+    logs.clear();
   }
   s = wal_mgr_->SwitchNextFile();
   if (s == KStatus::FAIL) {
@@ -1052,9 +1050,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
-    for (auto& log : logs) {
-      delete log;
-    }
+    logs.clear();
   }
 
   // 2. get all vgroup wal log
