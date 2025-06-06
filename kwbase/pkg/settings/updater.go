@@ -158,6 +158,9 @@ func (u updater) Set(key, rawValue string, vt string) error {
 			fileSize := strconv.Itoa(i >> 20)
 			C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(fileSize)))
 		}
+        if key == "ts.wal.wal_level" {
+            C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(i)))
+        }
 		return setting.set(u.sv, int64(i))
 	case *FloatSetting:
 		f, err := strconv.ParseFloat(rawValue, 64)
