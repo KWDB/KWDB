@@ -431,7 +431,7 @@ DatumPtr SortRowChunk::GetRowData() {
 }
 
 DatumPtr SortRowChunk::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
-  if (!col_info_[col].is_string) {
+  if (IsNull(row, col) || !col_info_[col].is_string) {
     return nullptr;
   }
   if (force_constant_) {
@@ -1181,7 +1181,9 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         memset(ptr, 0, total_len);
         ColData[i].data_ptr_ = ptr;
         for (k_uint32 j = 0; j < count_; ++j) {
-          memcpy(ptr + offset[j], GetData(j, i, vec_len[j]), vec_len[j]);
+          if (!IsNull(j, i)) {
+            memcpy(ptr + offset[j], GetData(j, i, vec_len[j]), vec_len[j]);
+          }
           bitmap[j >> 3] |= (IsNull(j, i) ? 1 : 0) << (j & 7);
         }
         ColData[i].data_ptr_ = ptr;
@@ -1191,8 +1193,10 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         DatumPtr bitmap = col_data + bitmap_offset_[i];
         memset(bitmap, 0, bitmap_size_);
         for (k_uint32 j = 0; j < count_; ++j) {
-          memcpy(col_ptr + j * ColInfo[i].fixed_len_, GetData(j, i),
-                 ColInfo[i].fixed_len_);
+          if (!IsNull(j, i)) {
+            memcpy(col_ptr + j * ColInfo[i].fixed_len_, GetData(j, i),
+                    ColInfo[i].fixed_len_);
+          }
           bitmap[j >> 3] |= (IsNull(j, i) ? 1 : 0) << (j & 7);
         }
         ColData[i].data_ptr_ = col_ptr;
