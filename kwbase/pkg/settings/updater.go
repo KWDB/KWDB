@@ -160,7 +160,7 @@ func (u updater) Set(key, rawValue string, vt string) error {
 		}
         if key == "ts.wal.wal_level" {
             walLevel := strconv.Itoa(i)
-            C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(i)))
+            C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(walLevel)))
         }
 		return setting.set(u.sv, int64(i))
 	case *FloatSetting:
