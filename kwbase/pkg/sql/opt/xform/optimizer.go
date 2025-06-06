@@ -1182,7 +1182,7 @@ func walk(expr opt.Expr, res *int) {
 	case opt.AntiJoinOp, opt.AntiJoinApplyOp, opt.BatchLookUpJoinOp, opt.DistinctOnOp, opt.ExceptOp, opt.ExceptAllOp, opt.ExplainOp, opt.ExportOp,
 		opt.FakeRelOp, opt.FullJoinOp, opt.GroupByOp, opt.IndexJoinOp, opt.InnerJoinOp, opt.InnerJoinApplyOp, opt.InsertOp, opt.IntersectOp, opt.IntersectAllOp,
 		opt.LeftJoinOp, opt.LeftJoinApplyOp, opt.LimitOp, opt.LookupJoinOp, opt.Max1RowOp, opt.MergeJoinOp, opt.OffsetOp, opt.OrdinalityOp, opt.ProjectOp,
-		opt.ProjectSetOp, opt.RecursiveCTEOp, opt.RightJoinOp, opt.ScalarGroupByOp, opt.ScanOp, opt.SelectOp, opt.SelectIntoOp, opt.SemiJoinOp, opt.SemiJoinApplyOp,
+		opt.ProjectSetOp, opt.RecursiveCTEOp, opt.RightJoinOp, opt.ScalarGroupByOp, opt.ScanOp, opt.SelectOp, opt.SemiJoinOp, opt.SemiJoinApplyOp,
 		opt.SequenceSelectOp, opt.UnionOp, opt.UnionAllOp, opt.ValuesOp, opt.VirtualScanOp, opt.WindowOp, opt.WithOp, opt.WithScanOp, opt.ZigzagJoinOp:
 		// should only check relation expr.
 		for i := 0; i < expr.ChildCount(); i++ {
