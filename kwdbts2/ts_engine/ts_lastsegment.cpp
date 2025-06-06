@@ -584,14 +584,13 @@ int FindLowerBound(const Element_& target, const TSEntityID* entities, const tim
   return r;
 }
 
-KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
+KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans) {
   std::vector<TsLastSegmentBlockIndex> block_indices;
   auto s = GetAllBlockIndex(&block_indices);
   if (s == FAIL) {
     return FAIL;
   }
 
-  spans->clear();
   for (int idx = 0; idx < block_indices.size(); ++idx) {
     TsLastSegmentBlockInfo info;
     s = LoadBlockInfo(file_.get(), block_indices[idx], &info);
@@ -610,8 +609,8 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
       auto current_entity = entities[start];
       auto upper_bound =
           FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
-      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), current_entity, block,
-                          start, upper_bound - start);
+      block_spans.emplace_back(make_shared<TsBlockSpan>(current_entity, block,
+                          start, upper_bound - start));
       prev_end = upper_bound;
     }
   }
@@ -619,7 +618,7 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<TsBlockSpan>* spans) {
+                                     std::list<shared_ptr<TsBlockSpan>>& block_spans) {
   // spans->clear();
   if (filter.ts_spans_.empty()) {
     return SUCCESS;
@@ -694,8 +693,8 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       }
       int end = FindUpperBound({entity_id, current_span.end}, entities, ts, start, info.nrow);
       if (end - start > 0) {
-        spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start,
-                            end - start);
+        block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start,
+                            end - start));
       }
 
       if (end == info.nrow) {

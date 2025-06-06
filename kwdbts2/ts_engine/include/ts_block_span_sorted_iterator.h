@@ -26,7 +26,7 @@ class TsBlockSpanSortedIterator {
     uint64_t entity_id = 0;
     timestamp64 ts = 0;
     uint64_t seq_no = 0;
-    TsBlockSpan* block_span = nullptr;
+    shared_ptr<TsBlockSpan> block_span = nullptr;
     int row_idx = 0;
 
     inline bool operator<(const TsBlockSpanRowInfo& other) const {
@@ -47,7 +47,7 @@ class TsBlockSpanSortedIterator {
       return *this > other || *this == other;
     }
   };
-  std::list<TsBlockSpan> block_spans_;
+  std::list<shared_ptr<TsBlockSpan>> block_spans_;
   bool is_reverse_ = false;
   std::list<TsBlockSpanRowInfo> span_row_infos_;
 
@@ -62,7 +62,7 @@ class TsBlockSpanSortedIterator {
     span_row_infos_.insert(it, row_info);
   }
 
-  inline void binarySearch(TsBlockSpanRowInfo& target_row_info, TsBlockSpan* block_span, int& row_idx) {
+  inline void binarySearch(TsBlockSpanRowInfo& target_row_info, shared_ptr<TsBlockSpan> block_span, int& row_idx) {
     int left = 0;
     int right = block_span->GetRowNum() - 1;
     int result;
@@ -96,9 +96,9 @@ class TsBlockSpanSortedIterator {
   }
 
  public:
-  explicit TsBlockSpanSortedIterator(std::list<TsBlockSpan>& block_spans, bool is_reverse = false) :
+  explicit TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans, bool is_reverse = false) :
                           block_spans_(block_spans), is_reverse_(is_reverse) {}
-  explicit TsBlockSpanSortedIterator(std::vector<std::list<TsBlockSpan>>& block_spans, bool is_reverse = false) :
+  explicit TsBlockSpanSortedIterator(std::vector<std::list<shared_ptr<TsBlockSpan>>>& block_spans, bool is_reverse = false) :
     is_reverse_(is_reverse) {
     for (auto& block_span_list : block_spans) {
       block_spans_.merge(block_span_list);
@@ -110,14 +110,14 @@ class TsBlockSpanSortedIterator {
   }
 
   KStatus Init() {
-    for (TsBlockSpan& block_span : block_spans_) {
+    for (auto & block_span : block_spans_) {
       int start_row_idx = 0;
       if (is_reverse_) {
-        start_row_idx = block_span.GetRowNum() - 1;
+        start_row_idx = block_span->GetRowNum() - 1;
       }
-      timestamp64 ts = block_span.GetTS(start_row_idx);
-      uint64_t seq_no = *(block_span.GetLSNAddr(start_row_idx));
-      span_row_infos_.push_back({block_span.GetEntityID(), ts, seq_no, &block_span, start_row_idx});
+      timestamp64 ts = block_span->GetTS(start_row_idx);
+      uint64_t seq_no = *(block_span->GetLSNAddr(start_row_idx));
+      span_row_infos_.push_back({block_span->GetEntityID(), ts, seq_no, block_span, start_row_idx});
     }
     if (!is_reverse_) {
       span_row_infos_.sort();
@@ -127,12 +127,12 @@ class TsBlockSpanSortedIterator {
     return KStatus::SUCCESS;
   }
 
-  KStatus Next(TsBlockSpan* block_span, bool* is_finished) {
+  KStatus Next(shared_ptr<TsBlockSpan>& block_span, bool* is_finished) {
     if (span_row_infos_.empty()) {
       *is_finished = true;
       return KStatus::SUCCESS;
     }
-    TsBlockSpan* cur_block_span = span_row_infos_.front().block_span;
+    shared_ptr<TsBlockSpan> cur_block_span = span_row_infos_.front().block_span;
     TsBlockSpanRowInfo next_span_row_info;
     if (!is_reverse_) {
       next_span_row_info = {UINT64_MAX, INT64_MAX, UINT64_MAX};

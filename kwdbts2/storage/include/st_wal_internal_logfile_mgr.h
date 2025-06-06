@@ -70,7 +70,7 @@ class WALFileMgr {
    * @param end_block_no
    * @return
    */
-  KStatus readEntryBlocks(std::vector<EntryBlock*>& entry_blocks, uint32_t start_block_no, uint32_t end_block_no);
+  KStatus readEntryBlocks(std::vector<EntryBlock*>& entry_blocks, uint64_t start_block_no, uint64_t end_block_no);
 
   void Lock() {
     MUTEX_LOCK(file_mutex_);

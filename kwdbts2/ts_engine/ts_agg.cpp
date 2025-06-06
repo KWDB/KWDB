@@ -77,7 +77,8 @@ bool AggCalculatorV2::isnull(size_t row) {
   return (*bitmap_)[row] == DataFlags::kNull;
 }
 
-bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr) {
+bool AggCalculatorV2::CalcAggForFlush(uint16_t& count, void* max_addr, void* min_addr,
+                                      void* sum_addr) {
   count = 0;
   void* min = nullptr;
   void* max = nullptr;
@@ -87,7 +88,7 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
       continue;
     }
     ++count;
-    void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
+    auto current = reinterpret_cast<void*>(reinterpret_cast<intptr_t>(mem_) + i * size_);
 
     if (!max || cmp(current, max) > 0) {
       max = current;
@@ -96,39 +97,80 @@ bool AggCalculatorV2::CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr
       min = current;
     }
     if (isSumType(type_) && sum_addr != nullptr) {
-      // When a memory overflow has occurred, there is no need to calculate the sum result again
-      if (is_overflow) {
-        continue;
+      if (!is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+            is_overflow = AddAggInteger<int64_t>(
+                *static_cast<int64_t*>(sum_addr),
+                *static_cast<int8_t*>(current));
+            break;
+          case DATATYPE::INT16:
+            is_overflow = AddAggInteger<int64_t>(
+                *static_cast<int64_t*>(sum_addr),
+                *static_cast<int16_t*>(current));
+            break;
+          case DATATYPE::INT32:
+            is_overflow = AddAggInteger<int64_t>(
+                *static_cast<int64_t*>(sum_addr),
+                *static_cast<int32_t*>(current));
+            break;
+          case DATATYPE::INT64:
+            is_overflow = AddAggInteger<int64_t>(
+                *static_cast<int64_t*>(sum_addr),
+                *static_cast<int64_t*>(current));
+            break;
+          case DATATYPE::FLOAT:
+            AddAggFloat<double>(
+                *static_cast<double*>(sum_addr),
+                *static_cast<float*>(current));
+            break;
+          case DATATYPE::DOUBLE:
+            AddAggFloat<double>(
+                *static_cast<double*>(sum_addr),
+                *static_cast<double*>(current));
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d", type_);
+            return KStatus::FAIL;
+        }
+        if (is_overflow) {
+          *static_cast<double*>(sum_addr) = *static_cast<int64_t*>(sum_addr);
+        }
       }
-      // sum
-      switch (type_) {
-        case DATATYPE::INT8:
-          is_overflow = AddAggInteger<int8_t>((*(static_cast<int8_t*>(sum_addr))), (*(static_cast<int8_t*>(current))));
-          break;
-        case DATATYPE::INT16:
-          is_overflow = AddAggInteger<int16_t>((*(static_cast<int16_t*>(sum_addr))),
-                                               (*(static_cast<int16_t*>(current))));
-          break;
-        case DATATYPE::INT32:
-          is_overflow = AddAggInteger<int32_t>((*(static_cast<int32_t*>(sum_addr))),
-                                               (*(static_cast<int32_t*>(current))));
-          break;
-        case DATATYPE::INT64:
-          is_overflow = AddAggInteger<int64_t>((*(static_cast<int64_t*>(sum_addr))),
-                                               (*(static_cast<int64_t*>(current))));
-          break;
-        case DATATYPE::DOUBLE:
-          AddAggFloat<double>((*(static_cast<double*>(sum_addr))), (*(static_cast<double*>(current))));
-          break;
-        case DATATYPE::FLOAT:
-          AddAggFloat<float>((*(static_cast<float*>(sum_addr))), (*(static_cast<float*>(current))));
-          break;
-        case DATATYPE::TIMESTAMP:
-        case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
-          break;
-        default:
-          break;
+      if (is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+            AddAggFloat<double, int64_t>(
+                *static_cast<double*>(sum_addr),
+                *static_cast<int8_t*>(current));
+            break;
+          case DATATYPE::INT16:
+            AddAggFloat<double, int64_t>(
+                *static_cast<double*>(sum_addr),
+                *static_cast<int16_t*>(current));
+            break;
+          case DATATYPE::INT32:
+            AddAggFloat<double, int64_t>(
+                *static_cast<double*>(sum_addr),
+                *static_cast<int32_t*>(current));
+            break;
+          case DATATYPE::INT64:
+            AddAggFloat<double, int64_t>(
+                *static_cast<double*>(sum_addr),
+                *static_cast<int64_t*>(current));
+            break;
+          case DATATYPE::FLOAT:
+          case DATATYPE::DOUBLE:
+            LOG_ERROR("Overflow not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+        }
       }
     }
   }
@@ -182,7 +224,7 @@ inline void AggCalculatorV2::InitAggData(TSSlice& agg_data) {
 KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type,
                                                   uint32_t col_idx, bool& is_overflow) {
   if (mem_ == nullptr) {
-    return KStatus::FAIL;
+    return SUCCESS;  // ddl add column, the old block does not have the column
   }
 
   for (int i = 0; i < count_; ++i) {
@@ -310,11 +352,114 @@ KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype 
   return KStatus::SUCCESS;
 }
 
-void VarColAggCalculatorV2::CalcAllAgg(string& max, string& min, uint64_t& count) {
+KStatus AggCalculatorV2::MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype agg_type, bool& is_overflow) {
+  switch (agg_type) {
+    case COUNT: {
+      KUint64(agg_data.data) += count_;
+      break;
+    }
+    case MAX: {
+      void* max = nullptr;
+      max = pre_agg_ + sizeof(uint16_t);
+      if (agg_data.data == nullptr) {
+        agg_data.len = size_;
+        InitAggData(agg_data);
+        memcpy(agg_data.data, max, size_);
+      } else if (cmp(max, agg_data.data) > 0) {
+        memcpy(agg_data.data, max, size_);
+      }
+      break;
+    }
+    case MIN: {
+      void* min = nullptr;
+      min = pre_agg_ + sizeof(uint16_t) + size_;
+      if (agg_data.data == nullptr) {
+        agg_data.len = size_;
+        InitAggData(agg_data);
+        memcpy(agg_data.data, min, size_);
+      } else if (cmp(min, agg_data.data) < 0) {
+        memcpy(agg_data.data, min, size_);
+      }
+      break;
+    }
+    case SUM: {
+      bool pre_agg_overflow = *static_cast<bool *>(pre_agg_ + sizeof(uint16_t) + size_ * 2);
+      if (pre_agg_overflow) {
+        is_overflow = true;
+      }
+      void* cur_sum = pre_agg_ + sizeof(uint16_t) + size_ * 2 + 1;
+      if (agg_data.data == nullptr) {
+        agg_data.len = sizeof(int64_t);
+        InitAggData(agg_data);
+        InitSumValue(agg_data.data);
+      }
+      if (!is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+          case DATATYPE::INT16:
+          case DATATYPE::INT32:
+          case DATATYPE::INT64:
+            is_overflow = AddAggInteger<int64_t>(
+                *reinterpret_cast<int64_t*>(agg_data.data),
+                *static_cast<int64_t*>(cur_sum));
+            break;
+          case DATATYPE::FLOAT:
+          case DATATYPE::DOUBLE:
+            AddAggFloat<double>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *static_cast<double*>(cur_sum));
+            break;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d",
+                type_);
+            return KStatus::FAIL;
+            break;
+        }
+        if (is_overflow) {
+          *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
+        }
+      }
+      if (is_overflow) {
+        switch (type_) {
+          case DATATYPE::INT8:
+          case DATATYPE::INT16:
+          case DATATYPE::INT32:
+          case DATATYPE::INT64:
+            if (!pre_agg_overflow) {
+              AddAggFloat<double, int64_t>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *static_cast<int64_t*>(cur_sum));
+            } else {
+              AddAggFloat<double, double>(
+                *reinterpret_cast<double*>(agg_data.data),
+                *static_cast<double*>(cur_sum));
+            }
+            break;
+          case DATATYPE::FLOAT:
+          case DATATYPE::DOUBLE:
+            LOG_ERROR("Overflow not supported for sum, datatype: %d", type_);
+            return KStatus::FAIL;
+          default:
+            LOG_ERROR("Not supported for sum, datatype: %d", type_);
+            return KStatus::FAIL;
+        }
+      }
+      break;
+    }
+    default:
+      LOG_ERROR("Not supported functype %d for pre agg", agg_type);
+      break;
+  }
+  return SUCCESS;
+}
+
+void VarColAggCalculatorV2::CalcAggForFlush(string& max, string& min, uint64_t& count) {
   if (var_rows_.empty()) {
     count = 0;
     return;
   }
+
+  count = var_rows_.size();
 
   auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
   max = *max_it;
@@ -354,7 +499,7 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
     auto min_it = std::min_element(var_rows_.begin(), var_rows_.end());
     if (agg_data.data) {
       string current_min({agg_data.data + kStringLenLen, agg_data.len});
-      if (current_min < *min_it) {
+      if (current_min > *min_it) {
         free(agg_data.data);
         agg_data.data = nullptr;
       }
@@ -369,4 +514,60 @@ void VarColAggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfuncty
   }
 }
 
+KStatus VarColAggCalculatorV2::MergeAggResultFromPreAgg(TSSlice &agg_data, Sumfunctype agg_type) {
+  uint32_t max_len{0};
+  uint32_t min_len{0};
+  switch (agg_type) {
+    case COUNT: {
+      KUint64(agg_data.data) += count_;
+      break;
+    }
+    case MAX: {
+      void* max = nullptr;
+      max_len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
+      max = pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2;
+      string max_str(static_cast<const char *>(max), max_len);
+      if (agg_data.data) {
+        string current_max({agg_data.data + kStringLenLen, agg_data.len});
+        if (current_max < max_str) {
+          free(agg_data.data);
+          agg_data.data = nullptr;
+        }
+      }
+      if (agg_data.data == nullptr) {
+        // Can we use the memory in var_rows?
+        agg_data.len = max_len + kStringLenLen;
+        agg_data.data = static_cast<char*>(malloc(agg_data.len));
+        KUint16(agg_data.data) = max_len;
+        memcpy(agg_data.data + kStringLenLen, max, max_len);
+      }
+      break;
+    }
+    case MIN: {
+      void* min = nullptr;
+      max_len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
+      min_len = *static_cast<uint32_t *>(pre_agg_+ sizeof(uint16_t) + sizeof(uint32_t));
+      min = pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len;
+      string min_str(static_cast<const char *>(min), min_len);
+      if (agg_data.data) {
+        string current_min(agg_data.data + kStringLenLen);
+        if (current_min > min_str) {
+          free(agg_data.data);
+          agg_data.data = nullptr;
+        }
+      }
+      if (agg_data.data == nullptr) {
+        // Can we use the memory in var_rows?
+        agg_data.len = min_len + kStringLenLen;
+        agg_data.data = static_cast<char*>(malloc(agg_data.len));
+        KUint16(agg_data.data) = min_len;
+        memcpy(agg_data.data + kStringLenLen, min, min_len);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return SUCCESS;
+}
 }  // namespace kwdbts

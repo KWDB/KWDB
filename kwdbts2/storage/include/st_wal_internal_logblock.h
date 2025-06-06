@@ -19,7 +19,7 @@ class EntryBlock {
  public:
   EntryBlock() = default;
 
-  EntryBlock(uint32_t block_no, uint16_t first_rec_grp);
+  EntryBlock(uint64_t block_no, uint16_t first_rec_grp);
 
   explicit EntryBlock(const char* value);
 
@@ -53,7 +53,7 @@ class EntryBlock {
 
   void format();
 
-  void reset(uint32_t block_no);
+  void reset(uint64_t block_no);
 
   char* encode();
 

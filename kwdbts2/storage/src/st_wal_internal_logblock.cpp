@@ -15,7 +15,7 @@
 
 namespace kwdbts {
 
-EntryBlock::EntryBlock(uint32_t block_no, uint16_t first_rec_grp)
+EntryBlock::EntryBlock(uint64_t block_no, uint16_t first_rec_grp)
     : block_no_(block_no),
       first_rec_offset_(first_rec_grp) {
   reset(block_no);
@@ -43,7 +43,7 @@ void EntryBlock::format() {
   reset(0);
 }
 
-void EntryBlock::reset(uint32_t block_no) {
+void EntryBlock::reset(uint64_t block_no) {
   block_no_ = block_no;
   data_len_ = 0;
   first_rec_offset_ = 0;
