@@ -1037,6 +1037,11 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   }
   // 1. get engine chk wal log.
   std::vector<LogEntry*> logs;
+  Defer defer{[&]() {
+    for (auto& log : logs) {
+      delete log;
+    }
+  }};
   std::vector<uint64_t> vgroup_lsn;
   s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
