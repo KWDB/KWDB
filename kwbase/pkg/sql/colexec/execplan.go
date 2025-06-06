@@ -842,7 +842,7 @@ func NewColOperator(
 					ctx, flowCtx, hashJoinerMemMonitorName,
 				)
 			}
-			if len(core.HashJoiner.LeftEqColumns) == 0 && core.HashJoiner.OnExpr.Empty() {
+			if len(core.HashJoiner.LeftEqColumns) == 0 {
 				err := errors.New("cannot use col exec when cross join")
 				log.VEventf(ctx, 1, "%v\n", err.Error())
 				return result, err
