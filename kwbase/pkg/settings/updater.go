@@ -159,6 +159,7 @@ func (u updater) Set(key, rawValue string, vt string) error {
 			C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(fileSize)))
 		}
         if key == "ts.wal.wal_level" {
+            walLevel := strconv.Itoa(i)
             C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(i)))
         }
 		return setting.set(u.sv, int64(i))
