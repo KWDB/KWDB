@@ -55,7 +55,7 @@ void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& d
     // range.lsn span  1------------------8
     // del.lsn span        3---------------------11
     // result lsn      1-2
-    if (range.lsn_span.end >= del.lsn_span.begin) {
+    if (range.lsn_span.begin <= del.lsn_span.begin && del.lsn_span.begin <= range.lsn_span.end) {
       cross.lsn_span.begin = range.lsn_span.begin;
       cross.lsn_span.end = del.lsn_span.begin - (IsMinLSN(del.lsn_span.begin) ? 0 : 1);
       if (cross.lsn_span.begin <= cross.lsn_span.end) {
@@ -65,12 +65,19 @@ void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& d
     // range.lsn span                4----------8
     // del.lsn span        1--------------6
     // result lsn                           7---8
-    if (range.lsn_span.begin >= del.lsn_span.end) {
+    if (range.lsn_span.begin <= del.lsn_span.end && del.lsn_span.end <= range.lsn_span.end) {
       cross.lsn_span.begin = del.lsn_span.end + (IsMaxLSN(del.lsn_span.end) ? 0 : 1);
       cross.lsn_span.end = range.lsn_span.end;
       if (cross.lsn_span.begin <= cross.lsn_span.end) {
         result->push_back(cross);
       }
+    }
+    // range.lsn span                4----------8
+    // del.lsn span        1------3                  10----- 13
+    // result lsn                    4----------8
+    if (del.lsn_span.end < range.lsn_span.begin || del.lsn_span.begin > range.lsn_span.end) {
+      cross.lsn_span = range.lsn_span;
+      result->push_back(cross);
     }
     // range.lsn span                4----------8
     // del.lsn span        1-----------------------11
