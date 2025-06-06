@@ -270,7 +270,7 @@ class TSEngineV2Impl : public TSEngine {
 
   void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override { exit(0); }
 
-  KStatus UpdateSetting(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus UpdateSetting(kwdbContext_p ctx) override;
 
   KStatus LogInit();
 

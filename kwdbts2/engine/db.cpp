@@ -878,6 +878,8 @@ void TSSetClusterSetting(TSSlice key, TSSlice value) {
   } else {
     iter->second = value_set;
   }
+  kwdbContext_p ctx;
+  g_engine_->UpdateSetting(ctx);
   return;
 }
 
