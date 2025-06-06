@@ -338,7 +338,7 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 )
 
 // TsWALLevel indicates the WAL level
-var TsWALLevel = settings.RegisterPublicValidatedIntSetting(
+var TsWALLevel = settings.RegisterPublicIntSetting(
 	"ts.wal.wal_level",
 	"ts WAL level, default 2(flush)",
 	2,
