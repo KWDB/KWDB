@@ -58,7 +58,7 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
       }
 
       data_block_builder_->Add(last_entity_payload->entity_id, last_entity_payload->lsn, last_entity_payload->metric);
-      if ((data_block_builder_->GetNRows() + 1) % kNRowPerBlock == 0) {
+      if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
         data_block_builder_->Finish();
         auto s = WriteMetricBlock(data_block_builder_.get());
         if (s != SUCCESS) return FAIL;
@@ -124,7 +124,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
 
       data_block_builder_->Add(last_entity_col_data->entity_id, last_entity_col_data->lsn,
                                last_entity_col_data->col_data, last_entity_col_data->data_flags);
-      if ((data_block_builder_->GetNRows() + 1) % kNRowPerBlock == 0) {
+      if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
         data_block_builder_->Finish();
         auto s = WriteMetricBlock(data_block_builder_.get());
         if (s != SUCCESS) return FAIL;
