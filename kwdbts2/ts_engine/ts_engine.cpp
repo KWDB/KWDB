@@ -1066,6 +1066,9 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       return KStatus::FAIL;
     }
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
+    for (auto& log : vlogs) {
+      delete log;
+    }
   }
 
   // 3. apply redo log
