@@ -886,15 +886,23 @@ KStatus ParseQuery::ConstructTree(std::size_t *i, ExprPtr *head_node) {
       case COALESCE: {
         // COALESCE(@1(column), normal value)
         current_node->operator_type = COALESCE;
-        (*i) += 2;
-        ret = ConstructTree(i, &current_node->left);
-        if (ret != SUCCESS) {
-          return ret;
+
+        (*i)++;
+        if (node_list_[*i]->operators != OPENING_BRACKET) {
+          return FAIL;
         }
         (*i)++;
-        ret = ConstructTree(i, &current_node->right);
-        if (ret != SUCCESS) {
-          return ret;
+        while (node_list_[*i]->operators != CLOSING_BRACKET) {
+          if (ConstructTree(i, &expr_ptr) != SUCCESS) {
+            return FAIL;
+          }
+          if (node_list_[*i]->operators == COMMA) {
+            current_node->left = expr_ptr;
+            (*i)++;
+          }
+        }
+        if (expr_ptr != nullptr) {
+          current_node->right = expr_ptr;
         }
         (*i)++;
         *head_node = current_node;

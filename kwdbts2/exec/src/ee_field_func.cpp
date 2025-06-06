@@ -213,7 +213,13 @@ k_int64 FieldFuncMinus::ValInt() {
                                         "Timestamp/TimestampTZ out of range");
           return 0;
         }
-        val -= val2 * (*it);
+        val2 *= (*it);
+        if (!I64_SAFE_SUB_CHECK(val, val2)) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                        "integer out of range");
+          return 0;
+        }
+        val -= val2;
       }
     }
     return val;
@@ -1849,7 +1855,7 @@ k_int64 FieldFuncDiff::ValInt() {
   is_clear_ = false;
 
   if (diff_info_.hasPrev) {
-    if (I64_SAFE_SUB_CHECK(val, diff_info_.prev.i64_value)) {
+    if (!I64_SAFE_SUB_CHECK(val, diff_info_.prev.i64_value)) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
                                     "integer out of range");
       return 0;
