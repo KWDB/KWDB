@@ -740,14 +740,19 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
   } else if ("ts.dedup.rule" == key) {
     if ("override" == value) {
       g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
     } else if ("merge" == value) {
       g_dedup_rule = kwdbts::DedupRule::MERGE;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::MERGE;
     } else if ("keep" == value) {
       g_dedup_rule = kwdbts::DedupRule::KEEP;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
     } else if ("reject" == value) {
       g_dedup_rule = kwdbts::DedupRule::REJECT;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::REJECT;
     } else if ("discard" == value) {
       g_dedup_rule = kwdbts::DedupRule::DISCARD;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::DISCARD;
     }
   } else if ("ts.mount.max_limit" == key) {
     g_max_mount_cnt_ = atoi(value.c_str());

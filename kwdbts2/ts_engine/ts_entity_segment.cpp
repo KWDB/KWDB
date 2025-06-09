@@ -34,6 +34,7 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
     file_->Reset();
     header_.magic = TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
     header_.status = TsFileStatus::READY;
+    header_.entity_num = 0;
     s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsEntityItemFileHeader)});
   }
   return s;
@@ -59,10 +60,17 @@ KStatus TsEntitySegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   if (lock) {
     WrLock();
   }
+  Defer defer([&]() {
+    if (lock) {
+      UnLock();
+    }
+  });
   KStatus s = file_->Read(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
                           &result, reinterpret_cast<char *>(&entity_item));
+  bool new_entity = false;
   if (entity_item.entity_id == 0) {
     entity_item.entity_id = entity_id;
+    new_entity = true;
   }
   entity_item.cur_block_id = block_item_info.block_id;
   if (entity_item.max_ts < block_item_info.max_ts) {
@@ -74,8 +82,18 @@ KStatus TsEntitySegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   entity_item.row_written += block_item_info.n_rows;
   s = file_->Write(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem),
                    TSSlice{reinterpret_cast<char *>(&entity_item), sizeof(entity_item)});
-  if (lock) {
-    UnLock();
+  if (s == KStatus::SUCCESS) {
+    if (new_entity) {
+      ++header_.entity_num;
+      s = file_->Write(0, TSSlice{reinterpret_cast<char *>(&header_), sizeof(header_)});
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("write entity header failed.")
+        return s;
+      }
+    }
+  } else {
+    LOG_ERROR("write entity item[id=%lu] failed.", entity_id);
+    return s;
   }
   return s;
 }
@@ -227,9 +245,12 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
       return s;
     }
 
-    if (isTimestampInSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
-      std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
-                                                                             blk_segment);
+    if (isTimestampWithinSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
+      std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, blk_segment);
+      // Because block item traverses from back to front, use push_front
+      block_spans.push_front(make_shared<TsBlockSpan>(filter.entity_id, block, 0, cur_blk_item.n_rows));
+    } else if (isTimestampInSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
+      std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, blk_segment);
       // std::vector<std::pair<start_row, row_num>>
       std::vector<std::pair<int, int>> row_spans;
       s = block->GetRowSpans(filter.ts_spans_, row_spans);
@@ -1007,7 +1028,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
       return s;
     }
   }
-  TsBlockSpanSortedIterator iter(block_spans);
+  TsBlockSpanSortedIterator iter(block_spans, EngineOptions::g_dedup_rule);
   iter.Init();
   TsEntityKey entity_key;
   std::shared_ptr<TsEntityBlock> block = nullptr;

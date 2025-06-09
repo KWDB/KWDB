@@ -411,7 +411,8 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
       block_span_sorted_iterator_ = nullptr;
     } else {
       // sort the block span data
-      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, is_reversed_);
+      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, EngineOptions::g_dedup_rule,
+                                                                                is_reversed_);
       ret = block_span_sorted_iterator_->Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
@@ -629,9 +630,11 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     return ret;
   }
 
-  ret = UpdateAggregation();
-  if (ret != KStatus::SUCCESS) {
-    return ret;
+  if (ts_partitions_.empty()) {
+    ret = UpdateAggregation();
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
   }
 
   int first_partition_idx = 0;
@@ -803,8 +806,17 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation() {
     return KStatus::SUCCESS;
   }
   KStatus ret;
-  std::vector<shared_ptr<TsBlockSpan>> ts_block_spans(ts_block_spans_.begin(), ts_block_spans_.end());
+
+  std::vector<shared_ptr<TsBlockSpan>> ts_block_spans;
+  TsBlockSpanSortedIterator iter(ts_block_spans_, EngineOptions::g_dedup_rule);
+  iter.Init();
+  std::shared_ptr<TsBlockSpan> dedup_block_span;
+  bool is_finished = false;
+  while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
+    ts_block_spans.push_back(dedup_block_span);
+  }
   ts_block_spans_.clear();
+  dedup_block_span = nullptr;
 
   int block_span_idx = 0;
   if (!first_col_idxs_.empty() || has_first_row_col_) {
