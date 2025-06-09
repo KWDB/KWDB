@@ -234,7 +234,12 @@ class  FieldFuncTimeBucket : public FieldFuncOp {
   using FieldFuncOp::FieldFuncOp;
   explicit FieldFuncTimeBucket(std::list<Field *> fields, k_int8 tz) : FieldFuncOp(fields) {
     time_zone_ = tz;
-    // getIntervalSeconds(var_interval_, year_bucket_, error_info_);
+    if (args_[1]->get_field_type() != FIELD_CONSTANT) {
+      error_info_ = "invalid input interval time.";
+      k_uint32 code = ERRCODE_INVALID_PARAMETER_VALUE;
+      EEPgErrorInfo::SetPgErrorInfo(code, error_info_.c_str());
+      return;
+    }
     KString unit = "";
     KString interval = replaceTimeUnit({args_[1]->ValStr().getptr(),
                             args_[1]->ValStr().length_});

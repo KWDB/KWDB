@@ -309,5 +309,5 @@ select time_bucket(k_timestamp,'ms') as tb from test_select_timebucket.tb3 group
 select time_bucket(k_timestamp,'10ms') as tb from test_select_timebucket.tb3 group by tb order by tb limit 5;
 select time_bucket(k_timestamp,'10μs') as tb from test_select_timebucket.tb3 group by tb order by tb limit 5;
 select time_bucket(k_timestamp,'10ns') as tb from test_select_timebucket.tb3 group by tb order by tb limit 5;
-
+select first(k_timestamp),max(e1) from test_select_timebucket.tb3 where k_timestamp = time_bucket(k_timestamp, case when e1 is NULL then pg_catalog.timeofday() else pg_catalog.timeofday() end);
 use defaultdb;drop database test_select_timebucket cascade;
