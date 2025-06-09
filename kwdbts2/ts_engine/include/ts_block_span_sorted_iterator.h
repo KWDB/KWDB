@@ -109,8 +109,8 @@ class TsBlockSpanSortedIterator {
     row_idx = result;
   }
 
-  TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan> block_span, bool is_reverse = false) {
-    if (!is_reverse) {
+  TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan> block_span) {
+    if (!is_reverse_) {
       return {block_span->GetEntityID(), block_span->GetTS(0), *block_span->GetLSNAddr(0), block_span, 0};
     } else {
       int row_idx = block_span->GetRowNum() - 1;
@@ -138,7 +138,7 @@ class TsBlockSpanSortedIterator {
 
   KStatus Init() {
     for (auto& block_span : block_spans_) {
-      span_row_infos_.push_back(getFirstRowInfo(block_span, is_reverse_));
+      span_row_infos_.push_back(getFirstRowInfo(block_span));
     }
     if (!is_reverse_) {
       span_row_infos_.sort();
@@ -181,7 +181,7 @@ class TsBlockSpanSortedIterator {
     }
 
     if (dedup_rule_ == DedupRule::OVERRIDE) {
-      auto iter = span_row_infos_.begin()++;
+      auto iter = span_row_infos_.begin();
       TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
       if (!is_reverse_) {
         int prev_row_idx = row_idx - 1;
@@ -192,6 +192,7 @@ class TsBlockSpanSortedIterator {
             cur_block_span->SplitFront(prev_row_idx, block_span);
             iter = span_row_infos_.end();
           } else {
+            // need dedup
             dedup_row_info = next_span_row_info;
             iter++;
           }
@@ -206,7 +207,9 @@ class TsBlockSpanSortedIterator {
         TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(next_row_idx),
                                             *cur_block_span->GetLSNAddr(next_row_idx)};
         if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          // need dedup
           dedup_row_info = next_row_info;
+          iter++;
         } else {
           iter = span_row_infos_.end();
         }
@@ -214,8 +217,7 @@ class TsBlockSpanSortedIterator {
 
       // dealing with duplicate data in other TsBlockSpan
       while (iter != span_row_infos_.end()) {
-        TsBlockSpanRowInfo first_row_info = getFirstRowInfo(iter->block_span, is_reverse_);
-        if (first_row_info.IsSameEntityAndTs(dedup_row_info)) {
+        if (iter->IsSameEntityAndTs(dedup_row_info)) {
           if (!is_reverse_) {
             iter->block_span->SplitFront(1, block_span);
           } else {
