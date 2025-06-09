@@ -104,10 +104,24 @@ class TsTableV2Impl : public TsTable {
                                const uint32_t cur_version, const uint32_t new_version,
                                const std::vector<uint32_t/* tag column id*/>&) override;
 
+  /**
+    * @brief clean ts table
+    *
+    * @return KStatus
+    */
+  virtual KStatus TSxClean(kwdbContext_p ctx);
+
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                              const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
 
+  KStatus UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) override;
+
+  KStatus UndoDropIndex(kwdbContext_p ctx, LogEntry* log) override;
+
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) override;
+
+  KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
+    uint32_t new_version) override;
 };
 
 }  // namespace kwdbts

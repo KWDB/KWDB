@@ -356,6 +356,15 @@ KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, 
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, cur_version, err_info.errmsg.c_str());
     return s;
   }
+  // Get transaction ID.
+  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+  // Write Alter DDL into WAL, which type is ADD_COLUMN.
+  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
+  if (s != KStatus::SUCCESS) {
+    err_msg = "Write WAL error";
+    return s;
+  }
   return ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
 }
 
@@ -372,6 +381,15 @@ KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id,
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, cur_version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, cur_version, err_info.errmsg.c_str());
+    return s;
+  }
+  // Get transaction ID.
+  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+  // Write Alter DDL into WAL, which type is DROP_COLUMN.
+  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
+  if (s != KStatus::SUCCESS) {
+    err_msg = "Write WAL error";
     return s;
   }
   return ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta,
@@ -393,6 +411,15 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, cur_version, err_info.errmsg.c_str());
     return s;
   }
+  // Get transaction ID.
+  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+
+  // Write Alter DDL into WAL, which type is ALTER_COLUMN_TYPE.
+  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
+  if (s != KStatus::SUCCESS) {
+    err_msg = "Write WAL error";
+    return s;
+  }
   return ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
                               cur_version, new_version, err_msg);
 }
@@ -403,7 +430,6 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
 
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                                    uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
-  return KStatus::SUCCESS;
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
@@ -415,7 +441,6 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
                                     uint64_t range_group_id, uint64_t mtr_id) {
-  return KStatus::SUCCESS;
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
@@ -427,7 +452,6 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
                                       uint64_t range_group_id, uint64_t mtr_id) {
-  return KStatus::SUCCESS;
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -469,6 +493,158 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
     }
   }
   Return(s)
+}
+
+KStatus TSEngineV2Impl::checkpoint(kwdbts::kwdbContext_p ctx) {
+  wal_sys_->Lock();
+  KStatus s = wal_sys_->CreateCheckpoint(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to create checkpoint for TS Engine.")
+    return s;
+  }
+  wal_sys_->Unlock();
+
+  return SUCCESS;
+}
+
+KStatus TSEngineV2Impl::TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) {
+  std::shared_ptr<TsTable> table;
+  KStatus s;
+
+  s = tsx_manager_sys_->TSxBegin(ctx, transaction_id);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxBegin failed")
+    return s;
+  }
+  s = GetTsTable(ctx, table_id, table);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxBegin failed, The target table is not available, table id: %lu", table_id)
+    return s;
+  }
+
+  s = CreateCheckpoint(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to CreateCheckpoint.")
+  #ifdef WITH_TESTS
+    return s;
+  #endif
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) {
+  std::shared_ptr<TsTable> table;
+  KStatus s;
+
+  uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+  if (mtr_id != 0) {
+    if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
+      LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
+      return KStatus::FAIL;
+    }
+  }
+
+  s = GetTsTable(ctx, table_id, table);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxCommit failed, The target table is not available, table id: %lu", table_id)
+    return s;
+  }
+
+  s = table->TSxClean(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxCommit failed, Failed to clean the TS transaction, table id: %lu", table->GetTableId())
+    return s;
+  }
+
+  if (checkpoint(ctx) == KStatus::FAIL) {
+    LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)
+    return s;
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) {
+  std::shared_ptr<TsTable> table;
+  KStatus s;
+
+  uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+  if (mtr_id == 0) {
+    if (checkpoint(ctx) == KStatus::FAIL) {
+      LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)
+      return KStatus::FAIL;
+    }
+
+    return KStatus::SUCCESS;
+  }
+
+  s = tsx_manager_sys_->TSxRollback(ctx, transaction_id);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxRollback failed, TSxRollback failed, table id: %lu", table_id)
+    return s;
+  }
+
+  s = GetTsTable(ctx, table_id, table);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxRollback failed, The target table is not available, table id: %lu", table_id)
+    return s;
+  }
+
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> ignore;
+  s = wal_sys_->ReadWALLogForMtr(mtr_id, logs, ignore);
+  if (s == KStatus::FAIL && !logs.empty()) {
+    for (auto log : logs) {
+      delete log;
+    }
+    return s;
+  }
+
+  std::reverse(logs.begin(), logs.end());
+  for (auto log : logs) {
+    if (log->getXID() == mtr_id &&  s != FAIL) {
+      switch (log->getType()) {
+        case WALLogType::DDL_ALTER_COLUMN: {
+          s = table->UndoAlterTable(ctx, log);
+          if (s == KStatus::SUCCESS) {
+            table->TSxClean(ctx);
+          }
+          break;
+        }
+        case WALLogType::CREATE_INDEX: {
+          s = table->UndoCreateIndex(ctx, log);
+          if (s == KStatus::SUCCESS) {
+            table->TSxClean(ctx);
+          }
+          break;
+        }
+        case WALLogType::DROP_INDEX: {
+          s = table->UndoDropIndex(ctx, log);
+          if (s == KStatus::SUCCESS) {
+            table->TSxClean(ctx);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    delete log;
+  }
+
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("TSxRollback failed, Failed to ROLLBACK the TS transaction, table id: %lu", table_id)
+    tables_cache_->EraseAndCheckRef(table_id);
+    return s;
+  }
+
+  if (checkpoint(ctx) == KStatus::FAIL) {
+    LOG_ERROR("TSxRollback failed, system wal checkpoint failed, table id: %lu", table_id)
+    return s;
+  }
+
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
@@ -550,7 +726,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
     if (!skip) {
       if (log->getType() != WALLogType::CHECKPOINT) {
-//        rewrite.emplace_back(log);
+        rewrite.emplace_back(log);
       }
     }
   }
@@ -625,6 +801,229 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
+  /*
+  *   DDL alter table crash recovery logic, always enabled
+  * 1. The log only contains the beginning, indicating that the storage alter has not been performed and the copy has not received a successful message.
+  *    The log is discarded. The restored schema is old.
+  * 2 logs include the begin alter commit, which indicates that the storage alter has been completed.
+  *    If the replica crashes after receiving the commit successfully or before receiving the commit,
+  *    there is no need to redo, discard the logs, and restore the schema to a new one.
+  * 3 logs include a start alter rollback, which indicates that the storage alter has been completed and it is uncertain whether the rollback has been completed.
+  *    The replica crashes after receiving a successful rollback or before receiving a rollback,
+  *    Call undo alter to roll back. If the storage determines that the rollback has already occurred, it will be directly reversed. After recovery, the schema will be old.
+  * 4 logs include begin alter. It is uncertain whether the storage alter has been completed. If the copy fails to receive a commit, it crashes and calls undo alter,
+  *    If an alter has already been executed, it is necessary to clean up the new ones and keep the old ones. The restored schema is old.
+   */
+  KStatus s;
+
+  TS_LSN checkpoint_lsn = wal_sys_->FetchCheckpointLSN();
+  TS_LSN current_lsn = wal_sys_->FetchCurrentLSN();
+
+  std::vector<LogEntry*> redo_logs;
+  Defer defer{[&]() {
+    for (auto& log : redo_logs) {
+      delete log;
+    }
+  }};
+
+  std::vector<uint64_t> ignore;
+  s = wal_sys_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn, ignore);
+  if (s == KStatus::FAIL && !redo_logs.empty()) {
+    LOG_ERROR("Failed to read the TS Engine WAL logs.")
+#ifdef WITH_TESTS
+    return s;
+#endif
+  }
+
+  std::unordered_map<TS_LSN, LogEntry*> incomplete;
+  for (auto wal_log : redo_logs) {
+    // From checkpoint loop to the latest commit, including only ddl
+    auto mtr_id = wal_log->getXID();
+
+    switch (wal_log->getType()) {
+      case WALLogType::TS_BEGIN: {
+        incomplete.insert(std::pair<TS_LSN, LogEntry*>(mtr_id, wal_log));
+        tsx_manager_sys_->insertMtrID(wal_log->getTsxID().c_str(), mtr_id);
+        break;
+      }
+      case WALLogType::TS_COMMIT: {
+        incomplete.erase(mtr_id);
+        tsx_manager_sys_->eraseMtrID(mtr_id);
+        break;
+      }
+      case WALLogType::TS_ROLLBACK: {
+        if (!incomplete[mtr_id]) {
+          break;
+        }
+        switch (incomplete[mtr_id]->getType()) {
+          case WALLogType::DDL_ALTER_COLUMN: {
+            DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(incomplete[mtr_id]);
+            uint64_t table_id = ddl_log->getObjectID();
+            std::shared_ptr<TsTable> table;
+            ErrorInfo err_info;
+            KStatus s = GetTsTable(ctx, table_id, table, true, err_info);
+            if (s == KStatus::FAIL) {
+              return s;
+            }
+            if (table->IsDropped()) {
+              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+              continue;
+            }
+
+            s = table->UndoAlterTable(ctx, incomplete[mtr_id]);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to recover alter table %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            } else {
+              table->TSxClean(ctx);
+            }
+            break;
+          }
+          case WALLogType::CREATE_INDEX: {
+            CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(incomplete[mtr_id]);
+            uint64_t table_id = index_log->getObjectID();
+            std::shared_ptr<TsTable> table;
+            ErrorInfo err_info;
+            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            if (s == KStatus::FAIL) {
+              return s;
+            }
+            if (table->IsDropped()) {
+              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+              continue;
+            }
+
+            s = table->UndoCreateIndex(ctx, incomplete[mtr_id]);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to recover create index %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            } else {
+              table->TSxClean(ctx);
+            }
+            break;
+          }
+          case WALLogType::DROP_INDEX: {
+            DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(incomplete[mtr_id]);
+            uint64_t table_id = index_log->getObjectID();
+            std::shared_ptr<TsTable> table;
+            ErrorInfo err_info;
+            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            if (s == KStatus::FAIL) {
+              return s;
+            }
+            if (table->IsDropped()) {
+              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+              continue;
+            }
+
+            s = table->UndoDropIndex(ctx, incomplete[mtr_id]);
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to recover drop index %ld.", table_id)
+              #ifdef WITH_TESTS
+              return s;
+              #endif
+            } else {
+              table->TSxClean(ctx);
+            }
+            break;
+          }
+          default:
+          LOG_ERROR("The unknown WALLogType type is not processed.")
+            break;
+        }
+        incomplete.erase(mtr_id);
+        tsx_manager_sys_->eraseMtrID(mtr_id);
+        break;
+      }
+      case WALLogType::DDL_ALTER_COLUMN: {
+        DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(wal_log);
+        incomplete[mtr_id] = ddl_log;
+        break;
+      }
+      case WALLogType::CREATE_INDEX: {
+        CreateIndexEntry* ddl_log = reinterpret_cast<CreateIndexEntry*>(wal_log);
+        incomplete[mtr_id] = ddl_log;
+        break;
+      }
+      case WALLogType::DROP_INDEX: {
+        DropIndexEntry* ddl_log = reinterpret_cast<DropIndexEntry*>(wal_log);
+        incomplete[mtr_id] = ddl_log;
+        break;
+      }
+      default:
+      LOG_ERROR("The unknown WALLogType type is not processed.")
+        break;
+    }
+  }
+
+
+  // recover incomplete wal logs.
+  for (auto wal_log : incomplete) {
+    switch (wal_log.second->getType()) {
+      case WALLogType::CREATE_INDEX: {
+        CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(wal_log.second);
+        uint64_t table_id = index_log->getObjectID();
+        std::shared_ptr<TsTable> table;
+        ErrorInfo err_info;
+        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        if (s == KStatus::FAIL) {
+          return s;
+        }
+        if (table->IsDropped()) {
+          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+          continue;
+        }
+        s = table->UndoCreateIndex(ctx, index_log);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to recover create index %ld.", table_id)
+          #ifdef WITH_TESTS
+          return s;
+          #endif
+        } else {
+          table->TSxClean(ctx);
+        }
+        break;
+      }
+      case WALLogType::DROP_INDEX: {
+        DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(wal_log.second);
+        uint64_t table_id = index_log->getObjectID();
+        std::shared_ptr<TsTable> table;
+        ErrorInfo err_info;
+        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        if (s == KStatus::FAIL) {
+          return s;
+        }
+        if (table->IsDropped()) {
+          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
+          continue;
+        }
+
+        s = table->UndoDropIndex(ctx, index_log);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to recover drop index %ld.", table_id)
+          #ifdef WITH_TESTS
+          return s;
+          #endif
+        } else {
+          table->TSxClean(ctx);
+        }
+        break;
+      }
+      default:
+      LOG_ERROR("The unknown WALLogType type is not processed.")
+        break;
+    }
+  }
+  incomplete.clear();
+
+  return SUCCESS;
+}
+
 KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   /*
    * 1. get engine chk wal log.
@@ -634,10 +1033,22 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
+
+  // ddl recover
+  KStatus s = recover(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to recover DDL WAL.")
+    return KStatus::FAIL;
+  }
   // 1. get engine chk wal log.
   std::vector<LogEntry*> logs;
+  Defer defer{[&]() {
+    for (auto& log : logs) {
+      delete log;
+    }
+  }};
   std::vector<uint64_t> vgroup_lsn;
-  KStatus s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
+  s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadWALLog from chk file while recovering.")
     return KStatus::FAIL;
