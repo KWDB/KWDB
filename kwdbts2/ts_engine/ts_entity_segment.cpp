@@ -83,11 +83,13 @@ KStatus TsEntitySegmentEntityItemFile::UpdateEntityItem(uint64_t entity_id,
   s = file_->Write(sizeof(TsEntityItemFileHeader) + (entity_id - 1) * sizeof(TsEntityItem),
                    TSSlice{reinterpret_cast<char *>(&entity_item), sizeof(entity_item)});
   if (s == KStatus::SUCCESS) {
-    ++header_.entity_num;
-    s = file_->Write(0, TSSlice{reinterpret_cast<char *>(&header_), sizeof(header_)});
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("write entity header failed.")
-      return s;
+    if (new_entity) {
+      ++header_.entity_num;
+      s = file_->Write(0, TSSlice{reinterpret_cast<char *>(&header_), sizeof(header_)});
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("write entity header failed.")
+        return s;
+      }
     }
   } else {
     LOG_ERROR("write entity item[id=%lu] failed.", entity_id);
