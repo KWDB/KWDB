@@ -39,6 +39,7 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 }
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
+  is_reversed_ = is_reversed;
   KStatus ret;
   ret = table_schema_mgr_->GetColumnsIncludeDropped(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {
@@ -105,7 +106,40 @@ inline KStatus TsStorageIteratorV2Impl::AddEntitySegmentBlockSpans() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans() {
+inline void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
+  if (ts != INVALID_TS && !ts_spans_.empty()) {
+    if (!is_reversed_) {
+      int i = ts_spans_.size() - 1;
+      while (i >= 0 && ts_spans_[i].begin > ts) {
+        --i;
+      }
+      if (i >= 0) {
+        ts_spans_[i].end = min(ts_spans_[i].end, ts);
+      }
+      if (i < ts_spans_.size() - 1) {
+        ts_spans_.erase(ts_spans_.begin() + (i + 1), ts_spans_.end());
+      }
+    } else {
+      int i = 0;
+      while (i < ts_spans_.size() && ts_spans_[i].end < ts) {
+        ++i;
+      }
+      if (i < ts_spans_.size()) {
+        ts_spans_[i].begin = max(ts_spans_[i].begin, ts);
+      }
+      if (i > 0) {
+        ts_spans_.erase(ts_spans_.begin(), ts_spans_.begin() + (i - 1));
+      }
+    }
+  }
+}
+
+inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts) {
+  return ts != INVALID_TS && (!is_reversed_ && begin_ts > ts || is_reversed_ && end_ts < ts);
+}
+
+KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans(timestamp64 ts) {
+  UpdateTsSpans(ts);
   KStatus ret;
   if (cur_partition_index_ == 0) {
     // Scan memory segment while scanning first parition.
@@ -117,34 +151,14 @@ KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans() {
     }
   }
 
-  ret = AddLastSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
-
-  ret = AddEntitySegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return ret;
-  }
-
-  return ret;
-}
-
-KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
-  ts_block_spans_.clear();
-  KStatus ret;
-  ret = AddMemSegmentBlockSpans();
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
-              cur_partition_index_, entity_ids_[cur_entity_index_]);
-    return KStatus::FAIL;
-  }
-
-  for (cur_partition_index_=0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+  /*
+   * TODO(Yongyan): Refacter scanning partition block span to scan
+   * memory segment data under partition after ts version is implemented.
+   */
+  if (cur_partition_index_ < ts_partitions_.size() &&
+      !IsFilteredOut(ts_partitions_[cur_partition_index_].ts_partition_range.begin,
+                      ts_partitions_[cur_partition_index_].ts_partition_range.end,
+                      ts)) {
     ret = AddLastSegmentBlockSpans();
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
@@ -159,7 +173,43 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans() {
       return ret;
     }
   }
-  return ret;
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
+  ts_block_spans_.clear();
+  UpdateTsSpans(ts);
+  KStatus ret;
+  ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%d) for current entity(%d).",
+              cur_partition_index_, entity_ids_[cur_entity_index_]);
+    return KStatus::FAIL;
+  }
+
+  for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
+    if (IsFilteredOut(ts_partitions_[cur_partition_index_].ts_partition_range.begin,
+                      ts_partitions_[cur_partition_index_].ts_partition_range.end,
+                      ts)) {
+      continue;
+    }
+    ret = AddLastSegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize last segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return KStatus::FAIL;
+    }
+
+    ret = AddEntitySegmentBlockSpans();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to initialize block segment iterator of partition(%d) for entity(%d).",
+                cur_partition_index_, entity_ids_[cur_entity_index_]);
+      return ret;
+    }
+  }
+
+  return KStatus::SUCCESS;
 }
 
 KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span,
@@ -294,10 +344,16 @@ TsRawDataIteratorV2Impl::TsRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
 TsRawDataIteratorV2Impl::~TsRawDataIteratorV2Impl() {
 }
 
-inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count) {
-  shared_ptr<TsBlockSpan> ts_block = ts_block_spans_.front();
-  ts_block_spans_.pop_front();
-  return ConvertBlockSpanToResultSet(ts_block, res, count);
+inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts) {
+  while (!ts_block_spans_.empty()) {
+    shared_ptr<TsBlockSpan> ts_block = ts_block_spans_.front();
+    ts_block_spans_.pop_front();
+    if (!IsFilteredOut(ts_block->GetFirstTS(), ts_block->GetLastTS(), ts)) {
+      return ConvertBlockSpanToResultSet(ts_block, res, count);
+    }
+  }
+  *count = 0;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
@@ -314,10 +370,10 @@ KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_
       }
       cur_partition_index_ = 0;
     }
-    ScanPartitionBlockSpans();
+    ScanPartitionBlockSpans(ts);
   }
   // Return one block span data each time.
-  ret = NextBlockSpan(res, count);
+  ret = NextBlockSpan(res, count, ts);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for entity: %d, cur_partition_index_: %d.",
                 entity_ids_[cur_entity_index_], cur_partition_index_);
@@ -343,10 +399,10 @@ TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsV
 TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
 }
 
-KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
+KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
   if (cur_entity_index_ < entity_ids_.size()) {
     // scan row data for current entity
-    KStatus ret = ScanEntityBlockSpans();
+    KStatus ret = ScanEntityBlockSpans(ts);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to scan block spans for entity(%d).", entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
@@ -367,11 +423,6 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity() {
-  ++cur_entity_index_;
-  return ScanAndSortEntityData();
-}
-
 KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
   KStatus ret;
@@ -389,15 +440,25 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       ++cur_entity_index_;
       if (cur_entity_index_ >= entity_ids_.size()) {
         // All entities are scanned.
-        *count = 0;
         *is_finished = true;
         return KStatus::SUCCESS;
       }
-      ScanAndSortEntityData();
+      ScanAndSortEntityData(ts);
     }
   } while (is_done);
 
-  return ConvertBlockSpanToResultSet(block_span, res, count);
+  if (IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
+    ++cur_entity_index_;
+    if (cur_entity_index_ >= entity_ids_.size()) {
+      // All entities are scanned.
+      *is_finished = true;
+    } else {
+      ScanAndSortEntityData(ts);
+    }
+    return KStatus::SUCCESS;
+  } else {
+    return ConvertBlockSpanToResultSet(block_span, res, count);
+  }
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,

@@ -620,6 +620,9 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+  if (!MayExistEntity(filter.entity_id)) {
+    return SUCCESS;
+  }
   // spans->clear();
   if (filter.ts_spans_.empty()) {
     return SUCCESS;

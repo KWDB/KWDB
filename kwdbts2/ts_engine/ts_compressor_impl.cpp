@@ -241,7 +241,11 @@ bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string 
 
 template <class T>
 bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
-  out->reserve(stride * count);
+  if (count <= 2) {
+    return false;
+  }
+  out->resize(stride * count);
+  T *outdata = reinterpret_cast<T *>(out->data());
   using utype = std::make_unsigned_t<T>;
   utype v;
   const char *limit = data.data + data.len;
@@ -250,7 +254,7 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
     return false;
   }
   T ts = DecodeZigZag(v);
-  TypedPutFixed(out, ts);
+  outdata[0] = ts;
 
   ptr = TypedDecodeVarint(ptr, limit, &v);
   if (ptr == nullptr) {
@@ -258,7 +262,7 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
   }
   T delta = DecodeZigZag(v);
   ts += delta;
-  TypedPutFixed(out, ts);
+  outdata[1] = ts;
   for (int i = 2; i < count; ++i) {
     ptr = TypedDecodeVarint(ptr, limit, &v);
     if (ptr == nullptr) {
@@ -267,7 +271,7 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
     T dod = DecodeZigZag(v);
     delta += dod;
     ts += delta;
-    TypedPutFixed(out, ts);
+    outdata[i] = ts;
   }
   return true;
 }
@@ -535,16 +539,18 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
   if (data.len % 8 != 0) {
     return false;
   }
-  out->reserve(sizeof(T) * count);
+  out->resize(sizeof(T) * count);
+  T *outdata = reinterpret_cast<T *>(out->data());
+  uint64_t idx = 0;
   const char *cursor = data.data;
-  while (cursor < data.data + data.len) {
+  while (cursor < data.data + data.len && idx < count) {
     uint64_t batch = *reinterpret_cast<const uint64_t *>(cursor);
     int selector = (batch) >> 60;
     batch &= (1ULL << 60) - 1;
     if (selector <= 1) {
       T val = Restore<T>(batch, 60);
       for (int i = 0; i < GROUPSIZE[selector]; ++i) {
-        out->append(reinterpret_cast<char *>(&val), sizeof(val));
+        outdata[idx++] = val;
       }
     } else {
       batch >>= 60 % GROUPSIZE[selector];
@@ -552,7 +558,7 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
       for (int i = 0; i < GROUPSIZE[selector]; ++i) {
         assert(shift >= 0);
         T val = Restore<T>(batch >> shift, ITEMWIDTH[selector]);
-        out->append(reinterpret_cast<char *>(&val), sizeof(val));
+        outdata[idx++] = val;
         shift -= ITEMWIDTH[selector];
       }
       assert(shift + ITEMWIDTH[selector] == 0);
