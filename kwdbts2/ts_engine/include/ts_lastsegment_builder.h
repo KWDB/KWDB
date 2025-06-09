@@ -52,7 +52,7 @@ class TsLastSegmentBuilder {
     TSEntityID entity_id;
     TSSlice metric;
 
-    bool IsSameEntityAndTs(std::unique_ptr<TsRawPayloadRowParser>& parser, const EntityPayload& rhs) const {
+    inline bool IsSameEntityAndTs(std::unique_ptr<TsRawPayloadRowParser>& parser, const EntityPayload& rhs) const {
       timestamp64 ts_lhs = parser->GetTimestamp(metric);
       timestamp64 ts_rhs = parser->GetTimestamp(rhs.metric);
       return entity_id == rhs.entity_id && ts_lhs == ts_rhs;
@@ -63,7 +63,7 @@ class TsLastSegmentBuilder {
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
     std::vector<DataFlags> data_flags;
-    bool IsSameEntityAndTs(const EntityColData& rhs) const {
+    inline bool IsSameEntityAndTs(const EntityColData& rhs) const {
       timestamp64 ts_lhs = DecodeFixed64(col_data[0].data);
       timestamp64 ts_rhs = DecodeFixed64(rhs.col_data[0].data);
       return entity_id == rhs.entity_id && ts_lhs == ts_rhs;

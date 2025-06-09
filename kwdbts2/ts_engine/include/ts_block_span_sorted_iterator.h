@@ -161,23 +161,26 @@ class TsBlockSpanSortedIterator {
       next_span_row_info = *(++span_row_infos_.begin());
     }
 
-    if (dedup_rule_ == DedupRule::OVERRIDE) {
-      int end_row_idx, row_idx;
-      if (!is_reverse_) {
-        end_row_idx = cur_block_span->GetRowNum() - 1;
-      } else {
-        end_row_idx = 0;
-      }
-      TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
-                                                  *cur_block_span->GetLSNAddr(end_row_idx)};
-      if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
-        row_idx = cur_block_span->GetRowNum();
-      } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
-        row_idx = -1;
-      } else {
-        binarySearch(next_span_row_info, cur_block_span, row_idx);
-      }
+    // find the intersection of two BlockSpan.
+    // find the data location in the first BlockSpan that is larger than
+    // the timestamp of the first row of data in the second BlockSpan.
+    int end_row_idx, row_idx;
+    if (!is_reverse_) {
+      end_row_idx = cur_block_span->GetRowNum() - 1;
+    } else {
+      end_row_idx = 0;
+    }
+    TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
+                                                *cur_block_span->GetLSNAddr(end_row_idx)};
+    if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
+      row_idx = cur_block_span->GetRowNum();
+    } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
+      row_idx = -1;
+    } else {
+      binarySearch(next_span_row_info, cur_block_span, row_idx);
+    }
 
+    if (dedup_rule_ == DedupRule::OVERRIDE) {
       auto iter = span_row_infos_.begin()++;
       TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
       if (!is_reverse_) {
@@ -209,6 +212,7 @@ class TsBlockSpanSortedIterator {
         }
       }
 
+      // dealing with duplicate data in other TsBlockSpan
       while (iter != span_row_infos_.end()) {
         TsBlockSpanRowInfo first_row_info = getFirstRowInfo(iter->block_span, is_reverse_);
         if (first_row_info.IsSameEntityAndTs(dedup_row_info)) {
@@ -228,44 +232,21 @@ class TsBlockSpanSortedIterator {
           break;
         }
       }
-
-      span_row_infos_.pop_front();
-      if (cur_block_span->GetRowNum() != 0) {
-        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
-        insertRowInfo(next_row_info);
-      } else {
-        cur_block_span->Clear();
-      }
     } else {
-      int end_row_idx, row_idx;
-      if (!is_reverse_) {
-        end_row_idx = cur_block_span->GetRowNum() - 1;
-      } else {
-        end_row_idx = 0;
-      }
-      TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
-                                                  *cur_block_span->GetLSNAddr(end_row_idx)};
-      if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
-        row_idx = cur_block_span->GetRowNum();
-      } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
-        row_idx = -1;
-      } else {
-        binarySearch(next_span_row_info, cur_block_span, row_idx);
-      }
-
       if (!is_reverse_) {
         cur_block_span->SplitFront(row_idx, block_span);
       } else {
         cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
       }
-
-      span_row_infos_.pop_front();
-      if (cur_block_span->GetRowNum() != 0) {
-        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
-        insertRowInfo(next_row_info);
-      } else {
-        cur_block_span->Clear();
-      }
+    }
+    // check whether the current TsBlockSpan is empty.
+    // If it is not empty, it needs to be readded to the linked list.
+    span_row_infos_.pop_front();
+    if (cur_block_span->GetRowNum() != 0) {
+      TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+      insertRowInfo(next_row_info);
+    } else {
+      cur_block_span->Clear();
     }
     return KStatus::SUCCESS;
   }

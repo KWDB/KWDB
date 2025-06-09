@@ -80,17 +80,17 @@ struct TSMemSegRowData {
     HTOBEFUNC(buf, htobe64(*reinterpret_cast<uint64_t*>(&row_data.data)), sizeof(uint64_t));
   }
 
-  bool SameEntityAndTableVersion(TSMemSegRowData* b) {
+  inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {
     return memcmp(this, b, 24) == 0;
   }
-  bool SameEntityAndTs(TSMemSegRowData* b) {
+  inline bool SameEntityAndTs(TSMemSegRowData* b) {
     return entity_id == b->entity_id && ts == b->ts;
   }
-  bool SameTableId(TSMemSegRowData* b) {
+  inline bool SameTableId(TSMemSegRowData* b) {
     return this->table_id == b->table_id;
   }
 
-  int Compare(const TSMemSegRowData& b) const {
+  inline int Compare(const TSMemSegRowData& b) const {
     auto ret = memcmp(skip_list_key_, b.skip_list_key_, GetKeyLen());
     // auto ret_1 = 0;
     // while (true) {
