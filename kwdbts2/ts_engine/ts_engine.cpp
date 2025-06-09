@@ -30,6 +30,11 @@ uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 1000;
 
+extern std::map<std::string, std::string> g_cluster_settings;
+extern DedupRule g_dedup_rule;
+extern std::shared_mutex g_settings_mutex;
+extern bool g_go_start_service;
+
 namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -704,6 +709,45 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     } else {
       if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
     }
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value) {
+  std::shared_lock<std::shared_mutex> lock(g_settings_mutex);
+  std::map<std::string, std::string>::iterator iter = g_cluster_settings.find(key);
+  if (iter != g_cluster_settings.end()) {
+    *value = iter->second;
+    return KStatus::SUCCESS;
+  } else {
+    return KStatus::FAIL;
+  }
+}
+
+KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
+  // After changing the WAL configuration parameters, the already opened table will not change,
+  // and the newly opened table will follow the new configuration.
+  string value;
+
+  if (GetClusterSetting(ctx, "ts.wal.wal_level", &value) == SUCCESS) {
+    options_.wal_level = std::stoll(value);
+    LOG_INFO("update wal level to %hhu", options_.wal_level)
+  }
+
+  if (GetClusterSetting(ctx, "ts.wal.buffer_size", &value) == SUCCESS) {
+    options_.wal_buffer_size = std::stoll(value);
+    LOG_INFO("update wal buffer size to %hu Mib", options_.wal_buffer_size)
+  }
+
+  if (GetClusterSetting(ctx, "ts.wal.file_size", &value) == SUCCESS) {
+    options_.wal_file_size = std::stoll(value);
+    LOG_INFO("update wal file size to %hu Mib", options_.wal_file_size)
+  }
+
+  if (GetClusterSetting(ctx, "ts.wal.files_in_group", &value) == SUCCESS) {
+    options_.wal_file_in_group = std::stoll(value);
+    LOG_INFO("update wal file num in group to %hu", options_.wal_file_in_group)
   }
 
   return KStatus::SUCCESS;

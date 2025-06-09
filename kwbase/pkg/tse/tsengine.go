@@ -337,6 +337,13 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 	},
 )
 
+// TsWALLevel indicates the WAL level
+var TsWALLevel = settings.RegisterPublicIntSetting(
+	"ts.wal.wal_level",
+	"ts WAL level, default 2(flush)",
+	2,
+)
+
 // TsWALCheckpointInterval indicates the wal checkpoint interval of TsEngine
 var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",

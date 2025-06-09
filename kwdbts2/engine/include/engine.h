@@ -778,7 +778,7 @@ class TSEngineImpl : public TSEngine {
     switch (mode) {
     case WALMode::OFF:
       return "None WAL";
-    case WALMode::ON:
+    case WALMode::FLUSH:
       return "WAL without sync";
     case WALMode::SYNC:
       return " WAL with sync";

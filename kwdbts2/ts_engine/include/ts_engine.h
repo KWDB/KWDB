@@ -270,7 +270,7 @@ class TSEngineV2Impl : public TSEngine {
 
   void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override { exit(0); }
 
-  KStatus UpdateSetting(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus UpdateSetting(kwdbContext_p ctx) override;
 
   KStatus LogInit();
 
@@ -294,7 +294,7 @@ class TSEngineV2Impl : public TSEngine {
   }
   KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override { return KStatus::SUCCESS; }
   static KStatus CloseTSEngine(kwdbContext_p ctx, TSEngine* engine) { return KStatus::SUCCESS; }
-  KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value) { return KStatus::SUCCESS; }
+  KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value);
   void AlterTableCacheCapacity(int capacity)  override {}
 
   // init all engine.

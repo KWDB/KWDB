@@ -192,6 +192,11 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
 
 KStatus TsVGroup::UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
   // 1.UpdateLSN
+  wal_manager_->Lock();
+  Defer defer{[&]() {
+    wal_manager_->Unlock();
+  }
+  };
   KStatus s = wal_manager_->UpdateCheckpointWithoutFlush(ctx, chk_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteCheckpointWAL.")
