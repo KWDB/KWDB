@@ -90,7 +90,7 @@ bool HasNonConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
       // Compare non-string columns directly
       auto ret = std::memcmp(a_ptr + col_offset_[order.col_idx],
                              b_ptr + col_offset_[order.col_idx],
-                             col_info_[order.col_idx].fixed_storage_len);
+                             col_info_[order.col_idx].fixed_storage_len + NULL_INDECATOR_WIDE);
       if (ret != 0) {
         return ret < 0;
       }
@@ -1175,10 +1175,17 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         memset(bitmap, 0, bitmap_size_);
         k_int32 total_len = 0;
         std::vector<k_uint16> vec_len;
+        std::vector<DatumPtr> string_data;
         vec_len.reserve(count_);
         for (k_uint32 j = 0; j < count_; ++j) {
           k_uint16 len = 0;
-          GetData(j, i, len);
+          if (IsNull(j, i)) {
+            bitmap[j >> 3] |= 1 << (j & 7);
+            string_data.push_back(nullptr);
+          } else {
+            bitmap[j >> 3] |= 0 << (j & 7);
+            string_data.push_back(GetData(j, i, len));
+          }
           offset[j] = total_len;
           total_len += len;
           vec_len.push_back(len);
@@ -1204,8 +1211,9 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         memset(ptr, 0, total_len);
         ColData[i].data_ptr_ = ptr;
         for (k_uint32 j = 0; j < count_; ++j) {
-          memcpy(ptr + offset[j], GetData(j, i, vec_len[j]), vec_len[j]);
-          bitmap[j >> 3] |= (IsNull(j, i) ? 1 : 0) << (j & 7);
+          if (string_data[j] != nullptr) {  // nullptr means null
+            memcpy(ptr + offset[j], string_data[j], vec_len[j]);
+          }
         }
         ColData[i].data_ptr_ = ptr;
         ColData[i].bitmap_ptr_ = bitmap;
@@ -1214,9 +1222,13 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         DatumPtr bitmap = col_data + bitmap_offset_[i];
         memset(bitmap, 0, bitmap_size_);
         for (k_uint32 j = 0; j < count_; ++j) {
-          memcpy(col_ptr + j * ColInfo[i].fixed_len_, GetData(j, i),
-                 ColInfo[i].fixed_len_);
-          bitmap[j >> 3] |= (IsNull(j, i) ? 1 : 0) << (j & 7);
+          if (IsNull(j, i)) {
+            bitmap[j >> 3] |= 1 << (j & 7);
+          } else {
+            bitmap[j >> 3] |= 0 << (j & 7);
+            memcpy(col_ptr + j * ColInfo[i].fixed_len_, GetData(j, i),
+                  ColInfo[i].fixed_len_);
+          }
         }
         ColData[i].data_ptr_ = col_ptr;
         ColData[i].bitmap_ptr_ = bitmap;
