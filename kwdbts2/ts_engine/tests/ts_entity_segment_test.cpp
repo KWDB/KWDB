@@ -214,8 +214,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
       }
     }
-    std::vector<std::shared_ptr<TsLastSegment>> result;
-    partition->GetLastSegmentMgr()->GetCompactLastSegments(result);
+    std::vector<std::shared_ptr<TsLastSegment>> result = partition->GetLastSegmentMgr()->GetAllLastSegments();
     ASSERT_EQ(result.size(), 1);
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
@@ -229,5 +228,6 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       }
     }
     std::cout << sum << std::endl;
+    EXPECT_EQ(sum, 46030);
   }
 }

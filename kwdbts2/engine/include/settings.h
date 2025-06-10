@@ -24,8 +24,8 @@ namespace kwdbts {
 
 enum WALMode : uint8_t {
   OFF = 0,
-  ON = 1,
-  SYNC = 2,
+  SYNC = 1,
+  FLUSH = 2,
   BYRL = 3    // by raft log
 };
 
@@ -42,8 +42,8 @@ struct EngineOptions {
   static void init();
 
   std::string db_path;
-  // WAL work level: 0:off, 1:on, 2:sync, default is sync.
-  uint8_t wal_level = WALMode::SYNC;
+  // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
+  uint8_t wal_level = WALMode::FLUSH;
   // WAL file size, default is 64Mb
   uint16_t wal_file_size = 64;
   uint16_t wal_file_in_group = 1;

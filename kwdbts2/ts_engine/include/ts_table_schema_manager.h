@@ -131,6 +131,11 @@ class TsTableSchemaManager {
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                               const uint32_t new_version, const uint64_t index_id);
 
+  KStatus UndoCreateHashIndex(uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version, ErrorInfo& err_info);
+
+  KStatus UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_ts_version,
+                        uint32_t new_ts_version, ErrorInfo& err_info);
+
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
   KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
@@ -190,6 +195,9 @@ class TsTableSchemaManager {
 
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg);
+
+  KStatus UndoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                     uint32_t cur_version, uint32_t new_version);
 
   /**
    * @brief Gets the data type of table first column.

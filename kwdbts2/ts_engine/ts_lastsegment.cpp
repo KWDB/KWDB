@@ -219,17 +219,18 @@ KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
 }
 
 // TODO(zzr) get last segments from VersionManager, this method must be atomic
-void TsLastSegmentManager::GetCompactLastSegments(
-    std::vector<std::shared_ptr<TsLastSegment>>& result) {
-  {
-    std::shared_lock lk{s_mutex_};
-    size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
-    result.reserve(compact_num);
-    auto it = last_segments_.begin();
-    for (int i = 0; i < compact_num; ++i, ++it) {
-      result.push_back(it->second);
-    }
+KStatus TsLastSegmentManager::GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result) {
+  std::shared_lock lk{s_mutex_};
+  if (!NeedCompact()) {
+    return FAIL;
   }
+  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
+  result.reserve(compact_num);
+  auto it = last_segments_.begin();
+  for (int i = 0; i < compact_num; ++i, ++it) {
+    result.push_back(it->second);
+  }
+  return SUCCESS;
 }
 
 std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetAllLastSegments() const {
@@ -619,6 +620,9 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+  if (!MayExistEntity(filter.entity_id)) {
+    return SUCCESS;
+  }
   // spans->clear();
   if (filter.ts_spans_.empty()) {
     return SUCCESS;

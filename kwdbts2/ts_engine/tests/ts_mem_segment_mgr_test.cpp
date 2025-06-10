@@ -165,6 +165,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
 }
 
 TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
+  EngineOptions::g_dedup_rule = DedupRule::KEEP;
   uint64_t row_value = 123456789;
   TSEntityID entity_id = 11;
   uint32_t db_id = 22;

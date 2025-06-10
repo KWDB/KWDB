@@ -185,6 +185,11 @@ TsTableV2Impl::AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDB
   return table_schema_mgr_->AlterTable(ctx, alter_type, column, cur_version, new_version, msg);
 }
 
+KStatus TsTableV2Impl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+      uint32_t cur_version, uint32_t new_version) {
+  return table_schema_mgr_->UndoAlterTable(ctx, alter_type, column, cur_version, new_version);
+}
+
 KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
   if (version == GetCurrentTableVersion()) {
@@ -236,6 +241,12 @@ KStatus TsTableV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t tr
     return SUCCESS;
 }
 
+
+KStatus TsTableV2Impl::TSxClean(kwdbContext_p ctx) {
+  table_schema_mgr_->GetTagTable()->GetTagTableVersionManager()->SyncCurrentTableVersion();
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                     const uint32_t new_version, const uint64_t index_id) {
     LOG_INFO("DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
@@ -252,6 +263,57 @@ KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t tran
     LOG_INFO("DropNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
     return SUCCESS;
+}
+
+KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
+  ErrorInfo err_info;
+  auto index_log = reinterpret_cast<CreateIndexEntry*>(log);
+  uint32_t index_id = index_log->getIndexID();
+  uint32_t cur_version = index_log->getCurTsVersion();
+  uint32_t new_version = index_log->getNewTsVersion();
+  LOG_INFO("UndoCreateHashIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  if (!table_schema_mgr_->UndoCreateHashIndex(index_id, cur_version, new_version, err_info)) {
+    LOG_ERROR("Failed to UndoCreateHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
+    return FAIL;
+  }
+  auto s = table_schema_mgr_->RollBack(cur_version, new_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("RollBack table version error");
+    return s;
+  }
+  LOG_INFO("UndoCreateHashIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  return SUCCESS;
+}
+
+KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
+  ErrorInfo err_info;
+  auto index_log = reinterpret_cast<DropIndexEntry*>(log);
+  std::vector<uint32_t> tags;
+  for (auto col_id : index_log->getColIDs()) {
+    if (col_id < 0) {
+      break;
+    }
+    tags.emplace_back(col_id);
+  }
+  uint32_t index_id = index_log->getIndexID();
+  uint32_t cur_version = index_log->getCurTsVersion();
+  uint32_t new_version = index_log->getNewTsVersion();
+  LOG_INFO("UndoDropHashIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  if (!table_schema_mgr_->UndoDropHashIndex(tags, index_id, cur_version, new_version, err_info)) {
+    LOG_ERROR("Failed to UndoDropHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
+    return FAIL;
+  }
+  auto s = table_schema_mgr_->RollBack(cur_version, new_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("RollBack table version error");
+    return s;
+  }
+  LOG_INFO("UndoDropHashIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+           this->table_id_, index_id, cur_version, new_version)
+  return SUCCESS;
 }
 
 std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {

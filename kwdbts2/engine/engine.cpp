@@ -120,7 +120,7 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   case WALMode::OFF:
     table = std::make_shared<TsTableImpl>(ctx, options_.db_path, table_id);
     break;
-  case WALMode::ON:
+  case WALMode::FLUSH:
   case WALMode::SYNC:
   {
     s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
@@ -330,7 +330,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
         case WALMode::OFF:
           table = std::make_shared<TsTableImpl>(ctx, options_.db_path, table_id);
           break;
-        case WALMode::ON:
+        case WALMode::FLUSH:
         case WALMode::SYNC:
           table = std::make_shared<LoggedTsTable>(ctx, options_.db_path, table_id, &options_);
           break;
