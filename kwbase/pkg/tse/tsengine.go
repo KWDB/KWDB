@@ -1536,6 +1536,7 @@ func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
 
 // CountTsTable count calculate table
 func (r *TsEngine) CountTsTable(tableID uint64) error {
+	r.checkOrWaitForOpen()
 	status := C.TSCountTsTable(r.tdb, C.TSTableID(tableID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to count ts table")

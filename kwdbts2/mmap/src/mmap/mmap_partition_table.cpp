@@ -1722,7 +1722,12 @@ int TsTimePartition::RedoDelete(uint32_t entity_id, kwdbts::TS_LSN lsn,
   for (auto row_span : *rows) {
     // Retrieve the block item based on its ID
     BlockItem* block_item = GetBlockItem(row_span.blockitem_id);
-    for (int i = 0; i < 128; ++i) {
+    if (block_item == nullptr) {
+      LOG_ERROR("GetBlockItem error: block item is nullptr, entity id[%u], block id[%u]",
+                entity_id, row_span.blockitem_id)
+      continue;
+    }
+    for (int i = 0; i < BLOCK_ITEM_BITMAP_SIZE; ++i) {
       // Iterate through each bit in the delete flags
       if (row_span.delete_flags[i] == 0) {
         continue;

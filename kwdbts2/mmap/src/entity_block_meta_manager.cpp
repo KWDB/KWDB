@@ -131,7 +131,12 @@ int EntityBlockMetaManager::Open(const string& file_path, const std::string& db_
 }
 
 BlockItem* EntityBlockMetaManager::GetBlockItem(BLOCK_ID item_id) {
-  return entity_block_metas_.at(GetMetaIndex(item_id))->GetBlockItem(item_id);
+  int meta_idx = GetMetaIndex(item_id);
+  if (meta_idx < 0) {
+    return nullptr;
+  } else {
+    return entity_block_metas_.at(meta_idx)->GetBlockItem(item_id);
+  }
 }
 
 int EntityBlockMetaManager::sync(int flags) {
@@ -151,7 +156,11 @@ int EntityBlockMetaManager::GetAllBlockItems(vector<uint32_t>& entity_ids, std::
   if (entity_ids.empty()) {
     BLOCK_ID max_block_id = getEntityHeader()->cur_block_id;
     for (uint32_t id = 1; id <= max_block_id; ++id) {
-      block_items.emplace_back(GetBlockItem(id));
+      auto block_item = GetBlockItem(id);
+      if (block_item == nullptr) {
+        continue;
+      }
+      block_items.emplace_back(block_item);
     }
   } else {
     for (auto entity_id : entity_ids) {
@@ -294,6 +303,9 @@ int EntityBlockMetaManager::AddBlockItem(uint entity_id, BlockItem** blk_item) {
 
   // get new block item from meta file,and initialize it.
   auto block_item = GetBlockItem(new_block_item_id);
+  if (block_item == nullptr) {
+    return -1;
+  }
   memset(block_item, 0, sizeof(BlockItem));
   block_item->prev_block_id = latest_block_item_id;
   block_item->entity_id = entity_id;

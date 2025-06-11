@@ -606,5 +606,25 @@ INSERT 1
   NULL
   NULL
 (12 rows)
+> use defaultdb;
+SET
 > DROP DATABASE ts_db cascade;
+DROP DATABASE
+> create ts database test_timebucket_gapfill_ns;
+CREATE TS DATABASE
+> create table test_timebucket_gapfill_ns.tb2(k_timestamp timestamptz not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096),e23 timestamp(6),e24 timestamp(9),e25 timestamptz(6),e26 timestamptz(9)) tags (t1 int2,t2 int not null,t3 int8,t4 bool,t5 float4,t6 float8,t7 char not null,t8 char(100),t9 nchar not null,t10 nchar(254) not null,t11 varchar,t12 varchar(128),t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t2,t7,t9,t10);
+CREATE TABLE
+> insert into test_timebucket_gapfill_ns.tb2 values('2024-02-09 16:16:58.22522','2021-06-10 09:04:18.223',600,6000,60000,600000.666,666660.101011,true,'r', 'a r3', 'a', 'r255测试1(){}','中文  中文', null, 'hof4096查询test%%&!   ',null, 'ar255{}', 'ar4096测试1%{}','e','es1023_0', null, b'\xbb\xee\xff', null,'2011-03-06 03:06:06.0654432','2023-05-05 05:05:05.0550005555','2022-09-21 20:20:17.14566666','2029-09-30 09:30:32.268688888',5,600,6000,false,60.6066,600.123455,'a','test测试！！！@TEST1','e','\a',null,'chch4_1','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_timebucket_gapfill_ns.tb2 values('2024-02-10 04:18:19.2232','2021-06-10 10:00:00.1192',100,3000,40000,600000.60612,4000000.4040404,false,'r', '\a r3', 'a', 'r255测试1{}','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,'2015-01-21 01:21:21.2232331','2050-10-15 10:25:25.257309656','2051-10-10 10:10:11.84598761','2228-06-06 11:01:12.2683567',6,100,1000,true,-10.123,100.111111,'b','\\TEST1 ','f','测试！TEST1xaa','test查询  @TEST1\0','bd64_1','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> select t1,t2,coalesce(null,count(*)+count(t2),10) from test_timebucket_gapfill_ns.tb2 group by t1,t2 order by t1,t2;
+  t1 | t2  | coalesce
+-----+-----+-----------
+   5 | 600 |        2
+   6 | 100 |        2
+(2 rows)
+> use defaultdb;
+SET
+> DROP DATABASE test_timebucket_gapfill_ns cascade;
 DROP DATABASE

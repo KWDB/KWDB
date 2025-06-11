@@ -6067,20 +6067,22 @@ SET CLUSTER SETTING
                     | use statistic       | true
 (15 rows)
 > explain select count(e1+e2) from test_ts.ts_table;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  group                  |             |
-   │                     | aggregate 0 | count(e1 + e2)
-   │                     | scalar      |
-   └── render            |             |
-        │                | e1 + e2     | e1 + e2
-        └── synchronizer |             |
-             └── ts scan |             |
-                         | ts-table    | ts_table
-                         | access mode | metaTable
-(11 rows)
+        tree        |      field       |  description
+--------------------+------------------+-----------------
+                    | distributed      | true
+                    | vectorized       | false
+  group             |                  |
+   │                | engine type      | time series
+   │                | aggregate 0      | count(e1 + e2)
+   │                | scalar           |
+   │                | addSynchronizer  | true
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | e1 + e2          | e1 + e2
+        └── ts scan |                  |
+                    | ts-table         | ts_table
+                    | access mode      | metaTable
+(13 rows)
 > select count(localtime()) from test_ts.ts_table;
   count
 ---------

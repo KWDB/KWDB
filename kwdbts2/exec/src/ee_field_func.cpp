@@ -213,7 +213,13 @@ k_int64 FieldFuncMinus::ValInt() {
                                         "Timestamp/TimestampTZ out of range");
           return 0;
         }
-        val -= val2 * (*it);
+        val2 *= (*it);
+        if (!I64_SAFE_SUB_CHECK(val, val2)) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                        "integer out of range");
+          return 0;
+        }
+        val -= val2;
       }
     }
     return val;
@@ -934,12 +940,14 @@ k_int64 FieldFuncCurrentTimeStamp::ValInt() {
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
   // add precision handle
   if (arg_count_ > 0) {
-    k_int64 prec = 9 - args_[0]->ValInt();
-    if (prec < 0) {
-      prec = 0;
-    } else if (prec > 9) {
-      prec = 9;
+    k_int64 prec = args_[0]->ValInt();
+    if (prec < 0 || prec > 9) {
+      EEPgErrorInfo::SetPgErrorInfo(
+          ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+          ("current_timestamp(): precision " + std::to_string(prec) + " out of range").c_str());
+      return 0;
     }
+    prec = 9 - prec;
     int64_t mask = pow(10, prec);
     ns_since_epoch = ns_since_epoch / mask * mask;
   }
@@ -1847,7 +1855,7 @@ k_int64 FieldFuncDiff::ValInt() {
   is_clear_ = false;
 
   if (diff_info_.hasPrev) {
-    if (I64_SAFE_SUB_CHECK(val, diff_info_.prev.i64_value)) {
+    if (!I64_SAFE_SUB_CHECK(val, diff_info_.prev.i64_value)) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
                                     "integer out of range");
       return 0;
