@@ -733,6 +733,26 @@ bool CompressorManager::CompressData(TSSlice input, const TsBitmap *bitmap, uint
   return true;
 }
 
+bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
+                                        GenCompAlg alg) const {
+  assert(sizeof(alg) == sizeof(uint16_t));
+  output->clear();
+  PutFixed16(output, static_cast<uint16_t>(alg));
+  auto it = general_compressor_.find(alg);
+  if (it == general_compressor_.end()) {
+    // no compression
+    output->append(input.data, input.len);
+    return true;
+  }
+  std::string tmp;
+  bool ok = it->second->Compress(input, &tmp);
+  if (!ok) {
+    return false;
+  }
+  output->append(tmp);
+  return true;
+}
+
 bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
                                        std::string *output) const {
   if (input.len < 4) {
@@ -752,6 +772,29 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, ui
   }
   auto compressor = GetCompressor(first, second);
   return compressor.Decompress(input, bitmap, count, output);
+}
+
+bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) const {
+  if (input.len < 2) {
+    return false;
+  }
+  uint16_t v;
+  GetFixed16(&input, &v);
+  GenCompAlg alg = static_cast<GenCompAlg>(v);
+  if (alg >= GenCompAlg::GEN_COMP_ALG_LAST) {
+    return false;
+  }
+
+  if (alg == GenCompAlg::kPlain) {
+    output->assign(input.data, input.len);
+    return true;
+  }
+
+  auto it = general_compressor_.find(alg);
+  assert(it != general_compressor_.end());
+  std::string tmp;
+  output->clear();
+  return it->second->Decompress(input, output);
 }
 
 }  // namespace kwdbts
