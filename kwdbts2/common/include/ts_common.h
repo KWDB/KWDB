@@ -58,7 +58,7 @@ typedef uint64_t TS_LSN;  // LSN number used for WAL logs
 struct DelRowSpan {
   timestamp64 partition_ts;   // Partition timestamp
   uint16_t blockitem_id;      // partition block item id
-  char delete_flags[128] = {
+  char delete_flags[(1000 + 7) / 8] = {
       0};  // Which rows in the data block were deleted when DeleteData() was recorded, with a bit of 1 for the deleted rows
 }__attribute__((packed));
 

@@ -90,7 +90,7 @@ bool HasNonConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
       // Compare non-string columns directly
       auto ret = std::memcmp(a_ptr + col_offset_[order.col_idx],
                              b_ptr + col_offset_[order.col_idx],
-                             col_info_[order.col_idx].fixed_storage_len);
+                             col_info_[order.col_idx].fixed_storage_len + NULL_INDECATOR_WIDE);
       if (ret != 0) {
         return ret < 0;
       }
@@ -102,8 +102,10 @@ bool HasNonConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
 SortRowChunk::~SortRowChunk() {
   SafeDeleteArray(col_offset_);
   SafeDeleteArray(is_encoded_col_);
-  SafeDeleteArray(data_);
-  SafeDeleteArray(non_constant_data_);
+  EE_MemPoolFree(g_pstBufferPoolInfo, data_);
+  data_ = nullptr;
+  EE_MemPoolFree(g_pstBufferPoolInfo, non_constant_data_);
+  non_constant_data_ = nullptr;
 }
 
 /**
@@ -193,14 +195,14 @@ k_bool SortRowChunk::Initialize() {
   data_size_ = row_size_ * capacity_;
   if (!all_constant_ && !force_constant_) {
     non_constant_max_size_ = non_constant_max_row_size_ * capacity_;
-    non_constant_data_ = KNEW char[non_constant_max_size_];
+    non_constant_data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, non_constant_max_size_);
     if (non_constant_data_ == nullptr) {
       LOG_ERROR("Allocate buffer in SortRowChunk failed.");
       return false;
     }
   }
 
-  data_ = KNEW char[data_size_];
+  data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, data_size_);
   if (data_ == nullptr) {
     LOG_ERROR("Allocate buffer in SortRowChunk failed.");
     return false;
@@ -464,7 +466,8 @@ void SortRowChunk::Reset(k_bool force_constant) {
     force_constant_ = force_constant;
     SafeDeleteArray(col_offset_);
     SafeDeleteArray(is_encoded_col_);
-    SafeDeleteArray(non_constant_data_);
+    EE_MemPoolFree(g_pstBufferPoolInfo, non_constant_data_);
+    non_constant_data_ = nullptr;
     non_constant_col_offsets_.clear();
     all_constant_ = true;
     all_constant_in_order_col_ = true;
@@ -833,7 +836,7 @@ KStatus SortRowChunk::Expand(k_uint32 new_count, k_bool copy) {
       memcpy(new_data, data_, data_size_);
     }
     data_size_ = capacity_ * row_size_;
-    SafeDeleteArray(data_);
+    EE_MemPoolFree(g_pstBufferPoolInfo, data_);
     data_ = new_data;
     return SUCCESS;
   }
@@ -1118,6 +1121,12 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
 
     if (bitmap_offset_ == nullptr) {
       bitmap_offset_ = KNEW k_uint32[col_num_];
+      if (bitmap_offset_ == nullptr) {
+        SafeFreePointer(ColInfo);
+        SafeFreePointer(ColData);
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
+                                      "Insufficient memory");
+      }
     }
     for (k_int32 i = 0; i < col_num_; i++) {
       bitmap_offset_[i] = bitmap_offset;
@@ -1148,6 +1157,13 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         k_int32* offset =
             static_cast<k_int32*>(malloc((count_ + 1) * sizeof(k_int32)));
         if (nullptr == offset) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           SafeFreePointer(ColInfo);
           SafeFreePointer(ColData);
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
@@ -1159,10 +1175,17 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         memset(bitmap, 0, bitmap_size_);
         k_int32 total_len = 0;
         std::vector<k_uint16> vec_len;
+        std::vector<DatumPtr> string_data;
         vec_len.reserve(count_);
         for (k_uint32 j = 0; j < count_; ++j) {
           k_uint16 len = 0;
-          GetData(j, i, len);
+          if (IsNull(j, i)) {
+            bitmap[j >> 3] |= 1 << (j & 7);
+            string_data.push_back(nullptr);
+          } else {
+            bitmap[j >> 3] |= 0 << (j & 7);
+            string_data.push_back(GetData(j, i, len));
+          }
           offset[j] = total_len;
           total_len += len;
           vec_len.push_back(len);
@@ -1171,6 +1194,13 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         ColData[i].offset_ = offset;
         char* ptr = static_cast<char*>(malloc(total_len));
         if (nullptr == ptr) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
                                         "Insufficient memory");
           SafeFreePointer(ColInfo);
@@ -1181,10 +1211,9 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         memset(ptr, 0, total_len);
         ColData[i].data_ptr_ = ptr;
         for (k_uint32 j = 0; j < count_; ++j) {
-          if (!IsNull(j, i)) {
-            memcpy(ptr + offset[j], GetData(j, i, vec_len[j]), vec_len[j]);
+          if (string_data[j] != nullptr) {  // nullptr means null
+            memcpy(ptr + offset[j], string_data[j], vec_len[j]);
           }
-          bitmap[j >> 3] |= (IsNull(j, i) ? 1 : 0) << (j & 7);
         }
         ColData[i].data_ptr_ = ptr;
         ColData[i].bitmap_ptr_ = bitmap;
@@ -1193,11 +1222,13 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
         DatumPtr bitmap = col_data + bitmap_offset_[i];
         memset(bitmap, 0, bitmap_size_);
         for (k_uint32 j = 0; j < count_; ++j) {
-          if (!IsNull(j, i)) {
+          if (IsNull(j, i)) {
+            bitmap[j >> 3] |= 1 << (j & 7);
+          } else {
+            bitmap[j >> 3] |= 0 << (j & 7);
             memcpy(col_ptr + j * ColInfo[i].fixed_len_, GetData(j, i),
-                    ColInfo[i].fixed_len_);
+                  ColInfo[i].fixed_len_);
           }
-          bitmap[j >> 3] |= (IsNull(j, i) ? 1 : 0) << (j & 7);
         }
         ColData[i].data_ptr_ = col_ptr;
         ColData[i].bitmap_ptr_ = bitmap;
