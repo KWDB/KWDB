@@ -683,7 +683,15 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       const TsLastSegmentBlockInfo& info = block->block_info_;
       int start = FindLowerBound({entity_id, current_span.begin}, entities, ts, 0, info.nrow);
 
-      if (start >= info.nrow || entities[start] != entity_id) {
+      if (start >= info.nrow) {
+        /*
+         * At this point, there is no data of the entity in this block, but there might be some
+         * data of the entity in following blocks.
+         */
+        break;
+      }
+
+      if (entities[start] != entity_id) {
         // The entity cannot be found within this block. At this stage, we already know that
         // cur_block.max_entity_id >= entity_id >= cur_block.min_entity_id. If the entity with this
         // entity_id is not present in the current block, it cannot be present in the subsequent
