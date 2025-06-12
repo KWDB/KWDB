@@ -21,11 +21,12 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
 class TsSegmentBase;
-// conditions used for flitering blockitem data.
+// conditions used for filtering blockitem data.
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
@@ -38,7 +39,10 @@ class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<shared_ptr<TsBlockSpan>>& block_spans) = 0;
+                                std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                uint32_t scan_version,
+                                const std::vector<uint32_t>& ts_scan_cols) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }
 

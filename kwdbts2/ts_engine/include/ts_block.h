@@ -60,14 +60,6 @@ class TsBlock {
   virtual KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min);
   virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
   virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
-
-  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
-                               const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                               const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
-
-  KStatus GetFirstAndLastInfo(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
-                                      const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                                      Sumfunctype agg_type, int64_t* out_ts, int* out_row_idx);
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,
                                                 std::vector<k_uint32>& first_col_idxs,
@@ -88,9 +80,15 @@ struct TsBlockSpan {
  public:
   TsBlockSpan() = default;
 
-  TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow);
+  TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+              std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr,
+              uint32_t scan_version = 0,
+              const std::vector<uint32_t>& ts_scan_cols = {});
 
   bool operator<(const TsBlockSpan& other) const;
+
+  KStatus SetConvertVersion(std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version = 0,
+                            std::vector<uint32_t> ts_scan_cols = {});
 
   TSEntityID GetEntityID() const;
   int GetRowNum() const;
@@ -106,35 +104,36 @@ struct TsBlockSpan {
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
-  KStatus GetColBitmap(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap);
+  bool IsColExist(uint32_t scan_idx);
+  bool IsColNotNull(uint32_t scan_idx);
+  bool IsSameType(uint32_t scan_idx);
+  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                             char** value, TsBitmap& bitmap);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
+
+  KStatus GetCount(uint32_t scan_idx, uint32_t& count);
+  KStatus GetSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
+  KStatus GetMax(uint32_t scan_idx, void* &pre_max);
+  KStatus GetMin(uint32_t scan_idx, void* &pre_min);
+  KStatus GetVarMax(uint32_t scan_idx, TSSlice& pre_max);
+  KStatus GetVarMin(uint32_t scan_idx, TSSlice& pre_min);
 
   bool HasPreAgg();
-  KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
-  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
-  KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max);
-  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min);
-  KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
-  KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
-
-  KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& dest_type, const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
+  KStatus GetPreCount(uint32_t scan_idx, uint16_t& count);
+  KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
+  KStatus GetPreMax(uint32_t scan_idx, void* &pre_max);
+  KStatus GetPreMin(uint32_t scan_idx, void* &pre_min);
+  KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max);
+  KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min);
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates);
-
-  KStatus GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-                              const AttributeInfo& dest_type, Sumfunctype agg_type, int64_t* out_ts,
-                              int* out_row_idx);
 
   void SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span);
 

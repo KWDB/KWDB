@@ -74,8 +74,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans(timestamp64 ts);
   KStatus ScanPartitionBlockSpans(timestamp64 ts);
-  KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
-                              vector<AttributeInfo>& valid_schema);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -87,7 +85,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<TsPartition> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
-  std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
+  std::unordered_map<uint32_t, std::vector<uint32_t>> scan_cols_;
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -136,8 +134,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  protected:
   KStatus Aggregate();
   KStatus UpdateAggregation();
-  KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
-                            const std::vector<AttributeInfo>& schema);
+  KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span);
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
   int valcmp(void* l, void* r, int32_t type, int32_t size);

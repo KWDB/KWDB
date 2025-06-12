@@ -209,7 +209,14 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     status_.store(MEM_SEGMENT_DELETING);
   }
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version,
+                        const std::vector<uint32_t>& ts_scan_cols) override;
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
+    return GetBlockSpans(filter, blocks, nullptr, 0, {});
+  }
 };
 
 class TsMemSegBlock : public TsBlock {
@@ -314,7 +321,10 @@ class TsMemSegmentManager {
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
                               LifeTime* lifetime = nullptr);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr,
+                        uint32_t scan_version = 0,
+                        const std::vector<uint32_t>& ts_scan_cols = {});
 };
 
 }  // namespace kwdbts

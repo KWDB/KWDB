@@ -619,7 +619,10 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+                                     std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                     uint32_t scan_version,
+                                     const std::vector<uint32_t>& ts_scan_cols) {
   if (!MayExistEntity(filter.entity_id)) {
     return SUCCESS;
   }
@@ -706,7 +709,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       int end = FindUpperBound({entity_id, current_span.end}, entities, ts, start, info.nrow);
       if (end - start > 0) {
         block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start,
-                            end - start));
+                            end - start, tbl_schema_mgr, scan_version, ts_scan_cols));
       }
 
       if (end == info.nrow) {

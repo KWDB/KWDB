@@ -176,7 +176,10 @@ class TsEntitySegmentMetaManager {
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
-                        std::list<shared_ptr<TsBlockSpan>>& block_spans);
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version,
+                        const std::vector<uint32_t>& ts_scan_cols);
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -308,10 +311,6 @@ class TsEntityBlock : public TsBlock {
   KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_max) override;
   KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
   KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
-
-  KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
-                       const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                       const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) override;
 };
 
 class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
@@ -334,7 +333,14 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version,
+                        const std::vector<uint32_t>& ts_scan_cols) override;
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
+    return GetBlockSpans(filter, blocks, nullptr, 0, {});
+  }
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsEntityBlock* block);

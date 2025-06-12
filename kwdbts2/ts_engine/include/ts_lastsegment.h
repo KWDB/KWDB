@@ -199,7 +199,14 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
   KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                        std::list<shared_ptr<TsBlockSpan>>& block_spans) override;
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version,
+                        const std::vector<uint32_t>& ts_scan_cols) override;
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
+    return GetBlockSpans(filter, blocks, nullptr, 0, {});
+  }
 
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)
