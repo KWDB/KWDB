@@ -36,6 +36,9 @@ public:
 TEST_F(TsEntitySegmentTest, simpleInsert) {
   EngineOptions::max_rows_per_block = 1000;
   using namespace roachpb;
+  int64_t total_insert_row_num = 0;
+  int64_t entity_row_num = 0;
+  int64_t last_row_num = 0;
   {
     System("rm -rf schema");
     System("rm -rf db001-123");
@@ -61,7 +64,6 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     std::filesystem::path path = "db001-123";
     std::shared_ptr<TsVGroupPartition> partition = std::make_shared<TsVGroupPartition>(path, 0, mgr.get(), 0, 1000000);
     partition->Open();
-
     for (int i = 0; i < 10; ++i) {
       std::unique_ptr<TsFile> last_segment;
       uint32_t file_number;
@@ -78,6 +80,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       }
       builder.Finalize();
       partition->PublicLastSegment(file_number);
+      total_insert_row_num += p.GetRowCount();
       free(payload.data);
     }
 
@@ -212,8 +215,10 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           row_idx += block_span->GetRowNum();
         }
         EXPECT_EQ(row_idx, i * EngineOptions::max_rows_per_block);
+        entity_row_num += row_idx;
       }
     }
+
     std::vector<std::shared_ptr<TsLastSegment>> result = partition->GetLastSegmentMgr()->GetAllLastSegments();
     ASSERT_EQ(result.size(), 1);
     for (int j = 0; j < result.size(); ++j) {
@@ -221,13 +226,21 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
-        result[0]->GetBlockSpans(filter, block_span);
+        result[j]->GetBlockSpans(filter, block_span);
         for (auto block : block_span) {
-          sum += block->GetRowNum();
+          last_row_num += block->GetRowNum();
         }
       }
     }
-    std::cout << sum << std::endl;
-    EXPECT_EQ(sum, 46030);
+    int64_t last_total_row_num = 0;
+    for (int j = 0; j < result.size(); ++j) {
+        std::list<shared_ptr<TsBlockSpan>> block_span;
+        result[j]->GetBlockSpans(block_span);
+        for (auto block : block_span) {
+          last_total_row_num += block->GetRowNum();
+        }
+    }
+    EXPECT_EQ(last_total_row_num, last_row_num);
+    EXPECT_EQ(last_total_row_num, total_insert_row_num - entity_row_num);
   }
 }
