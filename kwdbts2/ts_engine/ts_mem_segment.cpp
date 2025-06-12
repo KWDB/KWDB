@@ -163,6 +163,11 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter
 }
 
 KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) {
+  auto iter = col_bitmaps_.find(col_id);
+  if (iter != col_bitmaps_.end()) {
+    bitmap = iter->second;
+    return KStatus::SUCCESS;
+  }
   bitmap.SetCount(row_data_.size());
   for (int i = 0; i < row_data_.size(); i++) {
     auto row = row_data_[i];
@@ -170,12 +175,18 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
       bitmap[i] = DataFlags::kNull;
     }
   }
+  col_bitmaps_[col_id] = bitmap;
   return KStatus::SUCCESS;
 }
 
 KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
                                           char** value) {
   assert(!isVarLenType(schema[col_id].type));
+  auto iter = col_based_mems_.find(col_id);
+  if (iter != col_based_mems_.end() && iter->second != nullptr) {
+    *value = iter->second;
+    return KStatus::SUCCESS;
+  }
   auto col_len = schema[col_id].size;
   auto col_based_len = col_len * row_data_.size();
   char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
@@ -183,7 +194,7 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
     LOG_ERROR("malloc memroy failed.");
     return KStatus::FAIL;
   }
-  col_based_mems_.push_back(col_based_mem);
+  col_based_mems_[col_id] = col_based_mem;
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
   }

@@ -219,14 +219,17 @@ class TsMemSegBlock : public TsBlock {
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
   std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
-  std::list<char*> col_based_mems_;
+  std::unordered_map<uint32_t, char*> col_based_mems_;
+  std::unordered_map<uint32_t, TsBitmap> col_bitmaps_;
 
  public:
   explicit TsMemSegBlock(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}
 
   ~TsMemSegBlock() {
     for (auto& mem : col_based_mems_) {
-      free(mem);
+      if (mem.second != nullptr) {
+        free(mem.second);
+      }
     }
     col_based_mems_.clear();
   }
