@@ -56,7 +56,7 @@ class TsTableV2Impl : public TsTable {
 
   KStatus PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
-                  DedupResult* dedup_result, const DedupRule& dedup_rule);
+                  DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal);
 
   KStatus GetTagIterator(kwdbContext_p ctx,
                           std::vector<uint32_t> scan_tags,
@@ -108,8 +108,19 @@ class TsTableV2Impl : public TsTable {
                                const uint32_t cur_version, const uint32_t new_version,
                                const std::vector<uint32_t/* tag column id*/>&) override;
 
+  /**
+    * @brief clean ts table
+    *
+    * @return KStatus
+    */
+  virtual KStatus TSxClean(kwdbContext_p ctx);
+
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                              const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
+
+  KStatus UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) override;
+
+  KStatus UndoDropIndex(kwdbContext_p ctx, LogEntry* log) override;
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) override;
 
@@ -162,6 +173,8 @@ class TsTableV2Impl : public TsTable {
 
   KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
 
+  KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
+    uint32_t new_version) override;
 };
 
 }  // namespace kwdbts

@@ -46,7 +46,7 @@ class TsLastSegmentManager {
   KStatus NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment, uint32_t* ver);
   KStatus OpenLastSegmentFile(uint32_t file_number, std::shared_ptr<TsLastSegment>* lastsegment);
 
-  void GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);
+  KStatus GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result);
   std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const;
 
   bool NeedCompact();

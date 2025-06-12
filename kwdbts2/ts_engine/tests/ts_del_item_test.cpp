@@ -123,11 +123,15 @@ TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossNull) {
   del_range.ts_span = {9, 11};
   del_range.lsn_span = {101, 200};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
-  ASSERT_TRUE(result.size() == 1);
-  ASSERT_TRUE(result[0].ts_span.begin == 1);
-  ASSERT_TRUE(result[0].ts_span.end == 8);
+  ASSERT_TRUE(result.size() == 2);
+  ASSERT_TRUE(result[0].ts_span.begin == 9);
+  ASSERT_TRUE(result[0].ts_span.end == 11);
   ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
   ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[1].ts_span.begin == 1);
+  ASSERT_TRUE(result[1].ts_span.end == 8);
+  ASSERT_TRUE(result[1].lsn_span.begin == scan_range.lsn_span.begin);
+  ASSERT_TRUE(result[1].lsn_span.end == scan_range.lsn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossOne) {

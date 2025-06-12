@@ -23,30 +23,32 @@ KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) 
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityPartition::GetBlockSpan(std::list<TsBlockSpan>* ts_block_spans) {
+KStatus TsEntityPartition::GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_block_spans) {
   ts_block_spans->clear();
   // get block span in mem segment
   for (auto& mem : mems_) {
-    auto s = mem->GetBlockSpans(block_data_filter_, ts_block_spans);
+    auto s = mem->GetBlockSpans(block_data_filter_, *ts_block_spans);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
       return s;
     }
   }
-  // get block span in last segment
-  std::vector<std::shared_ptr<TsLastSegment>> last_segs = files_->GetLastSegmentMgr()->GetAllLastSegments();
-  for (auto& last_seg : last_segs) {
-    auto s = last_seg->GetBlockSpans(block_data_filter_, ts_block_spans);
+  if (files_ != nullptr) {
+    // get block span in last segment
+    std::vector<std::shared_ptr<TsLastSegment>> last_segs = files_->GetLastSegmentMgr()->GetAllLastSegments();
+    for (auto& last_seg : last_segs) {
+      auto s = last_seg->GetBlockSpans(block_data_filter_, *ts_block_spans);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetBlockSpans of mem segment failed.");
+        return s;
+      }
+    }
+    // get block span in entity segment
+    auto s = files_->GetEntitySegment()->GetBlockSpans(block_data_filter_, *ts_block_spans);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
       return s;
     }
-  }
-  // get block span in entity segment
-  auto s = files_->GetEntitySegment()->GetBlockSpans(block_data_filter_, ts_block_spans);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetBlockSpans of mem segment failed.");
-    return s;
   }
   LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
   return KStatus::SUCCESS;

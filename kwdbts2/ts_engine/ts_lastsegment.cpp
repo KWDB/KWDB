@@ -219,17 +219,18 @@ KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
 }
 
 // TODO(zzr) get last segments from VersionManager, this method must be atomic
-void TsLastSegmentManager::GetCompactLastSegments(
-    std::vector<std::shared_ptr<TsLastSegment>>& result) {
-  {
-    std::shared_lock lk{s_mutex_};
-    size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
-    result.reserve(compact_num);
-    auto it = last_segments_.begin();
-    for (int i = 0; i < compact_num; ++i, ++it) {
-      result.push_back(it->second);
-    }
+KStatus TsLastSegmentManager::GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result) {
+  std::shared_lock lk{s_mutex_};
+  if (!NeedCompact()) {
+    return FAIL;
   }
+  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
+  result.reserve(compact_num);
+  auto it = last_segments_.begin();
+  for (int i = 0; i < compact_num; ++i, ++it) {
+    result.push_back(it->second);
+  }
+  return SUCCESS;
 }
 
 std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetAllLastSegments() const {
@@ -415,7 +416,7 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      const size_t* data = reinterpret_cast<const size_t*>(ptr);
+      const uint32_t* data = reinterpret_cast<const uint32_t*>(ptr);
       size_t offset = data[row_num];
       TSSlice result{column_cache_->GetColumnBlock(VARCHAR_CACHE_ID)->data->data() + offset, 2};
       uint16_t len;
@@ -584,14 +585,13 @@ int FindLowerBound(const Element_& target, const TSEntityID* entities, const tim
   return r;
 }
 
-KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
+KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans) {
   std::vector<TsLastSegmentBlockIndex> block_indices;
   auto s = GetAllBlockIndex(&block_indices);
   if (s == FAIL) {
     return FAIL;
   }
 
-  spans->clear();
   for (int idx = 0; idx < block_indices.size(); ++idx) {
     TsLastSegmentBlockInfo info;
     s = LoadBlockInfo(file_.get(), block_indices[idx], &info);
@@ -610,8 +610,8 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
       auto current_entity = entities[start];
       auto upper_bound =
           FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
-      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), current_entity, block,
-                          start, upper_bound - start);
+      block_spans.emplace_back(make_shared<TsBlockSpan>(current_entity, block,
+                          start, upper_bound - start));
       prev_end = upper_bound;
     }
   }
@@ -619,7 +619,10 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<TsBlockSpan>* spans) {
+                                     std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+  if (!MayExistEntity(filter.entity_id)) {
+    return SUCCESS;
+  }
   // spans->clear();
   if (filter.spans_.empty()) {
     return SUCCESS;
@@ -689,15 +692,17 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         if (match_found) {
           match_found = false;
-          spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start_idx,
-                            i - start_idx);
+          block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, i - start_idx));
         }
       }
     }
     if (match_found) {
       match_found = false;
-      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start_idx,
-                        row_num - start_idx);
+      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, row_num - start_idx));
+    }
+    if (match_found) {
+      match_found = false;
+      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, row_num - start_idx));
     }
   }
 

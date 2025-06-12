@@ -143,7 +143,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
   }
   EntryBlock* first_block = entry_blocks[0];
 
-  uint32_t offset = (first_block->getBlockNo() - header.getStartBlockNo() + 1) * BLOCK_SIZE;
+  uint64_t offset = (first_block->getBlockNo() - header.getStartBlockNo() + 1) * BLOCK_SIZE;
   file_.seekp(offset, std::ios::beg);
 
   for (auto entry_block : entry_blocks) {
@@ -176,9 +176,18 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
   if (flush_header) {
     writeHeaderBlock(header);
   }
-  file_.flush();
-  fsync(file_.get());
-
+  if (opt_->wal_level == WALMode::SYNC) {
+    auto helper = [](std::filebuf *fb) -> int {
+      class Helper : public std::filebuf {
+       public:
+        int handle() { return _M_file.fd(); }
+      };
+      return static_cast<Helper*>(fb)->handle();
+    };
+    fsync(helper(file_.rdbuf()));
+  } else {
+    file_.flush();
+  }
   return SUCCESS;
 }
 
@@ -192,12 +201,12 @@ HeaderBlock WALFileMgr::readHeaderBlock() {
 }
 
 KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
-                                 uint32_t start_block_no, uint32_t end_block_no) {
+                                 uint64_t start_block_no, uint64_t end_block_no) {
   KStatus s = SUCCESS;
   std::ifstream wal_file;
   HeaderBlock header = header_block_;
   std::string file_path = getFilePath();
-  uint16_t min_block_no = header.getStartBlockNo() + 1;
+  uint64_t min_block_no = header.getStartBlockNo() + 1;
   while (start_block_no < header.getStartBlockNo()) {
     if (header.getStartBlockNo() < min_block_no) {
       min_block_no = header.getStartBlockNo();
@@ -224,7 +233,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
     delete[] data;
   }
 
-  uint32_t offset = (start_block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE;
+  uint64_t offset = (start_block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE;
   if (!wal_file.is_open()) {
     wal_file.open(file_path, std::ios::binary);
   }
@@ -233,7 +242,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
 
   char* data = KNEW char[BLOCK_SIZE];
 
-  for (uint32_t index = start_block_no; index <= end_block_no; index++) {
+  for (uint64_t index = start_block_no; index <= end_block_no; index++) {
     if (!wal_file.read(data, BLOCK_SIZE)) {
       wal_file.close();
 

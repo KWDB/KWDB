@@ -116,8 +116,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 }
 
 KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                           std::list<TsBlockSpan>* blocks) {
-  blocks->clear();
+                                           std::list<shared_ptr<TsBlockSpan>>& block_spans) {
   segment_lock_.lock();
   std::list<std::shared_ptr<TsMemSegment>> segments = segment_;
   segment_lock_.unlock();
@@ -133,16 +132,39 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter
       continue;
     }
     std::shared_ptr<TsMemSegBlock> cur_blk_item = nullptr;
-    for (auto row : row_datas) {
-      if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
-        cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
-        mem_block.push_back(cur_blk_item);
-        cur_blk_item->InsertRow(row);
+    if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
+      TSMemSegRowData* last_row_data = nullptr;
+      for (auto& row : row_datas) {
+        if (last_row_data == nullptr || last_row_data->SameEntityAndTs(row)) {
+          last_row_data = row;
+          continue;
+        }
+        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
+          cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
+          mem_block.push_back(cur_blk_item);
+          cur_blk_item->InsertRow(last_row_data);
+        }
+        last_row_data = row;
+      }
+      if (last_row_data != nullptr) {
+        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
+          cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
+          mem_block.push_back(cur_blk_item);
+          cur_blk_item->InsertRow(last_row_data);
+        }
+      }
+    } else {
+      for (auto& row : row_datas) {
+        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
+          cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
+          mem_block.push_back(cur_blk_item);
+          cur_blk_item->InsertRow(row);
+        }
       }
     }
   }
   for (auto& mem_blk : mem_block) {
-    blocks->push_back(TsBlockSpan(mem_blk->GetTableId(), mem_blk->GetTableVersion(), mem_blk->GetEntityId(),
+    block_spans.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(),
                                   mem_blk, 0, mem_blk->GetRowNum()));
   }
   return KStatus::SUCCESS;
@@ -354,8 +376,7 @@ void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, boo
 }
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                    std::list<TsBlockSpan>* blocks) {
-  blocks->clear();
+                                    std::list<shared_ptr<TsBlockSpan>>& blocks) {
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {
@@ -365,15 +386,38 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   std::list<std::shared_ptr<TsMemSegBlock>> mem_blocks;
   std::shared_ptr<TsMemSegBlock> cur_blk_item = nullptr;
   auto self = shared_from_this();
-  for (auto row : row_datas) {
-    if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
-      cur_blk_item = std::make_shared<TsMemSegBlock>(self);
-      mem_blocks.push_back(cur_blk_item);
-      cur_blk_item->InsertRow(row);
+  if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
+    TSMemSegRowData* last_row_data = nullptr;
+    for (auto& row : row_datas) {
+      if (last_row_data == nullptr || last_row_data->SameEntityAndTs(row)) {
+        last_row_data = row;
+        continue;
+      }
+      if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
+        cur_blk_item = std::make_shared<TsMemSegBlock>(self);
+        mem_blocks.push_back(cur_blk_item);
+        cur_blk_item->InsertRow(last_row_data);
+      }
+      last_row_data = row;
+    }
+    if (last_row_data != nullptr) {
+      if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
+        cur_blk_item = std::make_shared<TsMemSegBlock>(self);
+        mem_blocks.push_back(cur_blk_item);
+        cur_blk_item->InsertRow(last_row_data);
+      }
+    }
+  } else {
+    for (auto& row : row_datas) {
+      if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
+        cur_blk_item = std::make_shared<TsMemSegBlock>(self);
+        mem_blocks.push_back(cur_blk_item);
+        cur_blk_item->InsertRow(row);
+      }
     }
   }
   for (auto& mem_blk : mem_blocks) {
-    blocks->push_back(TsBlockSpan(mem_blk->GetTableId(), mem_blk->GetTableVersion(), mem_blk->GetEntityId(),
+    blocks.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(),
                                   mem_blk, 0, mem_blk->GetRowNum()));
   }
   return KStatus::SUCCESS;

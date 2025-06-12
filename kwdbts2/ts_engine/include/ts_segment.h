@@ -47,7 +47,7 @@ class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<TsBlockSpan>* spans) = 0;
+                                std::list<shared_ptr<TsBlockSpan>>& block_spans) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }
 

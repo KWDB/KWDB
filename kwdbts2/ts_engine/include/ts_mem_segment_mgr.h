@@ -80,14 +80,17 @@ struct TSMemSegRowData {
     HTOBEFUNC(buf, htobe64(*reinterpret_cast<uint64_t*>(&row_data.data)), sizeof(uint64_t));
   }
 
-  bool SameEntityAndTableVersion(TSMemSegRowData* b) {
+  inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {
     return memcmp(this, b, 24) == 0;
   }
-  bool SameTableId(TSMemSegRowData* b) {
+  inline bool SameEntityAndTs(TSMemSegRowData* b) {
+    return entity_id == b->entity_id && ts == b->ts;
+  }
+  inline bool SameTableId(TSMemSegRowData* b) {
     return this->table_id == b->table_id;
   }
 
-  int Compare(const TSMemSegRowData& b) const {
+  inline int Compare(const TSMemSegRowData& b) const {
     auto ret = memcmp(skip_list_key_, b.skip_list_key_, GetKeyLen());
     // auto ret_1 = 0;
     // while (true) {
@@ -208,7 +211,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     status_.store(MEM_SEGMENT_DELETING);
   }
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) override;
 };
 
 class TsMemSegBlock : public TsBlock {
@@ -312,7 +315,7 @@ class TsMemSegmentManager {
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
                               LifeTime* lifetime = nullptr);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans);
 };
 
 }  // namespace kwdbts

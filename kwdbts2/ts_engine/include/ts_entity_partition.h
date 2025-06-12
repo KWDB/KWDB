@@ -30,7 +30,7 @@ class TsEntityPartition {
   // initialize current object.
   KStatus Init(std::list<std::shared_ptr<TsMemSegment>>& mems);
   // filter all blocks, and return block span list.
-  KStatus GetBlockSpan(std::list<TsBlockSpan>* ts_block_spans);
+  KStatus GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_block_spans);
 
  private:
   KStatus SetFilter();

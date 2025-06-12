@@ -80,7 +80,7 @@ KStatus TsEntitySegmentAggFile::AppendAggBlock(const TSSlice& agg, uint64_t* off
   return SUCCESS;
 }
 
-KStatus TsEntitySegmentAggFile::ReadAggBlock(uint64_t offset, char* buff, size_t len) {
+KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, char* buff, size_t len) {
   RW_LATCH_S_LOCK(agg_file_mtx_);
   TSSlice result;
   file_->Read(offset, len, &result, buff);

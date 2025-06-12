@@ -41,7 +41,6 @@ struct TsEntitySegmentBlockItem {
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
   uint16_t non_null_row_count = 0;  // the number of non-null rows
-  bool is_overflow = false;
   bool is_agg_res_available = false;  //  agg for block is valid.
   char reserved[48] = {0};      // reserved for user-defined information.
   // todo(liangbo01) add lsn to filter quickyly
@@ -178,16 +177,18 @@ class TsEntitySegmentMetaManager {
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
-                        std::list<TsBlockSpan>* block_spans);
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans);
 };
 
 struct TsEntitySegmentBlockInfo {
   std::vector<uint32_t> col_block_offset;
+  std::vector<uint32_t> col_agg_offset;
 };
 
 struct TsEntitySegmentColumnBlock {
   TsBitmap bitmap;
   std::string buffer;
+  std::string agg;
   std::vector<std::string> var_rows;
 };
 
@@ -208,6 +209,8 @@ class TsEntityBlock : public TsBlock {
 
   uint64_t block_offset_ = 0;
   uint32_t block_length_ = 0;
+  uint64_t agg_offset_ = 0;
+  uint32_t agg_length_ = 0;
 
   TsEntitySegment* entity_segment_ = nullptr;
 
@@ -241,6 +244,14 @@ class TsEntityBlock : public TsBlock {
 
   uint32_t GetBlockLength() const { return block_length_; }
 
+  uint64_t GetAggOffset() const { return agg_offset_; }
+
+  uint32_t GetAggLength() const { return agg_length_; }
+
+  bool HasAggData(int32_t col_idx) {
+    return !column_blocks_[col_idx + 1].agg.empty();
+  }
+
   inline bool HasDataCached(int32_t col_idx) {
     assert(col_idx >= -1);
     return n_cols_ > 0 && column_blocks_.size() == n_cols_ && !column_blocks_[col_idx + 1].buffer.empty();
@@ -256,7 +267,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
 
-  KStatus Append(TsBlockSpan& span, bool& is_full);
+  KStatus Append(shared_ptr<TsBlockSpan> span, bool& is_full);
 
   KStatus Flush(TsVGroupPartition* partition);
 
@@ -264,7 +275,11 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
+  KStatus LoadAggData(int32_t col_idx, TSSlice buffer);
+
   KStatus LoadBlockInfo(TSSlice buffer);
+
+  KStatus LoadAggInfo(TSSlice buffer);
 
   KStatus LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
@@ -287,6 +302,18 @@ class TsEntityBlock : public TsBlock {
   uint64_t* GetLSNAddr(int row_num);
 
   void Clear();
+
+  bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
+  KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count) override;
+  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) override;
+  KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max) override;
+  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_max) override;
+  KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
+  KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
+
+  KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
+                       const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
+                       const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) override;
 };
 
 class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
@@ -309,10 +336,12 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<TsBlockSpan>* blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans) override;
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsEntityBlock* block);
+
+  KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block);
 };
 
 class TsEntitySegmentBuilder {

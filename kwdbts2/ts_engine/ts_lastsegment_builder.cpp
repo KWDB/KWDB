@@ -47,19 +47,48 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
   auto reserved_size = std::min<int>(payload_buffer_.buffer.size(), kNRowPerBlock);
   data_block_builder_->Reserve(reserved_size);
 
-  for (int idx = 0; idx < payload_buffer_.buffer.size(); ++idx) {
-    const EntityPayload& p = payload_buffer_.buffer[idx];
-    data_block_builder_->Add(p.entity_id, p.seq_no, p.metric);
-    --left;
+  if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
+    EntityPayload *last_entity_payload = nullptr;
+    for (int idx = 0; idx < payload_buffer_.buffer.size(); ++idx) {
+      --left;
+      if (!last_entity_payload ||
+          last_entity_payload->IsSameEntityAndTs(payload_buffer_.parser, payload_buffer_.buffer[idx])) {
+        last_entity_payload = &payload_buffer_.buffer[idx];
+        continue;
+      }
 
-    if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == payload_buffer_.buffer.size()) {
-      data_block_builder_->Finish();
-      auto s = WriteMetricBlock(data_block_builder_.get());
-      if (s != SUCCESS) return FAIL;
-      data_block_builder_->Reset(table_id_, version_);
+      data_block_builder_->Add(last_entity_payload->entity_id, last_entity_payload->lsn, last_entity_payload->metric);
+      if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
+        data_block_builder_->Finish();
+        auto s = WriteMetricBlock(data_block_builder_.get());
+        if (s != SUCCESS) return FAIL;
+        data_block_builder_->Reset(table_id_, version_);
 
-      auto reserved_size = std::min<int>(left, kNRowPerBlock);
-      data_block_builder_->Reserve(reserved_size);
+        auto reserved_size = std::min<int>(left + 1, kNRowPerBlock);
+        data_block_builder_->Reserve(reserved_size);
+      }
+      last_entity_payload = &payload_buffer_.buffer[idx];
+    }
+    data_block_builder_->Add(last_entity_payload->entity_id, last_entity_payload->lsn, last_entity_payload->metric);
+    data_block_builder_->Finish();
+    auto s = WriteMetricBlock(data_block_builder_.get());
+    if (s != SUCCESS) return FAIL;
+    data_block_builder_->Reset(table_id_, version_);
+  } else {
+    for (int idx = 0; idx < payload_buffer_.buffer.size(); ++idx) {
+      const EntityPayload& p = payload_buffer_.buffer[idx];
+      data_block_builder_->Add(p.entity_id, p.lsn, p.metric);
+      --left;
+
+      if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == payload_buffer_.buffer.size()) {
+        data_block_builder_->Finish();
+        auto s = WriteMetricBlock(data_block_builder_.get());
+        if (s != SUCCESS) return FAIL;
+        data_block_builder_->Reset(table_id_, version_);
+
+        auto reserved_size = std::min<int>(left, kNRowPerBlock);
+        data_block_builder_->Reserve(reserved_size);
+      }
     }
   }
   payload_buffer_.clear();
@@ -83,19 +112,50 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
   auto reserved_size = std::min<int>(cols_data_buffer_.buffer.size(), kNRowPerBlock);
   data_block_builder_->Reserve(reserved_size);
 
-  for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
-    const EntityColData& p = cols_data_buffer_.buffer[idx];
-    data_block_builder_->Add(p.entity_id, p.seq_no, p.col_data, p.data_flags);
-    --left;
+  if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
+    EntityColData *last_entity_col_data = nullptr;
+    for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
+      --left;
+      if (!last_entity_col_data ||
+          last_entity_col_data->IsSameEntityAndTs(cols_data_buffer_.buffer[idx])) {
+        last_entity_col_data = &cols_data_buffer_.buffer[idx];
+        continue;
+      }
 
-    if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == cols_data_buffer_.buffer.size()) {
-      data_block_builder_->Finish();
-      auto s = WriteMetricBlock(data_block_builder_.get());
-      if (s != SUCCESS) return FAIL;
-      data_block_builder_->Reset(table_id_, version_);
+      data_block_builder_->Add(last_entity_col_data->entity_id, last_entity_col_data->lsn,
+                               last_entity_col_data->col_data, last_entity_col_data->data_flags);
+      if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
+        data_block_builder_->Finish();
+        auto s = WriteMetricBlock(data_block_builder_.get());
+        if (s != SUCCESS) return FAIL;
+        data_block_builder_->Reset(table_id_, version_);
 
-      auto reserved_size = std::min<int>(left, kNRowPerBlock);
-      data_block_builder_->Reserve(reserved_size);
+        auto reserved_size = std::min<int>(left + 1, kNRowPerBlock);
+        data_block_builder_->Reserve(reserved_size);
+      }
+      last_entity_col_data = &cols_data_buffer_.buffer[idx];
+    }
+    data_block_builder_->Add(last_entity_col_data->entity_id, last_entity_col_data->lsn,
+                             last_entity_col_data->col_data, last_entity_col_data->data_flags);
+    data_block_builder_->Finish();
+    auto s = WriteMetricBlock(data_block_builder_.get());
+    if (s != SUCCESS) return FAIL;
+    data_block_builder_->Reset(table_id_, version_);
+  } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {
+    for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
+      const EntityColData& p = cols_data_buffer_.buffer[idx];
+      data_block_builder_->Add(p.entity_id, p.lsn, p.col_data, p.data_flags);
+      --left;
+
+      if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == cols_data_buffer_.buffer.size()) {
+        data_block_builder_->Finish();
+        auto s = WriteMetricBlock(data_block_builder_.get());
+        if (s != SUCCESS) return FAIL;
+        data_block_builder_->Reset(table_id_, version_);
+
+        auto reserved_size = std::min<int>(left, kNRowPerBlock);
+        data_block_builder_->Reserve(reserved_size);
+      }
     }
   }
   cols_data_buffer_.clear();
@@ -269,6 +329,9 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
   std::string compressed;
   const auto& mgr = CompressorManager::GetInstance();
   auto [first, second] = mgr.GetDefaultAlgorithm(dtype_);
+  if (isVarLenType(dtype_)) {
+    first = TsCompAlg::kGorilla_32;
+  }
   TSSlice plain{data_buffer_.data(), data_buffer_.size()};
   mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
   data_buffer_.swap(compressed);
@@ -293,6 +356,7 @@ TsLastSegmentBuilder::MetricBlockBuilder::MetricBlockBuilder(TsEngineSchemaManag
 KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint32_t version) {
   info_.Reset(table_id, version);
   finished_ = false;
+  last_entity_id_ = -1;
 
   varchar_buffer_.clear();
   colblocks_.clear();
@@ -309,8 +373,13 @@ KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint
   colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(INT64, 8, false));  // for SeqNo;
   for (int i = 0; i < metric_schema_.size(); ++i) {
     bool nullable = true;  // TODO(zzr): read from schema;
-    colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
-        static_cast<DATATYPE>(metric_schema_[i].type), metric_schema_[i].size, nullable));
+    if (isVarLenType(metric_schema_[i].type)) {
+      colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
+          static_cast<DATATYPE>(metric_schema_[i].type), sizeof(uint32_t), nullable));
+    } else {
+      colblocks_.push_back(std::make_unique<ColumnBlockBuilder>(
+          static_cast<DATATYPE>(metric_schema_[i].type), metric_schema_[i].size, nullable));
+    }
   }
   return KStatus::SUCCESS;
 }
@@ -320,8 +389,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
   assert(!finished_);
   assert(parser_ != nullptr);
   info_.nrow++;
-  info_.ndevice += (entity_id != last_entity_id_);
-  last_entity_id_ = entity_id;
+  if (entity_id != last_entity_id_) {
+    ++info_.ndevice;
+    last_entity_id_ = entity_id;
+  }
 
   assert(metric_data.len >= 8);
 
@@ -345,8 +416,9 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
     if (!isVarLenType(metric_schema_[col_id].type)) {
       colblocks_[i]->Add(data, is_null ? kNull : kValid);
     } else {
-      size_t var_off = varchar_buffer_.size();
-      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), 8}, is_null ? kNull : kValid);
+      uint32_t var_off = varchar_buffer_.size();
+      colblocks_[i]->Add({reinterpret_cast<char*>(&var_off), sizeof(var_off)},
+                         is_null ? kNull : kValid);
       uint16_t len = data.len;
       if (!is_null) {
         varchar_buffer_.append(reinterpret_cast<char*>(&len), sizeof(len));
@@ -362,8 +434,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
   assert(!finished_);
   assert(parser_ != nullptr);
   info_.nrow++;
-  info_.ndevice += (entity_id != last_entity_id_);
-  last_entity_id_ = entity_id;
+  if (entity_id != last_entity_id_) {
+    ++info_.ndevice;
+    last_entity_id_ = entity_id;
+  }
 
   assert(col_data.size() > 0);
   assert(col_data[0].len >= 8);
@@ -399,6 +473,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Finish() {
   }
   uint32_t offset = 0;
   for (int i = 0; i < colblocks_.size(); ++i) {
+    colblocks_[i]->Truncate();
     // TODO(zzr)
     // A. Calculate aggregate information
     //    Add some API in ColumnBlock to do this.
