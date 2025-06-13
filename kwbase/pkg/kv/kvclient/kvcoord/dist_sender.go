@@ -1274,7 +1274,8 @@ func (ds *DistSender) divideAndSendTsRowPutBatch(
 		if !ok {
 			return nil, roachpb.NewError(errors.New("meet not-tsRowPutRequest"))
 		}
-		tableID, hashPoint, timestamp, err := sqlbase.DecodeTsRangeKey(rowReq.Key, true)
+		hashNum := rowReq.HashNum
+		tableID, hashPoint, timestamp, err := sqlbase.DecodeTsRangeKey(rowReq.Key, true, hashNum)
 		if err != nil {
 			return nil, roachpb.NewError(err)
 		}
@@ -1288,7 +1289,7 @@ func (ds *DistSender) divideAndSendTsRowPutBatch(
 		for ri.Seek(ctx, roachpb.RKey(rowReq.Key), Ascending); ri.Valid(); ri.Next(ctx) {
 			descs = append(descs, ri.desc)
 			tokens = append(tokens, ri.token)
-			tableID, hashPoint, timestamp, err = sqlbase.DecodeTsRangeKey(ri.desc.EndKey, true)
+			tableID, hashPoint, timestamp, err = sqlbase.DecodeTsRangeKey(ri.desc.EndKey, true, hashNum)
 			if hashPoint > curHashpoint || tableID > curTableID {
 				rangeTimestamps = append(rangeTimestamps, math.MaxInt64)
 				break
@@ -1345,6 +1346,7 @@ func (ds *DistSender) divideAndSendTsRowPutBatch(
 				Values:       values,
 				ValueSize:    int32(sizes[i]),
 				Timestamps:   timestamps[i],
+				HashNum:      hashNum,
 			}
 			rangeBatch, ok := rangeBatches[desc.RangeID]
 			if !ok {

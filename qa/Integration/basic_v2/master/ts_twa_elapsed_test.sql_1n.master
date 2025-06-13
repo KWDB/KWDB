@@ -212,8 +212,10 @@ INSERT 20
                               | distributed  | true
                               | vectorized   | false
   render                      |              |
+   │                          | engine type  | time series
    │                          | twa          | twa
    └── sort                   |              |
+        │                     | engine type  | time series
         │                     | order        | +ptagid
         └── group             |              |
              │                | engine type  | time series
@@ -225,7 +227,7 @@ INSERT 20
                               | ts-table     | sensor_data
                               | ordered type | order scan
                               | access mode  | tableTableMeta
-(16 rows)
+(18 rows)
 > select round(twa(ts, temperature2),3) from sensor_data group by ptagID order by ptagID;
   round
 ---------

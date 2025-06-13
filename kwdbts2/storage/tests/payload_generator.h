@@ -2,6 +2,7 @@
 #include <utility>
 #include <vector>
 #include "data_type.h"
+#include "test_util.h"
 
 class PayloadGenerator final {
  public:
@@ -44,7 +45,7 @@ class PayloadGenerator final {
     return primaryTagLen_;
   }
   uint32_t GetHashPoint() {
-    hashpoint = TsTable::GetConsistentHashId(reinterpret_cast<char*>(primaryTag_), primaryTagLen_);
+    hashpoint = GetConsistentHashId(reinterpret_cast<char*>(primaryTag_), primaryTagLen_, g_testcase_hash_num);
     LOG_INFO("primaryTagGenerater free hashpoint ptag %d", primaryTagLen_);
     return hashpoint;
   }

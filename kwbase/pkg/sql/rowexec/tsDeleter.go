@@ -43,6 +43,7 @@ type tsDeleter struct {
 	tsOperatorType execinfrapb.OperatorType
 
 	tableID uint64
+	hashNum uint64
 
 	primaryTagKeys [][]byte
 	primaryTags    [][]byte
@@ -71,6 +72,7 @@ func newTsDeleter(
 	td := &tsDeleter{
 		tsOperatorType: tsDeleteSpec.TsOperator,
 		tableID:        tsDeleteSpec.TableId,
+		hashNum:        tsDeleteSpec.HashNum,
 		primaryTagKeys: tsDeleteSpec.PrimaryTagKeys,
 		primaryTags:    tsDeleteSpec.PrimaryTags,
 	}
@@ -107,15 +109,15 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 	ba := td.FlowCtx.Txn.NewBatch()
 	switch td.tsOperatorType {
 	case execinfrapb.OperatorType_TsDeleteData:
-		hashPoints, err := api.GetHashPointByPrimaryTag(td.primaryTags[0])
+		hashPoints, err := api.GetHashPointByPrimaryTag(td.hashNum, td.primaryTags[0])
 		if err != nil || len(hashPoints) == 0 {
 			td.deleteSuccess = false
 			td.err = err
 			return ctx
 		}
 		startTs, endTs := getMinMaxTimestamp(td.spans)
-		startKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), startTs)
-		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), endTs+1)
+		startKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), startTs, td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), endTs+1, td.hashNum)
 		req := &roachpb.TsDeleteRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    startKey,
@@ -141,14 +143,15 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			}
 		}
 	case execinfrapb.OperatorType_TsDeleteMultiEntitiesData:
-		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(0))
-		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), api.HashParamV2, math.MaxInt64)
+		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(0), td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), td.hashNum, math.MaxInt64, td.hashNum)
 		req := &roachpb.TsDeleteMultiEntitiesDataRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    startKey,
 				EndKey: endKey,
 			},
 			TableId: td.tableID,
+			HashNum: td.hashNum,
 		}
 		for _, span := range td.spans {
 			req.TsSpans = append(req.TsSpans, &roachpb.TsSpan{TsStart: span.StartTs, TsEnd: span.EndTs})
@@ -166,14 +169,14 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			}
 		}
 	case execinfrapb.OperatorType_TsDeleteEntities:
-		hashPoints, err := api.GetHashPointByPrimaryTag(td.primaryTags[0])
+		hashPoints, err := api.GetHashPointByPrimaryTag(td.hashNum, td.primaryTags[0])
 		if err != nil || len(hashPoints) == 0 {
 			td.deleteSuccess = false
 			td.err = err
 			return ctx
 		}
-		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]))
-		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), math.MaxInt64)
+		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), math.MaxInt64, td.hashNum)
 		// delete data
 		delDataReq := &roachpb.TsDeleteRequest{
 			RequestHeader: roachpb.RequestHeader{

@@ -557,6 +557,20 @@ func (a *Allocator) AllocateTarget(
 	}
 }
 
+// getValidConstraintsWithStore get rid of the constraint which store not available.
+func getValidConstraintsWithStore(cs zonepb.Constraints, sl StoreList) []zonepb.Constraint {
+	var newConstraints []zonepb.Constraint
+	for _, c := range cs.Constraints {
+		for _, s := range sl.stores {
+			if zonepb.StoreMatchesConstraint(s, c) {
+				newConstraints = append(newConstraints, c)
+				break
+			}
+		}
+	}
+	return newConstraints
+}
+
 func (a *Allocator) allocateTargetFromList(
 	ctx context.Context,
 	sl StoreList,
@@ -564,6 +578,13 @@ func (a *Allocator) allocateTargetFromList(
 	candidateReplicas []roachpb.ReplicaDescriptor,
 	options scorerOptions,
 ) (*roachpb.StoreDescriptor, string) {
+	if zone.Rebalance || (zone.Subzones != nil &&
+		(len(zone.Subzones[0].HashPointsList) != 0 || len(zone.Subzones[0].HashPointsRange) != 0)) {
+		for i, c1 := range zone.Constraints {
+			newConstraints := getValidConstraintsWithStore(c1, sl)
+			zone.Constraints[i].Constraints = newConstraints
+		}
+	}
 	analyzedConstraints := constraint.AnalyzeConstraints(
 		ctx, a.storePool.getStoreDescriptor, candidateReplicas, zone)
 	candidates := allocateCandidates(
@@ -721,6 +742,13 @@ func (a Allocator) RebalanceTarget(
 		}
 	}
 
+	if zone.Rebalance || (zone.Subzones != nil &&
+		(len(zone.Subzones[0].HashPointsList) != 0 || len(zone.Subzones[0].HashPointsRange) != 0)) {
+		for i, c1 := range zone.Constraints {
+			newConstraints := getValidConstraintsWithStore(c1, sl)
+			zone.Constraints[i].Constraints = newConstraints
+		}
+	}
 	analyzedConstraints := constraint.AnalyzeConstraints(
 		ctx, a.storePool.getStoreDescriptor, existingReplicas, zone)
 	options := a.scorerOptions()

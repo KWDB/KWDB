@@ -40,6 +40,7 @@ type tsCreateTable struct {
 
 	meta    []byte
 	tableID uint64
+	hashNum uint64
 
 	notFirst             bool
 	createTaTableSuccess bool
@@ -58,7 +59,7 @@ func newCreateTsTable(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*tsCreateTable, error) {
-	tct := &tsCreateTable{tableID: tst.TsTableID, meta: tst.Meta}
+	tct := &tsCreateTable{tableID: tst.TsTableID, hashNum: tst.HashNum, meta: tst.Meta}
 	if err := tct.Init(
 		tct,
 		post,
@@ -100,7 +101,7 @@ func (tct *tsCreateTable) Start(ctx context.Context) context.Context {
 
 	log.Infof(ctx, "tct.tableID:", tct.tableID, "rangeGroups:", rangeGroups, "nodeID", tct.FlowCtx.Cfg.NodeID.Get())
 	if len(rangeGroups) != 0 {
-		if err := tct.FlowCtx.Cfg.TsEngine.CreateTsTable(tct.tableID, tct.meta, rangeGroups); err != nil {
+		if err := tct.FlowCtx.Cfg.TsEngine.CreateTsTable(tct.tableID, tct.hashNum, tct.meta, rangeGroups); err != nil {
 			tct.createTaTableSuccess = false
 			tct.err = err
 			return ctx

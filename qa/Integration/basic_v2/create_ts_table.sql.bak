@@ -137,3 +137,17 @@ create table test.atll(k_timestamp timestamp not null,e0 int not null ,e1 int2  
 drop database test cascade;
 drop database test2;
 drop database pre;
+
+--test_case0007 ;
+create ts database test;
+create table test.tt1 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (0);
+create table test.tt2 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (2000);
+create table test.tt3 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (4000);
+create table test.tt4 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (8000);
+create table test.tt5 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (50001);
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt1';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt2';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt3';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt4';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt5';
+drop database test cascade;

@@ -388,6 +388,7 @@ type Factory interface {
 	ConstructTSDelete(
 		nodeIDs []roachpb.NodeID,
 		tblID uint64,
+		hashNum uint64,
 		spans []execinfrapb.Span,
 		delTyp uint8,
 		primaryTagKey, primaryTagValues [][]byte,

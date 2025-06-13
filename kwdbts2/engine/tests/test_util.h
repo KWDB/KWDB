@@ -114,7 +114,7 @@ struct ZTableColumnMeta {
   roachpb::VariableLengthType storage_type;
 };
 
-const k_uint32 g_testcase_col_count = 20;
+static const k_uint32 g_testcase_hash_num = 2000;
 
 // all kind of column types.
 std::vector<ZTableColumnMeta> g_all_col_types({
@@ -180,6 +180,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, const KString& prefix_t
   table->set_table_name(prefix_table_name + std::to_string(table_id));
   table->set_partition_interval(partition_interval);
   table->set_ts_version(1);
+  table->set_hash_num(g_testcase_hash_num);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;
@@ -222,6 +223,7 @@ void ConstructOffsetTable(roachpb::CreateTsTable* meta, const KString& prefix_ta
   table->set_table_name(prefix_table_name + std::to_string(table_id));
   table->set_partition_interval(partition_interval);
   table->set_ts_version(1);
+  table->set_hash_num(g_testcase_hash_num);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;
@@ -267,6 +269,7 @@ void ConstructVarRoachpbTable(roachpb::CreateTsTable* meta, const KString& prefi
   table->set_ts_table_id(table_id);
   table->set_table_name(prefix_table_name + std::to_string(table_id));
   table->set_partition_interval(partition_interval);
+  table->set_hash_num(g_testcase_hash_num);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;
@@ -624,7 +627,7 @@ char* GenSomePayloadData(kwdbContext_p ctx, k_uint32 count, k_uint32& payload_le
   }
   char * primaryKey = p.GetPrimaryTag().data;
   int len1 = p.GetPrimaryTag().len;
-  uint16_t hashpoint = TsTable::GetConsistentHashId(primaryKey, len1);
+  uint16_t hashpoint = GetConsistentHashId(primaryKey, len1, g_testcase_hash_num);
   p.SetHashPoint(hashpoint);
   std::cout<<"set hashpoint " << hashpoint << std::endl;
   return value;
@@ -1098,7 +1101,7 @@ char* GenPayloadDataWithNull(kwdbContext_p ctx, k_uint32 count, k_uint32& payloa
 }
 
 void make_hashpoint(std::vector<k_uint32> *hps) {
-  for (uint32_t i=0; i<HASHPOINT_RANGE; i++) {
+  for (uint32_t i=0; i<g_testcase_hash_num; i++) {
     hps->push_back(i);
   }
 }

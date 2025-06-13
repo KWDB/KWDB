@@ -9,9 +9,12 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <queue>
-
 #include "ee_sort_op.h"
+
+#include <queue>
+#include <utility>
+#include <memory>
+
 #include "cm_func.h"
 #include "ee_kwthd_context.h"
 #include "ee_pb_plan.pb.h"
@@ -19,8 +22,9 @@
 
 namespace kwdbts {
 
-SortOperator::SortOperator(TsFetcherCollection* collection, BaseOperator* input, TSSorterSpec* spec,
-                           TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
+SortOperator::SortOperator(TsFetcherCollection* collection, BaseOperator* input,
+                           TSSorterSpec* spec, TSPostProcessSpec* post,
+                           TABLE* table, int32_t processor_id)
     : BaseOperator(collection, table, processor_id),
       spec_{spec},
       post_{post},
@@ -30,7 +34,8 @@ SortOperator::SortOperator(TsFetcherCollection* collection, BaseOperator* input,
       input_{input},
       input_fields_{input->OutputFields()} {}
 
-SortOperator::SortOperator(const SortOperator& other, BaseOperator* input, int32_t processor_id)
+SortOperator::SortOperator(const SortOperator& other, BaseOperator* input,
+                           int32_t processor_id)
     : BaseOperator(other),
       spec_(other.spec_),
       post_(other.post_),
@@ -54,7 +59,8 @@ KStatus SortOperator::ResolveSortCols(kwdbContext_p ctx) {
   EnterFunc();
   if (!spec_->has_output_ordering()) {
     LOG_ERROR("order by clause must has a order field");
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "order by clause must has a order field");
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
+                                  "order by clause must has a order field");
     Return(KStatus::FAIL);
   }
 
@@ -91,10 +97,11 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
       }
     } else {
       k_uint32 num = input_fields_.size();
-      renders_ = static_cast<Field **>(malloc(num * sizeof(Field *)));
+      renders_ = static_cast<Field**>(malloc(num * sizeof(Field*)));
       if (!renders_) {
-        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-        LOG_ERROR("Malloc failed, size : %lu", num * sizeof(Field *));
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
+                                      "Insufficient memory");
+        LOG_ERROR("Malloc failed, size : %lu", num * sizeof(Field*));
         break;
       }
       num_ = num;
@@ -127,8 +134,8 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
     }
     for (k_int32 i = 0; i < input_fields_.size(); i++) {
       input_col_info_[i] = ColumnInfo(input_fields_[i]->get_storage_length(),
-                                       input_fields_[i]->get_storage_type(),
-                                       input_fields_[i]->get_return_type());
+                                      input_fields_[i]->get_storage_type(),
+                                      input_fields_[i]->get_return_type());
     }
   } while (0);
 
@@ -149,6 +156,20 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
   size_t total_count = 0;
   size_t buffer_size = 0;
   int64_t duration = 0;
+  // init container
+  container_ =
+      std::make_unique<MemRowContainer>(order_info_, input_col_info_,
+                                        input_col_num_);
+  KStatus ret = container_->Init();
+  if (ret != SUCCESS) {
+    container_ = nullptr;
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR,
+                                  "Init sort container.");
+    Return(EEIteratorErrCode::EE_ERROR);
+  }
+  if (limit_ > 0) {
+    container_->SetLimitOffset(limit_, offset_);
+  }
   // sort all data
   for (;;) {
     DataChunkPtr chunk = nullptr;
@@ -162,7 +183,8 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
         code = EEIteratorErrCode::EE_OK;
         break;
       }
-      LOG_ERROR("Failed to fetch data from child operator, return code = %d.\n", code);
+      LOG_ERROR("Failed to fetch data from child operator, return code = %d.\n",
+                code);
       Return(code);
     }
     // no data, continue
@@ -173,17 +195,34 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
     total_count += chunk->Count();
     buffer_size += chunk->RowSize() * chunk->Count();
     KStatus ret = SUCCESS;
-    if (is_mem_container) {
-      buffer.push(std::move(chunk));
-      if (buffer_size > SORT_MAX_MEM_BUFFER_SIZE) {
-        is_mem_container = false;
-        ret = initContainer(total_count, buffer);
-      }
-    } else {
-      ret = container_->Append(chunk.get());
+    if (is_mem_container_ && buffer_size > SORT_MAX_MEM_BUFFER_SIZE) {
+      is_mem_container_ = false;
+      // if (is_all_col_sort_) {
+        auto disk_container = std::make_unique<DiskDataContainer>(
+            order_info_, input_col_info_, input_col_num_);
+        disk_container->Init();
+        if (limit_ > 0) {
+          disk_container->SetLimitOffset(limit_, offset_);
+        }
+        while (true) {
+          DataChunkPtr mem_chunk;
+          auto code = container_->NextChunk(mem_chunk);
+          if (code != EEIteratorErrCode::EE_OK) {
+            break;
+          }
+          ret = disk_container->Append(mem_chunk);
+          if (ret != SUCCESS) {
+            Return(EEIteratorErrCode::EE_ERROR);
+          }
+        }
+
+        container_ = std::move(disk_container);
     }
+    ret = container_->Append(chunk);
+    // }
     if (ret != SUCCESS) {
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR, "Append data failed.");
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR,
+                                    "Append data failed.");
       Return(EEIteratorErrCode::EE_ERROR);
     }
     auto end = std::chrono::high_resolution_clock::now();
@@ -191,13 +230,6 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
   }
 
   auto start = std::chrono::high_resolution_clock::now();
-  if (is_mem_container) {
-    KStatus ret = initContainer(total_count, buffer);
-    if (ret != SUCCESS) {
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR, "Init sort container.");
-      Return(EEIteratorErrCode::EE_ERROR);
-    }
-  }
   // Sort
   container_->Sort();
   auto end = std::chrono::high_resolution_clock::now();
@@ -205,61 +237,75 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
   Return(code);
 }
 
-EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
+EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx,
+                                         DataChunkPtr& chunk) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
-  KWThdContext *thd = current_thd;
+  KWThdContext* thd = current_thd;
   if (is_done_) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
+
   auto start = std::chrono::high_resolution_clock::now();
-  if (nullptr == chunk) {
-    chunk = std::make_unique<DataChunk>(output_col_info_, output_col_num_);
-    if (chunk->Initialize() != true) {
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-      chunk = nullptr;
-      Return(EEIteratorErrCode::EE_ERROR);
+  if (is_mem_container_) {
+    if (nullptr == chunk) {
+      chunk = std::make_unique<DataChunk>(output_col_info_, output_col_num_);
+      if (chunk->Initialize() != true) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
+                                      "Insufficient memory");
+        chunk = nullptr;
+        Return(EEIteratorErrCode::EE_ERROR);
+      }
     }
-  }
-  thd->SetDataChunk(container_.get());
-  k_uint32 BATCH_SIZE = chunk->Capacity();
-  // record location in current result batch.
-  k_uint32 location = 0;
-  while (scanned_rows_ < container_->Count()) {
-    k_int32 row = container_->NextLine();
-    if (row < 0) {
-      break;
-    }
-    ++scanned_rows_;
+    thd->SetDataChunk(container_.get());
+    k_uint32 BATCH_SIZE = chunk->Capacity();
+    // record location in current result batch.
+    k_uint32 location = 0;
+    while (scanned_rows_ < container_->Count()) {
+      k_int32 row = container_->NextLine();
+      if (row < 0) {
+        break;
+      }
+      ++scanned_rows_;
 
-    // limit
-    if (limit_ && examined_rows_ >= limit_) {
+      // limit
+      if (limit_ && examined_rows_ >= limit_) {
+        is_done_ = true;
+        break;
+      }
+
+      // offset
+      if (cur_offset_ > 0) {
+        --cur_offset_;
+        continue;
+      }
+      chunk->InsertData(ctx, container_.get(), num_ != 0 ? renders_ : nullptr);
+
+      // rowcount ++
+      ++examined_rows_;
+      ++location;
+
+      if (examined_rows_ % BATCH_SIZE == 0) {
+        break;
+      }
+    }
+
+    if (scanned_rows_ == container_->Count()) {
       is_done_ = true;
-      break;
     }
-
-    // offset
-    if (cur_offset_ > 0) {
-      --cur_offset_;
-      continue;
+  } else {
+    thd->SetDataChunk(container_.get());
+    code = container_->NextChunk(chunk);
+    if (code != EEIteratorErrCode::EE_OK) {
+      Return(code);
     }
-    chunk->InsertData(ctx, container_.get(), num_ != 0 ? renders_ : nullptr);
-
-    // rowcount ++
-    ++examined_rows_;
-    ++location;
-
-    if (examined_rows_ % BATCH_SIZE == 0) {
-      break;
-    }
+    scanned_rows_ += chunk->Count();
   }
 
-  if (scanned_rows_ == container_->Count()) {
-    is_done_ = true;
-  }
   OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
   auto end = std::chrono::high_resolution_clock::now();
-  fetcher_.Update(0, (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
+  fetcher_.Update(0, (end - start).count(), chunk->Count() * chunk->RowSize(),
+                  0, 0, 0);
   Return(EEIteratorErrCode::EE_OK);
 }
 
@@ -283,7 +329,8 @@ BaseOperator* SortOperator::Clone() {
   if (input == nullptr) {
     input = input_;
   }
-  BaseOperator* iter = NewIterator<SortOperator>(*this, input, this->processor_id_);
+  BaseOperator* iter =
+      NewIterator<SortOperator>(*this, input, this->processor_id_);
   return iter;
 }
 

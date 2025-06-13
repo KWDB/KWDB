@@ -86,6 +86,7 @@ type CreateDatabase struct {
 	CType       string
 	EngineType  EngineType
 	TSDatabase  TSDatabase
+	Comment     string
 }
 
 // Format implements the NodeFormatter interface.
@@ -124,6 +125,10 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 			ctx.Printf("%d", node.TSDatabase.PartitionInterval.Value)
 			ctx.WriteString(node.TSDatabase.PartitionInterval.Unit)
 		}
+	}
+	if node.Comment != "" {
+		ctx.WriteString(" COMMENT = ")
+		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Comment, ctx.flags.EncodeFlags())
 	}
 }
 
@@ -379,6 +384,7 @@ type ColumnTableDef struct {
 		Create      bool
 		IfNotExists bool
 	}
+	Comment string
 }
 
 // ColumnTableDefCheckExpr represents a check constraint on a column definition
@@ -488,6 +494,12 @@ func NewColumnTableDef(
 			d.Family.Name = t.Family
 			d.Family.Create = t.Create
 			d.Family.IfNotExists = t.IfNotExists
+		case ColumnComment:
+			if d.Comment != "" {
+				return nil, pgerror.Newf(pgcode.Syntax,
+					"multiple comments specified for column %q", name)
+			}
+			d.Comment = string(t)
 		default:
 			return nil, errors.AssertionFailedf("unexpected column qualification: %T", c)
 		}
@@ -609,6 +621,10 @@ func (node *ColumnTableDef) Format(ctx *FmtCtx) {
 			ctx.FormatNode(&node.Family.Name)
 		}
 	}
+	if node.Comment != "" {
+		ctx.WriteString(" COMMENT = ")
+		ctx.WriteString(node.Comment)
+	}
 }
 
 func (node *ColumnTableDef) columnTypeString() string {
@@ -650,6 +666,7 @@ func (*ColumnCheckConstraint) columnQualification()      {}
 func (*ColumnComputedDef) columnQualification()          {}
 func (*ColumnFKConstraint) columnQualification()         {}
 func (*ColumnFamilyConstraint) columnQualification()     {}
+func (ColumnComment) columnQualification()               {}
 
 // ColumnCollation represents a COLLATE clause for a column.
 type ColumnCollation string
@@ -658,6 +675,9 @@ type ColumnCollation string
 type ColumnDefault struct {
 	Expr Expr
 }
+
+// ColumnComment represents a Comment clause for a column.
+type ColumnComment string
 
 // NotNullConstraint represents NOT NULL on a column.
 type NotNullConstraint struct{}
@@ -1032,6 +1052,7 @@ type PartitionBy struct {
 	List      []ListPartition
 	Range     []RangePartition
 	HashPoint []HashPointPartition
+	IsHash    bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -1041,7 +1062,11 @@ func (node *PartitionBy) Format(ctx *FmtCtx) {
 		return
 	}
 	if len(node.List) > 0 {
-		ctx.WriteString(` PARTITION BY LIST (`)
+		if node.IsHash {
+			ctx.WriteString(` PARTITION BY HASH (`)
+		} else {
+			ctx.WriteString(` PARTITION BY LIST (`)
+		}
 	} else if len(node.Range) > 0 {
 		ctx.WriteString(` PARTITION BY RANGE (`)
 	}
@@ -1194,6 +1219,7 @@ type Tag struct {
 	Nullable bool
 	ColID    int
 	IsSerial bool
+	Comment  string
 }
 
 // Format implements the NodeFormatter interface.
@@ -1218,6 +1244,10 @@ func (node *Tag) Format(ctx *FmtCtx) {
 	if node.TagVal != nil {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.TagVal)
+	}
+	if node.Comment != "" {
+		ctx.WriteString(" COMMENT = ")
+		ctx.WriteString(node.Comment)
 	}
 
 }
@@ -1288,6 +1318,8 @@ type CreateTable struct {
 	Sde               bool
 	PrimaryTagList    NameList
 	PartitionInterval *TimeInput
+	Comment           string
+	HashNum           int64
 }
 
 // Retention including Resolution and KeepDuration
@@ -1418,6 +1450,12 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 			ctx.Printf("%d", node.ActiveTime.Value)
 			ctx.WriteString(node.ActiveTime.Unit)
 		}
+		if node.HashNum != 0 {
+			ctx.WriteString(" WITH HASH (")
+			ctx.Printf("%d", node.HashNum)
+			ctx.WriteString(strconv.FormatInt(node.HashNum, 10))
+			ctx.WriteByte(')')
+		}
 		if node.DownSampling != nil {
 			ctx.FormatNode(node.DownSampling)
 		}
@@ -1458,6 +1496,10 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 		}
 		// No storage parameters are implemented, so we never list the storage
 		// parameters in the output format.
+	}
+	if node.Comment != "" {
+		ctx.WriteString(" COMMENT = ")
+		ctx.WriteString(node.Comment)
 	}
 }
 

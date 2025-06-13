@@ -29,6 +29,8 @@ import (
 	"fmt"
 	"strings"
 
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -159,6 +161,21 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		params.extendedEvalCtx.Tables.addUncommittedDatabase(
 			desc.Name, desc.ID, dbCreated)
 	}
+	if n.n.Comment != "" {
+		_, err := params.p.extendedEvalCtx.ExecCfg.InternalExecutor.ExecEx(
+			params.ctx,
+			"set-db-comment",
+			params.p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"UPSERT INTO system.comments VALUES ($1, $2, 0, $3)",
+			keys.DatabaseCommentType,
+			desc.ID,
+			n.n.Comment)
+		if err != nil {
+			return err
+		}
+	}
+
 	params.p.SetAuditTarget(uint32(desc.GetID()), desc.GetName(), nil)
 	if api.MppMode && !api.SingleNode {
 		stmt := fmt.Sprintf("alter database %s CONFIGURE ZONE USING num_replicas = 1;", desc.Name)

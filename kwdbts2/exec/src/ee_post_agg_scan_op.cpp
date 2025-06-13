@@ -73,20 +73,6 @@ EEIteratorErrCode PostAggScanOperator::Init(kwdbContext_p ctx) {
   Return(EEIteratorErrCode::EE_OK);
 }
 
-// create, init and populate temp file using received data.
-KStatus PostAggScanOperator::initDiskSink() {
-  KStatus ret = SUCCESS;
-  disk_sink_ = std::make_unique<DiskDataContainer>(agg_output_col_info_, agg_output_col_num_);
-  ret = disk_sink_->Init();
-  if (ret != KStatus::SUCCESS) {
-    return ret;
-  }
-
-  disk_sink_->Append(processed_chunks_);
-
-  return KStatus::SUCCESS;
-}
-
 KStatus PostAggScanOperator::accumulateRows(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;

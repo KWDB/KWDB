@@ -28,7 +28,8 @@ class TSxMgr;
 class LoggedTsEntityGroup : public TsEntityGroup {
  public:
   LoggedTsEntityGroup(kwdbContext_p ctx, MMapRootTableManager*& root_bt_manager, const string& db_path,
-                      const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path, EngineOptions* opt);
+                      const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path,
+                      EngineOptions* opt, uint64_t hash_num);
 
   ~LoggedTsEntityGroup() override;
 

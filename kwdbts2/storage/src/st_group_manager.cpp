@@ -456,11 +456,13 @@ void SubEntityGroupManager::Count(kwdbContext_p ctx, ErrorInfo& err_info) {
   for (auto it = count_tables.begin(); it != count_tables.end();) {
     TsTimePartition* p_table = it->first;
     if (p_table != nullptr && !count_error) {
-      p_table->Count();
+      KStatus s = p_table->Count();
+      if (s != SUCCESS) {
+        LOG_ERROR("Failed count in partition [%s]", p_table->path().c_str());
+        count_error = true;
+      }
     }
     ReleaseTable(p_table);
-    // Call partition table lru cache to eliminate after compression
-    it->second->PartitionCacheEvict();
     ++it;
   }
 }

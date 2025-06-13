@@ -1175,19 +1175,22 @@ func (o *Optimizer) checkHintApply(state *groupState) {
 	}
 }
 
-// walk() return true if there have TSScanExpr.
+// walk finds the TSScanExpr.
 // expr is a memo tree.
-func walk(expr opt.Expr) bool {
-	if expr.Op() == opt.TSScanOp {
-		return true
+func walk(expr opt.Expr, res *int) {
+	switch expr.Op() {
+	case opt.AntiJoinOp, opt.AntiJoinApplyOp, opt.BatchLookUpJoinOp, opt.DistinctOnOp, opt.ExceptOp, opt.ExceptAllOp, opt.ExplainOp, opt.ExportOp,
+		opt.FakeRelOp, opt.FullJoinOp, opt.GroupByOp, opt.IndexJoinOp, opt.InnerJoinOp, opt.InnerJoinApplyOp, opt.InsertOp, opt.IntersectOp, opt.IntersectAllOp,
+		opt.LeftJoinOp, opt.LeftJoinApplyOp, opt.LimitOp, opt.LookupJoinOp, opt.Max1RowOp, opt.MergeJoinOp, opt.OffsetOp, opt.OrdinalityOp, opt.ProjectOp,
+		opt.ProjectSetOp, opt.RecursiveCTEOp, opt.RightJoinOp, opt.ScalarGroupByOp, opt.ScanOp, opt.SelectOp, opt.SelectIntoOp, opt.SemiJoinOp, opt.SemiJoinApplyOp,
+		opt.SequenceSelectOp, opt.UnionOp, opt.UnionAllOp, opt.ValuesOp, opt.VirtualScanOp, opt.WindowOp, opt.WithOp, opt.WithScanOp, opt.ZigzagJoinOp:
+		// should only check relation expr.
+		for i := 0; i < expr.ChildCount(); i++ {
+			walk(expr.Child(i), res)
+		}
+	case opt.TSScanOp:
+		*res |= 1
 	}
-
-	// case: select * from table,device; when expr is scan should stop walk.
-	if expr.ChildCount() < 1 {
-		return false
-	}
-	e := expr.Child(0)
-	return walk(e)
 }
 
 // IndexMapping defines the mapping for indexes associated with a specific table
@@ -1233,32 +1236,36 @@ func processRootExpr(root memo.RelExpr, mem *memo.Memo) {
 	switch expr := root.(type) {
 	case *memo.ProjectExpr:
 		processRootExpr(expr.Input, mem)
-		for _, proj := range expr.Projections {
-			if castExpr, ok := proj.Element.(*memo.CastExpr); ok {
-				if variableExpr, ok := castExpr.Input.(*memo.VariableExpr); ok {
-					colID := variableExpr.Col
-					tableID := mem.Metadata().ColumnMeta(colID).Table
-					tableGroupID := mem.MultimodelHelper.GetTSTableIndexFromGroup(tableID)
-					if tableGroupID >= 0 {
-						mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
+		res := 0
+		// only handle projection when the input of ProjectExpr has TSScanExpr.
+		if walk(expr.Input, &res); res > 0 {
+			for _, proj := range expr.Projections {
+				if castExpr, ok := proj.Element.(*memo.CastExpr); ok {
+					if variableExpr, ok := castExpr.Input.(*memo.VariableExpr); ok {
+						colID := variableExpr.Col
+						tableID := mem.Metadata().ColumnMeta(colID).Table
+						tableGroupID := mem.MultimodelHelper.GetTSTableIndexFromGroup(tableID)
+						if tableGroupID >= 0 {
+							mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
+						}
 					}
 				}
-			}
-			if functionExpr, ok := proj.Element.(*memo.FunctionExpr); ok {
-				if functionExpr.FunctionPrivate.Name == "time_bucket" {
-					if len(functionExpr.Args) > 0 {
-						if variableExpr, ok := functionExpr.Args[0].(*memo.VariableExpr); ok {
-							colID := variableExpr.Col
-							tableID := mem.Metadata().ColumnMeta(colID).Table
-							tableGroupID := mem.MultimodelHelper.GetTableIndexFromGroup(tableID)
-							if tableGroupID >= 0 {
-								aggColID := proj.Col
-								if !containsColumn(mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID) {
-									mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols = append(
-										mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID)
+				if functionExpr, ok := proj.Element.(*memo.FunctionExpr); ok {
+					if functionExpr.FunctionPrivate.Name == "time_bucket" {
+						if len(functionExpr.Args) > 0 {
+							if variableExpr, ok := functionExpr.Args[0].(*memo.VariableExpr); ok {
+								colID := variableExpr.Col
+								tableID := mem.Metadata().ColumnMeta(colID).Table
+								tableGroupID := mem.MultimodelHelper.GetTableIndexFromGroup(tableID)
+								if tableGroupID >= 0 {
+									aggColID := proj.Col
+									if !containsColumn(mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID) {
+										mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols = append(
+											mem.MultimodelHelper.PreGroupInfos[tableGroupID].GroupingCols, aggColID)
+									}
+									mem.MultimodelHelper.PreGroupInfos[tableGroupID].HasTimeBucket = true
+									mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
 								}
-								mem.MultimodelHelper.PreGroupInfos[tableGroupID].HasTimeBucket = true
-								mem.MultimodelHelper.PreGroupInfos[tableGroupID].ProjectExpr = expr
 							}
 						}
 					}

@@ -80,7 +80,7 @@ TEST_F(TestMetaIterator, meta_iter) {
   int entity_num1 = 2300;
   for (int i = 0; i < entity_num1; i++) {
     string tag = "p_tag_" + std::to_string(i);
-    uint64_t tag_hash = TsTable::GetConsistentHashId(tag.data(), tag.size());
+    uint64_t tag_hash = GetConsistentHashId(tag.data(), tag.size(), g_testcase_hash_num);
     SubGroupID group_id;
     EntityID entity_id;
     ASSERT_GE(manager1->AllocateEntity(tag, tag_hash, &group_id, &entity_id), 0);
@@ -121,7 +121,7 @@ TEST_F(TestMetaIterator, meta_iter) {
   int entity_num2 = 1200;
   for (int i = 0; i < entity_num2; i++) {
     string tag = "p_tag_" + std::to_string(i);
-    uint64_t tag_hash = TsTable::GetConsistentHashId(tag.data(), tag.size());
+    uint64_t tag_hash = GetConsistentHashId(tag.data(), tag.size(), g_testcase_hash_num);
     SubGroupID group_id;
     EntityID entity_id;
     ASSERT_GE(manager2->AllocateEntity(tag, tag_hash, &group_id, &entity_id), 0);

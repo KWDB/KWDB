@@ -63,8 +63,6 @@ class PostAggScanOperator : public HashAggregateOperator {
     return agg_results_;
   }
 
-  KStatus initDiskSink();
-
  protected:
   static const k_uint64 POST_AGG_SCAN_MAX_MEM_BUFFER_SIZE = BaseOperator::DEFAULT_MAX_MEM_BUFFER_SIZE;
   std::queue<DataChunkPtr> processed_chunks_;
@@ -74,7 +72,6 @@ class PostAggScanOperator : public HashAggregateOperator {
   std::map<k_uint32, k_uint32> agg_source_target_col_map_;
   ColumnInfo* agg_output_col_info_{nullptr};
   k_int32 agg_output_col_num_{0};
-  DataContainerPtr disk_sink_;
 };
 
 }  // namespace kwdbts

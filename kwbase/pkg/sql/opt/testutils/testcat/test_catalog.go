@@ -791,6 +791,11 @@ func (tt *Table) GetTSVersion() uint32 {
 	return 0
 }
 
+// GetTSHashNum return ts_hash_num.
+func (tt *Table) GetTSHashNum() uint64 {
+	return 0
+}
+
 // SetTableName set table name.
 func (tt *Table) SetTableName(name string) {
 	return

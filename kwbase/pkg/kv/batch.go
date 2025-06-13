@@ -690,6 +690,7 @@ func (b *Batch) adminMerge(key interface{}) {
 func (b *Batch) adminSplitTs(
 	spanKeyIn interface{},
 	tableID uint32,
+	hashNum uint64,
 	splitPoints []int32,
 	timestamps []int64,
 	isCreateTable bool,
@@ -704,6 +705,7 @@ func (b *Batch) adminSplitTs(
 			Key: spanKey,
 		},
 		TableId:         tableID,
+		HashNum:         hashNum,
 		Keys:            splitPoints,
 		Timestamps:      timestamps,
 		IsCreateTsTable: isCreateTable,

@@ -1265,16 +1265,6 @@ func (expr DefaultVal) TypeCheck(_ *SemaContext, desired *types.T) (TypedExpr, e
 }
 
 // TypeCheck implements the Expr interface.
-func (expr PartitionMinVal) TypeCheck(_ *SemaContext, desired *types.T) (TypedExpr, error) {
-	return nil, errInvalidMinUsage
-}
-
-// TypeCheck implements the Expr interface.
-func (expr PartitionMaxVal) TypeCheck(_ *SemaContext, desired *types.T) (TypedExpr, error) {
-	return nil, errInvalidMaxUsage
-}
-
-// TypeCheck implements the Expr interface.
 func (expr *NumVal) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, error) {
 	return typeCheckConstant(expr, ctx, desired)
 }

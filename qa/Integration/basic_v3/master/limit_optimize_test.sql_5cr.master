@@ -51,6 +51,7 @@ INSERT 1
    │                          | pushLimitToAggScan              | true
    │                          | count                           | 5
    └── sort                   |                                 |
+        │                     | engine type                     | time series
         │                     | order                           | +time_bucket
         └── group             |                                 |
              │                | engine type                     | time series
@@ -68,7 +69,7 @@ INSERT 1
                               | access mode                     | metaTable
                               | spans:fromTime                  | 0000-01-01 00:00:00 +0000 UTC
                               | spans:toTime                    | 2016-01-01 13:31:03.645 +0000 UTC
-(24 rows)
+(25 rows)
 > EXPLAIN SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM test_limit_optimize.cpu WHERE k_timestamp < '2016-01-01 13:31:03.646' GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5;
            tree          |              field              |            description
 -------------------------+---------------------------------+------------------------------------

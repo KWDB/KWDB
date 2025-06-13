@@ -58,7 +58,7 @@ typedef uint64_t TS_LSN;  // LSN number used for WAL logs
 struct DelRowSpan {
   timestamp64 partition_ts;   // Partition timestamp
   uint16_t blockitem_id;      // partition block item id
-  char delete_flags[128] = {
+  char delete_flags[(1000 + 7) / 8] = {
       0};  // Which rows in the data block were deleted when DeleteData() was recorded, with a bit of 1 for the deleted rows
 }__attribute__((packed));
 
@@ -1144,6 +1144,18 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
       break;
   }
   return ts * precision;
+}
+
+inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
+  const uint32_t offset_basis = 2166136261;  // 32位offset basis
+  const uint32_t prime = 16777619;
+  uint32_t hash_val = offset_basis;
+  for (int i = 0; i < length; i++) {
+    unsigned char b = data[i];
+    hash_val *= prime;
+    hash_val ^= b;
+  }
+  return hash_val % hash_num;
 }
 
 }  //  namespace kwdbts
