@@ -450,6 +450,10 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
       LOG_ERROR("GetEntityRowCount failed.");
       return s;
     }
+    if (*count == 0) {
+      LOG_INFO("no valid data, no need add to delete item.");
+      return KStatus::SUCCESS;
+    }
   }
   // write WAL and remove metric datas.
   auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id,

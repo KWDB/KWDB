@@ -173,7 +173,7 @@ TsTableSchemaManager::~TsTableSchemaManager() {
 }
 
 bool TsTableSchemaManager::IsSchemaDirsExist() {
-  return IsExists(metric_schema_path_) && IsExists(tag_schema_path_);
+  return IsExists(schema_root_path_ + "/" + metric_schema_path_) && IsExists(schema_root_path_ + "/" + tag_schema_path_);
 }
 
 KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {

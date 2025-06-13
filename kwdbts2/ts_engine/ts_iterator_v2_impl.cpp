@@ -178,11 +178,13 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
       LOG_ERROR("GetAllMemSegments failed.");
       return ret;
     }
-    ret = e_paritition.GetBlockSpan(&ts_block_spans_);
+    std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
+    ret = e_paritition.GetBlockSpan(&cur_block_span);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
     }
+    ts_block_spans_.splice(ts_block_spans_.begin(), cur_block_span);
   }
 
   return KStatus::SUCCESS;
