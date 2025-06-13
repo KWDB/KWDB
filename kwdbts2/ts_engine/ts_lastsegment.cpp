@@ -677,7 +677,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     auto entities = block->GetEntities();
     int start_idx = 0;
     int end_idx = 0;
-    bool match_found= false;
+    bool match_found = false;
     for (size_t i = 0; i < row_num; i++) {
       if (entities[i] > entity_id) {
         end_idx = i;
@@ -700,11 +700,13 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     }
     if (match_found) {
       match_found = false;
-      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, end_idx == 0 ? row_num - start_idx : end_idx - start_idx));
+      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx,
+                                end_idx == 0 ? row_num - start_idx : end_idx - start_idx));
     }
     if (match_found) {
       match_found = false;
-      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, end_idx == 0 ? row_num - start_idx : end_idx - start_idx));
+      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx,
+                               end_idx == 0 ? row_num - start_idx : end_idx - start_idx));
     }
   }
 

@@ -425,7 +425,6 @@ KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_i
 
 KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
-  
   ErrorInfo err_info;
   auto tag_table = table_schema_mgr_->GetTagTable();
   uint32_t v_group_id, entity_id;
@@ -434,7 +433,8 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
     return KStatus::SUCCESS;
   }
   // write WAL and remove metric datas.
-  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id, ts_spans, count, mtr_id);
+  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id,
+                                                ts_spans, count, mtr_id);
   if (s != KStatus::SUCCESS) {
     return s;
   }

@@ -605,7 +605,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
     if (ts_partitions_[first_partition_idx].ts_partition_range.begin < max_first_ts_) {
       cur_partition_index_ = first_partition_idx;
-      
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
       auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
       TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
@@ -621,7 +620,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
       }
-      
       ret = UpdateAggregation();
       if (ret != KStatus::SUCCESS) {
         return ret;
@@ -635,7 +633,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   for (; last_partition_idx >= first_partition_idx; --last_partition_idx) {
     if (ts_partitions_[last_partition_idx].ts_partition_range.end > min_last_ts_) {
       cur_partition_index_ = last_partition_idx;
-      
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
       auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
       TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
@@ -651,7 +648,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
       }
-
       ret = UpdateAggregation();
       if (ret != KStatus::SUCCESS) {
         return ret;

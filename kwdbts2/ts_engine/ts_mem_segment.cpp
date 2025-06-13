@@ -66,7 +66,8 @@ bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t ve
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
+ std::list<TSMemSegRowData>* rows) {
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time

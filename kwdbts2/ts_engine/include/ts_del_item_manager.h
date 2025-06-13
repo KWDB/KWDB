@@ -11,6 +11,9 @@
 
 #pragma once
 #include <filesystem>
+#include <vector>
+#include <string>
+#include <list>
 #include "libkwdbts2.h"
 #include "data_type.h"
 #include "ts_io.h"
@@ -66,10 +69,9 @@ class LSNRangeUtil {
   static inline bool IsSpan1IncludeSpan2(const KwLSNSpan& span1, const KwLSNSpan& span2) {
     return span1.begin <= span2.begin && span1.end >= span2.end;
   }
-
 };
 
-const std::string DEL_FILE_NAME = "partition_del_items.bt";
+const char DEL_FILE_NAME[] = "partition_del.item";
 
 class TsDelItemManager {
  private:
@@ -84,7 +86,7 @@ class TsDelItemManager {
   KRWLatch* rw_lock_{nullptr};
 
  public:
-  TsDelItemManager(std::string path);
+  explicit TsDelItemManager(std::string path);
   ~TsDelItemManager();
   KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);

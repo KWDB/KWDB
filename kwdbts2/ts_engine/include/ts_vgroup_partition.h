@@ -15,6 +15,8 @@
 #include <memory>
 #include <string>
 #include <cstdio>
+#include <list>
+#include <vector>
 
 #include "ts_entity_segment.h"
 #include "ts_lastsegment_manager.h"

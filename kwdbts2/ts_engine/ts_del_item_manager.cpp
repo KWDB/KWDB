@@ -17,7 +17,7 @@ namespace kwdbts {
 std::vector<STScanRange> LSNRangeUtil::MergeScanAndDelRange(const std::vector<STScanRange>& ranges, const STDelRange& del) {
   std::vector<STScanRange> result;
   result.reserve(ranges.size());
-  for ( auto& range : ranges) {
+  for (auto& range : ranges) {
     MergeRangeCross(range, del, &result);
   }
   return std::move(result);
@@ -40,7 +40,7 @@ void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& d
   if (IsSpan1IncludeSpan2(range.lsn_span, del.lsn_span)) {
     // range.lsn span  1------------------8
     // del.lsn span        3--------5
-    // result lsn      1-2            6--8 
+    // result lsn      1-2            6--8
     if (range.lsn_span.begin < del.lsn_span.begin) {
       cross.lsn_span.begin = range.lsn_span.begin;
       cross.lsn_span.end = del.lsn_span.begin - (IsMinLSN(del.lsn_span.begin) ? 0 : 1);
@@ -110,13 +110,13 @@ TsDelItemManager::TsDelItemManager(std::string path) : path_(path + "/" + DEL_FI
   rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_MGR_RWLOCK);
 }
 
-TsDelItemManager::~TsDelItemManager(){
+TsDelItemManager::~TsDelItemManager() {
   if (rw_lock_) {
     delete rw_lock_;
   }
 }
 
-KStatus TsDelItemManager::Open(){
+KStatus TsDelItemManager::Open() {
   if (mmap_alloc_.Open() == KStatus::SUCCESS) {
     KStatus s = index_.Init(&mmap_alloc_, &(mmap_alloc_.getHeader()->index_header_offset));
     if (s == KStatus::SUCCESS) {

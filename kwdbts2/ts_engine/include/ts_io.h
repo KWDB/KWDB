@@ -24,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "lg_api.h"
 #include "libkwdbts2.h"
@@ -266,7 +267,7 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
   KRWLatch* rw_lock_;
 
  public:
-  TsMMapAllocFile(const std::string& path) : path_(path) {}
+  explicit TsMMapAllocFile(const std::string& path) : path_(path) {}
   KStatus Open() {
     bool exists = std::filesystem::exists(path_);
     void* base = nullptr;

@@ -11,6 +11,7 @@
 #pragma once
 
 #include <memory>
+#include <list>
 #include "ts_mem_segment_mgr.h"
 #include "ts_vgroup_partition.h"
 
@@ -25,7 +26,8 @@ class TsEntityPartition {
   std::list<std::shared_ptr<TsMemSegment>> mems_;
   TsBlockItemFilterParams block_data_filter_{0, 0, 0};
  public:
-  TsEntityPartition(std::shared_ptr<TsVGroupPartition>& p, TS_LSN scan_lsn, DATATYPE ts_type, const TsScanFilterParams& filter) :
+  TsEntityPartition(std::shared_ptr<TsVGroupPartition>& p, TS_LSN scan_lsn, DATATYPE ts_type,
+                    const TsScanFilterParams& filter) :
     files_(p), scan_lsn_(scan_lsn), ts_type_(ts_type), scan_filter_(filter) {}
   // initialize current object.
   KStatus Init(std::list<std::shared_ptr<TsMemSegment>>& mems);
@@ -35,7 +37,6 @@ class TsEntityPartition {
  private:
   KStatus SetFilter();
   void AddMemSegment(std::list<std::shared_ptr<TsMemSegment>>& mems);
-
 };
 
 

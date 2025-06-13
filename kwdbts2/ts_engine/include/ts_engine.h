@@ -213,7 +213,8 @@ class TSEngineV2Impl : public TSEngine {
   // init all engine.
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta, std::shared_ptr<TsTable>& ts_table);
+  KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta,
+                        std::shared_ptr<TsTable>& ts_table);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
