@@ -78,6 +78,11 @@ type Batch struct {
 	rowsStaticIdx int
 }
 
+// Txn returns the
+func (b *Batch) Txn() *Txn {
+	return b.txn
+}
+
 // RawResponse returns the BatchResponse which was the result of a successful
 // execution of the batch, and nil otherwise.
 func (b *Batch) RawResponse() *roachpb.BatchResponse {

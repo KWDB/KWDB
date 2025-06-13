@@ -109,7 +109,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -294,7 +293,7 @@ type Server struct {
 	temporaryObjectCleaner *sql.TemporaryObjectCleaner
 	engines                Engines
 	tsEngine               *tse.TsEngine
-	tseDB                  *tscoord.DB
+	tseDB                  *kvcoord.DB
 	internalMemMetrics     sql.MemoryMetrics
 	adminMemMetrics        sql.MemoryMetrics
 	// sqlMemMetrics are used to track memory usage of sql sessions.
@@ -1896,7 +1895,7 @@ func (s *Server) Start(ctx context.Context) error {
 			s.node.storeCfg.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
 
-			tsDBCfg := tscoord.TsDBConfig{
+			tsDBCfg := kvcoord.TsDBConfig{
 				KvDB:         s.db,
 				TsEngine:     s.tsEngine,
 				Sender:       s.distSender,
@@ -1905,7 +1904,7 @@ func (s *Server) Start(ctx context.Context) error {
 				Stopper:      s.stopper,
 				IsSingleNode: GetSingleNodeModeFlag(s.cfg.ModeFlag),
 			}
-			s.tseDB = tscoord.NewDB(tsDBCfg)
+			s.tseDB = kvcoord.NewDB(tsDBCfg)
 			// s.node.storeCfg.TseDB = s.tseDB
 			s.distSQLServer.ServerConfig.TseDB = s.tseDB
 		}

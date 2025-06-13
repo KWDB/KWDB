@@ -27,6 +27,7 @@ package kv
 import (
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -1532,4 +1533,73 @@ func (txn *Txn) SetIsoLevel(isoLevel enginepb.Level) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	return txn.mu.sender.SetIsoLevel(isoLevel)
+}
+
+func (db *DB) WriteTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) error {
+	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
+		key := keys.MakeTxnRecordKey(record.ID)
+		b := Batch{}
+		value, err := record.Marshal()
+		if err != nil {
+			return err
+		}
+		b.Put(key, value)
+		if err = txn.Run(ctx, &b); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetTxnRecord 111
+func (db *DB) GetTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb.TsTxnRecord, error) {
+	var res roachpb.TsTxnRecord
+	var isExists bool
+	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
+		key := keys.MakeTxnRecordKey(txnID)
+		keyValue, err := txn.Get(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !keyValue.Exists() {
+			return nil
+		}
+		isExists = true
+		err = res.Unmarshal(keyValue.ValueBytes())
+		if err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return false, nil, err
+	}
+	return isExists, &res, nil
+}
+
+// ScanAbdWriteTxnRecord 111
+func (db *DB) ScanAbdWriteTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb.TsTxnRecord, error) {
+	var res roachpb.TsTxnRecord
+	var isExists bool
+	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
+		key := keys.MakeTxnRecordKey(txnID)
+		keyValue, err := txn.Get(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !keyValue.Exists() {
+			return nil
+		}
+		isExists = true
+		err = res.Unmarshal(keyValue.ValueBytes())
+		if err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return false, nil, err
+	}
+	return isExists, &res, nil
 }

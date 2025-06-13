@@ -26,7 +26,10 @@ package kvcoord
 
 import (
 	"context"
+	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"sync"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -61,12 +64,12 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 //
 // Parallel commits works by defining a committed transaction as a transaction
 // that meets one of the two following commit conditions:
-// 1. a transaction is *explicitly committed* if it has a transaction record with
-//    a COMMITTED status
-// 2. a transaction is *implicitly committed* if it has a transaction record with
-//    a STAGING status and intents written for all writes declared as "in-flight"
-//    on the transaction record at equal or lower timestamps than the transaction
-//    record's commit timestamp
+//  1. a transaction is *explicitly committed* if it has a transaction record with
+//     a COMMITTED status
+//  2. a transaction is *implicitly committed* if it has a transaction record with
+//     a STAGING status and intents written for all writes declared as "in-flight"
+//     on the transaction record at equal or lower timestamps than the transaction
+//     record's commit timestamp
 //
 // A transaction may move from satisfying the implicit commit condition to
 // satisfying the explicit commit condition. This is desirable because it moves
@@ -99,20 +102,20 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 // satisfied and the transaction is still in-progress (and could still be
 // committed or aborted at a later time). There are a number of reasons why
 // some of the requests in the final batch may have failed:
-// - intent writes: these requests may fail to write an intent due to a logical
+//   - intent writes: these requests may fail to write an intent due to a logical
 //     error like a ConditionFailedError. They also could have succeeded at writing
 //     an intent but failed to write it at the desired timestamp because they ran
 //     into the timestamp cache or another committed value. In the first case, the
 //     txnCommitter will receive an error. In the second, it will generate one in
 //     needTxnRetryAfterStaging.
-// - query intents: these requests may fail because they discover that one of the
+//   - query intents: these requests may fail because they discover that one of the
 //     previously issued writes has failed; either because it never left an intent
 //     or because it left one at too high of a timestamp. In this case, the request
 //     will return an error because the requests all have the ErrorIfMissing option
 //     set. It will also prevent the write from ever succeeding in the future, which
 //     ensures that the transaction will never suddenly become implicitly committed
 //     at a later point due to the write eventually succeeding (e.g. after a replay).
-// - end txn: this request may fail with a TransactionRetryError for any number of
+//   - end txn: this request may fail with a TransactionRetryError for any number of
 //     reasons, such as if the transaction's provisional commit timestamp has been
 //     pushed past its read timestamp. In all of these cases, an error will be
 //     returned and the transaction record will not be staged.
@@ -536,4 +539,38 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 	clone := txn.Clone()
 	clone.Status = s
 	return clone
+}
+
+type tsTxnCommitter struct {
+	wrapped kv.Sender
+	txn     *kv.Txn
+}
+
+// SendLocked implements the lockedSender interface.
+func (tc *tsTxnCommitter) SendLocked(
+	ctx context.Context, ba roachpb.BatchRequest,
+) (*roachpb.BatchResponse, *roachpb.Error) {
+	br, pErr := tc.wrapped.Send(ctx, ba)
+	ba.Txn = nil
+	if pErr != nil {
+		time.Sleep(10 * time.Second)
+		var record roachpb.TsTxnRecord
+		record.ID = tc.txn.ID()
+		record.Status = roachpb.ABORTED
+		if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+			return nil, roachpb.NewError(err)
+		}
+		_, rec, _ := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
+		fmt.Printf("commit/rollback id: %v, status: %v\n", rec.ID, rec.Status.String())
+		return nil, pErr
+	}
+	time.Sleep(10 * time.Second)
+	var record roachpb.TsTxnRecord
+	record.ID = tc.txn.ID()
+	record.Status = roachpb.COMMITTED
+	if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+		return nil, roachpb.NewError(err)
+	}
+
+	return br, pErr
 }
