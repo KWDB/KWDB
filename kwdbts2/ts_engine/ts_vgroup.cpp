@@ -770,7 +770,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                              const std::vector<KwTsSpan>& ts_spans){
+                              const std::vector<KwTsSpan>& ts_spans) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
   if (s == KStatus::FAIL) {
@@ -782,7 +782,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_i
   auto it = partitions_.find(db_id);
   if (it != partitions_.end()) {
     std::vector<std::shared_ptr<TsVGroupPartition>> ps = (*it).second->GetAllPartitions();
-    for( auto& p : ps) {
+    for (auto& p : ps) {
       KTimestamp p_start = convertSecondToPrecisionTS(p->StartTs(), ts_type);
       KTimestamp p_end = convertSecondToPrecisionTS(p->EndTs(), ts_type);
       // check if current partition is cross with ts_spans.

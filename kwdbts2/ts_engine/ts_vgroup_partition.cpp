@@ -131,6 +131,7 @@ std::string TsVGroupPartition::GetFileName() const {
 KStatus TsVGroupPartition::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn) {
   kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id);
   for (auto& ts_span : ts_spans) {
+    assert(ts_span.begin <= ts_span.end);
     del_item.range.ts_span = ts_span;
     auto s = del_info_.AddDelItem(e_id, del_item);
     if (s != KStatus::SUCCESS) {

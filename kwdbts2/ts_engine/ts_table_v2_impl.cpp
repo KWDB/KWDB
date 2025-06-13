@@ -463,7 +463,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
 KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
 const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<k_uint32> scan_cols = {0};
-  std::vector<Sumfunctype> scan_agg_types= {Sumfunctype::COUNT};
+  std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
   uint32_t table_version = 1;
   TsIterator* iter;
   std::vector<timestamp64> ts_points;
@@ -483,7 +483,7 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
       return s;
     }
     if (count > 0) {
-      *row_count += res.data[0][0]->count;
+      *row_count += *reinterpret_cast<uint64_t*>(res.data[0][0]->mem);
     }
   } while (count > 0);
   return KStatus::SUCCESS;
