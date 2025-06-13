@@ -39,6 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
@@ -427,6 +428,10 @@ func (r *Replica) GetTSSnapshot(
 
 	startKey := r.mu.state.Desc.StartKey
 	endKey := r.mu.state.Desc.EndKey
+	hashNum := r.mu.state.Desc.HashNum
+	if hashNum == 0 {
+		hashNum = api.HashParamV2
+	}
 	ctx, sp := r.AnnotateCtxWithSpan(ctx, "snapshot")
 	defer sp.Finish()
 
@@ -458,7 +463,7 @@ func (r *Replica) GetTSSnapshot(
 
 	var errMsg string
 	// The CreateTSSnapshotRequest sender and receiver must be equal, otherwise the sender cannot getTSSnapshotData
-	tsSnapshotID, err := r.CreateSnapshotForRead(ctx, startKey, endKey)
+	tsSnapshotID, err := r.CreateSnapshotForRead(ctx, startKey, endKey, hashNum)
 	log.Infof(ctx, "(r%d)TSEngine.CreateSnapshotForRead(ID:%d)", r.RangeID, tsSnapshotID)
 	if err != nil {
 		errMsg = fmt.Sprintf("[n%v,s%v]r%v stageWriteBatch Ts CreateSnapshotForRead err: %v",
@@ -891,7 +896,11 @@ func (r *Replica) updateRangeInfo(desc *roachpb.RangeDescriptor) error {
 	var zone *zonepb.ZoneConfig
 	var err error
 	if desc.GetRangeType() == roachpb.TS_RANGE {
-		zone, err = cfg.GetZoneConfigForTSKey(desc.StartKey)
+		hashNum := desc.HashNum
+		if hashNum == 0 {
+			hashNum = api.HashParamV2
+		}
+		zone, err = cfg.GetZoneConfigForTSKey(desc.StartKey, hashNum)
 	} else {
 		zone, err = cfg.GetZoneConfigForKey(desc.StartKey)
 	}

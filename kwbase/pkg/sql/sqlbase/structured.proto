@@ -302,7 +302,11 @@ message PartitioningDescriptor {
     // Name is the partition name.
     optional string name = 1 [(gogoproto.nullable) = false];
     // HashPoints is the the HashPointPartition con
-    repeated int32 HashPoints = 2;
+    repeated int32 hash_points = 2;
+    // FromPoint is the lower bound of this hash partition.
+    optional int32 from_point = 3 [(gogoproto.nullable) = false];
+    // ToPoint is the upper bound of this hash partition.
+    optional int32 to_point = 4 [(gogoproto.nullable) = false];
   }
 
   // NumColumns is how large of a prefix of the columns in an index are used in
@@ -316,6 +320,7 @@ message PartitioningDescriptor {
   repeated List list = 2 [(gogoproto.nullable) = false];
   repeated Range range = 3 [(gogoproto.nullable) = false];
   repeated HashPoint hash_point = 4 [(gogoproto.nullable) = false];
+  optional bool is_hash = 5 [(gogoproto.nullable) = false];
 }
 
 // IndexDescriptor describes an index (primary or secondary).
@@ -1084,6 +1089,7 @@ message TSTable {
   // next_ts_version is used to ensure that tsVersion are not reused.
   optional uint32 next_ts_version = 18 [(gogoproto.nullable) = false,
     (gogoproto.customname) = "NextTsVersion", (gogoproto.casttype) = "DescriptorVersion"];
+  optional uint64 hash_num = 19 [(gogoproto.nullable) = false];
 }
 
 // SchemaDescriptor represents a physical schema and is stored in a structured

@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -189,11 +190,19 @@ func (mq *mergeQueue) shouldQueue(
 		if desc.GetRangeType() == roachpb.TS_RANGE && rhsDesc.GetRangeType() == roachpb.TS_RANGE {
 			// ts merge
 			// if is active range
-			startTableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true)
+			lHashNum := lhsDesc.HashNum
+			if lHashNum == 0 {
+				lHashNum = api.HashParamV2
+			}
+			rHashNum := rhsDesc.HashNum
+			if rHashNum == 0 {
+				rHashNum = api.HashParamV2
+			}
+			startTableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true, lHashNum)
 			if err != nil {
 				return false, 0
 			}
-			endTableID, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true)
+			endTableID, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true, rHashNum)
 			if err != nil {
 				return false, 0
 			}
@@ -303,11 +312,19 @@ func (mq *mergeQueue) process(
 	if lhsRepl.Desc().GetRangeType() == roachpb.TS_RANGE && rhsDesc.GetRangeType() == roachpb.TS_RANGE {
 		// ts merge
 		// if is active range
-		startTableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true)
+		lHashNum := lhsDesc.HashNum
+		if lHashNum == 0 {
+			lHashNum = api.HashParamV2
+		}
+		rHashNum := rhsDesc.HashNum
+		if rHashNum == 0 {
+			rHashNum = api.HashParamV2
+		}
+		startTableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true, lHashNum)
 		if err != nil {
 			return err
 		}
-		endTableID, endHashPoint, _, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true)
+		endTableID, endHashPoint, _, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true, rHashNum)
 		if err != nil {
 			return err
 		}
@@ -315,7 +332,7 @@ func (mq *mergeQueue) process(
 			// Time series ranges can only be merged by timestamp
 			return nil
 		}
-		_, _, endTimestamp, err := sqlbase.DecodeTsRangeKey(rhsDesc.EndKey, false)
+		_, _, endTimestamp, err := sqlbase.DecodeTsRangeKey(rhsDesc.EndKey, false, rHashNum)
 		if err != nil {
 			return nil
 		}

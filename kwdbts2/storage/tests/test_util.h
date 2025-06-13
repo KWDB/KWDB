@@ -105,6 +105,8 @@ struct ZTableColumnMeta {
   roachpb::VariableLengthType storage_type;
 };
 
+static const k_uint32 g_testcase_hash_num = 2000;
+
 void ConstructColumnMetas(std::vector<ZTableColumnMeta>* metas) {
   metas->push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
   metas->push_back({roachpb::DataType::SMALLINT, 2, 2, roachpb::VariableLengthType::ColStorageTypeTuple});
@@ -121,6 +123,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, const std::string& pref
   roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
   table->set_table_name(prefix_table_name + std::to_string(table_id));
+  table->set_hash_num(g_testcase_hash_num);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;

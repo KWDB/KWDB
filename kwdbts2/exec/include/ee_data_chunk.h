@@ -62,6 +62,8 @@ namespace kwdbts {
  */
 class DataChunk : public IChunk {
  public:
+  DataChunk() = default;
+
   /* Constructor & Deconstructor */
   explicit DataChunk(ColumnInfo *col_info, k_int32 col_num, k_uint32 capacity = 0);
 
@@ -72,7 +74,7 @@ class DataChunk : public IChunk {
   /**
    * @return return false if memory allocation fails
    */
-  k_bool Initialize();
+  virtual k_bool Initialize();
 
   /* Getter && Setter */
   [[nodiscard]] inline k_uint32 ColumnNum() const { return col_num_; }
@@ -81,7 +83,7 @@ class DataChunk : public IChunk {
 
   [[nodiscard]] inline k_uint32 BitmapSize() const { return bitmap_size_; }
 
-  [[nodiscard]] inline char* GetData() const { return data_; }
+  [[nodiscard]] virtual inline char* GetData() const { return data_; }
 
   ColumnInfo* GetColumnInfo() override { return col_info_; }
 
@@ -89,7 +91,7 @@ class DataChunk : public IChunk {
 
   k_uint32* GetBitmapOffset() { return bitmap_offset_; }
 
-  char* GetBitmapPtr(k_uint32 col);
+  virtual char* GetBitmapPtr(k_uint32 col);
 
   [[nodiscard]] inline k_uint32 Capacity() const { return capacity_; }
 
@@ -107,29 +109,29 @@ class DataChunk : public IChunk {
   }
 
   /* override methods */
-  DatumPtr GetData(k_uint32 row, k_uint32 col) override;
+  virtual DatumPtr GetData(k_uint32 row, k_uint32 col);
 
-  DatumPtr GetDataPtr(k_uint32 col);
+  virtual DatumPtr GetDataPtr(k_uint32 col);
 
-  DatumPtr GetData(k_uint32 col) override;
+  virtual DatumPtr GetData(k_uint32 col);
 
   // get data pointer of a column for a specific row for multiple model processing
-  DatumPtr GetDataPtr(k_uint32 row, k_uint32 col);
+  virtual DatumPtr GetDataPtr(k_uint32 row, k_uint32 col);
 
-  k_int32 NextLine() override;
+  virtual k_int32 NextLine();
 
-  k_uint32 Count() override;
+  virtual k_uint32 Count();
 
-  bool IsNull(k_uint32 row, k_uint32 col) override;
+  virtual bool IsNull(k_uint32 row, k_uint32 col);
 
-  bool IsNull(k_uint32 col) override;
+  virtual bool IsNull(k_uint32 col);
 
   virtual KStatus Append(DataChunk* chunk);
 
   virtual KStatus Append(std::queue<DataChunkPtr>& buffer);
 
   // Append all columns whose row number are in [begin_row, end_row)
-  KStatus Append(DataChunk* chunk, k_uint32 begin_row, k_uint32 end_row);
+  virtual KStatus Append(DataChunk* chunk, k_uint32 begin_row, k_uint32 end_row);
 
   ////////////////   Basic Methods   ///////////////////
 
@@ -174,7 +176,7 @@ class DataChunk : public IChunk {
    * @param[in] col
    * @param[in/out] string length
    */
-  DatumPtr GetData(k_uint32 row, k_uint32 col, k_uint16& len) override;
+  virtual DatumPtr GetData(k_uint32 row, k_uint32 col, k_uint16& len);
 
   ////////////////   Insert/Copy Data   ///////////////////
 
@@ -318,7 +320,7 @@ class DataChunk : public IChunk {
   KStatus PgResultData(kwdbContext_p ctx, k_uint32 row,
                        const EE_StringInfo& info);
 
-  EEIteratorErrCode VectorizeData(kwdbContext_p ctx, DataInfo *data_info);
+  virtual EEIteratorErrCode VectorizeData(kwdbContext_p ctx, DataInfo *data_info);
 
   void ResetDataPtr(char *data_ptr, k_int32 data_count) {
     data_ = data_ptr;

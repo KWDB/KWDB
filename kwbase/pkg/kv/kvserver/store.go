@@ -63,6 +63,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
@@ -1845,7 +1846,11 @@ func (s *Store) systemGossipUpdate(sysCfg *config.SystemConfig) {
 		var zone *zonepb.ZoneConfig
 		var err error
 		if repl.Desc().GetRangeType() == roachpb.TS_RANGE {
-			zone, err = sysCfg.GetZoneConfigForTSKey(key)
+			hashNum := repl.Desc().HashNum
+			if hashNum == 0 {
+				hashNum = api.HashParamV2
+			}
+			zone, err = sysCfg.GetZoneConfigForTSKey(key, hashNum)
 		} else {
 			zone, err = sysCfg.GetZoneConfigForKey(key)
 		}

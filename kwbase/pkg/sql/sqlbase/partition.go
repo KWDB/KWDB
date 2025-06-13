@@ -50,10 +50,6 @@ func (c PartitionSpecialValCode) String() string {
 	switch c {
 	case PartitionDefaultVal:
 		return (tree.DefaultVal{}).String()
-	case PartitionMinVal:
-		return (tree.PartitionMinVal{}).String()
-	case PartitionMaxVal:
-		return (tree.PartitionMaxVal{}).String()
 	}
 	panic("unreachable")
 }

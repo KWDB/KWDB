@@ -30,13 +30,18 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 }
 
 KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) {
+  auto iter = col_based_mems_.find(col_id);
+  if (iter != col_based_mems_.end() && iter->second != nullptr) {
+    *value = iter->second;
+    return KStatus::SUCCESS;
+  }
   auto col_based_len = row_data_[0]->row_data.len * row_data_.size();
   char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
   if (col_based_mem == nullptr) {
     LOG_ERROR("malloc memroy failed.");
     return KStatus::FAIL;
   }
-  col_based_mems_.push_back(col_based_mem);
+  col_based_mems_[col_id] = col_based_mem;
 
   TSSlice value_slice;
   char* cur_offset = col_based_mem;

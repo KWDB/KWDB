@@ -287,6 +287,13 @@ message RangeDescriptor {
   // attempted to execute ALTER TABLE/INDEX ... SPLIT AT ... when the merge
   // queue is enabled. With sticky_bit, users can manually split ranges without
   // diabling the merge queue.
+  // We also use this field to control the leaseholder redistribution of the pre-split
+  // range in the creation of the time series table. After the ts table is created,
+  // the pre-split range will set sticky_bit to avoid being merged, but other nodes' info
+  // where the range exists cannot be obtained in its leaseholder pre-distribution,
+  // so the target calculated is only the target node of the leaseholder. Through the ts
+  // range type and sticky_bit, it can be determined that the range is a pre-split range
+  // for table creation, and it will be extended when its leaseholder is relocated.
   optional util.hlc.Timestamp sticky_bit = 7;
 
   optional RangeType range_type = 9;
@@ -297,6 +304,7 @@ message RangeDescriptor {
   // be aggregated based on historical data, so the time of the last split needs to
   // be recorded.
   optional util.hlc.Timestamp last_split_time = 11;
+  optional uint64 hash_num = 12 [(gogoproto.nullable) = false];
 }
 
 // Percentiles contains a handful of hard-coded percentiles meant to summarize

@@ -32,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgwirebase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -364,6 +365,10 @@ func (ie *InternalExecutor) IsTsTable(
 		tableDesc := table.TableDesc()
 		dit.DbID = uint32(tableDesc.ParentID)
 		dit.TabID = uint32(tableDesc.ID)
+		if tableDesc.TsTable.HashNum == 0 {
+			tableDesc.TsTable.HashNum = api.HashParamV2
+		}
+		dit.HashNum = tableDesc.TsTable.HashNum
 		dit.ColsDesc = tableDesc.Columns
 		dit.TableType = table.GetTableType()
 		isTsTable = true

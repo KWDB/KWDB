@@ -517,6 +517,12 @@ var (
 		Measurement: "Latency",
 		Unit:        metric.Unit_NANOSECONDS,
 	}
+	metaRaftReplicaConsistentLatency = metric.Metadata{
+		Name:        "raft.replica.consistent.latency",
+		Help:        "Latency histogram for the Raft replicate consistent time",
+		Measurement: "Latency",
+		Unit:        metric.Unit_NANOSECONDS,
+	}
 
 	// Raft message metrics.
 	metaRaftRcvdProp = metric.Metadata{
@@ -1119,14 +1125,15 @@ type StoreMetrics struct {
 	RangeRaftLeaderTransfers     *metric.Counter
 
 	// Raft processing metrics.
-	RaftTicks                 *metric.Counter
-	RaftWorkingDurationNanos  *metric.Counter
-	RaftTickingDurationNanos  *metric.Counter
-	RaftCommandsApplied       *metric.Counter
-	RaftLogCommitLatency      *metric.Histogram
-	RaftCommandCommitLatency  *metric.Histogram
-	RaftHandleReadyLatency    *metric.Histogram
-	RaftApplyCommittedLatency *metric.Histogram
+	RaftTicks                    *metric.Counter
+	RaftWorkingDurationNanos     *metric.Counter
+	RaftTickingDurationNanos     *metric.Counter
+	RaftCommandsApplied          *metric.Counter
+	RaftLogCommitLatency         *metric.Histogram
+	RaftCommandCommitLatency     *metric.Histogram
+	RaftHandleReadyLatency       *metric.Histogram
+	RaftApplyCommittedLatency    *metric.Histogram
+	RaftReplicaConsistentLatency *metric.Histogram
 
 	// Raft message metrics.
 	RaftRcvdMsgProp           *metric.Counter
@@ -1331,14 +1338,15 @@ func newStoreMetrics(histogramWindow time.Duration) *StoreMetrics {
 		RangeRaftLeaderTransfers:     metric.NewCounter(metaRangeRaftLeaderTransfers),
 
 		// Raft processing metrics.
-		RaftTicks:                 metric.NewCounter(metaRaftTicks),
-		RaftWorkingDurationNanos:  metric.NewCounter(metaRaftWorkingDurationNanos),
-		RaftTickingDurationNanos:  metric.NewCounter(metaRaftTickingDurationNanos),
-		RaftCommandsApplied:       metric.NewCounter(metaRaftCommandsApplied),
-		RaftLogCommitLatency:      metric.NewLatency(metaRaftLogCommitLatency, histogramWindow),
-		RaftCommandCommitLatency:  metric.NewLatency(metaRaftCommandCommitLatency, histogramWindow),
-		RaftHandleReadyLatency:    metric.NewLatency(metaRaftHandleReadyLatency, histogramWindow),
-		RaftApplyCommittedLatency: metric.NewLatency(metaRaftApplyCommittedLatency, histogramWindow),
+		RaftTicks:                    metric.NewCounter(metaRaftTicks),
+		RaftWorkingDurationNanos:     metric.NewCounter(metaRaftWorkingDurationNanos),
+		RaftTickingDurationNanos:     metric.NewCounter(metaRaftTickingDurationNanos),
+		RaftCommandsApplied:          metric.NewCounter(metaRaftCommandsApplied),
+		RaftLogCommitLatency:         metric.NewLatency(metaRaftLogCommitLatency, histogramWindow),
+		RaftCommandCommitLatency:     metric.NewLatency(metaRaftCommandCommitLatency, histogramWindow),
+		RaftHandleReadyLatency:       metric.NewLatency(metaRaftHandleReadyLatency, histogramWindow),
+		RaftApplyCommittedLatency:    metric.NewLatency(metaRaftApplyCommittedLatency, histogramWindow),
+		RaftReplicaConsistentLatency: metric.NewLatency(metaRaftReplicaConsistentLatency, histogramWindow),
 
 		// Raft message metrics.
 		RaftRcvdMsgProp:           metric.NewCounter(metaRaftRcvdProp),

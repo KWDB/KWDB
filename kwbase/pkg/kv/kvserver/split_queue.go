@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -165,7 +166,11 @@ func (sq *splitQueue) shouldQueue(
 		// and will not enter the shouldQueue
 		startKey := desc.StartKey
 		endKey := desc.EndKey
-		tableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(startKey, true)
+		hashNum := desc.HashNum
+		if hashNum == 0 {
+			hashNum = api.HashParamV2
+		}
+		tableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
 		if err != nil {
 			return false, priority
 		}
@@ -173,7 +178,7 @@ func (sq *splitQueue) shouldQueue(
 		if desc.TableId == 0 {
 			desc.TableId = uint32(tableID)
 		}
-		_, endHashPoint, _, err := sqlbase.DecodeTsRangeKey(endKey, false)
+		_, endHashPoint, _, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 		if err != nil {
 			return false, priority
 		}
@@ -182,8 +187,7 @@ func (sq *splitQueue) shouldQueue(
 		splitInterval := splitRangeSettings.Get(&sv.SV)
 		splitMode := splitModeSettings.Get(&sv.SV)
 		if splitHashPoint-startHashPoint < uint64(splitInterval) && !splitMode {
-			shouldQ = false
-			return shouldQ, priority
+			return false, priority
 		}
 	}
 
@@ -236,6 +240,25 @@ func (sq *splitQueue) processAttempt(
 	// First handle the case of splitting due to zone config maps.
 	if splitKey := sysCfg.ComputeSplitKey(desc.StartKey, desc.EndKey); splitKey != nil {
 		splitType, tableID := sysCfg.GetTsSplitType(splitKey)
+		var tmpHashNum uint64
+		if splitType == roachpb.TS_SPLIT {
+			// DEFAULT_RANGE does not split through split queue
+			if desc.GetRangeType() == roachpb.DEFAULT_RANGE {
+				return nil
+			}
+			// splitting the range of the same table
+			if desc.TableId != tableID {
+				return nil
+			}
+			// TableID is 0, there may be an issue, return
+			if tableID == 0 {
+				return nil
+			}
+			if desc.HashNum == 0 {
+				desc.HashNum = api.HashParamV2
+			}
+			tmpHashNum = desc.HashNum
+		}
 		if _, err := r.adminSplitWithDescriptor(
 			ctx,
 			roachpb.AdminSplitRequest{
@@ -244,6 +267,7 @@ func (sq *splitQueue) processAttempt(
 				},
 				SplitType:      splitType,
 				TableId:        tableID,
+				HashNum:        tmpHashNum,
 				SplitKey:       splitKey.AsRawKey(),
 				ExpirationTime: hlc.Timestamp{},
 				// Here, splitKey is calculated based on zone-related information, which means
@@ -283,13 +307,17 @@ func (sq *splitQueue) processAttempt(
 			r.startKey()
 			startKey := r.Desc().StartKey
 			endKey := r.Desc().EndKey
-			startTableID, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(startKey, true)
+			hashNum := r.Desc().HashNum
+			if hashNum == 0 {
+				hashNum = api.HashParamV2
+			}
+			startTableID, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
 			if err != nil {
 				//fmt.Println("DecodeTsRangeKey StartKey failed", err)
 				log.Errorf(ctx, "DecodeTsRangeKey StartKey failed", err)
 			}
 			// /Max endTableID = 0
-			endTableID, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(endKey, false)
+			endTableID, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTsRangeKey endKey failed", err)
 			}
@@ -304,13 +332,13 @@ func (sq *splitQueue) processAttempt(
 				if splitHashPoint-startHashPoint < uint64(splitInterval) && !splitMode {
 					return nil
 				}
-				splitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(startTableID), splitHashPoint)
+				splitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(startTableID), splitHashPoint, hashNum)
 			} else if startTableID == endTableID && startHashPoint != endHashPoint && endHashPoint != 0 {
 				splitHashPoint := (startHashPoint + endHashPoint + 1) / 2
 				if splitHashPoint-startHashPoint < uint64(splitInterval) && !splitMode {
 					return nil
 				}
-				splitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(startTableID), splitHashPoint)
+				splitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(startTableID), splitHashPoint, hashNum)
 			} else {
 				if !splitMode {
 					return nil
@@ -360,7 +388,7 @@ func (sq *splitQueue) processAttempt(
 				}
 				splitHashPoint := startHashPoint
 				splitTimeStamp := halfTimestamp
-				splitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(startTableID), splitHashPoint, splitTimeStamp)
+				splitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(startTableID), splitHashPoint, splitTimeStamp, hashNum)
 			}
 
 			//理论上不会溢出，兼容
@@ -372,6 +400,7 @@ func (sq *splitQueue) processAttempt(
 						Key: splitKey,
 					},
 					TableId:   tableID, //由于为Split，所以TableID不变
+					HashNum:   hashNum,
 					SplitType: roachpb.TS_SPLIT,
 					SplitKey:  splitKey,
 				},

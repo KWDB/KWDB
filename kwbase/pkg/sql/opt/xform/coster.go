@@ -607,7 +607,8 @@ func (c *coster) computeBatchLoopUpJoinCost(join memo.RelExpr) memo.Cost {
 	}
 
 	var relationalRowCount, tsRowCount float64
-	if walk(join.Child(0)) {
+	res := 0
+	if walk(join.Child(0), &res); res > 0 {
 		tsRowCount = join.Child(0).(memo.RelExpr).Relational().Stats.RowCount
 		relationalRowCount = join.Child(1).(memo.RelExpr).Relational().Stats.RowCount
 	} else {

@@ -84,8 +84,8 @@ KStatus LoggedTsTable::FlushBuffer(kwdbContext_p ctx) {
 
 LoggedTsEntityGroup::LoggedTsEntityGroup(kwdbContext_p ctx, MMapRootTableManager*& root_bt_manager,
                                          const string& db_path, const KTableKey& table_id, const RangeGroup& range,
-                                         const string& tbl_sub_path, EngineOptions* opt)
-    : TsEntityGroup(ctx, root_bt_manager, db_path, table_id, range, tbl_sub_path), engine_opt_(opt) {
+                                         const string& tbl_sub_path, EngineOptions* opt, uint64_t hash_num)
+    : TsEntityGroup(ctx, root_bt_manager, db_path, table_id, range, tbl_sub_path, hash_num), engine_opt_(opt) {
   wal_manager_ = KNEW WALMgr(db_path, table_id, range.range_group_id, opt);
   tsx_manager_ = KNEW TSxMgr(wal_manager_);
   optimistic_read_lsn_ = wal_manager_->FetchCurrentLSN();
@@ -243,7 +243,7 @@ KStatus LoggedTsEntityGroup::PutData(kwdbContext_p ctx, TSSlice payload, TS_LSN 
       }
       // put tag into tag table.
       std::string tmp_str = std::to_string(table_id_);
-      uint64_t tag_hash = TsTable::GetConsistentHashId(tmp_str.data(), tmp_str.size());
+      uint64_t tag_hash = GetConsistentHashId(tmp_str.data(), tmp_str.size(), hash_num_);
       std::string primary_tags;
       err_info.errcode = ebt_manager_->AllocateEntity(primary_tags, tag_hash, &group_id, &entity_id);
       if (err_info.errcode < 0) {
@@ -1126,7 +1126,7 @@ KStatus LoggedTsEntityGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_ls
   ErrorInfo err_info;
   if (!new_tag_bt_->hasPrimaryKey(p_tag.data, p_tag.len, entity_id, group_id)) {
     std::string tmp_str = std::to_string(table_id_);
-    uint64_t tag_hash = TsTable::GetConsistentHashId(tmp_str.data(), tmp_str.size());
+    uint64_t tag_hash = GetConsistentHashId(tmp_str.data(), tmp_str.size(), hash_num_);
     std::string primary_tags;
     err_info.errcode = ebt_manager_->AllocateEntity(primary_tags, tag_hash, &group_id, &entity_id);
   }
@@ -1149,7 +1149,7 @@ KStatus LoggedTsEntityGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TS
     return KStatus::FAIL;
   }
 
-  if (new_tag_bt_->UpdateForUndo(group_id, entity_id, p_tag, old_payload) < 0) {
+  if (new_tag_bt_->UpdateForUndo(group_id, entity_id, hash_num_, p_tag, old_payload) < 0) {
     LOG_ERROR("undoUpdateTag: UpdateForUndo failed, primary tag[%s].", p_tag.data)
     return KStatus::FAIL;
   }
@@ -1180,7 +1180,7 @@ KStatus LoggedTsEntityGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log
 
 KStatus LoggedTsEntityGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
                                            uint32_t group_id, uint32_t entity_id, TSSlice& tags) {
-  int res = new_tag_bt_->DeleteForUndo(group_id, entity_id, primary_tag, tags);
+  int res = new_tag_bt_->DeleteForUndo(group_id, entity_id, hash_num_, primary_tag, tags);
   if (res < 0) {
     return KStatus::FAIL;
   }

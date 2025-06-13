@@ -49,7 +49,7 @@ func init() {
 	api.GetHealthyNodeIDs = GetHealthyNodeIDs
 	api.GetTableNodeIDs = GetTableNodeIDs
 	api.CreateTSTable = CreateTSTable
-	api.PreDistributeBySingleReplica = PreDistributeBySingleReplica
+	api.PreLeaseholderDistribute = PreLeaseholderDistribute
 	api.GetDistributeInfo = GetDistributeInfo
 }
 
@@ -117,7 +117,9 @@ func NewHashRouterManager(
 }
 
 // GetDistributeInfo get distribute info on create table
-func GetDistributeInfo(ctx context.Context, tableID uint32) ([]api.HashPartition, error) {
+func GetDistributeInfo(
+	ctx context.Context, tableID uint32, hashNum uint64,
+) ([]api.HashPartition, error) {
 	var partitions []api.HashPartition
 	partitionBalanceNumber := settings.DefaultPartitionCoefficient.Get(hrMgr.execConfig.SV())
 	if partitionBalanceNumber == 0 {
@@ -127,7 +129,7 @@ func GetDistributeInfo(ctx context.Context, tableID uint32) ([]api.HashPartition
 	if hrMgr.execConfig.StartMode == sql.StartSingleNode {
 		groupNum = 1
 	} else {
-		groupNum = api.HashParamV2
+		groupNum = int(hashNum)
 	}
 	splitMode := int(settings.TSRangeSplitModeSetting.Get(hrMgr.execConfig.SV()))
 	if splitMode == 0 {
@@ -181,11 +183,11 @@ func GetDistributeInfo(ctx context.Context, tableID uint32) ([]api.HashPartition
 	return partitions, nil
 }
 
-// PreDistributeBySingleReplica get the pre distribute on single replica mode
-func PreDistributeBySingleReplica(
+// PreLeaseholderDistribute get the pre distribute on single replica mode
+func PreLeaseholderDistribute(
 	ctx context.Context, txn *kv.Txn, partitions []api.HashPartition,
-) ([]roachpb.ReplicaDescriptor, error) {
-	var distributeReplica []roachpb.ReplicaDescriptor
+) ([][]roachpb.ReplicaDescriptor, error) {
+	var distributeReplica [][]roachpb.ReplicaDescriptor
 	nodeStatus, err := hrMgr.execConfig.StatusServer.Nodes(ctx, &serverpb.NodesRequest{})
 	if err != nil {
 		return nil, err
@@ -202,11 +204,20 @@ func PreDistributeBySingleReplica(
 		return nil, errors.Errorf("the cluster not have live node now")
 	}
 	for index := range partitions {
-		nodeID := nodeList[index%len(nodeList)]
-		distributeReplica = append(distributeReplica, roachpb.ReplicaDescriptor{
-			NodeID:  nodeID,
-			StoreID: getStoreIDByNodeID(nodeID, hrMgr.storePool.GetStores()),
-		})
+		var internalReplica []roachpb.ReplicaDescriptor
+		start := index % len(nodeList)
+		nodes := []roachpb.NodeID{
+			nodeList[start],
+			nodeList[(start+1)%len(nodeList)],
+			nodeList[(start+2)%len(nodeList)],
+		}
+		for _, nodeID := range nodes {
+			internalReplica = append(internalReplica, roachpb.ReplicaDescriptor{
+				NodeID:  nodeID,
+				StoreID: getStoreIDByNodeID(nodeID, hrMgr.storePool.GetStores()),
+			})
+		}
+		distributeReplica = append(distributeReplica, internalReplica)
 	}
 	return distributeReplica, nil
 }

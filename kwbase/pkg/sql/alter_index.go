@@ -27,13 +27,10 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"github.com/cockroachdb/errors"
-	"github.com/gogo/protobuf/proto"
 )
 
 type alterIndexNode struct {
@@ -78,28 +75,30 @@ func (n *alterIndexNode) startExec(params runParams) error {
 	for _, cmd := range n.n.Cmds {
 		switch t := cmd.(type) {
 		case *tree.AlterIndexPartitionBy:
-			telemetry.Inc(sqltelemetry.SchemaChangeAlterCounterWithExtra("index", "partition_by"))
-			partitioning, err := CreatePartitioning(
-				params.ctx, params.extendedEvalCtx.Settings,
-				params.EvalContext(),
-				n.tableDesc, n.indexDesc, t.PartitionBy)
-			if err != nil {
-				return err
-			}
-			descriptorChanged = !proto.Equal(
-				&n.indexDesc.Partitioning,
-				&partitioning,
-			)
-			err = deleteRemovedPartitionZoneConfigs(
-				params.ctx, params.p.txn,
-				n.tableDesc.TableDesc(), n.indexDesc,
-				&n.indexDesc.Partitioning, &partitioning,
-				params.extendedEvalCtx.ExecCfg,
-			)
-			if err != nil {
-				return err
-			}
-			n.indexDesc.Partitioning = partitioning
+			return errors.AssertionFailedf(
+				"unsupported alter index partition: %T, %+v", cmd, t.PartitionBy)
+			//telemetry.Inc(sqltelemetry.SchemaChangeAlterCounterWithExtra("index", "partition_by"))
+			//partitioning, err := NewPartitioningDescriptor(
+			//	params.ctx,
+			//	params.EvalContext(),
+			//	n.tableDesc, n.indexDesc, t.PartitionBy)
+			//if err != nil {
+			//	return err
+			//}
+			//descriptorChanged = !proto.Equal(
+			//	&n.indexDesc.Partitioning,
+			//	&partitioning,
+			//)
+			//err = deleteRemovedPartitionZoneConfigs(
+			//	params.ctx, params.p.txn,
+			//	n.tableDesc.TableDesc(), n.indexDesc,
+			//	&n.indexDesc.Partitioning, &partitioning,
+			//	params.extendedEvalCtx.ExecCfg,
+			//)
+			//if err != nil {
+			//	return err
+			//}
+			//n.indexDesc.Partitioning = partitioning
 		default:
 			return errors.AssertionFailedf(
 				"unsupported alter command: %T", cmd)

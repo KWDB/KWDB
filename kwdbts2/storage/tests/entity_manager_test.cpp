@@ -246,7 +246,7 @@ TEST_F(TestEntityTableManager, entityid) {
   ErrorInfo err_info;
   for (int i = 0; i < 1010; i++) {
     string tag = "p_tag_" + std::to_string(i);
-    uint64_t tag_hash = TsTable::GetConsistentHashId(tag.data(), tag.size());
+    uint64_t tag_hash = GetConsistentHashId(tag.data(), tag.size(), g_testcase_hash_num);
     SubGroupID group_id;
     EntityID entity_id;
     int err_code = et_manager_->AllocateEntity(tag, tag_hash, &group_id, &entity_id);
