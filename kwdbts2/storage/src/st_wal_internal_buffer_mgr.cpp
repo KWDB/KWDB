@@ -758,16 +758,12 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
           if (for_chk) {
             old_lsn = v_lsn;
           }
-          insert_tags = KNEW InsertLogTagsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ, time_partition,
+          insert_tags = new InsertLogTagsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ, time_partition,
                                                       offset, length, read_buf, vgrp_id, old_lsn);
         } catch (exception &e) {
-          LOG_ERROR("Failed to malloc memory for construct Entry.")
-          return FAIL;
-        }
-        if (insert_tags == nullptr) {
           delete[] read_buf;
           read_buf = nullptr;
-          LOG_ERROR("Failed to construct entry.")
+          LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;
         }
         log_entries.push_back(insert_tags);
