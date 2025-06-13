@@ -104,13 +104,17 @@ static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info
 static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {
   bitmap->reset();
-  ReadColumnBitmap(file, info, col_id, bitmap);
+  auto s = ReadColumnBitmap(file, info, col_id, bitmap);
+  if (s == FAIL) {
+    LOG_ERROR("cannot read column bitmap");
+    return s;
+  }
   size_t offset = info.block_offset + info.col_infos[col_id].offset;
   offset += info.col_infos[col_id].bitmap_len;
   size_t len = info.col_infos[col_id].data_len;
   TSSlice result;
   auto buf = std::make_unique<char[]>(len);
-  auto s = file->Read(offset, len, &result, buf.get());
+  s = file->Read(offset, len, &result, buf.get());
   if (s == FAIL) {
     return FAIL;
   }
@@ -118,6 +122,9 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   // Metric
   const auto& mgr = CompressorManager::GetInstance();
   bool ok = mgr.DecompressData(result, bitmap->get(), info.nrow, col_data);
+  if(!ok) {
+    LOG_ERROR("cannot decompress data");
+  }
   return ok ? SUCCESS : FAIL;
 }
 
@@ -504,6 +511,7 @@ class TsLastBlock : public TsBlock {
       auto s =
           ReadColumnBlock(lastsegment_->file_.get(), block_info_, actual_colid, &data, &bitmap);
       if (s == FAIL) {
+        LOG_ERROR("cannot read column block %d", actual_colid);
         return FAIL;
       }
       column_cache_->PutData(actual_colid, std::move(data));
