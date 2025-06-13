@@ -652,10 +652,19 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
     }
   }
 
+  if (!HasDataCached(-1)) {
+    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("block segment column[0] data load failed");
+      return s;
+    }
+  }
   timestamp64* ts_col = reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data());
   TS_LSN* lsn_col = reinterpret_cast<TS_LSN*>(column_blocks_[0].buffer.data());
   int start_idx = 0;
   bool match_found = false;
+  assert(n_rows_ * 8 == column_blocks_[1].buffer.length());
+  assert(n_rows_ * 8 == column_blocks_[0].buffer.length());
   // todo(liangbo) scan all rows, can we scan faster.
   for (int i = 0; i < n_rows_; i++) {
     if (IsTsLsnInSpans(ts_col[i], lsn_col[i], spans)) {

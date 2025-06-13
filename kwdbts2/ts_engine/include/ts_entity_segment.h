@@ -42,7 +42,7 @@ struct TsEntitySegmentBlockItem {
   uint32_t agg_len = 0;
   uint16_t non_null_row_count = 0;  // the number of non-null rows
   bool is_agg_res_available = false;  //  agg for block is valid.
-  char reserved[48] = {0};      // reserved for user-defined information.
+  char reserved[49] = {0};      // reserved for user-defined information.
   // todo(liangbo01) add lsn to filter quickyly
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
