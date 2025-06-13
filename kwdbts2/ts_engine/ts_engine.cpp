@@ -883,6 +883,7 @@ KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& tabl
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
     return s;
   }
+  ctx->ts_engine = this;
   return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
 }
 
@@ -896,6 +897,7 @@ KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id,
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
     return s;
   }
+  ctx->ts_engine = this;
   return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
 }
 
@@ -908,6 +910,7 @@ KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
     return s;
   }
+  ctx->ts_engine = this;
   return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id);
 }
 
@@ -920,6 +923,7 @@ KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& 
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
     return s;
   }
+  ctx->ts_engine = this;
   return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id);
 }
 

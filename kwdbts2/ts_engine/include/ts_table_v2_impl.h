@@ -171,6 +171,8 @@ class TsTableV2Impl : public TsTable {
   KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) override;
 
+  KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
+                             const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);
   KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,

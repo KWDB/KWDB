@@ -331,6 +331,17 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
       LOG_INFO("primary key[%s] dose not exist, no need to delete", p_tags.c_str())
       continue;
     }
+    if (count != nullptr) {
+      std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
+      std::vector<KwTsSpan> ts_spans{{INT64_MIN, INT64_MAX}};
+      uint64_t cur_entity_count = 0;
+      auto s = GetEntityRowCount(ctx, es, ts_spans, &cur_entity_count);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetEntityRowCount failed.");
+        return s;
+      }
+      *count += cur_entity_count;
+    }
     // write WAL and remove metric datas.
     auto s = GetVGroupByID(v_group_id)->DeleteEntity(ctx, table_id_, p_tags, entity_id, count, mtr_id);
     if (s != KStatus::SUCCESS) {
@@ -432,12 +443,49 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
     LOG_INFO("primary key[%s] dose not exist, no need to delete", primary_tag.c_str())
     return KStatus::SUCCESS;
   }
+  if (count != nullptr) {
+    std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
+    auto s = GetEntityRowCount(ctx, es, ts_spans, count);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetEntityRowCount failed.");
+      return s;
+    }
+  }
   // write WAL and remove metric datas.
   auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id,
                                                 ts_spans, count, mtr_id);
   if (s != KStatus::SUCCESS) {
     return s;
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
+const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<Sumfunctype> scan_agg_types= {Sumfunctype::COUNT};
+  uint32_t table_version = 1;
+  TsIterator* iter;
+  std::vector<timestamp64> ts_points;
+  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, scan_agg_types, table_version,
+                                &iter, ts_points, false, false);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityRowCount GetIterator failed.");
+    return s;
+  }
+  *row_count = 0;
+  k_uint32 count;
+  bool is_finished = false;
+  do {
+    ResultSet res{(k_uint32) scan_cols.size()};
+    auto s = iter->Next(&res, &count);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    if (count > 0) {
+      *row_count += res.data[0][0]->count;
+    }
+  } while (count > 0);
   return KStatus::SUCCESS;
 }
 
