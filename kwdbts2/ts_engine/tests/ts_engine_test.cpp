@@ -67,7 +67,8 @@ TEST_F(TsEngineV2Test, simpleInsert) {
                                     roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
   // ConstructRoachpbTable(&pb_meta, table_id);
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
@@ -98,7 +99,8 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
                                     roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
@@ -130,7 +132,8 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
                                     roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
@@ -163,10 +166,10 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   TSTableID table_id = 12345;
   CreateTsTable pb_meta;
   kwdbContext_p ctx;
-  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
-                                    roachpb::DOUBLE};
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE, roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
@@ -204,7 +207,8 @@ TEST_F(TsEngineV2Test, Recover){
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
                                     roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);

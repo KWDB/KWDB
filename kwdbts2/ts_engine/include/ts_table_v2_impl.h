@@ -33,7 +33,6 @@ class TsTableV2Impl : public TsTable {
 
   ~TsTableV2Impl();
 
-
   KTableKey GetTableId() override {
     return table_schema_mgr_->GetTableId();
   }
@@ -44,6 +43,11 @@ class TsTableV2Impl : public TsTable {
 
   std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
     return table_schema_mgr_;
+  }
+
+  TsVGroup* GetVGroupByID(uint32_t vgroup_id) {
+    assert(EngineOptions::vgroup_max_num >= vgroup_id);
+    return vgroups_[vgroup_id - 1].get();
   }
 
   KStatus PutData(kwdbContext_p ctx, uint64_t range_group_id, TSSlice* payload, int payload_num,
@@ -119,6 +123,57 @@ class TsTableV2Impl : public TsTable {
   KStatus UndoDropIndex(kwdbContext_p ctx, LogEntry* log) override;
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) override;
+
+  KStatus DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag, uint64_t* count, uint64_t mtr_id);
+  /**
+   * @brief drop all data in range. if table is empty,we will drop table directory at same time.
+   * @param[in] ts_span   timestamp span
+   * @param[in] begin_hash,end_hash Entity primary tag hashID
+   *
+   * @return KStatus
+   */
+  KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                    KwTsSpan ts_span, uint64_t mtr_id) override;
+
+  /**
+   * @brief Delete data within a hash range, usually used for data migration.
+   * @param[in] range_group_id RangeGroupID
+   * @param[in] hash_span The range of hash IDs to be deleted from the data
+   * @param[out] count delete row num
+   * @param[in] mtr_id Mini-transaction id for TS table.
+   *
+   * @return KStatus
+   */
+  KStatus DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
+                                      uint64_t* count, uint64_t mtr_id) override;
+
+  /**
+   * @brief Delete data based on the hash id range and timestamp range.
+   * @param[in] range_group_id RangeGroupID
+   * @param[in] hash_span The range of hash IDs to be deleted from the data
+   * @param[in] ts_spans The range of timestamps to be deleted from the data
+   * @param[out] count The number of rows of data that have been deleted
+   * @param[in] mtr_id Mini-transaction id for TS table.
+   * @return
+   */
+  KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+                                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) override;
+
+  /**
+   * @brief Delete data based on the primary tag and timestamp range.
+   * @param[in] range_group_id RangeGroupID
+   * @param[in] primary_tag The primary tag of the deleted data
+   * @param[in] ts_spans The range of timestamps to be deleted from the data
+   * @param[out] count The number of rows of data that have been deleted
+   * @param[in] mtr_id Mini-transaction id for TS table.
+   * @return KStatus
+   */
+  KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
+                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) override;
+
+  KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
+                             const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);
+  KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;

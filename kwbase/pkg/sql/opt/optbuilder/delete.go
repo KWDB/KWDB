@@ -561,14 +561,14 @@ func checkComExpr(
 				var start, end int64
 				switch op {
 				case tree.GT:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						start = time + 1
 					}
 					end = upperLimitOfTimestamp
 				case tree.GE:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -582,14 +582,14 @@ func checkComExpr(
 					start, end = time, time
 				case tree.LE:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						end = time
 					}
 				case tree.LT:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -599,7 +599,7 @@ func checkComExpr(
 						}
 					}
 				case tree.NE:
-					if time < lowerLimitOfTimestamp || time > upperLimitOfTimestamp || isExceed {
+					if time <= lowerLimitOfTimestamp || time >= upperLimitOfTimestamp || isExceed {
 						start, end = lowerLimitOfTimestamp, upperLimitOfTimestamp
 					} else {
 						spans = append(spans, opt.TsSpan{
@@ -642,7 +642,7 @@ func checkComExpr(
 				switch op {
 				case tree.GT:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -653,7 +653,7 @@ func checkComExpr(
 					}
 				case tree.GE:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						end = time
@@ -661,7 +661,7 @@ func checkComExpr(
 				case tree.EQ:
 					start, end = time, time
 				case tree.LE:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -672,14 +672,14 @@ func checkComExpr(
 					}
 					end = upperLimitOfTimestamp
 				case tree.LT:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						start = time + 1
 					}
 					end = upperLimitOfTimestamp
 				case tree.NE:
-					if time < lowerLimitOfTimestamp || time > upperLimitOfTimestamp || isExceed {
+					if time <= lowerLimitOfTimestamp || time >= upperLimitOfTimestamp || isExceed {
 						start, end = lowerLimitOfTimestamp, upperLimitOfTimestamp
 					} else {
 						spans = append(spans, opt.TsSpan{

@@ -32,7 +32,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
     return KStatus::SUCCESS;
   }
   auto primary_key = p.GetPrimaryTag();
-  auto vgroup = vgroups_[v_group_id - 1].get();
+  auto vgroup = GetVGroupByID(v_group_id);
   assert(vgroup != nullptr);
   auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload, true);
   if (s != KStatus::SUCCESS) {
@@ -319,4 +319,180 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
 std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
     return table_schema_mgr_->GetNTagIndexInfo(ts_version, index_id);
 }
+
+KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag,
+  uint64_t* count, uint64_t mtr_id) {
+  *count = 0;
+  ErrorInfo err_info;
+  auto tag_table = table_schema_mgr_->GetTagTable();
+  for (auto p_tags : primary_tag) {
+    uint32_t v_group_id, entity_id;
+    if (!tag_table->hasPrimaryKey(p_tags.data(), p_tags.size(), entity_id, v_group_id)) {
+      LOG_INFO("primary key[%s] dose not exist, no need to delete", p_tags.c_str())
+      continue;
+    }
+    if (count != nullptr) {
+      std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
+      std::vector<KwTsSpan> ts_spans{{INT64_MIN, INT64_MAX}};
+      uint64_t cur_entity_count = 0;
+      auto s = GetEntityRowCount(ctx, es, ts_spans, &cur_entity_count);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetEntityRowCount failed.");
+        return s;
+      }
+      *count += cur_entity_count;
+    }
+    // write WAL and remove metric datas.
+    auto s = GetVGroupByID(v_group_id)->DeleteEntity(ctx, table_id_, p_tags, entity_id, count, mtr_id);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    // if any error, end the delete loop and return ERROR to the caller.
+    // Delete tag and its index
+    tag_table->DeleteTagRecord(p_tags.data(), p_tags.size(), err_info);
+    if (err_info.errcode < 0) {
+      LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                  KwTsSpan ts_span, uint64_t mtr_id) {
+  return KStatus::SUCCESS;
+}
+
+
+KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags) {
+  std::vector<TagPartitionTable*> all_tag_partition_tables;
+  auto tag_bt = table_schema_mgr_->GetTagTable();
+  TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
+  tag_bt->GetTagPartitionTableManager()->GetAllPartitionTablesLessVersion(all_tag_partition_tables,
+                                                                            cur_tbl_version);
+  for (const auto& entity_tag_bt : all_tag_partition_tables) {
+    entity_tag_bt->startRead();
+    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
+      if (!entity_tag_bt->isValidRow(rownum)) {
+        continue;
+      }
+      if (!EngineOptions::isSingleNode()) {
+        uint32_t tag_hash;
+        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+        string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
+                                                  entity_tag_bt->primaryTagSize());
+        if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
+          primary_tags->emplace_back(primary_tag);
+        }
+      } else {
+        string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
+                                                  entity_tag_bt->primaryTagSize());
+        primary_tags->emplace_back(primary_tag);
+      }
+    }
+    entity_tag_bt->stopRead();
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
+                                    uint64_t* count, uint64_t mtr_id) {
+  *count = 0;
+  vector<string> primary_tags;
+  auto s = getPTagsByHashSpan(ctx, hash_span, &primary_tags);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getPTagsByHashSpan failed.hash[%lu - %lu]", hash_span.begin, hash_span.end);
+    return s;
+  }
+  if (DeleteEntities(ctx, primary_tags, count, mtr_id) == KStatus::FAIL) {
+    LOG_ERROR("delete entities error")
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+                                const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
+  *count = 0;
+  vector<string> primary_tags;
+  auto s = getPTagsByHashSpan(ctx, hash_span, &primary_tags);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getPTagsByHashSpan failed.hash[%lu - %lu]", hash_span.begin, hash_span.end);
+    return s;
+  }
+  for (auto p_tags : primary_tags) {
+    // Delete the data corresponding to the tag within the time range
+    uint64_t entity_del_count = 0;
+    KStatus status = DeleteData(ctx, 1, p_tags, ts_spans,  &entity_del_count, mtr_id);
+    if (status == KStatus::FAIL) {
+      LOG_ERROR("DeleteRangeData failed, delete entity by primary key %s failed", p_tags.c_str());
+      return KStatus::FAIL;
+    }
+    // Update count
+    *count += entity_del_count;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
+                            const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
+  ErrorInfo err_info;
+  auto tag_table = table_schema_mgr_->GetTagTable();
+  uint32_t v_group_id, entity_id;
+  if (!tag_table->hasPrimaryKey(primary_tag.data(), primary_tag.size(), entity_id, v_group_id)) {
+    LOG_INFO("primary key[%s] dose not exist, no need to delete", primary_tag.c_str())
+    return KStatus::SUCCESS;
+  }
+  if (count != nullptr) {
+    std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
+    auto s = GetEntityRowCount(ctx, es, ts_spans, count);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetEntityRowCount failed.");
+      return s;
+    }
+    if (*count == 0) {
+      LOG_INFO("no valid data, no need add to delete item.");
+      return KStatus::SUCCESS;
+    }
+  }
+  // write WAL and remove metric datas.
+  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id,
+                                                ts_spans, count, mtr_id);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
+const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
+  uint32_t table_version = 1;
+  TsIterator* iter = nullptr;
+  Defer defer{[&]() { if (iter != nullptr) { delete iter; } }};
+  std::vector<timestamp64> ts_points;
+  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, {}, scan_agg_types, table_version,
+                                &iter, ts_points, false, false);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityRowCount GetIterator failed.");
+    return s;
+  }
+  *row_count = 0;
+  k_uint32 count;
+  bool is_finished = false;
+  do {
+    ResultSet res{(k_uint32) scan_cols.size()};
+    auto s = iter->Next(&res, &count);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    if (count > 0) {
+      *row_count += *reinterpret_cast<uint64_t*>(res.data[0][0]->mem);
+    }
+  } while (count > 0);
+  return KStatus::SUCCESS;
+}
+
+
 }  //  namespace kwdbts

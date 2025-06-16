@@ -135,7 +135,24 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
       return KStatus::FAIL;
     }
   }
-  return mem_segment_mgr_.PutData(*payload, entity_id, current_lsn);
+  std::list<TSMemSegRowData> rows;
+  auto s = mem_segment_mgr_.PutData(*payload, entity_id, current_lsn, &rows);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("mem_segment_mgr_.PutData Failed.")
+    return FAIL;
+  }
+  // creating partition directory while inserting data into memroy.
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  auto ts_type = tb_schema_mgr->GetTsColDataType();
+  for (auto& row : rows) {
+    auto partition = GetPartition(row.database_id, row.ts, ts_type);
+    if (partition == nullptr) {
+      LOG_ERROR("GetPartition Failed.")
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
 }
 
 std::filesystem::path TsVGroup::GetPath() const {
@@ -713,6 +730,74 @@ uint32_t TsVGroup::GetVGroupID() {
   return vgroup_id_;
 }
 
+KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag, TSEntityID e_id,
+  uint64_t* count, uint64_t mtr_id) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  TagTuplePack* tag_pack = tb_schema_manager->GetTagTable()->GenTagPack(p_tag.data(), p_tag.size());
+  if (UNLIKELY(nullptr == tag_pack)) {
+    return KStatus::FAIL;
+  }
+  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData());
+  delete tag_pack;
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("WriteDeleteTagWAL failed.");
+    return s;
+  }
+  // todo(liangbo01) we should delete current entity metric datas.
+  TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+    // delete current entity metric datas.
+  return DeleteData(ctx, table_id, e_id, cur_lsn, ts_spans);
+}
+
+KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
+  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
+  std::vector<DelRowSpan> dtp_list;
+  TS_LSN current_lsn;
+  KStatus s = wal_manager_->WriteDeleteMetricsWAL(ctx, mtr_id, p_tag, ts_spans, dtp_list, vgroup_id_, &current_lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("WriteDeleteTagWAL failed.");
+    return s;
+  }
+  // delete current entity metric datas.
+  return DeleteData(ctx, tbl_id, e_id, current_lsn, ts_spans);
+}
+
+KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
+                              const std::vector<KwTsSpan>& ts_spans) {
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("GetTableSchemaMgr failed.");
+    return s;
+  }
+  auto db_id = tb_schema_mgr->GetDbID();
+  auto ts_type = tb_schema_mgr->GetTsColDataType();
+  auto it = partitions_.find(db_id);
+  if (it != partitions_.end()) {
+    std::vector<std::shared_ptr<TsVGroupPartition>> ps = (*it).second->GetAllPartitions();
+    for (auto& p : ps) {
+      KTimestamp p_start = convertSecondToPrecisionTS(p->StartTs(), ts_type);
+      KTimestamp p_end = convertSecondToPrecisionTS(p->EndTs(), ts_type);
+      // check if current partition is cross with ts_spans.
+      if (isTimestampInSpans(ts_spans, p_start, p_end)) {
+        s = p->DeleteData(e_id, ts_spans, {0, lsn});
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("cannot DeleteData for entity[%lu]", e_id);
+          return s;
+        }
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
   return KStatus::SUCCESS;
 }
@@ -877,6 +962,10 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
 std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
   int idx = timestamp / interval_;
   RW_LATCH_S_LOCK(&partitions_latch_);
+  // ts smaller than zero,  / opeartion will get upper bound.
+  if (timestamp < 0) {
+    idx -= 1;
+  }
   auto it = partitions_.find(idx);
   if (it == partitions_.end()) {
     RW_LATCH_UNLOCK(&partitions_latch_);

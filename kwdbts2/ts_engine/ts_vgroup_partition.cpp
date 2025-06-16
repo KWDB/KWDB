@@ -30,6 +30,7 @@ TsVGroupPartition::TsVGroupPartition(std::filesystem::path root, int database_id
       start_(start),
       end_(end),
       path_(root / GetFileName()),
+      del_info_(root.string() + "/" + GetFileName()),
       last_segment_mgr_(path_) {
   partition_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_MMAP_GROUP_PARTITION_RWLOCK);
 }
@@ -57,6 +58,11 @@ KStatus TsVGroupPartition::Open() {
     uint64_t file_number = std::stoi(res.str(1));
     std::shared_ptr<TsLastSegment> last;
     last_segment_mgr_.OpenLastSegmentFile(file_number, &last);
+  }
+  // open del item file.
+  if (del_info_.Open() != KStatus::SUCCESS) {
+    LOG_ERROR(" del_info_ Open fail.");
+    return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
 }
@@ -120,6 +126,23 @@ std::string TsVGroupPartition::GetFileName() const {
   char buffer[64];
   std::snprintf(buffer, sizeof(buffer), "db%02d-%014ld", database_id_, start_);
   return buffer;
+}
+
+KStatus TsVGroupPartition::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn) {
+  kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id);
+  for (auto& ts_span : ts_spans) {
+    assert(ts_span.begin <= ts_span.end);
+    del_item.range.ts_span = ts_span;
+    auto s = del_info_.AddDelItem(e_id, del_item);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
+      return s;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+KStatus TsVGroupPartition::GetDelRange(TSEntityID e_id, std::list<STDelRange>& del_items) {
+  return del_info_.GetDelRange(e_id, del_items);
 }
 
 }  //  namespace kwdbts
