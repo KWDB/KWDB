@@ -469,7 +469,8 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<k_uint32> scan_cols = {0};
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
   uint32_t table_version = 1;
-  TsIterator* iter;
+  TsIterator* iter = nullptr;
+  Defer defer{[&]() { if (iter != nullptr) { delete iter; } }};
   std::vector<timestamp64> ts_points;
   KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, scan_agg_types, table_version,
                                 &iter, ts_points, false, false);
