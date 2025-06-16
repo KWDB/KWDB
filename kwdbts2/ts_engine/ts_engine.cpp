@@ -726,7 +726,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
     if (!skip) {
       if (log->getType() != WALLogType::CHECKPOINT) {
-        rewrite.emplace_back(log);
+        if (!EngineOptions::isSingleNode()) {
+          rewrite.emplace_back(log);
+        }
       }
     }
   }
