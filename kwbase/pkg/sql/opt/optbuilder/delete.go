@@ -256,13 +256,7 @@ func (b *Builder) buildTSDelete(
 		includeMutations,
 		inScope,
 	)
-	var hasTypeHints bool
-	for i := range b.semaCtx.Placeholders.TypeHints {
-		if b.semaCtx.Placeholders.TypeHints[i] != nil {
-			hasTypeHints = true
-			b.semaCtx.Placeholders.TypeHints[i] = nil
-		}
-	}
+
 	// resolve filter expr to get scope column and it's column id
 	texpr := inScope.resolveType(del.Where.Expr, types.Bool)
 	meta := b.factory.Metadata()
@@ -305,9 +299,6 @@ func (b *Builder) buildTSDelete(
 	}
 	for colID, expr := range exprs {
 		if v, ok := expr.(*tree.Placeholder); ok {
-			if hasTypeHints {
-				b.semaCtx.Placeholders.TypeHints[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
-			}
 			b.semaCtx.Placeholders.Types[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
 		}
 	}

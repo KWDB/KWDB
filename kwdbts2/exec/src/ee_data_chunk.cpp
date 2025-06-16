@@ -1121,7 +1121,6 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       break;
     }
-
     for (k_int32 i = 0; i < col_num_; ++i) {
       ColInfo[i].fixed_len_     = col_info_[i].fixed_storage_len;
       ColInfo[i].return_type_   = col_info_[i].return_type;
@@ -1133,6 +1132,13 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
                 ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
         k_int32 *offset = static_cast<k_int32 *>(malloc((count_ + 1) * sizeof(k_int32)));
         if (nullptr == offset) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           SafeFreePointer(ColInfo);
           SafeFreePointer(ColData);
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
@@ -1154,6 +1160,13 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
         ColData[i].offset_ = offset;
         char *ptr = static_cast<char*>(malloc(total_len));
         if (nullptr == ptr) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
           SafeFreePointer(ColInfo);
           SafeFreePointer(ColData);

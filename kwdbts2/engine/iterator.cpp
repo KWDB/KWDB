@@ -1018,7 +1018,7 @@ KStatus TsAggIterator::countDataUseStatistics(ResultSet* res, k_uint32* count, t
       } else {
         // Traverse all data of this BlockItem
         uint32_t cur_row_offset = 1;
-        while (cur_row_offset <= block_item->publish_row_count) {
+        while (cur_row_offset <= block_item->alloc_row_count) {
           bool is_deleted = !segment_tbl->IsRowVaild(block_item, cur_row_offset);
           if (is_deleted) {
             ++cur_row_offset;

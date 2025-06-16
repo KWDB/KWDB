@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/execerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -256,6 +257,8 @@ type externalHashJoiner struct {
 		// all file descriptors up front in Next.
 		delegateFDAcquisitions bool
 	}
+	// Context cancellation checker.
+	cancelChecker *sqlbase.CancelChecker
 }
 
 var _ closableOperator = &externalHashJoiner{}
@@ -504,8 +507,14 @@ func (hj *externalHashJoiner) partitionBatch(
 func (hj *externalHashJoiner) Next(ctx context.Context) coldata.Batch {
 	hj.mu.Lock()
 	defer hj.mu.Unlock()
+	if hj.cancelChecker == nil {
+		hj.cancelChecker = sqlbase.NewCancelChecker(ctx)
+	}
 StateChanged:
 	for {
+		if err := hj.cancelChecker.Check(); err != nil {
+			execerror.VectorizedInternalPanic(err)
+		}
 		switch hj.state {
 		case externalHJInitialPartitioning:
 			leftBatch := hj.inputOne.Next(ctx)

@@ -1175,7 +1175,6 @@ func (b *Builder) buildSelect(sel *memo.SelectExpr) (execPlan, bool, error) {
 		}
 
 		// construct leave filter node
-		b.factory.MakeTSSpans(&leaveFilter, input.root, b.mem)
 		filter, err = b.buildScalar(&ctx, &leaveFilter)
 		if err != nil {
 			return execPlan{}, false, err

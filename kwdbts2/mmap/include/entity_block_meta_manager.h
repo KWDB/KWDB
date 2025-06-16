@@ -88,9 +88,10 @@ class EntityBlockMetaManager {
 
   inline int GetMetaIndex(BLOCK_ID block_item_id){
     int idx = (block_item_id -1) / META_BLOCK_ITEM_MAX;
-    assert(idx < entity_block_metas_.size());
-    assert(idx < meta_num_);
-    assert(entity_block_metas_[idx] != nullptr);
+    if (idx >= entity_block_metas_.size() || idx >= meta_num_ || entity_block_metas_[idx] == nullptr) {
+      LOG_ERROR("GetMetaIndex error: block item id is wrong, table id[%lu], block id[%u]", table_id_, block_item_id)
+      return -1;
+    }
     return idx;
   }
 

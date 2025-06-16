@@ -1813,7 +1813,7 @@ func charFormatText(
 		case oid.T_bool:
 			davl, err := strconv.ParseBool(string(Args[idx]))
 			if err != nil {
-				return err
+				return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 			}
 			Args[idx] = []byte{0}
 			if davl {
