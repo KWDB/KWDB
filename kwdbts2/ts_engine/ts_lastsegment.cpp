@@ -29,6 +29,7 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
+#include "mmap/mmap_entity_block_meta.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"
@@ -38,7 +39,6 @@
 #include "ts_io.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_segment.h"
-#include "utils/big_table_utils.h"
 namespace kwdbts {
 
 int TsLastSegment::kNRowPerBlock = 4096;
@@ -104,13 +104,17 @@ static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info
 static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {
   bitmap->reset();
-  ReadColumnBitmap(file, info, col_id, bitmap);
+  auto s = ReadColumnBitmap(file, info, col_id, bitmap);
+  if (s == FAIL) {
+    LOG_ERROR("cannot read column bitmap");
+    return s;
+  }
   size_t offset = info.block_offset + info.col_infos[col_id].offset;
   offset += info.col_infos[col_id].bitmap_len;
   size_t len = info.col_infos[col_id].data_len;
   TSSlice result;
   auto buf = std::make_unique<char[]>(len);
-  auto s = file->Read(offset, len, &result, buf.get());
+  s = file->Read(offset, len, &result, buf.get());
   if (s == FAIL) {
     return FAIL;
   }
@@ -118,6 +122,9 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   // Metric
   const auto& mgr = CompressorManager::GetInstance();
   bool ok = mgr.DecompressData(result, bitmap->get(), info.nrow, col_data);
+  if (!ok) {
+    LOG_ERROR("cannot decompress data");
+  }
   return ok ? SUCCESS : FAIL;
 }
 
@@ -219,7 +226,8 @@ KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
 }
 
 // TODO(zzr) get last segments from VersionManager, this method must be atomic
-KStatus TsLastSegmentManager::GetCompactLastSegments(std::vector<std::shared_ptr<TsLastSegment>>& result) {
+KStatus TsLastSegmentManager::GetCompactLastSegments(
+    std::vector<std::shared_ptr<TsLastSegment>>& result) {
   std::shared_lock lk{s_mutex_};
   if (!NeedCompact()) {
     return FAIL;
@@ -449,12 +457,19 @@ class TsLastBlock : public TsBlock {
   timestamp64 GetTS(int row_num) override {
     assert(block_info_.ncol > 2);
     auto ts = GetTimestamps();
+    if (ts == nullptr) {
+      return INVALID_TS;
+    }
     return ts[row_num];
   }
 
   uint64_t* GetLSNAddr(int row_num) override {
     assert(block_info_.ncol > 2);
     auto seq_nos = GetSeqNos();
+    if (seq_nos == nullptr) {
+      LOG_ERROR("cannot get lsn addr");
+      return nullptr;
+    }
     return const_cast<uint64_t*>(&seq_nos[row_num]);
   }
 
@@ -504,6 +519,7 @@ class TsLastBlock : public TsBlock {
       auto s =
           ReadColumnBlock(lastsegment_->file_.get(), block_info_, actual_colid, &data, &bitmap);
       if (s == FAIL) {
+        LOG_ERROR("cannot read column block %d", actual_colid);
         return FAIL;
       }
       column_cache_->PutData(actual_colid, std::move(data));
@@ -525,21 +541,33 @@ class TsLastBlock : public TsBlock {
     return SUCCESS;
   }
   const TSEntityID* GetEntities() {
-    LoadAllDataToCache(0);
+    auto s = LoadAllDataToCache(0);
+    if (s == FAIL) {
+      LOG_ERROR("cannot load entitiy column");
+      return nullptr;
+    }
     const std::string& data = *column_cache_->GetColumnBlock(0)->data;
     const TSEntityID* entities = reinterpret_cast<const TSEntityID*>(data.data());
     return entities;
   }
 
   const uint64_t* GetSeqNos() {
-    LoadAllDataToCache(1);
+    auto s = LoadAllDataToCache(1);
+    if (s == FAIL) {
+      LOG_ERROR("cannot load lsn column");
+      return nullptr;
+    }
     const std::string& data = *column_cache_->GetColumnBlock(1)->data;
     const uint64_t* seq_nos = reinterpret_cast<const uint64_t*>(data.data());
     return seq_nos;
   }
 
   const timestamp64* GetTimestamps() {
-    LoadAllDataToCache(2);
+    auto s = LoadAllDataToCache(2);
+    if (s == FAIL) {
+      LOG_ERROR("cannot load timestamp column");
+      return nullptr;
+    }
     const std::string& data = *column_cache_->GetColumnBlock(2)->data;
     const timestamp64* ts = reinterpret_cast<const timestamp64*>(data.data());
     return ts;
@@ -604,14 +632,20 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
     // split current block to several span;
     int prev_end = 0;
     auto entities = block->GetEntities();
+    if (entities == nullptr) {
+      LOG_ERROR("cannot load entity column");
+    }
     auto ts = block->GetTimestamps();
+    if (ts == nullptr) {
+      LOG_ERROR("cannot load timestamp column");
+    }
     while (prev_end < info.nrow) {
       int start = prev_end;
       auto current_entity = entities[start];
       auto upper_bound =
           FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
-      block_spans.emplace_back(make_shared<TsBlockSpan>(current_entity, block,
-                          start, upper_bound - start));
+      block_spans.emplace_back(
+          make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start));
       prev_end = upper_bound;
     }
   }

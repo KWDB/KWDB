@@ -47,6 +47,7 @@ class LastSegmentReadWriteTest : public testing::Test {
 };
 
 void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
+  ASSERT_NE(nrow, 0);
   std::string filename;
   {
     System("rm -rf schema");
@@ -99,8 +100,6 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
 
   auto nblock = footer.n_data_block;
   EXPECT_EQ(nblock, (nrow + TsLastSegment::kNRowPerBlock - 1) / TsLastSegment::kNRowPerBlock);
-  int expected_nrows = nrow;
-  nrow = 0;
   for (int i = 0; i < nblock; ++i) {
     TsLastSegmentBlockIndex idx_block;
     file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice,
@@ -133,7 +132,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
       if (info.col_infos[j].bitmap_len != 0) {
         file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len,
                    &result, buf);
-        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j;
+        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
       }
     }
   }
@@ -154,16 +153,26 @@ void IteratorCheck(TSTableID table_id) {
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead1) {
-  BuilderWithBasicCheck(13, 1);
-  IteratorCheck(13);
+  BuilderWithBasicCheck(101, 1);
+  IteratorCheck(101);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead2) {
+  BuilderWithBasicCheck(102, 2);
+  IteratorCheck(102);
+}
+
+TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
+  BuilderWithBasicCheck(103, 3);
+  IteratorCheck(103);
+}
+
+TEST_F(LastSegmentReadWriteTest, WriteAndRead4) {
   BuilderWithBasicCheck(14, 12345);
   IteratorCheck(14);
 }
 
-TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
+TEST_F(LastSegmentReadWriteTest, WriteAndRead5) {
   BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock);
   IteratorCheck(15);
 }
