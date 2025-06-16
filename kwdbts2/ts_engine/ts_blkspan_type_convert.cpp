@@ -222,7 +222,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
     char* blk_value;
     s = block_->GetColAddr(blk_col_idx, blk_schema_valid_, &blk_value);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetColAddr failed. col id [%u]", scan_idx);
+      LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
       return s;
     }
     for (size_t i = 0; i < row_num_; i++) {
@@ -271,11 +271,10 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t sc
   auto blk_col_idx = blk_scan_cols_[scan_idx];
   assert(isVarLenType(dest_type.type));
   assert(row_idx < row_num_);
-  assert(scan_idx < blk_schema_valid_.size());
   TsBitmap blk_bitmap;
   auto s = block_->GetColBitmap(blk_col_idx, blk_schema_valid_, blk_bitmap);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetColBitmap failed. col id [%u]", scan_idx);
+    LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
   flag = blk_bitmap[start_row_idx_+ row_idx];
@@ -294,7 +293,7 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t sc
   } else {
     // table altered. column type changes.
     std::shared_ptr<void> new_mem;
-    int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(blk_schema_valid_[scan_idx].type),
+    int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(blk_schema_valid_[blk_col_idx].type),
                                         static_cast<DATATYPE>(dest_type.type),
                                         dest_type.size, orig_value.data, orig_value.len, &new_mem);
     if (err_code < 0) {
