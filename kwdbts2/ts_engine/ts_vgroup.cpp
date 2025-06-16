@@ -962,6 +962,10 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
 std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp, bool create_if_not_exist) {
   int idx = timestamp / interval_;
   RW_LATCH_S_LOCK(&partitions_latch_);
+  // ts smaller than zero,  / opeartion will get upper bound.
+  if (timestamp < 0) {
+    idx -= 1;
+  }
   auto it = partitions_.find(idx);
   if (it == partitions_.end()) {
     RW_LATCH_UNLOCK(&partitions_latch_);

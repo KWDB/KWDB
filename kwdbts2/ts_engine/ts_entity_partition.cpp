@@ -61,10 +61,17 @@ KStatus TsEntityPartition::SetFilter() {
     LOG_ERROR("GetDelRange failed.");
     return s;
   }
-
+  KwTsSpan partition_span;
+  partition_span.begin = convertSecondToPrecisionTS(files_->StartTs(), ts_type_);
+  partition_span.end = convertSecondToPrecisionTS(files_->EndTs(), ts_type_) - 1;
   std::vector<STScanRange> cur_scan_range;
   for (auto& scan : scan_filter_.ts_spans_) {
-    cur_scan_range.push_back(STScanRange(scan, {0, scan_lsn_}));
+    KwTsSpan cross_part;
+    cross_part.begin = std::max(partition_span.begin, scan.begin);
+    cross_part.end = std::min(partition_span.end, scan.end);
+    if (cross_part.begin <= cross_part.end) {
+      cur_scan_range.push_back(STScanRange(cross_part, {0, scan_lsn_}));
+    }  
   }
   for (auto& del : del_range) {
     cur_scan_range = LSNRangeUtil::MergeScanAndDelRange(cur_scan_range, del);
