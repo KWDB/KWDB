@@ -71,7 +71,7 @@ KStatus TsEntityPartition::SetFilter() {
     cross_part.end = std::min(partition_span.end, scan.end);
     if (cross_part.begin <= cross_part.end) {
       cur_scan_range.push_back(STScanRange(cross_part, {0, scan_lsn_}));
-    }  
+    }
   }
   for (auto& del : del_range) {
     cur_scan_range = LSNRangeUtil::MergeScanAndDelRange(cur_scan_range, del);
