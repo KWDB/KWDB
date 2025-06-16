@@ -178,6 +178,50 @@ class FieldFuncCountWindow : public FieldFunc {
   bool    is_sliding_{false};
 };
 
+class FieldFuncTimeWindowStart : public FieldFunc {
+ public:
+  // TIME_WINDOW_START(ts)
+  explicit FieldFuncTimeWindowStart(Field *a) : FieldFunc(a) {
+    type_ = FIELD_FUNC;
+    sql_type_ = a->get_sql_type();
+    storage_type_ = a->get_storage_type();
+    storage_len_ = a->get_storage_length();
+    set_allow_null(false);
+  }
+
+  k_int64 ValInt() override { return val_; }
+  enum Functype functype() override { return WINDOW_GROUP_FUNC; }
+
+  Field *field_to_copy() override {
+    return new FieldFuncTimeWindowStart(*this);
+  }
+
+ public:
+  k_int64 val_{0};
+};
+
+
+class FieldFuncTimeWindowEnd : public FieldFunc {
+ public:
+  // TIME_WINDOW_END(ts)
+  explicit FieldFuncTimeWindowEnd(Field *a) : FieldFunc(a) {
+    type_ = FIELD_FUNC;
+    sql_type_ = a->get_sql_type();
+    storage_type_ = a->get_storage_type();
+    storage_len_ = a->get_storage_length();
+    set_allow_null(false);
+  }
+
+  k_int64 ValInt() override { return val_; }
+
+  enum Functype functype() override { return WINDOW_GROUP_FUNC; }
+
+  Field *field_to_copy() override { return new FieldFuncTimeWindowEnd(*this); }
+
+ public:
+  k_int64 val_{0};
+};
+
 class FieldFuncTimeWindow : public FieldFunc {
  public:
   // TIME_WINDOW(ts, duration, sliding_time)

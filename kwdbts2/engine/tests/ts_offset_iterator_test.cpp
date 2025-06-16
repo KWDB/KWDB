@@ -89,7 +89,7 @@ TEST_F(TestOffsetIterator, basic) {
   std::vector<EntityResultIndex> entity_results;
   k_uint32 count;
   ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter1, {}, false, false, 5000, 10),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter1, {}, false, false, 5000, 10),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -121,7 +121,7 @@ TEST_F(TestOffsetIterator, basic) {
 
   // desc
   TsIterator* iter2;
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter2, {}, true, false, 3000, 50),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter2, {}, true, false, 3000, 50),
             KStatus::SUCCESS);
 
   do {
@@ -197,7 +197,7 @@ TEST_F(TestOffsetIterator, multi_partition) {
   std::vector<EntityResultIndex> entity_results;
   k_uint32 count;
   ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter1, {}, false, false, 15000, 10),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter1, {}, false, false, 15000, 10),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -229,7 +229,7 @@ TEST_F(TestOffsetIterator, multi_partition) {
 
   // desc
   TsIterator* iter2;
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter2, {}, true, false, 23000, 50),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter2, {}, true, false, 23000, 50),
             KStatus::SUCCESS);
 
   do {
@@ -300,7 +300,7 @@ TEST_F(TestOffsetIterator, disorder) {
   std::vector<EntityResultIndex> entity_results;
   k_uint32 count;
   ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter1, {}, false, false, 500, 10),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter1, {}, false, false, 500, 10),
             KStatus::SUCCESS);
 
   ResultSet res1{(k_uint32) scan_cols.size()};
@@ -331,7 +331,7 @@ TEST_F(TestOffsetIterator, disorder) {
   delete iter1;
 
   TsIterator* iter2;
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter2, {}, false, false, 1500, 20),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter2, {}, false, false, 1500, 20),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -363,7 +363,7 @@ TEST_F(TestOffsetIterator, disorder) {
   TsIterator* iter3;
   ResultSet res3{(k_uint32) scan_cols.size()};
 
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter3, {}, true, false, 1300, 50),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter3, {}, true, false, 1300, 50),
             KStatus::SUCCESS);
 
   do {
@@ -425,7 +425,7 @@ TEST_F(TestOffsetIterator, extreme) {
   std::vector<EntityResultIndex> entity_results;
   k_uint32 count;
   ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter1, {}, false, false, 1, 1),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter1, {}, false, false, 1, 1),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -462,7 +462,7 @@ TEST_F(TestOffsetIterator, extreme) {
   data_value2 = nullptr;
 
   TsIterator* iter2;
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter2, {}, false, false, 10000, 2),
+  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter2, {}, false, false, 10000, 2),
             KStatus::SUCCESS);
 
   do {
@@ -537,7 +537,7 @@ TEST_F(TestOffsetIterator, extreme) {
 //  std::vector<EntityResultIndex> entity_results;
 //  k_uint32 count;
 //  ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-//  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter1, {}, false, false, 15000, 10),
+//  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter1, {}, false, false, 15000, 10),
 //            KStatus::SUCCESS);
 //
 //  ResultSet res{(k_uint32) scan_cols.size()};
@@ -569,7 +569,7 @@ TEST_F(TestOffsetIterator, extreme) {
 //
 //  // desc
 //  TsIterator* iter2;
-//  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, scan_agg_types, 1, &iter2, {}, true, false, 23000, 50),
+//  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter2, {}, true, false, 23000, 50),
 //            KStatus::SUCCESS);
 //
 //  do {

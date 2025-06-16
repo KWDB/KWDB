@@ -254,6 +254,8 @@ class AggregateFunc {
 
   virtual k_uint32 GetStorageLength() const { return 0; }
 
+  void SetRefOffset(k_uint32 offset) { ref_offset_ = offset; }
+
  protected:
   LinearProbingHashTable* seen_{nullptr};
 
@@ -265,6 +267,9 @@ class AggregateFunc {
 
   // The offset of the aggregate result in the bucket
   k_uint32 offset_{};
+
+  // The offset of ref column aggregate result in the bucket for max_extend/min_extend.
+  k_uint32 ref_offset_{0};
 
   // The length of the aggregate result in the output data container.
   k_uint32 len_;
@@ -4632,6 +4637,912 @@ class ElapsedAggregate : public AggregateFunc {
  private:
   k_int64 timeUnit_{1};
   k_int32 time_unit_extra_{1};
+};
+
+
+////////////////////////// MaxExtendAggregate //////////////////////////
+
+template<typename T>
+class MaxExtendAggregate : public AggregateFunc {
+ private:
+  T max_val_;
+  bool is_dest_null_{true};
+  bool is_last_null_{true};
+  char *last_ptr_{nullptr};
+  k_uint16 last_len_{0};
+
+ public:
+  MaxExtendAggregate(k_uint32 col_idx, k_uint32 arg_idx, k_uint32 len,
+                     k_uint32 arg_idx2)
+      : AggregateFunc(col_idx, arg_idx, len) {
+    arg_idx_.push_back(arg_idx2);
+    if constexpr (std::is_same_v<T, std::string>) {
+      max_val_ = "";
+    } else {
+      max_val_ = std::numeric_limits<T>::lowest();
+    }
+  }
+
+  ~MaxExtendAggregate() override = default;
+
+  void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
+    auto arg_idx = arg_idx_[0];
+    auto arg_idx2 = arg_idx_[1];
+    k_bool is_dest_null = chunk->IsNull(line, arg_idx);
+    if (is_dest_null) {
+      return;
+    }
+    DatumPtr src = chunk->GetData(line, arg_idx);
+    DatumPtr src_extend = chunk->GetData(line, arg_idx2);
+
+    if constexpr (std::is_same_v<T, std::string>) {
+      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src);
+      auto src_val = std::string_view(src + sizeof(k_uint16), src_len);
+      k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + ref_offset_);
+      auto dest_val =
+          std::string_view(dest + ref_offset_ + sizeof(k_uint16), dest_len);
+      if (src_val.compare(dest_val) == 0) {
+        if (chunk->IsNull(line, arg_idx2)) {
+          AggregateFunc::SetNull(bitmap, col_idx_);
+        } else {
+          AggregateFunc::SetNotNull(bitmap, col_idx_);
+          std::memcpy(dest + offset_, src_extend, len_);
+        }
+      }
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("not support decimal type.")
+    } else {
+      T src_val = *reinterpret_cast<T*>(src);
+      T dest_val = *reinterpret_cast<T*>(dest + ref_offset_);
+      if constexpr (std::is_floating_point<T>::value) {
+        if (std::abs(src_val - dest_val) <= std::numeric_limits<T>::epsilon()) {
+          if (chunk->IsNull(line, arg_idx2)) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            std::memcpy(dest + offset_, src_extend, len_);
+          }
+        }
+      } else {
+        if (src_val == dest_val) {
+          if (chunk->IsNull(line, arg_idx2)) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            std::memcpy(dest + offset_, src_extend, len_);
+          }
+        }
+      }
+    }
+  }
+
+  void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
+                    GroupByMetadata& group_by_metadata, DistinctOpt& distinctOpt) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = data_container->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    bool is_dest_null = true;
+    char* dest_ptr;
+    T max_val;
+
+    if (target_row >= 0) {
+      is_dest_null = is_dest_null_;
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      last_ptr_ = dest_ptr;
+      max_val = max_val_;
+    } else {
+      max_val = std::numeric_limits<T>::lowest();
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          std::memcpy(dest_ptr, last_ptr_, len_);
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        max_val = std::numeric_limits<T>::lowest();
+        is_dest_null = true;
+      }
+
+      if (!data_container->IsNull(row, arg_idx)) {
+        is_dest_null = false;
+        char* src_ptr = data_container->GetData(row, arg_idx);
+
+        T src_val = *reinterpret_cast<T*>(src_ptr);
+        if constexpr (std::is_floating_point<T>::value) {
+          if (src_val - max_val > std::numeric_limits<T>::epsilon()) {
+            max_val = src_val;
+            is_last_null_ = data_container->IsNull(row, arg_idx2);
+            last_ptr_ = data_container->GetData(row, arg_idx2);
+          }
+        } else {
+          if (src_val > max_val || src_val == std::numeric_limits<T>::lowest()) {
+            max_val = src_val;
+            is_last_null_ = data_container->IsNull(row, arg_idx2);
+            last_ptr_ = data_container->GetData(row, arg_idx2);
+          }
+        }
+      }
+
+      data_container->NextLine();
+    }
+
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      std::memcpy(dest_ptr, last_ptr_, len_);
+    }
+    max_val_ = max_val;
+    is_dest_null_ = is_dest_null;
+  }
+
+  void handleString(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
+                    GroupByMetadata& group_by_metadata, DistinctOpt& distinctOpt) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = data_container->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    char* dest_ptr;
+    bool is_dest_null = true;
+    std::string_view max_val;
+    if (target_row >= 0) {
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      last_ptr_ = dest_ptr;
+      is_dest_null = is_dest_null_;
+      max_val = max_val_;
+    } else {
+      max_val = "";
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          std::memcpy(dest_ptr, last_ptr_, len_);
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        max_val = "";
+        is_dest_null = true;
+        is_last_null_ = true;
+      }
+
+      if (!data_container->IsNull(row, arg_idx)) {
+        char* src_ptr = data_container->GetData(row, arg_idx);
+
+        k_uint16 src_len = *reinterpret_cast<k_uint16*>(src_ptr);
+        std::string_view src_val = std::string_view(src_ptr + STRING_WIDE, src_len);
+
+        if (is_dest_null) {
+          is_dest_null = false;
+          is_last_null_ = data_container->IsNull(row, arg_idx2);
+          last_ptr_ = data_container->GetData(row, arg_idx2);
+          max_val = src_val;
+        } else if (src_val.compare(max_val) > 0) {
+          max_val = src_val;
+          is_last_null_ = data_container->IsNull(row, arg_idx2);
+          last_ptr_ = data_container->GetData(row, arg_idx2);
+        }
+      }
+
+      data_container->NextLine();
+    }
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      std::memcpy(dest_ptr, last_ptr_, len_);
+    }
+    is_dest_null_ = is_dest_null;
+    max_val_ = max_val;
+  }
+
+  int addOrUpdate(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
+                  GroupByMetadata& group_by_metadata, DistinctOpt& distinctOpt) override {
+    if constexpr (std::is_same_v<T, std::string>) {
+      handleString(chunks, start_line_in_begin_chunk, data_container, group_by_metadata, distinctOpt);
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("max_extend doesn't support decimal.");
+    } else {
+      handleNumber(chunks, start_line_in_begin_chunk, data_container, group_by_metadata, distinctOpt);
+    }
+    return 0;
+  }
+
+  void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, RowBatch* row_batch,
+                    GroupByMetadata& group_by_metadata, Field** renders) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = row_batch->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    bool is_dest_null = true;
+    char* dest_ptr;
+    T max_val;
+
+    auto* arg_field = renders[arg_idx];
+    auto* arg_field2 = renders[arg_idx2];
+    auto storage_type2 = arg_field2->get_storage_type();
+    if (target_row >= 0) {
+      is_dest_null = is_dest_null_;
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      if (IsStringType(storage_type2)) {
+        last_ptr_ = dest_ptr + STRING_WIDE;
+      } else {
+        last_ptr_ = dest_ptr;
+      }
+      max_val = max_val_;
+    } else {
+      max_val = std::numeric_limits<T>::lowest();
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          if (IsVarStringType(storage_type2)) {
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else if (IsFixedStringType(storage_type2)) {
+            last_len_ = strlen(last_ptr_);
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else {
+            std::memcpy(dest_ptr, last_ptr_, len_);
+          }
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        max_val = std::numeric_limits<T>::lowest();
+        is_dest_null = true;
+      }
+
+      if (!(arg_field->CheckNull())) {
+        is_dest_null = false;
+        char* src_ptr = arg_field->get_ptr(row_batch);
+
+        T src_val = *reinterpret_cast<T*>(src_ptr);
+        if constexpr (std::is_floating_point<T>::value) {
+          if (src_val - max_val > std::numeric_limits<T>::epsilon()) {
+            max_val = src_val;
+            is_last_null_ = arg_field2->CheckNull();
+            last_ptr_ = arg_field2->get_ptr(row_batch);
+            last_len_ = arg_field2->ValStrLength(last_ptr_);
+          }
+        } else {
+          if (src_val > max_val || src_val == std::numeric_limits<T>::lowest()) {
+            max_val = src_val;
+            is_last_null_ = arg_field2->CheckNull();
+            last_ptr_ = arg_field2->get_ptr(row_batch);
+            last_len_ = arg_field2->ValStrLength(last_ptr_);
+          }
+        }
+      }
+
+      row_batch->NextLine();
+    }
+
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      if (IsVarStringType(storage_type2)) {
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else if (IsFixedStringType(storage_type2)) {
+        last_len_ = strlen(last_ptr_);
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else {
+        std::memcpy(dest_ptr, last_ptr_, len_);
+      }
+    }
+    max_val_ = max_val;
+    is_dest_null_ = is_dest_null;
+  }
+
+  void handleString(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, RowBatch* row_batch,
+                    GroupByMetadata& group_by_metadata, Field** renders) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = row_batch->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    char* dest_ptr;
+    bool is_dest_null = true;
+    std::string_view max_val;
+
+    auto* arg_field = renders[arg_idx];
+    auto* arg_field2 = renders[arg_idx2];
+    auto storage_type = arg_field->get_storage_type();
+    auto storage_type2 = arg_field2->get_storage_type();
+    if (target_row >= 0) {
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+
+      if (IsStringType(storage_type2)) {
+        last_ptr_ = dest_ptr + STRING_WIDE;
+      } else {
+        last_ptr_ = dest_ptr;
+      }
+      is_dest_null = is_dest_null_;
+      max_val = max_val_;
+    } else {
+      max_val = "";
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          if (IsVarStringType(storage_type2)) {
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else if (IsFixedStringType(storage_type2)) {
+            last_len_ = strlen(last_ptr_);
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else {
+            std::memcpy(dest_ptr, last_ptr_, len_);
+          }
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        max_val = "";
+        is_dest_null = true;
+      }
+
+      if (!(arg_field->CheckNull())) {
+        char* src_ptr = arg_field->get_ptr(row_batch);
+        std::string_view src_val;
+
+        if (IsVarStringType(storage_type)) {
+          auto str_length = arg_field->ValStrLength(src_ptr);
+          src_val = std::string_view{src_ptr, static_cast<k_uint32>(str_length)};
+        } else {
+          src_val = std::string_view{src_ptr};
+        }
+
+        if (is_dest_null) {
+          is_dest_null = false;
+          max_val = src_val;
+          is_last_null_ = arg_field2->CheckNull();
+          last_ptr_ = arg_field2->get_ptr(row_batch);
+          last_len_ = arg_field2->ValStrLength(last_ptr_);
+        } else if (src_val.compare(max_val) > 0) {
+          max_val = src_val;
+          is_last_null_ = arg_field2->CheckNull();
+          last_ptr_ = arg_field2->get_ptr(row_batch);
+          last_len_ = arg_field2->ValStrLength(last_ptr_);
+        }
+      }
+
+      row_batch->NextLine();
+    }
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      if (IsVarStringType(storage_type2)) {
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else if (IsFixedStringType(storage_type2)) {
+        last_len_ = strlen(last_ptr_);
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else {
+        std::memcpy(dest_ptr, last_ptr_, len_);
+      }
+    }
+    is_dest_null_ = is_dest_null;
+    max_val_ = max_val;
+  }
+
+  void addOrUpdate(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, RowBatch* row_batch,
+                   GroupByMetadata& group_by_metadata, Field** renders) override {
+    if constexpr (std::is_same_v<T, std::string>) {
+      handleString(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("max_extend doesn't support decimal.");
+    } else {
+      handleNumber(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
+    }
+  }
+};
+
+////////////////////////// MinExtendAggregate //////////////////////////
+template<typename T>
+class MinExtendAggregate : public AggregateFunc {
+ private:
+  T min_val_;
+  bool is_dest_null_{true};
+  bool is_last_null_{true};
+  char *last_ptr_{nullptr};
+  k_uint16 last_len_{0};
+
+ public:
+  MinExtendAggregate(k_uint32 col_idx, k_uint32 arg_idx, k_uint32 len,
+                     k_uint32 arg_idx2)
+      : AggregateFunc(col_idx, arg_idx, len) {
+    arg_idx_.push_back(arg_idx2);
+    if constexpr (std::is_same_v<T, std::string>) {
+      min_val_ = "";
+    } else {
+      min_val_ = std::numeric_limits<T>::max();
+    }
+  }
+
+  ~MinExtendAggregate() override = default;
+
+  void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk,
+                   k_uint32 line) override {
+    auto arg_idx = arg_idx_[0];
+    auto arg_idx2 = arg_idx_[1];
+    k_bool is_dest_null = chunk->IsNull(line, arg_idx);
+    if (is_dest_null) {
+      return;
+    }
+    DatumPtr src = chunk->GetData(line, arg_idx);
+    DatumPtr src_extend = chunk->GetData(line, arg_idx2);
+
+    if constexpr (std::is_same_v<T, std::string>) {
+      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src);
+      auto src_val = std::string_view(src + sizeof(k_uint16), src_len);
+      k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + ref_offset_);
+      auto dest_val =
+          std::string_view(dest + ref_offset_ + sizeof(k_uint16), dest_len);
+      if (src_val.compare(dest_val) == 0) {
+        if (chunk->IsNull(line, arg_idx2)) {
+          AggregateFunc::SetNull(bitmap, col_idx_);
+        } else {
+          AggregateFunc::SetNotNull(bitmap, col_idx_);
+          std::memcpy(dest + offset_, src_extend, len_);
+        }
+      }
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("not support decimal type.")
+    } else {
+      T src_val = *reinterpret_cast<T*>(src);
+      T dest_val = *reinterpret_cast<T*>(dest + ref_offset_);
+      if constexpr (std::is_floating_point<T>::value) {
+        if (std::abs(src_val - dest_val) <= std::numeric_limits<T>::epsilon()) {
+          if (chunk->IsNull(line, arg_idx2)) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            std::memcpy(dest + offset_, src_extend, len_);
+          }
+        }
+      } else {
+        if (src_val == dest_val) {
+          if (chunk->IsNull(line, arg_idx2)) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            std::memcpy(dest + offset_, src_extend, len_);
+          }
+        }
+      }
+    }
+  }
+
+  void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
+                    GroupByMetadata& group_by_metadata, DistinctOpt& distinctOpt) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = data_container->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    bool is_dest_null = true;
+    char* dest_ptr;
+    T min_val;
+
+    if (target_row >= 0) {
+      is_dest_null = is_dest_null_;
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      last_ptr_ = dest_ptr;
+      min_val = min_val_;
+    } else {
+      min_val = std::numeric_limits<T>::max();
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          std::memcpy(dest_ptr, last_ptr_, len_);
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        min_val = std::numeric_limits<T>::max();
+        is_dest_null = true;
+      }
+
+      if (!data_container->IsNull(row, arg_idx)) {
+        is_dest_null = false;
+
+        char* src_ptr = data_container->GetData(row, arg_idx);
+
+        T src_val = *reinterpret_cast<T*>(src_ptr);
+        if constexpr (std::is_floating_point<T>::value) {
+          if (min_val - src_val > std::numeric_limits<T>::epsilon()) {
+            min_val = src_val;
+            is_last_null_ = data_container->IsNull(row, arg_idx2);
+            last_ptr_ = data_container->GetData(row, arg_idx2);
+          }
+        } else {
+          if (src_val < min_val || src_val == std::numeric_limits<T>::max()) {
+            min_val = src_val;
+            is_last_null_ = data_container->IsNull(row, arg_idx2);
+            last_ptr_ = data_container->GetData(row, arg_idx2);
+          }
+        }
+      }
+
+      data_container->NextLine();
+    }
+
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      std::memcpy(dest_ptr, last_ptr_, len_);
+    }
+    min_val_ = min_val;
+    is_dest_null_ = is_dest_null;
+  }
+
+  void handleString(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
+                    GroupByMetadata& group_by_metadata, DistinctOpt& distinctOpt) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = data_container->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    bool is_dest_null = true;
+    char* dest_ptr;
+    std::string_view min_val;
+
+    if (target_row >= 0) {
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      last_ptr_ = dest_ptr;
+      is_dest_null = is_dest_null_;
+      min_val = min_val_;
+    } else {
+      min_val = "";
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          std::memcpy(dest_ptr, last_ptr_, len_);
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        min_val = "";
+        is_dest_null = true;
+      }
+
+      if (!data_container->IsNull(row, arg_idx)) {
+        char* src_ptr = data_container->GetData(row, arg_idx);
+
+        k_uint16 src_len = *reinterpret_cast<k_uint16*>(src_ptr);
+        std::string_view src_val = std::string_view(src_ptr + STRING_WIDE, src_len);
+
+        if (is_dest_null) {
+          is_dest_null = false;
+          is_last_null_ = data_container->IsNull(row, arg_idx2);
+          last_ptr_ = data_container->GetData(row, arg_idx2);
+          min_val = src_val;
+        } else if (src_val.compare(min_val) < 0) {
+          min_val = src_val;
+          is_last_null_ = data_container->IsNull(row, arg_idx2);
+          last_ptr_ = data_container->GetData(row, arg_idx2);
+        }
+      }
+
+      data_container->NextLine();
+    }
+
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      std::memcpy(dest_ptr, last_ptr_, len_);
+    }
+    is_dest_null_ = is_dest_null;
+    min_val_ = min_val;
+  }
+
+  int addOrUpdate(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
+                  GroupByMetadata& group_by_metadata, DistinctOpt& distinctOpt) override {
+    if constexpr (std::is_same_v<T, std::string>) {
+      handleString(chunks, start_line_in_begin_chunk, data_container, group_by_metadata, distinctOpt);
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("min_extend doesn't support decimal.");
+    } else {
+      handleNumber(chunks, start_line_in_begin_chunk, data_container, group_by_metadata, distinctOpt);
+    }
+    return 0;
+  }
+
+  void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, RowBatch* row_batch,
+                    GroupByMetadata& group_by_metadata, Field** renders) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = row_batch->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    bool is_dest_null = true;
+    char* dest_ptr;
+    T min_val;
+    auto* arg_field = renders[arg_idx];
+    auto* arg_field2 = renders[arg_idx2];
+    auto storage_type2 = arg_field2->get_storage_type();
+    if (target_row >= 0) {
+      is_dest_null = is_dest_null_;
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      if (IsStringType(storage_type2)) {
+        last_ptr_ = dest_ptr + STRING_WIDE;
+      } else {
+        last_ptr_ = dest_ptr;
+      }
+      min_val = min_val_;
+    } else {
+      min_val = std::numeric_limits<T>::max();
+    }
+
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          if (IsVarStringType(storage_type2)) {
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else if (IsFixedStringType(storage_type2)) {
+            last_len_ = strlen(last_ptr_);
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else {
+            std::memcpy(dest_ptr, last_ptr_, len_);
+          }
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        min_val = std::numeric_limits<T>::max();
+        is_dest_null = true;
+      }
+
+      if (!(arg_field->CheckNull())) {
+        is_dest_null = false;
+
+        char* src_ptr = arg_field->get_ptr(row_batch);
+
+        T src_val = *reinterpret_cast<T*>(src_ptr);
+        if constexpr (std::is_floating_point<T>::value) {
+          if (min_val - src_val > std::numeric_limits<T>::epsilon()) {
+            min_val = src_val;
+            is_last_null_ = arg_field2->CheckNull();
+            last_ptr_ = arg_field2->get_ptr(row_batch);
+            last_len_ = arg_field2->ValStrLength(last_ptr_);
+          }
+        } else {
+          if (src_val < min_val || src_val == std::numeric_limits<T>::max()) {
+            min_val = src_val;
+            is_last_null_ = arg_field2->CheckNull();
+            last_ptr_ = arg_field2->get_ptr(row_batch);
+            last_len_ = arg_field2->ValStrLength(last_ptr_);
+          }
+        }
+      }
+
+      row_batch->NextLine();
+    }
+
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      if (IsVarStringType(storage_type2)) {
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else if (IsFixedStringType(storage_type2)) {
+        last_len_ = strlen(last_ptr_);
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else {
+        std::memcpy(dest_ptr, last_ptr_, len_);
+      }
+    }
+    min_val_ = min_val;
+    is_dest_null_ = is_dest_null;
+  }
+
+  void handleString(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, RowBatch* row_batch,
+                    GroupByMetadata& group_by_metadata, Field** renders) {
+    k_uint32 arg_idx = arg_idx_[0];
+    k_uint32 arg_idx2 = arg_idx_[1];
+    auto data_container_count = row_batch->Count();
+    k_uint32 chunk_idx = 0;
+    k_int32 target_row = start_line_in_begin_chunk;
+    auto current_data_chunk_ = chunks[chunk_idx];
+    auto chunk_capacity = current_data_chunk_->Capacity();
+
+    bool is_dest_null = true;
+    char* dest_ptr;
+    std::string_view min_val;
+
+    auto* arg_field = renders[arg_idx];
+    auto* arg_field2 = renders[arg_idx2];
+    auto storage_type = arg_field->get_storage_type();
+    auto storage_type2 = arg_field2->get_storage_type();
+    if (target_row >= 0) {
+      dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+      if (IsStringType(storage_type2)) {
+        last_ptr_ = dest_ptr + STRING_WIDE;
+      } else {
+        last_ptr_ = dest_ptr;
+      }
+      is_dest_null = is_dest_null_;
+      min_val = min_val_;
+    } else {
+      min_val = "";
+    }
+
+    for (k_uint32 row = 0; row < data_container_count; ++row) {
+      if (group_by_metadata.isNewGroup(row)) {
+        // save the agg result of last bucket
+        if (!is_dest_null && !is_last_null_) {
+          current_data_chunk_->SetNotNull(target_row, col_idx_);
+          if (IsVarStringType(storage_type2)) {
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else if (IsFixedStringType(storage_type2)) {
+            last_len_ = strlen(last_ptr_);
+            std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+          } else {
+            std::memcpy(dest_ptr, last_ptr_, len_);
+          }
+        }
+
+        // if the current chunk is full.
+        if (target_row == chunk_capacity - 1) {
+          current_data_chunk_ = chunks[++chunk_idx];
+          target_row = 0;
+        } else {
+          ++target_row;
+        }
+        dest_ptr = current_data_chunk_->GetData(target_row, col_idx_);
+        min_val = "";
+        is_dest_null = true;
+      }
+
+      if (!(arg_field->CheckNull())) {
+        char* src_ptr = arg_field->get_ptr(row_batch);
+        std::string_view src_val;
+
+        if (IsVarStringType(storage_type)) {
+          auto str_length = arg_field->ValStrLength(src_ptr);
+          src_val = std::string_view{src_ptr, static_cast<k_uint32>(str_length)};
+        } else {
+          src_val = std::string_view{src_ptr};
+        }
+
+        if (is_dest_null) {
+          is_dest_null = false;
+          min_val = src_val;
+          is_last_null_ = arg_field2->CheckNull();
+          last_ptr_ = arg_field2->get_ptr(row_batch);
+          last_len_ = arg_field2->ValStrLength(last_ptr_);
+        } else if (src_val.compare(min_val) < 0) {
+          min_val = src_val;
+          is_last_null_ = arg_field2->CheckNull();
+          last_ptr_ = arg_field2->get_ptr(row_batch);
+          last_len_ = arg_field2->ValStrLength(last_ptr_);
+        }
+      }
+
+      row_batch->NextLine();
+    }
+
+    if (!is_dest_null && !is_last_null_) {
+      current_data_chunk_->SetNotNull(target_row, col_idx_);
+      if (IsVarStringType(storage_type2)) {
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else if (IsFixedStringType(storage_type2)) {
+        last_len_ = strlen(last_ptr_);
+        std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+      } else {
+        std::memcpy(dest_ptr, last_ptr_, len_);
+      }
+    }
+    is_dest_null_ = is_dest_null;
+    min_val_ = min_val;
+  }
+
+  void addOrUpdate(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, RowBatch* row_batch,
+                   GroupByMetadata& group_by_metadata, Field** renders) override {
+    if constexpr (std::is_same_v<T, std::string>) {
+      handleString(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("min_extend doesn't support decimal.");
+    } else {
+      handleNumber(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
+    }
+  }
 };
 
 }  // namespace kwdbts

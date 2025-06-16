@@ -69,8 +69,8 @@ class TsTableV2Impl : public TsTable {
 
   KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                             std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                            std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                            TsIterator** iter, std::vector<timestamp64> ts_points,
+                            std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                            k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                             bool reverse, bool sorted) override;
 
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,

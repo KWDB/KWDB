@@ -58,6 +58,8 @@ type groupNode struct {
 
 	groupWindowTSColID int32
 
+	groupWindowExtend []int32
+
 	// isScalar is set for "scalar groupby", where we want a result
 	// even if there are no input rows, e.g. SELECT MIN(x) FROM t.
 	isScalar bool

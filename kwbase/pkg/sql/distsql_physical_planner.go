@@ -3031,20 +3031,24 @@ func dealWithLocal(aggCtx *AggregationContext) error {
 	// func int8 8bit, distinct 1bit,
 	for i, localFunc := range aggCtx.DistAggInfo.LocalStage {
 		localAgg := execinfrapb.AggregatorSpec_Aggregation{
-			Func: localFunc, FilterColIdx: aggCtx.InputAgg.FilterColIdx,
+			Func: localFunc.Fn, FilterColIdx: aggCtx.InputAgg.FilterColIdx,
 		}
 
-		if localFunc == execinfrapb.AggregatorSpec_ANY_NOT_NULL {
+		if localFunc.Fn == execinfrapb.AggregatorSpec_ANY_NOT_NULL {
 			constColIndex := len(aggCtx.InputAgg.ColIdx) - 1
 			localAgg.ColIdx = []uint32{aggCtx.InputAgg.ColIdx[constColIndex]}
 			aggCtx.InputAgg.ColIdx = localAgg.ColIdx
+		} else if aggCtx.InputAgg.Func == execinfrapb.AggregatorSpec_MIN_EXTEND || aggCtx.InputAgg.Func == execinfrapb.AggregatorSpec_MAX_EXTEND {
+			for _, v := range localFunc.LocalIdxs {
+				localAgg.ColIdx = append(localAgg.ColIdx, aggCtx.InputAgg.ColIdx[v])
+			}
 		} else {
 			localAgg.ColIdx = aggCtx.InputAgg.ColIdx
 		}
 		localAgg.Arguments = aggCtx.InputAgg.Arguments
 		localAgg.TimestampConstant = aggCtx.InputAgg.TimestampConstant
 
-		key := aggHashElement{funcID: int8(localFunc), distinct: localAgg.Distinct, filterColIdx: aggCtx.InputAgg.FilterColIdx, colCount: int8(len(localAgg.ColIdx)), argumentsCount: int8(len(localAgg.Arguments))}
+		key := aggHashElement{funcID: int8(localFunc.Fn), distinct: localAgg.Distinct, filterColIdx: aggCtx.InputAgg.FilterColIdx, colCount: int8(len(localAgg.ColIdx)), argumentsCount: int8(len(localAgg.Arguments))}
 		if key.colCount > 3 {
 			return errors.Errorf("aggregate param column id len more than three")
 		}
@@ -3072,7 +3076,7 @@ func dealWithLocal(aggCtx *AggregationContext) error {
 				argTypes = append(argTypes, aggregationsColumnType)
 			}
 
-			_, outputType, err := execinfrapb.GetAggregateInfo(localFunc, argTypes...)
+			_, outputType, err := execinfrapb.GetAggregateInfo(localFunc.Fn, argTypes...)
 			if err != nil {
 				return err
 			}
@@ -4383,6 +4387,12 @@ func (dsp *DistSQLPlanner) addAggregators(
 	if n.groupWindowID >= 0 {
 		finalAggsSpec.GroupWindowId = n.groupWindowID
 		finalAggsSpec.Group_WindowTscolid = n.groupWindowTSColID
+		for _, function := range n.funcs {
+			if function.funcName == optbuilder.Gapfill && n.reqOrdering == nil {
+				return errors.Errorf("%s must use ordered", optbuilder.Gapfill)
+			}
+		}
+		finalAggsSpec.Group_WindowId = append(finalAggsSpec.Group_WindowId, n.groupWindowExtend...)
 	}
 	if n.optType.WithSumInt() {
 		// the flag is used to make the sum_int return 0.
@@ -4893,6 +4903,7 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 	}
 
 	addOutPutType := true
+
 	if plan.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		pruneFinalAgg := n.optType.PruneFinalAggOpt()
 		addSynchronizer := n.addSynchronizer

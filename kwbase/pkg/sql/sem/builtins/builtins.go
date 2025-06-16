@@ -3428,7 +3428,28 @@ may increase either contention or retry errors, or both.`,
 			Info: "This function calculates the distance between points, lines and polygons.",
 		},
 	),
-
+	"time_window_start": makeBuiltin(tree.FunctionProperties{NullableArgs: true},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"ts", types.TimestampTZ}},
+			ReturnType: tree.FixedReturnType(types.TimestampTZ),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				evalCtx.GroupWindow.GroupWindowFunc = tree.TimeWindow
+				return args[0], nil
+			},
+			Info: "group based on the start and end conditions.",
+		},
+	),
+	"time_window_end": makeBuiltin(tree.FunctionProperties{NullableArgs: true},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"ts", types.TimestampTZ}},
+			ReturnType: tree.FixedReturnType(types.TimestampTZ),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				evalCtx.GroupWindow.GroupWindowFunc = tree.TimeWindow
+				return args[0], nil
+			},
+			Info: "group based on the start and end conditions.",
+		},
+	),
 	"st_dwithin": makeBuiltin(
 		tree.FunctionProperties{Category: categoryGEO, ForbiddenExecInTSEngine: true},
 		tree.Overload{
@@ -4529,15 +4550,16 @@ may increase either contention or retry errors, or both.`,
 				var result1, result2 *tree.DBool
 				var ok bool
 				if result1, ok = args[0].(*tree.DBool); !ok {
-					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "start arg should be bool.")
+					evalCtx.GroupWindow.EventWindowHelper.StartFlag = false
+				} else {
+					evalCtx.GroupWindow.EventWindowHelper.StartFlag = bool(*result1)
 				}
 				if result2, ok = args[1].(*tree.DBool); !ok {
-					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "end arg should be bool.")
+					evalCtx.GroupWindow.EventWindowHelper.EndFlag = false
+				} else {
+					evalCtx.GroupWindow.EventWindowHelper.EndFlag = bool(*result2)
 				}
-				evalCtx.GroupWindow.EventWindowHelper = tree.EventWindowHelper{
-					StartFlag: bool(*result1),
-					EndFlag:   bool(*result2),
-				}
+
 				return tree.NewDInt(0), nil
 			},
 			Info: "group based on the start and end conditions.",
@@ -4677,12 +4699,10 @@ may increase either contention or retry errors, or both.`,
 				if dur.Duration.Sub(sliding.Duration).AsFloat64() < 0 {
 					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "sliding time value no larger than the duration value.")
 				}
-				evalCtx.GroupWindow.TimeWindowHelper = tree.TimeWindowHelper{
-					IfTZ:        false,
-					Duration:    dur,
-					SlidingTime: sliding,
-					IsSlide:     true,
-				}
+				evalCtx.GroupWindow.TimeWindowHelper.IfTZ = false
+				evalCtx.GroupWindow.TimeWindowHelper.Duration = dur
+				evalCtx.GroupWindow.TimeWindowHelper.SlidingTime = sliding
+				evalCtx.GroupWindow.TimeWindowHelper.IsSlide = true
 				evalCtx.GroupWindow.GroupWindowFunc = tree.TimeWindow
 				return args[0], nil
 			},
@@ -4720,12 +4740,10 @@ may increase either contention or retry errors, or both.`,
 				if dur.Duration.Sub(sliding.Duration).AsFloat64() < 0 {
 					return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "sliding time value no larger than the duration value.")
 				}
-				evalCtx.GroupWindow.TimeWindowHelper = tree.TimeWindowHelper{
-					IfTZ:        true,
-					Duration:    dur,
-					SlidingTime: sliding,
-					IsSlide:     true,
-				}
+				evalCtx.GroupWindow.TimeWindowHelper.IfTZ = true
+				evalCtx.GroupWindow.TimeWindowHelper.Duration = dur
+				evalCtx.GroupWindow.TimeWindowHelper.SlidingTime = sliding
+				evalCtx.GroupWindow.TimeWindowHelper.IsSlide = true
 				evalCtx.GroupWindow.GroupWindowFunc = tree.TimeWindow
 				return args[0], nil
 			},
@@ -4752,9 +4770,7 @@ may increase either contention or retry errors, or both.`,
 				if dur.Duration.Sub(areaTime.Duration).AsFloat64() < 0 {
 					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "duration time must exceed 10ms.")
 				}
-				evalCtx.GroupWindow.TimeWindowHelper = tree.TimeWindowHelper{
-					Duration: dur,
-				}
+				evalCtx.GroupWindow.TimeWindowHelper.Duration = dur
 				evalCtx.GroupWindow.GroupWindowFunc = tree.TimeWindow
 				return args[0], nil
 			},
@@ -4781,9 +4797,7 @@ may increase either contention or retry errors, or both.`,
 				if dur.Duration.Sub(areaTime.Duration).AsFloat64() < 0 {
 					return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "duration time must exceed 10ms.")
 				}
-				evalCtx.GroupWindow.TimeWindowHelper = tree.TimeWindowHelper{
-					Duration: dur,
-				}
+				evalCtx.GroupWindow.TimeWindowHelper.Duration = dur
 				evalCtx.GroupWindow.GroupWindowFunc = tree.TimeWindow
 				return args[0], nil
 			},
