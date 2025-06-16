@@ -59,7 +59,9 @@ class TsFileVectorIndexTest : public ::testing::Test {
 
 TEST_F(TsFileVectorIndexTest, noSpaceForRootNode) {
   TestMemFile file(10);
-  VectorIndexForFile<uint64_t> file_index(&file);
+  uint64_t offset = INVALID_POSITION;
+  VectorIndexForFile<uint64_t> file_index;
+  file_index.Init(&file, &offset);
 
   auto ret = file_index.GetIndexObject(0, false);
   EXPECT_EQ(ret, nullptr);
@@ -69,7 +71,9 @@ TEST_F(TsFileVectorIndexTest, noSpaceForRootNode) {
 
 TEST_F(TsFileVectorIndexTest, noSpaceForNode) {
   TestMemFile file(NUM_PER_INDEX_BLOCK * 8 + 8 + 8);
-  VectorIndexForFile<uint64_t> file_index(&file);
+  uint64_t offset = INVALID_POSITION;
+  VectorIndexForFile<uint64_t> file_index;
+  file_index.Init(&file, &offset);
 
   auto ret = file_index.GetIndexObject(0, false);
   EXPECT_EQ(ret, nullptr);
@@ -95,7 +99,9 @@ TEST_F(TsFileVectorIndexTest, noSpaceForNode) {
 
 TEST_F(TsFileVectorIndexTest, extendMaxId) {
   TestMemFile file(10 << 20);
-  VectorIndexForFile<uint64_t> file_index(&file);
+  uint64_t offset = INVALID_POSITION;
+  VectorIndexForFile<uint64_t> file_index;
+  file_index.Init(&file, &offset);
 
   auto ret = file_index.GetIndexObject(file_index.GetMaxId(), false);
   EXPECT_EQ(ret, nullptr);
@@ -109,8 +115,9 @@ TEST_F(TsFileVectorIndexTest, extendMaxId) {
 
 TEST_F(TsFileVectorIndexTest, insertAndSelect) {
   TestMemFile file(10 << 20);
-  VectorIndexForFile<uint64_t> file_index(&file);
-
+  uint64_t offset = INVALID_POSITION;
+  VectorIndexForFile<uint64_t> file_index;
+  file_index.Init(&file, &offset);
   int number = 10000;
   int start_value = 12345;
   for (size_t i = 0; i < number; i++) {
@@ -137,17 +144,25 @@ TEST_F(TsFileVectorIndexTest, insertAndSelect) {
 
 TEST_F(TsFileVectorIndexTest, multiIndexinsertAndSelect) {
   TestMemFile file(10 << 20);
-  VectorIndexForFile<uint64_t> file_index(&file);
-
-  VectorIndexForFile<uint32_t> file_index_1(&file);
+  uint64_t offset = INVALID_POSITION;
+  VectorIndexForFile<uint64_t> file_index;
+  file_index.Init(&file, &offset);
+  uint64_t offset1 = INVALID_POSITION;
+  VectorIndexForFile<uint32_t> file_index_1;
+  file_index_1.Init(&file, &offset1);
 
   int number = 10000;
   int start_value = 12345;
   int index_number = 3;
 
   std::vector<VectorIndexForFile<uint64_t>*> indexs;
+  std::vector<uint64_t> offsets;
+  offsets.resize(index_number);
   for (size_t i = 0; i < index_number; i++) {
-    indexs.push_back(new VectorIndexForFile<uint64_t>(&file));
+    offsets[i] = INVALID_POSITION;
+    VectorIndexForFile<uint64_t>* file_index = new VectorIndexForFile<uint64_t>();
+    file_index->Init(&file, &offsets[i]);
+    indexs.push_back(file_index);
   }
   
 

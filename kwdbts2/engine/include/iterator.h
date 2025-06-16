@@ -344,6 +344,8 @@ class TsStorageIterator {
   bool is_reversed_ = false;
   // need sorting
   bool sort_flag_ = false;
+  // todo(liangbo) set lsn parameter.
+  TS_LSN scan_lsn_{UINT64_MAX};
 };
 
 // used for raw data queries
