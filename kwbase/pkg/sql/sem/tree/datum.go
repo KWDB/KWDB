@@ -2507,7 +2507,7 @@ func ParseTimestampTZForTS(
 func LimitTsTimestampWidth(t time.Time, typ *types.T, oriString, colName string) (*DInt, error) {
 	var res *DInt
 	unixSec := t.Unix()
-	switch typ.Precision() {
+	switch typ.InternalType.Precision {
 	case MilliTimestampWidth, DefaultTimestampWidth:
 		if unixSec < TsMinSecondTimestamp || unixSec > TsMaxSecondTimestamp {
 			if oriString != "" {

@@ -115,7 +115,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema, uint32_t ts_version = 1,
-                         uint64_t partition_interval = kwdbts::EngineOptions::iot_interval);
+                         uint64_t partition_interval = kwdbts::EngineOptions::iot_interval, uint64_t hash_num = 2000);
 
   /**
    * @brief Create an EntityGroup corresponding to Range
@@ -535,6 +535,8 @@ class TsTable {
     return entity_bt_manager_;
   }
 
+  virtual uint64_t GetHashNum();
+
   struct SubgroupEntities{
     uint64_t entity_group_id;
     uint32_t subgroup_id;
@@ -548,6 +550,7 @@ class TsTable {
   string db_path_;
   KTableKey table_id_;
   string tbl_sub_path_;
+  uint64_t hash_num_ = 0;
 
 //  MMapTagColumnTable* tag_bt_;
   MMapRootTableManager* entity_bt_manager_{nullptr};
@@ -564,9 +567,9 @@ class TsTable {
   virtual void constructEntityGroup(kwdbContext_p ctx,
                                     const RangeGroup& hash_range,
                                     const string& range_tbl_sub_path,
-                                    std::shared_ptr<TsEntityGroup>* entity_group) {
+                                    std::shared_ptr<TsEntityGroup>* entity_group, uint64_t hash_num) {
     auto t_range = std::make_shared<TsEntityGroup>(ctx, entity_bt_manager_, db_path_, table_id_,
-                                                   hash_range, range_tbl_sub_path);
+                                                   hash_range, range_tbl_sub_path, hash_num);
     *entity_group = std::move(t_range);
   }
 
@@ -577,8 +580,6 @@ class TsTable {
 
  public:
   KStatus GetLastRowEntity(EntityResultIndex& entity_id);
-  // TODO(lfl): 此hash算法和GO层一致，后续修改为此算法
-  static uint32_t GetConsistentHashId(const char* data, size_t length);
 
   static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
@@ -632,7 +633,7 @@ class TsEntityGroup {
   TsEntityGroup() = delete;
 
   explicit TsEntityGroup(kwdbContext_p ctx, MMapRootTableManager*& root_table_manager, const string& db_path,
-                         const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path);
+                         const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path, uint64_t hash_num);
 
   virtual ~TsEntityGroup();
 
@@ -1073,6 +1074,7 @@ class TsEntityGroup {
   SubEntityGroupManager* ebt_manager_ = nullptr;
   uint32_t cur_subgroup_id_ = 0;
   TagTable* new_tag_bt_{nullptr};
+  uint64_t hash_num_;
 
   std::atomic_uint64_t optimistic_read_lsn_{0};
 

@@ -513,7 +513,9 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 }
 
 // CreateTsTable create ts table
-func (r *TsEngine) CreateTsTable(tableID uint64, meta []byte, rangeGroups []api.RangeGroup) error {
+func (r *TsEngine) CreateTsTable(
+	tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup,
+) error {
 	r.checkOrWaitForOpen()
 	nRange := len(rangeGroups)
 	cRanges := make([]C.RangeGroup, nRange)
@@ -1534,6 +1536,7 @@ func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
 
 // CountTsTable count calculate table
 func (r *TsEngine) CountTsTable(tableID uint64) error {
+	r.checkOrWaitForOpen()
 	status := C.TSCountTsTable(r.tdb, C.TSTableID(tableID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to count ts table")

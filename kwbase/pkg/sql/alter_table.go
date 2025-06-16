@@ -398,8 +398,8 @@ func (n *alterTableNode) startExec(params runParams) error {
 					return err
 				}
 				if d.PartitionBy != nil {
-					partitioning, err := CreatePartitioning(
-						params.ctx, params.p.ExecCfg().Settings,
+					partitioning, err := NewPartitioningDescriptor(
+						params.ctx,
 						params.EvalContext(), n.tableDesc, &idx, d.PartitionBy)
 					if err != nil {
 						return err
@@ -1001,12 +1001,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 			return nil
 
 		case *tree.AlterTablePartitionBy:
-			if n.tableDesc.IsTSTable() && t.HashPoint == nil {
+			if n.tableDesc.IsTSTable() && t.PartitionBy != nil && t.HashPoint == nil {
 				return pgerror.Newf(
 					pgcode.WrongObjectType, "can not partition ts table \"%s\"", n.tableDesc.Name)
 			}
-			partitioning, err := CreatePartitioning(
-				params.ctx, params.p.ExecCfg().Settings,
+			partitioning, err := NewPartitioningDescriptor(
+				params.ctx,
 				params.EvalContext(),
 				n.tableDesc, &n.tableDesc.PrimaryIndex, t.PartitionBy)
 			if err != nil {

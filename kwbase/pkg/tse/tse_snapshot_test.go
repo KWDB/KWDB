@@ -102,7 +102,7 @@ WHERE database_name = $1
 	require.NoError(t, err)
 
 	var startTs, endTs int64
-	_, startHashPoint, endHashPoint, startTs, endTs, err = sqlbase.DecodeTSRangeKey(startKey, endKey)
+	_, startHashPoint, endHashPoint, startTs, endTs, err = sqlbase.DecodeTSRangeKey(startKey, endKey, 2000)
 	require.NoError(t, err)
 
 	return tableID, startHashPoint, endHashPoint, startTs, endTs, leaseHolder, replicas
@@ -241,16 +241,19 @@ func TestCreateTsTableFailed(t *testing.T) {
 	time.Sleep(time.Second * 3)
 
 	rows, err := c.Servers[0].InternalExecutor().(*sql.InternalExecutor).Query(ctx, "", nil, "select start_pretty, end_pretty from kwdb_internal.ranges where end_pretty = '/Max';")
-	require.Equal(t, "/Table/78", string(*(rows[0][0].(*tree.DString))))
+	// table creation failed range was not split
+	//require.Equal(t, "/Table/59", string(*(rows[0][0].(*tree.DString))))
+	// open source version
+	require.Equal(t, "/Table/57", string(*(rows[0][0].(*tree.DString))))
+	// table creation failed range split
+	// require.Equal(t, "/Table/78", string(*(rows[0][0].(*tree.DString))))
 	require.Equal(t, "/Max", string(*(rows[0][1].(*tree.DString))))
 	rows, err = c.Servers[0].InternalExecutor().(*sql.InternalExecutor).Query(ctx, "", nil, "select range_type from kwdb_internal.ranges_no_leases where end_pretty = '/Max';")
-	require.Equal(t, "", "")
 	require.Equal(t, "DEFAULT_RANGE", string(*(rows[0][0].(*tree.DString))))
 
 	rows, err = c.Servers[0].InternalExecutor().(*sql.InternalExecutor).Query(ctx, "", nil, "select * from system.namespace where name = 'tab1';")
-	require.Equal(t, []tree.Datums([]tree.Datums(nil)), rows)
 	require.Equal(t, nil, err)
-
+	require.Equal(t, []tree.Datums(nil), rows)
 }
 
 func TestGetTableMetaByVersion(t *testing.T) {

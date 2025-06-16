@@ -47,6 +47,8 @@ using namespace kwdbts;
 
 #define DIR_SEP "/"
 
+static const k_uint32 g_testcase_hash_num = 2000;
+
 int IsDbNameValid(const string& db) {
   if (db.size() > MAX_DATABASE_NAME_LEN)  // can`t longer than 63
     return KWELENLIMIT;
@@ -425,7 +427,7 @@ class PayloadBuilder {
 }  // namespace kwtest
 
 void make_hashpoint(std::vector<k_uint32> *hps) {
-  for (uint32_t i=0; i<HASHPOINT_RANGE; i++) {
+  for (uint32_t i=0; i< g_testcase_hash_num; i++) {
     hps->push_back(i);
   }
 }

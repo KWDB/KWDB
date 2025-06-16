@@ -523,28 +523,19 @@ func (b *Builder) buildTSUpdate(
 		}
 	}
 
-	var hasTypeHints bool
-	for i := range b.semaCtx.Placeholders.TypeHints {
-		if b.semaCtx.Placeholders.TypeHints[i] != nil {
-			hasTypeHints = true
-			b.semaCtx.Placeholders.TypeHints[i] = nil
-		}
-	}
-
 	for colID, expr := range exprs {
 		if v, ok := expr.(*tree.Placeholder); ok {
-			if hasTypeHints {
-				b.semaCtx.Placeholders.TypeHints[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
-			}
 			b.semaCtx.Placeholders.Types[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
 		}
 	}
 
+	hashNum := table.GetTSHashNum()
 	outScope.expr = b.factory.ConstructTSUpdate(
 		&memo.TSUpdatePrivate{
 			UpdateRows:        tagValue,
 			ColsMap:           colMap,
 			ID:                id,
+			HashNum:           int(hashNum),
 			PTagValueNotExist: false,
 		})
 	return outScope

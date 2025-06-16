@@ -31,7 +31,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -117,7 +116,7 @@ func (s *TsSender) Send(
 			case *roachpb.TsDeleteMultiEntitiesDataRequest:
 				var deleteRows uint64
 				// only one rangeGroup
-				cnt, err := s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, api.HashParamV2-1, tdr.TsSpans, 0)
+				cnt, err := s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}
@@ -229,7 +228,7 @@ func (db *DB) Send(
 
 // CreateTSTable create ts table
 func (db *DB) CreateTSTable(
-	ctx context.Context, tableID sqlbase.ID, nodeID roachpb.NodeID, meta []byte,
+	ctx context.Context, tableID sqlbase.ID, hashNum uint64, nodeID roachpb.NodeID, meta []byte,
 ) error {
 	log.Infof(ctx, "CreateTSTable on node %d", nodeID)
 	addr, err := db.tss.gossip.GetNodeIDAddress(nodeID)
@@ -244,6 +243,7 @@ func (db *DB) CreateTSTable(
 	client := serverpb.NewAdminClient(conn)
 	req := &serverpb.CreateTSTableRequest{
 		TableID: uint64(tableID),
+		HashNum: hashNum,
 		Meta:    meta,
 	}
 	if _, err := client.CreateTSTable(ctx, req); err != nil {

@@ -152,26 +152,29 @@ ALTER TABLE
                     | distributed | true
                     | vectorized  | false
   sort              |             |
+   │                | engine type | time series
    │                | order       | +e1
    └── synchronizer |             |
         └── ts scan |             |
                     | ts-table    | order_table
                     | access mode | metaTable
-(8 rows)
+(9 rows)
 > explain select e1 from test_ts.order_table order by time;
            tree          |    field    | description
 -------------------------+-------------+--------------
                          | distributed | true
                          | vectorized  | false
   render                 |             |
+   │                     | engine type | time series
    │                     | e1          | e1
    └── sort              |             |
+        │                | engine type | time series
         │                | order       | +"time"
         └── synchronizer |             |
              └── ts scan |             |
                          | ts-table    | order_table
                          | access mode | metaTable
-(10 rows)
+(12 rows)
 > explain select * from test_ts.order_table where attr1 in (1,2,3,4,5,6,7,8,9,10) and time >= '2023-12-31 18:00:00+00:00' and time <= '2024-01-01 03:00:00+00:00';
       tree     |     field      |               description
 ---------------+----------------+-------------------------------------------
@@ -406,26 +409,29 @@ ALTER TABLE
                     | distributed | true
                     | vectorized  | false
   sort              |             |
+   │                | engine type | time series
    │                | order       | +e1
    └── synchronizer |             |
         └── ts scan |             |
                     | ts-table    | unordered_table
                     | access mode | metaTable
-(8 rows)
+(9 rows)
 > explain select e1 from test_ts.unordered_table order by time;
            tree          |    field    |   description
 -------------------------+-------------+------------------
                          | distributed | true
                          | vectorized  | false
   render                 |             |
+   │                     | engine type | time series
    │                     | e1          | e1
    └── sort              |             |
+        │                | engine type | time series
         │                | order       | +"time"
         └── synchronizer |             |
              └── ts scan |             |
                          | ts-table    | unordered_table
                          | access mode | metaTable
-(10 rows)
+(12 rows)
 > explain select * from test_ts.unordered_table where attr1 in (1,2,3,4,5,6,7,8,9,10) and time >= '2023-12-31 18:00:00+00:00' and time <= '2024-01-01 03:00:00+00:00';
    tree   |     field      |               description
 ----------+----------------+-------------------------------------------

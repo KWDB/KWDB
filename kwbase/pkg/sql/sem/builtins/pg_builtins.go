@@ -862,7 +862,7 @@ var pgBuiltins = map[string]builtinDefinition{
 					ctx.Ctx(), "pg_get_coldesc",
 					ctx.Txn,
 					`
-SELECT COALESCE(c.comment, pc.comment) FROM system.comments c
+SELECT COALESCE(c."comment", pc."COMMENT") FROM system.comments c
 FULL OUTER JOIN kwdb_internal.predefined_comments pc
 ON pc.object_id=c.object_id AND pc.sub_id=c.sub_id AND pc.type = c.type
 WHERE c.type=$1::int AND c.object_id=$2::int AND c.sub_id=$3::int LIMIT 1

@@ -59,6 +59,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/span"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -460,6 +461,9 @@ func (dsp *DistSQLPlanner) createPlanForCreateStats(
 	tableDesc := sqlbase.NewImmutableTableDescriptor(details.Table)
 
 	if details.IsTsStats {
+		if tableDesc.TsTable.HashNum == 0 {
+			tableDesc.TsTable.HashNum = api.HashParamV2
+		}
 		return dsp.createTsStatsPlan(planCtx, tableDesc, reqStats, job)
 	}
 	return dsp.createStatsPlan(planCtx, tableDesc, reqStats, job)

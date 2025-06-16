@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #include "ee_rel_batch_queue.h"
 #include "ee_common.h"
+#include "ee_cancel_checker.h"
 
 namespace kwdbts {
 
@@ -81,7 +82,7 @@ EEIteratorErrCode RelBatchQueue::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
     if (no_more_data_chunk && data_queue_.empty()) {
       Return(EEIteratorErrCode::EE_END_OF_RECORD);
     }
-    if (is_error_) {
+    if (is_error_ || CheckCancel(ctx) != SUCCESS) {
       Return(EEIteratorErrCode::EE_ERROR);
     }
   }

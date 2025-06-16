@@ -145,7 +145,7 @@ func TestCommentOnColumnWhenDropTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	row := db.QueryRow(`SELECT comment FROM system.comments LIMIT 1`)
+	row := db.QueryRow(`SELECT "comment" FROM system.comments LIMIT 1`)
 	var comment string
 	err := row.Scan(&comment)
 	if err != gosql.ErrNoRows {
@@ -180,7 +180,7 @@ func TestCommentOnColumnWhenDropColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	row := db.QueryRow(`SELECT comment FROM system.comments LIMIT 1`)
+	row := db.QueryRow(`SELECT "comment" FROM system.comments LIMIT 1`)
 	var comment string
 	err := row.Scan(&comment)
 	if err != gosql.ErrNoRows {

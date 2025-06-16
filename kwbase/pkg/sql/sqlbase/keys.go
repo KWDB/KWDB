@@ -26,7 +26,6 @@ package sqlbase
 
 import (
 	"bytes"
-	"context"
 	"math"
 	"strings"
 
@@ -127,50 +126,23 @@ func MakeTsPrimaryTagKey(tbDescID ID, hashPoints []api.HashPoint) roachpb.Key {
 }
 
 // MakeTsHashPointKey make the TS key from table descriptor ID and hash point
-func MakeTsHashPointKey(tbDescID ID, hashPoint uint64) roachpb.Key {
+func MakeTsHashPointKey(tbDescID ID, hashPoint uint64, hashNum uint64) roachpb.Key {
 	// first hashPartition -> /Table/tbDescID - /Table/tbDescID/hashPoint
 	if hashPoint == 0 {
 		return keys.MakeTablePrefix(uint32(tbDescID))
 	}
 	// last hashPartition -> /Table/tbDescID/hashPoint - /Table/tbDescID+1
-	if hashPoint == api.HashParamV2 {
+	if hashPoint == hashNum {
 		return keys.MakeTablePrefix(uint32(tbDescID + 1))
 	}
 	prefix := keys.MakeTablePrefix(uint32(tbDescID))
 	return encoding.EncodeUvarintAscending(prefix, hashPoint)
 }
 
-// DecodeTsHashPointKey decodes a table id and hash point.
-func DecodeTsHashPointKey(key []byte, isStartKey bool) (uint64, uint64, error) {
-	if !isStartKey {
-		if bytes.Equal(key, roachpb.KeyMax) {
-			return 0, api.HashParamV2, nil
-		}
-	}
-	remaining, tableID, err := keys.DecodeTablePrefix(key)
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(remaining) == 0 {
-		// the first range startKey meet it
-		if isStartKey {
-			return tableID, 0, nil
-		}
-		return tableID - 1, api.HashParamV2, nil
-	}
-
-	_, hashPoint, err := encoding.DecodeUvarintAscending(remaining)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return tableID, hashPoint, nil
-}
-
 // MakeTsRangeKey make the TS key from table descriptor ID, hash point and timestamp.
-func MakeTsRangeKey(tbDescID ID, hashPoint uint64, timestamp int64) roachpb.Key {
+func MakeTsRangeKey(tbDescID ID, hashPoint uint64, timestamp int64, hashNum uint64) roachpb.Key {
 	// last hashPartition -> /Table/tbDescID/hashPoint - /Table/tbDescID+1
-	if hashPoint == api.HashParamV2 {
+	if hashPoint == hashNum {
 		return keys.MakeTablePrefix(uint32(tbDescID + 1))
 	}
 	prefix := keys.MakeTablePrefix(uint32(tbDescID))
@@ -180,10 +152,10 @@ func MakeTsRangeKey(tbDescID ID, hashPoint uint64, timestamp int64) roachpb.Key 
 }
 
 // DecodeTsRangeKey decodes a range key for table id, hash point and timestamp.
-func DecodeTsRangeKey(key []byte, isStartKey bool) (uint64, uint64, int64, error) {
+func DecodeTsRangeKey(key []byte, isStartKey bool, hashNum uint64) (uint64, uint64, int64, error) {
 	// specially handle the /Max key, it is actually out of the ranges.
 	if bytes.Compare(key, keys.MaxKey) == 0 {
-		return math.MaxUint64, api.HashParamV2 - 1, math.MaxInt64, nil
+		return math.MaxUint64, hashNum - 1, math.MaxInt64, nil
 	}
 	remaining, tableID, err := keys.DecodeTablePrefix(key)
 	if err != nil {
@@ -194,7 +166,7 @@ func DecodeTsRangeKey(key []byte, isStartKey bool) (uint64, uint64, int64, error
 		if isStartKey {
 			return tableID, 0, math.MinInt64, nil
 		}
-		return tableID - 1, api.HashParamV2 - 1, math.MaxInt64, nil
+		return tableID - 1, hashNum - 1, math.MaxInt64, nil
 	}
 
 	var hashPoint uint64
@@ -221,16 +193,16 @@ func DecodeTsRangeKey(key []byte, isStartKey bool) (uint64, uint64, int64, error
 
 // DecodeTSRangeKey decode ts range key
 func DecodeTSRangeKey(
-	startKey roachpb.RKey, endKey roachpb.RKey,
+	startKey roachpb.RKey, endKey roachpb.RKey, hashNum uint64,
 ) (uint64, uint64, uint64, int64, int64, error) {
 	var tableID, startPoint, endPoint uint64
 	var startTs, endTs int64
 	var err error
-	tableID, startPoint, startTs, err = DecodeTsRangeKey(startKey, true)
+	tableID, startPoint, startTs, err = DecodeTsRangeKey(startKey, true, hashNum)
 	if err != nil {
 		return 0, 0, 0, 0, 0, errors.Wrap(err, "DecodeTsRangeKey StartKey failed")
 	}
-	_, endPoint, endTs, err = DecodeTsRangeKey(endKey, false)
+	_, endPoint, endTs, err = DecodeTsRangeKey(endKey, false, hashNum)
 	if err != nil {
 		return 0, 0, 0, 0, 0, errors.Wrap(err, "DecodeTsRangeKey endKey failed")
 	}
@@ -238,40 +210,6 @@ func DecodeTSRangeKey(
 		endTs--
 	}
 	return tableID, startPoint, endPoint, startTs, endTs, nil
-}
-
-// GetTableHashInfo get table and hash info
-func GetTableHashInfo(
-	ctx context.Context, startKey []byte, endKey []byte,
-) (uint64, uint64, uint64, error) {
-	var tableID uint64
-	var beginHash, endHash uint64
-	var err error
-
-	tableID, beginHash, err = DecodeTsHashPointKey(startKey, true)
-	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "GetTableHashInfo could not DecodeTsHashPointKey: beginHash")
-	}
-
-	if len(endKey) != 0 {
-		_, endHash, err = DecodeTsHashPointKey(endKey, false)
-		if err != nil {
-			return 0, 0, 0, errors.Wrap(err, "GetTableHashInfo could not DecodeTsHashPointKey: endHash")
-		}
-	}
-
-	// In the upper layer, the hash will be locked, and the call here will get stuck due
-	// to the locking in the upper layer. Annotate the code in that area
-	//hashRouter, err := api.GetHashRouterWithTable(0, uint32(tableID), false)
-	//if err != nil {
-	//	return 0, 0, 0, 0, errors.Wrap(err, "GetTableHashInfo could not GetHashRouterWithTable")
-	//}
-	//group, err := hashRouter.GetGroupByHashPoint(ctx, api.HashPoint(beginHash))
-	//if err != nil {
-	//	return 0, 0, 0, 0, errors.Wrap(err, "GetTableHashInfo could not GetGroupByHashPoint")
-	//}
-
-	return tableID, beginHash, endHash, err
 }
 
 // IndexKeyValDirs returns the corresponding encoding.Directions for all the

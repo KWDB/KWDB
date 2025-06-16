@@ -270,7 +270,7 @@ struct BlockItem {
   }
 
   uint32_t getNonNullRowCount() {
-    return (is_agg_res_available && non_null_row_count > 0) ? non_null_row_count : (publish_row_count - getDeletedCount());
+    return (is_agg_res_available && non_null_row_count > 0) ? non_null_row_count : (alloc_row_count - getDeletedCount());
   }
 
   ostream& to_string(ostream& os) {

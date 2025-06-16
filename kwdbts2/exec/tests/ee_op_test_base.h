@@ -126,6 +126,7 @@ class TSBSSchema {
     table->set_ts_table_id(table_id);
     table->set_table_name(prefix_table_name + std::to_string(table_id));
     table->set_partition_interval(partition_interval);
+    table->set_hash_num(g_testcase_hash_num);
     meta.set_allocated_ts_table(table);
 
     std::vector<zTableColumnMeta> col_meta;

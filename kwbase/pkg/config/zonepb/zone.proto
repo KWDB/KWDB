@@ -148,6 +148,7 @@ message ZoneConfig {
   // lookups efficient.
   repeated SubzoneSpan subzone_spans = 7 [(gogoproto.nullable) = false, (gogoproto.moretags) = "yaml:\"-\""];
   optional int64 time_series_merge_duration = 12 [(gogoproto.nullable) = false, (gogoproto.casttype) = "time.Duration"];
+  optional bool rebalance = 13 [(gogoproto.nullable) = false];
 }
 
 message Subzone {
@@ -162,7 +163,8 @@ message Subzone {
   // represents. It is empty when the subzone represents the entire index.
   optional string partition_name = 2 [(gogoproto.nullable) = false];
 
-  repeated int32 hash_points = 3 ;
+  repeated int32 hash_points_list = 3 ;
+  repeated int32 hash_points_range = 5 ;
 
   // Config stores the ZoneConfig that applies to this Subzone. It never
   // contains nested subzones.

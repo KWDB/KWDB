@@ -1069,6 +1069,7 @@ func (r *Replica) handleRaftReadyRaftMuLocked(
 	r.store.raftEntryCache.Add(r.RangeID, rd.Entries, true /* truncate */)
 	r.sendRaftMessages(ctx, otherMsgs)
 	r.traceEntries(rd.CommittedEntries, "committed, before applying any entries")
+	r.store.metrics.RaftReplicaConsistentLatency.RecordValue(timeutil.Since(commitStart).Nanoseconds())
 
 	applicationStart := timeutil.Now()
 	if len(rd.CommittedEntries) > 0 {

@@ -170,6 +170,9 @@ type Table interface {
 
 	// GetTSVersion return ts version.
 	GetTSVersion() uint32
+
+	// GetTSHashNum return hash num of ts table
+	GetTSHashNum() uint64
 }
 
 // TagMeta record name and type of all child table of stable.

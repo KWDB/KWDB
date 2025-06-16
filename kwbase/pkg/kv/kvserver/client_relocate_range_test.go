@@ -83,8 +83,41 @@ func relocateTsAndCheck(
 	})
 	desc, err := tc.Servers[0].LookupRange(startKey.AsRawKey())
 	require.NoError(t, err)
-	requireDescMembers(t, desc, targets)
+	requireTsDescMembers(t, desc, targets)
 	requireLeaseAt(t, tc, desc, targets[0])
+}
+
+// The pre-distributed range of the time series range will add
+// insufficient targets to the range.InternalReplicas when relocating.
+// see store.AdminRelocateRange for more details.
+func requireTsDescMembers(
+	t *testing.T, desc roachpb.RangeDescriptor, targets []roachpb.ReplicationTarget,
+) {
+	t.Helper()
+	targets = append([]roachpb.ReplicationTarget(nil), targets...)
+	sort.Slice(targets, func(i, j int) bool { return targets[i].StoreID < targets[j].StoreID })
+
+	have := make([]roachpb.ReplicationTarget, 0, len(targets))
+	for _, rDesc := range desc.Replicas().All() {
+		have = append(have, roachpb.ReplicationTarget{
+			NodeID:  rDesc.NodeID,
+			StoreID: rDesc.StoreID,
+		})
+	}
+	sort.Slice(have, func(i, j int) bool { return have[i].StoreID < have[j].StoreID })
+	//require.Equal(t, targets, have)
+	contains := func(slice []roachpb.ReplicationTarget, x roachpb.ReplicationTarget) bool {
+		for _, v := range slice {
+			if x == v {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i < len(targets); i++ {
+		require.Equal(t, true, contains(have, targets[i]))
+	}
+
 }
 
 func requireDescMembers(
@@ -163,10 +196,11 @@ func TestAdminRelocateRangeForTsWithoutTSSnapshot(t *testing.T) {
 	const BeginHash = 0
 	splits := roachpb.AdminSplitForTsRequest{
 		RequestHeader: roachpb.RequestHeader{
-			Key: sqlbase.MakeTsHashPointKey(sqlbase.ID(78), uint64(BeginHash)),
+			Key: sqlbase.MakeTsHashPointKey(sqlbase.ID(78), uint64(BeginHash), 2000),
 		},
 		TableId: keys.MinUserDescID,
 		Keys:    []int32{BeginHash},
+		HashNum: 2000,
 	}
 
 	// s1 (LH) ---> s2 (LH) s1 s3

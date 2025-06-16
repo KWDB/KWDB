@@ -4599,6 +4599,7 @@ type SinglePayloadInfo struct {
 	StartKey      []byte
 	EndKey        []byte
 	ValueSize     int32
+	HashNum       uint64
 }
 
 // Count counts the row numbers in p.RowNums.

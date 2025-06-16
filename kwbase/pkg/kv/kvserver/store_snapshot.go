@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
@@ -301,7 +302,11 @@ func (kvSS *kvBatchSnapshotStrategy) ReceiveTS(
 		if req.InitTsSnapshotForWrite {
 			startKey := header.State.Desc.StartKey
 			endKey := header.State.Desc.EndKey
-			_, startPoint, endPoint, startTs, endTs, err := sqlbase.DecodeTSRangeKey(startKey, endKey)
+			if header.State.Desc.HashNum == 0 {
+				header.State.Desc.HashNum = api.HashParamV2
+			}
+			hashNum := header.State.Desc.HashNum
+			_, startPoint, endPoint, startTs, endTs, err := sqlbase.DecodeTSRangeKey(startKey, endKey, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTSRangeKey failedD: %v", err)
 				return IncomingSnapshot{}, errors.Wrap(err, "DecodeTSRangeKey failed")

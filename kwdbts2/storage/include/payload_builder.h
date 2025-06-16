@@ -122,7 +122,7 @@ class PayloadBuilder {
 
   bool SetColumnNull(int row_num, int col_idx);
 
-  bool Build(TSSlice *payload);
+  bool Build(TSSlice *payload, uint64_t hash_num);
 };
 
 }  // namespace kwdbts

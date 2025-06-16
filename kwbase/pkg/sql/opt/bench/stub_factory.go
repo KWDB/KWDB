@@ -314,6 +314,7 @@ func (f *stubFactory) ConstructTSInsert(
 func (f *stubFactory) ConstructTSDelete(
 	nodeIDs []roachpb.NodeID,
 	tblID uint64,
+	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
 	primaryTagKey, primaryTagValues [][]byte,
