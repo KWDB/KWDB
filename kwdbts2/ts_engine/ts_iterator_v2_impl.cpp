@@ -1103,14 +1103,14 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       if (block_span->HasPreAgg()) {
         // Use pre agg to calculate count
-        uint16_t pre_count;
+        uint16_t pre_count{0};
         ret = block_span->GetPreCount(count_col_idx, pre_count);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
         KUint64(final_agg_data_[count_col_idx].data) += pre_count;
       } else {
-        uint32_t col_count = {0};
+        uint32_t col_count{0};
         ret = block_span->GetCount(count_col_idx, col_count);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
@@ -1128,35 +1128,36 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     auto type = attrs_[ts_scan_cols_[sum_col_idx]].type;
     if (block_span->HasPreAgg()) {
       // Use pre agg to calculate sum
-      void* current;
+      void* pre_sum{nullptr};
       bool pre_sum_is_overflow;
-      ret = block_span->GetPreSum(sum_col_idx, current, pre_sum_is_overflow);
+      ret = block_span->GetPreSum(sum_col_idx, pre_sum, pre_sum_is_overflow);
       if (ret != KStatus::SUCCESS) {
         return KStatus::FAIL;
       }
-      if (current) {
-        TSSlice& agg_data = final_agg_data_[sum_col_idx];
-        if (agg_data.data == nullptr) {
-          agg_data.len = sizeof(int64_t);
-          InitAggData(agg_data);
-          InitSumValue(agg_data.data, type);
-        }
-        if (!is_overflow_[sum_col_idx]) {
-          if (!pre_sum_is_overflow) {
-            ret = AddSumNotOverflowYet(sum_col_idx, type, current, agg_data);
-          } else {
-            ret = AddSumNotOverflowYet(sum_col_idx, DATATYPE::DOUBLE, current, agg_data);
-          }
+      if (!pre_sum) {
+        continue;
+      }
+      TSSlice& agg_data = final_agg_data_[sum_col_idx];
+      if (agg_data.data == nullptr) {
+        agg_data.len = sizeof(int64_t);
+        InitAggData(agg_data);
+        InitSumValue(agg_data.data, type);
+      }
+      if (!is_overflow_[sum_col_idx]) {
+        if (!pre_sum_is_overflow) {
+          ret = AddSumNotOverflowYet(sum_col_idx, type, pre_sum, agg_data);
         } else {
-          if (!pre_sum_is_overflow) {
-            ret = AddSumOverflow(type, current, agg_data);
-          } else {
-            ret = AddSumOverflow(DATATYPE::DOUBLE, current, agg_data);
-          }
+          ret = AddSumNotOverflowYet(sum_col_idx, DATATYPE::DOUBLE, pre_sum, agg_data);
         }
-        if (ret != KStatus::SUCCESS) {
-          return KStatus::FAIL;
+      } else {
+        if (!pre_sum_is_overflow) {
+          ret = AddSumOverflow(type, pre_sum, agg_data);
+        } else {
+          ret = AddSumOverflow(DATATYPE::DOUBLE, pre_sum, agg_data);
         }
+      }
+      if (ret != KStatus::SUCCESS) {
+        return KStatus::FAIL;
       }
     } else {
       char* value = nullptr;
@@ -1205,11 +1206,14 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     if (block_span->IsSameType(max_col_idx) && block_span->HasPreAgg()) {
       // Use pre agg to calculate max
       if (!isVarLenType(type)) {
-        void* pre_max;
+        void* pre_max{nullptr};
         int32_t size = (ts_scan_cols_[max_col_idx] == 0 ? 16 : attrs_[ts_scan_cols_[max_col_idx]].size);
         ret = block_span->GetPreMax(max_col_idx, pre_max);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
+        }
+        if (!pre_max) {
+          continue;
         }
         if (agg_data.data == nullptr) {
           agg_data.len = size;
@@ -1219,7 +1223,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           memcpy(agg_data.data, pre_max, size);
         }
       } else {
-        TSSlice pre_max;
+        TSSlice pre_max{nullptr, 0};
         ret = block_span->GetVarPreMax(max_col_idx, pre_max);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
@@ -1311,11 +1315,14 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     if (block_span->IsSameType(min_col_idx) && block_span->HasPreAgg()) {
       // Use pre agg to calculate min
       if (!isVarLenType(type)) {
-        void* pre_min;
+        void* pre_min{nullptr};
         int32_t size = (ts_scan_cols_[min_col_idx] == 0 ? 16 : attrs_[ts_scan_cols_[min_col_idx]].size);
         ret = block_span->GetPreMin(min_col_idx, pre_min);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
+        }
+        if (!pre_min) {
+          continue;
         }
         if (agg_data.data == nullptr) {
           agg_data.len = size;
@@ -1325,7 +1332,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           memcpy(agg_data.data, pre_min, size);
         }
       } else {
-        TSSlice pre_min;
+        TSSlice pre_min{nullptr, 0};
         ret = block_span->GetVarPreMin(min_col_idx, pre_min);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
