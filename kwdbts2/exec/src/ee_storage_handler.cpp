@@ -494,6 +494,16 @@ EEIteratorErrCode StorageHandler::GetNextTagData(kwdbContext_p ctx, ScanRowBatch
   return code;
 }
 
+inline bool EntityLessThan(EntityResultIndex& x, EntityResultIndex& y) {
+  if (x.entityGroupId == y.entityGroupId) {
+    if (x.subGroupId == y.subGroupId) {
+      return x.entityId < y.entityId;
+    }
+    return x.subGroupId < y.subGroupId;
+  }
+  return x.subGroupId < y.subGroupId;
+}
+
 EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
   EnterFunc();
   KStatus ret = FAIL;
@@ -534,6 +544,7 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       }
     }
 
+    std::sort(entities_.begin(), entities_.end(), EntityLessThan);
     ret = ts_table_->GetIterator(ctx, entities_, ts_spans, table_->scan_cols_,
                                 table_->scan_real_agg_types_, table_->table_version_,
                                 &ts_iterator, table_->scan_real_last_ts_points_,
