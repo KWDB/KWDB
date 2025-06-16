@@ -435,7 +435,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
-        if (count > 0) {
+        if (*count > 0) {
           // Return the result set.
           return KStatus::SUCCESS;
         }
