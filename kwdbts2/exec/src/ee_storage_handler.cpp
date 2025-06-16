@@ -291,10 +291,11 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
   if (nullptr == ts_iterator) {
     std::vector<KwTsSpan> ts_spans;
     ts_spans = *ts_spans_;
-    KStatus ret = ts_table_->GetIterator(ctx, entities_, ts_spans, table_->scan_cols_,
-                                 table_->scan_real_agg_types_, table_->table_version_,
-                                 &ts_iterator, table_->scan_real_last_ts_points_,
-                                 table_->is_reverse_, table_->ordered_scan_);
+    KStatus ret = ts_table_->GetIterator(
+        ctx, entities_, ts_spans, table_->scan_cols_, table_->agg_extends_,
+        table_->scan_real_agg_types_, table_->table_version_, &ts_iterator,
+        table_->scan_real_last_ts_points_, table_->is_reverse_,
+        table_->ordered_scan_);
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       Return(code);
@@ -537,14 +538,16 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
 
     // LOG_DEBUG("TSTable::GetIterator() ts_span_size:%ld", sizeof(ts_spans));
     if (this->table_->GetRelTagJoinColumnIndexes().size() > 0) {
-      ret = ts_table_->GetIteratorInOrder(ctx, entities_, ts_spans, table_->scan_cols_,
-                                   table_->scan_real_agg_types_, table_->table_version_,
-                                   &ts_iterator, table_->scan_real_last_ts_points_, table_->is_reverse_, false);
+      ret = ts_table_->GetIteratorInOrder(
+          ctx, entities_, ts_spans, table_->scan_cols_, table_->agg_extends_,
+          table_->scan_real_agg_types_, table_->table_version_, &ts_iterator,
+          table_->scan_real_last_ts_points_, table_->is_reverse_, false);
     } else {
-      ret = ts_table_->GetIterator(ctx, entities_, ts_spans, table_->scan_cols_,
-                                 table_->scan_real_agg_types_, table_->table_version_,
-                                 &ts_iterator, table_->scan_real_last_ts_points_,
-                                 table_->is_reverse_, table_->ordered_scan_);
+      ret = ts_table_->GetIterator(
+          ctx, entities_, ts_spans, table_->scan_cols_, table_->agg_extends_,
+          table_->scan_real_agg_types_, table_->table_version_, &ts_iterator,
+          table_->scan_real_last_ts_points_, table_->is_reverse_,
+          table_->ordered_scan_);
     }
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;

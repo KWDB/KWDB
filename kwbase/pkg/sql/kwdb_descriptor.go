@@ -1347,6 +1347,8 @@ var InitWhiteList = []sqlbase.WhiteList{
 	//{"subtime", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
 	//{"subtime", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	//{"subtime", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
+	{"time_window_end", 1, []uint32{uint32(oid.T_timestamptz)}, PosProject, true, TypALL},
+	{"time_window_start", 1, []uint32{uint32(oid.T_timestamptz)}, PosProject, true, TypALL},
 
 	// math builtin
 	{"ceil", 1, []uint32{uint32(oid.T_int2)}, PosAll, true, TypeConstAndColumn},

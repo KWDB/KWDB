@@ -214,6 +214,8 @@ func init() {
 	typingFuncMap[opt.ImputationOp] = typeAsFirstArg
 	typingFuncMap[opt.WindowFromOffsetOp] = typeAsFirstArg
 	typingFuncMap[opt.WindowToOffsetOp] = typeAsFirstArg
+	typingFuncMap[opt.MinExtendOp] = typeAsMinExArg
+	typingFuncMap[opt.MaxExtendOp] = typeAsMaxExArg
 	typingFuncMap[opt.AssignmentOp] = typeAsSecondArg
 
 	for _, op := range opt.BinaryOperators {
@@ -291,6 +293,16 @@ func typeIfErr(e opt.ScalarExpr) *types.T {
 // typeAsFirstArg returns the type of the expression's 0th argument.
 func typeAsFirstArg(e opt.ScalarExpr) *types.T {
 	return e.Child(0).(opt.ScalarExpr).DataType()
+}
+
+// typeAsMinExArg returns the type of the expression's 1th argument.
+func typeAsMinExArg(e opt.ScalarExpr) *types.T {
+	return e.Child(1).(opt.ScalarExpr).DataType()
+}
+
+// typeAsMaxExArg returns the type of the expression's 1th argument.
+func typeAsMaxExArg(e opt.ScalarExpr) *types.T {
+	return e.Child(1).(opt.ScalarExpr).DataType()
 }
 
 // typeAsSecondArg returns the type of the expression's 1st argument.

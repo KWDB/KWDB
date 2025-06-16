@@ -32,6 +32,7 @@
 #include "mmap/mmap_string_column.h"
 #include "bitmap_utils.h"
 
+class BlockItem;
 class MMapSegmentTable;
 
 extern uint32_t k_per_null_bitmap_size;
@@ -114,6 +115,7 @@ struct Batch {
   void* bitmap = nullptr;
   k_uint32 count = 0;
   k_uint32 offset = 0;
+  BlockItem* block_item = nullptr;
   // Holding smart pointers to avoid switching between segments in use
   std::shared_ptr<MMapSegmentTable> segment_table = nullptr;
 
@@ -625,7 +627,9 @@ enum Sumfunctype {
   FIRST_ROW = 34,
   FIRSTROWTS = 35,
   ELAPSED = 36,
-  TWA = 37
+  TWA = 37,
+  MIN_EXTEND = 38,
+  MAX_EXTEND = 39
 };
 
 enum WindowFunc {
