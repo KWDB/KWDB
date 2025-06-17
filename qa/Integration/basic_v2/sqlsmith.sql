@@ -460,4 +460,52 @@ and (cast(null as "varbit") = cast(null as "varbit"))))
 limit 86
 ;
 
+-- ERROR: min_extend(): function reserved for internal use
+select
+  subq_0.c1 as c0,
+  subq_0.c4 as c1,
+  case when pg_catalog.localtimestamp() > pg_catalog.experimental_follower_read_timestamp() then subq_0.c0 else subq_0.c0 end
+     as c2,
+  subq_0.c4 as c3,
+  case when pg_catalog.inet_server_addr() > pg_catalog.inet_server_addr() then subq_0.c2 else subq_0.c2 end
+     as c4,
+  cast(coalesce(subq_0.c0,
+    pg_catalog.bpcharin(
+        pg_catalog.min_extend((select e6 from test_vacuum.t1 limit 1 offset 4)
+            , cast(null as int8)) over (partition by subq_0.c3,subq_0.c0 order by subq_0.c1))) as bpchar) as c5,
+  case when true then case when subq_0.c1 is NULL then subq_0.c2 else subq_0.c2 end
+       else case when subq_0.c1 is NULL then subq_0.c2 else subq_0.c2 end
+       end
+     as c6,
+  54 as c7,
+  subq_0.c3 as c8,
+  subq_0.c2 as c9,
+  subq_0.c1 as c10
+from
+  (select
+        ref_2.e11 as c0,
+        ref_2.e10 as c1,
+        ref_2.e1 as c2,
+        ref_3.e19 as c3,
+        ref_4.code7 as c4
+      from
+        test_vacuum.t1 as ref_0
+          inner join test_vacuum.t1 as ref_1
+                right join test_vacuum.t1 as ref_2
+                on (46 is not NULL)
+              right join test_vacuum.t1 as ref_3
+              on ((ref_1.code5 <= ref_3.e3)
+                  or (true))
+            inner join test_vacuum.t1 as ref_4
+            on (cast(null as "timetz") <= cast(null as "timetz"))
+          on ((cast(null as _date) = cast(null as _date))
+              and ((cast(null as text) !~ cast(null as text))
+                or ((false)
+                  and (ref_3.e9 is NULL))))
+      where (cast(null as "interval") >= cast(null as "interval"))
+        or (false)
+      limit 99) as subq_0
+where pg_catalog.kwdb_internal.cluster_id() != pg_catalog.kwdb_internal.cluster_id()
+limit 95;
+
 drop database test_vacuum cascade;
