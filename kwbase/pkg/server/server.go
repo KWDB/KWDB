@@ -2272,11 +2272,11 @@ func (s *Server) Start(ctx context.Context) error {
 		func() (jobs.ScheduledJobExecutor, error) {
 			return &sql.ScheduledCompressExecutor{}, nil
 		})
-	jobs.RegisterScheduledJobExecutorFactory(
-		sql.RetentionExecutorName,
-		func() (jobs.ScheduledJobExecutor, error) {
-			return &sql.ScheduledRetentionExecutor{}, nil
-		})
+	//jobs.RegisterScheduledJobExecutorFactory(
+	//	sql.RetentionExecutorName,
+	//	func() (jobs.ScheduledJobExecutor, error) {
+	//		return &sql.ScheduledRetentionExecutor{}, nil
+	//	})
 	jobs.RegisterScheduledJobExecutorFactory(
 		sql.SQLExecutorName,
 		func() (jobs.ScheduledJobExecutor, error) {
