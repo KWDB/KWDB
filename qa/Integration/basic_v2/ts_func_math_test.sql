@@ -22,6 +22,11 @@ k_timestamp timestamp not null,
 e1 float4 not null,
 e2 float8 not null
 ) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
+create table ts_db.t4(
+k_timestamp timestamp not null,
+e1 int8 not null,
+e2 int4 not null
+) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
 
 -- insert data
 insert into ts_db.t1 values('2018-10-10 10:00:00', -1000, 2000, 233, 123.45, 196.32, 'e2', 'a3', b'\x123', b'\xaa\xbb\xee', 100);
@@ -34,7 +39,7 @@ insert into ts_db.t2 values('2018-10-10 10:00:06', 56.98, 16.32, 100);
 insert into ts_db.t2 values('2018-10-10 10:00:07', 0.5, 16.32, 100);
 insert into ts_db.t3 values('2018-10-10 10:00:08', -98.63, 298.36, 100);
 insert into ts_db.t3 values('2018-10-10 10:00:09', 98.63, -298.36, 100);
-
+insert into ts_db.t4 values('2018-10-10 10:00:09', 9223372036854775807, 2147483647, 100);
 -- select
 SELECT isnan(e4) FROM ts_db.t1;
 SELECT isnan(e5) FROM ts_db.t1;
@@ -77,6 +82,10 @@ SELECT pow(e2, e1) FROM ts_db.t1;
 SELECT pow(e4, e5) FROM ts_db.t1;
 SELECT pow(e5, e4) FROM ts_db.t1;
 SELECT pow(0,0) FROM ts_db.t1;
+SELECT pow(e1,1) FROM ts_db.t4;
+SELECT pow(e1,2) FROM ts_db.t4;
+SELECT pow(e2,2) FROM ts_db.t4;
+SELECT pow(e2,3) FROM ts_db.t4;
 
 SELECT round(e4) FROM ts_db.t1;
 SELECT round(e5) FROM ts_db.t1;

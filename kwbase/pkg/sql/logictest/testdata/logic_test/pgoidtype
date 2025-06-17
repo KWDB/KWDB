@@ -59,7 +59,7 @@ pg_constraint  pg_constraint
 # This weird form is to avoid making the test depend on the concrete value of
 # the pg_constraint table id.
 query OO
-SELECT 'pg_constraint '::REGCLASS, ('"pg_constraint"'::REGCLASS::OID::INT-'"pg_constraint"'::REGCLASS::OID::INT)::OID
+SELECT 'pg_constraint '::REGCLASS, ('"pg_constraint"'::REGCLASS::OID::INT64-'"pg_constraint"'::REGCLASS::OID::INT64)::OID
 ----
 pg_constraint  0
 
@@ -69,7 +69,7 @@ SELECT 4061301040::REGCLASS
 4061301040
 
 query OOIOT
-SELECT (oid::int-oid::int)::oid, oid::regclass, (oid::regclass::int-oid::regclass::int), oid::regclass::int::regclass, oid::regclass::text
+SELECT (oid::int64-oid::int64)::oid, oid::regclass, (oid::regclass::int64-oid::regclass::int64), oid::regclass::int64::regclass, oid::regclass::text
 FROM pg_class
 WHERE relname = 'pg_constraint'
 ----
@@ -158,7 +158,7 @@ pg_constraint
 
 # This forces the b_expr form of the cast syntax.
 query OO
-SELECT ('pg_constraint')::REGCLASS, (('pg_constraint')::REGCLASS::OID::INT-('pg_constraint')::REGCLASS::OID::INT)::OID
+SELECT ('pg_constraint')::REGCLASS, (('pg_constraint')::REGCLASS::OID::INT64-('pg_constraint')::REGCLASS::OID::INT64)::OID
 ----
 pg_constraint  0
 

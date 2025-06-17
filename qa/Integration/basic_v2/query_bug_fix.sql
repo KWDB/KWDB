@@ -142,10 +142,10 @@ insert into ts_db1.ts_table1 values('2001-12-9 10:48:12.30', 2, 'AAAA', 'BBBB');
 select
 (select last(t.k_timestamp)
 from ts_db1.ts_table1 t
-where t.tag1 = 'AAAA')::int -
+where t.tag1 = 'AAAA')::int8 -
 (select t.k_timestamp
 from ts_db1.ts_table1 t
 where t.tag1 = 'AAAA'
-order by t.k_timestamp desc limit 1 offset 1)::int
+order by t.k_timestamp desc limit 1 offset 1)::int8
 as diff_ms;
 DROP DATABASE ts_db1 cascade;

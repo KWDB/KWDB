@@ -3629,10 +3629,6 @@ func (expr *CastExpr) Eval(ctx *EvalContext) (Datum, error) {
 		return nil, err
 	}
 
-	if err = checkIsOverflow(d, expr.Type); err != nil {
-		return nil, err
-	}
-
 	// NULL cast to anything is NULL.
 	if d == DNull {
 		return d, nil
@@ -3642,16 +3638,9 @@ func (expr *CastExpr) Eval(ctx *EvalContext) (Datum, error) {
 }
 
 // checkIsOverflow checks if the parameter is out of range.
-// in parameter:  d Datum, t *types.T
+// in parameter:  res *DInt, t *types.T
 // out parameter: error
-func checkIsOverflow(d Datum, t *types.T) error {
-	var res *DInt
-	switch v := d.(type) {
-	case *DInt:
-		res = v
-	default:
-		return nil
-	}
+func checkIsOverflow(res *DInt, t *types.T) error {
 	switch t.Family() {
 	case types.IntFamily:
 		switch t.Width() {
@@ -3676,49 +3665,57 @@ func checkIsOverflow(d Datum, t *types.T) error {
 	return nil
 }
 
+// formatBitArray formats bit arrays such that they fill the total width
+// if too short, or truncate if too long.
+func formatBitArray(d *DBitArray, t *types.T) *DBitArray {
+	if t.Width() == 0 || d.BitLen() == uint(t.Width()) {
+		return d
+	}
+	a := d.BitArray.Clone()
+	switch t.Oid() {
+	case oid.T_varbit:
+		// VARBITs do not have padding attached, so only truncate.
+		if uint(t.Width()) < a.BitLen() {
+			a = a.ToWidth(uint(t.Width()))
+		}
+	default:
+		a = a.ToWidth(uint(t.Width()))
+	}
+	return &DBitArray{a}
+}
+
 // PerformCast performs a cast from the provided Datum to the specified
 // types.T.
 func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 	switch t.Family() {
 	case types.BitFamily:
+		var ba *DBitArray
 		switch v := d.(type) {
 		case *DBitArray:
-			if t.Width() == 0 || v.BitLen() == uint(t.Width()) {
-				return d, nil
-			}
-			var a DBitArray
-			switch t.Oid() {
-			case oid.T_varbit:
-				// VARBITs do not have padding attached.
-				a.BitArray = v.BitArray.Clone()
-				if uint(t.Width()) < a.BitArray.BitLen() {
-					a.BitArray = a.BitArray.ToWidth(uint(t.Width()))
-				}
-			default:
-				a.BitArray = v.BitArray.Clone().ToWidth(uint(t.Width()))
-			}
-			return &a, nil
+			ba = v
 		case *DInt:
-			return NewDBitArrayFromInt(int64(*v), uint(t.Width()))
+			var err error
+			ba, err = NewDBitArrayFromInt(int64(*v), uint(t.Width()))
+			if err != nil {
+				return nil, err
+			}
 		case *DString:
 			res, err := bitarray.Parse(string(*v))
 			if err != nil {
 				return nil, err
 			}
-			if t.Width() > 0 {
-				res = res.ToWidth(uint(t.Width()))
-			}
-			return &DBitArray{BitArray: res}, nil
+			ba = &DBitArray{BitArray: res}
 		case *DCollatedString:
 			res, err := bitarray.Parse(v.Contents)
 			if err != nil {
 				return nil, err
 			}
-			if t.Width() > 0 {
-				res = res.ToWidth(uint(t.Width()))
-			}
-			return &DBitArray{BitArray: res}, nil
+			ba = &DBitArray{BitArray: res}
 		}
+		if ba != nil {
+			ba = formatBitArray(ba, t)
+		}
+		return ba, nil
 
 	case types.BoolFamily:
 		switch v := d.(type) {
@@ -3786,22 +3783,8 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 				return nil, err
 			}
 		case *DTimestamp:
-			//if (v.Unix() == -9223372037 && v.Nanosecond() < 146000000) ||
-			//	(v.Unix() == 9223372036 && v.Nanosecond() > 854000000) {
-			//	return nil, pgerror.New(pgcode.Warning, "timestamp is out of range, should be between 1677-09-21 00:12:43.146+00:00 and 2262-04-11 23:47:16.854+00:00")
-			//}
-			//if v.Unix() < -9223372037 || v.Unix() > 9223372036 {
-			//	return nil, pgerror.New(pgcode.Warning, "timestamp is out of range, should be between 1677-09-21 00:12:43.146+00:00 and 2262-04-11 23:47:16.854+00:00")
-			//}
 			res = NewDInt(DInt(v.Unix()*1e3 + int64(v.Nanosecond()/1e6)))
 		case *DTimestampTZ:
-			//if (v.Unix() == -9223372037 && v.Nanosecond() < 146000000) ||
-			//	(v.Unix() == 9223372036 && v.Nanosecond() > 854000000) {
-			//	return nil, pgerror.New(pgcode.Warning, "timestamp is out of range, should be between 1677-09-21 00:12:43.146+00:00 and 2262-04-11 23:47:16.854+00:00")
-			//}
-			//if v.Unix() < -9223372037 || v.Unix() > 9223372036 {
-			//	return nil, pgerror.New(pgcode.Warning, "timestamp is out of range, should be between 1677-09-21 00:12:43.146+00:00 and 2262-04-11 23:47:16.854+00:00")
-			//}
 			res = NewDInt(DInt(v.Unix()*1e3 + int64(v.Nanosecond()/1e6)))
 		case *DDate:
 			// TODO(mjibson): This cast is unsupported by postgres. Should we remove ours?
@@ -3819,6 +3802,9 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			res = &v.DInt
 		}
 		if res != nil {
+			if err := checkIsOverflow(res, t); err != nil {
+				return nil, err
+			}
 			return res, nil
 		}
 
@@ -3845,10 +3831,10 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			return ParseDFloat(v.Contents)
 		case *DTimestamp:
 			micros := float64(v.Nanosecond() / int(time.Microsecond))
-			return NewDFloat(DFloat(float64(v.Unix()) + micros*1e-6)), nil
+			return NewDFloat(DFloat(float64(v.Unix()*1e3) + micros*1e-3)), nil
 		case *DTimestampTZ:
 			micros := float64(v.Nanosecond() / int(time.Microsecond))
-			return NewDFloat(DFloat(float64(v.Unix()) + micros*1e-6)), nil
+			return NewDFloat(DFloat(float64(v.Unix()*1e3) + micros*1e-3)), nil
 		case *DDate:
 			// TODO(mjibson): This cast is unsupported by postgres. Should we remove ours?
 			if !v.IsFinite() {
@@ -3987,15 +3973,31 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 		}
 
 	case types.BytesFamily:
+		var by *DBytes
+		var err error
 		switch t := d.(type) {
 		case *DString:
-			return ParseDByte(string(*t))
+			by, err = ParseDByte(string(*t))
+			if err != nil {
+				return nil, err
+			}
 		case *DCollatedString:
-			return NewDBytes(DBytes(t.Contents)), nil
+			by = NewDBytes(DBytes(t.Contents))
 		case *DUuid:
-			return NewDBytes(DBytes(t.GetBytes())), nil
+			by = NewDBytes(DBytes(t.GetBytes()))
 		case *DBytes:
-			return d, nil
+			by = t
+		}
+		if by != nil {
+			// If the varbytes type specifies a limit we truncate to that limit:
+			//   'hello'::VARBYTES(2) -> '\x6865'
+			if t.Oid() == oid.T_varbytea {
+				if t.Width() > 0 {
+					s := util.TruncateString(string(*by), int(t.Width()))
+					by = NewDBytes(DBytes(s))
+				}
+			}
+			return by, nil
 		}
 
 	case types.UuidFamily:
@@ -4085,10 +4087,9 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			t, err := d.ToTime()
 			return MakeDTimestamp(t, roundTo), err
 		case *DInt:
-			if int64(*d) < -9223372036854 || int64(*d) > 9223372036854 {
-				return nil, pgerror.Newf(pgcode.Warning, "int %d is out of range, should be between -9223372036854 and 9223372036854", int64(*d))
-			}
-			return MakeDTimestamp(timeutil.Unix(0, int64(*d)*1e6), roundTo), nil
+			sec := int64(*d) / 1e3
+			nsec := (int64(*d) - sec*1e3) * 1e6
+			return MakeDTimestamp(timeutil.Unix(sec, nsec), roundTo), nil
 		case *DTimestamp:
 			return d.Round(roundTo), nil
 		case *DTimestampTZ:
@@ -4114,7 +4115,9 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			_, after := d.Time.In(ctx.GetLocation()).Zone()
 			return MakeDTimestampTZ(d.Time.Add(time.Duration(before-after)*time.Second), roundTo), nil
 		case *DInt:
-			return MakeDTimestampTZ(timeutil.Unix(0, int64(*d)*1e6), roundTo), nil
+			sec := int64(*d) / 1e3
+			nsec := (int64(*d) - sec*1e3) * 1e6
+			return MakeDTimestampTZ(timeutil.Unix(sec, nsec), roundTo), nil
 		case *DTimestampTZ:
 			return d.Round(roundTo), nil
 		}
