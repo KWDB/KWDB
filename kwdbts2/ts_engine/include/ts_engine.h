@@ -58,9 +58,9 @@ class TSEngineV2Impl : public TSEngine {
   ~TSEngineV2Impl() override;
 
   KStatus CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-                        std::vector<RangeGroup> ranges) override { return CreateTsTable(ctx, table_id, meta); }
+                        std::vector<RangeGroup> ranges) override;
 
-  KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override { return KStatus::SUCCESS; }
+  KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override;
 
   KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                                const char* transaction_id, const uint32_t cur_version, const uint32_t new_version,
@@ -80,63 +80,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                      bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
-                     uint32_t version = 0) override {
-    // TODO(liangbo01)  need input change version
-    KStatus s = KStatus::SUCCESS;
-    ts_table = tables_cache_->Get(table_id);
-    if (ts_table == nullptr) {
-      std::shared_ptr<TsTableSchemaManager> schema;
-      s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
-      if (s == KStatus::SUCCESS) {
-        auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
-        if (table.get() != nullptr) {
-          ts_table = table;
-          tables_cache_->Put(table_id, ts_table);
-        } else {
-          LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
-          s = KStatus::FAIL;
-        }
-      } else {
-        LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
-        s = KStatus::FAIL;
-      }
-    }
-
-    // if table no exist. try get schema from go level.
-    if (ts_table == nullptr && create_if_not_exist) {
-      LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
-      if (!g_go_start_service) {  // unit test from c, just return falsed.
-        return KStatus::FAIL;
-      }
-      char* error;
-      size_t data_len = 0;
-      char* data = getTableMetaByVersion(table_id, 0, &data_len, &error);
-      if (error != nullptr) {
-        LOG_ERROR("getTableMetaByVersion error: %s.", error);
-        return KStatus::FAIL;
-      }
-      roachpb::CreateTsTable meta;
-      if (!meta.ParseFromString({data, data_len})) {
-        LOG_ERROR("Parse schema From String failed.");
-        return KStatus::FAIL;
-      }
-      CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
-      ts_table = tables_cache_->Get(table_id);
-      if (ts_table == nullptr || ts_table->IsDropped()) {
-        LOG_ERROR("failed during upper version.");
-        return KStatus::FAIL;
-      }
-      s = KStatus::SUCCESS;
-    }
-
-    if (s == KStatus::SUCCESS) {
-      if (version != 0 && ts_table->CheckAndAddSchemaVersion(ctx, table_id, version) != KStatus::SUCCESS) {
-        LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", table_id);
-        return KStatus::FAIL;
-      }
-    }
-    return s;
-  }
+                     uint32_t version = 0) override;
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
   KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
@@ -164,35 +108,18 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                          uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                          uint64_t mtr_id) override;
 
   KStatus DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                     uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                     uint64_t mtr_id) override;
 
   KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) override {
-    return KStatus::SUCCESS;
-  }
+                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) override;
 
   KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override { return KStatus::SUCCESS; }
 
   KStatus ApplyBatchRepr(kwdbContext_p ctx, TSSlice* batch) override { return KStatus::SUCCESS; }
-
-  KStatus CreateRangeGroup(kwdbContext_p ctx, const KTableKey& table_id,
-                           roachpb::CreateTsTable* meta, const RangeGroup& range) override { return KStatus::SUCCESS; }
-
-  KStatus GetRangeGroups(kwdbContext_p ctx, const KTableKey& table_id, RangeGroups *groups) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus UpdateRangeGroup(kwdbContext_p ctx, const KTableKey& table_id, const RangeGroup& range) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus DeleteRangeGroup(kwdbContext_p ctx, const KTableKey& table_id, const RangeGroup& range) override {
-    return KStatus::SUCCESS;
-  }
 
   KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
                                  uint64_t begin_hash, uint64_t end_hash,
@@ -216,9 +143,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) override { return KStatus::SUCCESS; }
 
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
-                              const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override {
-    return KStatus::SUCCESS;
-  }
+                              const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
 
 
   KStatus FlushBuffer(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
@@ -288,7 +213,8 @@ class TSEngineV2Impl : public TSEngine {
   // init all engine.
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta);
+  KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta,
+                        std::shared_ptr<TsTable>& ts_table);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
@@ -300,8 +226,7 @@ class TSEngineV2Impl : public TSEngine {
     return flush_mgr_.GetFinishedLSN();
   }
 
-  // TODO(liangbo01)  To be implemented
-  KStatus DropResidualTsTable(kwdbContext_p ctx) override { return FAIL;}
+  KStatus DropResidualTsTable(kwdbContext_p ctx) override;
 
   static uint64_t GetAppliedIndex(const uint64_t range_id, const std::map<uint64_t, uint64_t>& range_indexes_map) {
     const auto iter = range_indexes_map.find(range_id);
