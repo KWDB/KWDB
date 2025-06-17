@@ -348,13 +348,29 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
   return KStatus::SUCCESS;
 }
 
+inline KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity(timestamp64 ts) {
+  ++cur_entity_index_;
+  return ScanAndSortEntityData(ts);
+}
+
 KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
-  *count = 0;
   KStatus ret;
+  *count = 0;
+  if (cur_entity_index_ == -1) {
+    ret = MoveToNextEntity(ts);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+  }
+  if (cur_entity_index_ >= entity_ids_.size()) {
+    // All entities are scanned.
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
   bool is_done = true;
   shared_ptr<TsBlockSpan> block_span;
-  do {
-    if (block_span_sorted_iterator_) {
+  if (block_span_sorted_iterator_) {
+    do {
       ret = block_span_sorted_iterator_->Next(block_span, &is_done);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
@@ -363,29 +379,23 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       if (block_span) {
         block_span->SetConvertVersion(table_schema_mgr_, table_version_, ts_scan_cols_);
       }
-    }
-    if (cur_entity_idx_ == -1 || is_done) {
-      ++cur_entity_index_;
-      if (cur_entity_index_ >= entity_ids_.size()) {
-        // All entities are scanned.
-        *is_finished = true;
-        return KStatus::SUCCESS;
+      if (!is_done && !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
+        // Found a block span which might contain satisfied rows.
+        ret = ConvertBlockSpanToResultSet(block_span, res, count);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+        if (*count > 0) {
+          // Return the result set.
+          return KStatus::SUCCESS;
+        }
       }
-      ScanAndSortEntityData(ts);
-    }
-  } while (is_done);
-
-  if (IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
-    ++cur_entity_index_;
-    if (cur_entity_index_ >= entity_ids_.size()) {
-      // All entities are scanned.
-      *is_finished = true;
-    } else {
-      ScanAndSortEntityData(ts);
-    }
-    return KStatus::SUCCESS;
+    } while (!is_done);
+    // No more satisfied rows found, we need to return 0 count for current entity.
+    return MoveToNextEntity(ts);
   } else {
-    return ConvertBlockSpanToResultSet(block_span, res, count);
+    // No satisfied rows found, we need to return 0 count for current entity.
+    return MoveToNextEntity(ts);
   }
 }
 
