@@ -13,15 +13,20 @@
 
 #include <fcntl.h>
 #include <gtest/gtest.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <algorithm>
+
+#include <atomic>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <random>
 #include <string_view>
+#include <thread>
+
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-
 
 using namespace kwdbts;  // NOLINT
 TEST(MMAP, ReadWrite) {
@@ -187,5 +192,113 @@ TEST(MMapIOV2, FailedCases) {
   EXPECT_EQ(rfile->Read(9, 1000, &result, nullptr), SUCCESS);
   std::string_view sv{result.data, result.len};
   EXPECT_EQ(sv, "9");
+  std::filesystem::remove(filename);
+}
+
+TEST(MMapIOV2, ReadAfterAllocate) {
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  char block[4096];
+  for (int i = 0; i < 4096; ++i) {
+    block[i] = i & 0xff;
+  }
+  TSSlice slice;
+  slice.data = block;
+  slice.len = 4096;
+  std::string filepath = "test";
+  std::unique_ptr<TsAppendOnlyFile> wfile;
+  auto s = env->NewAppendOnlyFile(filepath, &wfile);
+  ASSERT_EQ(s, SUCCESS);
+  ASSERT_NE(wfile, nullptr);
+  wfile->Append(slice);
+  wfile->Sync();
+
+  std::unique_ptr<TsRandomReadFile> rfile;
+  s = env->NewRandomReadFile(filepath, &rfile, 4096);
+  ASSERT_EQ(s, SUCCESS);
+  ASSERT_NE(rfile, nullptr);
+  for (int i = 0; i < 10000; ++i) {
+    wfile->Append(slice);
+  }
+  TSSlice result;
+  rfile->Read(0, 4096, &result, nullptr);
+  for (int i = 0; i < 4096; ++i) {
+    ASSERT_EQ(result.data[i], block[i]);
+  }
+  std::filesystem::remove(filepath);
+}
+
+TEST(MMapIOV2, ConcurrentReadWrite) {
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  std::atomic<size_t> file_size{0};
+  std::atomic_bool finished{false};
+  std::atomic_bool start{false};
+  std::string filename = "concurrent_test";
+  std::filesystem::remove(filename);
+  auto write_thread = [&](int iblock) {
+    std::default_random_engine drng(iblock);
+    char block[4096];
+    for (int i = 0; i < 4096; ++i) {
+      block[i] = (drng() + i) & 0xff;
+    }
+    TSSlice slice;
+    slice.data = block;
+    slice.len = 4096;
+
+    std::unique_ptr<TsAppendOnlyFile> wfile;
+    auto s = env->NewAppendOnlyFile(filename, &wfile, false);
+    start.store(true);
+    ASSERT_EQ(s, SUCCESS);
+    ASSERT_NE(wfile, nullptr);
+
+    ASSERT_EQ(wfile->Append(slice), SUCCESS);
+    ASSERT_EQ(wfile->Sync(), SUCCESS);
+    file_size.fetch_add(4096);
+  };
+
+  auto read_thread = [&]() {
+    while (finished.load() == false) {
+      std::unique_ptr<TsRandomReadFile> rfile;
+      auto fsize = file_size.load();
+      if (fsize == 0) continue;
+      ASSERT_EQ(fsize % 4096, 0);
+      while (start.load() == false) {
+        std::this_thread::yield();
+      }
+      ASSERT_NE(fsize, 0);
+      auto s = env->NewRandomReadFile(filename, &rfile, fsize);
+      ASSERT_EQ(s, SUCCESS);
+      s = rfile->Prefetch(0, fsize);
+      ASSERT_EQ(s, SUCCESS);
+      TSSlice result;
+      s = rfile->Read(0, fsize, &result, nullptr);
+      ASSERT_EQ(s, SUCCESS);
+      ASSERT_EQ(result.len, fsize);
+
+      ASSERT_EQ(fsize % 4096, 0);
+      int nblocks = fsize / 4096;
+
+      const char* p = result.data;
+      for (int iblock = 0; iblock < nblocks; ++iblock) {
+        std::default_random_engine drng(iblock);
+        for (int i = 0; i < 4096; ++i) {
+          char expected = (drng() + i) & 0xff;
+          ASSERT_EQ(p[i], expected) << "at block " << iblock << " " << i;
+        }
+        p += 4096;
+      }
+    }
+  };
+
+  std::vector<std::thread> threads;
+  for (int i = 0; i < 10; ++i) {
+    threads.emplace_back(read_thread);
+  }
+  for (int i = 0; i < 100; ++i) {
+    write_thread(i);
+  }
+  finished.store(true);
+  for (auto& t : threads) {
+    t.join();
+  }
   std::filesystem::remove(filename);
 }

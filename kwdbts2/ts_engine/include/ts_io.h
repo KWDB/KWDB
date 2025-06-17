@@ -365,6 +365,7 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
   }
   ~TsMMapRandomReadFile() {
     munmap(mmap_start_, file_size_);
+    close(fd_);
   }
   KStatus Prefetch(size_t offset, size_t n) override;
   KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) const override;

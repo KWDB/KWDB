@@ -52,7 +52,8 @@ size_t TruncateToPage(size_t offset, size_t page_size) {
 
 KStatus TsMMapAppendOnlyFile::MMapNew() {
   assert(mmap_start_ == nullptr);
-  int ok = posix_fallocate(fd_, file_size_, mmap_size_);
+  // int ok = posix_fallocate(fd_, file_size_, mmap_size_);
+  int ok = fallocate(fd_, 0, file_size_, mmap_size_);
   if (ok < 0) {
     LOG_ERROR("can not allocate space %lu on file %s, reason: %s", mmap_size_, path_.c_str(),
               strerror(errno));
@@ -220,13 +221,21 @@ KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath,
     LOG_ERROR("cannot open file %s, reason: %s", filepath.c_str(), strerror(errno));
     return FAIL;
   }
-  if (file_size == -1) {
-    file_size = lseek(fd, 0, SEEK_END);
-  }
-  if (file_size == -1) {
+  size_t actual_size = lseek(fd, 0, SEEK_END);
+  if (actual_size == -1) {
     LOG_ERROR("lseek failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
     return FAIL;
   }
+
+  if (file_size == -1) {
+    file_size = actual_size;
+  }
+  if (file_size > actual_size) {
+    LOG_ERROR("error on file %s, the input file size %lu is larger than actual size %lu",
+              filepath.c_str(), file_size, actual_size);
+    return FAIL;
+  }
+  assert(file_size <= actual_size);
 
   void* ptr = mmap(nullptr, file_size, PROT_READ, MAP_SHARED, fd, 0);
   if (ptr == MAP_FAILED) {
