@@ -379,11 +379,6 @@ INSERT 1
 (2 rows)
 > ALTER TABLE test_lifetime.tb SET RETENTIONS=1week;
 ALTER TABLE
-> SELECT pg_sleep(5);
-  pg_sleep
-------------
-    true
-(1 row)
 > select count(*) from test1.t1;
   count
 ---------

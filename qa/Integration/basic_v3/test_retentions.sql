@@ -125,7 +125,6 @@ INSERT INTO test_lifetime.tb values('1024-02-02 01:02:00+00:00',5,null,1000,null
 INSERT INTO test_lifetime.tb VALUES('1124-02-02 01:01:00+00:00',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
 SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
 ALTER TABLE test_lifetime.tb SET RETENTIONS=1week;
-SELECT pg_sleep(5);
 
 select count(*) from test1.t1;
 drop database test1;

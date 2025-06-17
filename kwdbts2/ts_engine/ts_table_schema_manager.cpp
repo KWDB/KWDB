@@ -193,7 +193,7 @@ KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
               tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
     return FAIL;
   }
-  LOG_INFO("++++++++++++++++++Table schema manager init success")
+  LOG_INFO("Table schema manager init success")
   return SUCCESS;
 }
 
