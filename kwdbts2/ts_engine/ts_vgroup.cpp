@@ -280,13 +280,18 @@ TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() {
 }
 
 std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
+  PartitionManager* partition_manager = nullptr;
   RW_LATCH_S_LOCK(&partitions_latch_);
-  auto partition_manager = partitions_[database_id].get();
+  auto iter = partitions_.find(database_id);
+  if (iter != partitions_.end()) {
+    partition_manager = iter->second.get();
+  }
   RW_LATCH_UNLOCK(&partitions_latch_);
   if (partition_manager == nullptr) {
     // TODO(zzr): interval should be fetched form global setting;
     RW_LATCH_X_LOCK(&partitions_latch_);
-    if (partitions_[database_id].get() == nullptr) {
+    iter = partitions_.find(database_id);
+    if (iter == partitions_.end()) {
       partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
     }
     partition_manager = partitions_[database_id].get();
