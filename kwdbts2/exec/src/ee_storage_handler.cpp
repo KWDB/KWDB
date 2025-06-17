@@ -544,7 +544,7 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
         }
       }
     }
-    // LOG_DEBUG("TSTable::GetIterator() entity_size %ld", sizeof(entities_));
+
 
     // LOG_DEBUG("TSTable::GetIterator() ts_span_size:%ld", sizeof(ts_spans));
     if (this->table_->GetRelTagJoinColumnIndexes().size() > 0) {
