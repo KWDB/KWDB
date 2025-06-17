@@ -118,6 +118,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus ScanAndSortEntityData(timestamp64 ts);
+  KStatus MoveToNextEntity(timestamp64 ts);
 
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
