@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <algorithm>
 #include "ts_blkspan_type_convert.h"
 #include "ts_block.h"
 #include "ts_table_schema_manager.h"
@@ -100,14 +101,14 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
 
   if (isVarLenType(blk_schema_valid_[blk_scan_cols_[scan_idx]].type) &&
       !isVarLenType(table_schema_all_[ts_scan_cols_[scan_idx]].type)) {
-    // if (attrs_[col_idx].type != CHAR && attrs_[col_idx].type != BINARY) {
     char* value = nullptr;
     auto ret = GetFixLenColAddr(scan_idx, &value, bitmap);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetFixLenColAddr failed.");
+      return ret;
     }
-    return ret;
-    // }
+    col_bitmaps.insert({scan_idx, bitmap});
+    return SUCCESS;
   }
   return block_->GetColBitmap(blk_scan_cols_[scan_idx], blk_schema_valid_, bitmap);
 }
@@ -138,6 +139,7 @@ KStatus TSBlkDataTypeConvert::GetVarPreMin(uint32_t scan_idx, TSSlice &pre_min) 
 
 KStatus TSBlkDataTypeConvert::SetConvertVersion(std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                                 uint32_t scan_version, std::vector<uint32_t> ts_scan_cols) {
+  assert(tbl_schema_mgr != nullptr);
   tbl_schema_mgr_ = tbl_schema_mgr;
   scan_version_ = scan_version;
   if (block_->GetTableVersion() == scan_version) {
@@ -170,17 +172,16 @@ KStatus TSBlkDataTypeConvert::GetBlkScanColsInfo(uint32_t version, std::vector<u
   for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
     if (!blk_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
       bool found = false;
-      size_t j = 0;
-      for (; j < blk_valid_cols.size(); j++) {
-        if (blk_valid_cols[j] == ts_scan_cols_[i]) {
-          found = true;
-          break;
-        }
+      auto it = std::find(blk_valid_cols.begin(), blk_valid_cols.end(), ts_scan_cols_[i]);
+      found = (it != blk_valid_cols.end());
+      uint32_t j = 0;
+      if (found) {
+        j = std::distance(blk_valid_cols.begin(), it);
       }
-      if (!found) {
-        blk_scan_cols[i] = UINT32_MAX;
-      } else {
+      if (found) {
         blk_scan_cols[i] = j;
+      } else {
+        blk_scan_cols[i] = UINT32_MAX;
       }
     } else {
       blk_scan_cols[i] = UINT32_MAX;

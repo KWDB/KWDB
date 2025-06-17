@@ -73,7 +73,7 @@ struct TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
-  TSBlkDataTypeConvert convert_;
+  std::shared_ptr<TSBlkDataTypeConvert> convert_;
 
   friend TSBlkDataTypeConvert;
 

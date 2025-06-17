@@ -1208,19 +1208,23 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!isVarLenType(type)) {
         void* pre_max{nullptr};
         int32_t size = (ts_scan_cols_[max_col_idx] == 0 ? 16 : attrs_[ts_scan_cols_[max_col_idx]].size);
-        ret = block_span->GetPreMax(max_col_idx, pre_max);
+        ret = block_span->GetPreMax(max_col_idx, pre_max);  // pre agg max(timestamp) use 8 bytes
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
         if (!pre_max) {
           continue;
         }
+        bool need_copy{false};
         if (agg_data.data == nullptr) {
           agg_data.len = size;
           InitAggData(agg_data);
-          memcpy(agg_data.data, pre_max, size);
-        } else if (valcmp(pre_max, agg_data.data, type, size) > 0) {
-          memcpy(agg_data.data, pre_max, size);
+          need_copy = true;
+        } else if (valcmp(pre_max, agg_data.data, type, ts_scan_cols_[max_col_idx] == 0 ? 8 : size) > 0) {
+          need_copy = true;
+        }
+        if (need_copy) {
+          memcpy(agg_data.data, pre_max, ts_scan_cols_[max_col_idx] == 0 ? 8 : size);
         }
       } else {
         TSSlice pre_max{nullptr, 0};
@@ -1312,24 +1316,29 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     }
     TSSlice& agg_data = final_agg_data_[min_col_idx];
     int32_t type = attrs_[ts_scan_cols_[min_col_idx]].type;
+    // TODO(zqh): both integer or both char can use pre agg
     if (block_span->IsSameType(min_col_idx) && block_span->HasPreAgg()) {
       // Use pre agg to calculate min
       if (!isVarLenType(type)) {
         void* pre_min{nullptr};
         int32_t size = (ts_scan_cols_[min_col_idx] == 0 ? 16 : attrs_[ts_scan_cols_[min_col_idx]].size);
-        ret = block_span->GetPreMin(min_col_idx, pre_min);
+        ret = block_span->GetPreMin(min_col_idx, pre_min);  // pre agg min(timestamp) use 8 bytes
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
         if (!pre_min) {
           continue;
         }
+        bool need_copy{false};
         if (agg_data.data == nullptr) {
           agg_data.len = size;
           InitAggData(agg_data);
-          memcpy(agg_data.data, pre_min, size);
-        } else if (valcmp(pre_min, agg_data.data, type, size) < 0) {
-          memcpy(agg_data.data, pre_min, size);
+          need_copy = true;
+        } else if (valcmp(pre_min, agg_data.data, type, ts_scan_cols_[min_col_idx] == 0 ? 8 : size) < 0) {
+          need_copy = true;
+        }
+        if (need_copy) {
+          memcpy(agg_data.data, pre_min, ts_scan_cols_[min_col_idx] == 0 ? 8 : size);
         }
       } else {
         TSSlice pre_min{nullptr, 0};

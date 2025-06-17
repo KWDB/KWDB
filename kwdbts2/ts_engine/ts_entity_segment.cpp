@@ -837,6 +837,9 @@ KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_
   if (col_blk.agg.empty()) {
     return KStatus::SUCCESS;
   }
+  if (blk_col_idx == 0) {
+    size = 8;
+  }
   pre_min = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t) + size);
 
   return KStatus::SUCCESS;

@@ -53,9 +53,9 @@ KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_
 
 TsBlockSpan:: TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                         uint32_t scan_version, const std::vector<uint32_t>& ts_scan_cols)  // NOLINT(runtime/init)
-    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow),
-      convert_(*this, tbl_schema_mgr, scan_version, ts_scan_cols) {  // NOLINT(runtime/init)
+                         uint32_t scan_version, const std::vector<uint32_t>& ts_scan_cols)
+    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow) {
+  convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, tbl_schema_mgr, scan_version, ts_scan_cols);
   assert(nrow_ >= 1);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
@@ -82,7 +82,7 @@ KStatus TsBlockSpan::SetConvertVersion(std::shared_ptr<TsTableSchemaManager> tbl
   if (scan_version == 0) {
     version = GetTableVersion();
   }
-  return convert_.SetConvertVersion(tbl_schema_mgr, version, ts_scan_cols);
+  return convert_->SetConvertVersion(tbl_schema_mgr, version, ts_scan_cols);
 }
 
 TSEntityID TsBlockSpan::GetEntityID() const {
@@ -131,29 +131,29 @@ void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
 }
 
 bool TsBlockSpan::IsColExist(uint32_t scan_idx) {
-  return convert_.IsColExist(scan_idx);
+  return convert_->IsColExist(scan_idx);
 }
 
 bool TsBlockSpan::IsColNotNull(uint32_t scan_idx) {
-  return convert_.IsColNotNull(scan_idx);
+  return convert_->IsColNotNull(scan_idx);
 }
 
 bool TsBlockSpan::IsSameType(uint32_t scan_idx) {
-  return convert_.IsSameType(scan_idx);
+  return convert_->IsSameType(scan_idx);
 }
 
 KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
-  return convert_.GetColBitmap(scan_idx, bitmap);
+  return convert_->GetColBitmap(scan_idx, bitmap);
 }
 
 // dest type is fixed len datatype.
 KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap) {
-  return convert_.GetFixLenColAddr(scan_idx, value, bitmap);
+  return convert_->GetFixLenColAddr(scan_idx, value, bitmap);
 }
 
 // dest type is varlen datatype.
 KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
-  return convert_.GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
+  return convert_->GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
 }
 
 KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
@@ -191,29 +191,29 @@ bool TsBlockSpan::HasPreAgg() {
 }
 
 KStatus TsBlockSpan::GetPreCount(uint32_t scan_idx, uint16_t& count) {
-  return convert_.GetPreCount(scan_idx, count);
+  return convert_->GetPreCount(scan_idx, count);
 }
 
 KStatus TsBlockSpan::GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
-  int32_t size = convert_.blk_schema_valid_[convert_.blk_scan_cols_[scan_idx]].size;
-  return convert_.GetPreSum(scan_idx, size, pre_sum, is_overflow);
+  int32_t size = convert_->blk_schema_valid_[convert_->blk_scan_cols_[scan_idx]].size;
+  return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
 }
 
 KStatus TsBlockSpan::GetPreMax(uint32_t scan_idx, void* &pre_max) {
-  return convert_.GetPreMax(scan_idx, pre_max);
+  return convert_->GetPreMax(scan_idx, pre_max);
 }
 
 KStatus TsBlockSpan::GetPreMin(uint32_t scan_idx, void* &pre_min) {
-  int32_t size = convert_.blk_schema_valid_[convert_.blk_scan_cols_[scan_idx]].size;
-  return convert_.GetPreMin(scan_idx, size, pre_min);
+  int32_t size = convert_->blk_schema_valid_[convert_->blk_scan_cols_[scan_idx]].size;
+  return convert_->GetPreMin(scan_idx, size, pre_min);
 }
 
 KStatus TsBlockSpan::GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
-  return convert_.GetVarPreMax(scan_idx, pre_max);
+  return convert_->GetVarPreMax(scan_idx, pre_max);
 }
 
 KStatus TsBlockSpan::GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
-  return convert_.GetVarPreMin(scan_idx, pre_min);
+  return convert_->GetVarPreMin(scan_idx, pre_min);
 }
 
 KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
@@ -227,24 +227,28 @@ KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_s
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num,
-                                        convert_.tbl_schema_mgr_, convert_.scan_version_, convert_.ts_scan_cols_);
+                                        convert_->tbl_schema_mgr_, convert_->scan_version_, convert_->ts_scan_cols_);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
+  convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, convert_->tbl_schema_mgr_, convert_->scan_version_,
+                                                    convert_->ts_scan_cols_);
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num);
-  convert_ = TSBlkDataTypeConvert(*this, nullptr, 0, {});
   // change current span info
   nrow_ -= row_num;
+  convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, convert_->tbl_schema_mgr_, convert_->scan_version_,
+                                                    convert_->ts_scan_cols_);
 }
 
 void TsBlockSpan::Truncate(int row_num) {
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_ = TSBlkDataTypeConvert(*this, nullptr, 0, {});
+  convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, convert_->tbl_schema_mgr_, convert_->scan_version_,
+                                                    convert_->ts_scan_cols_);
 }
 
 void TsBlockSpan::Clear() {
@@ -252,7 +256,7 @@ void TsBlockSpan::Clear() {
   entity_id_ = 0;
   start_row_ = 0;
   nrow_ = 0;
-  convert_ = {};
+  convert_ = nullptr;
 }
 
 }  // namespace kwdbts

@@ -92,7 +92,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{500, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(filter, block_spans);
+        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1, {0, 1, 2, 3, 4});
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -101,14 +101,14 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           block_spans.pop_front();
           TsBitmap bitmap;
           char* ts_col;
-          s = block_span->GetFixLenColAddr(0, metric_schema, metric_schema[0], &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           std::vector<char*> col_values;
           col_values.resize(3);
-          s = block_span->GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 500 + row_idx + idx);
@@ -118,7 +118,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
             EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
             kwdbts::DataFlags flag;
             TSSlice data;
-            s = block_span->GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
             EXPECT_EQ(s, KStatus::SUCCESS);
             string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
@@ -136,7 +136,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, 622}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(filter, block_spans);
+        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1, {0, 1, 2, 3, 4});
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
@@ -145,15 +145,15 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           block_spans.pop_front();
           TsBitmap bitmap;
           char* ts_col;
-          s = block_span->GetFixLenColAddr(0, metric_schema, metric_schema[0], &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           std::vector<char*> col_values;
           col_values.resize(3);
-          s = block_span->GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 123 + row_idx + idx);
@@ -163,7 +163,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
             EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
             kwdbts::DataFlags flag;
             TSSlice data;
-            s = block_span->GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
             EXPECT_EQ(s, KStatus::SUCCESS);
             string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
@@ -177,7 +177,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(filter, block_spans);
+        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1, {0, 1, 2, 3, 4});
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -187,14 +187,14 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           block_spans.pop_front();
           TsBitmap bitmap;
           char* ts_col;
-          s = block_span->GetFixLenColAddr(0, metric_schema, metric_schema[0], &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           std::vector<char*> col_values;
           col_values.resize(3);
-          s = block_span->GetFixLenColAddr(1, metric_schema, metric_schema[1], &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, metric_schema, metric_schema[2], &col_values[1], bitmap);
+          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, metric_schema, metric_schema[3], &col_values[2], bitmap);
+          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 123 + row_idx + idx);
@@ -204,7 +204,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
             EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
             kwdbts::DataFlags flag;
             TSSlice data;
-            s = block_span->GetVarLenTypeColAddr(idx, 4, metric_schema, metric_schema[4], flag, data);
+            s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
             EXPECT_EQ(s, KStatus::SUCCESS);
             string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
@@ -221,7 +221,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<KwTsSpan> spans{{INT64_MIN, INT64_MAX}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
-        result[0]->GetBlockSpans(filter, block_span);
+        result[0]->GetBlockSpans(filter, block_span, schema_mgr, 1, {0, 1, 2, 3, 4});
         for (auto block : block_span) {
           sum += block->GetRowNum();
         }
