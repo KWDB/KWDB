@@ -575,9 +575,11 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   if (has_first_row_col_) {
     first_row_candidate_.blk_span = nullptr;
+    first_row_candidate_.ts = INT64_MAX;
   }
   if (has_last_row_col_) {
     last_row_candidate_.blk_span = nullptr;
+    last_row_candidate_.ts = INT64_MIN;
   }
 
   KStatus ret;
