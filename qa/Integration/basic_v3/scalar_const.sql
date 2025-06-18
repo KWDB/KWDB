@@ -1,4 +1,5 @@
 set cluster setting sql.query_cache.enabled=true;
+set cluster setting ts.sql.query_opt_mode = 1110;
 
 drop database if EXISTS test;
 drop database if EXISTS test_ts;
