@@ -33,7 +33,7 @@ KStatus TsEntityPartition::GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_b
       return s;
     }
   }
-  if (files_ != nullptr) {
+  if (!skip_file_data_) {
     // get block span in last segment
     std::vector<std::shared_ptr<TsLastSegment>> last_segs = files_->GetLastSegmentMgr()->GetAllLastSegments();
     for (auto& last_seg : last_segs) {
