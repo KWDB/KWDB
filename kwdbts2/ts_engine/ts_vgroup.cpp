@@ -521,7 +521,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
     kv.first->PublicLastSegment(kv.second.GetFileNumber());
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   // todo(liangbo01) add all new files into new_file_list.
   // version_mgr_->ApplyUpdate(update);
   //  todo(liangbo01) atomic: mem segment delete, and last segments load.
