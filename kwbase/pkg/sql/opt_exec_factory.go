@@ -3114,6 +3114,10 @@ func (ef *execFactory) ProcessBljLeftColumns(
 		return ef.ProcessBljLeftColumns(n.rows, mem)
 	case *updateNode:
 		return ef.ProcessBljLeftColumns(n.source, mem)
+	case *scanBufferNode:
+		return ef.ProcessBljLeftColumns(n.buffer, mem)
+	default:
+		return nil, true
 	}
 
 	varPos := 0
