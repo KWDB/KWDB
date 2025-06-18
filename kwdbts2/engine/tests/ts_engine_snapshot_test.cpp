@@ -114,8 +114,8 @@ TEST_P(TestEngineSnapshotConvert, CreateSnapshotAndInsertOtherEmpty) {
   std::shared_ptr<TsEntityGroup> tbl_range_desc;
   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-            1, &iter1, tbl_range_desc, {}, false, false), KStatus::FAIL);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+            scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::FAIL);
   delete iter1;
   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -200,7 +200,7 @@ TEST_P(TestEngineSnapshotConvert, CreateSnapshotAndInsertOther) {
   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
-          scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+          {}, scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -301,8 +301,8 @@ TEST_P(TestEngineSnapshotConvert, ConvertManyData) {
   std::shared_ptr<TsEntityGroup> tbl_range_desc;
   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-          1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+          scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -405,7 +405,7 @@ TEST_P(TestEngineSnapshotConvert, ConvertManyDataDiffEntities) {
     std::vector<k_uint32> scancols = {0, 1};
     std::vector<Sumfunctype> scanaggtypes;
     TsStorageIterator* iter1;
-    ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+    ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
                 scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
     ResultSet res(scancols.size());
     k_uint32 count;
@@ -506,8 +506,8 @@ TEST_P(TestEngineSnapshotConvert, ConvertManyDataDiffEntitiesFaild1) {
   std::vector<k_uint32> scancols = {0, 1};
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1, 2, 3, 4, 5, 6}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-              1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1, 2, 3, 4, 5, 6}, {ts_span}, ts_type, scancols, scancols, {},
+              scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -623,8 +623,8 @@ TEST_P(TestEngineSnapshotConvert, ConvertManyDataSameEntityDestNoEmpty) {
   std::vector<k_uint32> scancols = {0, 1};
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-              1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
+              scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -739,8 +739,8 @@ TEST_P(TestEngineSnapshotConvert, DestNoEmptyThreeTimes) {
   std::vector<k_uint32> scancols = {0, 1};
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-              1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
+              scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -755,8 +755,8 @@ TEST_P(TestEngineSnapshotConvert, DestNoEmptyThreeTimes) {
   EXPECT_EQ(total_count, batch_num);
   delete iter1;
   ts_span = {convertMSToPrecisionTS(start_ts + batch_num * 10, ts_type), INT64_MAX};
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-              1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
+              scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   total_count = 0;
   while (true) {
     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -868,8 +868,8 @@ TEST_P(TestEngineSnapshotConvert, ConvertManyDataSameEntityDestNoEmptyRollback) 
   std::vector<k_uint32> scancols = {0, 1};
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-            1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
+            scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -961,8 +961,8 @@ TEST_P(TestEngineSnapshotConvert, CreateSnapshotDescNoTable) {
   std::shared_ptr<TsEntityGroup> tbl_range_desc;
   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-              1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+              scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -1096,8 +1096,8 @@ TEST_P(TestEngineSnapshotConvert, CreateSnapshotDestTableVersionLow) {
   std::shared_ptr<TsEntityGroup> tbl_range_desc;
   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-            3, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+            scanaggtypes, 3, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;
@@ -1232,8 +1232,8 @@ TEST_P(TestEngineSnapshotConvert, CreateSnapshotDestTableVersionHigh) {
   std::shared_ptr<TsEntityGroup> tbl_range_desc;
   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, scanaggtypes,
-            3, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+            scanaggtypes, 3, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
   bool is_finished = false;

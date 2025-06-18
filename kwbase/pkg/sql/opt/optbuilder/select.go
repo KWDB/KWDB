@@ -1124,6 +1124,11 @@ func (b *Builder) buildSelectClause(
 		b.addInstanceTablePTag(sel)
 		b.InstanceTabNames = nil
 	}
+
+	if b.factory.Metadata().CheckSingleTsTable() {
+		fromScope.setAggExtendFlag(isSingleTsTable)
+	}
+
 	b.processWindowDefs(sel, fromScope)
 	b.buildWhere(sel.Where, fromScope)
 

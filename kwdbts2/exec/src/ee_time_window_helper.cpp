@@ -87,15 +87,14 @@ bool TimeWindowHelper::MaterializeWindowField(KWThdContext *thd, Field *field,
                       field->get_storage_length(), false);
     return true;
   }
-  if (field->get_num() == 0 && field->get_field_type() == Field::FIELD_ITEM) {
-    if (!fill_first_ts_) {
-      chunk->InsertData(row, col, reinterpret_cast<char *>(&first_ts_),
-                        field->get_storage_length(), false);
-      fill_first_ts_ = true;
-    } else {
-      chunk->InsertData(row, col, reinterpret_cast<char *>(&last_ts_),
-                        field->get_storage_length(), false);
-    }
+  if (field == thd->window_start_field_) {
+    chunk->InsertData(row, col, reinterpret_cast<char *>(&first_ts_),
+                      field->get_storage_length(), false);
+    return true;
+  }
+  if (field == thd->window_end_field_) {
+    chunk->InsertData(row, col, reinterpret_cast<char *>(&last_ts_),
+                      field->get_storage_length(), false);
     return true;
   }
   return false;

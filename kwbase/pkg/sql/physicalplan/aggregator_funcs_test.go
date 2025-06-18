@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,9 @@
 // This software (KWDB) is licensed under Mulan PSL v2.
 // You can use this software according to the terms and conditions of the Mulan PSL v2.
 // You may obtain a copy of Mulan PSL v2 at:
-//          http://license.coscl.org.cn/MulanPSL2
+//
+//	http://license.coscl.org.cn/MulanPSL2
+//
 // THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
@@ -213,9 +215,9 @@ func checkDistAggregationInfo(
 	// The type(s) outputted by the local stage can be different than the input type
 	// (e.g. DECIMAL instead of INT).
 	intermediaryTypes := make([]types.T, numIntermediary)
-	for i, fn := range info.LocalStage {
+	for i, LocalFn := range info.LocalStage {
 		var err error
-		_, returnTyp, err := execinfrapb.GetAggregateInfo(fn, colType)
+		_, returnTyp, err := execinfrapb.GetAggregateInfo(LocalFn.Fn, colType)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,9 +225,9 @@ func checkDistAggregationInfo(
 	}
 
 	localAggregations := make([]execinfrapb.AggregatorSpec_Aggregation, numIntermediary)
-	for i, fn := range info.LocalStage {
+	for i, localAggFn := range info.LocalStage {
 		// Local aggregations have the same input.
-		localAggregations[i] = execinfrapb.AggregatorSpec_Aggregation{Func: fn, ColIdx: []uint32{0}}
+		localAggregations[i] = execinfrapb.AggregatorSpec_Aggregation{Func: localAggFn.Fn, ColIdx: []uint32{0}}
 	}
 	finalAggregations := make([]execinfrapb.AggregatorSpec_Aggregation, numFinal)
 	for i, finalInfo := range info.FinalStage {
@@ -470,7 +472,9 @@ func TestDistAggregationTable(t *testing.T) {
 			fn == execinfrapb.AggregatorSpec_FIRST ||
 			fn == execinfrapb.AggregatorSpec_FIRSTTS ||
 			fn == execinfrapb.AggregatorSpec_FIRST_ROW ||
-			fn == execinfrapb.AggregatorSpec_FIRST_ROW_TS {
+			fn == execinfrapb.AggregatorSpec_FIRST_ROW_TS ||
+			fn == execinfrapb.AggregatorSpec_MAX_EXTEND ||
+			fn == execinfrapb.AggregatorSpec_MIN_EXTEND {
 			// SUM_INT takes no arguments; skip it in this test.
 			continue
 		}
