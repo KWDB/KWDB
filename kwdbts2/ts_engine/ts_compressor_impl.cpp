@@ -30,6 +30,7 @@
 
 #include "data_type.h"
 #include "ee_field_common.h"
+#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
@@ -208,7 +209,7 @@ static inline const char *TypedDecodeVarint(const char *ptr, const char *limit, 
 
 template <class T>
 bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
-  if (count < 2) {
+  if (count <= 2) {
     return false;
   }
   assert(data.len == count * stride);
@@ -756,6 +757,7 @@ bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
 bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
                                        std::string *output) const {
   if (input.len < 4) {
+    LOG_ERROR("Invalid input length, too short");
     return false;
   }
   uint16_t v;
@@ -764,6 +766,7 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, ui
   GetFixed16(&input, &v);
   GenCompAlg second = static_cast<GenCompAlg>(v);
   if (first >= TsCompAlg::TS_COMP_ALG_LAST || second >= GenCompAlg::GEN_COMP_ALG_LAST) {
+    LOG_ERROR("Invalid algorithm id");
     return false;
   }
   if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {

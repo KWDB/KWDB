@@ -30,6 +30,7 @@
 
 using namespace kwdbts;  // NOLINT
 TEST(MMAP, ReadWrite) {
+  std::filesystem::remove("test");
   TsMMapFile* f = new TsMMapFile("test", false);
   f->Append("12345");
   f->Append("12345");
@@ -301,4 +302,34 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
     t.join();
   }
   std::filesystem::remove(filename);
+}
+
+TEST(MMAP, TsMMapAllocFiletest) {
+  std::filesystem::remove("test");
+  TsMMapAllocFile* f = new TsMMapAllocFile("test");
+  f->Open();
+  std::vector<uint64_t> alloc_offsets;
+  for (size_t i = 0; i < 100; i++) {
+    auto offset = f->AllocateAssigned(10000, 2 + i);
+    ASSERT_TRUE(offset != 0);
+    alloc_offsets.push_back(offset);
+  }
+  auto cur_file_size = f->getHeader()->file_len;
+  auto cur_alloc_offset = f->getHeader()->alloc_offset;
+  for (size_t i = 0; i < alloc_offsets.size(); i++) {
+    char* addr = f->GetAddrForOffset(alloc_offsets[i], 1);
+    uint8_t fill = 2 + i;
+    ASSERT_EQ((uint8_t)(*addr), fill);
+  }
+  delete f;
+  f = new TsMMapAllocFile("test");
+  f->Open();
+  for (size_t i = 0; i < alloc_offsets.size(); i++) {
+    char* addr = f->GetAddrForOffset(alloc_offsets[i], 1);
+    uint8_t fill = 2 + i;
+    ASSERT_EQ((uint8_t)(*addr), fill);
+  }
+  ASSERT_TRUE(f->getHeader()->file_len == cur_file_size);
+  ASSERT_TRUE(f->getHeader()->alloc_offset == cur_alloc_offset);
+  delete f;
 }

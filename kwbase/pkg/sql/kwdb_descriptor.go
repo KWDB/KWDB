@@ -3229,11 +3229,11 @@ type ScheduleDetail struct {
 
 // Schedules all currently supported schedules
 var Schedules = map[string]ScheduleDetail{
-	ScheduleRetention: {
-		Name:     ScheduleRetention,
-		Executor: RetentionExecutorName,
-		CronExpr: "@hourly",
-	},
+	//ScheduleRetention: {
+	//	Name:     ScheduleRetention,
+	//	Executor: RetentionExecutorName,
+	//	CronExpr: "@hourly",
+	//},
 	ScheduleCompress: {
 		Name:     ScheduleCompress,
 		Executor: CompressExecutorName,

@@ -47,6 +47,7 @@ class LastSegmentReadWriteTest : public testing::Test {
 };
 
 void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
+  ASSERT_NE(nrow, 0);
   std::string filename;
   {
     System("rm -rf schema");
@@ -99,8 +100,6 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
 
   auto nblock = footer.n_data_block;
   EXPECT_EQ(nblock, (nrow + TsLastSegment::kNRowPerBlock - 1) / TsLastSegment::kNRowPerBlock);
-  int expected_nrows = nrow;
-  nrow = 0;
   for (int i = 0; i < nblock; ++i) {
     TsLastSegmentBlockIndex idx_block;
     file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice,
@@ -133,7 +132,7 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
       if (info.col_infos[j].bitmap_len != 0) {
         file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len,
                    &result, buf);
-        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j;
+        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
       }
     }
   }
@@ -154,16 +153,26 @@ void IteratorCheck(TSTableID table_id) {
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead1) {
-  BuilderWithBasicCheck(13, 1);
-  IteratorCheck(13);
+  BuilderWithBasicCheck(101, 1);
+  IteratorCheck(101);
 }
 
 TEST_F(LastSegmentReadWriteTest, WriteAndRead2) {
+  BuilderWithBasicCheck(102, 2);
+  IteratorCheck(102);
+}
+
+TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
+  BuilderWithBasicCheck(103, 3);
+  IteratorCheck(103);
+}
+
+TEST_F(LastSegmentReadWriteTest, WriteAndRead4) {
   BuilderWithBasicCheck(14, 12345);
   IteratorCheck(14);
 }
 
-TEST_F(LastSegmentReadWriteTest, WriteAndRead3) {
+TEST_F(LastSegmentReadWriteTest, WriteAndRead5) {
   BuilderWithBasicCheck(15, TsLastSegment::kNRowPerBlock);
   IteratorCheck(15);
 }
@@ -364,7 +373,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
 
   // scan for specific table & entity;
   std::list<shared_ptr<TsBlockSpan>> spans_list;
-  last_segment->GetBlockSpans({1, table_id, 3, {{INT64_MIN, INT64_MAX}}}, spans_list);
+  last_segment->GetBlockSpans({1, table_id, 3, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, spans_list);
   ASSERT_EQ(spans_list.size(), 1);
   EXPECT_EQ(spans_list.front()->GetEntityID(), 3);
   EXPECT_EQ(spans_list.front()->GetRowNum(), 2048);
@@ -381,7 +390,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
 
   for (auto c : cases) {
     std::list<shared_ptr<TsBlockSpan>> spans;
-    auto s = last_segment->GetBlockSpans({0, table_id, 3, {{c.min_ts, c.max_ts}}}, spans);
+    auto s = last_segment->GetBlockSpans({0, table_id, 3, {{{c.min_ts, c.max_ts}, {0, UINT64_MAX}}}}, spans);
     ASSERT_EQ(s, SUCCESS);
     ASSERT_EQ(spans.size(), 1);
     EXPECT_EQ(spans.front()->GetRowNum(), c.expect_row);
@@ -392,15 +401,15 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   }
 
   spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 3, {{1000, 0}}}, spans_list);
+  last_segment->GetBlockSpans({0, table_id, 3, {{{1000, 0}, {0, UINT64_MAX}}}}, spans_list);
   ASSERT_EQ(spans_list.size(), 0);
 
   spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 3, {{-100, 0}}}, spans_list);
+  last_segment->GetBlockSpans({0, table_id, 3, {{{-100, 0}, {0, UINT64_MAX}}}}, spans_list);
   ASSERT_EQ(spans_list.size(), 0);
 
   spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 3, {{123, 2000}, {3000, 6000}}}, spans_list);
+  last_segment->GetBlockSpans({0, table_id, 3, {{{123, 2000}, {0, UINT64_MAX}}, {{3000, 6000}, {0, UINT64_MAX}}}}, spans_list);
   ASSERT_EQ(spans_list.size(), 2);
   EXPECT_EQ(spans_list.front()->GetRowNum(), 2);
   spans_list.pop_front();
@@ -535,7 +544,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   }
 
   std::list<shared_ptr<TsBlockSpan>> result_spans_list;
-  last_segment->GetBlockSpans({0, table_id, 9913, {{INT64_MIN, INT64_MAX}}}, result_spans_list);
+  last_segment->GetBlockSpans({0, table_id, 9913, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, result_spans_list);
   ASSERT_EQ(result_spans_list.size(), 4);
   for (int i = 0; i < result_spans_list.size(); ++i) {
     auto cur_span = result_spans_list.front();
@@ -545,10 +554,10 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     EXPECT_EQ(cur_span->GetRowNum(), expn);
   }
 
-  std::vector<KwTsSpan> spans{
-      {start_ts, start_ts + interval * 2000},
-      {start_ts + interval * 2080, start_ts + interval * 4096},
-      {start_ts + interval * 5000, start_ts + interval * (2084 + 4096)},
+  std::vector<STScanRange> spans{
+      {{start_ts, start_ts + interval * 2000}, {0, UINT64_MAX}},
+      {{start_ts + interval * 2080, start_ts + interval * 4096}, {0, UINT64_MAX}},
+      {{start_ts + interval * 5000, start_ts + interval * (2084 + 4096)}, {0, UINT64_MAX}},
   };
   result_spans_list.clear();
   last_segment->GetBlockSpans({0, table_id, 9913, spans}, result_spans_list);
@@ -601,7 +610,7 @@ TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
   int sum = 0;
   for (size_t eid = 0; eid < max_entity_id; ++eid) {
     std::list<shared_ptr<TsBlockSpan>> result_spans_list;
-    last_segment->GetBlockSpans({0, table_id, eid, {{INT64_MIN, INT64_MAX}}}, result_spans_list);
+    last_segment->GetBlockSpans({0, table_id, eid, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, result_spans_list);
     for (auto &span : result_spans_list) {
       sum += span->GetRowNum();
     }

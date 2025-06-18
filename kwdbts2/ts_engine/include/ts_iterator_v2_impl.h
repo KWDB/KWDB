@@ -58,9 +58,10 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
-  KStatus AddMemSegmentBlockSpans();
-  KStatus AddLastSegmentBlockSpans();
-  KStatus AddEntitySegmentBlockSpans();
+  KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
+  KStatus ScanEntityBlockSpans();
+  KStatus ScanPartitionBlockSpans();
+
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
   /*
    * Update ts_spans_ to reduce the data scanning from storage based on timestamp(ts)
@@ -117,6 +118,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus ScanAndSortEntityData(timestamp64 ts);
+  KStatus MoveToNextEntity(timestamp64 ts);
 
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };

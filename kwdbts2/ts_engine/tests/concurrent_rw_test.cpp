@@ -38,14 +38,15 @@ TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
   opts.db_path = "./tsdb";
   TSTableID table_id = 12315;
   opts.vgroup_max_num = 1;
-  opts.mem_segment_max_size = 512 << 10;  // flush every 512 KB 
+  opts.mem_segment_max_size = 512 << 10;  // flush every 512 KB
   opts.max_last_segment_num = UINT32_MAX;
   auto engine = std::make_unique<TSEngineV2Impl>(opts);
   engine->Init(ctx_);
 
   roachpb::CreateTsTable meta;
   ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
-  engine->CreateTsTable(ctx_, table_id, &meta);
+  std::shared_ptr<TsTable> ts_table;
+  engine->CreateTsTable(ctx_, table_id, &meta, ts_table);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
   auto s = engine->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);

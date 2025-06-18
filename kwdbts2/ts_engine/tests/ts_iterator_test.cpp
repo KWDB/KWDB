@@ -56,10 +56,9 @@ TEST_F(TestV2Iterator, basic) {
     TSTableID table_id = 999;
     roachpb::CreateTsTable pb_meta;
     ConstructRoachpbTable(&pb_meta, table_id);
-    auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-
     std::shared_ptr<TsTable> ts_table;
+    auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+    ASSERT_EQ(s, KStatus::SUCCESS);
     s = engine_->GetTsTable(ctx_, table_id, ts_table);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -120,10 +119,9 @@ TEST_F(TestV2Iterator, mulitEntity) {
     TSTableID table_id = 999;
     roachpb::CreateTsTable pb_meta;
     ConstructRoachpbTable(&pb_meta, table_id);
-    auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-
     std::shared_ptr<TsTable> ts_table;
+    auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+    ASSERT_EQ(s, KStatus::SUCCESS);
     s = engine_->GetTsTable(ctx_, table_id, ts_table);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -180,10 +178,11 @@ TEST_F(TestV2Iterator, mulitEntity) {
 TEST_F(TestV2Iterator, multiDBAndEntity) {
     TSTableID table_id = 999;
     int db_num = 3;
+    std::shared_ptr<TsTable> ts_table;
     for (size_t i = 1; i <= db_num; i++) {
       roachpb::CreateTsTable pb_meta;
       ConstructRoachpbTable(&pb_meta, table_id, i);
-      auto s = engine_->CreateTsTable(ctx_, table_id + i - 1, &pb_meta);
+      auto s = engine_->CreateTsTable(ctx_, table_id + i - 1, &pb_meta, ts_table);
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
     std::shared_ptr<TsTableSchemaManager> table_schema_mgr;

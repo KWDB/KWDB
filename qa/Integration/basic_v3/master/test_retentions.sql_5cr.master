@@ -1,5 +1,3 @@
-> alter schedule scheduled_table_retention Recurring  '*/10 * * * * * *';
-ALTER SCHEDULE
 > CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000 YEAR;
 ERROR: retention 100000000000000year is out of range
 SQLSTATE: 22023
@@ -73,6 +71,14 @@ CREATE TABLE
 ------------
    1296000
 (1 row)
+> select * from tsdb.t;  -- avoid table has not been created by storage
+  ts | a | ptag
+-----+---+-------
+(0 rows)
+> select * from tsdb.t1;
+  ts | a | ptag
+-----+---+-------
+(0 rows)
 > alter ts database tsdb set Retentions = 15d; -- tsdb, t1: 15d, t:10d
 ALTER TS DATABASE
 > SELECT RETENTIONS from tsdb.information_schema.schemata where schema_name='public' order by RETENTIONS;
@@ -173,6 +179,11 @@ INSERT 1
 INSERT 1
 > insert into test1.t1 values('1900-05-01 01:01:01',101, 2, 3, 5, 1);
 INSERT 1
+> select count(*) from test1.t1;
+  count
+---------
+      0
+(1 row)
 > create ts database tsdb;
 CREATE TS DATABASE
 > create table tsdb.t(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag); --t: 0
@@ -316,6 +327,11 @@ INSERT 1
 INSERT 1
 > INSERT into tb VALUES( '0020-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
+> select count(*) from tb;
+  count
+---------
+     10
+(1 row)
 > CREATE TS DATABASE test_lifetime;
 CREATE TS DATABASE
 > create table test_lifetime.tb(
@@ -355,13 +371,14 @@ INSERT 1
 INSERT 1
 > INSERT INTO test_lifetime.tb VALUES('1124-02-02 01:01:00+00:00',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
 INSERT 1
+> SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
+         k_timestamp
+-----------------------------
+  2024-02-02 01:01:00+00:00
+  2024-02-02 01:02:00+00:00
+(2 rows)
 > ALTER TABLE test_lifetime.tb SET RETENTIONS=1week;
 ALTER TABLE
-> SELECT pg_sleep(60);
-  pg_sleep
-------------
-    true
-(1 row)
 > select count(*) from test1.t1;
   count
 ---------
@@ -384,5 +401,3 @@ DROP DATABASE
 DROP TABLE
 > DROP DATABASE test_lifetime CASCADE;
 DROP DATABASE
-> alter schedule scheduled_table_retention Recurring  '@hourly';
-ALTER SCHEDULE

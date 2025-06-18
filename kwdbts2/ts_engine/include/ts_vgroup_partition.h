@@ -15,11 +15,14 @@
 #include <memory>
 #include <string>
 #include <cstdio>
+#include <list>
+#include <vector>
 
 #include "ts_entity_segment.h"
 #include "ts_io.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_del_item_manager.h"
 
 namespace kwdbts {
 
@@ -30,6 +33,7 @@ class TsVGroupPartition {
 
   std::filesystem::path path_;
 
+  TsDelItemManager del_info_;
   std::unique_ptr<TsEntitySegment> entity_segment_;
   TsLastSegmentManager last_segment_mgr_;
   std::unique_ptr<KRWLatch> partition_mtx_;
@@ -64,6 +68,10 @@ class TsVGroupPartition {
   TsEngineSchemaManager* GetSchemaMgr() { return schema_mgr_; }
 
   TsEntitySegment* GetEntitySegment() { return entity_segment_.get(); }
+
+  KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn);
+
+  KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange>& del_items);
 
   TsLastSegmentManager* GetLastSegmentMgr() { return &last_segment_mgr_; }
 

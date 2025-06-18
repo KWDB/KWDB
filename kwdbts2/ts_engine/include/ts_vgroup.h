@@ -198,6 +198,15 @@ class TsVGroup {
 
   uint32_t GetVGroupID();
 
+  KStatus DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag,
+                      TSEntityID e_id, uint64_t* count, uint64_t mtr_id);
+  KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
+                    const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id);
+
+  KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
+                    const std::vector<KwTsSpan>& ts_spans);
+
+
   TsEngineSchemaManager* GetSchemaMgr() const;
 
   TsMemSegmentManager* GetMemSegmentMgr();

@@ -25,11 +25,13 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-
+#include "ts_file_vector_index.h"
+#include "sys_utils.h"
 
 namespace kwdbts {
 
@@ -398,4 +400,181 @@ class TsMMapIOEnv : public TsIOEnv {
   KStatus DeleteFile(const std::string& path) override;
   KStatus DeleteDir(const std::string& path) override;
 };
+
+class TsMMapAllocFile : public FileWithIndex {
+ private:
+  struct FileHeader {
+    uint64_t file_len;
+    uint64_t alloc_offset;
+    uint64_t index_header_offset;
+    char reserved[104];
+  };
+static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
+
+  std::string path_;
+  int fd_ = -1;
+  std::vector<TSSlice> addrs_;
+  std::mutex mutex_;
+  KRWLatch* rw_lock_;
+
+ public:
+  explicit TsMMapAllocFile(const std::string& path) : path_(path) {}
+  KStatus Open() {
+    bool exists = std::filesystem::exists(path_);
+    void* base = nullptr;
+    size_t file_len;
+    if (exists) {
+      int oflag = O_RDWR;
+      fd_ = open(path_.c_str(), oflag);
+      file_len = lseek(fd_, 0, SEEK_END);
+      int prot = PROT_READ | PROT_WRITE;
+      base = mmap(nullptr, file_len, prot, MAP_SHARED, fd_, 0);
+    } else {
+      fd_ = open(path_.c_str(), O_RDWR | O_CREAT, 0644);
+      if (fd_ == -1) {
+        return KStatus::FAIL;
+      }
+      file_len = getpagesize();
+      ftruncate(fd_, file_len);
+      base = mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
+    }
+    addrs_.push_back({reinterpret_cast<char*>(base), file_len});
+    if (!exists) {
+      auto header = getHeader();
+      header->alloc_offset = sizeof(FileHeader);
+      header->file_len = file_len;
+    }
+    assert(file_len == getHeader()->file_len);
+    rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_RWLOCK);
+    return KStatus::SUCCESS;
+  }
+
+  ~TsMMapAllocFile() {
+    Close();
+    if (rw_lock_) {
+      delete rw_lock_;
+    }
+  }
+
+  uint64_t GetStartPos() {
+    return sizeof(FileHeader);
+  }
+
+  FileHeader* getHeader() {
+    return reinterpret_cast<FileHeader*>(addrs_[0].data);
+  }
+
+  KStatus resize(uint64_t add_size) {
+    size_t new_len = getHeader()->file_len;
+    while (add_size > (new_len - getHeader()->file_len)) {
+      uint64_t threshold = 4UL << 20;
+      if (new_len < threshold) {
+        new_len *= 2;
+      } else {
+        new_len += threshold;
+      }
+    }
+    if (ftruncate(fd_, new_len) == -1) {
+      LOG_ERROR("ftruncate size[%lu] error %s.", new_len, strerror(errno));
+      return KStatus::FAIL;
+    }
+
+    auto cur_mmap_len = new_len - getHeader()->file_len;
+    auto base = mmap(nullptr, cur_mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, getHeader()->file_len);
+    if (base == MAP_FAILED) {
+      LOG_ERROR("mmap [%lu] error %s.", cur_mmap_len, strerror(errno));
+      return KStatus::FAIL;
+    }
+    addrs_.push_back({reinterpret_cast<char*>(base), cur_mmap_len});
+    getHeader()->alloc_offset = getHeader()->file_len;
+    getHeader()->file_len = new_len;
+    return KStatus::SUCCESS;
+  }
+
+  void offsetAssigned() {
+    auto header = getHeader();
+    auto left = (header->alloc_offset + 7) % 8;
+    header->alloc_offset += 7 - left;
+  }
+
+  char* addr(size_t offset) {
+    uint64_t cur_offset = 0;
+    for (int i = 0; i < addrs_.size(); i++) {
+      if (cur_offset + addrs_[i].len > offset) {
+        return addrs_[i].data + (offset - cur_offset);
+      } else {
+        cur_offset += addrs_[i].len;
+      }
+    }
+    return nullptr;
+  }
+
+  uint64_t AllocateAssigned(size_t size, uint8_t fill_number) override {
+    RW_LATCH_X_LOCK(rw_lock_);
+    offsetAssigned();
+    auto header = getHeader();
+    uint64_t ret;
+    bool ok = true;
+    if (header->alloc_offset + size >= header->file_len) {
+      if (resize(size) != KStatus::SUCCESS) {
+        LOG_ERROR("resize failed.");
+        ok = false;
+      }
+    }
+    if (ok) {
+      ret = header->alloc_offset;
+      header->alloc_offset += size;
+      memset(addr(ret), fill_number, size);
+    } else {
+      ret = INVALID_POSITION;
+    }
+    RW_LATCH_UNLOCK(rw_lock_);
+    return ret;
+  }
+  char* GetAddrForOffset(uint64_t offset, uint32_t reading_bytes) override {
+    RW_LATCH_S_LOCK(rw_lock_);
+    auto ret = addr(offset);
+    RW_LATCH_UNLOCK(rw_lock_);
+    return ret;
+  }
+
+  KStatus Close() {
+    if (fd_ != -1) {
+      Sync();
+      close(fd_);
+      for (auto addr : addrs_) {
+        munmap(addr.data, addr.len);
+      }
+      fd_ = -1;
+      addrs_.clear();
+    }
+    return KStatus::SUCCESS;
+  }
+
+  KStatus DropAll() {
+    if (Close()) {
+      std::string cmd = "rm -rf " + path_;
+      if (System(cmd)) {
+        return KStatus::SUCCESS;
+      }
+    }
+    return KStatus::FAIL;
+  }
+
+  KStatus Sync() {
+    RW_LATCH_X_LOCK(rw_lock_);
+    KStatus s = KStatus::SUCCESS;
+    for (auto addr : addrs_) {
+      int err = msync(addr.data, addr.len, MS_SYNC);
+      if (err != 0) {
+        LOG_ERROR("msync failed. err: %d", err);
+        s = KStatus::FAIL;
+        break;
+      }
+    }
+    RW_LATCH_UNLOCK(rw_lock_);
+    return s;
+  }
+};
+
 }  // namespace kwdbts

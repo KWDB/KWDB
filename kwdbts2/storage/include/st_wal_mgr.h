@@ -146,7 +146,8 @@ class WALMgr {
    * @return
    */
   KStatus WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                                const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans, uint64_t vgrp_id = 0);
+                                const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans,
+                                uint64_t vgrp_id = 0, TS_LSN* entry_lsn = nullptr);
 
   /**
    * Construct the log entry for the DELETE Tag operation.

@@ -212,12 +212,6 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options, AppliedRangeI
 
 TSStatus TSCreateTsTable(TSEngine* engine, TSTableID tableId, TSSlice meta, RangeGroups range_groups);
 
-TSStatus TSGetRangeGroups(TSEngine* engine, TSTableID table_id, RangeGroups *range_groups);
-
-TSStatus TSUpdateRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroups range_groups);
-
-TSStatus TSCreateRangeGroup(TSEngine* engine, TSTableID table_id, TSSlice schema, RangeGroups range_groups);
-
 TSStatus TSDropTsTable(TSEngine* engine, TSTableID tableId);
 
 TSStatus TSDropResidualTsTable(TSEngine* engine);
@@ -445,6 +439,8 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
                            TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version);
 
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
+
+TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
 
 void UpdateTsTraceConfig(TSSlice cfg);
 /**

@@ -245,16 +245,14 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
       LOG_ERROR("get block item failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
       return s;
     }
-
-    if (isTimestampWithinSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
-      std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, blk_segment);
-      // Because block item traverses from back to front, use push_front
-      block_spans.push_front(make_shared<TsBlockSpan>(filter.entity_id, block, 0, cur_blk_item.n_rows));
-    } else if (isTimestampInSpans(filter.ts_spans_, cur_blk_item.min_ts, cur_blk_item.max_ts)) {
-      std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, blk_segment);
+    // todo(liangbo)  change lsn range if block item store.
+    // todo(limeng) opts: Because block item traverses from back to front, use push_front
+    if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item.min_ts, cur_blk_item.max_ts}, {0, UINT64_MAX})) {
+      std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
+                                                                             blk_segment);
       // std::vector<std::pair<start_row, row_num>>
       std::vector<std::pair<int, int>> row_spans;
-      s = block->GetRowSpans(filter.ts_spans_, row_spans);
+      s = block->GetRowSpans(filter.spans_, row_spans);
       if (s != KStatus::SUCCESS) {
         return s;
       }
@@ -641,6 +639,49 @@ KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>& metric_sche
       LOG_ERROR("block segment column[%u] data load failed", i + 1);
       return s;
     }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
+                      std::vector<std::pair<int, int>>& row_spans) {
+  if (!HasDataCached(0)) {
+    KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("block segment column[0] data load failed");
+      return s;
+    }
+  }
+
+  if (!HasDataCached(-1)) {
+    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("block segment column[0] data load failed");
+      return s;
+    }
+  }
+  timestamp64* ts_col = reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data());
+  TS_LSN* lsn_col = reinterpret_cast<TS_LSN*>(column_blocks_[0].buffer.data());
+  int start_idx = 0;
+  bool match_found = false;
+  assert(n_rows_ * 8 == column_blocks_[1].buffer.length());
+  assert(n_rows_ * 8 == column_blocks_[0].buffer.length());
+  // todo(liangbo) scan all rows, can we scan faster.
+  for (int i = 0; i < n_rows_; i++) {
+    if (IsTsLsnInSpans(ts_col[i], lsn_col[i], spans)) {
+      if (!match_found) {
+        start_idx = i;
+        match_found = true;
+      }
+    } else {
+      if (match_found) {
+        match_found = false;
+        row_spans.push_back({start_idx, i - start_idx});
+      }
+    }
+  }
+  if (match_found) {
+    row_spans.push_back({start_idx, n_rows_ - start_idx});
   }
   return KStatus::SUCCESS;
 }
