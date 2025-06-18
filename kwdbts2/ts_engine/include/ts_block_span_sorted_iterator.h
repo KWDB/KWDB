@@ -234,6 +234,60 @@ class TsBlockSpanSortedIterator {
           break;
         }
       }
+    } else if (dedup_rule_ == DedupRule::DISCARD) {
+      auto iter = span_row_infos_.begin();
+      TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
+      if (!is_reverse_) {
+        cur_block_span->SplitFront(row_idx, block_span);
+        int prev_row_idx = row_idx - 1;
+        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(prev_row_idx),
+                                            *cur_block_span->GetLSNAddr(prev_row_idx)};
+        if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          // need dedup
+          dedup_row_info = next_span_row_info;
+          iter++;
+        } else {
+          iter = span_row_infos_.end();
+        }
+      } else {
+        int next_row_idx = row_idx + 1;
+        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(next_row_idx),
+                                            *cur_block_span->GetLSNAddr(next_row_idx)};
+        if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          if (next_row_idx != span_row_infos_.begin()->row_idx) {
+            cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - next_row_idx, block_span);
+            iter = span_row_infos_.end();
+          } else {
+            // need dedup
+            dedup_row_info = next_span_row_info;
+            iter++;
+          }
+          cur_block_span->Truncate(1);
+        } else {
+          cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
+          iter = span_row_infos_.end();
+        }
+      }
+
+      // dealing with duplicate data in other TsBlockSpan
+      while (iter != span_row_infos_.end()) {
+        if (iter->IsSameEntityAndTs(dedup_row_info)) {
+          if (!is_reverse_) {
+            iter->block_span->Truncate(1);
+          } else {
+            iter->block_span->SplitFront(1, block_span);
+          }
+          if (iter->block_span->GetRowNum() != 0) {
+            TsBlockSpanRowInfo next_row_info = getFirstRowInfo(iter->block_span);
+            insertRowInfo(next_row_info);
+          } else {
+            iter->block_span->Clear();
+          }
+          iter = span_row_infos_.erase(iter);
+        } else {
+          break;
+        }
+      }
     } else {
       if (!is_reverse_) {
         cur_block_span->SplitFront(row_idx, block_span);
