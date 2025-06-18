@@ -475,11 +475,6 @@ KStatus TsEntityBlock::Flush(TsVGroupPartition* partition) {
       continue;
     }
     string col_agg;
-    Defer defer {[&]() {
-      uint32_t offset = agg_buffer.size();
-      memcpy(agg_buffer.data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
-      agg_buffer.append(col_agg);
-    }};
     if (!is_var_col) {
       TsBitmap* bitmap = nullptr;
       if (has_bitmap) {
@@ -523,6 +518,9 @@ KStatus TsEntityBlock::Flush(TsVGroupPartition* partition) {
       *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
       *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
     }
+    uint32_t offset = agg_buffer.size();
+    memcpy(agg_buffer.data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
+    agg_buffer.append(col_agg);
   }
   uint32_t offset = agg_buffer.size();
   memcpy(agg_buffer.data() + (n_cols_ - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
@@ -828,11 +826,7 @@ KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
     return s;
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk.agg.empty()) {
-    count = 0;
-  } else {
-    count = *reinterpret_cast<uint16_t*>(col_blk.agg.data());
-  }
+  count = *reinterpret_cast<uint16_t*>(col_blk.agg.data());
   return KStatus::SUCCESS;
 }
 
@@ -842,9 +836,6 @@ KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_
     return s;
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk.agg.empty()) {
-    return KStatus::SUCCESS;
-  }
   void* pre_agg_ = static_cast<void*>(col_blk.agg.data());
   is_overflow = *static_cast<bool*>(pre_agg_ + sizeof(uint16_t) + size * 2);
   pre_sum = pre_agg_ + sizeof(uint16_t) + size * 2 + 1;
@@ -857,9 +848,6 @@ KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
     return s;
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk.agg.empty()) {
-    return KStatus::SUCCESS;
-  }
   pre_max = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t));
 
   return KStatus::SUCCESS;
@@ -871,12 +859,6 @@ KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_
     return s;
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk.agg.empty()) {
-    return KStatus::SUCCESS;
-  }
-  if (blk_col_idx == 0) {
-    size = 8;
-  }
   pre_min = static_cast<void*>(col_blk.agg.data() + sizeof(uint16_t) + size);
 
   return KStatus::SUCCESS;
@@ -888,9 +870,6 @@ KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
     return s;
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk.agg.empty()) {
-    return KStatus::SUCCESS;
-  }
   void* pre_agg_ = static_cast<void*>(col_blk.agg.data());
   pre_max.len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
   pre_max.data = static_cast<char*>(pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2);
@@ -904,9 +883,6 @@ KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
     return s;
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk.agg.empty()) {
-    return KStatus::SUCCESS;
-  }
   void* pre_agg_ = static_cast<void*>(col_blk.agg.data());
   uint32_t max_len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
   pre_min.len = *static_cast<uint32_t *>(pre_agg_+ sizeof(uint16_t) + sizeof(uint32_t));
