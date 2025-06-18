@@ -1282,12 +1282,19 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
+        if (!pre_max) {
+          continue;
+        }
+        bool need_copy{false};
         if (agg_data.data == nullptr) {
           agg_data.len = size;
           InitAggData(agg_data);
-          memcpy(agg_data.data, pre_max, size);
-        } else if (valcmp(pre_max, agg_data.data, type, size) > 0) {
-          memcpy(agg_data.data, pre_max, size);
+          need_copy = true;
+        } else if (valcmp(pre_max, agg_data.data, type, blk_col_idx == 0 ? 8 : size) > 0) {
+          need_copy = true;
+        }
+        if (need_copy) {
+          memcpy(agg_data.data, pre_max, blk_col_idx == 0 ? 8 : size);
         }
       } else {
         TSSlice pre_max;
@@ -1387,12 +1394,19 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
+        if (!pre_min) {
+          continue;
+        }
+        bool need_copy{false};
         if (agg_data.data == nullptr) {
           agg_data.len = size;
           InitAggData(agg_data);
-          memcpy(agg_data.data, pre_min, size);
-        } else if (valcmp(pre_min, agg_data.data, type, size) < 0) {
-          memcpy(agg_data.data, pre_min, size);
+          need_copy = true;
+        } else if (valcmp(pre_min, agg_data.data, type, blk_col_idx == 0 ? 8 : size) < 0) {
+          need_copy = true;
+        }
+        if (need_copy) {
+          memcpy(agg_data.data, pre_min, blk_col_idx == 0 ? 8 : size);
         }
       } else {
         TSSlice pre_min;
