@@ -107,3 +107,7 @@ SET
 DROP DATABASE
 > SET CLUSTER SETTING ts.dedup.rule = 'override';
 SET CLUSTER SETTING
+> USE defaultdb;
+SET
+> DROP database ts_db;
+DROP DATABASE
