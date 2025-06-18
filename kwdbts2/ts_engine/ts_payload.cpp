@@ -69,8 +69,8 @@ TsRawPayload::TsRawPayload(const TSSlice& raw, const std::vector<AttributeInfo>&
       row_data_.push_back({mem, row_size});
       mem += row_size;
     }
+    assert(mem - payload_.data == payload_.len);
   }
-  assert(mem - payload_.data == payload_.len);
   can_parse_ = !metric_schema_.empty();
 }
 
