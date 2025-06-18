@@ -16,6 +16,7 @@
 #include "me_metadata.pb.h"
 #include "settings.h"
 #include "test_util.h"
+#include "ts_common.h"
 #include "ts_engine.h"
 #include "ts_payload.h"
 #include "ts_vgroup.h"
@@ -30,7 +31,7 @@ class ConcurrentRWTest : public testing::Test {
   ~ConcurrentRWTest() { KWDBDynamicThreadPool::GetThreadPool().Stop(); }
 };
 
-TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
+TEST_F(ConcurrentRWTest, FlushOnly) {
   kwdbContext_t g_ctx_;
   kwdbContext_p ctx_ = &g_ctx_;
   InitKWDBContext(ctx_);
@@ -38,7 +39,8 @@ TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
   opts.db_path = "./tsdb";
   TSTableID table_id = 12315;
   opts.vgroup_max_num = 1;
-  opts.mem_segment_max_size = 512 << 10;  // flush every 512 KB
+  opts.g_dedup_rule = DedupRule::KEEP;
+  opts.mem_segment_max_size = 256 << 10;  // flush every 4 KB
   opts.max_last_segment_num = UINT32_MAX;
   auto engine = std::make_unique<TSEngineV2Impl>(opts);
   engine->Init(ctx_);
@@ -66,7 +68,7 @@ TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
     int npayload = 10000;
     int nrow = 50;
     for (int i = 0; i < npayload; ++i) {
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 1000, 1);
 
       uint16_t inc_entity_cnt;
       uint32_t inc_unordered_cnt;
@@ -82,7 +84,7 @@ TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
 
   std::vector<uint32_t> result;
   auto QueryWork = [&]() {
-    while (stop.load() != true) {
+    do {
       std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine->GetTsVGroups();
       const auto& vgroup = (*ts_vgroups)[0];
       TsStorageIterator* ts_iter;
@@ -104,7 +106,7 @@ TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
       }
       delete ts_iter;
       result.push_back(sum);
-    }
+    } while (stop.load() != true);
   };
 
   std::thread t_query(QueryWork);

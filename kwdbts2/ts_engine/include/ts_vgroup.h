@@ -83,7 +83,6 @@ class TsVGroup {
  private:
   uint32_t vgroup_id_{0};
   TsEngineSchemaManager* schema_mgr_ = nullptr;
-  TsVersionManager* version_mgr_ = nullptr;
 
   //  <database_id, Manager>
   std::map<uint32_t, std::unique_ptr<PartitionManager>> partitions_;
@@ -104,6 +103,8 @@ class TsVGroup {
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
+  std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
+
   // compact thread flag
   bool enable_compact_thread_{true};
   // Id of the compact thread
@@ -117,8 +118,7 @@ class TsVGroup {
   TsVGroup() = delete;
 
   TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
-           TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
-           bool enable_compact_thread = true);
+           TsEngineSchemaManager* schema_mgr, bool enable_compact_thread = true);
 
   ~TsVGroup();
 

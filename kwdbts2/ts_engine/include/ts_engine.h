@@ -51,7 +51,6 @@ class TSEngineV2Impl : public TSEngine {
   std::map<uint64_t, uint64_t> range_indexes_map_;
   std::unique_ptr<WALMgr> wal_sys_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
-  std::unique_ptr<TsVersionManager> version_manager_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 

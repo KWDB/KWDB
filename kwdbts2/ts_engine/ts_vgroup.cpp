@@ -38,12 +38,10 @@ static const uint64_t interval = 3600 * 24 * 30;  // 30 days.
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
-                   TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
-                   bool enable_compact_thread)
+                   TsEngineSchemaManager* schema_mgr, bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
-      version_mgr_(version_mgr),
       path_(engine_options.db_path + "/" + GetFileName()),
       entity_counter_(0),
       engine_options_(engine_options),
@@ -523,8 +521,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
     kv.first->PublicLastSegment(kv.second.GetFileNumber());
   }
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   // todo(liangbo01) add all new files into new_file_list.
-  version_mgr_->UpdateVersion(update);
+  // version_mgr_->ApplyUpdate(update);
   //  todo(liangbo01) atomic: mem segment delete, and last segments load.
   mem_seg->SetDeleting();
   mem_segment_mgr_.RemoveMemSegment(mem_seg);
