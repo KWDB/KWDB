@@ -6,9 +6,11 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <unordered_set>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -40,7 +42,7 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
   TSTableID table_id = 12315;
   opts.vgroup_max_num = 1;
   opts.g_dedup_rule = DedupRule::KEEP;
-  opts.mem_segment_max_size = 256 << 10;  // flush every 4 KB
+  opts.mem_segment_max_size = 512 << 10;
   opts.max_last_segment_num = UINT32_MAX;
   auto engine = std::make_unique<TSEngineV2Impl>(opts);
   engine->Init(ctx_);
@@ -63,12 +65,12 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::atomic_bool stop = false;
+  int npayload = 10000;
+  int nrow = 50;
 
   auto PutWork = [&]() {
-    int npayload = 10000;
-    int nrow = 50;
     for (int i = 0; i < npayload; ++i) {
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 1000, 1);
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 1000 * i, 1);
 
       uint16_t inc_entity_cnt;
       uint32_t inc_unordered_cnt;
@@ -82,8 +84,12 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
     stop.store(true);
   };
 
-  std::vector<uint32_t> result;
-  auto QueryWork = [&]() {
+  struct QueryResult {
+    std::vector<uint64_t> count, expect;
+  };
+
+  auto QueryWork = [&](std::promise<QueryResult>& promise) {
+    QueryResult result;
     do {
       std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine->GetTsVGroups();
       const auto& vgroup = (*ts_vgroups)[0];
@@ -102,20 +108,39 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
       bool is_finished = false;
       while (!is_finished) {
         ts_iter->Next(&res, &count, &is_finished);
-        sum += count;
+      }
+
+      std::unordered_set<timestamp64> ts_set;
+      for (auto x : res.data[0]) {
+        sum += x->count;
+        timestamp64* ts = (timestamp64*)x->mem;
+        for (int i = 0; i < x->count; i++) {
+          ts_set.insert(ts[i * 2]);
+        }
       }
       delete ts_iter;
-      result.push_back(sum);
+      result.count.push_back(sum);
+      result.expect.push_back(ts_set.size());
     } while (stop.load() != true);
+    promise.set_value(std::move(result));
   };
 
-  std::thread t_query(QueryWork);
+  std::promise<QueryResult> q_promise;
+  std::thread t_query(QueryWork, std::ref(q_promise));
   std::thread t_put(PutWork);
   t_query.join();
   t_put.join();
 
-  for(auto i : result){
-    std::cout << i << std::endl;
+  auto q_result = q_promise.get_future().get();
+  ASSERT_EQ(q_result.count.size(), q_result.expect.size());
+  for (int i = 0; i < q_result.count.size(); i++) {
+    EXPECT_EQ(q_result.count[i], q_result.expect[i]);
   }
-  EXPECT_TRUE(std::is_sorted(result.begin(), result.end()));
+
+  q_promise = std::promise<QueryResult>();
+  QueryWork(q_promise);
+  q_result = q_promise.get_future().get();
+  ASSERT_EQ(q_result.count.size(), 1);
+  EXPECT_EQ(q_result.count.back(), npayload * nrow);
+  EXPECT_EQ(q_result.expect.back(), npayload * nrow);
 }
