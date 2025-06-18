@@ -321,6 +321,16 @@ EEIteratorErrCode AggregatorSpecParam<T>::ResolveAggCol(kwdbContext_p ctx,
         IsAggColNull(func_field);
         break;
       }
+      case Sumfunctype::MAX_EXTEND:
+      case Sumfunctype::MIN_EXTEND: {
+        k_uint32 col = agg.col_idx(1);
+        KStatus ret = CreateAggField(i, input_fields[col], agg_op_, &func_field);
+        if (ret != KStatus::SUCCESS) {
+          Return(EEIteratorErrCode::EE_ERROR);
+        }
+        IsAggColNull(func_field);
+        break;
+      }
       case Sumfunctype::SUM: {
         k_uint32 col = agg.col_idx(0);
         if (input_fields[col]->get_storage_type() == roachpb::DataType::FLOAT ||

@@ -169,6 +169,20 @@ func (md *Metadata) SetTblType(t tree.TableType) {
 	md.tableType = int32(t)
 }
 
+// CheckSingleTsTable is for check single ts table
+func (md *Metadata) CheckSingleTsTable() bool {
+	allTables := md.AllTables()
+	if len(allTables) != 1 {
+		return false
+	}
+	for _, tbl := range allTables {
+		if tbl.Table.GetTableType() != tree.TimeseriesTable {
+			return false
+		}
+	}
+	return true
+}
+
 // Init prepares the metadata for use (or reuse).
 func (md *Metadata) Init() {
 	// Clear the metadata objects to release memory (this clearing pattern is

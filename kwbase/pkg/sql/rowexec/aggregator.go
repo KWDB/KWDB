@@ -122,6 +122,8 @@ type groupWindow struct {
 	groupWindowValue   int
 	groupWindowColID   int32
 	groupWindowTsColID int32
+	groupFirst         int32
+	groupLast          int32
 
 	stateWindowHelper   StateWindowHelper
 	countWindowHelper   CountWindowHelper
@@ -164,9 +166,8 @@ type TimeWindowHelper struct {
 	WindowBucktTZ      tree.DTimestampTZ
 	noNeedReCompute    bool
 	//read for read rows,delete later
-	noMatch  bool
-	reading  bool
-	hasFirst bool
+	noMatch bool
+	reading bool
 }
 
 func (gw *groupWindow) Close(ctx context.Context) {
@@ -363,6 +364,7 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 	switch v := row[gw.groupWindowColID].Datum.(type) {
 	case *tree.DTimestampTZ:
 		var newTimeDur *tree.DTimestampTZ
+		var newEndTimeDur *tree.DTimestampTZ
 		if evalCtx.GroupWindow.TimeWindowHelper.Duration.Days != 0 {
 			oldTimeUnix := v.Time.Unix() * 1000
 			oldTimeInterval := ((evalCtx.GroupWindow.TimeWindowHelper.Duration.Days) * int64(time.Hour) * 24) / 1000000
@@ -374,23 +376,31 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 		} else {
 			newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
 		}
+		newEndTimeDur = tree.MakeDTimestampTZ(duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 
 		if !newTimeDur.Time.Equal(gw.timeWindowHelper.tsTimeStampStartTZ.Time) {
 			gw.timeWindowHelper.tsTimeStampStartTZ = *newTimeDur
 			gw.groupWindowValue++
-			if gw.groupWindowTsColID >= 0 {
-				row[gw.groupWindowTsColID].Datum = newTimeDur
+			if gw.groupFirst >= 0 {
+				row[gw.groupFirst].Datum = newTimeDur
+			}
+			if gw.groupLast >= 0 {
+				row[gw.groupLast].Datum = newEndTimeDur
 			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
 			newTime := &tree.DTimestampTZ{Time: durTime}
-			if gw.groupWindowTsColID >= 0 {
-				row[gw.groupWindowTsColID].Datum = newTime
+			if gw.groupFirst >= 0 {
+				row[gw.groupFirst].Datum = newTime
+			}
+			if gw.groupLast >= 0 {
+				row[gw.groupLast].Datum = newTime
 			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
 	case *tree.DTimestamp:
 		var newTimeDur *tree.DTimestamp
+		var newEndTimeDur *tree.DTimestamp
 		if evalCtx.GroupWindow.TimeWindowHelper.Duration.Days != 0 {
 			oldTimeUnix := v.Time.Unix() * 1000
 			oldTimeInterval := ((evalCtx.GroupWindow.TimeWindowHelper.Duration.Days) * int64(time.Hour) * 24) / 1000000
@@ -402,18 +412,31 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 		} else {
 			newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
 		}
+		newEndTimeDur = tree.MakeDTimestamp(duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 
 		if !newTimeDur.Time.Equal(gw.timeWindowHelper.tsTimeStampStart.Time) {
 			gw.timeWindowHelper.tsTimeStampStart = *newTimeDur
 			gw.groupWindowValue++
-			if gw.groupWindowTsColID >= 0 {
+			if gw.groupFirst >= 0 {
+				row[gw.groupFirst].Datum = newTimeDur
+			}
+			if gw.groupLast >= 0 {
+				row[gw.groupLast].Datum = newEndTimeDur
+			}
+			if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
 				row[gw.groupWindowTsColID].Datum = newTimeDur
 			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
 			newTime := &tree.DTimestamp{Time: durTime}
-			if gw.groupWindowTsColID >= 0 {
-				row[gw.groupWindowTsColID].Datum = newTime
+			if gw.groupFirst >= 0 {
+				row[gw.groupFirst].Datum = newTime
+			}
+			if gw.groupLast >= 0 {
+				row[gw.groupLast].Datum = newTime
+			}
+			if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
+				row[gw.groupWindowTsColID].Datum = newTimeDur
 			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
@@ -440,7 +463,6 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 			gw.timeWindowHelper.tsTimeStampEndTZ = *tree.MakeDTimestampTZ(duration.Add(gw.timeWindowHelper.tsTimeStampStartTZ.Time,
 				evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 			gw.timeWindowHelper.noNeedReCompute = true
-			gw.timeWindowHelper.hasFirst = true
 		} else {
 			gw.timeWindowHelper.noNeedReCompute = false
 		}
@@ -514,7 +536,6 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 			gw.timeWindowHelper.tsTimeStampEndTZ = *endTimeDur
 			gw.timeWindowHelper.WindowEndTZ = *endTimeDur
 			gw.groupWindowValue++
-			gw.timeWindowHelper.hasFirst = true
 		}
 	}
 
@@ -529,18 +550,17 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 	endTimeDur = tree.MakeDTimestampTZ(duration.Add(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 	gw.timeWindowHelper.WindowEndTZ = *endTimeDur
 
-	if !gw.timeWindowHelper.hasFirst {
-		newTimeEnd := tree.MakeDTimestampTZ(gw.timeWindowHelper.tsTimeStampEndTZ.Time, 0)
-		if gw.groupWindowTsColID >= 0 {
-			row1[gw.groupWindowTsColID].Datum = newTimeEnd
-		}
-	} else {
-		newTimeStart := tree.MakeDTimestampTZ(gw.timeWindowHelper.tsTimeStampStartTZ.Time, 0)
-		if gw.groupWindowTsColID >= 0 {
-			row1[gw.groupWindowTsColID].Datum = newTimeStart
-		}
+	newTimeStart := tree.MakeDTimestampTZ(gw.timeWindowHelper.tsTimeStampStartTZ.Time, 0)
+	newTimeEnd := tree.MakeDTimestampTZ(gw.timeWindowHelper.tsTimeStampEndTZ.Time, 0)
+	if gw.groupFirst >= 0 {
+		row1[gw.groupFirst].Datum = newTimeStart
 	}
-	gw.timeWindowHelper.hasFirst = false
+	if gw.groupLast >= 0 {
+		row1[gw.groupLast].Datum = newTimeEnd
+	}
+	if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
+		row1[gw.groupWindowTsColID].Datum = newTimeStart
+	}
 
 	for i := 0; i < len(row1); i++ {
 		*row = append(*row, row1[i])
@@ -565,7 +585,6 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 			gw.timeWindowHelper.tsTimeStampEnd = *tree.MakeDTimestamp(duration.Add(gw.timeWindowHelper.tsTimeStampStart.Time,
 				evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 			gw.timeWindowHelper.noNeedReCompute = true
-			gw.timeWindowHelper.hasFirst = true
 		} else {
 			gw.timeWindowHelper.noNeedReCompute = false
 		}
@@ -639,7 +658,6 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 			gw.timeWindowHelper.tsTimeStampEnd = *endTimeDur
 			gw.timeWindowHelper.WindowEnd = *endTimeDur
 			gw.groupWindowValue++
-			gw.timeWindowHelper.hasFirst = true
 		}
 	}
 
@@ -654,18 +672,17 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 	endTimeDur = tree.MakeDTimestamp(duration.Add(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 	gw.timeWindowHelper.WindowEnd = *endTimeDur
 
-	if !gw.timeWindowHelper.hasFirst {
-		newTimeEnd := tree.MakeDTimestamp(gw.timeWindowHelper.tsTimeStampEnd.Time, 0)
-		if gw.groupWindowTsColID >= 0 {
-			row1[gw.groupWindowTsColID].Datum = newTimeEnd
-		}
-	} else {
-		newTimeStart := tree.MakeDTimestamp(gw.timeWindowHelper.tsTimeStampStart.Time, 0)
-		if gw.groupWindowTsColID >= 0 {
-			row1[gw.groupWindowTsColID].Datum = newTimeStart
-		}
+	newTimeStart := tree.MakeDTimestamp(gw.timeWindowHelper.tsTimeStampStart.Time, 0)
+	newTimeEnd := tree.MakeDTimestamp(gw.timeWindowHelper.tsTimeStampEnd.Time, 0)
+	if gw.groupFirst >= 0 {
+		row1[gw.groupFirst].Datum = newTimeStart
 	}
-	gw.timeWindowHelper.hasFirst = false
+	if gw.groupLast >= 0 {
+		row1[gw.groupLast].Datum = newTimeEnd
+	}
+	if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
+		row1[gw.groupWindowTsColID].Datum = newTimeStart
+	}
 
 	for i := 0; i < len(row1); i++ {
 		*row = append(*row, row1[i])
@@ -880,11 +897,22 @@ func (ag *aggregatorBase) init(
 	ag.bucketsAcc = memMonitor.MakeBoundAccount()
 	ag.arena = stringarena.Make(&ag.bucketsAcc)
 	ag.aggFuncsAcc = memMonitor.MakeBoundAccount()
-	ag.groupWindow = groupWindow{
-		groupWindowValue:   0,
-		groupWindowColID:   spec.GroupWindowId,
-		groupWindowTsColID: spec.Group_WindowTscolid,
+	if len(spec.Group_WindowId) > 0 {
+		ag.groupWindow = groupWindow{
+			groupWindowValue:   0,
+			groupWindowColID:   spec.GroupWindowId,
+			groupWindowTsColID: spec.Group_WindowTscolid,
+			groupFirst:         spec.Group_WindowId[0],
+			groupLast:          spec.Group_WindowId[1],
+		}
+	} else {
+		ag.groupWindow = groupWindow{
+			groupWindowValue:   0,
+			groupWindowColID:   spec.GroupWindowId,
+			groupWindowTsColID: spec.Group_WindowTscolid,
+		}
 	}
+
 	ag.gapfill = gapfilltype{
 		groupTimeIndex:   groupTimeIndex,
 		anyNotNUllNum:    anyNotNUllNum,

@@ -237,7 +237,9 @@ func (g *exprsGen) genExprStruct(define *lang.DefineExpr) {
 		fmt.Fprintf(g.w, "  next RelExpr\n")
 		fmt.Fprintf(g.w, "  addSynchronizer bool\n")
 	}
-
+	if opTyp.name == "LastExpr" || opTyp.name == "FirstExpr" {
+		fmt.Fprintf(g.w, "  IsExtend bool\n")
+	}
 	fmt.Fprintf(g.w, "  engine tree.EngineType\n")
 	fmt.Fprintf(g.w, "}\n\n")
 

@@ -751,6 +751,10 @@ type AggInfo struct {
 	// Filter is the index of the column, if any, which should be used as the
 	// FILTER condition for the aggregate. If there is no filter, Filter is -1.
 	Filter ColumnOrdinal
+
+	// IsExend is set when the first(ts) or last(ts) is used with
+	// time_window()
+	IsExend bool
 }
 
 // WindowInfo represents the information about a window function that must be

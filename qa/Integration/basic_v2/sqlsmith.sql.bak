@@ -268,3 +268,196 @@ where case when ((EXISTS (
 limit 132;
 
 drop database test_vacuum cascade;
+
+create ts database test_vacuum;
+create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d partition interval 1d;
+set cluster setting ts.parallel_degree = 8;
+set statement_timeout='1s';
+
+WITH
+jennifer_0 AS (select
+ref_2.id as c0
+from
+test_vacuum.t1 as ref_0
+inner join (select
+ref_1.e8 as c0,
+ref_1.code3 as c1
+from
+test_vacuum.t1 as ref_1
+where true
+limit 128) as subq_0
+inner join test_vacuum.t1 as ref_2
+on (subq_0.c1 = ref_2.e3 )
+on (ref_0.code9 is NULL)
+where ((pg_catalog.timezone(cast(null as text), ref_0.e7) >= pg_catalog.current_timestamp())
+or (EXISTS (
+select
+subq_0.c0 as c0,
+ref_0.code2 as c1,
+ref_2.e13 as c2,
+ref_3.e10 as c3
+from
+test_vacuum.t1 as ref_3
+left join test_vacuum.t1 as ref_4
+on (EXISTS (
+select
+ref_5.code5 as c0
+from
+test_vacuum.t1 as ref_5
+where ((false)
+or (cast(null as _uuid) < cast(null as _uuid)))
+and (ref_0.e22 is NULL)))
+where cast(null as date) IS NOT DISTINCT FROM cast(null as "timestamp")
+limit 147)))
+and (((EXISTS (
+select
+ref_2.e11 as c0,
+ref_6.e9 as c1,
+ref_6.id as c2,
+ref_0.e22 as c3,
+ref_2.e18 as c4,
+ref_2.e21 as c5,
+(select e8 from test_vacuum.t1 limit 1 offset 5)
+as c6
+from
+test_vacuum.t1 as ref_6
+right join test_vacuum.t1 as ref_7
+on (cast(null as "numeric") < cast(null as "numeric"))
+where (false)
+or (EXISTS (
+select
+71 as c0,
+ref_2.e13 as c1
+from
+test_vacuum.t1 as ref_8
+where cast(null as date) > cast(null as "timestamp")
+limit 18))
+limit 25))
+or (false))
+or (cast(null as _int8) != pg_catalog.array_positions(cast(nullif(cast(null as _float8),
+cast(null as _float8)) as _float8), ref_0.e5)))
+limit 130)
+select
+subq_1.c0 as c0,
+cast(coalesce(subq_1.c3,
+subq_2.c5) as int4) as c1,
+(select code9 from test_vacuum.t1 limit 1 offset 4)
+as c2,
+subq_1.c2 as c3,
+79 as c4,
+subq_1.c0 as c5,
+subq_1.c1 as c6,
+subq_1.c2 as c7,
+subq_1.c2 as c8
+from
+(select
+ref_11.c0 as c0,
+ref_11.c0 as c1,
+ref_12.c0 as c2,
+30 as c3
+from
+jennifer_0 as ref_9
+inner join test_vacuum.t1 as ref_10
+inner join jennifer_0 as ref_11
+on (ref_10.code2 = ref_11.c0 )
+inner join jennifer_0 as ref_12
+on (ref_12.c0 is not NULL)
+on (ref_10.code5 != ref_10.e5)
+where ref_12.c0 is not NULL
+limit 127) as subq_1
+inner join (select
+ref_13.id as c0,
+ref_13.code16 as c1,
+ref_13.e22 as c2,
+ref_13.id as c3,
+ref_13.code2 as c4,
+10 as c5,
+ref_13.e11 as c6,
+ref_13.code9 as c7,
+ref_13.e11 as c8,
+ref_13.code3 as c9,
+ref_13.e8 as c10,
+ref_13.e8 as c11,
+ref_13.e4 as c12,
+ref_13.e2 as c13,
+ref_13.e18 as c14,
+ref_13.e1 as c15,
+1 as c16,
+ref_13.code10 as c17,
+ref_13.e3 as c18,
+ref_13.e8 as c19,
+ref_13.code7 as c20
+from
+test_vacuum.t1 as ref_13
+where EXISTS (
+select
+ref_14.c0 as c0
+from
+jennifer_0 as ref_14
+where ref_14.c0 is NULL)
+limit 118) as subq_2
+on (subq_1.c2 is not NULL)
+where EXISTS (
+select
+subq_1.c0 as c0,
+subq_4.c1 as c1,
+case when false then subq_2.c3 else subq_2.c3 end
+as c2,
+subq_1.c3 as c3,
+(select e1 from test_vacuum.t1 limit 1 offset 3)
+as c4,
+subq_4.c1 as c5,
+ref_18.e18 as c6,
+ref_17.e17 as c7,
+subq_2.c3 as c8,
+ref_18.e8 as c9,
+subq_4.c2 as c10,
+subq_1.c2 as c11,
+ref_18.code11 as c12,
+subq_4.c0 as c13
+from
+jennifer_0 as ref_15
+left join test_vacuum.t1 as ref_16
+on (false)
+right join test_vacuum.t1 as ref_17
+on (cast(null as "interval") != cast(null as "interval"))
+inner join test_vacuum.t1 as ref_18
+on (true)
+inner join (select distinct
+subq_2.c2 as c0,
+subq_1.c1 as c1,
+subq_2.c14 as c2
+from
+test_vacuum.t1 as ref_19,
+lateral (select
+ref_19.e9 as c0,
+ref_19.e21 as c1,
+ref_19.k_timestamp as c2,
+ref_20.code8 as c3,
+38 as c4,
+subq_1.c0 as c5,
+subq_1.c1 as c6,
+subq_2.c15 as c7,
+ref_19.e17 as c8,
+subq_1.c3 as c9,
+76 as c10,
+ref_19.k_timestamp as c11,
+ref_20.e4 as c12,
+subq_2.c10 as c13,
+72 as c14
+from
+test_vacuum.t1 as ref_20
+where true
+limit 181) as subq_3
+where cast(null as uuid) < cast(null as uuid)
+limit 108) as subq_4
+on (ref_17.e18 = subq_4.c2 )
+where (((cast(null as uuid) <= cast(null as uuid))
+or (cast(null as _uuid) IS NOT DISTINCT FROM cast(null as _uuid)))
+or (cast(null as "timetz") < cast(null as "timetz")))
+or ((cast(null as text) !~ cast(null as text))
+and (cast(null as "varbit") = cast(null as "varbit"))))
+limit 86
+;
+
+drop database test_vacuum cascade;

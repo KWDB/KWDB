@@ -802,6 +802,18 @@ define Min {
 }
 
 [Scalar, Aggregate]
+define MinExtend {
+    InputMin ScalarExpr
+    Input ScalarExpr
+}
+
+[Scalar, Aggregate]
+define MaxExtend {
+    Inputmax ScalarExpr
+    Input ScalarExpr
+}
+
+[Scalar, Aggregate]
 define SumInt {
     Input ScalarExpr
 }

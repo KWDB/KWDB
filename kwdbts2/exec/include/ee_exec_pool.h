@@ -119,8 +119,9 @@ class ExecPool {
    * @brief add task
    *
    * @param task_ptr
+   * @param no_check : if true, don't check if the queue is filled
    */
-  KStatus PushTask(ExecTaskPtr task_ptr);
+  KStatus PushTask(ExecTaskPtr task_ptr, bool no_check = false);
   /**
   * @brief add timed tasks
   *
