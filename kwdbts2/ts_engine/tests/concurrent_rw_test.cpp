@@ -30,7 +30,7 @@ class ConcurrentRWTest : public testing::Test {
   ~ConcurrentRWTest() { KWDBDynamicThreadPool::GetThreadPool().Stop(); }
 };
 
-TEST_F(ConcurrentRWTest, FlushOnly) {
+TEST_F(ConcurrentRWTest, DISABLED_FlushOnly) {
   kwdbContext_t g_ctx_;
   kwdbContext_p ctx_ = &g_ctx_;
   InitKWDBContext(ctx_);

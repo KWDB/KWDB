@@ -71,4 +71,11 @@ class TsColumnBlockBuilder {
         new TsColumnBlock(col_schema_, count_, bitmap_, fixlen_data_, varchar_data_)};
   }
 };
+
+// TODO(zzr): remove this function later
+static inline bool need_convert_ts(int dtype) {
+  return (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN ||
+          dtype == TIMESTAMP64_LSN_NANO);
+}
+
 }  // namespace kwdbts

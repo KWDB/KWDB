@@ -11,8 +11,15 @@
 namespace kwdbts {
 
 struct TsMetricCompressInfo {
+  int row_count;
   int lsn_len;
   std::vector<TsColumnCompressInfo> column_compress_infos;
+
+  struct OffsetLength {
+    size_t offset;
+    size_t length;
+  };
+  std::vector<OffsetLength> column_data_segments;
 };
 class TsMetricBlock {
   friend class TsMetricBlockBuilder;
@@ -29,8 +36,11 @@ class TsMetricBlock {
         column_blocks_(std::move(column_blocks)) {}
 
  public:
-  static KStatus ParseCompressedMetricData();
-  const TS_LSN* GetLsnAddr() const { return reinterpret_cast<const TS_LSN*>(lsn_buffer_.data()); }
+  static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema,
+                                           TSSlice compressed_data,
+                                           const TsMetricCompressInfo& compress_info,
+                                           std::unique_ptr<TsMetricBlock>* metric_block);
+  const TS_LSN* GetLSNAddr() const { return reinterpret_cast<const TS_LSN*>(lsn_buffer_.data()); }
 
   bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info);
 };

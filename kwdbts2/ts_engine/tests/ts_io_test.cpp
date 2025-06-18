@@ -293,7 +293,7 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
   for (int i = 0; i < 10; ++i) {
     threads.emplace_back(read_thread);
   }
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 10000; ++i) {
     write_thread(i);
   }
   finished.store(true);

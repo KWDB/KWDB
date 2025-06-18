@@ -1,10 +1,13 @@
 #include "ts_metric_block.h"
 
+#include <cstddef>
+
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_column_block.h"
 #include "ts_compressor.h"
 
 namespace kwdbts {
@@ -21,9 +24,11 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
     return FAIL;
   }
   compress_info->lsn_len = compressed_data.size();
+  size_t offset = compress_info->lsn_len;
 
   // 2. Compress column data
   compress_info->column_compress_infos.resize(column_blocks_.size());
+  compress_info->column_data_segments.resize(column_blocks_.size());
   std::string tmp;
   TsColumnCompressInfo col_compress_info;
   for (int i = 0; i < column_blocks_.size(); i++) {
@@ -35,7 +40,10 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
     }
     compressed_data.append(tmp);
     compress_info->column_compress_infos[i] = col_compress_info;
+    compress_info->column_data_segments[i] = {offset, tmp.size()};
+    offset += tmp.size();
   }
+  compress_info->row_count = count_;
   output->swap(compressed_data);
   return SUCCESS;
 }
@@ -82,4 +90,48 @@ std::unique_ptr<TsMetricBlock> TsMetricBlockBuilder::GetMetricBlock() {
   return std::unique_ptr<TsMetricBlock>(
       new TsMetricBlock{count_, std::move(lsn_buffer_), std::move(column_blocks)});
 }
+
+KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo>& schema,
+                                                 TSSlice compressed_data,
+                                                 const TsMetricCompressInfo& compress_info,
+                                                 std::unique_ptr<TsMetricBlock>* metric_block) {
+  // 0. Check schema
+  if (schema.size() != compress_info.column_compress_infos.size()) {
+    LOG_ERROR("schema size not match compress info");
+    return FAIL;
+  }
+
+  const auto& mgr = CompressorManager::GetInstance();
+  // 1. Decompress LSN
+  TSSlice lsn_slice;
+  lsn_slice.data = compressed_data.data;
+  lsn_slice.len = compress_info.lsn_len;
+  std::string decompressed_lsn_buffer;
+
+  bool ok =
+      mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &decompressed_lsn_buffer);
+  if (!ok) {
+    LOG_ERROR("decompress lsn error");
+    return FAIL;
+  }
+
+  std::vector<std::unique_ptr<TsColumnBlock>> column_blocks;
+  for (int i = 0; i < schema.size(); i++) {
+    TSSlice data_slice;
+    data_slice.data = compressed_data.data + compress_info.column_data_segments[i].offset;
+    data_slice.len = compress_info.column_data_segments[i].length;
+    std::unique_ptr<TsColumnBlock> colblock;
+    auto s = TsColumnBlock::ParseCompressedColumnData(
+        schema[i], data_slice, compress_info.column_compress_infos[i], &colblock);
+    if (s == FAIL) {
+      LOG_ERROR("parse column data error");
+      return s;
+    }
+    column_blocks.push_back(std::move(colblock));
+  }
+  metric_block->reset(new TsMetricBlock{compress_info.row_count, std::move(decompressed_lsn_buffer),
+                                        std::move(column_blocks)});
+  return SUCCESS;
+}
+
 }  // namespace kwdbts

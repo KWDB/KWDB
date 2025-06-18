@@ -74,11 +74,6 @@ KStatus TsColumnBlock::GetValueSlice(int row_num, TSSlice& value) {
   return SUCCESS;
 }
 
-static inline bool need_convert_ts(int dtype) {
-  return (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN ||
-          dtype == TIMESTAMP64_LSN_NANO);
-}
-
 bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* info) {
   std::string compressed_data;
   info->row_count = count_;
@@ -105,17 +100,12 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   std::vector<timestamp64> tmp_ts;
   // TODO(zzr) remove it when payload has 8 bytes timestamp
   if (need_convert_ts(col_schema_.type)) {
-    struct _TSLSN {
-      timestamp64 ts;
-      TS_LSN lsn;
-    };
     tmp_ts.resize(count_);
-    const _TSLSN* tslsn = reinterpret_cast<const _TSLSN*>(fixlen_data_.data());
     for (int i = 0; i < count_; ++i) {
-      tmp_ts[i] = tslsn[i].ts;
+      tmp_ts[i] = *reinterpret_cast<timestamp64*>(fixlen_data_.data() + i * 16);
     }
     input.data = reinterpret_cast<char*>(tmp_ts.data());
-    input.len = tmp_ts.size();
+    input.len = tmp_ts.size() * sizeof(timestamp64);
   }
 
   bool ok = mgr.CompressData(input, bitmap, count_, &tmp, first, second);
