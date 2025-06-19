@@ -240,6 +240,7 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 	if b.Txn() != nil {
 		db.tss.txn = b.Txn().Sender().Transaction()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
+		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.loopStarted = false
 		db.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
 		txn := b.Txn().Sender().Transaction()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.transaction = txn.Clone()

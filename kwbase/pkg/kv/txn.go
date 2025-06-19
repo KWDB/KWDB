@@ -1579,22 +1579,35 @@ func (db *DB) GetTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb
 	return isExists, &res, nil
 }
 
-// ScanAbdWriteTxnRecord 111
-func (db *DB) ScanAbdWriteTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb.TsTxnRecord, error) {
+// ScanAndWriteTxnRecord 111
+func (db *DB) ScanAndWriteTxnRecord(ctx context.Context, txnRecord *roachpb.TsTxnRecord) (bool, *roachpb.TsTxnRecord, error) {
 	var res roachpb.TsTxnRecord
 	var isExists bool
 	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
-		key := keys.MakeTxnRecordKey(txnID)
+		var newTxn *roachpb.TsTxnRecord
+		key := keys.MakeTxnRecordKey(txnRecord.ID)
+		fmt.Printf("start get txn record, id: %v, now: %v\n", txnRecord.ID, time.Now())
 		keyValue, err := txn.Get(ctx, key)
 		if err != nil {
 			return err
 		}
 		if !keyValue.Exists() {
-			return nil
+			newTxn = txnRecord
+		} else {
+			err = res.Unmarshal(keyValue.ValueBytes())
+			if err != nil {
+				return err
+			}
+			newTxn = &res
+			newTxn.LastHeartbeat = txnRecord.LastHeartbeat
 		}
-		isExists = true
-		err = res.Unmarshal(keyValue.ValueBytes())
+		b := Batch{}
+		value, err := newTxn.Marshal()
 		if err != nil {
+			return err
+		}
+		b.Put(key, value)
+		if err = txn.Run(ctx, &b); err != nil {
 			return err
 		}
 		return nil

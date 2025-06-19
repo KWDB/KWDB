@@ -26,7 +26,6 @@ package kvcoord
 
 import (
 	"context"
-	"fmt"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"sync"
 	"time"
@@ -560,8 +559,6 @@ func (tc *tsTxnCommitter) SendLocked(
 		if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
 			return nil, roachpb.NewError(err)
 		}
-		_, rec, _ := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
-		fmt.Printf("commit/rollback id: %v, status: %v\n", rec.ID, rec.Status.String())
 		return nil, pErr
 	}
 	time.Sleep(10 * time.Second)

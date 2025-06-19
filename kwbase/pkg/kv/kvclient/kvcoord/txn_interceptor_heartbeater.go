@@ -595,21 +595,13 @@ func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
 
 func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRecord, error) {
 	fmt.Printf("start get txn record, id: %v\n", h.mu.transaction.ID)
-	ok, record, err := h.txn.DB().GetTxnRecord(ctx, h.mu.transaction.ID)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		record = &roachpb.TsTxnRecord{}
-		record.ID = h.mu.transaction.ID
-		record.Status = roachpb.PENDING
-	}
-	h.txn.DB()
+	record := &roachpb.TsTxnRecord{}
+	record.ID = h.mu.transaction.ID
+	record.Status = roachpb.PENDING
 	record.LastHeartbeat = h.clock.Now()
-	fmt.Printf("start write txn record, id: %v, time: %v\n", h.mu.transaction.ID, h.clock.Now())
-	if err := h.txn.DB().WriteTxnRecord(ctx, record); err != nil {
-		return nil, err
+	_, txnRecord, err := h.txn.DB().ScanAndWriteTxnRecord(ctx, record)
+	if err != nil {
+		return txnRecord, err
 	}
-	fmt.Printf("loop one time end\n\n")
-	return record, nil
+	return txnRecord, nil
 }
