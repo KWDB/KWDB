@@ -306,14 +306,15 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
+  convert_ = TSBlkDataTypeConvert(*this);
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num);
-  convert_ = TSBlkDataTypeConvert(*this);
   // change current span info
   nrow_ -= row_num;
+  convert_ = TSBlkDataTypeConvert(*this);
 }
 
 void TsBlockSpan::Truncate(int row_num) {
