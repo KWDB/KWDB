@@ -232,8 +232,7 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                                   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                                                  uint32_t scan_version,
-                                                  const std::vector<uint32_t>& ts_scan_cols) {
+                                                  uint32_t scan_version) {
   uint64_t last_blk_id;
   KStatus s = entity_header_.GetEntityCurBlockId(filter.entity_id, last_blk_id);
   if (s != KStatus::SUCCESS) {
@@ -265,7 +264,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         // Because block item traverses from back to front, use push_front
         block_spans.push_front(make_shared<TsBlockSpan>(filter.entity_id, block, row_spans[i].first,
                                                         row_spans[i].second, tbl_schema_mgr,
-                                                        scan_version, ts_scan_cols));
+                                                        scan_version));
       }
     }
     last_blk_id = cur_blk_item.prev_block_id;
@@ -972,9 +971,8 @@ KStatus TsEntitySegment::GetAllBlockItems(TSEntityID entity_id,
 KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                                       uint32_t scan_version,
-                                       const std::vector<uint32_t>& ts_scan_cols) {
-  return meta_mgr_.GetBlockSpans(filter, this, block_spans, tbl_schema_mgr, scan_version, ts_scan_cols);
+                                       uint32_t scan_version) {
+  return meta_mgr_.GetBlockSpans(filter, this, block_spans, tbl_schema_mgr, scan_version);
 }
 
 KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
@@ -1066,7 +1064,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
   std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;
   block_spans.resize(last_segments_.size());
   for (int i = 0; i < last_segments_.size(); ++i) {
-    s = last_segments_[i]->GetBlockSpans(block_spans[i]);
+    s = last_segments_[i]->GetBlockSpans(block_spans[i], schema_mgr);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get block spans failed.")
       return s;
@@ -1084,16 +1082,9 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush() {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, iterate last segments failed.")
         return s;
       }
-      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = {nullptr};
-      s = schema_mgr->GetTableSchemaMgr(block_span->GetTableID(), tbl_schema_mgr);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("get table schema manager failed. table id: %lu", block_span->GetTableID());
-        return s;
-      }
       if (is_finished) {
         break;
       }
-      block_span->SetConvertVersion(tbl_schema_mgr);
     }
     TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key != cur_entity_key) {

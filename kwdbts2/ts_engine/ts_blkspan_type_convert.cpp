@@ -22,20 +22,73 @@
 
 namespace kwdbts {
 
-TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlockSpan& blk_span, std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                                           uint32_t scan_version, const std::vector<uint32_t>& ts_scan_cols)
+TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlockSpan& blk_span,
+                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                           uint32_t scan_version)
   : block_(blk_span.block_.get()), start_row_idx_(blk_span.start_row_), row_num_(blk_span.nrow_),
-    tbl_schema_mgr_(tbl_schema_mgr), scan_version_(scan_version), ts_scan_cols_(ts_scan_cols) {
+    tbl_schema_mgr_(tbl_schema_mgr) {
+  Init(scan_version);
+}
+
+TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num,
+                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                           uint32_t scan_version) :
+        block_(block), start_row_idx_(row_idx), row_num_(row_num), tbl_schema_mgr_(tbl_schema_mgr) {
+  Init(scan_version);
+}
+
+KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
   if (tbl_schema_mgr_) {
-    auto s = GetBlkScanColsInfo(blk_span.GetTableVersion(), blk_scan_cols_, blk_schema_valid_);
-    assert(s == SUCCESS);
-    tbl_schema_mgr_->GetColumnsIncludeDropped(table_schema_all_, scan_version_);
+    auto blk_version = block_->GetTableVersion();
+    key_ = std::to_string(blk_version) + "_" + std::to_string(scan_version);
+    auto iter = tbl_schema_mgr_->GetVersionConvMap().find(key_);
+    if (iter == tbl_schema_mgr_->GetVersionConvMap().end()) {
+      std::shared_ptr<MMapMetricsTable> blk_metric;
+      KStatus s = tbl_schema_mgr_->GetMetricSchema(blk_version, &blk_metric);
+      if (s != SUCCESS) {
+        LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_version);
+      }
+      std::shared_ptr<MMapMetricsTable> scan_metric;
+      s = tbl_schema_mgr_->GetMetricSchema(scan_version, &scan_metric);
+      if (s != SUCCESS) {
+        LOG_ERROR("GetMetricSchema failed. table version [%u]", scan_version);
+      }
+      auto& scan_cols = scan_metric->getIdxForValidCols();
+      auto& scan_attrs = scan_metric->getSchemaInfoExcludeDropped();
+      auto& blk_attrs = blk_metric->getSchemaInfoExcludeDropped();
+
+      const auto blk_cols = blk_metric->getIdxForValidCols();
+      // calculate column index in current block
+      std::vector<uint32_t> blk_cols_extended;
+      blk_cols_extended.resize(scan_cols.size());
+      for (size_t i = 0; i < scan_cols.size(); i++) {
+        bool found = false;
+        auto it = std::find(blk_cols.begin(), blk_cols.end(), scan_cols[i]);
+        found = (it != blk_cols.end());
+        uint32_t j = 0;
+        if (found) {
+          j = std::distance(blk_cols.begin(), it);
+        }
+        if (found) {
+          blk_cols_extended[i] = j;
+        } else {
+          blk_cols_extended[i] = UINT32_MAX;
+        }
+      }
+      version_conv_ = std::make_shared<SchemaVersionConv>(scan_version, blk_cols_extended, scan_attrs, blk_attrs);
+      tbl_schema_mgr_->GetVersionConvMap().insert({key_, version_conv_});
+    } else {
+      version_conv_ = iter->second;
+    }
   }
+  return SUCCESS;
 }
 
 // copyed from TsTimePartition::ConvertDataTypeToMem
-int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_size,
+int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size,
                          void* old_mem, uint16_t old_var_len, std::shared_ptr<void>* new_mem) {
+  DATATYPE old_type = static_cast<DATATYPE>(version_conv_->blk_attrs_[scan_col].type);
+  DATATYPE new_type = static_cast<DATATYPE>(version_conv_->scan_attrs_[scan_col].type);
   ErrorInfo err_info;
   if (!isVarLenType(new_type)) {
     void* temp_new_mem = malloc(new_type_size + 1);
@@ -88,119 +141,58 @@ int ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, int32_t new_type_
 }
 
 KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
-  if (auto res = col_bitmaps.find(scan_idx); res != col_bitmaps.end()) {
-    bitmap = res->second;
-    return SUCCESS;
-  }
   if (scan_idx == UINT32_MAX) {
     bitmap.SetCount(block_->GetRowNum());
     bitmap.SetAll(DataFlags::kNull);
-    col_bitmaps.insert({scan_idx, bitmap});
     return SUCCESS;
   }
-
-  if (isVarLenType(blk_schema_valid_[blk_scan_cols_[scan_idx]].type) &&
-      !isVarLenType(table_schema_all_[ts_scan_cols_[scan_idx]].type)) {
+  if (isVarLenType(version_conv_->blk_attrs_[scan_idx].type) &&
+      !isVarLenType(version_conv_->scan_attrs_[scan_idx].type)) {
     char* value = nullptr;
     auto ret = GetFixLenColAddr(scan_idx, &value, bitmap);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetFixLenColAddr failed.");
       return ret;
     }
-    col_bitmaps.insert({scan_idx, bitmap});
     return SUCCESS;
   }
-  return block_->GetColBitmap(blk_scan_cols_[scan_idx], blk_schema_valid_, bitmap);
+  return block_->GetColBitmap(version_conv_->blk_cols_extended_[scan_idx], version_conv_->blk_attrs_, bitmap);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreCount(uint32_t scan_idx, uint16_t &count) {
-  return block_->GetPreCount(blk_scan_cols_[scan_idx], count);
+  return block_->GetPreCount(version_conv_->blk_cols_extended_[scan_idx], count);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreSum(uint32_t scan_idx, int32_t size, void *&pre_sum, bool &is_overflow) {
-  return block_->GetPreSum(blk_scan_cols_[scan_idx], size, pre_sum, is_overflow);
+  return block_->GetPreSum(version_conv_->blk_cols_extended_[scan_idx], size, pre_sum, is_overflow);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreMax(uint32_t scan_idx, void *&pre_max) {
-  return block_->GetPreMax(blk_scan_cols_[scan_idx], pre_max);
+  return block_->GetPreMax(version_conv_->blk_cols_extended_[scan_idx], pre_max);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreMin(uint32_t scan_idx, int32_t size, void *&pre_min) {
-  return block_->GetPreMin(blk_scan_cols_[scan_idx], size, pre_min);
+  return block_->GetPreMin(version_conv_->blk_cols_extended_[scan_idx], size, pre_min);
 }
 
 KStatus TSBlkDataTypeConvert::GetVarPreMax(uint32_t scan_idx, TSSlice &pre_max) {
-  return block_->GetVarPreMax(blk_scan_cols_[scan_idx], pre_max);
+  return block_->GetVarPreMax(version_conv_->blk_cols_extended_[scan_idx], pre_max);
 }
 
 KStatus TSBlkDataTypeConvert::GetVarPreMin(uint32_t scan_idx, TSSlice &pre_min) {
-  return block_->GetVarPreMin(blk_scan_cols_[scan_idx], pre_min);
+  return block_->GetVarPreMin(version_conv_->blk_cols_extended_[scan_idx], pre_min);
 }
 
-KStatus TSBlkDataTypeConvert::SetConvertVersion(std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                                                uint32_t scan_version, std::vector<uint32_t> ts_scan_cols) {
-  assert(tbl_schema_mgr != nullptr);
-  tbl_schema_mgr_ = tbl_schema_mgr;
-  scan_version_ = scan_version;
-  if (block_->GetTableVersion() == scan_version) {
-    ts_scan_cols_ = tbl_schema_mgr->GetIdxForValidCols(scan_version_);
-  } else {
-    ts_scan_cols_ = ts_scan_cols;
-  }
-  auto s = GetBlkScanColsInfo(block_->GetTableVersion(), blk_scan_cols_, blk_schema_valid_);
-  if (s != SUCCESS) {
-    return s;
-  }
-  tbl_schema_mgr_->GetColumnsIncludeDropped(table_schema_all_, scan_version_);
+bool TSBlkDataTypeConvert::IsColExist(uint32_t scan_idx) {
+  return version_conv_->blk_cols_extended_[scan_idx] != UINT32_MAX;
 }
-
-KStatus TSBlkDataTypeConvert::GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
-                                                 vector<AttributeInfo>& blk_schema) {
-  std::shared_ptr<MMapMetricsTable> blk_version;
-  KStatus s = tbl_schema_mgr_->GetMetricSchema(version, &blk_version);
-  if (s != SUCCESS) {
-    LOG_ERROR("GetMetricSchema failed. table version [%u]", version);
-    return s;
-  }
-  auto& blk_schema_all = blk_version->getSchemaInfoIncludeDropped();
-  blk_schema = blk_version->getSchemaInfoExcludeDropped();
-  const auto blk_valid_cols = blk_version->getIdxForValidCols();
-
-  // calculate column index in current block
-  std::vector<uint32_t> blk_scan_cols;
-  blk_scan_cols.resize(ts_scan_cols_.size());
-  for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
-    if (!blk_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
-      bool found = false;
-      auto it = std::find(blk_valid_cols.begin(), blk_valid_cols.end(), ts_scan_cols_[i]);
-      found = (it != blk_valid_cols.end());
-      uint32_t j = 0;
-      if (found) {
-        j = std::distance(blk_valid_cols.begin(), it);
-      }
-      if (found) {
-        blk_scan_cols[i] = j;
-      } else {
-        blk_scan_cols[i] = UINT32_MAX;
-      }
-    } else {
-      blk_scan_cols[i] = UINT32_MAX;
-    }
-  }
-  scan_cols = blk_scan_cols;
-  return KStatus::SUCCESS;
-}
-
-  bool TSBlkDataTypeConvert::IsColExist(uint32_t scan_idx) {
-    return blk_scan_cols_[scan_idx] != UINT32_MAX;
-  }
 
 bool TSBlkDataTypeConvert::IsSameType(uint32_t scan_idx) {
-  return isSameType(blk_schema_valid_[blk_scan_cols_[scan_idx]], table_schema_all_[ts_scan_cols_[scan_idx]]);
+  return isSameType(version_conv_->blk_attrs_[scan_idx], version_conv_->scan_attrs_[scan_idx]);
 }
 
 bool TSBlkDataTypeConvert::IsColNotNull(uint32_t scan_idx) {
-  return blk_schema_valid_[blk_scan_cols_[scan_idx]].isFlag(AINFO_NOT_NULL);
+  return version_conv_->blk_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
 }
 
 KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap) {
@@ -208,11 +200,12 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
     *value = nullptr;
     return SUCCESS;
   }
-  auto dest_attr = table_schema_all_[ts_scan_cols_[scan_idx]];
+
+  auto dest_attr = version_conv_->scan_attrs_[scan_idx];
   uint32_t dest_type_size = dest_attr.size;
-  auto blk_col_idx = blk_scan_cols_[scan_idx];
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(blk_col_idx, blk_schema_valid_, blk_bitmap);
+  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
@@ -221,7 +214,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
 
   if (IsSameType(scan_idx)) {
     char* blk_value;
-    s = block_->GetColAddr(blk_col_idx, blk_schema_valid_, &blk_value);
+    s = block_->GetColAddr(blk_col_idx, version_conv_->blk_attrs_, &blk_value);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
       return s;
@@ -246,15 +239,13 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
         continue;
       }
       TSSlice orig_value;
-      s = block_->GetValueSlice(start_row_idx_+ i, blk_col_idx, blk_schema_valid_, orig_value);
+      s = block_->GetValueSlice(start_row_idx_+ i, blk_col_idx, version_conv_->blk_attrs_, orig_value);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", start_row_idx_+ i, blk_col_idx);
         return s;
       }
       std::shared_ptr<void> new_mem;
-      int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(blk_schema_valid_[blk_col_idx].type),
-                                          static_cast<DATATYPE>(dest_attr.type),
-                                          dest_type_size, orig_value.data, orig_value.len, &new_mem);
+      int err_code = ConvertDataTypeToMem(scan_idx, dest_type_size, orig_value.data, orig_value.len, &new_mem);
       if (err_code < 0) {
         bitmap[i] = DataFlags::kNull;
       } else {
@@ -268,12 +259,12 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
 
 KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx,
                                                    DataFlags& flag, TSSlice& data) {
-  auto dest_type = table_schema_all_[ts_scan_cols_[scan_idx]];
-  auto blk_col_idx = blk_scan_cols_[scan_idx];
+  auto dest_type = version_conv_->scan_attrs_[scan_idx];
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   assert(isVarLenType(dest_type.type));
   assert(row_idx < row_num_);
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(blk_col_idx, blk_schema_valid_, blk_bitmap);
+  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
@@ -284,7 +275,7 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t sc
     return KStatus::SUCCESS;
   }
   TSSlice orig_value;
-  s = block_->GetValueSlice(start_row_idx_ + row_idx, blk_col_idx, blk_schema_valid_, orig_value);
+  s = block_->GetValueSlice(start_row_idx_ + row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, blk_col_idx);
     return s;
@@ -294,9 +285,7 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t sc
   } else {
     // table altered. column type changes.
     std::shared_ptr<void> new_mem;
-    int err_code = ConvertDataTypeToMem(static_cast<DATATYPE>(blk_schema_valid_[blk_col_idx].type),
-                                        static_cast<DATATYPE>(dest_type.type),
-                                        dest_type.size, orig_value.data, orig_value.len, &new_mem);
+    int err_code = ConvertDataTypeToMem(scan_idx, dest_type.size, orig_value.data, orig_value.len, &new_mem);
     if (err_code < 0) {
       flag = DataFlags::kNull;
     } else {

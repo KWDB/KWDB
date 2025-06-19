@@ -38,25 +38,18 @@ class TSBlkDataTypeConvert {
   std::list<char*> alloc_mems_;
 
  public:
+  std::shared_ptr<SchemaVersionConv> version_conv_;
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
-  uint32_t scan_version_;
-  std::vector<uint32_t> ts_scan_cols_;
-  std::vector<uint32_t> blk_scan_cols_;
-  std::vector<AttributeInfo> table_schema_all_;
-  std::vector<AttributeInfo> blk_schema_valid_;
-  std::map<uint32_t, TsBitmap> col_bitmaps;
+  std::string key_;
 
  public:
   TSBlkDataTypeConvert() = default;
 
-  explicit TSBlkDataTypeConvert(TsBlockSpan& blk_span, std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                                uint32_t scan_version, const std::vector<uint32_t>& ts_scan_cols);
+  explicit TSBlkDataTypeConvert(TsBlockSpan& blk_span,
+                                const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version);
 
   TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num,
-                       std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                       uint32_t scan_version, const std::vector<uint32_t>& ts_scan_cols) :
-      block_(block), start_row_idx_(row_idx), tbl_schema_mgr_(tbl_schema_mgr),
-      row_num_(row_num), scan_version_(scan_version), ts_scan_cols_(ts_scan_cols) {}
+                       const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version);
 
   ~TSBlkDataTypeConvert() {
     for (auto mem : alloc_mems_) {
@@ -65,11 +58,10 @@ class TSBlkDataTypeConvert {
     alloc_mems_.clear();
   }
 
-  KStatus SetConvertVersion(std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
-                            std::vector<uint32_t> ts_scan_cols);
+  KStatus Init(uint32_t scan_version);
 
-  KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
-                              vector<AttributeInfo>& blk_schema);
+  int ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size,
+                           void* old_mem, uint16_t old_var_len, std::shared_ptr<void>* new_mem);
 
   bool IsColExist(uint32_t scan_idx);
   bool IsSameType(uint32_t scan_idx);

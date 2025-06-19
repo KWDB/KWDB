@@ -179,8 +179,7 @@ class TsEntitySegmentMetaManager {
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                        uint32_t scan_version,
-                        const std::vector<uint32_t>& ts_scan_cols);
+                        uint32_t scan_version);
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -337,12 +336,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                        uint32_t scan_version,
-                        const std::vector<uint32_t>& ts_scan_cols) override;
-
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
-    return GetBlockSpans(filter, blocks, nullptr, 0, {});
-  }
+                        uint32_t scan_version) override;
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsEntityBlock* block);

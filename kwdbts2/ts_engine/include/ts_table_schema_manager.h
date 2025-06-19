@@ -42,6 +42,21 @@ namespace kwdbts {
     struct TagInfo tag_var;          \
     {tag_var.m_id = id; tag_var.m_data_type = data_type; tag_var.m_length = data_length; }  \
     {tag_var.m_size = data_length; tag_var.m_tag_type = tag_type; }
+
+class SchemaVersionConv {
+ public:
+  uint32_t scan_version_{0};
+  // std::vector<uint32_t> ts_scan_cols_{};
+  std::vector<uint32_t> blk_cols_extended_{};
+  std::vector<AttributeInfo> scan_attrs_{};
+  std::vector<AttributeInfo> blk_attrs_{};
+
+  SchemaVersionConv(uint32_t scan_version, const std::vector<uint32_t>& blk_cols_extended,
+                    const std::vector<AttributeInfo>& scan_attrs, const std::vector<AttributeInfo>& blk_attrs) :
+    scan_version_(scan_version), blk_cols_extended_(blk_cols_extended),
+    scan_attrs_(scan_attrs), blk_attrs_(blk_attrs) { }
+};
+
 /**
  * table schema used for organizing table schema(including tag / tag schema and metric schema).
  */
@@ -83,6 +98,7 @@ class TsTableSchemaManager {
   // Compression status.
   std::atomic<bool> is_compressing_{false};
   std::atomic<bool> is_vacuuming_{false};
+  std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
 
   /**
    * @brief Open the schema file of the specified version
@@ -215,6 +231,8 @@ class TsTableSchemaManager {
    * @return Returns index information for the actual column.
    */
   const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
+
+  std::unordered_map<string, shared_ptr<SchemaVersionConv>>& GetVersionConvMap();
 };
 
 }  // namespace kwdbts

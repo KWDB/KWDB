@@ -86,7 +86,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<TsPartition> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
-  std::unordered_map<uint32_t, std::vector<uint32_t>> scan_cols_;
 };
 
 class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {

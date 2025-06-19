@@ -35,7 +35,7 @@ class TsEntityPartition {
   // filter all blocks, and return block span list.
   KStatus GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
                       std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                      uint32_t scan_version, const std::vector<uint32_t>& ts_scan_cols);
+                      uint32_t scan_version);
 
  private:
   KStatus SetFilter();

@@ -73,7 +73,9 @@ struct TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
-  std::shared_ptr<TSBlkDataTypeConvert> convert_;
+
+ public:
+  TSBlkDataTypeConvert convert_;
 
   friend TSBlkDataTypeConvert;
 
@@ -81,14 +83,11 @@ struct TsBlockSpan {
   TsBlockSpan() = default;
 
   TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-              std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr,
-              uint32_t scan_version = 0,
-              const std::vector<uint32_t>& ts_scan_cols = {});
+              std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+              uint32_t scan_version = 0);
 
   bool operator<(const TsBlockSpan& other) const;
-
-  KStatus SetConvertVersion(std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version = 0,
-                            std::vector<uint32_t> ts_scan_cols = {});
+  void operator=(TsBlockSpan& other);
 
   TSEntityID GetEntityID() const;
   int GetRowNum() const;

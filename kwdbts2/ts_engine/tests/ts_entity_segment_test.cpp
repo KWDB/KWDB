@@ -95,7 +95,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1, {0, 1, 2, 3, 4});
+        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -139,7 +139,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{INT64_MIN, 622}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID) (1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1, {0, 1, 2, 3, 4});
+        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
@@ -180,7 +180,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1, {0, 1, 2, 3, 4});
+        s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -226,7 +226,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
-        result[j]->GetBlockSpans(filter, block_span, schema_mgr, 1, {0, 1, 2, 3, 4});
+        result[j]->GetBlockSpans(filter, block_span, schema_mgr, 1);
         for (auto block : block_span) {
           last_row_num += block->GetRowNum();
         }
@@ -235,7 +235,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     int64_t last_total_row_num = 0;
     for (int j = 0; j < result.size(); ++j) {
         std::list<shared_ptr<TsBlockSpan>> block_span;
-        result[j]->GetBlockSpans(block_span);
+        result[j]->GetBlockSpans(block_span, mgr.get());
         for (auto block : block_span) {
           last_total_row_num += block->GetRowNum();
         }

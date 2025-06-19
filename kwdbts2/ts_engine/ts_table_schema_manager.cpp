@@ -778,6 +778,10 @@ const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_
   return Get(table_version, false)->getIdxForValidCols();
 }
 
+std::unordered_map<string, shared_ptr<SchemaVersionConv>>& TsTableSchemaManager::GetVersionConvMap() {
+  return version_conv_map;
+}
+
 TSTableID TsTableSchemaManager::GetTableId() {
   return table_id_;
 }
