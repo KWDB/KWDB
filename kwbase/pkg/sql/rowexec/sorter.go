@@ -311,7 +311,6 @@ func newSortAllProcessor(
 func (s *sortAllProcessor) Start(ctx context.Context) context.Context {
 	s.input.Start(ctx)
 	ctx = s.StartInternal(ctx, sortAllProcName)
-
 	valid, err := s.fill()
 	if !valid || err != nil {
 		s.MoveToDraining(err)

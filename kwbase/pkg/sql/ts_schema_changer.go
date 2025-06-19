@@ -63,6 +63,7 @@ const (
 	alterKwdbDropColumn
 	alterKwdbAlterColumnType
 	alterKwdbAlterPartitionInterval
+	alterKwdbAlterRetentions
 	compress
 	deleteExpiredData
 	alterCompressInterval
@@ -345,6 +346,14 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				d.SNTable.TsTable.PartitionIntervalInput,
 				syncErr,
 			)
+		case alterKwdbAlterRetentions:
+			updateErr = p.handleAlterRetentions(
+				ctx,
+				d.SNTable.ID,
+				d.SNTable.TsTable.Lifetime,
+				d.SNTable.TsTable.Downsampling,
+				syncErr,
+			)
 		case alterKwdbSetTagValue:
 			// prepare instance table metadata being modified
 			insTable := sqlbase.InstNameSpace{
@@ -433,6 +442,26 @@ func (p *planner) handleAlterPartitionInterval(
 			if syncErr == nil {
 				tableDesc.TsTable.PartitionInterval = partitionInterval
 				tableDesc.TsTable.PartitionIntervalInput = input
+			}
+			return nil
+		},
+		func(txn *kv.Txn) error { return nil })
+	return updateDescErr
+}
+
+// handleAlterRetentions restore time-series table metadata is available,
+// and the time-series engine completes setting the Retentions.
+func (p *planner) handleAlterRetentions(
+	ctx context.Context, tableID sqlbase.ID, lifeTime uint64, downsampling []string, syncErr error,
+) error {
+	_, updateDescErr := p.ExecCfg().LeaseManager.Publish(
+		ctx,
+		tableID,
+		func(tableDesc *sqlbase.MutableTableDescriptor) error {
+			tableDesc.State = sqlbase.TableDescriptor_PUBLIC
+			if syncErr == nil {
+				tableDesc.TsTable.Lifetime = lifeTime
+				tableDesc.TsTable.Downsampling = downsampling
 			}
 			return nil
 		},
@@ -807,7 +836,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
-	case alterKwdbAlterPartitionInterval:
+	case alterKwdbAlterPartitionInterval, alterKwdbAlterRetentions:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d, current tsVersion: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID
@@ -1072,6 +1101,8 @@ func getDDLOpType(op int32) string {
 		return "alter column type"
 	case alterKwdbAlterPartitionInterval:
 		return "alter partition interval"
+	case alterKwdbAlterRetentions:
+		return "alter retentions"
 	case compress:
 		return "compress"
 	case compressAll:

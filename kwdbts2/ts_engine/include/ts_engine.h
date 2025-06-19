@@ -201,6 +201,8 @@ class TSEngineV2Impl : public TSEngine {
     return KStatus::SUCCESS;
   }
 
+  KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) override;
+
   KStatus GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) override { return KStatus::SUCCESS; }
   KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) override {
     return KStatus::SUCCESS;

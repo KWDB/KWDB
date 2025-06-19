@@ -884,7 +884,7 @@ WHERE d.location = 'area2'
         WHERE dm.modelID = d.modelID
             AND dm.TypeName = '电表'
     )
-ORDER BY d.installDate DESC;
+ORDER BY d.installDate, m.voltage DESC;
 
 
 --Subquery in in
@@ -1719,7 +1719,7 @@ SELECT d.location,
 FROM rdb.Device d
 JOIN tsdb.MeterSuper m ON d.deviceID = m.deviceID
 WHERE d.modelID = (SELECT modelID FROM rdb.DeviceModel WHERE ModelName = '电表模型1')
-ORDER BY d.location ASC;
+ORDER BY d.location, Current ASC;
 
 
 --Get the model names and corresponding temperature values of devices whose status is 0 and current is less than 100, and sort them in descending order by temperature value:
@@ -1918,7 +1918,8 @@ WHERE ms.deviceID = (
     SELECT d.deviceID
     FROM rdb.Device d
     WHERE d.deviceID = 1
-);
+)
+ORDER BY ms.current;
 
 
 --Query the device ID in the Device table of the rdb library, where the records with voltage greater than 100 in the MeterSuper table of the tsdb library exist:
@@ -2045,7 +2046,8 @@ SELECT ms.deviceID, ms.current, dm.TypeName, d.installDate
 FROM tsdb.MeterSuper ms
 JOIN rdb.Device d ON ms.deviceID = d.deviceID
 JOIN rdb.DeviceModel dm ON d.modelID = dm.ModelID
-WHERE d.deviceID = 1;
+WHERE d.deviceID = 1
+ORDER BY ms.current;
 
 
 --Query the device ID and device model in the Device table of the rdb library, where the records with voltage greater than 100 in the MeterSuper table of the tsdb library exist, and return the current and frequency of the corresponding device ID in the tsdb library:
@@ -3256,7 +3258,7 @@ WHERE d.location = 'area2'
         WHERE dm.modelID = d.modelID
             AND dm.TypeName = '电表'
     )
-ORDER BY d.installDate DESC;
+ORDER BY d.installDate, m.voltage DESC;
 
 
 --Subquery in in

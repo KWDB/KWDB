@@ -1112,6 +1112,12 @@ Field *PostResolve::ResolveFuncOperator(kwdbContext_p ctx, KString &func_name,
     field = KNEW FieldFuncTimeWindow(args, ctx->timezone);
     current_thd->wtyp_ = WindowGroupType::EE_WGT_TIME;
     current_thd->window_field_ = field;
+  } else if (func_name == "time_window_start") {
+    field = KNEW FieldFuncTimeWindowStart(args.front());
+    current_thd->window_start_field_ = field;
+  } else if (func_name == "time_window_end") {
+    field = KNEW FieldFuncTimeWindowEnd(args.front());
+    current_thd->window_end_field_ = field;
   } else {  // MathFields
     if (args.size() == 1) {
       for (k_int32 i = 0; i < mathFuncBuiltinsNum1; i++) {

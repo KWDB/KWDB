@@ -182,6 +182,7 @@ enum OperatorType {
   TsDropTagIndex = 24;
   TsAlterTagIndex = 25;
   TsCount = 26;
+  TsAlterRetentions = 27;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert
@@ -279,6 +280,7 @@ message TsAlterProSpec {
   optional bytes vacuumInterval = 10;
   optional uint32 tagIndexID = 11 [(gogoproto.nullable) = false];
   repeated uint32 tagIndexColumns = 12;
+  optional uint64 retentions = 13 [(gogoproto.nullable) = false];
 }
 
 // IndexSkipTableReaderSpec is the specification for a table reader that
@@ -719,6 +721,8 @@ message AggregatorSpec {
     FIRST_ROW_TS = 35;
     ELAPSED = 36;
     TWA = 37;
+    MIN_EXTEND = 38;
+    MAX_EXTEND = 39;
   }
 
   enum Type {
@@ -784,6 +788,7 @@ message AggregatorSpec {
   optional bool scalar_group_by_with_sum_int = 9 [(gogoproto.nullable) = false];
   optional int32 group_window_id = 10 [(gogoproto.nullable) = false];
   optional int32 group__window_tscolid = 11 [(gogoproto.nullable) = false];
+  repeated int32 group__window_id = 12 [packed = true];
 }
 
 // InterleavedReaderJoinerSpec is the specification for a processor that performs

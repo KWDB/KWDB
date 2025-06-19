@@ -1057,6 +1057,45 @@ func (m *Memo) addOrderedColumn(src *bestProps) {
 	}
 }
 
+func (m *Memo) addOrderInGroupWindow(source *GroupByExpr, input RelExpr) {
+	// set sortExpr to input of project if group window function not exec in ts engine.
+	// sort columns are ptag(if group cols contain ptag) and tsCol.
+	if proj, ok1 := input.(*ProjectExpr); ok1 && m.CheckFlag(opt.GroupWindowUseOrderScan) {
+		sortExpr1 := &SortExpr{Input: proj.Input}
+		provided := sortExpr1.ProvidedPhysical()
+		if source.GroupingCols.Len() > 1 {
+			source.GroupingCols.ForEach(func(colID opt.ColumnID) {
+				if m.Metadata().ColumnMeta(colID).IsPrimaryTag() {
+					provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(colID, false))
+				}
+			})
+		}
+		provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(opt.ColumnID(TsColID), false))
+		proj.Input = sortExpr1
+		source.Input = proj
+	}
+}
+
+// addOrder find the groupByExpr from the memo tree and add the orderByExpr.
+func (m *Memo) addOrder(expr opt.Expr) {
+	if source, ok := expr.(*GroupByExpr); ok {
+		m.addOrderInGroupWindow(source, source.Input)
+		return
+	}
+
+	for i := 0; i < expr.ChildCount(); i++ {
+		m.addOrder(expr.Child(i))
+	}
+}
+
+// AddOrderWithGroupWindow if we use group window function, we need to explicitly add orderByExpr.
+func (m *Memo) AddOrderWithGroupWindow(src RelExpr) {
+	if !m.CheckFlag(opt.IncludeTSTable) || !m.CheckFlag(opt.GroupWindowUseOrderScan) {
+		return
+	}
+	m.addOrder(src)
+}
+
 // IsTsColsJoinPredicate checks if a single join predicate satisfies the condition
 // where both columns on the left and right sides are time series columns.
 // for multiple model processing
@@ -1370,6 +1409,7 @@ func (m *Memo) selectExprFillStatistic(selectExpr *SelectExpr, gp *GroupingPriva
 //     2: It's a const column.
 func (m *Memo) isTsColumnOrConst(src opt.ScalarExpr) uint32 {
 	switch source := src.(type) {
+
 	case *VariableExpr:
 		tblID := m.Metadata().ColumnMeta(source.Col).Table
 		if tblID != 0 {
@@ -1436,7 +1476,7 @@ func (m *Memo) checkAggStatisticUsable(aggs []AggregationsItem) bool {
 	for i := range aggs {
 		switch aggs[i].Agg.(type) {
 		case *SumExpr, *MinExpr, *MaxExpr, *CountExpr, *FirstExpr, *FirstTimeStampExpr, *FirstRowExpr, *AvgExpr,
-			*FirstRowTimeStampExpr, *LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr, *CountRowsExpr, *ConstAggExpr:
+			*FirstRowTimeStampExpr, *LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr, *CountRowsExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
 		default:
 			return false
 		}
@@ -1578,22 +1618,9 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 			addSortExprForTwaFunc(source, sortExpr, ok)
 		}
 
-		// set sortExpr to input of project if group window function not exec in ts engine.
-		// sort columns are ptag(if group cols contain ptag) and tsCol.
-		if proj, ok1 := input.(*ProjectExpr); ok1 && !retAgg.commonRet.execInTSEngine &&
-			m.CheckFlag(opt.GroupWindowUseOrderScan) {
-			sortExpr1 := &SortExpr{Input: proj.Input}
-			provided := sortExpr1.ProvidedPhysical()
-			if source.GroupingCols.Len() > 1 {
-				source.GroupingCols.ForEach(func(colID opt.ColumnID) {
-					if m.Metadata().ColumnMeta(colID).IsPrimaryTag() {
-						provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(colID, false))
-					}
-				})
-			}
-			provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(opt.ColumnID(TsColID), false))
-			proj.Input = sortExpr1
-			source.Input = proj
+		// if we use group window function and plan not push to AE, we should add orderExpr.
+		if !retAgg.commonRet.execInTSEngine {
+			m.addOrderInGroupWindow(source, input)
 		}
 
 		if source.OptFlags.PruneFinalAggOpt() {
@@ -2066,7 +2093,7 @@ func checkParallelAgg(expr opt.Expr) (bool, bool) {
 	switch t := expr.(type) {
 	case *MaxExpr, *MinExpr, *SumExpr, *AvgExpr, *CountExpr, *CountRowsExpr,
 		*FirstExpr, *FirstRowExpr, *FirstTimeStampExpr, *FirstRowTimeStampExpr,
-		*LastExpr, *LastRowExpr, *LastTimeStampExpr, *LastRowTimeStampExpr, *ConstAggExpr:
+		*LastExpr, *LastRowExpr, *LastTimeStampExpr, *LastRowTimeStampExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
 		return true, false
 	case *AggDistinctExpr:
 		ok, _ := checkParallelAgg(t.Input)
@@ -2724,8 +2751,9 @@ func (m *Memo) checkGroupingAndAgg(
 
 			// first: check if child of agg can execute in ts engine.
 			// second: check if agg itself can execute in ts engine.
-			if !m.CheckChildExecInTS(srcExpr, hashCode) ||
-				!m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList) {
+			if (!m.CheckChildExecInTS(srcExpr, hashCode) ||
+				!m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList)) &&
+				!(srcExpr.Op() == opt.MinExtendOp || srcExpr.Op() == opt.MaxExtendOp) {
 				if !ret.commonRet.hasAddSynchronizer {
 					m.setSynchronizerForChild(input, &ret.commonRet.hasAddSynchronizer)
 				}

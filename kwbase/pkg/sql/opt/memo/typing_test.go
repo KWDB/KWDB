@@ -229,6 +229,16 @@ func TestTypingAggregateAssumptions(t *testing.T) {
 				}
 				continue
 			}
+
+			if name == "min_extend" || name == "max_extend" {
+				// Evaluate the return typer.
+				types := overload.Types.Types()
+				retType = overload.InferReturnTypeFromInputArgTypes(types)
+				if retType != types[1] {
+					t.Errorf("return type differs from arg type for %s: %+v", name, overload.Types.Types())
+				}
+				continue
+			}
 			if retType == tree.UnknownReturnType {
 				t.Errorf("return type is not fixed for %s: %+v", name, overload.Types.Types())
 			}

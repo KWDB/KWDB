@@ -149,6 +149,66 @@ type scope struct {
 
 	//HasMultiTable is used only to disallow the use of last in join scenarios
 	HasMultiTable bool
+
+	AggExHelper aggExtendHelper
+}
+
+type aggExtendHelper struct {
+	// minCount records the count of min agg functions,
+	// only one min can apply agg extend.
+	minCount int
+
+	// maxCount records the count of max agg functions,
+	// only one min can apply agg extend.
+	maxCount int
+
+	// flags helps check if can apply agg extend.
+	flags int
+
+	// aggCount records the count of all agg functions,
+	// used to determine whether there are non agg columns.
+	aggCount int
+
+	// minOrMaxColID records the col id of the param of min or max agg,
+	// used to construct min_extend of max_extend.
+	minOrMaxColID opt.ColumnID
+
+	// extendColSet records the col ids which can apply agg extend.
+	extendColSet opt.ColSet
+
+	// bType represents the stage of compilation.
+	// only buildProjection stage add the extendColSet and skip
+	// group by error.
+	bType buildType
+}
+
+const (
+	// existFirstTS is setted when use first(ts) in single ts table.
+	existFirstTS = 1 << 0
+
+	// existLastTS is setted when use last(ts) in single ts table.
+	existLastTS = 1 << 1
+
+	// existOtherAgg is true when there are appearing aggs other than min or max.
+	// eg: min(tag col),max(tag col),first(non timestamp col),last(non timestamp col), other aggs.
+	existOtherAgg = 1 << 2
+
+	// existNonAggCol is true when there are appearing non agg cols.
+	existNonAggCol = 1 << 3
+
+	// singleTsTable is true when there is a single ts table.
+	isSingleTsTable = 1 << 4
+
+	// timeWindowWithFirstLast is true when use time_window() with last() or first().
+	timeWindowWithFirstLast = 1 << 5
+)
+
+func (s *scope) setAggExtendFlag(flag int) {
+	s.AggExHelper.flags |= flag
+}
+
+func (s *scope) checkAggExtendFlag(flag int) bool {
+	return s.AggExHelper.flags&flag > 0
 }
 
 // interpolateWithLast is used to limit unsupported features.
@@ -198,6 +258,17 @@ const (
 	exprTypeWhere
 	exprTypeWindowFrameStart
 	exprTypeWindowFrameEnd
+)
+
+// buildType is used to represent the type of the current expression in the
+// SQL query.
+type buildType int8
+
+const (
+	buildNone buildType = iota
+	buildProjection
+	buildOrderBy
+	buildAggregation
 )
 
 var exprTypeName = [...]string{
@@ -1012,6 +1083,14 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 			panic(err)
 		}
 
+		// time_window_end() and time_window_start() are user invisible, only for internal use.
+		// when timeWindowWithFirstLast is set, means they are being used internally, not need for error reporting.
+		if (def.Name == "time_window_end" || def.Name == "time_window_start") && !s.checkAggExtendFlag(timeWindowWithFirstLast) {
+			panic(pgerror.Wrapf(pgerror.New(pgcode.ReservedName, "function reserved for internal use"), pgcode.ReservedName,
+				"%s()", errors.Safe(def.Name)))
+
+		}
+
 		// UDF can not use memo cache
 		if def != nil && def.ForbiddenExecInTSEngine {
 			s.builder.DisableMemoReuse = true
@@ -1712,4 +1791,117 @@ func (s *scope) limitLastFirst(id opt.ColumnID) {
 		s.builder.factory.Metadata().ColumnMeta(id).IsNormalCol() {
 		s.ScopeTSProp = opt.AddTSProperty(s.ScopeTSProp, ScopeLastError)
 	}
+}
+
+// checkAggExtend is used for the semantic parsing stage of the agg function.
+// records count of min and max and all aggs, checks if the param of min or max
+// is tag, sets the existOtherAgg.
+func (s *scope) checkAggExtend(funName string, e opt.ScalarExpr) {
+	if !s.checkAggExtendFlag(isSingleTsTable) {
+		return
+	}
+	switch funName {
+	case sqlbase.MinAgg:
+		s.AggExHelper.minCount++
+		s.AggExHelper.aggCount++
+		if !s.checkCol(e, true) {
+			s.setAggExtendFlag(existOtherAgg)
+		}
+	case sqlbase.MaxAgg:
+		s.AggExHelper.maxCount++
+		s.AggExHelper.aggCount++
+		if !s.checkCol(e, true) {
+			s.setAggExtendFlag(existOtherAgg)
+		}
+	case sqlbase.LastAgg:
+		s.AggExHelper.aggCount++
+		if !s.checkCol(e, false) {
+			s.setAggExtendFlag(existOtherAgg)
+		} else {
+			s.setAggExtendFlag(existLastTS)
+		}
+	case sqlbase.FirstAgg:
+		s.AggExHelper.aggCount++
+		if !s.checkCol(e, false) {
+			s.setAggExtendFlag(existOtherAgg)
+		} else {
+			s.setAggExtendFlag(existFirstTS)
+		}
+	default:
+		s.AggExHelper.aggCount++
+		s.setAggExtendFlag(existOtherAgg)
+	}
+}
+
+// checkCol return true can apply agg extend.
+func (s *scope) checkCol(e opt.ScalarExpr, minOrMax bool) bool {
+	switch t := e.(type) {
+	case *memo.VariableExpr:
+		colMeta := s.builder.factory.Metadata().ColumnMeta(t.Col)
+		tableID := colMeta.Table
+		if tableID == 0 {
+			return false
+		}
+
+		// tag col can not apply agg extend.
+		if minOrMax {
+			s.AggExHelper.minOrMaxColID = t.Col
+			return !colMeta.IsTag()
+		}
+
+		// first agg or last agg only use timestamp col.
+		if tableID.ColumnID(0) == t.Col {
+			return true
+		}
+		return false
+	case *memo.FunctionExpr:
+		for i := 0; i < len(t.Args); i++ {
+			if !s.checkCol(t.Args[i], minOrMax) {
+				return false
+			}
+		}
+		if minOrMax {
+			s.AggExHelper.minOrMaxColID = opt.ColumnID(s.builder.factory.Metadata().NumColumns())
+		}
+		return true
+
+	default:
+		for i := 0; i < e.ChildCount(); i++ {
+			if !s.checkCol(e.Child(i).(opt.ScalarExpr), minOrMax) {
+				return false
+			}
+		}
+		if minOrMax {
+			s.AggExHelper.minOrMaxColID = opt.ColumnID(s.builder.factory.Metadata().NumColumns())
+		}
+		return true
+	}
+}
+
+// CanApplyAggExtend checks if can applye agg extend.
+// 1.must be single ts table
+// 2.can not exist other agg functions except min,max,last,first
+// 3.must exist non agg col.
+// 4.group by cols can not contain non agg cols.
+// 5.can only exist one min or one max.
+func (s *scope) CanApplyAggExtend(groupingColSet *opt.ColSet) bool {
+	helper := s.AggExHelper
+	groupingContainExtenCol := false
+	if groupingColSet != nil {
+		if s.AggExHelper.extendColSet.Difference(*groupingColSet).Empty() {
+			groupingContainExtenCol = true
+		}
+	}
+	if s.checkAggExtendFlag(isSingleTsTable) && !s.checkAggExtendFlag(existOtherAgg) && s.checkAggExtendFlag(existNonAggCol) && !groupingContainExtenCol {
+		if helper.minCount == 1 && helper.maxCount == 1 {
+			return false
+		}
+		if helper.minCount > 1 || helper.maxCount > 1 {
+			return false
+		}
+		if helper.minCount == 1 || helper.maxCount == 1 {
+			return true
+		}
+	}
+	return false
 }

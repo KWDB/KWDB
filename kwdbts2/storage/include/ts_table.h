@@ -377,8 +377,8 @@ class TsTable {
     */
   virtual KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                                     std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                    std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                                    TsIterator** iter, std::vector<timestamp64> ts_points,
+                                    std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                                    k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                                     bool reverse, bool sorted);
 
   virtual KStatus GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
@@ -387,8 +387,8 @@ class TsTable {
 
   virtual KStatus GetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                               std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                              std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                              TsIterator** iter, std::vector<timestamp64> ts_points,
+                              std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                              k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                               bool reverse, bool sorted, k_uint32 offset = 0, k_uint32 limit = 0);
 
   virtual KStatus GetUnorderedDataInfo(kwdbContext_p ctx, const KwTsSpan ts_span, UnorderedDataStats* stats);
@@ -403,8 +403,8 @@ class TsTable {
     */
   virtual KStatus GetIteratorInOrder(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                               std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                              std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                              TsIterator** iter, std::vector<timestamp64> ts_points,
+                              std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                              k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                               bool reverse, bool sorted);
 
   /**
@@ -861,6 +861,7 @@ class TsEntityGroup {
                               DATATYPE ts_col_type,
                               std::vector<k_uint32> scan_cols,
                               std::vector<k_uint32> ts_scan_cols,
+                              std::vector<k_int32> ts_agg_extend_cols,
                               std::vector<Sumfunctype> scan_agg_types,
                               uint32_t table_version, TsStorageIterator** iter,
                               std::shared_ptr<TsEntityGroup> entity_group,

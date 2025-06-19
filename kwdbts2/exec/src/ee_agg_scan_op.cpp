@@ -437,6 +437,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
 
     unique_ptr<AggregateFunc> agg_func = nullptr;
     k_bool aggfunc_new_flag = true;
+
     switch (func_type) {
       case Sumfunctype::MAX: {
         k_uint32 len = output_fields_[argIdx]->get_storage_length();
@@ -766,6 +767,124 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           default:
             LOG_ERROR("unsupported data type for sum aggregation\n");
             EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for sum aggregation");
+            status = KStatus::FAIL;
+            break;
+        }
+        break;
+      }
+      case Sumfunctype::MAX_EXTEND: {
+        auto argIdx2 = agg.col_idx(1);
+        k_uint32 len2 = output_fields_[argIdx2]->get_storage_length();
+        auto storage_type2 = output_fields_[argIdx2]->get_storage_type();
+        if (storage_type2 == roachpb::DataType::CHAR ||
+            storage_type2 == roachpb::DataType::VARCHAR ||
+            storage_type2 == roachpb::DataType::NCHAR ||
+            storage_type2 == roachpb::DataType::NVARCHAR ||
+            storage_type2 == roachpb::DataType::BINARY ||
+            storage_type2 == roachpb::DataType::VARBINARY) {
+          len2 += STRING_WIDE;
+        } else if (storage_type2 == roachpb::DataType::DECIMAL) {
+          len2 += BOOL_WIDE;
+        }
+        switch (output_fields_[argIdx]->get_storage_type()) {
+          case roachpb::DataType::BOOL:
+            agg_func = make_unique<MaxExtendAggregate<k_bool>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::SMALLINT:
+            agg_func = make_unique<MaxExtendAggregate<k_int16>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::INT:
+            agg_func = make_unique<MaxExtendAggregate<k_int32>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::TIMESTAMP:
+          case roachpb::DataType::TIMESTAMPTZ:
+          case roachpb::DataType::TIMESTAMP_MICRO:
+          case roachpb::DataType::TIMESTAMP_NANO:
+          case roachpb::DataType::TIMESTAMPTZ_MICRO:
+          case roachpb::DataType::TIMESTAMPTZ_NANO:
+          case roachpb::DataType::DATE:
+          case roachpb::DataType::BIGINT:
+            agg_func = make_unique<MaxExtendAggregate<k_int64>>
+                (i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::FLOAT:
+            agg_func = make_unique<MaxExtendAggregate<k_float32>>
+                (i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::DOUBLE:
+            agg_func = make_unique<MaxExtendAggregate<k_double64>>
+                (i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::CHAR:
+          case roachpb::DataType::VARCHAR:
+          case roachpb::DataType::NCHAR:
+          case roachpb::DataType::NVARCHAR:
+          case roachpb::DataType::BINARY:
+          case roachpb::DataType::VARBINARY:
+            agg_func = make_unique<MaxExtendAggregate<std::string>>
+                (i, argIdx, len2, argIdx2);
+            break;
+          default:
+            LOG_ERROR("unsupported data type for max aggregation\n")
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for max aggregation");
+            status = KStatus::FAIL;
+            break;
+        }
+        break;
+      }
+      case Sumfunctype::MIN_EXTEND: {
+        auto argIdx2 = agg.col_idx(1);
+        k_uint32 len2 = output_fields_[argIdx2]->get_storage_length();
+        auto storage_type2 = output_fields_[argIdx2]->get_storage_type();
+        if (storage_type2 == roachpb::DataType::CHAR ||
+            storage_type2 == roachpb::DataType::VARCHAR ||
+            storage_type2 == roachpb::DataType::NCHAR ||
+            storage_type2 == roachpb::DataType::NVARCHAR ||
+            storage_type2 == roachpb::DataType::BINARY ||
+            storage_type2 == roachpb::DataType::VARBINARY) {
+          len2 += STRING_WIDE;
+        } else if (storage_type2 == roachpb::DataType::DECIMAL) {
+          len2 += BOOL_WIDE;
+        }
+        switch (output_fields_[argIdx]->get_storage_type()) {
+          case roachpb::DataType::BOOL:
+            agg_func = make_unique<MinExtendAggregate<k_bool>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::SMALLINT:
+            agg_func = make_unique<MinExtendAggregate<k_int16>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::INT:
+            agg_func = make_unique<MinExtendAggregate<k_int32>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::TIMESTAMP:
+          case roachpb::DataType::TIMESTAMPTZ:
+          case roachpb::DataType::TIMESTAMP_MICRO:
+          case roachpb::DataType::TIMESTAMP_NANO:
+          case roachpb::DataType::TIMESTAMPTZ_MICRO:
+          case roachpb::DataType::TIMESTAMPTZ_NANO:
+          case roachpb::DataType::DATE:
+          case roachpb::DataType::BIGINT:
+            agg_func = make_unique<MinExtendAggregate<k_int64>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::FLOAT:
+            agg_func = make_unique<MinExtendAggregate<k_float32>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::DOUBLE:
+            agg_func =
+                make_unique<MinExtendAggregate<k_double64>>(i, argIdx, len2, argIdx2);
+            break;
+          case roachpb::DataType::CHAR:
+          case roachpb::DataType::VARCHAR:
+          case roachpb::DataType::NCHAR:
+          case roachpb::DataType::NVARCHAR:
+          case roachpb::DataType::BINARY:
+          case roachpb::DataType::VARBINARY:
+            agg_func = make_unique<MinExtendAggregate<std::string>>(
+                i, argIdx, len2, argIdx2);
+            break;
+          default:
+            LOG_ERROR("unsupported data type for min aggregation\n")
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for min aggregation");
             status = KStatus::FAIL;
             break;
         }

@@ -259,6 +259,8 @@ var AggregateOpReverseMap = map[Operator]string{
 	ImputationOp:        "interpolate",
 	ElapsedOp:           "elapsed",
 	TwaOp:               "twa",
+	MinExtendOp:         "min_extend",
+	MaxExtendOp:         "max_extend",
 }
 
 // WindowOpReverseMap maps from an optimizer operator type to the name of a
@@ -338,8 +340,8 @@ func AggregateIgnoresNulls(op Operator) bool {
 
 	case AnyNotNullAggOp, AvgOp, BitAndAggOp, BitOrAggOp, BoolAndOp, BoolOrOp,
 		ConstNotNullAggOp, CorrOp, CountOp, ElapsedOp, FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
-		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, MatchingOp, MaxOp, MinOp, SqrDiffOp, StdDevOp,
-		StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, XorAggOp:
+		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, MatchingOp, MaxOp, MaxExtendOp, MinOp, MinExtendOp,
+		SqrDiffOp, StdDevOp, StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, XorAggOp:
 		return true
 
 	case ArrayAggOp, ConcatAggOp, ConstAggOp, CountRowsOp, FirstAggOp, JsonAggOp,
@@ -359,7 +361,7 @@ func AggregateIsNullOnEmpty(op Operator) bool {
 
 	case AnyNotNullAggOp, ArrayAggOp, AvgOp, BitAndAggOp, BitOrAggOp, BoolAndOp, BoolOrOp,
 		ConcatAggOp, ConstAggOp, ConstNotNullAggOp, CorrOp, ElapsedOp, FirstAggOp, JsonAggOp, JsonbAggOp,
-		MaxOp, MatchingOp, MinOp, FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
+		MaxOp, MaxExtendOp, MatchingOp, MinOp, MinExtendOp, FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
 		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, SqrDiffOp, StdDevOp, StringAggOp,
 		SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, XorAggOp:
 		return true
@@ -388,7 +390,7 @@ func AggregateIsNeverNullOnNonNullInput(op Operator) bool {
 		JsonAggOp, JsonbAggOp, MaxOp, MatchingOp, MinOp,
 		FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
 		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, SqrDiffOp,
-		StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, ImputationOp, XorAggOp, ElapsedOp, TwaOp:
+		StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, ImputationOp, XorAggOp, ElapsedOp, TwaOp, MaxExtendOp, MinExtendOp:
 		return true
 
 	case VarianceOp, StdDevOp, CorrOp:
