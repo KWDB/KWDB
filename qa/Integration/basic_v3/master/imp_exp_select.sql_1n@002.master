@@ -192,3 +192,7 @@ DROP TABLE
 ------------------------------------------------+------+---------+-----------
   SELECT avg(a) FROM (SELECT tag1 AS a FROM t1) |    1 |       1 |        1
 (1 row)
+> USE defaultdb;
+SET
+> DROP database ts_db;
+DROP DATABASE
