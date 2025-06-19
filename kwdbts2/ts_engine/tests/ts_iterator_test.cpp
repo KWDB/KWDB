@@ -97,7 +97,7 @@ TEST_F(TestV2Iterator, basic) {
         std::vector<Sumfunctype> scan_agg_types;
 
         s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
-                            scan_cols, scan_cols, scan_agg_types, table_schema_mgr,
+                            scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                             1, &ts_iter, vgroup, {}, false, false);
         ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -159,7 +159,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
       std::vector<Sumfunctype> scan_agg_types;
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
         s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
-                          scan_cols, scan_cols, scan_agg_types, table_schema_mgr,
+                          scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                           1, &ts_iter, vgroup, {}, false, false);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ResultSet res{(k_uint32) scan_cols.size()};
@@ -224,7 +224,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
           s = engine_->GetTableSchemaMgr(ctx_, table_id + db_id - 1, table_schema_mgr);
           ASSERT_EQ(s , KStatus::SUCCESS);
           s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
-                          scan_cols, scan_cols, scan_agg_types, table_schema_mgr,
+                          scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                           1, &ts_iter, vgroup, {}, false, false);
           ASSERT_EQ(s, KStatus::SUCCESS);
           ResultSet res{(k_uint32) scan_cols.size()};
