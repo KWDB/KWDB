@@ -441,8 +441,8 @@ KStatus TsVGroup::Compact(int thread_num) {
         auto last_segments = cur_partition->GetCompactLastSegments();
         auto entity_segment = cur_partition->GetEntitySegments();
 
-        auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetDatabaseID(),
-                                                            cur_partition->GetStartTime());
+        auto root_path =
+            this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
         if (entity_segment == nullptr) {
           entity_segment = std::make_shared<TsEntitySegment>(root_path.string());
         }
@@ -478,7 +478,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     LOG_ERROR("cannot set status for mem segment.");
     return KStatus::FAIL;
   }
-  std::unordered_map<std::shared_ptr<TsVGroupPartition>, TsLastSegmentBuilder> builders;
   struct LastRowInfo {
     TSTableID cur_table_id = 0;
     uint32_t database_id = 0;
@@ -492,7 +491,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
   auto current = version_manager_->Current();
 
-  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders_tmp;
+  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders;
   std::unordered_set<std::shared_ptr<const TsPartitionVersion>> new_created_partitions;
   TsVersionUpdate update;
 
@@ -524,43 +523,28 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
           last_row_info.cur_table_version = tbl->table_version;
         }
         // 3. get partition for metric data.
-        auto partition =
-            GetPartition(last_row_info.database_id, tbl->ts, (DATATYPE)last_row_info.info[0].type);
         auto p_time = convertTsToPTime(tbl->ts, (DATATYPE)last_row_info.info[0].type);
-        auto partition2 = current->GetPartition(last_row_info.database_id, p_time);
-        assert(partition2 != nullptr);
-        if (!partition2->HasDirectoryCreated() &&
-            new_created_partitions.find(partition2) == new_created_partitions.end()) {
+        auto partition = current->GetPartition(last_row_info.database_id, p_time);
+        assert(partition != nullptr);
+        if (!partition->HasDirectoryCreated() &&
+            new_created_partitions.find(partition) == new_created_partitions.end()) {
           // create directory for partition.
-          auto path = this->GetPath() /
-                      ::PartitionDirName(partition2->GetDatabaseID(), partition2->GetStartTime());
+          auto path = this->GetPath() / ::PartitionDirName(partition->GetPartitionIdentifier());
           auto s = env->NewDirectory(path);
           if (s != SUCCESS) {
             LOG_ERROR("cannot create directory for partition.");
             flush_success = false;
             return false;
           }
-          new_created_partitions.insert(partition2);
-          update.PartitionDirCreated(partition2->GetPartitionIdentifier());
+          new_created_partitions.insert(partition);
+          update.PartitionDirCreated(partition->GetPartitionIdentifier());
         }
+
         auto it = builders.find(partition);
         if (it == builders.end()) {
           std::unique_ptr<TsAppendOnlyFile> last_segment;
-          uint32_t file_number;
-          partition->NewLastSegmentFile(&last_segment, &file_number);
-          auto result = builders.insert(
-              {partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment), file_number}});
-          it = result.first;
-
-          // update.AddLastSegment(last_row_info.database_id, partition->StartTs(), file_number);
-        }
-
-        auto it2 = builders_tmp.find(partition2);
-        if (it2 == builders_tmp.end()) {
-          std::unique_ptr<TsAppendOnlyFile> last_segment;
           uint64_t file_number = version_manager_->NewFileNumber();
-          auto path = this->GetPath() /
-                      PartitionDirName(partition2->GetDatabaseID(), partition2->GetStartTime()) /
+          auto path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier()) /
                       LastSegmentFileName(file_number);
           auto s = env->NewAppendOnlyFile(path, &last_segment);
           if (s == FAIL) {
@@ -569,26 +553,18 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
             return false;
           }
           // TODO(zzr): change file_number to uint64_t in TsLastSegmentBuilder.
-          auto result = builders_tmp.insert(
-              {partition2, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment),
-                                                static_cast<uint32_t>(file_number)}});
-          it2 = result.first;
+          auto result = builders.insert(
+              {partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment),
+                                               static_cast<uint32_t>(file_number)}});
+          it = result.first;
         }
 
         // 4. insert data into segment builder.
-        TsLastSegmentBuilder& builder = it->second;
-        auto s = builder.PutRowData(tbl->table_id, tbl->table_version, tbl->entity_id, tbl->lsn,
-                                    tbl->row_data);
-        if (s != SUCCESS) {
-          LOG_ERROR("PutRowData failed.");
-          flush_success = false;
-          return false;
-        }
 
-        TsLastSegmentBuilder& builder2 = it2->second;
-        auto s2 = builder2.PutRowData(tbl->table_id, tbl->table_version, tbl->entity_id, tbl->lsn,
-                                      tbl->row_data);
-        if (s2 != SUCCESS) {
+        TsLastSegmentBuilder& builder2 = it->second;
+        auto s = builder2.PutRowData(tbl->table_id, tbl->table_version, tbl->entity_id, tbl->lsn,
+                                     tbl->row_data);
+        if (s != SUCCESS) {
           LOG_ERROR("PutRowData failed.");
           flush_success = false;
           return false;
@@ -602,16 +578,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     return KStatus::FAIL;
   }
 
-  for (auto& kv : builders) {
-    auto s = kv.second.Finalize();
-    if (s == FAIL) {
-      LOG_ERROR("last segment Finalize failed.");
-      return KStatus::FAIL;
-    }
-    kv.first->PublicLastSegment(kv.second.GetFileNumber());
-  }
-
-  for (auto& [k, v] : builders_tmp) {
+  for (auto& [k, v] : builders) {
     auto s = v.Finalize();
     if (s == FAIL) {
       LOG_ERROR("last segment Finalize failed.");

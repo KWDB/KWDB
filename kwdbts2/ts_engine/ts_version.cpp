@@ -8,9 +8,9 @@
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
+#include "ts_entity_segment.h"
 #include "ts_filename.h"
 #include "ts_io.h"
-#include "ts_entity_segment.h"
 
 namespace kwdbts {
 static const int64_t interval = 3600 * 24 * 30;  // 30 days.
@@ -53,7 +53,6 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
 
   TsIOEnv *env = options_.io_env;
 
-
   // TODO(zzr): thinking concurrency control carefully.
   std::unique_lock lk{mu_};
 
@@ -67,10 +66,10 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
       LOG_ERROR("ApplyUpdate failed, partition not found");
       return FAIL;
     }
-    auto [database_id, start] = partition_iter->first;
     auto new_partition_version = std::make_unique<TsPartitionVersion>(*partition_iter->second);
     std::filesystem::path db_path = options_.db_path;
-    auto partition_dir = db_path / VGroupDirName(vgroup_id_) / PartitionDirName(database_id, start);
+    auto partition_dir =
+        db_path / VGroupDirName(vgroup_id_) / PartitionDirName(partition_iter->first);
 
     if (update.partitions_to_create_.find(par) != update.partitions_to_create_.end()) {
       new_partition_version->directory_created_ = true;
@@ -118,7 +117,6 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
     }
 
     { new_partition_version->mem_segments_ = update.valid_memseg_; }
-
 
     new_vgroup_version->partitions_[par] = std::move(new_partition_version);
   }
