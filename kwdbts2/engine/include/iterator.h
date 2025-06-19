@@ -273,7 +273,7 @@ class TsStorageIterator {
    */
   virtual KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) = 0;
 
-  bool IsDisordered() {
+  virtual bool IsDisordered() {
     TsSubGroupPTIterator cur_iter(partition_table_iter_.get());
     cur_iter.Reset();
     while (true) {

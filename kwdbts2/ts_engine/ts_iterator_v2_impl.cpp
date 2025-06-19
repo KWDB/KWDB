@@ -334,6 +334,10 @@ inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* 
   return KStatus::SUCCESS;
 }
 
+bool TsRawDataIteratorV2Impl::IsDisordered() {
+  return true;
+}
+
 KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
   KStatus ret;
@@ -404,6 +408,10 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
 inline KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity(timestamp64 ts) {
   ++cur_entity_index_;
   return ScanAndSortEntityData(ts);
+}
+
+bool TsSortedRawDataIteratorV2Impl::IsDisordered() {
+  return false;
 }
 
 KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
@@ -547,6 +555,10 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   cur_entity_index_ = 0;
 
   return KStatus::SUCCESS;
+}
+
+bool TsAggIteratorV2Impl::IsDisordered() {
+  return false;
 }
 
 KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
