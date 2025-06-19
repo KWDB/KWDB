@@ -485,6 +485,7 @@ struct TSEngine {
 
   virtual KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) = 0;
 
+  virtual KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) = 0;
   /**
     * @brief Modify a column type of the time series table
     *
@@ -667,6 +668,10 @@ class TSEngineImpl : public TSEngine {
                      TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override;
+
+  KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) override {
+    return SUCCESS;
+  }
 
   KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
                           TSSlice new_column, TSSlice origin_column,
@@ -871,9 +876,9 @@ class VarColAggCalculator {
                       mem_(mem), var_mem_(var_mem), bitmap_(bitmap), first_row_(first_row), size_(size), count_(count) {
   }
 
-  std::shared_ptr<void> GetMax(std::shared_ptr<void> base = nullptr);
+  std::shared_ptr<void> GetMax(bool base_changed, std::shared_ptr<void> base = nullptr);
 
-  std::shared_ptr<void> GetMin(std::shared_ptr<void> base = nullptr);
+  std::shared_ptr<void> GetMin(bool base_changed, std::shared_ptr<void> base = nullptr);
 
   void CalAllAgg(void* min_base, void* max_base, std::shared_ptr<void> var_min_base,
                  std::shared_ptr<void> var_max_base, void* count_base, bool block_first_line, const BlockSpan& span);

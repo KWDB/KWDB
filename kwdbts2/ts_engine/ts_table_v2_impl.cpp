@@ -110,8 +110,8 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
 
 KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                                    std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                   std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                                   TsIterator** iter, std::vector<timestamp64> ts_points,
+                                   std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                                   k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                                    bool reverse, bool sorted) {
   auto ts_table_iterator = new TsTableIterator();
   KStatus s;
@@ -472,7 +472,7 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   TsIterator* iter = nullptr;
   Defer defer{[&]() { if (iter != nullptr) { delete iter; } }};
   std::vector<timestamp64> ts_points;
-  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, scan_agg_types, table_version,
+  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, {}, scan_agg_types, table_version,
                                 &iter, ts_points, false, false);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityRowCount GetIterator failed.");

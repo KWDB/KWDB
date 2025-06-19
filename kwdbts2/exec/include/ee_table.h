@@ -110,6 +110,7 @@ class TABLE {
   k_uint32 tag_num_{0};
   std::vector<k_uint32> scan_cols_;
   std::vector<k_uint32> scan_tags_;
+  std::vector<k_int32> agg_extends_;
   // relational scan cols for multiple model processing
   std::vector<k_uint32> scan_rel_cols_;
   std::vector<Sumfunctype> scan_agg_types_;

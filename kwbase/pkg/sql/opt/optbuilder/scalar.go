@@ -97,6 +97,11 @@ func (b *Builder) buildScalar(
 			// with a new column ID if they are not contained in the input scope, so
 			// passing in aggOutScope ensures we don't create new column IDs when not
 			// necessary.
+			if inScope.AggExHelper.bType == buildProjection && inScope.CanApplyAggExtend(nil) {
+				if c, ok := scalar.(*scopeColumn); ok {
+					inScope.AggExHelper.extendColSet.Add(c.id)
+				}
+			}
 			return b.finishBuildScalarRef(col, inScope.groupby.aggOutScope, outScope, outCol, colRefs)
 		}
 	}
@@ -114,26 +119,41 @@ func (b *Builder) buildScalar(
 			// grouping on the entire PK of that table.
 			g := inScope.groupby
 			if !inScope.isOuterColumn(t.id) && !b.allowImplicitGroupingColumn(t.id, g) {
-				panic(newGroupingError(&t.name))
+				if inScope.AggExHelper.bType == buildProjection {
+					// 1. can apply agg extend, not need report error, eg:
+					// select last(ts), e1,max(e2) from test.t
+					// 2. time_window used with first(ts) or last(ts), not need report error,
+					// because projection will add time_window_start(ts) or time_window_end(ts)
+					// eg: select last(ts),avg(e2) from test.t group by tag1, time_window(ts, '10min')
+					if !inScope.CanApplyAggExtend(nil) {
+						panic(newGroupingError(&t.name))
+					} else {
+						inScope.AggExHelper.extendColSet.Add(t.id)
+					}
+				} else {
+					panic(newGroupingError(&t.name))
+				}
 			}
 
-			// We add a new grouping column; these show up both in aggInScope and
-			// aggOutScope.
-			//
-			// Note that normalization rules will trim down the list of grouping
-			// columns based on FDs, so this is only for the purposes of building a
-			// valid operator.
-			aggInCol := b.addColumn(g.aggInScope, "" /* alias */, t, false)
-			b.finishBuildScalarRef(t, inScope, g.aggInScope, aggInCol, nil)
-			g.groupStrs[symbolicExprStr(t)] = aggInCol
+			if !inScope.CanApplyAggExtend(nil) {
+				// We add a new grouping column; these show up both in aggInScope and
+				// aggOutScope.
+				//
+				// Note that normalization rules will trim down the list of grouping
+				// columns based on FDs, so this is only for the purposes of building a
+				// valid operator.
+				aggInCol := b.addColumn(g.aggInScope, "" /* alias */, t, false)
+				b.finishBuildScalarRef(t, inScope, g.aggInScope, aggInCol, nil)
+				g.groupStrs[symbolicExprStr(t)] = aggInCol
 
-			g.aggOutScope.appendColumn(aggInCol)
+				g.aggOutScope.appendColumn(aggInCol)
 
-			res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
-			if res != nil {
-				res.SetConstDeductionEnabled(false)
+				res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
+				if res != nil {
+					res.SetConstDeductionEnabled(false)
+				}
+				return res
 			}
-			return res
 		}
 		res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
 		if res != nil {

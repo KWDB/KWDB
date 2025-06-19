@@ -726,6 +726,9 @@ func (ef *execFactory) ConstructGroupBy(
 
 func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo) error {
 	inputCols := planColumns(n.plan)
+	n.groupWindowExtend = make([]int32, 2)
+	n.groupWindowExtend[0] = -1
+	n.groupWindowExtend[1] = -1
 	for i := range aggregations {
 		agg := &aggregations[i]
 		builtin := agg.Builtin
@@ -739,7 +742,14 @@ func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo
 		aggFn := func(evalCtx *tree.EvalContext, arguments tree.Datums) tree.AggregateFunc {
 			return builtin.AggregateFunc(params, evalCtx, arguments)
 		}
-
+		if agg.IsExend {
+			switch agg.FuncName {
+			case sqlbase.FirstAgg:
+				n.groupWindowExtend[0] = int32(renderIdxs[0])
+			case sqlbase.LastAgg:
+				n.groupWindowExtend[1] = int32(renderIdxs[0])
+			}
+		}
 		f := n.newAggregateFuncHolder(
 			agg.FuncName,
 			agg.ResultType,
@@ -3126,6 +3136,10 @@ func (ef *execFactory) ProcessBljLeftColumns(
 		return ef.ProcessBljLeftColumns(n.rows, mem)
 	case *updateNode:
 		return ef.ProcessBljLeftColumns(n.source, mem)
+	case *scanBufferNode:
+		return ef.ProcessBljLeftColumns(n.buffer, mem)
+	default:
+		return nil, true
 	}
 
 	varPos := 0

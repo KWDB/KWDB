@@ -1272,30 +1272,34 @@ KStatus TsAggIterator::traverseAllBlocks(ResultSet* res, k_uint32* count, timest
           }
           switch (scan_agg_types_[i]) {
             case Sumfunctype::MAX:
-            case Sumfunctype::MIN: {
+            case Sumfunctype::MIN:
+            case Sumfunctype::MAX_EXTEND:
+            case Sumfunctype::MIN_EXTEND: {
               if (!isSameType(col_info, attrs_[col_idx])) {
                 if (!isVarLenType(attrs_[col_idx].type)) {
                   AggCalculator agg_cal(new_mem.get(), bitmap, first_row,
                                         DATATYPE(attrs_[col_idx].type), attrs_[col_idx].size, *count);
-                  if (scan_agg_types_[i] == Sumfunctype::MAX) {
+                  if (scan_agg_types_[i] == Sumfunctype::MAX || scan_agg_types_[i] == Sumfunctype::MAX_EXTEND) {
                     b = CreateAggBatch(agg_cal.GetMax(nullptr, true), nullptr);
                   } else {
                     b = CreateAggBatch(agg_cal.GetMin(nullptr, true), nullptr);
                   }
                   b->is_new = true;
                 } else {
+                  bool base_changed = true;
                   VarColAggCalculator agg_cal(new_var_mem, new_var_mem.size());
-                  if (scan_agg_types_[i] == Sumfunctype::MAX) {
-                    b = CreateAggBatch(agg_cal.GetMax(), nullptr);
+                  if (scan_agg_types_[i] == Sumfunctype::MAX || scan_agg_types_[i] == Sumfunctype::MAX_EXTEND) {
+                    b = CreateAggBatch(agg_cal.GetMax(base_changed), nullptr);
                   } else {
-                    b = CreateAggBatch(agg_cal.GetMin(), nullptr);
+                    b = CreateAggBatch(agg_cal.GetMin(base_changed), nullptr);
                   }
                 }
               } else {
                 if (!isVarLenType(attrs_[col_idx].type)) {
                   AggCalculator agg_cal(mem, bitmap, first_row,
                                         DATATYPE(attrs_[col_idx].type), attrs_[col_idx].size, *count);
-                  void* min_max_res = (scan_agg_types_[i] == Sumfunctype::MAX) ? agg_cal.GetMax() : agg_cal.GetMin();
+                  void* min_max_res = (scan_agg_types_[i] == Sumfunctype::MAX || scan_agg_types_[i] == MAX_EXTEND) ?
+                                       agg_cal.GetMax() : agg_cal.GetMin();
                   void* new_min_max_res = malloc(attrs_[col_idx].size);
                   memcpy(new_min_max_res, min_max_res, attrs_[col_idx].size);
                   b = CreateAggBatch(new_min_max_res, nullptr);
@@ -1309,11 +1313,12 @@ KStatus TsAggIterator::traverseAllBlocks(ResultSet* res, k_uint32* count, timest
                     }
                     var_mem_data.push_back(data);
                   }
+                  bool base_changed = true;
                   VarColAggCalculator agg_cal(var_mem_data, bitmap, first_row, attrs_[col_idx].size, *count);
-                  if (scan_agg_types_[i] == Sumfunctype::MAX) {
-                    b = CreateAggBatch(agg_cal.GetMax(), nullptr);
+                  if (scan_agg_types_[i] == Sumfunctype::MAX || scan_agg_types_[i] == Sumfunctype::MAX_EXTEND) {
+                    b = CreateAggBatch(agg_cal.GetMax(base_changed), nullptr);
                   } else {
-                    b = CreateAggBatch(agg_cal.GetMin(), nullptr);
+                    b = CreateAggBatch(agg_cal.GetMin(base_changed), nullptr);
                   }
                 }
               }
@@ -1390,6 +1395,10 @@ KStatus TsAggIterator::traverseAllBlocks(ResultSet* res, k_uint32* count, timest
             }
           }
         }
+        if (scan_agg_types_[i] == MIN_EXTEND || scan_agg_types_[i] == MAX_EXTEND) {
+          b->block_item = cur_block;
+          b->segment_table = segment_tbl;
+        }
         res->push_back(i, b);
       }
       if (cur_blockdata_offset_ > cur_block->alloc_row_count) {
@@ -1455,6 +1464,48 @@ TsAggIterator::getActualColMemAndBitmap(std::shared_ptr<MMapSegmentTable>& segme
     }
   }
   return KStatus::SUCCESS;
+}
+
+Batch* TsAggIterator::getMaxMinExtendResult(std::shared_ptr<MMapSegmentTable>& segment_tbl, BlockItem* block_item,
+                                            uint32_t col_idx, int32_t extend_col_idx,
+                                            void* mem, std::shared_ptr<void> var_mem) {
+  int offset = 1;
+  bool has_found = false;
+  bool is_var_type = isVarLenType(attrs_[col_idx].type);
+  while (offset <= block_item->alloc_row_count) {
+    if (is_var_type) {
+      auto cur_data = segment_tbl->varColumnAddrByBlk(block_item->block_id, offset - 1, col_idx);
+      has_found = ((KUint16(cur_data.get()) == KUint16(var_mem.get())) &&
+                    memcmp(static_cast<char*>(cur_data.get()) + sizeof(uint16_t),
+                           static_cast<char*>(var_mem.get()) + sizeof(uint16_t), KUint16(cur_data.get())) == 0);
+    } else {
+      auto cur_data = segment_tbl->columnAddrByBlk(block_item->block_id, offset - 1, col_idx);
+      has_found = (memcmp(cur_data, mem, attrs_[col_idx].size) == 0);
+    }
+    if (has_found) break;
+    ++offset;
+  }
+
+  Batch* batch = nullptr;
+  bool is_extend_var_type = isVarLenType(attrs_[extend_col_idx].type);
+  void* bitmap = segment_tbl->columnNullBitmapAddr(block_item->block_id, extend_col_idx);
+  bool is_null = isRowDeleted(reinterpret_cast<char*>(bitmap), offset);
+  bool is_deleted = !segment_tbl->IsRowVaild(block_item, offset);
+  if (is_null || is_deleted) {
+    batch = CreateAggBatch(nullptr, nullptr);
+  } else {
+    if (is_extend_var_type) {
+      auto extend_var_mem = segment_tbl->varColumnAddrByBlk(block_item->block_id, offset - 1, extend_col_idx);
+      batch = CreateAggBatch(extend_var_mem, segment_tbl);
+    } else {
+      auto extend_mem = segment_tbl->columnAddrByBlk(block_item->block_id, offset - 1, extend_col_idx);
+      void* new_min_max_res = malloc(attrs_[extend_col_idx].size);
+      memcpy(new_min_max_res, extend_mem, attrs_[extend_col_idx].size);
+      batch = CreateAggBatch(new_min_max_res, nullptr);
+      batch->is_new = true;
+    }
+  }
+  return batch;
 }
 
 KStatus TsAggIterator::Init(bool is_reversed) {
@@ -1585,7 +1636,7 @@ KStatus TsAggIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished, 
               AggCalculator agg_cal(it->mem, DATATYPE(attrs_[col_idx].type), attrs_[col_idx].size, 1);
               if (scan_agg_types_[i] == Sumfunctype::MAX) {
                 agg_base = agg_cal.GetMax(agg_base);
-              } else if (scan_agg_types_[i] == Sumfunctype::MIN) {
+              } else {
                 agg_base = agg_cal.GetMin(agg_base);
               }
             }
@@ -1598,16 +1649,65 @@ KStatus TsAggIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished, 
             b->is_new = need_to_new;
             res->push_back(i, b);
           } else {
+            bool base_changed = true;
             std::shared_ptr<void> agg_base = nullptr;
             for (auto it : result.data[i]) {
               VarColAggCalculator agg_cal({reinterpret_cast<const AggBatch*>(it)->var_mem_}, 1);
               if (scan_agg_types_[i] == Sumfunctype::MAX) {
-                agg_base = agg_cal.GetMax(agg_base);
-              } else if (scan_agg_types_[i] == Sumfunctype::MIN) {
-                agg_base = agg_cal.GetMin(agg_base);
+                agg_base = agg_cal.GetMax(base_changed, agg_base);
+              } else {
+                agg_base = agg_cal.GetMin(base_changed, agg_base);
               }
             }
             Batch* b = new AggBatch(agg_base, 1, nullptr);
+            res->push_back(i, b);
+          }
+        }
+        break;
+      }
+      case Sumfunctype::MAX_EXTEND:
+      case Sumfunctype::MIN_EXTEND: {
+        KWDB_DURATION(StStatistics::Get().agg_min);
+        if (result.data[i].empty()) {
+          Batch* b = CreateAggBatch(nullptr, nullptr);
+          res->push_back(i, b);
+        } else {
+          BlockItem* block_item = nullptr;
+          std::shared_ptr<MMapSegmentTable> segment_table = nullptr;
+          if (!isVarLenType(attrs_[col_idx].type)) {
+            void* agg_base = nullptr;
+            for (auto it : result.data[i]) {
+              AggCalculator agg_cal(it->mem, DATATYPE(attrs_[col_idx].type), attrs_[col_idx].size, 1);
+              if (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND) {
+                agg_base = agg_cal.GetMax(agg_base);
+              } else {
+                agg_base = agg_cal.GetMin(agg_base);
+              }
+              if (agg_base == it->mem) {
+                block_item = it->block_item;
+                segment_table = it->segment_table;
+              }
+            }
+            Batch* b = getMaxMinExtendResult(segment_table, block_item, col_idx, ts_agg_extend_cols_[i],
+                                             agg_base, nullptr);
+            res->push_back(i, b);
+          } else {
+            std::shared_ptr<void> agg_base = nullptr;
+            for (auto it : result.data[i]) {
+              bool base_changed = true;
+              VarColAggCalculator agg_cal({reinterpret_cast<const AggBatch*>(it)->var_mem_}, 1);
+              if (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND) {
+                agg_base = agg_cal.GetMax(base_changed, agg_base);
+              } else {
+                agg_base = agg_cal.GetMin(base_changed, agg_base);
+              }
+              if (base_changed) {
+                block_item = it->block_item;
+                segment_table = it->segment_table;
+              }
+            }
+            Batch* b = getMaxMinExtendResult(segment_table, block_item, col_idx, ts_agg_extend_cols_[i],
+                                             nullptr, agg_base);
             res->push_back(i, b);
           }
         }

@@ -322,6 +322,8 @@ message TSAggregatorSpec {
     FIRSTROWTS = 35;
     ELAPSED = 36;
     TWA = 37;
+    MIN_EXTEND = 38;
+    MAX_EXTEND = 39;
   }
 
   enum Type {

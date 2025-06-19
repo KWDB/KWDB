@@ -35,7 +35,7 @@ KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) 
       return s;
     }
   }
-  if (files_ != nullptr) {
+  if (!skip_file_data_) {
     // get block span in last segment
     std::vector<std::shared_ptr<TsLastSegment>> last_segs = files_->GetLastSegmentMgr()->GetAllLastSegments();
     for (auto& last_seg : last_segs) {

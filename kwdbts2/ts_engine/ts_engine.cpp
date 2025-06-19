@@ -496,6 +496,21 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
                               cur_version, new_version, err_msg);
 }
 
+KStatus TSEngineV2Impl::AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) {
+  LOG_INFO("Alter life time on table %lu start.", table_id);
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TSEngineV2Impl get table schema manager failed, table id: %lu", table_id);
+    return s;
+  }
+  auto old_life_time = tb_schema_mgr->GetLifeTime();
+  // convert second to millisecond, * 1000
+  tb_schema_mgr->SetLifeTime(LifeTime{static_cast<int64_t>(lifetime), 1000});
+  LOG_INFO("Alter table life time success, change from %lu[precision:%d] to %lu[precision:%d]",
+    old_life_time.ts, old_life_time.precision, lifetime, 1000);
+  return KStatus::SUCCESS;
+}
 std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
   return &vgroups_;
 }
