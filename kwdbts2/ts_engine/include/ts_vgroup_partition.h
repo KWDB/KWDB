@@ -48,7 +48,6 @@ class TsVGroupPartition {
 
   KStatus Open();
   // compact data from last segment to block segment. compact one block data every time.
-  KStatus Compact();
 
   bool NeedCompact();
 

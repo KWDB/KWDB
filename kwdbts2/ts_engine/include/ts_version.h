@@ -13,13 +13,10 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
-#include <random>
 
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "settings.h"
-#include "ts_entity_segment.h"
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_segment.h"
@@ -30,6 +27,7 @@ using PartitionIdx = int64_t;
 using PartitionIdentifier = std::tuple<DatabaseID, timestamp64>;  // (dbid, start_time);
 
 class TsVGroupVersion;
+class TsEntitySegment;
 class TsPartitionVersion {
   friend class TsVersionManager;
   friend class TsVGroupVersion;
@@ -55,14 +53,7 @@ class TsPartitionVersion {
   TsPartitionVersion &operator=(const TsPartitionVersion &) = default;
   TsPartitionVersion(TsPartitionVersion &&) = default;
 
-  std::vector<std::shared_ptr<TsSegmentBase>> GetAllSegments() const {
-    std::vector<std::shared_ptr<TsSegmentBase>> result;
-    result.reserve(mem_segments_.size() + last_segments_.size() + 1);
-    result.insert(result.end(), mem_segments_.begin(), mem_segments_.end());
-    result.insert(result.end(), last_segments_.begin(), last_segments_.end());
-    result.push_back(entity_segment_);
-    return result;
-  }
+  std::vector<std::shared_ptr<TsSegmentBase>> GetAllSegments() const;
 
   bool HasDirectoryCreated() const { return directory_created_; }
 
@@ -74,6 +65,9 @@ class TsPartitionVersion {
   PartitionIdentifier GetPartitionIdentifier() const { return partition_info_; }
 
   bool NeedCompact() const { return last_segments_.size() > EngineOptions::max_last_segment_num; }
+  std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments() const;
+
+  std::shared_ptr<TsEntitySegment> GetEntitySegments() const { return entity_segment_; }
 };
 class TsVGroupVersion {
   friend class TsVersionManager;
@@ -107,6 +101,8 @@ class TsVersionUpdate {
 
   std::set<PartitionIdentifier> updated_partitions_;
 
+  std::mutex mu_;
+
   bool empty_ = true;
 
  public:
@@ -116,11 +112,13 @@ class TsVersionUpdate {
     empty_ = false;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
+    std::unique_lock lk{mu_};
     new_lastsegs_[partition_id].insert(file_number);
     updated_partitions_.insert(partition_id);
     empty_ = false;
   }
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
+    std::unique_lock lk{mu_};
     delete_lastsegs_[partition_id].insert(file_number);
     updated_partitions_.insert(partition_id);
     empty_ = false;

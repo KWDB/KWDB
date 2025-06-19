@@ -26,6 +26,7 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "sys_utils.h"
+#include "ts_entity_segment.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_iterator_v2_impl.h"
@@ -420,39 +421,56 @@ inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& x,
 KStatus TsVGroup::Compact(int thread_num) {
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
+
+  // Prioritize the latest partition
   using PartitionPtr = std::shared_ptr<const TsPartitionVersion>;
   std::sort(partitions.begin(), partitions.end(),
             [](const PartitionPtr& left, const PartitionPtr& right) {
               return left->GetStartTime() > right->GetStartTime();
             });
 
-  std::vector<std::shared_ptr<TsVGroupPartition>> vgroup_partitions;
-  {
-    std::shared_lock s_lk{s_mu_};
-    for (auto& partition : partitions_) {
-      std::vector<std::shared_ptr<TsVGroupPartition>> v = partition.second->GetCompactPartitions();
-      vgroup_partitions.insert(vgroup_partitions.end(), v.begin(), v.end());
-    }
-  }
-  // Prioritize the latest partition
-  std::sort(vgroup_partitions.begin(), vgroup_partitions.end(), PartitionLessThan);
   // Compact partitions
+  TsVersionUpdate update;
   std::vector<std::thread> workers;
   for (uint32_t thread_idx = 0; thread_idx < thread_num; thread_idx++) {
     workers.emplace_back([&, thread_idx]() {
-      for (size_t idx = thread_idx; idx < vgroup_partitions.size(); idx += thread_num) {
-        KStatus s = vgroup_partitions[idx]->Compact();
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("TsVGroupPartition[%s] compact failed",
-                    vgroup_partitions[idx]->GetFileName().c_str())
+      for (size_t idx = thread_idx; idx < partitions.size(); idx += thread_num) {
+        const auto& cur_partition = partitions[idx];
+
+        // 1. Get all the last segments that need to be compacted.
+        auto last_segments = cur_partition->GetCompactLastSegments();
+        auto entity_segment = cur_partition->GetEntitySegments();
+
+        auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetDatabaseID(),
+                                                            cur_partition->GetStartTime());
+        if (entity_segment == nullptr) {
+          entity_segment = std::make_shared<TsEntitySegment>(root_path.string());
         }
+
+        // 2. Build the column block.
+        TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
+                                       cur_partition->GetPartitionIdentifier(), entity_segment,
+                                       last_segments);
+        KStatus s = builder.BuildAndFlush(&update);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("partition[%s] compact failed", path_.c_str());
+        }
+        // 3. Set the compacted version.
+
+        for (auto& last_segment : last_segments) {
+          update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(),
+                                   last_segment->GetFileNumber());
+        }
+
+        update.SetEntitySegment(entity_segment);
       }
     });
   }
   for (auto& worker : workers) {
     worker.join();
   }
-  return KStatus::SUCCESS;
+  // 4. Update the version.
+  return version_manager_->ApplyUpdate(update);
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {

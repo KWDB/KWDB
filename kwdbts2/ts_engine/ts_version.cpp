@@ -10,6 +10,7 @@
 #include "lg_api.h"
 #include "ts_filename.h"
 #include "ts_io.h"
+#include "ts_entity_segment.h"
 
 namespace kwdbts {
 static const int64_t interval = 3600 * 24 * 30;  // 30 days.
@@ -52,8 +53,12 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
 
   TsIOEnv *env = options_.io_env;
 
+
   // TODO(zzr): thinking concurrency control carefully.
   std::unique_lock lk{mu_};
+
+  // Create a new vgroup version based on current version
+  auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
 
   // looping over all updated partitions
   for (auto par : update.updated_partitions_) {
@@ -75,18 +80,21 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
     {
       auto it = update.delete_lastsegs_.find(par);
       if (it != update.delete_lastsegs_.end()) {
-        new_partition_version->last_segments_.erase(std::remove_if(
-            new_partition_version->last_segments_.begin(),
-            new_partition_version->last_segments_.end(),
-            [&](const std::shared_ptr<TsLastSegment> &last_segment) {
-              return it->second.find(last_segment->GetFileNumber()) != it->second.end();
-            }));
+        std::vector<std::shared_ptr<TsLastSegment>> tmp;
+        for (auto last_segment : new_partition_version->last_segments_) {
+          if (it->second.find(last_segment->GetFileNumber()) == it->second.end()) {
+            tmp.push_back(last_segment);
+          } else {
+            last_segment->MarkDelete();
+          }
+        }
+        new_partition_version->last_segments_.swap(tmp);
       }
     }
 
     // Process lastsegment creation, used by Flush() and Compact()
     {
-      // TODO(zzr): Lazy open? add a new class `TsLastSegmentHandler` to do this.
+      // TODO(zzr): Lazy open? add something like `TsLastSegmentHandler` to do this.
       auto it = update.new_lastsegs_.find(par);
       if (it != update.new_lastsegs_.end()) {
         for (auto file_number : it->second) {
@@ -110,7 +118,12 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
     }
 
     { new_partition_version->mem_segments_ = update.valid_memseg_; }
+
+
+    new_vgroup_version->partitions_[par] = std::move(new_partition_version);
   }
+
+  current_ = std::move(new_vgroup_version);
   return SUCCESS;
 }
 
@@ -153,5 +166,27 @@ std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(
     return nullptr;
   }
   return it->second;
+}
+
+std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments() const {
+  // TODO(zzr): There is room for optimization
+  // Maybe we can pre-compute which lastsegments can be compacted, and just return them.
+  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
+  std::vector<std::shared_ptr<TsLastSegment>> result;
+  result.reserve(compact_num);
+  auto it = last_segments_.begin();
+  for (int i = 0; i < compact_num; ++i, ++it) {
+    result.push_back(*it);
+  }
+  return result;
+}
+
+std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments() const {
+  std::vector<std::shared_ptr<TsSegmentBase>> result;
+  result.reserve(mem_segments_.size() + last_segments_.size() + 1);
+  result.insert(result.end(), mem_segments_.begin(), mem_segments_.end());
+  result.insert(result.end(), last_segments_.begin(), last_segments_.end());
+  result.push_back(entity_segment_);
+  return result;
 }
 }  // namespace kwdbts

@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <list>
 #include <map>
@@ -18,11 +19,13 @@
 #include <vector>
 #include <utility>
 #include "ts_block.h"
+#include "ts_engine_schema_manager.h"
 #include "ts_entity_segment_data.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment_manager.h"
 #include "ts_lastsegment.h"
+#include "ts_version.h"
 
 
 namespace kwdbts {
@@ -220,7 +223,7 @@ class TsEntityBlock : public TsBlock {
   TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item, TsEntitySegment* block_segment);
   // for write
   TsEntityBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
-                std::vector<AttributeInfo>& metric_schema);
+                std::vector<AttributeInfo>& metric_schema, TsEntitySegment* block_segment);
   TsEntityBlock(const TsEntityBlock& other);
   ~TsEntityBlock() {}
 
@@ -269,7 +272,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus Append(shared_ptr<TsBlockSpan> span, bool& is_full);
 
-  KStatus Flush(TsVGroupPartition* partition);
+  KStatus Flush();
 
   KStatus LoadLSNColData(TSSlice buffer);
 
@@ -359,16 +362,31 @@ class TsEntitySegmentBuilder {
     }
   };
 
+  KStatus NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>*, uint64_t *file_number);
+
+  std::filesystem::path root_path_;
+  TsEngineSchemaManager* schema_manager_;
+  TsVersionManager* version_manager_;
+
+  PartitionIdentifier partition_id_;
+  std::shared_ptr<TsEntitySegment> entity_segment_;
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
-  TsVGroupPartition* partition_;
 
  public:
-  explicit TsEntitySegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
-                                 TsVGroupPartition* partition = nullptr) :
-                                 last_segments_(last_segments), partition_(partition) {}
-  ~TsEntitySegmentBuilder() {}
+  explicit TsEntitySegmentBuilder(const std::string& root_path,
+                                  TsEngineSchemaManager* schema_manager,
+                                  TsVersionManager* version_manager,
+                                  PartitionIdentifier partition_id,
+                                  std::shared_ptr<TsEntitySegment> entity_segment,
+                                  std::vector<std::shared_ptr<TsLastSegment>> last_segments)
+      : root_path_(root_path),
+        schema_manager_(schema_manager),
+        version_manager_(version_manager),
+        partition_id_(partition_id),
+        entity_segment_(entity_segment),
+        last_segments_(last_segments) {}
 
-  KStatus BuildAndFlush();
+  KStatus BuildAndFlush(TsVersionUpdate *update);
 };
 
 }  // namespace kwdbts
