@@ -154,10 +154,18 @@ class TsVGroup {
   KStatus Flush() {
     std::shared_ptr<TsMemSegment> imm_segment;
     mem_segment_mgr_.SwitchMemSegment(&imm_segment);
-    KStatus s = KStatus::SUCCESS;
-    if (imm_segment.get() != nullptr) {
-      s = FlushImmSegment(imm_segment);
-    }
+    assert(imm_segment.get() != nullptr);
+    
+    // Update vresion before flush.
+    TsVersionUpdate update;
+    std::list<std::shared_ptr<TsMemSegment>> memsegs;
+    mem_segment_mgr_.GetAllMemSegments(&memsegs);
+    update.SetValidMemSegments(memsegs);
+
+    version_manager_->ApplyUpdate(update);
+
+    // Flush imm segment.
+    KStatus s = FlushImmSegment(imm_segment);
     return s;
   }
 

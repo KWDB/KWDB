@@ -297,16 +297,25 @@ class TsMemSegmentManager {
   TsVGroup* vgroup_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
-  std::mutex segment_lock_;
+  mutable std::shared_mutex segment_lock_;
 
  public:
-  explicit TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
+  explicit TsMemSegmentManager(TsVGroup* vgroup)
+      : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
+    segment_.push_back(cur_mem_seg_);
+  }
 
   ~TsMemSegmentManager() {
     segment_.clear();
   }
 
   // WAL CreateCheckPoint call this function to persistent metric datas.
+
+  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
+    std::shared_lock lock(segment_lock_);
+    return cur_mem_seg_;
+  }
+
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);

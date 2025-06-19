@@ -223,7 +223,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   KStatus SwitchMemSegments(TS_LSN lsn) {
-    return flush_mgr_.FlashMemSegment(lsn);
+    return flush_mgr_.FlushMemSegment(lsn);
   }
 
   TS_LSN GetFinishedLSN() {

@@ -275,8 +275,8 @@ void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
   {
     std::unique_lock lk{s_mutex_};
     for (auto it = last_segments_.begin(); it != last_segments_.end();) {
-      assert(it->first == it->second->GetVersion());
-      if (it->second->GetVersion() <= ver) {
+      assert(it->first == it->second->GetFileNumber());
+      if (it->second->GetFileNumber() <= ver) {
         it->second->MarkDelete();
         it = last_segments_.erase(it);
         n_lastsegment_.fetch_sub(1, std::memory_order_relaxed);

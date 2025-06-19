@@ -1292,6 +1292,8 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     }
   }
 
+  // TODO(zzr): Recover TsVersion for each VGroup.
+  // After WAL RedoPut, TsVersion should be updated.
   return KStatus::SUCCESS;
 }
 

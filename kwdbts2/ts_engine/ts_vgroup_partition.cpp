@@ -80,7 +80,7 @@ KStatus TsVGroupPartition::Compact() {
       return s;
     }
     // 3. Set the compacted version.
-    last_segment_mgr_.ClearLastSegments(last_segments.back()->GetVersion());
+    last_segment_mgr_.ClearLastSegments(last_segments.back()->GetFileNumber());
     last_segments.clear();
   }
   return KStatus::SUCCESS;

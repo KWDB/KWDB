@@ -186,7 +186,7 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
     return SUCCESS;
   }
 
-  uint32_t GetVersion() const { return file_number_; }
+  uint32_t GetFileNumber() const { return file_number_; }
 
   std::string GetFilePath() const { return file_->GetFilePath(); }
 
