@@ -100,6 +100,7 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   ~TsRawDataIteratorV2Impl();
 
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override;
 
  protected:
   KStatus NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts);
@@ -115,6 +116,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   ~TsSortedRawDataIteratorV2Impl();
 
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override;
 
  protected:
   KStatus ScanAndSortEntityData(timestamp64 ts);
@@ -135,6 +137,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override;
 
  protected:
   KStatus Aggregate();
