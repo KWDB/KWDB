@@ -56,10 +56,11 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 }
 
 
-// KStatus TsBlockSpan::GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type, char** value, TsBitmap& bitmap) {
-//   auto s = block_->GetColAddr(blk_col_idx, schema, value);
-//   return s;
-// }
+KStatus TsBlockSpan::GetFixLenColAddr(uint32_t blk_col_idx, char** value, TsBitmap& bitmap) {
+
+  auto s = block_->GetColAddr(blk_col_idx, {}, value);
+  return s;
+}
 
 KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) {
   value = row_data_[row_num]->row_data;
@@ -113,7 +114,7 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   std::list<shared_ptr<TsBlockSpan>> blocks;
   std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{tmp_data.database_id, tmp_data.table_id, tmp_data.entity_id, ts_span};
-  s = mem_seg_mgr_.GetBlockSpans(params, blocks);
+  s = mem_seg_mgr_.GetBlockSpans(params, blocks, nullptr);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
@@ -124,10 +125,9 @@ TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   ASSERT_EQ(block->GetTS(0), tmp_data.ts);
   char* value;
   TsBitmap bitmap;
-  // TODO(zqh): hide the following code temporarily
-  // s = block->GetFixLenColAddr(0, &value, bitmap);
-  // ASSERT_TRUE(s == KStatus::SUCCESS);
-  // ASSERT_EQ(KUint64(value), row_value);
+  s = block->GetFixLenColAddr(0, &value, bitmap);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(KUint64(value), row_value);
 }
 
 TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
@@ -148,7 +148,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   std::list<shared_ptr<TsBlockSpan>> blocks;
   std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
-  auto s = mem_seg_mgr_.GetBlockSpans(params, blocks);
+  auto s = mem_seg_mgr_.GetBlockSpans(params, blocks, nullptr);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
@@ -159,13 +159,12 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
   AttributeInfo dest_type;
   char* value;
   TsBitmap bitmap;
-  // TODO(zqh): hide the following code temporarily
-  // s = block->GetFixLenColAddr(0, &value, bitmap);
-  // ASSERT_TRUE(s == KStatus::SUCCESS);
-  // for (size_t i = 0; i < row_num; i++) {
-  //   ASSERT_EQ(block->GetTS(i), 10086 + i);
-  //   ASSERT_EQ(KUint64(value + 8 * i), row_value + i);
-  // }
+  s = block->GetFixLenColAddr(0, &value, bitmap);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  for (size_t i = 0; i < row_num; i++) {
+    ASSERT_EQ(block->GetTS(i), 10086 + i);
+    ASSERT_EQ(KUint64(value + 8 * i), row_value + i);
+  }
   for (auto v : values) {
     delete v;
   }
@@ -191,7 +190,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   std::list<shared_ptr<TsBlockSpan>> blocks;
   std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
-  auto s = mem_seg_mgr_.GetBlockSpans(params, blocks);
+  auto s = mem_seg_mgr_.GetBlockSpans(params, blocks, nullptr);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
@@ -201,13 +200,12 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
   std::vector<AttributeInfo> schema;
   char* value;
   TsBitmap bitmap;
-  // TODO(zqh): hide the following code temporarily
-  // s = block->GetFixLenColAddr(0, &value, bitmap);
-  // ASSERT_TRUE(s == KStatus::SUCCESS);
-  // for (size_t i = 0; i < row_num; i++) {
-  //   ASSERT_EQ(block->GetTS(i), 10086);
-  //   ASSERT_EQ(KUint64(value + 8 * i), row_value + i);
-  // }
+  s = block->GetFixLenColAddr(0, &value, bitmap);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  for (size_t i = 0; i < row_num; i++) {
+    ASSERT_EQ(block->GetTS(i), 10086);
+    ASSERT_EQ(KUint64(value + 8 * i), row_value + i);
+  }
   for (auto v : values) {
     delete v;
   }
@@ -233,7 +231,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
     TsBlockItemFilterParams params{db_id, table_id, j, ts_span};
     blocks.clear();
-    auto s = mem_seg_mgr_.GetBlockSpans(params, blocks);
+    auto s = mem_seg_mgr_.GetBlockSpans(params, blocks, nullptr);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), 1);
     auto block = blocks.front();
@@ -244,13 +242,12 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     AttributeInfo dest_type;
     char* value;
     TsBitmap bitmap;
-    // TODO(zqh): hide the following code temporarily
-    // s = block->GetFixLenColAddr(0, &value, bitmap);
-    // ASSERT_TRUE(s == KStatus::SUCCESS);
-    // for (size_t i = 0; i < block->GetRowNum(); i++) {
-    //   ASSERT_EQ(block->GetTS(i), 10086 + i * 10 + j - 1);
-    //   ASSERT_EQ(KUint64(value + 8 * i), row_value + i * 10 + j - 1);
-    // }
+    s = block->GetFixLenColAddr(0, &value, bitmap);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    for (size_t i = 0; i < block->GetRowNum(); i++) {
+      ASSERT_EQ(block->GetTS(i), 10086 + i * 10 + j - 1);
+      ASSERT_EQ(KUint64(value + 8 * i), row_value + i * 10 + j - 1);
+    }
   }
   for (auto v : values) {
     delete v;
@@ -276,7 +273,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
   std::list<shared_ptr<TsBlockSpan>> blocks;
   std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
   TsBlockItemFilterParams params{db_id, table_id, entity_id, ts_span};
-  auto s = mem_seg_mgr_.GetBlockSpans(params, blocks);
+  auto s = mem_seg_mgr_.GetBlockSpans(params, blocks, nullptr);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(blocks.size(), version_num);
   int j = 0;
@@ -288,13 +285,12 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     AttributeInfo dest_type;
     char* value;
     TsBitmap bitmap;
-    // TODO(zqh): hide the following code temporarily
-    // s = block->GetFixLenColAddr(0, &value, bitmap);
-    // ASSERT_TRUE(s == KStatus::SUCCESS);
-    // for (size_t i = 0; i < row_num / version_num; i++) {
-    //   ASSERT_EQ(block->GetTS(i), 10086 + i * version_num + j);
-    //   ASSERT_EQ(KUint64(value + i * 8), row_value + i * version_num + j);
-    // }
+    s = block->GetFixLenColAddr(0, &value, bitmap);
+    ASSERT_TRUE(s == KStatus::SUCCESS);
+    for (size_t i = 0; i < row_num / version_num; i++) {
+      ASSERT_EQ(block->GetTS(i), 10086 + i * version_num + j);
+      ASSERT_EQ(KUint64(value + i * 8), row_value + i * version_num + j);
+    }
     j++;
   }  
   for (auto v : values) {
@@ -327,7 +323,7 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
     std::list<shared_ptr<TsBlockSpan>> blocks;
     std::vector<STScanRange> ts_span{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
     TsBlockItemFilterParams params{db_id, table_id + i, entity_id, ts_span};
-    auto s = mem_seg_mgr_.GetBlockSpans(params, blocks);
+    auto s = mem_seg_mgr_.GetBlockSpans(params, blocks, nullptr);
     ASSERT_TRUE(s == KStatus::SUCCESS);
     ASSERT_EQ(blocks.size(), version_num);
     for (auto block : blocks) {

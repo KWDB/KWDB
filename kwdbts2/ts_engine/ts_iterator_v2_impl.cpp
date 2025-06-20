@@ -1129,7 +1129,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     if (block_span->HasPreAgg()) {
       // Use pre agg to calculate sum
       void* pre_sum{nullptr};
-      bool pre_sum_is_overflow;
+      bool pre_sum_is_overflow{false};
       ret = block_span->GetPreSum(kw_col_idx, pre_sum, pre_sum_is_overflow);
       if (ret != KStatus::SUCCESS) {
         return KStatus::FAIL;
