@@ -23,7 +23,6 @@
 #include "ts_entity_segment_data.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_lastsegment.h"
 #include "ts_version.h"
 
@@ -195,7 +194,6 @@ struct TsEntitySegmentColumnBlock {
   std::vector<std::string> var_rows;
 };
 
-class TsVGroupPartition;
 class TsEntityBlock : public TsBlock {
  private:
   uint32_t table_id_ = 0;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 
@@ -24,23 +25,37 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp) {
 void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   auto current = Current();
   timestamp64 start = GetPartitionStartTime(ptime);
-  auto it = current->partitions_.find({dbid, start});
+  PartitionIdentifier partition_id{dbid, start};
+  auto it = current->partitions_.find(partition_id);
   if (it != current->partitions_.end()) {
     return;
   }
 
-  PartitionIdentifier partition_id{dbid, start};
-  std::unique_ptr<TsPartitionVersion> partition(
-      new TsPartitionVersion{start, start + interval, partition_id});
-  auto new_version = std::make_unique<TsVGroupVersion>(*current);
-  new_version->partitions_.insert({partition_id, std::move(partition)});
-
+  // find partition again under exclusive lock
   std::unique_lock lk{mu_};
-  // find partition again under unique lock
   it = current_->partitions_.find(partition_id);
   if (it != current_->partitions_.end()) {
     return;
   }
+
+  // create new partition under exclusive lock
+
+  std::unique_ptr<TsPartitionVersion> partition(new TsPartitionVersion{start, start + interval, partition_id});
+  auto new_version = std::make_unique<TsVGroupVersion>(*current);
+
+  {
+    // create directory for new partition
+    // TODO(zzr): optimization: create the directory only when flushing
+    // this logic is only for deletion and will be removed later after optimize delete
+    std::filesystem::path db_path = options_.db_path;
+    auto partition_dir = db_path / VGroupDirName(vgroup_id_) / PartitionDirName(partition_id);
+    options_.io_env->NewDirectory(partition_dir);
+    partition->directory_created_ = true;
+
+    partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
+    partition->del_info_->Open();
+  }
+  new_version->partitions_.insert({partition_id, std::move(partition)});
 
   // update current version
   current_ = std::move(new_version);
@@ -125,15 +140,7 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
   return SUCCESS;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetAllPartitions() const {
-  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
-  for (const auto &[k, v] : partitions_) {
-    result.push_back(v);
-  }
-  return result;
-}
-
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetAllPartitions(
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(
     uint32_t target_dbid) const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   for (const auto &[k, v] : partitions_) {
@@ -187,4 +194,18 @@ std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments()
   result.push_back(entity_segment_);
   return result;
 }
+
+KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const {
+    kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id);
+    for (auto &ts_span : ts_spans) {
+      assert(ts_span.begin <= ts_span.end);
+      del_item.range.ts_span = ts_span;
+      auto s = del_info_->AddDelItem(e_id, del_item);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
+        return s;
+      }
+    }
+    return KStatus::SUCCESS;
+  }
 }  // namespace kwdbts

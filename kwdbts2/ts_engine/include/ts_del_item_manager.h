@@ -10,12 +10,10 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
-#include <filesystem>
 #include <vector>
 #include <string>
 #include <list>
 #include "libkwdbts2.h"
-#include "data_type.h"
 #include "ts_io.h"
 #include "ts_file_vector_index.h"
 

@@ -49,26 +49,17 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
 
-  auto& partition_managers = vgroup_->GetPartitionManagers();
-  auto it = partition_managers.find(db_id_);
+  auto current = vgroup_->CurrentVersion();
+  auto partitions_v = current->GetPartitions(db_id_);
 
-  if (it != partition_managers.end() && it->second) {
-    auto* partition_manager = it->second.get();
-    std::unordered_map<int, std::shared_ptr<TsVGroupPartition>> partitions;
-    partition_manager->GetPartitions(&partitions);
-
-    ts_partitions_.clear();
-    for (const auto& [idx, partition_ptr] : partitions) {
-      if (!partition_ptr) {
-        continue;
-      }
-      TsPartition ts_partition;
-      ts_partition.ts_partition_range.begin = convertSecondToPrecisionTS(partition_ptr->StartTs(), ts_col_type_);
-      ts_partition.ts_partition_range.end = convertSecondToPrecisionTS(partition_ptr->EndTs(), ts_col_type_);
-      if (isTimestampInSpans(ts_spans_, ts_partition.ts_partition_range.begin, ts_partition.ts_partition_range.end)) {
-        ts_partition.ts_vgroup_partition = partition_ptr;
-        ts_partitions_.emplace_back(ts_partition);
-      }
+  ts_partitions_.clear();
+  for (const auto& partition_ptr : partitions_v) {
+    TsPartition ts_partition;
+    ts_partition.ts_partition_range.begin = convertSecondToPrecisionTS(partition_ptr->GetStartTime(), ts_col_type_);
+    ts_partition.ts_partition_range.end = convertSecondToPrecisionTS(partition_ptr->GetEndTime(), ts_col_type_);
+    if (isTimestampInSpans(ts_spans_, ts_partition.ts_partition_range.begin, ts_partition.ts_partition_range.end)) {
+      ts_partition.ts_partition_version = partition_ptr;
+      ts_partitions_.emplace_back(ts_partition);
     }
   }
   return KStatus::SUCCESS;
@@ -119,8 +110,8 @@ KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans() {
    */
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
-    TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
+    auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
+    TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
     std::list<std::shared_ptr<TsMemSegment>> mems;
     vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
     ret = e_paritition.Init(mems);
@@ -133,7 +124,6 @@ KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans() {
   return ret;
 }
 
-
 KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans(timestamp64 ts) {
   KStatus ret = KStatus::SUCCESS;
   /*
@@ -142,12 +132,12 @@ KStatus TsStorageIteratorV2Impl::ScanPartitionBlockSpans(timestamp64 ts) {
    */
   if (cur_entity_index_ < entity_ids_.size() && cur_partition_index_ < ts_partitions_.size()) {
     TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
+    auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
     if (IsFilteredOut(ts_partitions_[cur_partition_index_].ts_partition_range.begin,
                       ts_partitions_[cur_partition_index_].ts_partition_range.end, ts))  {
-      vgrp_partition = nullptr;
+      partition_version = nullptr;
     }
-    TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
+    TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
     std::list<std::shared_ptr<TsMemSegment>> mems;
     vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
     ret = e_paritition.Init(mems);
@@ -165,12 +155,12 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   UpdateTsSpans(ts);
   for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
     TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
+    auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
     if (IsFilteredOut(ts_partitions_[cur_partition_index_].ts_partition_range.begin,
                       ts_partitions_[cur_partition_index_].ts_partition_range.end, ts))  {
-      vgrp_partition = nullptr;
+      partition_version = nullptr;
     }
-    TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
+    TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
     std::list<std::shared_ptr<TsMemSegment>> mems;
     vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
     auto ret = e_paritition.Init(mems);
@@ -465,7 +455,7 @@ TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
 inline bool PartitionLessThan(TsPartition& a, TsPartition& b) {
-  return a.ts_vgroup_partition->StartTs() < b.ts_vgroup_partition->StartTs();
+  return a.ts_partition_version->GetStartTime() < b.ts_partition_version->GetEndTime();
 }
 
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
@@ -618,8 +608,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     if (ts_partitions_[first_partition_idx].ts_partition_range.begin < max_first_ts_) {
       cur_partition_index_ = first_partition_idx;
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-      auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
-      TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
+      auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
+      TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
       std::list<std::shared_ptr<TsMemSegment>> mems;
       vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
       auto ret = e_paritition.Init(mems);
@@ -646,8 +636,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     if (ts_partitions_[last_partition_idx].ts_partition_range.end > min_last_ts_) {
       cur_partition_index_ = last_partition_idx;
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-      auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
-      TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
+      auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
+      TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
       std::list<std::shared_ptr<TsMemSegment>> mems;
       vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
       auto ret = e_paritition.Init(mems);
@@ -673,8 +663,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     for (; first_partition_idx <= last_partition_idx; ++first_partition_idx) {
       cur_partition_index_ = first_partition_idx;
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-      auto vgrp_partition = ts_partitions_[cur_partition_index_].ts_vgroup_partition;
-      TsEntityPartition e_paritition(vgrp_partition, scan_lsn_, ts_col_type_, filter);
+      auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
+      TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
       std::list<std::shared_ptr<TsMemSegment>> mems;
       vgroup_->GetMemSegmentMgr()->GetAllMemSegments(&mems);
       auto ret = e_paritition.Init(mems);

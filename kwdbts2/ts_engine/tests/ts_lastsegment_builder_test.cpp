@@ -27,7 +27,6 @@
 #include "ts_engine_schema_manager.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_payload.h"
 
 using namespace roachpb;

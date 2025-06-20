@@ -43,6 +43,8 @@ class TsPartitionVersion {
 
   bool directory_created_ = false;
 
+  std::shared_ptr<TsDelItemManager> del_info_;
+
   // Only TsVersionManager can create TsPartitionVersion
   explicit TsPartitionVersion(timestamp64 start_time, timestamp64 end_time,
                               PartitionIdentifier partition_info)
@@ -67,7 +69,15 @@ class TsPartitionVersion {
   bool NeedCompact() const { return last_segments_.size() > EngineOptions::max_last_segment_num; }
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments() const;
 
-  std::shared_ptr<TsEntitySegment> GetEntitySegments() const { return entity_segment_; }
+  std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const { return last_segments_; }
+  std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
+
+  // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
+  // just a temporary solution
+  KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
+  KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange> &del_items) const {
+    return del_info_->GetDelRange(e_id, del_items);
+  }
 };
 class TsVGroupVersion {
   friend class TsVersionManager;
@@ -78,7 +88,7 @@ class TsVGroupVersion {
 
  public:
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetAllPartitions() const;
-  std::vector<std::shared_ptr<const TsPartitionVersion>> GetAllPartitions(uint32_t dbid) const;
+  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid) const;
 
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToCompact() const;
 

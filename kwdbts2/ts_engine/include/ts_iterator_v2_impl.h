@@ -20,7 +20,7 @@
 #include "iterator.h"
 #include "ts_lastsegment.h"
 #include "ts_table_schema_manager.h"
-#include "ts_vgroup_partition.h"
+#include "ts_version.h"
 #include "ts_block_span_sorted_iterator.h"
 
 namespace kwdbts {
@@ -41,7 +41,7 @@ class TsLastSegmentIterator;
 class TsEntitySegmentIterator;
 
 struct TsPartition {
-  std::shared_ptr<TsVGroupPartition> ts_vgroup_partition;
+  std::shared_ptr<const TsPartitionVersion> ts_partition_version;
   KwTsSpan ts_partition_range;
 };
 

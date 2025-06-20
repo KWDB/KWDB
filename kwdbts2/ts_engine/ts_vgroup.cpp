@@ -32,7 +32,6 @@
 #include "ts_iterator_v2_impl.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_version.h"
-#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 
@@ -44,7 +43,7 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
-      path_(engine_options.db_path + "/" + GetFileName()),
+      path_(std::filesystem::path{engine_options.db_path} / VGroupDirName(vgroup_id)),
       entity_counter_(0),
       engine_options_(engine_options),
       version_manager_(std::make_unique<TsVersionManager>(engine_options, vgroup_id)),
@@ -64,7 +63,7 @@ TsVGroup::~TsVGroup() {
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   MakeDirectory(path_);
-  wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, GetFileName(), &engine_options_);
+  wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_);
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
   auto res = wal_manager_->Init(ctx);
   if (res == KStatus::FAIL) {
@@ -96,6 +95,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   version_manager_->Recover();
 
   // recover partitions
+  #if 0
   std::error_code ec;
   std::filesystem::directory_iterator dir_iter{path_, ec};
   if (ec.value() != 0) {
@@ -117,6 +117,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     }
     partitions_[dbid]->Get(ptime, true);
   }
+  #endif
 
   return KStatus::SUCCESS;
 }
@@ -174,12 +175,6 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
 }
 
 std::filesystem::path TsVGroup::GetPath() const { return path_; }
-
-std::string TsVGroup::GetFileName() const {
-  char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "vg_%03u", vgroup_id_);
-  return buffer;
-}
 
 uint32_t TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -290,28 +285,6 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const { return schema_mgr_; }
 
 TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() { return &mem_segment_mgr_; }
 
-std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id,
-                                                          timestamp64 p_time) {
-  PartitionManager* partition_manager = nullptr;
-  {
-    std::shared_lock lk{s_mu_};
-    auto iter = partitions_.find(database_id);
-    if (iter != partitions_.end()) {
-      partition_manager = iter->second.get();
-    }
-  }
-  if (partition_manager == nullptr) {
-    // TODO(zzr): interval should be fetched form global setting;
-    std::unique_lock lk{s_mu_};
-    auto iter = partitions_.find(database_id);
-    if (iter == partitions_.end()) {
-      partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
-    }
-    partition_manager = partitions_[database_id].get();
-  }
-  return partition_manager->Get(p_time, true);
-}
-
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};
   auto table_id = p.GetTableID();
@@ -390,8 +363,8 @@ void TsVGroup::initCompactThread() {
   }
   KWDBOperatorInfo kwdb_operator_info;
   // Set the name and owner of the operation
-  kwdb_operator_info.SetOperatorName("TsVGroupPartition::CompactThread");
-  kwdb_operator_info.SetOperatorOwner("TsVGroupPartition");
+  kwdb_operator_info.SetOperatorName("VGroup::CompactThread");
+  kwdb_operator_info.SetOperatorOwner("VGroup");
   time_t now;
   // Record the start time of the operation
   kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
@@ -400,7 +373,7 @@ void TsVGroup::initCompactThread() {
       std::bind(&TsVGroup::compactRoutine, this, std::placeholders::_1), this, &kwdb_operator_info);
   if (compact_thread_id_ < 1) {
     // If thread creation fails, record error message
-    LOG_ERROR("TsVGroupPartition compact thread create failed");
+    LOG_ERROR("VGroup compact thread create failed");
   }
 }
 
@@ -411,11 +384,6 @@ void TsVGroup::closeCompactThread() {
     // Waiting for the compact thread to complete
     KWDBDynamicThreadPool::GetThreadPool().JoinThread(compact_thread_id_, 0);
   }
-}
-
-inline bool PartitionLessThan(std::shared_ptr<TsVGroupPartition>& x,
-                              std::shared_ptr<TsVGroupPartition>& y) {
-  return x->StartTs() > y->StartTs();
 }
 
 KStatus TsVGroup::Compact(int thread_num) {
@@ -439,7 +407,7 @@ KStatus TsVGroup::Compact(int thread_num) {
 
         // 1. Get all the last segments that need to be compacted.
         auto last_segments = cur_partition->GetCompactLastSegments();
-        auto entity_segment = cur_partition->GetEntitySegments();
+        auto entity_segment = cur_partition->GetEntitySegment();
 
         auto root_path =
             this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
@@ -868,19 +836,18 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_i
   }
   auto db_id = tb_schema_mgr->GetDbID();
   auto ts_type = tb_schema_mgr->GetTsColDataType();
-  auto it = partitions_.find(db_id);
-  if (it != partitions_.end()) {
-    std::vector<std::shared_ptr<TsVGroupPartition>> ps = (*it).second->GetAllPartitions();
-    for (auto& p : ps) {
-      KTimestamp p_start = convertSecondToPrecisionTS(p->StartTs(), ts_type);
-      KTimestamp p_end = convertSecondToPrecisionTS(p->EndTs(), ts_type);
-      // check if current partition is cross with ts_spans.
-      if (isTimestampInSpans(ts_spans, p_start, p_end)) {
-        s = p->DeleteData(e_id, ts_spans, {0, lsn});
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("cannot DeleteData for entity[%lu]", e_id);
-          return s;
-        }
+
+  auto current = CurrentVersion();
+  auto partitions = current->GetPartitions(db_id);
+  for (auto& p : partitions) {
+    KTimestamp p_start = convertSecondToPrecisionTS(p->GetStartTime(), ts_type);
+    KTimestamp p_end = convertSecondToPrecisionTS(p->GetEndTime(), ts_type);
+    // check if current partition is cross with ts_spans.
+    if (isTimestampInSpans(ts_spans, p_start, p_end)) {
+      s = p->DeleteData(e_id, ts_spans, {0, lsn});
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("cannot DeleteData for entity[%lu]", e_id);
+        return s;
       }
     }
   }
@@ -1052,63 +1019,6 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
     }
   }
   return KStatus::SUCCESS;
-}
-
-std::shared_ptr<TsVGroupPartition> PartitionManager::Get(int64_t timestamp,
-                                                         bool create_if_not_exist) {
-  int idx = timestamp / interval_;
-  if (timestamp < 0) {
-    // the result of division always truncated towards zero, so we need to handle the case of
-    // negative timestamp. e.g. -1/100 = 0 in C++, but we should return -1.
-    idx -= 1;
-  }
-  {
-    std::shared_lock s_lk{mu_};
-
-    auto it = partitions_.find(idx);
-    if (it != partitions_.end()) {
-      return it->second;
-    }
-  }
-  if (!create_if_not_exist) {
-    return nullptr;
-  }
-
-  int64_t start = idx * interval_;
-  int64_t end = start + interval_;
-  auto root = vgroup_->GetPath();
-  auto partition =
-      std::make_shared<TsVGroupPartition>(root, database_id_, vgroup_->GetSchemaMgr(), start, end);
-  std::unique_lock u_lk{mu_};
-  auto it = partitions_.find(idx);
-  if (it != partitions_.end()) {
-    return it->second;
-  }
-  partition->Open();
-  partitions_[idx] = partition;
-  return partition;
-}
-
-std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetAllPartitions() {
-  std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
-  std::shared_lock s_lk{mu_};
-  for (auto& kv : partitions_) {
-    if (kv.second != nullptr) {
-      partitions.push_back(kv.second);
-    }
-  }
-  return partitions;
-}
-
-std::vector<std::shared_ptr<TsVGroupPartition>> PartitionManager::GetCompactPartitions() {
-  std::vector<std::shared_ptr<TsVGroupPartition>> partitions;
-  std::shared_lock s_lk{mu_};
-  for (auto& kv : partitions_) {
-    if (kv.second != nullptr && kv.second->NeedCompact()) {
-      partitions.push_back(kv.second);
-    }
-  }
-  return partitions;
 }
 
 }  //  namespace kwdbts

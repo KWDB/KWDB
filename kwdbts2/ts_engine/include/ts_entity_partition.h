@@ -13,22 +13,23 @@
 #include <memory>
 #include <list>
 #include "ts_mem_segment_mgr.h"
-#include "ts_vgroup_partition.h"
+#include "ts_version.h"
 
 namespace kwdbts {
 
 class TsEntityPartition {
  private:
-  std::shared_ptr<TsVGroupPartition> files_;
+  std::shared_ptr<const TsPartitionVersion> partition_version_;
   TS_LSN scan_lsn_;
   DATATYPE ts_type_;
   TsScanFilterParams scan_filter_;
   std::list<std::shared_ptr<TsMemSegment>> mems_;
   TsBlockItemFilterParams block_data_filter_{0, 0, 0};
+
  public:
-  TsEntityPartition(std::shared_ptr<TsVGroupPartition>& p, TS_LSN scan_lsn, DATATYPE ts_type,
-                    const TsScanFilterParams& filter) :
-    files_(p), scan_lsn_(scan_lsn), ts_type_(ts_type), scan_filter_(filter) {}
+  TsEntityPartition(std::shared_ptr<const TsPartitionVersion> p, TS_LSN scan_lsn, DATATYPE ts_type,
+                    const TsScanFilterParams& filter)
+      : partition_version_(p), scan_lsn_(scan_lsn), ts_type_(ts_type), scan_filter_(filter) {}
   // initialize current object.
   KStatus Init(std::list<std::shared_ptr<TsMemSegment>>& mems);
   // filter all blocks, and return block span list.
@@ -38,6 +39,5 @@ class TsEntityPartition {
   KStatus SetFilter();
   void AddMemSegment(std::list<std::shared_ptr<TsMemSegment>>& mems);
 };
-
 
 }  // namespace kwdbts

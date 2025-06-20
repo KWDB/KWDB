@@ -22,7 +22,6 @@
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
-#include "ts_vgroup_partition.h"
 
 namespace kwdbts {
 

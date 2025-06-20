@@ -37,7 +37,6 @@
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
 #include "ts_io.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_segment.h"
 namespace kwdbts {
 
@@ -178,113 +177,6 @@ KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
-}
-
-std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) const {
-  char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "last.ver-%012u", file_number);
-  auto filename = dir_path_ / buffer;
-  return filename;
-}
-
-KStatus TsLastSegmentManager::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* last_segment,
-                                                 uint32_t* file_number) {
-  *file_number = current_file_number_.fetch_add(1, std::memory_order_relaxed);
-  auto filename = LastSegmentFileName(*file_number);
-  // TODO(zzr) fetch IOEnv from config.
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  return env->NewAppendOnlyFile(filename, last_segment);
-}
-
-KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
-                                                  std::shared_ptr<TsLastSegment>* lastsegment) {
-  // 1. find from cache.
-  {
-    std::shared_lock lk{s_mutex_};
-    auto it = last_segments_.find(file_number);
-    if (it != last_segments_.end()) {
-      // found, assign and return
-      *lastsegment = it->second;
-      return SUCCESS;
-    }
-  }
-
-  // 2. open from disk.
-  // TODO(zzr) get env from config;
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  std::unique_ptr<TsRandomReadFile> rfile;
-  auto s = env->NewRandomReadFile(LastSegmentFileName(file_number), &rfile);
-  if (s == FAIL) {
-    return FAIL;
-  }
-  auto file = TsLastSegment::Create(file_number, std::move(rfile));
-  s = file->Open();
-  if (s == FAIL) {
-    LOG_ERROR("can not open file %s", LastSegmentFileName(file_number).c_str());
-    return FAIL;
-  }
-  {
-    std::unique_lock lk{s_mutex_};
-    // find again before insert
-    auto it = last_segments_.find(file_number);
-    if (it != last_segments_.end()) {
-      *lastsegment = it->second;
-      return SUCCESS;
-    }
-
-    // now we can really insert it to cache
-    *lastsegment = file;
-    auto [iter, ok] = last_segments_.insert_or_assign(file_number, std::move(file));
-    assert(ok);
-  }
-  n_lastsegment_.fetch_add(1, std::memory_order_relaxed);
-  return SUCCESS;
-}
-
-// TODO(zzr) get last segments from VersionManager, this method must be atomic
-KStatus TsLastSegmentManager::GetCompactLastSegments(
-    std::vector<std::shared_ptr<TsLastSegment>>& result) {
-  std::shared_lock lk{s_mutex_};
-  if (!NeedCompact()) {
-    return FAIL;
-  }
-  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
-  result.reserve(compact_num);
-  auto it = last_segments_.begin();
-  for (int i = 0; i < compact_num; ++i, ++it) {
-    result.push_back(it->second);
-  }
-  return SUCCESS;
-}
-
-std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetAllLastSegments() const {
-  std::shared_lock lk{s_mutex_};
-  std::vector<std::shared_ptr<TsLastSegment>> result;
-  result.reserve(last_segments_.size());
-  for (auto i : last_segments_) {
-    result.push_back(i.second);
-  }
-  return result;
-}
-
-bool TsLastSegmentManager::NeedCompact() {
-  return n_lastsegment_.load(std::memory_order_relaxed) > EngineOptions::max_last_segment_num;
-}
-
-void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
-  {
-    std::unique_lock lk{s_mutex_};
-    for (auto it = last_segments_.begin(); it != last_segments_.end();) {
-      assert(it->first == it->second->GetFileNumber());
-      if (it->second->GetFileNumber() <= ver) {
-        it->second->MarkDelete();
-        it = last_segments_.erase(it);
-        n_lastsegment_.fetch_sub(1, std::memory_order_relaxed);
-      } else {
-        ++it;
-      }
-    }
-  }
 }
 
 KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indices) {
