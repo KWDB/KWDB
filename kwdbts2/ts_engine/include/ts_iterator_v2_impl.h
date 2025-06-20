@@ -97,6 +97,7 @@ class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   ~TsRawDataIteratorV2Impl();
 
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override;
 
  protected:
   KStatus NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts);
@@ -112,6 +113,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   ~TsSortedRawDataIteratorV2Impl();
 
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override;
 
  protected:
   KStatus ScanAndSortEntityData(timestamp64 ts);
@@ -125,12 +127,14 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                       std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                       std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                      std::vector<k_int32>& agg_extend_cols,
                       std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
                       std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
   ~TsAggIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override;
 
  protected:
   KStatus Aggregate();
@@ -151,6 +155,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   std::vector<Sumfunctype> scan_agg_types_;
   std::vector<timestamp64> last_ts_points_;
+  std::vector<k_int32> agg_extend_cols_;
 
   std::vector<TSSlice> final_agg_data_;
   std::vector<AggCandidate> candidates_;
@@ -161,6 +166,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<int64_t> last_col_ts_;
   int64_t max_first_ts_;
   int64_t min_last_ts_;
+
+  std::map<k_uint32, k_uint32> max_map_;
+  std::map<k_uint32, k_uint32> min_map_;
 
   std::map<k_uint32, k_uint32> first_map_;
   std::map<k_uint32, k_uint32> last_map_;

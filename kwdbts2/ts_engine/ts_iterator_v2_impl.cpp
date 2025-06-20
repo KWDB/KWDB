@@ -284,6 +284,10 @@ inline KStatus TsRawDataIteratorV2Impl::NextBlockSpan(ResultSet* res, k_uint32* 
   return KStatus::SUCCESS;
 }
 
+bool TsRawDataIteratorV2Impl::IsDisordered() {
+  return true;
+}
+
 KStatus TsRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   *count = 0;
   KStatus ret;
@@ -356,6 +360,10 @@ inline KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity(timestamp64 ts) {
   return ScanAndSortEntityData(ts);
 }
 
+bool TsSortedRawDataIteratorV2Impl::IsDisordered() {
+  return false;
+}
+
 KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
   KStatus ret;
   *count = 0;
@@ -402,13 +410,15 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                           std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                                          std::vector<k_int32>& agg_extend_cols,
                                           std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
                                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version) :
                           TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
                                                                             kw_scan_cols, ts_scan_cols, table_schema_mgr,
                                                                             table_version),
-                          scan_agg_types_(scan_agg_types) {
-  last_ts_points_ = ts_points;
+                          scan_agg_types_(scan_agg_types),
+                          last_ts_points_(ts_points),
+                          agg_extend_cols_{agg_extend_cols} {
 }
 
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
@@ -459,10 +469,16 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         sum_col_idxs_.push_back(i);
         break;
       case Sumfunctype::MAX:
-        max_col_idxs_.push_back(i);
+        if (max_map_.find(ts_scan_cols_[i]) == max_map_.end()) {
+          max_col_idxs_.push_back(i);
+          max_map_[ts_scan_cols_[i]] = i;
+        }
         break;
       case Sumfunctype::MIN:
-        min_col_idxs_.push_back(i);
+        if (min_map_.find(ts_scan_cols_[i]) == min_map_.end()) {
+          min_col_idxs_.push_back(i);
+          min_map_[ts_scan_cols_[i]] = i;
+        }
         break;
       case Sumfunctype::LAST_ROW:
       case Sumfunctype::LASTROWTS:
@@ -472,9 +488,39 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
       case Sumfunctype::FIRSTROWTS:
         has_first_row_col_ = true;
         break;
+      case Sumfunctype::MAX_EXTEND:
+      case Sumfunctype::MIN_EXTEND:
+        // Do nothing here, will handle it after all max/min are done.
+        break;
       default:
         LOG_ERROR("Agg function type is not supported in storage engine: %d.", scan_agg_types_[i]);
         return KStatus::FAIL;
+        break;
+    }
+  }
+  for (int i = 0; i < scan_agg_types_.size(); ++i) {
+    switch (scan_agg_types_[i]) {
+      case Sumfunctype::MAX_EXTEND:
+        if (max_map_.find(ts_scan_cols_[i]) == max_map_.end()) {
+          max_col_idxs_.push_back(i);
+          max_map_[ts_scan_cols_[i]] = i;
+        } else {
+          if (agg_extend_cols_[max_map_[ts_scan_cols_[i]]] < 0) {
+            agg_extend_cols_[max_map_[ts_scan_cols_[i]]] = ts_scan_cols_[i];
+          }
+        }
+        break;
+      case Sumfunctype::MIN_EXTEND:
+        if (min_map_.find(ts_scan_cols_[i]) == min_map_.end()) {
+          min_col_idxs_.push_back(i);
+          min_map_[ts_scan_cols_[i]] = i;
+        } else {
+          if (agg_extend_cols_[min_map_[ts_scan_cols_[i]]] < 0) {
+            agg_extend_cols_[min_map_[ts_scan_cols_[i]]] = ts_scan_cols_[i];
+          }
+        }
+        break;
+      default:
         break;
     }
   }
@@ -497,6 +543,10 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   cur_entity_index_ = 0;
 
   return KStatus::SUCCESS;
+}
+
+bool TsAggIteratorV2Impl::IsDisordered() {
+  return false;
 }
 
 KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
@@ -540,9 +590,11 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   for (k_uint32 i = 0; i < ts_scan_cols_.size(); ++i) {
     TSSlice& slice = final_agg_data_[i];
     Batch* b;
+    uint32_t col_idx = (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
+                        agg_extend_cols_[i] : ts_scan_cols_[i];
     if (slice.data == nullptr) {
       b = new AggBatch(nullptr, 0, nullptr);
-    } else if (!isVarLenType(attrs_[ts_scan_cols_[i]].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
+    } else if (!isVarLenType(attrs_[col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
       b = new AggBatch(slice.data, 1, nullptr);
       b->is_new = true;
       b->is_overflow = is_overflow_[i];
@@ -647,17 +699,40 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
     auto kw_col_idx = kw_scan_cols_[i];
     Sumfunctype agg_type = scan_agg_types_[i];
-    if (agg_type == Sumfunctype::COUNT || agg_type == Sumfunctype::SUM
-        || agg_type == Sumfunctype::MAX || agg_type ==Sumfunctype::MIN) {
+    if (agg_type == Sumfunctype::COUNT || agg_type == Sumfunctype::SUM) {
       continue;
     }
-    const auto& c = (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
-                    candidates_[first_map_[ts_scan_cols_[i]]] :
-                      ((agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
-                      candidates_[last_ts_points_.empty() ? last_map_[ts_scan_cols_[i]] : i] :
-                        ((agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
-                          first_row_candidate_ : last_row_candidate_));
-    const k_uint32 col_idx = ts_scan_cols_[i];
+    if (agg_type == Sumfunctype::MAX || agg_type == Sumfunctype::MIN) {
+      if ((agg_type == Sumfunctype::MAX && max_map_[ts_scan_cols_[i]] != i)
+          || (agg_type ==Sumfunctype::MIN && min_map_[ts_scan_cols_[i]] != i)) {
+        final_agg_data_[i].len = final_agg_data_[min_map_[ts_scan_cols_[i]]].len;
+        final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+        memcpy(final_agg_data_[i].data, final_agg_data_[min_map_[ts_scan_cols_[i]]].data, final_agg_data_[i].len);
+      }
+      continue;
+    }
+    if (agg_type == Sumfunctype::MAX_EXTEND && max_map_[ts_scan_cols_[i]] == i) {
+      continue;
+    }
+    if (agg_type == Sumfunctype::MIN_EXTEND && min_map_[ts_scan_cols_[i]] == i) {
+      continue;
+    }
+    const auto& c = (agg_type == Sumfunctype::MAX_EXTEND) ?
+                    candidates_[max_map_[ts_scan_cols_[i]]] :
+                      (agg_type == Sumfunctype::MIN_EXTEND) ?
+                      candidates_[min_map_[ts_scan_cols_[i]]] :
+                        (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
+                        candidates_[first_map_[ts_scan_cols_[i]]] :
+                          ((agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
+                          candidates_[last_ts_points_.empty() ? last_map_[ts_scan_cols_[i]] : i] :
+                            ((agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
+                              first_row_candidate_ : last_row_candidate_));
+    const k_uint32 col_idx = (agg_type == Sumfunctype::MAX_EXTEND || agg_type == Sumfunctype::MIN_EXTEND) ?
+                              agg_extend_cols_[i] : ts_scan_cols_[i];
+    if (final_agg_data_[i].data) {
+      free(final_agg_data_[i].data);
+      final_agg_data_[i].data = nullptr;
+    }
     final_agg_data_[i].len = attrs_[col_idx].size;
     if (c.blk_span == nullptr) {
       final_agg_data_[i] = {nullptr, 0};
@@ -1204,7 +1279,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     }
     TSSlice& agg_data = final_agg_data_[idx];
     auto type = attrs_[ts_scan_cols_[idx]].type;
-    if (block_span->IsSameType(kw_col_idx) && block_span->HasPreAgg()) {
+    if (agg_extend_cols_[idx] < 0 && block_span->IsSameType(kw_col_idx)
+        && block_span->HasPreAgg()) {
       // Use pre agg to calculate max
       if (!isVarLenType(type)) {
         void* pre_max{nullptr};
@@ -1270,12 +1346,19 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.len = size;
             InitAggData(agg_data);
             memcpy(agg_data.data, current, size);
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idx, block_span};
+            }
           } else if (valcmp(current, agg_data.data, type, size) > 0) {
             memcpy(agg_data.data, current, size);
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idx, block_span};
+            }
           }
         }
       } else {
         std::vector<string> var_rows;
+        std::vector<int> row_idxs;
         KStatus ret;
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
           TSSlice slice;
@@ -1287,6 +1370,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           }
           if (flag == DataFlags::kValid) {
             var_rows.emplace_back(slice.data, slice.len);
+            row_idxs.push_back(row_idx);
           }
         }
         if (!var_rows.empty()) {
@@ -1304,6 +1388,9 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.data = static_cast<char*>(malloc(agg_data.len));
             KUint16(agg_data.data) = max_it->length();
             memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idxs[max_it - var_rows.begin()], block_span};
+            }
           }
         }
       }
@@ -1319,7 +1406,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     TSSlice& agg_data = final_agg_data_[idx];
     int32_t type = attrs_[ts_scan_cols_[idx]].type;
     // TODO(zqh): both integer or both char can use pre agg
-    if (block_span->IsSameType(kw_col_idx) && block_span->HasPreAgg()) {
+    if (agg_extend_cols_[idx] < 0 && block_span->IsSameType(kw_col_idx)
+        && block_span->HasPreAgg()) {
       // Use pre agg to calculate min
       if (!isVarLenType(type)) {
         void* pre_min{nullptr};
@@ -1385,12 +1473,19 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.len = size;
             InitAggData(agg_data);
             memcpy(agg_data.data, current, size);
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idx, block_span};
+            }
           } else if (valcmp(current, agg_data.data, type, size) < 0) {
             memcpy(agg_data.data, current, size);
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idx, block_span};
+            }
           }
         }
       } else {
         std::vector<string> var_rows;
+        std::vector<int> row_idxs;
         KStatus ret;
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
           TSSlice slice;
@@ -1402,6 +1497,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           }
           if (flag == DataFlags::kValid) {
             var_rows.emplace_back(slice.data, slice.len);
+            row_idxs.push_back(row_idx);
           }
         }
         if (!var_rows.empty()) {
@@ -1419,6 +1515,9 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.data = static_cast<char*>(malloc(agg_data.len));
             KUint16(agg_data.data) = min_it->length();
             memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idxs[min_it - var_rows.begin()], block_span};
+            }
           }
         }
       }
