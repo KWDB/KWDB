@@ -413,12 +413,13 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
                                           std::vector<k_int32>& agg_extend_cols,
                                           std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
                                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version) :
-                          TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
+  TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
                                                                             kw_scan_cols, ts_scan_cols, table_schema_mgr,
                                                                             table_version),
-                          scan_agg_types_(scan_agg_types),
-                          last_ts_points_(ts_points),
-                          agg_extend_cols_{agg_extend_cols} {
+  scan_agg_types_(scan_agg_types),
+  last_ts_points_(ts_points),
+  agg_extend_ts_cols_{agg_extend_cols},
+  agg_extend_kw_cols_{agg_extend_cols} {
 }
 
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
@@ -505,8 +506,8 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
           max_col_idxs_.push_back(i);
           max_map_[ts_scan_cols_[i]] = i;
         } else {
-          if (agg_extend_cols_[max_map_[ts_scan_cols_[i]]] < 0) {
-            agg_extend_cols_[max_map_[ts_scan_cols_[i]]] = ts_scan_cols_[i];
+          if (agg_extend_ts_cols_[max_map_[ts_scan_cols_[i]]] < 0) {
+            agg_extend_ts_cols_[max_map_[ts_scan_cols_[i]]] = ts_scan_cols_[i];
           }
         }
         break;
@@ -515,8 +516,8 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
           min_col_idxs_.push_back(i);
           min_map_[ts_scan_cols_[i]] = i;
         } else {
-          if (agg_extend_cols_[min_map_[ts_scan_cols_[i]]] < 0) {
-            agg_extend_cols_[min_map_[ts_scan_cols_[i]]] = ts_scan_cols_[i];
+          if (agg_extend_ts_cols_[min_map_[ts_scan_cols_[i]]] < 0) {
+            agg_extend_ts_cols_[min_map_[ts_scan_cols_[i]]] = ts_scan_cols_[i];
           }
         }
         break;
@@ -591,7 +592,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     TSSlice& slice = final_agg_data_[i];
     Batch* b;
     uint32_t col_idx = (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
-                        agg_extend_cols_[i] : ts_scan_cols_[i];
+                       agg_extend_ts_cols_[i] : ts_scan_cols_[i];
     if (slice.data == nullptr) {
       b = new AggBatch(nullptr, 0, nullptr);
     } else if (!isVarLenType(attrs_[col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
@@ -728,7 +729,9 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
                             ((agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
                               first_row_candidate_ : last_row_candidate_));
     const k_uint32 col_idx = (agg_type == Sumfunctype::MAX_EXTEND || agg_type == Sumfunctype::MIN_EXTEND) ?
-                              agg_extend_cols_[i] : ts_scan_cols_[i];
+                             agg_extend_ts_cols_[i] : ts_scan_cols_[i];
+    kw_col_idx = (agg_type == Sumfunctype::MAX_EXTEND || agg_type == Sumfunctype::MIN_EXTEND) ?
+                 agg_extend_kw_cols_[i] : kw_col_idx;
     if (final_agg_data_[i].data) {
       free(final_agg_data_[i].data);
       final_agg_data_[i].data = nullptr;
@@ -1279,7 +1282,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     }
     TSSlice& agg_data = final_agg_data_[idx];
     auto type = attrs_[ts_scan_cols_[idx]].type;
-    if (agg_extend_cols_[idx] < 0 && block_span->IsSameType(kw_col_idx)
+    if (agg_extend_ts_cols_[idx] < 0 && block_span->IsSameType(kw_col_idx)
         && block_span->HasPreAgg()) {
       // Use pre agg to calculate max
       if (!isVarLenType(type)) {
@@ -1346,12 +1349,12 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.len = size;
             InitAggData(agg_data);
             memcpy(agg_data.data, current, size);
-            if (agg_extend_cols_[idx] >= 0) {
+            if (agg_extend_ts_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
             }
           } else if (valcmp(current, agg_data.data, type, size) > 0) {
             memcpy(agg_data.data, current, size);
-            if (agg_extend_cols_[idx] >= 0) {
+            if (agg_extend_ts_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
             }
           }
@@ -1388,7 +1391,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.data = static_cast<char*>(malloc(agg_data.len));
             KUint16(agg_data.data) = max_it->length();
             memcpy(agg_data.data + kStringLenLen, max_it->c_str(), max_it->length());
-            if (agg_extend_cols_[idx] >= 0) {
+            if (agg_extend_ts_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idxs[max_it - var_rows.begin()], block_span};
             }
           }
@@ -1406,7 +1409,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     TSSlice& agg_data = final_agg_data_[idx];
     int32_t type = attrs_[ts_scan_cols_[idx]].type;
     // TODO(zqh): both integer or both char can use pre agg
-    if (agg_extend_cols_[idx] < 0 && block_span->IsSameType(kw_col_idx)
+    if (agg_extend_ts_cols_[idx] < 0 && block_span->IsSameType(kw_col_idx)
         && block_span->HasPreAgg()) {
       // Use pre agg to calculate min
       if (!isVarLenType(type)) {
@@ -1473,12 +1476,12 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.len = size;
             InitAggData(agg_data);
             memcpy(agg_data.data, current, size);
-            if (agg_extend_cols_[idx] >= 0) {
+            if (agg_extend_ts_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
             }
           } else if (valcmp(current, agg_data.data, type, size) < 0) {
             memcpy(agg_data.data, current, size);
-            if (agg_extend_cols_[idx] >= 0) {
+            if (agg_extend_ts_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
             }
           }
@@ -1515,7 +1518,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             agg_data.data = static_cast<char*>(malloc(agg_data.len));
             KUint16(agg_data.data) = min_it->length();
             memcpy(agg_data.data + kStringLenLen, min_it->c_str(), min_it->length());
-            if (agg_extend_cols_[idx] >= 0) {
+            if (agg_extend_ts_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idxs[min_it - var_rows.begin()], block_span};
             }
           }
