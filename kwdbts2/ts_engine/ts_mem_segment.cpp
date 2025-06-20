@@ -154,6 +154,18 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter
           cur_blk_item->InsertRow(last_row_data);
         }
       }
+    } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
+      TSMemSegRowData* last_row_data = nullptr;
+      for (auto& row : row_datas) {
+        if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(row)) {
+          if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
+            cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
+            mem_block.push_back(cur_blk_item);
+            cur_blk_item->InsertRow(row);
+          }
+          last_row_data = row;
+        }
+      }
     } else {
       for (auto& row : row_datas) {
         if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
@@ -417,6 +429,18 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         cur_blk_item = std::make_shared<TsMemSegBlock>(self);
         mem_blocks.push_back(cur_blk_item);
         cur_blk_item->InsertRow(last_row_data);
+      }
+    }
+  } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
+    TSMemSegRowData* last_row_data = nullptr;
+    for (auto& row : row_datas) {
+      if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(row)) {
+        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
+          cur_blk_item = std::make_shared<TsMemSegBlock>(self);
+          mem_blocks.push_back(cur_blk_item);
+          cur_blk_item->InsertRow(row);
+        }
+        last_row_data = row;
       }
     }
   } else {
