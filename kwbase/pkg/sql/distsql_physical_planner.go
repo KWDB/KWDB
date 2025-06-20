@@ -5332,21 +5332,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 					plan.ResultTypes,
 					kwdbordering,
 				)
-
-				// add output types
-				plan.AddTSOutputType(false)
-
-				plan.AddTSNoGroupingStage(
-					execinfrapb.TSProcessorCoreUnion{
-						Sorter: &execinfrapb.SorterSpec{
-							OutputOrdering:   kwdbordering,
-							OrderingMatchLen: 0,
-						},
-					},
-					execinfrapb.TSPostProcessSpec{},
-					plan.ResultTypes,
-					kwdbordering,
-				)
 			}
 
 			if planCtx.IsLocal() && n.RelInfo.RelationalCols == nil {
