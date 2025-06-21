@@ -155,8 +155,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   std::vector<Sumfunctype> scan_agg_types_;
   std::vector<timestamp64> last_ts_points_;
-  std::vector<k_int32> agg_extend_ts_cols_;
-  std::vector<k_int32> agg_extend_kw_cols_;
+  std::vector<k_int32> agg_extend_cols_;
 
   std::vector<TSSlice> final_agg_data_;
   std::vector<AggCandidate> candidates_;

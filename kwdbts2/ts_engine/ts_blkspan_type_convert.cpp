@@ -191,6 +191,18 @@ bool TSBlkDataTypeConvert::IsSameType(uint32_t scan_idx) {
   return isSameType(version_conv_->blk_attrs_[scan_idx], version_conv_->scan_attrs_[scan_idx]);
 }
 
+bool TSBlkDataTypeConvert::IsVarLenType(uint32_t scan_idx) {
+  return isVarLenType(version_conv_->scan_attrs_[scan_idx].type);
+}
+
+int32_t TSBlkDataTypeConvert::GetColSize(uint32_t scan_idx) {
+  return version_conv_->scan_attrs_[scan_idx].size;
+}
+
+int32_t TSBlkDataTypeConvert::GetColType(uint32_t scan_idx) {
+  return version_conv_->scan_attrs_[scan_idx].type;
+}
+
 bool TSBlkDataTypeConvert::IsColNotNull(uint32_t scan_idx) {
   return version_conv_->blk_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
 }

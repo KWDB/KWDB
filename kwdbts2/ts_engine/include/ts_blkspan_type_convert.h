@@ -66,6 +66,9 @@ class TSBlkDataTypeConvert {
   bool IsColExist(uint32_t scan_idx);
   bool IsSameType(uint32_t scan_idx);
   bool IsColNotNull(uint32_t scan_idx);
+  bool IsVarLenType(uint32_t scan_idx);
+  int32_t GetColSize(uint32_t scan_idx);
+  int32_t GetColType(uint32_t scan_idx);
 
   // dest type is fixed len datatype.
   KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap);

@@ -141,6 +141,18 @@ bool TsBlockSpan::IsSameType(uint32_t scan_idx) {
   return convert_.IsSameType(scan_idx);
 }
 
+int32_t TsBlockSpan::GetColSize(uint32_t scan_idx) {
+  return convert_.GetColSize(scan_idx);
+}
+
+int32_t TsBlockSpan::GetColType(uint32_t scan_idx) {
+  return convert_.GetColType(scan_idx);
+}
+
+bool TsBlockSpan::IsVarLenType(uint32_t scan_idx) {
+  return convert_.IsVarLenType(scan_idx);
+}
+
 KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
   return convert_.GetColBitmap(scan_idx, bitmap);
 }
