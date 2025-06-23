@@ -101,9 +101,8 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
       std::vector<k_uint32> scan_cols = {0, 1};
       std::vector<Sumfunctype> scan_agg_types;
       s = engine->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
-      s = vgroup->GetIterator(ctx_, {1}, {ts_span}, ts_col_type, scan_cols, scan_cols,
-                              scan_agg_types, table_schema_mgr, 1, &ts_iter, vgroup, {}, false,
-                              false);
+      s = vgroup->GetIterator(ctx_, {1}, {ts_span}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
+                              table_schema_mgr, 1, &ts_iter, vgroup, {}, false, false);
       ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
       uint32_t sum = 0;
