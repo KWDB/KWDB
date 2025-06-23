@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include <list>
 #include <map>
 #include <memory>
 
@@ -25,6 +26,7 @@ namespace kwdbts {
 using DatabaseID = uint32_t;
 using PartitionIdx = int64_t;
 using PartitionIdentifier = std::tuple<DatabaseID, timestamp64>;  // (dbid, start_time);
+using MemSegList = std::list<std::shared_ptr<TsMemSegment>>;
 
 class TsVGroupVersion;
 class TsEntitySegment;
@@ -33,7 +35,7 @@ class TsPartitionVersion {
   friend class TsVGroupVersion;
 
  private:
-  std::list<std::shared_ptr<TsMemSegment>> mem_segments_;
+  std::shared_ptr<MemSegList> valid_memseg_;
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
   std::shared_ptr<TsEntitySegment> entity_segment_;
 
@@ -46,8 +48,7 @@ class TsPartitionVersion {
   std::shared_ptr<TsDelItemManager> del_info_;
 
   // Only TsVersionManager can create TsPartitionVersion
-  explicit TsPartitionVersion(timestamp64 start_time, timestamp64 end_time,
-                              PartitionIdentifier partition_info)
+  explicit TsPartitionVersion(timestamp64 start_time, timestamp64 end_time, PartitionIdentifier partition_info)
       : start_time_(start_time), end_time_(end_time), partition_info_(partition_info) {}
 
  public:
@@ -71,6 +72,7 @@ class TsPartitionVersion {
 
   std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const { return last_segments_; }
   std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
+  std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
 
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
@@ -81,20 +83,19 @@ class TsPartitionVersion {
 };
 class TsVGroupVersion {
   friend class TsVersionManager;
+  friend class TsPartitionVersion;
 
  private:
   std::map<PartitionIdentifier, std::shared_ptr<TsPartitionVersion>> partitions_;
-  // TsVGroup *vgroup_ = nullptr;
+  std::shared_ptr<MemSegList> valid_memseg_;
 
  public:
-  std::vector<std::shared_ptr<const TsPartitionVersion>> GetAllPartitions() const;
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid) const;
 
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToCompact() const;
 
   // timestamp is in ptime
-  std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid,
-                                                         timestamp64 timestamp) const;
+  std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
 
   // TsVGroup *GetVGroup() const { return vgroup_; }
 };
@@ -103,7 +104,7 @@ class TsVersionUpdate {
   friend class TsVersionManager;
 
  private:
-  std::set<PartitionIdentifier> partitions_to_create_;
+  std::set<PartitionIdentifier> partitions_created_;
   std::map<PartitionIdentifier, std::set<uint64_t>> new_lastsegs_;
   std::map<PartitionIdentifier, std::set<uint64_t>> delete_lastsegs_;
   std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
@@ -113,35 +114,37 @@ class TsVersionUpdate {
 
   std::mutex mu_;
 
-  bool empty_ = true;
+  bool mem_segments_updated_ = false;
+  bool empty = true;
 
  public:
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
-    partitions_to_create_.insert(partition_id);
+    partitions_created_.insert(partition_id);
     updated_partitions_.insert(partition_id);
-    empty_ = false;
+    empty = false;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     new_lastsegs_[partition_id].insert(file_number);
     updated_partitions_.insert(partition_id);
-    empty_ = false;
+    empty = false;
   }
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     delete_lastsegs_[partition_id].insert(file_number);
     updated_partitions_.insert(partition_id);
-    empty_ = false;
+    empty = false;
   }
 
   void SetValidMemSegments(const std::list<std::shared_ptr<TsMemSegment>> &mem) {
     valid_memseg_ = mem;
-    empty_ = false;
+    mem_segments_updated_ = true;
+    empty = false;
   }
 
   void SetEntitySegment(std::shared_ptr<TsEntitySegment> entity_segment) {
     entity_segment_ = entity_segment;
-    empty_ = false;
+    empty = false;
   }
 };
 
@@ -159,7 +162,7 @@ class TsVersionManager {
 
  public:
   explicit TsVersionManager(const EngineOptions &engine_options, uint32_t vgroup_id)
-      : options_{engine_options}, vgroup_id_(vgroup_id) {}
+      : vgroup_id_(vgroup_id), options_{engine_options} {}
   KStatus Recover() {
     current_ = std::make_shared<TsVGroupVersion>();
     return SUCCESS;

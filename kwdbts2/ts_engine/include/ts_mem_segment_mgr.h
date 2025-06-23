@@ -162,7 +162,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_;
 
-  explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
+  explicit TsMemSegment(int32_t max_height);
 
  public:
   template <class... Args>
@@ -300,10 +300,7 @@ class TsMemSegmentManager {
   mutable std::shared_mutex segment_lock_;
 
  public:
-  explicit TsMemSegmentManager(TsVGroup* vgroup)
-      : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
-    segment_.push_back(cur_mem_seg_);
-  }
+  explicit TsMemSegmentManager(TsVGroup* vgroup);
 
   ~TsMemSegmentManager() {
     segment_.clear();

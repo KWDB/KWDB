@@ -31,6 +31,7 @@
 #include "ts_io.h"
 #include "ts_iterator_v2_impl.h"
 #include "ts_lastsegment_builder.h"
+#include "ts_mem_segment_mgr.h"
 #include "ts_version.h"
 
 namespace kwdbts {
@@ -95,31 +96,37 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   version_manager_->Recover();
 
   // recover partitions
-  #if 0
-  std::error_code ec;
-  std::filesystem::directory_iterator dir_iter{path_, ec};
-  if (ec.value() != 0) {
-    LOG_ERROR("TsVGroup::Init fail, reason: %s", ec.message().c_str());
-    return FAIL;
-  }
-  std::regex re("db([0-9]+)-(-?[0-9]+)");
-  for (const auto& it : dir_iter) {
-    std::string fname = it.path().filename();
-    std::smatch res;
-    bool ok = std::regex_match(fname, res, re);
-    if (!ok) {
-      continue;
-    }
-    uint32_t dbid = std::stoi(res.str(1));
-    timestamp64 ptime = std::stoll(res.str(2));
-    if (partitions_.find(dbid) == partitions_.end()) {
-      partitions_[dbid] = std::make_unique<PartitionManager>(this, dbid, interval);
-    }
-    partitions_[dbid]->Get(ptime, true);
-  }
-  #endif
+  // std::error_code ec;
+  // std::filesystem::directory_iterator dir_iter{path_, ec};
+  // if (ec.value() != 0) {
+  //   LOG_ERROR("TsVGroup::Init fail, reason: %s", ec.message().c_str());
+  //   return FAIL;
+  // }
+  // std::regex re("db([0-9]+)-(-?[0-9]+)");
+  // for (const auto& it : dir_iter) {
+  //   std::string fname = it.path().filename();
+  //   std::smatch res;
+  //   bool ok = std::regex_match(fname, res, re);
+  //   if (!ok) {
+  //     continue;
+  //   }
+  //   uint32_t dbid = std::stoi(res.str(1));
+  //   timestamp64 ptime = std::stoll(res.str(2));
+  //   if (partitions_.find(dbid) == partitions_.end()) {
+  //     partitions_[dbid] = std::make_unique<PartitionManager>(this, dbid, interval);
+  //   }
+  //   partitions_[dbid]->Get(ptime, true);
+  // }
 
   return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::SetReady() {
+  TsVersionUpdate update;
+  std::list<std::shared_ptr<TsMemSegment>> mems;
+  mem_segment_mgr_.GetAllMemSegments(&mems);
+  update.SetValidMemSegments(mems);
+  return version_manager_->ApplyUpdate(update);
 }
 
 KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id,
@@ -282,8 +289,6 @@ KStatus TsVGroup::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>
 KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) { return KStatus::SUCCESS; }
 
 TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const { return schema_mgr_; }
-
-TsMemSegmentManager* TsVGroup::GetMemSegmentMgr() { return &mem_segment_mgr_; }
 
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};

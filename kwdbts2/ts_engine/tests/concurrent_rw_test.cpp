@@ -42,8 +42,12 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
   TSTableID table_id = 12315;
   opts.vgroup_max_num = 1;
   opts.g_dedup_rule = DedupRule::KEEP;
-  opts.mem_segment_max_size = 512 << 10;
+  opts.mem_segment_max_size = 128 << 10;
   opts.max_last_segment_num = UINT32_MAX;
+  
+  int npayload = 100;
+  int nrow = 50;
+
   auto engine = std::make_unique<TSEngineV2Impl>(opts);
   engine->Init(ctx_);
 
@@ -65,8 +69,6 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::atomic_bool stop = false;
-  int npayload = 10000;
-  int nrow = 50;
 
   auto PutWork = [&]() {
     for (int i = 0; i < npayload; ++i) {

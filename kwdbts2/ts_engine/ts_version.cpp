@@ -40,8 +40,9 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
 
   // create new partition under exclusive lock
 
-  std::unique_ptr<TsPartitionVersion> partition(new TsPartitionVersion{start, start + interval, partition_id});
   auto new_version = std::make_unique<TsVGroupVersion>(*current);
+  std::unique_ptr<TsPartitionVersion> partition(new TsPartitionVersion{start, start + interval, partition_id});
+  partition->valid_memseg_ = new_version->valid_memseg_;
 
   {
     // create directory for new partition
@@ -62,11 +63,12 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
 }
 
 KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
-  if (update.empty_) {
+  if (update.empty) {
+    // empty update, do nothing
     return SUCCESS;
   }
-
   TsIOEnv *env = options_.io_env;
+
 
   // TODO(zzr): thinking concurrency control carefully.
   std::unique_lock lk{mu_};
@@ -74,25 +76,23 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
 
+  if (update.mem_segments_updated_) {
+    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(std::move(update.valid_memseg_));
+  }
   // looping over all updated partitions
-  for (auto par : update.updated_partitions_) {
-    auto partition_iter = current_->partitions_.find(par);
-    if (partition_iter == current_->partitions_.end()) {
-      LOG_ERROR("ApplyUpdate failed, partition not found");
-      return FAIL;
+  for (auto [par_id, par] : new_vgroup_version->partitions_) {
+    auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
+    if (update.mem_segments_updated_) {
+      new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
     }
-    auto new_partition_version = std::make_unique<TsPartitionVersion>(*partition_iter->second);
-    std::filesystem::path db_path = options_.db_path;
-    auto partition_dir =
-        db_path / VGroupDirName(vgroup_id_) / PartitionDirName(partition_iter->first);
 
-    if (update.partitions_to_create_.find(par) != update.partitions_to_create_.end()) {
+    if (update.partitions_created_.find(par_id) != update.partitions_created_.end()) {
       new_partition_version->directory_created_ = true;
     }
 
     // Process lastsegment deletion, used by Compact()
     {
-      auto it = update.delete_lastsegs_.find(par);
+      auto it = update.delete_lastsegs_.find(par_id);
       if (it != update.delete_lastsegs_.end()) {
         std::vector<std::shared_ptr<TsLastSegment>> tmp;
         for (auto last_segment : new_partition_version->last_segments_) {
@@ -106,10 +106,12 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
       }
     }
 
+    std::filesystem::path db_path = options_.db_path;
+    auto partition_dir = db_path / VGroupDirName(vgroup_id_) / PartitionDirName(par_id);
     // Process lastsegment creation, used by Flush() and Compact()
     {
       // TODO(zzr): Lazy open? add something like `TsLastSegmentHandler` to do this.
-      auto it = update.new_lastsegs_.find(par);
+      auto it = update.new_lastsegs_.find(par_id);
       if (it != update.new_lastsegs_.end()) {
         for (auto file_number : it->second) {
           std::unique_ptr<TsRandomReadFile> rfile;
@@ -125,23 +127,20 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
             LOG_ERROR("can not open file %s", LastSegmentFileName(file_number).c_str());
             return FAIL;
           }
-          LOG_INFO("Load :%s", filepath.c_str());
+          // LOG_INFO("Load :%s", filepath.c_str());
           new_partition_version->last_segments_.push_back(std::move(last_segment));
         }
       }
     }
 
-    { new_partition_version->mem_segments_ = update.valid_memseg_; }
-
-    new_vgroup_version->partitions_[par] = std::move(new_partition_version);
+    new_vgroup_version->partitions_[par_id] = std::move(new_partition_version);
   }
 
   current_ = std::move(new_vgroup_version);
   return SUCCESS;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(
-    uint32_t target_dbid) const {
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(uint32_t target_dbid) const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   for (const auto &[k, v] : partitions_) {
     const auto &[dbid, _] = k;
@@ -152,8 +151,7 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToCompact()
-    const {
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToCompact() const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   for (const auto &[k, v] : partitions_) {
     if (v->NeedCompact()) {
@@ -163,8 +161,8 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
-std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(
-    uint32_t target_dbid, timestamp64 target_time) const {
+std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
+                                                                        timestamp64 target_time) const {
   timestamp64 start = GetPartitionStartTime(target_time);
   auto it = partitions_.find({target_dbid, start});
   if (it == partitions_.end()) {
@@ -186,26 +184,36 @@ std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSe
   return result;
 }
 
+std::list<std::shared_ptr<TsMemSegment>> TsPartitionVersion::GetAllMemSegments() const {
+  if (valid_memseg_) {
+    return *valid_memseg_;
+  }
+  return {};
+}
+
 std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments() const {
   std::vector<std::shared_ptr<TsSegmentBase>> result;
-  result.reserve(mem_segments_.size() + last_segments_.size() + 1);
-  result.insert(result.end(), mem_segments_.begin(), mem_segments_.end());
+  auto mem_segs = GetAllMemSegments();
+
+  result.reserve(mem_segs.size() + last_segments_.size() + 1);
+  result.insert(result.end(), mem_segs.begin(), mem_segs.end());
   result.insert(result.end(), last_segments_.begin(), last_segments_.end());
   result.push_back(entity_segment_);
   return result;
 }
 
-KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const {
-    kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id);
-    for (auto &ts_span : ts_spans) {
-      assert(ts_span.begin <= ts_span.end);
-      del_item.range.ts_span = ts_span;
-      auto s = del_info_->AddDelItem(e_id, del_item);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
-        return s;
-      }
+KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
+                                       const KwLSNSpan &lsn) const {
+  kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id);
+  for (auto &ts_span : ts_spans) {
+    assert(ts_span.begin <= ts_span.end);
+    del_item.range.ts_span = ts_span;
+    auto s = del_info_->AddDelItem(e_id, del_item);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
+      return s;
     }
-    return KStatus::SUCCESS;
   }
+  return KStatus::SUCCESS;
+}
 }  // namespace kwdbts

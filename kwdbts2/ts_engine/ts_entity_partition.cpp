@@ -44,7 +44,13 @@ KStatus TsEntityPartition::GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_b
     }
   }
   // get block span in entity segment
-  auto s = partition_version_->GetEntitySegment()->GetBlockSpans(block_data_filter_, *ts_block_spans);
+  auto entity_segment = partition_version_->GetEntitySegment();
+  if (entity_segment == nullptr) {
+    // entity segment not exist
+    return KStatus::SUCCESS;
+  }
+
+  auto s = entity_segment->GetBlockSpans(block_data_filter_, *ts_block_spans);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetBlockSpans of mem segment failed.");
     return s;

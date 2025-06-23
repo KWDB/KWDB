@@ -1067,7 +1067,9 @@ KStatus TsEntitySegmentBuilder::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyF
                                                    uint64_t* file_number) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
   *file_number = version_manager_->NewFileNumber();
-  return env->NewAppendOnlyFile(root_path_ / LastSegmentFileName(*file_number), file);
+  auto filepath = root_path_ / LastSegmentFileName(*file_number);
+  LOG_INFO("Lastsegment %s created by Compaction", filepath.string().c_str());
+  return env->NewAppendOnlyFile(filepath, file);
 }
 
 KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
@@ -1076,14 +1078,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
   TsEngineSchemaManager* schema_mgr = schema_manager_;
-  // 2. Create a new last segment
-  std::unique_ptr<TsAppendOnlyFile> last_segment;
-  uint64_t file_number;
-  s = NewLastSegmentFile(&last_segment, &file_number);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, new last segment failed.")
-    return s;
-  }
+  
   std::unique_ptr<TsLastSegmentBuilder> builder = nullptr;
   // 3. Traverse the last segment data and write the data to the block segment
   std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;
@@ -1126,13 +1121,13 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
           // Create new last segment
           if (builder == nullptr && block->GetRowNum() > 0) {
             uint64_t file_number;
+            std::unique_ptr<TsAppendOnlyFile> last_segment;
             s = NewLastSegmentFile(&last_segment, &file_number);
             if (s != KStatus::SUCCESS) {
               LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, new last segment failed.")
               return s;
             }
-            builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(last_segment),
-                                                             file_number);
+            builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(last_segment), file_number);
           }
           // Writes the incomplete data back to the last segment
           for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
@@ -1209,13 +1204,13 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     // Create new last segment
     if (builder == nullptr && block->GetRowNum() > 0) {
       uint64_t file_number;
+      std::unique_ptr<TsAppendOnlyFile> last_segment;
       s = NewLastSegmentFile(&last_segment, &file_number);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, new last segment failed.")
         return s;
       }
-      builder =
-          std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(last_segment), file_number);
+      builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(last_segment), file_number);
     }
     // Writes the incomplete data back to the last segment
     for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {

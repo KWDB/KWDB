@@ -75,6 +75,8 @@ class TsVGroup {
 
   KStatus Init(kwdbContext_p ctx);
 
+  KStatus SetReady();
+
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
   KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
@@ -161,7 +163,6 @@ class TsVGroup {
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
-  TsMemSegmentManager* GetMemSegmentMgr();
   KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
 
   KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload);

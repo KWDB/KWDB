@@ -15,6 +15,13 @@
 
 namespace kwdbts {
 
+TsMemSegment::TsMemSegment(int32_t height) : skiplist_(comp_, &arena_, height) {}
+
+TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup)
+    : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
+  segment_.push_back(cur_mem_seg_);
+}
+
 // WAL CreateCheckPoint call this function to persistent metric datas.
 void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments) {
   {
@@ -426,4 +433,3 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 }
 
 }  //  namespace kwdbts
-
