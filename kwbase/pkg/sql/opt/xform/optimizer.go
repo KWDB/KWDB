@@ -245,6 +245,7 @@ func (o *Optimizer) Optimize() (_ opt.Expr, err error) {
 		}
 	} else {
 		o.mem.DealTSScan(root.(memo.RelExpr))
+		o.mem.AddOrderWithGroupWindow(root.(memo.RelExpr))
 	}
 	o.mem.SetRoot(root, rootProps)
 

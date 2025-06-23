@@ -78,6 +78,9 @@ EEIteratorErrCode StatisticSpecResolve::ResolveRender(kwdbContext_p ctx,
         (Sumfunctype::FIRSTROWTS == agg_type)) {
       ts_type_ = table_->GetFieldWithColNum(params.param(1).value())
                      ->get_storage_type();
+    } else if (Sumfunctype::MAX_EXTEND == agg_type ||
+               Sumfunctype::MIN_EXTEND == agg_type) {
+      tab = params.param(1).value();
     }
     //  LOG_DEBUG("scan outputcols : %d = %u\n", i, tab);
     Field *field = table_->GetFieldWithColNum(tab);
@@ -131,6 +134,7 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
   k_bool is_contain_last_point = false;  // for statistic last extend
   k_int64 add_column_invalid_point = 0;
   k_uint32 tag_last_size = 0;
+  k_int32 agg_extend = 0;
   std::vector<k_int64> tmp_tag_points_;
   k_int16 tag_index_{0};
   for (k_int32 i = 0; i < col_size; ++i) {
@@ -145,11 +149,12 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
     //   continue;
     //}
     k_uint32 tab = params.param(0).value();
+    k_int32 agg_type = spec_->aggtypes(i);
     Field *field = table_->GetFieldWithColNum(tab);
     if (nullptr == field) {
       Return(EEIteratorErrCode::EE_ERROR);
     }
-    k_int32 agg_type = spec_->aggtypes(i);
+
     table_->scan_agg_types_.push_back((Sumfunctype)agg_type);
 
     if (field->get_num() >= table_->min_tag_id_) {
@@ -176,10 +181,26 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
          agg_type == Sumfunctype::COUNT_ROWS)) {
       is_contain_sum_count = true;
     }
-
+    agg_extend = -1;
     if (field->get_num() < table_->min_tag_id_) {
+      auto tmp_agg_type = agg_type;
+      if (agg_type == Sumfunctype::MAX_EXTEND ||
+          agg_type == Sumfunctype::MIN_EXTEND) {
+        k_uint32 tab1 = params.param(1).value();
+        Field *field1 = table_->GetFieldWithColNum(tab1);
+        agg_extend = tab1;
+        if (field1->get_num() >= table_->min_tag_id_) {
+          if (agg_type == Sumfunctype::MAX_EXTEND) {
+            tmp_agg_type = Sumfunctype::MAX;
+          } else if (agg_type == Sumfunctype::MIN_EXTEND) {
+            tmp_agg_type = Sumfunctype::MIN;
+          }
+          agg_extend = -1;
+        }
+      }
       table_->scan_cols_.push_back(field->get_num());
-      table_->scan_real_agg_types_.push_back((Sumfunctype)agg_type);
+      table_->agg_extends_.push_back(agg_extend);
+      table_->scan_real_agg_types_.push_back((Sumfunctype)tmp_agg_type);
       if (agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) {
         k_int64 point = params.param(2).value();
         if (point != INT64_MAX) {
@@ -193,7 +214,8 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
     }
 
     // table_->scan_last_ts_points_.push_back(INT64_MAX);  // add invalid ts
-    if (agg_type == Sumfunctype::MIN || agg_type == Sumfunctype::MAX) {
+    if (agg_type == Sumfunctype::MIN || agg_type == Sumfunctype::MAX
+      || agg_type == Sumfunctype::MIN_EXTEND || agg_type == Sumfunctype::MAX_EXTEND) {
       is_contain_max_min = true;
     }
 
@@ -213,6 +235,7 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
 
   if (tag_last_size) {
     table_->scan_cols_.insert(table_->scan_cols_.begin(), tag_last_size, 0);
+    table_->agg_extends_.insert(table_->agg_extends_.begin(), tag_last_size, -1);
     table_->scan_real_agg_types_.insert(table_->scan_real_agg_types_.begin(),
                                         tag_last_size, Sumfunctype::LAST);
 
@@ -225,6 +248,7 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
   if (is_contain_sum_count) {
     insert_ts_index_ = 1;
     table_->scan_cols_.insert(table_->scan_cols_.begin(), 0);
+    table_->agg_extends_.insert(table_->agg_extends_.begin(), -1);
     table_->scan_real_agg_types_.insert(table_->scan_real_agg_types_.begin(),
                                         Sumfunctype::COUNT);
     add_column_invalid_point++;
@@ -233,6 +257,7 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
   if (is_contain_last) {
     insert_ts_index_++;
     table_->scan_cols_.insert(table_->scan_cols_.begin(), 0);
+    table_->agg_extends_.insert(table_->agg_extends_.begin(), -1);
     table_->scan_real_agg_types_.insert(table_->scan_real_agg_types_.begin(),
                                         Sumfunctype::LAST);
     add_column_invalid_point++;
@@ -241,6 +266,7 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
   if (is_contain_first) {
     insert_ts_index_++;
     table_->scan_cols_.insert(table_->scan_cols_.begin(), 0);
+    table_->agg_extends_.insert(table_->agg_extends_.begin(), -1);
     table_->scan_real_agg_types_.insert(table_->scan_real_agg_types_.begin(),
                                         Sumfunctype::FIRST);
     add_column_invalid_point++;
@@ -249,6 +275,7 @@ EEIteratorErrCode StatisticSpecResolve::ResolveScanCols(kwdbContext_p ctx) {
   if (!is_contain_sum_count && !is_contain_first && !is_contain_last && is_contain_max_min) {
     insert_ts_index_++;
     table_->scan_cols_.insert(table_->scan_cols_.begin(), 0);
+    table_->agg_extends_.insert(table_->agg_extends_.begin(), -1);
     table_->scan_real_agg_types_.insert(table_->scan_real_agg_types_.begin(),
                                         Sumfunctype::COUNT);
     add_column_invalid_point++;
@@ -421,6 +448,8 @@ EEIteratorErrCode StatisticSpecResolve::NewAggBaseField(kwdbContext_p ctx,
     }
     case Sumfunctype::MAX:
     case Sumfunctype::MIN:
+    case Sumfunctype::MAX_EXTEND:
+    case Sumfunctype::MIN_EXTEND:
     case Sumfunctype::FIRST:
     case Sumfunctype::LAST:
     case Sumfunctype::LAST_ROW:

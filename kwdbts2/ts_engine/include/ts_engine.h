@@ -83,15 +83,9 @@ class TSEngineV2Impl : public TSEngine {
                      uint32_t version = 0) override;
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
+
   KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
-                         std::shared_ptr<TsTableSchemaManager>& schema) override {
-    // TODO(liangbo01)  need input change version
-    auto s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    return KStatus::SUCCESS;
-  }
+                         std::shared_ptr<TsTableSchemaManager>& schema) override;
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {

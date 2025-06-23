@@ -520,6 +520,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
                                    std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
                                    std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
+                                   std::vector<k_int32> agg_extend_cols,
                                    std::vector<Sumfunctype> scan_agg_types,
                                    std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
                                    uint32_t table_version, TsStorageIterator** iter,
@@ -530,16 +531,11 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
   // TS_LSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
   if (scan_agg_types.empty()) {
-//    if (sorted) {
     ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
                                                   ts_scan_cols, table_schema_mgr, table_version, ASC);
-//    } else {
-//      ts_iter = new TsRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
-//                                            ts_scan_cols, table_schema_mgr, table_version);
-//    }
   } else {
     ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols, ts_scan_cols,
-                                      scan_agg_types, ts_points, table_schema_mgr, table_version);
+                                      agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, table_version);
   }
   KStatus s = ts_iter->Init(reverse);
   if (s != KStatus::SUCCESS) {

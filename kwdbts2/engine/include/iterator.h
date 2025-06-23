@@ -273,7 +273,7 @@ class TsStorageIterator {
    */
   virtual KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) = 0;
 
-  bool IsDisordered() {
+  virtual bool IsDisordered() {
     TsSubGroupPTIterator cur_iter(partition_table_iter_.get());
     cur_iter.Reset();
     while (true) {
@@ -408,9 +408,11 @@ class TsAggIterator : public TsStorageIterator {
   TsAggIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id, uint32_t subgroup_id,
                 vector<uint32_t>& entity_ids, vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                 std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points, uint32_t table_version) :
+                std::vector<k_int32> ts_agg_extend_cols, std::vector<Sumfunctype>& scan_agg_types,
+                std::vector<timestamp64>& ts_points, uint32_t table_version) :
                 TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, ts_col_type,
-                                  kw_scan_cols, ts_scan_cols, table_version), scan_agg_types_(scan_agg_types) {
+                                  kw_scan_cols, ts_scan_cols, table_version),
+                                  ts_agg_extend_cols_(ts_agg_extend_cols), scan_agg_types_(scan_agg_types) {
     // When creating an aggregate query iterator, the elements of the ts_scan_cols_ and scan_agg_types_ arrays
     // correspond one-to-one, and their lengths must be consistent.
     assert(scan_agg_types_.empty() || ts_scan_cols_.size() == scan_agg_types_.size());
@@ -601,7 +603,12 @@ class TsAggIterator : public TsStorageIterator {
    */
   int getActualColAggBatch(TsTimePartition* p_bt, MetricRowID real_row, uint32_t col_idx, Batch** b);
 
+  Batch* getMaxMinExtendResult(std::shared_ptr<MMapSegmentTable>& segment_tbl, BlockItem* block_item,
+                               uint32_t col_idx, int32_t extend_col_idx,
+                               void* mem, std::shared_ptr<void> var_mem);
+
  private:
+  std::vector<k_int32> ts_agg_extend_cols_;
   // The aggregation type corresponding to each column.
   // It can be empty, but if it is not empty, the size must be consistent with the size of scan.cols_
   std::vector<Sumfunctype> scan_agg_types_;

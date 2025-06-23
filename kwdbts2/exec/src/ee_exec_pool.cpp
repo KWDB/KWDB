@@ -141,11 +141,13 @@ void ExecPool::Routine(void *arg) {
   }
 }
 
-KStatus ExecPool::PushTask(ExecTaskPtr task_ptr) {
+KStatus ExecPool::PushTask(ExecTaskPtr task_ptr, bool no_check) {
   std::unique_lock unique_lock(lock_);
-  not_fill_cv_.wait(unique_lock, [this]() -> bool {
-    return ((task_queue_.size() < tq_num_) || is_tp_stop_);
-  });
+  if (!no_check) {
+    not_fill_cv_.wait(unique_lock, [this]() -> bool {
+      return ((task_queue_.size() < tq_num_) || is_tp_stop_);
+    });
+  }
   if (is_tp_stop_) {
     return KStatus::FAIL;
   }

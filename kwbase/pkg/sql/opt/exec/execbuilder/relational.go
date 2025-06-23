@@ -2184,6 +2184,14 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 		}
 		ep.outputCols.Set(int(aggregations[i].Col), outColIndex)
 		outColIndex++
+		if aggregations[i].Agg.Op() == opt.LastOp || aggregations[i].Agg.Op() == opt.FirstOp {
+			switch t := aggregations[i].Agg.(type) {
+			case *memo.FirstExpr:
+				aggInfos[i].IsExend = t.IsExtend
+			case *memo.LastExpr:
+				aggInfos[i].IsExend = t.IsExtend
+			}
+		}
 		// When it comes to ImputationOp,
 		// the subsequent plan will extract the aggregation function in the Imputation as the output column,
 		// so the output column of the subsequent aggregation function should be skipped by+2.

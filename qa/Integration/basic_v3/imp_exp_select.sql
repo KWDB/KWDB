@@ -136,3 +136,6 @@ select * from tb2 order by a;
 drop table tb2;
 
 EXPORT INTO CSV "nodelocal://1/tb19" FROM select avg(a) from (select tag1 as a from t1);
+
+use defaultdb;
+DROP database ts_db;

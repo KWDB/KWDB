@@ -70,6 +70,38 @@ func (b *Builder) constructProject(input memo.RelExpr, cols []scopeColumn) memo.
 	return b.factory.ConstructProject(input, projections, passthrough)
 }
 
+// constructProjectInAggExtend needs to passthrough the cols which can apply extend.
+// eg: group :  max_extend(e3,e1),max(e3)
+//       |
+//     render :  e1,e3
+//       |
+//     tsscan :  ts,e1,e2,e3,...
+// input always is TSSanExpr, cols are the cols need to project or passthrough, set
+// is the col ids which can apply extend.
+func (b *Builder) constructProjectInAggExtend(
+	input memo.RelExpr, cols []scopeColumn, set opt.ColSet,
+) memo.RelExpr {
+	var passthrough opt.ColSet
+	projections := make(memo.ProjectionsExpr, 0, len(cols))
+
+	// Deduplicate the columns; we only need to project each column once.
+	colSet := opt.ColSet{}
+	for i := range cols {
+		id, scalar := cols[i].id, cols[i].scalar
+		if !colSet.Contains(id) {
+			if scalar == nil {
+				passthrough.Add(id)
+			} else {
+				projections = append(projections, b.factory.ConstructProjectionsItem(scalar, id))
+			}
+			colSet.Add(id)
+		}
+	}
+	passthrough.UnionWith(set)
+
+	return b.factory.ConstructProject(input, projections, passthrough)
+}
+
 // dropOrderingAndExtraCols removes the ordering in the scope and projects away
 // any extra columns.
 func (b *Builder) dropOrderingAndExtraCols(s *scope) {
@@ -298,6 +330,11 @@ func (b *Builder) analyzeSelectList(
 			expansions = append(expansions, e)
 		}
 	}
+	if inScope.checkAggExtendFlag(isSingleTsTable) && !inScope.checkAggExtendFlag(existOtherAgg) {
+		if len(*selects) != inScope.AggExHelper.aggCount {
+			inScope.setAggExtendFlag(existNonAggCol)
+		}
+	}
 	if b.insideViewDef {
 		*selects = expansions
 	}
@@ -308,6 +345,7 @@ func (b *Builder) analyzeSelectList(
 //
 // See Builder.buildStmt for a description of the remaining input values.
 func (b *Builder) buildProjectionList(inScope *scope, projectionsScope *scope) {
+	inScope.AggExHelper.bType = buildProjection
 	for i := range projectionsScope.cols {
 		col := &projectionsScope.cols[i]
 		if scalar := b.buildScalar(col.getExpr(), inScope, projectionsScope, col, nil); scalar != nil {
@@ -323,6 +361,7 @@ func (b *Builder) buildProjectionList(inScope *scope, projectionsScope *scope) {
 			}
 		}
 	}
+	inScope.AggExHelper.bType = buildNone
 }
 
 // resolveColRef looks for the common case of a standalone column reference

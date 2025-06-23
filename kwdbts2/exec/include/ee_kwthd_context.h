@@ -67,6 +67,8 @@ class KWThdContext {
     SetCountForLimit(thd->GetCountForLimit());
     wtyp_ = thd->wtyp_;
     window_field_ = thd->window_field_;
+    window_start_field_ = thd->window_start_field_;
+    window_end_field_ = thd->window_end_field_;
   }
 
  public:
@@ -74,6 +76,8 @@ class KWThdContext {
   bool auto_quit_{false};
   WindowGroupType wtyp_{WindowGroupType::EE_WGT_UNKNOWN};
   Field* window_field_{nullptr};
+  Field* window_start_field_{nullptr};
+  Field* window_end_field_{nullptr};
 };
 
 #define current_thd KWThdContext::thd_

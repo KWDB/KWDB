@@ -21,8 +21,6 @@ SHOW RETENTIONS ON TABLE tsdb.t;
 SHOW RETENTIONS ON TABLE tsdb.t1;
 SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't';
 SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't1';
-select * from tsdb.t;  -- avoid table has not been created by storage
-select * from tsdb.t1;
 alter ts database tsdb set Retentions = 15d; -- tsdb, t1: 15d, t:10d
 SELECT RETENTIONS from tsdb.information_schema.schemata where schema_name='public' order by RETENTIONS;
 SHOW RETENTIONS ON TABLE tsdb.t;
