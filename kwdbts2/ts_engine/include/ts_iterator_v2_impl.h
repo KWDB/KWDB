@@ -185,8 +185,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   bool has_first_row_col_;
   bool has_last_row_col_;
-  bool first_row_need_candidate_;
-  bool last_row_need_candidate_;
+  bool only_count_ts_{false};
+  bool only_need_one_record_{false};
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 };
