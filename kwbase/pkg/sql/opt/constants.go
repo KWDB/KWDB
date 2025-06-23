@@ -60,6 +60,9 @@ const (
 
 	// HasFirst is set when query includes last
 	HasFirst = 1 << 5
+
+	// NotPruneGapFill is set to avoid dead loops caused by unprune timebucketgapfill col.
+	NotPruneGapFill = 1 << 6
 )
 
 // AutoLimitQuantity is quantity of autolimit
@@ -239,6 +242,13 @@ const (
 	UseStatistic = 1 << 4
 	// PruneTSFinalAgg represents prune ae engine final agg
 	PruneTSFinalAgg = 1 << 5
+
+	// ApplyInsideOut is setted when the GroupByExpr or ScalarGroupByExpr is
+	// contruct in inside-out case, use for adjust output rows.
+	ApplyInsideOut = 1 << 6
+
+	// ApplyOutsideIn is setted when the sql can apply outside-in.
+	ApplyOutsideIn = 1 << 7
 )
 
 // TimeBucketOpt return true if has TimeBucketPushAgg opt
@@ -274,6 +284,21 @@ func (v GroupOptType) WithSumInt() bool {
 // UseStatisticOpt return true that has UseStatistic opt
 func (v GroupOptType) UseStatisticOpt() bool {
 	return v&UseStatistic > 0
+}
+
+// CanApplyInsideOut return true in the case can use inside-out.
+func (v GroupOptType) CanApplyInsideOut() bool {
+	return v&ApplyInsideOut > 0
+}
+
+// CanApplyOutsideIn return true in the case can use ouside-in.
+func (v GroupOptType) CanApplyOutsideIn() bool {
+	return v&ApplyOutsideIn > 0
+}
+
+// ResetApplyOutsideIn return true in the case can use ouside-in.
+func (v GroupOptType) ResetApplyOutsideIn() {
+	v &^= ApplyOutsideIn
 }
 
 // String return opt all type name
