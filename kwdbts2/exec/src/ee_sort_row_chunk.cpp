@@ -46,29 +46,22 @@ bool HasNonConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
     if (col_info_[order.col_idx].is_string) {
       auto order_direction = order.direction;
 
+      // Check null indicators
+      k_bool a_null = !*reinterpret_cast<k_bool*>(a_ptr + col_offset_[order.col_idx]);
+      k_bool b_null = !*reinterpret_cast<k_bool*>(b_ptr + col_offset_[order.col_idx]);
+      if (a_null) {
+        if (b_null) {
+          continue;
+        }
+        return true;
+      } else if (b_null) {
+        return false;
+      }
       // Get the pointers to the actual string data
       DatumPtr a_data = *reinterpret_cast<DatumPtr*>(
           a_ptr + col_offset_[order.col_idx] + NULL_INDECATOR_WIDE);
       DatumPtr b_data = *reinterpret_cast<DatumPtr*>(
           b_ptr + col_offset_[order.col_idx] + NULL_INDECATOR_WIDE);
-      if (a_data == nullptr) {
-        return true;
-      }
-      if (b_data == nullptr) {
-        return false;
-      }
-
-      // Check null indicators
-      k_bool* a_null = reinterpret_cast<k_bool*>(a_ptr);
-      k_bool* b_null = reinterpret_cast<k_bool*>(b_ptr);
-      if (*a_null) {
-        if (*b_null) {
-          continue;
-        }
-        return true;
-      } else if (*b_null) {
-        return false;
-      }
       auto a_len = *reinterpret_cast<k_uint16*>(a_data);
       auto b_len = *reinterpret_cast<k_uint16*>(b_data);
 
@@ -142,6 +135,9 @@ k_bool SortRowChunk::Initialize() {
     sort_row_size_ += NULL_INDECATOR_WIDE;  // null indicator
     if (col_info_[sort_col.col_idx].is_string) {
       if (force_constant_) {
+        if (col_info_[sort_col.col_idx].max_string_len == 0) {
+          col_info_[sort_col.col_idx].max_string_len = col_info_[sort_col.col_idx].storage_len;
+        }
         sort_row_size_ +=
             col_info_[sort_col.col_idx].max_string_len + STRING_WIDE;
       } else {
@@ -253,13 +249,13 @@ KStatus SortRowChunk::Append(DataChunkPtr& data_chunk_ptr, k_uint32& begin_row,
     for (auto& order_i : order_info_) {
       const auto col = order_i.col_idx;
       const k_bool is_null = data_chunk_ptr->IsNull(begin_row, col);
-      row_data_ptr[col_offset_[col]] = is_null ? 1 : 0;
+      row_data_ptr[col_offset_[col]] = is_null ? 0 : 1;
       k_uint8* col_ptr = reinterpret_cast<k_uint8*>(
           row_data_ptr + col_offset_[col] + NULL_INDECATOR_WIDE);
       k_uint8* val_ptr =
           reinterpret_cast<k_uint8*>(data_chunk_ptr->GetData(begin_row, col));
       if (!is_null) {
-        if (col_info_[col].is_string) {
+        if (col_info_[col].is_string && !force_constant_) {
           auto len = reinterpret_cast<k_uint16*>(val_ptr);
           col_info_[col].max_string_len =
               std::max(col_info_[col].max_string_len, *len);
@@ -298,7 +294,7 @@ KStatus SortRowChunk::Append(DataChunkPtr& data_chunk_ptr, k_uint32& begin_row,
         continue;
       }
       const k_bool is_null = data_chunk_ptr->IsNull(begin_row, col);
-      row_data_ptr[col_offset_[col]] = is_null ? 1 : 0;
+      row_data_ptr[col_offset_[col]] = is_null ? 0 : 1;
       char* col_ptr = row_data_ptr + col_offset_[col] + NULL_INDECATOR_WIDE;
       if (!is_null) {
         k_uint8* val_ptr =
@@ -372,9 +368,7 @@ KStatus SortRowChunk::Append(SortRowChunkPtr& data_chunk_ptr,
       DatumPtr input_col_data_ptr =
           input_row_data_ptr + data_chunk_ptr->col_offset_[col];
       if (col_info_[col].is_string) {
-        k_bool is_null;
-        memcpy(&is_null, input_col_data_ptr, NULL_INDECATOR_WIDE);
-        if (is_null) {
+        if (!*reinterpret_cast<k_bool*>(input_col_data_ptr)) {
           row_data_ptr[col_offset_[col]] = 1;
           memset(row_data_ptr + col_offset_[col] + NULL_INDECATOR_WIDE, 0,
                  col_info_[col].max_string_len + STRING_WIDE);
@@ -415,9 +409,16 @@ KStatus SortRowChunk::Append(SortRowChunkPtr& data_chunk_ptr,
 
 DatumPtr SortRowChunk::GetData(k_uint32 row, k_uint32 col) {
   if (!all_constant_ && col_info_[col].is_string) {
-    auto non_constant_offset = reinterpret_cast<k_uint64*>(
-        data_ + row * row_size_ + col_offset_[col] + NULL_INDECATOR_WIDE);
-    return non_constant_data_ + *non_constant_offset;
+    if (non_constant_save_mode_ == OFFSET_MODE) {
+      auto non_constant_offset = reinterpret_cast<k_uint64*>(
+          data_ + row * row_size_ + col_offset_[col] + NULL_INDECATOR_WIDE);
+      return non_constant_data_ + *non_constant_offset;
+    } else if (non_constant_save_mode_ == POINTER_MODE) {
+      auto non_constant_offset = reinterpret_cast<DatumPtr*>(
+          data_ + row * row_size_ + col_offset_[col] + NULL_INDECATOR_WIDE);
+      return *non_constant_offset;
+    }
+    return nullptr;
   }
   return data_ + row * row_size_ + col_offset_[col] + NULL_INDECATOR_WIDE;
 }
@@ -498,11 +499,11 @@ k_int32 SortRowChunk::NextLine() {
 void SortRowChunk::ResetLine() { current_line_ = -1; }
 
 bool SortRowChunk::IsNull(k_uint32 row, k_uint32 col) {
-  return (data_ + row * row_size_ + col_offset_[col])[0] != 0;
+  return (data_ + row * row_size_ + col_offset_[col])[0] != 1;
 }
 
 bool SortRowChunk::IsNull(k_uint32 col) {
-  return (data_ + current_line_ * row_size_ + col_offset_[col])[0] != 0;
+  return (data_ + current_line_ * row_size_ + col_offset_[col])[0] != 1;
 }
 
 bool SortRowChunk::SetCurrentLine(k_int32 line) {
@@ -590,10 +591,10 @@ KStatus ISortableChunk::EncodeColData(k_uint32 col, k_uint8* col_ptr,
       }
       break;
     case roachpb::DataType::BOOL:
-      Radix::EncodeData<k_bool>(col_ptr, val_ptr);
+      memcpy(col_ptr, val_ptr, BOOL_WIDE);
       break;
     case roachpb::DataType::NULLVAL:
-      Radix::EncodeData<k_bool>(col_ptr, val_ptr);
+      memcpy(col_ptr, val_ptr, BOOL_WIDE);
       break;
     default:
       LOG_ERROR("Type(%d) is not supported in order by",
@@ -650,10 +651,10 @@ KStatus ISortableChunk::DecodeColData(k_uint32 col, DatumPtr col_ptr,
       }
       break;
     case roachpb::DataType::BOOL:
-      Radix::DecodeData<k_bool>(cp, val_ptr);
+      memcpy(cp, val_ptr, BOOL_WIDE);
       break;
     case roachpb::DataType::NULLVAL:
-      Radix::DecodeData<k_bool>(cp, val_ptr);
+      memcpy(cp, val_ptr, BOOL_WIDE);
       break;
     default:
       LOG_ERROR("Type(%d) is not supported in order by",
@@ -711,10 +712,10 @@ KStatus ISortableChunk::EncodeColDataInvert(k_uint32 col, k_uint8* col_ptr,
       }
       break;
     case roachpb::DataType::BOOL:
-      Radix::EncodeDataInvert<k_bool>(col_ptr, val_ptr);
+      col_ptr[0] = ~val_ptr[0];
       break;
     case roachpb::DataType::NULLVAL:
-      Radix::EncodeDataInvert<k_bool>(col_ptr, val_ptr);
+      col_ptr[0] = ~val_ptr[0];
       break;
     default:
       LOG_ERROR("Type(%d) is not supported in order by",
@@ -772,10 +773,10 @@ KStatus ISortableChunk::DecodeColDataInvert(k_uint32 col, DatumPtr col_ptr,
       }
       break;
     case roachpb::DataType::BOOL:
-      Radix::DecodeDataInvert<k_bool>(cp, val_ptr);
+      cp[0] = ~val_ptr[0];
       break;
     case roachpb::DataType::NULLVAL:
-      Radix::DecodeDataInvert<k_bool>(cp, val_ptr);
+      cp[0] = ~val_ptr[0];
       break;
     default:
       LOG_ERROR("Type(%d) is not supported in order by",
@@ -857,7 +858,60 @@ k_uint32 SortRowChunk::ComputeRowSizeIfAllConstant() {
   }
   return estimate_row_size_;
 }
-
+KStatus SortRowChunk::Sort() {
+  if (count_ == 0 || count_ == 1 || is_ordered_) {
+    return KStatus::SUCCESS;
+  }
+  auto temp_data = KNEW char[count_ * row_size_];
+  if (temp_data == nullptr) {
+    return KStatus::FAIL;
+  }
+  memcpy(temp_data, data_, count_ * row_size_);
+  if (all_constant_in_order_col_) {
+    if (count_ >= max_output_count_) {
+      RadixSortMSD(temp_data, data_, 0, count_, 0);
+    } else {
+      RadixSortLSD(temp_data, data_);
+    }
+    if (!all_constant_) {
+      if (count_ < max_output_count_ && non_constant_save_mode_ == OFFSET_MODE) {
+      } else {
+        //  Reorder non-constant data
+        count_ = std::min(count_, max_output_count_);
+        for (k_uint32 i = 0; i < count_; ++i) {
+          ReplaceNonConstantRowData(data_ + i * row_size_,
+                                    non_constant_data_, i,
+                                    non_constant_save_mode_);
+        }
+      }
+      is_ordered_ = true;
+      return KStatus::SUCCESS;
+    }
+  } else {
+    ChangeOffsetToPointer();
+    auto compare = HasNonConstantColumnCompare(this);
+    std::vector<DatumPtr> row_ptrs;
+    row_ptrs.reserve(count_);
+    for (k_uint32 i = 0; i < count_; ++i) {
+      row_ptrs.push_back(GetRowData(i));
+    }
+    if (count_ >= max_output_count_) {
+      count_ = max_output_count_;
+      std::partial_sort(row_ptrs.begin(), row_ptrs.begin() + count_,
+                        row_ptrs.end(), compare);
+    } else {
+      std::sort(row_ptrs.begin(), row_ptrs.end(), compare);
+    }
+    for (k_uint32 i = 0; i < count_; ++i) {
+      memcpy(data_ + i * row_size_, row_ptrs[i], row_size_);
+      ReplaceNonConstantRowData(data_ + i * row_size_,
+                                non_constant_data_, i,
+                                non_constant_save_mode_);
+    }
+  }
+  is_ordered_ = true;
+  return KStatus::SUCCESS;
+}
 KStatus SortRowChunk::CopyWithSortFrom(SortRowChunkPtr& data_chunk_ptr) {
   count_ = *(data_chunk_ptr->GetCount());
   auto src_data = data_chunk_ptr->GetData();
@@ -1001,8 +1055,8 @@ void SortRowChunk::RadixSortMSD(DatumPtr src_data, DatumPtr dest_data,
 
   for (int i = 0; i < 256; ++i) {
     if (counts[i] > 1) {
-      k_uint32 new_start = start + temp[i] - counts[i];
-      k_uint32 new_end = start + temp[i];
+      k_uint32 new_start = temp[i] - counts[i];
+      k_uint32 new_end = temp[i];
       if (new_start >= max_output_count_) {
         break;
       }
@@ -1016,9 +1070,7 @@ void SortRowChunk::ReplaceNonConstantRowData(DatumPtr src_row_data,
                                              k_uint32 row_index,
                                              NonConstantSaveMode mode) {
   for (auto& offset : non_constant_col_offsets_) {
-    k_bool is_null;
-    std::memcpy(&is_null, src_row_data + offset, NULL_INDECATOR_WIDE);
-    if (is_null) {
+    if (!*reinterpret_cast<k_bool*>(src_row_data + offset)) {
       continue;
     }
     DatumPtr non_constant_ptr;
@@ -1054,8 +1106,7 @@ void SortRowChunk::ChangeOffsetToPointer() {
   for (k_uint32 i = 0; i < count_; ++i) {
     for (auto& offset : non_constant_col_offsets_) {
       auto col_ptr = data_ + i * row_size_ + offset;
-      auto is_null = reinterpret_cast<k_bool*>(col_ptr);
-      if (*is_null) {
+      if (!*reinterpret_cast<k_bool*>(col_ptr)) {
         continue;
       }
       auto non_constant_offset =
@@ -1075,8 +1126,7 @@ void SortRowChunk::ChangePointerToOffset() {
   for (k_uint32 i = 0; i < count_; ++i) {
     for (auto& offset : non_constant_col_offsets_) {
       auto col_ptr = data_ + i * row_size_ + offset;
-      auto is_null = reinterpret_cast<k_bool*>(col_ptr);
-      if (*is_null) {
+      if (!*reinterpret_cast<k_bool*>(col_ptr)) {
         continue;
       }
       DatumPtr non_constant_ptr =

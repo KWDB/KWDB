@@ -34,9 +34,6 @@ KStatus MemRowContainer::Init() {
               err_info.errmsg.c_str());
     return FAIL;
   }
-  line_chunk_indexer_.clear();
-  cumulative_count_.clear();
-  cumulative_count_.push_back(0);
   return SUCCESS;
 }
 
@@ -50,11 +47,6 @@ void MemRowContainer::Reset() {
 KStatus MemRowContainer::Append(DataChunkPtr &chunk) {
     if (chunk->Count() == 0) {
       return SUCCESS;
-    }
-    k_uint16 chunk_index = mem_chunk_ptrs_.size();
-    cumulative_count_.push_back(cumulative_count_.back() + chunk->Count());
-    for (k_uint32 i = 0; i < chunk->Count(); i++) {
-      line_chunk_indexer_.emplace_back(chunk_index);
     }
     count_ += chunk->Count();
     mem_chunk_ptrs_.push_back(std::move(chunk));
@@ -75,60 +67,39 @@ KStatus MemRowContainer::Append(std::queue<DataChunkPtr>& buffer) {
 }
 
 k_int32 MemRowContainer::NextLine() {
-  if (current_line_ + 1 >= count_) {
+  if (current_sel_idx_ + 1 >= count_) {
     return -1;
   }
 
-  ++current_line_;
+  ++current_sel_idx_;
   if (!selection_.empty()) {
-    return selection_[current_line_];  // for sort
+    return selection_[current_sel_idx_];  // for sort
   } else {
-    return current_line_;
+    return current_sel_idx_;
   }
 }
 
 bool MemRowContainer::IsNull(k_uint32 row, k_uint32 col) {
-  k_uint32 batch_index = 0;
-  k_uint32 row_in_chunk = 0;
-  GetRowInCacheChunks(row, &batch_index, &row_in_chunk);
-  return mem_chunk_ptrs_[batch_index]->IsNull(row_in_chunk, col);
+    return sorted_chunk_ptr_->IsNull(row, col);
 }
 
 bool MemRowContainer::IsNull(k_uint32 col) {
-    k_uint32 batch_index = 0;
-  k_uint32 row_in_chunk = 0;
-  k_int32 reqRow =
-      selection_.empty() ? current_line_ : selection_[current_line_];
-  GetRowInCacheChunks(reqRow, &batch_index, &row_in_chunk);
-  return mem_chunk_ptrs_[batch_index]->IsNull(row_in_chunk, col);
+    return sorted_chunk_ptr_->IsNull(selection_[current_sel_idx_], col);
 }
 
 DatumPtr MemRowContainer::GetData(k_uint32 row, k_uint32 col) {
-    k_uint32 batch_index = 0;
-  k_uint32 row_in_chunk = 0;
-  GetRowInCacheChunks(row, &batch_index, &row_in_chunk);
-  return mem_chunk_ptrs_[batch_index]->GetData(row_in_chunk, col);
+    return sorted_chunk_ptr_->GetData(row, col);
 }
 
 DatumPtr MemRowContainer::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
-    k_uint32 batch_index = 0;
-  k_uint32 row_in_chunk = 0;
-  GetRowInCacheChunks(row, &batch_index, &row_in_chunk);
-  return mem_chunk_ptrs_[batch_index]->GetData(row_in_chunk, col, len);
+    return sorted_chunk_ptr_->GetData(row, col, len);
 }
 
 DatumPtr MemRowContainer::GetData(k_uint32 col) {
-  k_uint32 batch_index = 0;
-  k_uint32 row_in_chunk = 0;
-  k_int32 reqRow =
-      selection_.empty() ? current_line_ : selection_[current_line_];
-  GetRowInCacheChunks(reqRow, &batch_index, &row_in_chunk);
-  return mem_chunk_ptrs_[batch_index]->GetData(row_in_chunk, col);
+    return sorted_chunk_ptr_->GetData(selection_[current_sel_idx_], col);
 }
 
 k_uint32 MemRowContainer::ComputeCapacity() {
-  // Cautiousness: OptimalDiskDataSize * 8 < 7 * col_num
-  // (capacity_ + 7)/8 * col_num + capacity_ * row_size_ <= OptimalDiskDataSize
   int capacity = (OptimalDiskDataSize * 8 - 7 * col_num_) /
                  (col_num_ + 8 * static_cast<int>(row_size_));
   if (capacity < 2) {
@@ -138,13 +109,6 @@ k_uint32 MemRowContainer::ComputeCapacity() {
   }
 }
 
-void MemRowContainer::GetRowInCacheChunks(k_uint32 row, k_uint32* chunk_index,
-                               k_uint32* row_in_chunk) {
-  *chunk_index = line_chunk_indexer_[row];
-  *row_in_chunk = row - cumulative_count_[*chunk_index];
-  return;
-}
-
 EEIteratorErrCode MemRowContainer::NextChunk(DataChunkPtr& data_chunk) {
   if (disorder_) {
     if (count_ == 0) {
@@ -152,7 +116,6 @@ EEIteratorErrCode MemRowContainer::NextChunk(DataChunkPtr& data_chunk) {
     }
     data_chunk = std::move(mem_chunk_ptrs_.back());
     mem_chunk_ptrs_.pop_back();
-    cumulative_count_.pop_back();
     count_ -= data_chunk->Count();
     return EEIteratorErrCode::EE_OK;
   }
@@ -161,6 +124,13 @@ EEIteratorErrCode MemRowContainer::NextChunk(DataChunkPtr& data_chunk) {
 
 void MemRowContainer::Sort() {
   // selection_ init
+  sorted_chunk_ptr_ = std::make_unique<DataChunk>(col_info_, col_num_, count_);
+  if (!sorted_chunk_ptr_->Initialize()) {
+    return;
+  }
+  for (auto& chunk : mem_chunk_ptrs_) {
+    sorted_chunk_ptr_->Append(chunk.get());
+  }
   selection_.resize(count_);
   for (int i = 0; i < count_; i++) {
     selection_[i] = i;
@@ -170,16 +140,10 @@ void MemRowContainer::Sort() {
   auto it_begin = selection_.begin();
   auto it_end = selection_.end();
 
+  disorder_ = false;
   // sort
   OrderColumnCompare cmp(this, order_info_);
-  if (count_ > 30000) {
-    __gnu_parallel::sort(it_begin, it_end, cmp);
-
-  } else {
-    std::stable_sort(it_begin, it_end, cmp);
-  }
-
-  disorder_ = false;
+  std::sort(it_begin, it_end, cmp);
 }
 
 }  // namespace kwdbts
