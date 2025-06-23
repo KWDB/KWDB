@@ -111,12 +111,11 @@ class TsVersionUpdate {
   std::map<PartitionIdentifier, std::set<uint64_t>> new_lastsegs_;
   std::map<PartitionIdentifier, std::set<uint64_t>> delete_lastsegs_;
   std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
-  std::shared_ptr<TsEntitySegment> entity_segment_;
+  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegment>> entity_segment_;
 
   std::mutex mu_;
 
   bool mem_segments_updated_ = false;
-  bool entity_segment_updated_ = false;
   bool empty = true;
 
  public:
@@ -141,10 +140,9 @@ class TsVersionUpdate {
     empty = false;
   }
 
-  void SetEntitySegment(std::shared_ptr<TsEntitySegment> entity_segment) {
-    entity_segment_ = entity_segment;
+  void SetEntitySegment(const PartitionIdentifier &partition_id, std::shared_ptr<TsEntitySegment> entity_segment) {
+    entity_segment_[partition_id] = entity_segment;
     empty = false;
-    entity_segment_updated_ = true;
   }
 };
 

@@ -145,8 +145,9 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
     }
 
     // Process entity segment update, used by Compact()
-    if (update.entity_segment_updated_) {
-      new_partition_version->entity_segment_ = update.entity_segment_;
+    auto it = update.entity_segment_.find(par_id);
+    if (it != update.entity_segment_.end()) {
+      new_partition_version->entity_segment_ = it->second;
     }
 
     // VGroupVersion accepts the new partition version

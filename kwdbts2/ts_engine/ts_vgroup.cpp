@@ -419,7 +419,7 @@ KStatus TsVGroup::Compact(int thread_num) {
           update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
         }
 
-        update.SetEntitySegment(entity_segment);
+        update.SetEntitySegment(cur_partition->GetPartitionIdentifier(), entity_segment);
       }
     });
   }
