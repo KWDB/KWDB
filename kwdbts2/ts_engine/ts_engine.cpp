@@ -246,6 +246,25 @@ KStatus TSEngineV2Impl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id,
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+                                          std::shared_ptr<TsTableSchemaManager>& schema) {
+  std::shared_ptr<TsTable> tb;
+  ErrorInfo err_info;
+  // Try to obtain the table(will create table if table is not created) to avoid incomplete asynchronous table creation,
+  // if the table is not created, the table schema manager cannot be retrieved.
+  KStatus s = GetTsTable(ctx, table_id, tb, true, err_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get TsTable failed, table id: %lu, error info: %s", table_id, err_info.errmsg.c_str());
+    return s;
+  }
+  // TODO(liangbo01)  need input change version
+  s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaMgr failed. table id: %lu", table_id);
+  }
+  return s;
+}
+
 KStatus TSEngineV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                                            const char* transaction_id, const uint32_t cur_version,
                                            const uint32_t new_version,
@@ -499,7 +518,7 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
 KStatus TSEngineV2Impl::AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) {
   LOG_INFO("Alter life time on table %lu start.", table_id);
   std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
-  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_mgr);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TSEngineV2Impl get table schema manager failed, table id: %lu", table_id);
     return s;
@@ -609,13 +628,13 @@ KStatus TSEngineV2Impl::TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, c
     return s;
   }
 
-  s = CreateCheckpoint(ctx);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to CreateCheckpoint.")
-  #ifdef WITH_TESTS
-    return s;
-  #endif
-  }
+//  s = CreateCheckpoint(ctx);
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to CreateCheckpoint.")
+//  #ifdef WITH_TESTS
+//    return s;
+//  #endif
+//  }
 
   return KStatus::SUCCESS;
 }
