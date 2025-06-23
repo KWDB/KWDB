@@ -116,6 +116,7 @@ class TsVersionUpdate {
   std::mutex mu_;
 
   bool mem_segments_updated_ = false;
+  bool entity_segment_updated_ = false;
   bool empty = true;
 
  public:
@@ -143,6 +144,7 @@ class TsVersionUpdate {
   void SetEntitySegment(std::shared_ptr<TsEntitySegment> entity_segment) {
     entity_segment_ = entity_segment;
     empty = false;
+    entity_segment_updated_ = true;
   }
 };
 
