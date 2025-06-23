@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,8 +31,8 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "ts_file_vector_index.h"
 #include "sys_utils.h"
+#include "ts_file_vector_index.h"
 
 namespace kwdbts {
 
@@ -323,7 +324,7 @@ class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
   char* mmap_start_ = nullptr;
   char* mmap_end_ = nullptr;
   char* dest_ = nullptr;
-  char* synced_ = nullptr; // address before synced_ are synced by msync
+  char* synced_ = nullptr;  // address before synced_ are synced by msync
 
   const size_t page_size_;
   size_t mmap_size_;

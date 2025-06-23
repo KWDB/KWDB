@@ -290,12 +290,12 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& 
 
 TsEntityBlock::TsEntityBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
                              std::vector<AttributeInfo>& metric_schema,
-                             TsEntitySegment* entity_segment_)
+                             TsEntitySegment* entity_segment)
     : table_id_(table_id),
       table_version_(table_version),
       entity_id_(entity_id),
       metric_schema_(metric_schema),
-      entity_segment_(entity_segment_) {
+      entity_segment_(entity_segment) {
   n_cols_ = metric_schema.size() + 1;
   column_blocks_.resize(n_cols_);
   for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
@@ -1078,7 +1078,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
   TsEngineSchemaManager* schema_mgr = schema_manager_;
-  
+
   std::unique_ptr<TsLastSegmentBuilder> builder = nullptr;
   // 3. Traverse the last segment data and write the data to the block segment
   std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;

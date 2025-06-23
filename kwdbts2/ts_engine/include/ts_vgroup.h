@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <list>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -68,8 +69,8 @@ class TsVGroup {
  public:
   TsVGroup() = delete;
 
-  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
-           TsEngineSchemaManager* schema_mgr, bool enable_compact_thread = true);
+  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+           bool enable_compact_thread = true);
 
   ~TsVGroup();
 
@@ -79,8 +80,8 @@ class TsVGroup {
 
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
-  KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
-                  TSEntityID entity_id, TSSlice* payload, bool write_wal);
+  KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
+                  TSSlice* payload, bool write_wal);
 
   std::filesystem::path GetPath() const;
 
@@ -101,7 +102,7 @@ class TsVGroup {
     std::shared_ptr<TsMemSegment> imm_segment;
     mem_segment_mgr_.SwitchMemSegment(&imm_segment);
     assert(imm_segment.get() != nullptr);
-    
+
     // Update vresion before flush.
     TsVersionUpdate update;
     std::list<std::shared_ptr<TsMemSegment>> memsegs;
@@ -115,9 +116,7 @@ class TsVGroup {
     return s;
   }
 
-  void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) {
-    mem_segment_mgr_.SwitchMemSegment(imm_segment);
-  }
+  void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
   KStatus Compact(int thread_num = 1);
 
@@ -128,38 +127,33 @@ class TsVGroup {
 
   KStatus UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn);
 
-  KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN &last_lsn);
+  KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
-  KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN &last_lsn);
+  KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs);
 
   KStatus CreateCheckpointInternal(kwdbContext_p ctx);
 
-  KStatus GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
-                      std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
-                      std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
-                      std::vector<Sumfunctype> scan_agg_types,
-                      std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                      uint32_t table_version, TsStorageIterator** iter,
-                      std::shared_ptr<TsVGroup> vgroup,
+  KStatus GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids, std::vector<KwTsSpan> ts_spans,
+                      DATATYPE ts_col_type, std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
+                      std::vector<Sumfunctype> scan_agg_types, std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                      uint32_t table_version, TsStorageIterator** iter, std::shared_ptr<TsVGroup> vgroup,
                       std::vector<timestamp64> ts_points, bool reverse, bool sorted);
 
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log);
 
-  KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
-                   std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete);
+  KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete);
 
   uint32_t GetVGroupID();
 
-  KStatus DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag,
-                      TSEntityID e_id, uint64_t* count, uint64_t mtr_id);
+  KStatus DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag, TSEntityID e_id, uint64_t* count,
+                       uint64_t mtr_id);
   KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
-                    const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id);
+                     const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id);
 
   KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                    const std::vector<KwTsSpan>& ts_spans);
-
+                     const std::vector<KwTsSpan>& ts_spans);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
@@ -190,11 +184,10 @@ class TsVGroup {
    * @param rows Collection of row spans to be undeleted.
    * @return Status of the operation, success or failure.
    */
-  KStatus undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
-                     const std::vector<DelRowSpan>& rows);
+  KStatus undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn, const std::vector<DelRowSpan>& rows);
 
-  KStatus undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags);
+  KStatus undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn, uint32_t group_id, uint32_t entity_id,
+                        TSSlice& tags);
 
   /**
    * redoPut redo a put operation. This function is utilized during log recovery to redo a put operation.
@@ -206,8 +199,7 @@ class TsVGroup {
    *
    * @return KStatus The status of the operation, indicating success or failure.
    */
-  KStatus redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
-                  const TSSlice& payload);
+  KStatus redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
@@ -216,48 +208,46 @@ class TsVGroup {
   KStatus redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
                      const vector<DelRowSpan>& rows);
 
-  KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& payload);
+  KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
+                        uint32_t entity_id, TSSlice& payload);
 
-  KStatus redoCreateHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t ts_version);
+  KStatus redoCreateHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
 
   KStatus undoCreateHashIndex(uint32_t index_id, uint32_t ts_version);
 
   KStatus redoDropHashIndex(uint32_t index_id, uint32_t ts_version);
 
-  KStatus undoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t ts_version);
+  KStatus undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
 
   /**
-* @brief Start a mini-transaction for the current EntityGroup.
-* @param[in] table_id Identifier of TS table.
-* @param[in] range_id Unique ID associated to a Raft consensus group, used to identify the current write batch.
-* @param[in] index The lease index of current write batch.
-* @param[out] mtr_id Mini-transaction id for TS table.
-*
-* @return KStatus
-*/
+   * @brief Start a mini-transaction for the current EntityGroup.
+   * @param[in] table_id Identifier of TS table.
+   * @param[in] range_id Unique ID associated to a Raft consensus group, used to identify the current write batch.
+   * @param[in] index The lease index of current write batch.
+   * @param[out] mtr_id Mini-transaction id for TS table.
+   *
+   * @return KStatus
+   */
   KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id);
 
   /**
-    * @brief Submit the mini-transaction for the current EntityGroup.
-    * @param[in] mtr_id Mini-transaction id for TS table.
-    *
-    * @return KStatus
-    */
+   * @brief Submit the mini-transaction for the current EntityGroup.
+   * @param[in] mtr_id Mini-transaction id for TS table.
+   *
+   * @return KStatus
+   */
   KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id);
 
   /**
-    * @brief Roll back the mini-transaction of the current EntityGroup.
-    * @param[in] mtr_id Mini-transaction id for TS table.
-    *
-    * @return KStatus
-    */
+   * @brief Roll back the mini-transaction of the current EntityGroup.
+   * @param[in] mtr_id Mini-transaction id for TS table.
+   *
+   * @return KStatus
+   */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false);
-
 
  private:
   int saveToFile(uint32_t new_id) const;
-
 
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
@@ -268,6 +258,5 @@ class TsVGroup {
   // Close compact thread.
   void closeCompactThread();
 };
-
 
 }  // namespace kwdbts

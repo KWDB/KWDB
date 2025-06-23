@@ -14,6 +14,9 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
+#include <tuple>
+#include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -110,8 +113,6 @@ class TsVersionUpdate {
   std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
   std::shared_ptr<TsEntitySegment> entity_segment_;
 
-  std::set<PartitionIdentifier> updated_partitions_;
-
   std::mutex mu_;
 
   bool mem_segments_updated_ = false;
@@ -120,19 +121,16 @@ class TsVersionUpdate {
  public:
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
     partitions_created_.insert(partition_id);
-    updated_partitions_.insert(partition_id);
     empty = false;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     new_lastsegs_[partition_id].insert(file_number);
-    updated_partitions_.insert(partition_id);
     empty = false;
   }
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     delete_lastsegs_[partition_id].insert(file_number);
-    updated_partitions_.insert(partition_id);
     empty = false;
   }
 
