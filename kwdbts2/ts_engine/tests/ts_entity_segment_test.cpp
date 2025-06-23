@@ -87,6 +87,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     ASSERT_EQ(partitions.size(), 1);
 
     auto entity_segment = partitions[0]->GetEntitySegment();
+    ASSERT_NE(entity_segment, nullptr);
 
     int sum = 0;
     for (int i = 0; i < 10; ++i) {
