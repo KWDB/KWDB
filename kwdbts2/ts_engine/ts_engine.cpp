@@ -412,9 +412,9 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   return KStatus::SUCCESS;
 }
 
-// TODO: add WAL
-KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, TSSlice* payload_data,
-                  int payload_num, uint64_t mtr_id) {
+// TODO(wal): add WAL
+KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   uint32_t vgroup_id;
