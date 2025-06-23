@@ -628,13 +628,13 @@ KStatus TSEngineV2Impl::TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, c
     return s;
   }
 
-  s = CreateCheckpoint(ctx);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to CreateCheckpoint.")
-  #ifdef WITH_TESTS
-    return s;
-  #endif
-  }
+//  s = CreateCheckpoint(ctx);
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to CreateCheckpoint.")
+//  #ifdef WITH_TESTS
+//    return s;
+//  #endif
+//  }
 
   return KStatus::SUCCESS;
 }
