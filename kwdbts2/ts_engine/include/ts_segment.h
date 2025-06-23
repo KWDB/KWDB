@@ -22,6 +22,7 @@
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_del_item_manager.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
@@ -47,7 +48,9 @@ class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<shared_ptr<TsBlockSpan>>& block_spans) = 0;
+                                std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                uint32_t scan_version) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }
 
