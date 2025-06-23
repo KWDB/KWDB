@@ -99,7 +99,7 @@ void FieldFuncSessionWindow::ResolveTolVal() {
   k_bool year_bucket = false;
   KString unit = "";
   k_int64 time_diff = 0;
-
+  timestring = replaceTimeUnit(timestring);
   tol_val_ = getIntervalSeconds(timestring, var_interval, year_bucket,
                                 &unit, error_info_, true);
   if (error_info_ != "") {
@@ -160,6 +160,7 @@ void FieldFuncTimeWindow::ResolveParams() {
                             args_[1]->ValStr().length_};
   KString unit = "";
   k_int64 time_diff = 0;
+  timestring = replaceTimeUnit(timestring);
   interval_seconds_ = getIntervalSeconds(timestring, var_interval_,
                                          year_bucket_, &unit, error_info_, false);
   if (error_info_ != "") {
@@ -187,6 +188,7 @@ void FieldFuncTimeWindow::ResolveParams() {
   }
   if (arg_count_ > 2) {
     timestring = {args_[2]->ValStr().getptr(), args_[2]->ValStr().length_};
+    timestring = replaceTimeUnit(timestring);
     sliding_interval_seconds_ =
         getIntervalSeconds(timestring, sliding_var_interval_,
                            sliding_year_bucket_, &unit, error_info_, false);

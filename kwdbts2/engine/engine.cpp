@@ -2008,7 +2008,8 @@ bool VarColAggCalculator::isDeleted(char* delete_flags, size_t row) {
   return static_cast<char*>(delete_flags)[byte] & bit;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMax(bool base_changed, std::shared_ptr<void> base) {
+  base_changed = true;
   void* max = nullptr;
   for (int i = 0; i < count_; ++i) {
     if (isnull(first_row_ + i)) {
@@ -2020,6 +2021,7 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
     }
   }
   if (base && cmp(base.get(), max) > 0) {
+    base_changed = false;
     max = base.get();
   }
 
@@ -2030,7 +2032,8 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
   return ptr;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMin(std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMin(bool base_changed, std::shared_ptr<void> base) {
+  base_changed = true;
   void* min = nullptr;
   for (int i = 0; i < count_; i++) {
     if (isnull(first_row_ + i)) {
@@ -2042,6 +2045,7 @@ std::shared_ptr<void> VarColAggCalculator::GetMin(std::shared_ptr<void> base) {
     }
   }
   if (base && cmp(base.get(), min) < 0) {
+    base_changed = false;
     min = base.get();
   }
   uint16_t len = *(reinterpret_cast<uint16_t*>(min));

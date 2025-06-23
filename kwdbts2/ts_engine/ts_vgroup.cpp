@@ -554,28 +554,25 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids, std::vector<KwTsSpan> ts_spans,
-                              DATATYPE ts_col_type, std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
-                              std::vector<Sumfunctype> scan_agg_types,
-                              std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
-                              TsStorageIterator** iter, std::shared_ptr<TsVGroup> vgroup,
-                              std::vector<timestamp64> ts_points, bool reverse, bool sorted) {
+KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
+                                   std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
+                                   std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
+                                   std::vector<k_int32> agg_extend_cols,
+                                   std::vector<Sumfunctype> scan_agg_types,
+                                   std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                   uint32_t table_version, TsStorageIterator** iter,
+                                   std::shared_ptr<TsVGroup> vgroup,
+                                   std::vector<timestamp64> ts_points, bool reverse, bool sorted) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
   // if the read_lsn is 0, ignore the read lsn checking and return all data (it's no WAL support
   // case). TS_LSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
   if (scan_agg_types.empty()) {
-    //    if (sorted) {
-    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols, ts_scan_cols,
-                                                table_schema_mgr, table_version, ASC);
-    //    } else {
-    //      ts_iter = new TsRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
-    //      scan_cols,
-    //                                            ts_scan_cols, table_schema_mgr, table_version);
-    //    }
+    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
+                                                  ts_scan_cols, table_schema_mgr, table_version, ASC);
   } else {
     ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols, ts_scan_cols,
-                                      scan_agg_types, ts_points, table_schema_mgr, table_version);
+                                      agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, table_version);
   }
   KStatus s = ts_iter->Init(reverse);
   if (s != KStatus::SUCCESS) {

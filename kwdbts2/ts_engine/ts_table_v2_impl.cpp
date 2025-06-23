@@ -110,8 +110,8 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
 
 KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                                    std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                   std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                                   TsIterator** iter, std::vector<timestamp64> ts_points,
+                                   std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                                   k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                                    bool reverse, bool sorted) {
   auto ts_table_iterator = new TsTableIterator();
   KStatus s;
@@ -165,7 +165,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
       updateTsSpan(acceptable_ts * life_time.precision, ts_spans);
     }
     s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], ts_spans, ts_col_type,
-                              scan_cols, ts_scan_cols, scan_agg_types, table_schema_mgr_,
+                              scan_cols, ts_scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr_,
                               table_version, &ts_iter, vgroup, ts_points, reverse, sorted);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
@@ -472,7 +472,7 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   TsIterator* iter = nullptr;
   Defer defer{[&]() { if (iter != nullptr) { delete iter; } }};
   std::vector<timestamp64> ts_points;
-  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, scan_agg_types, table_version,
+  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, {}, scan_agg_types, table_version,
                                 &iter, ts_points, false, false);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityRowCount GetIterator failed.");

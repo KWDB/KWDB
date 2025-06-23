@@ -143,7 +143,7 @@ void ParallelGroup::Pause() {
   SetTimePoint(time_point);
   SetType(TimerEventType::TE_TIME_POINT);
   // ExecPool::GetInstance().PushTimeEvent(GetPtr());
-  ExecPool::GetInstance().PushTask(GetPtr());
+  ExecPool::GetInstance().PushTask(GetPtr(), true);
 }
 
 KStatus ParallelGroup::TimeRun() {

@@ -25,11 +25,12 @@ class TsEntityPartition {
   TsScanFilterParams scan_filter_;
   std::list<std::shared_ptr<TsMemSegment>> mems_;
   TsBlockItemFilterParams block_data_filter_{0, 0, 0};
+  bool skip_file_data_;
 
  public:
   TsEntityPartition(std::shared_ptr<const TsPartitionVersion> p, TS_LSN scan_lsn, DATATYPE ts_type,
-                    const TsScanFilterParams& filter)
-      : partition_version_(p), scan_lsn_(scan_lsn), ts_type_(ts_type), scan_filter_(filter) {}
+                    const TsScanFilterParams& filter, bool skip_file_data = false)
+      : partition_version_(p), scan_lsn_(scan_lsn), ts_type_(ts_type), scan_filter_(filter), skip_file_data_(skip_file_data) {}
   // initialize current object.
   KStatus Init(std::list<std::shared_ptr<TsMemSegment>>& mems);
   // filter all blocks, and return block span list.

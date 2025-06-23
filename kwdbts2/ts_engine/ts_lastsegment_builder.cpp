@@ -75,6 +75,30 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
     auto s = WriteMetricBlock(data_block_builder_.get());
     if (s != SUCCESS) return FAIL;
     data_block_builder_->Reset(table_id_, version_);
+  } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
+    EntityPayload *last_entity_payload = nullptr;
+    for (int idx = 0; idx < payload_buffer_.buffer.size(); ++idx) {
+      const EntityPayload& p = payload_buffer_.buffer[idx];
+      --left;
+      if (!last_entity_payload ||
+          !last_entity_payload->IsSameEntityAndTs(payload_buffer_.parser, p)) {
+        data_block_builder_->Add(p.entity_id, p.lsn, p.metric);
+        if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
+          data_block_builder_->Finish();
+          auto s = WriteMetricBlock(data_block_builder_.get());
+          if (s != SUCCESS) return FAIL;
+          data_block_builder_->Reset(table_id_, version_);
+
+          auto reserved_size = std::min<int>(left, kNRowPerBlock);
+          data_block_builder_->Reserve(reserved_size);
+        }
+        last_entity_payload = &payload_buffer_.buffer[idx];
+      }
+    }
+    data_block_builder_->Finish();
+    auto s = WriteMetricBlock(data_block_builder_.get());
+    if (s != SUCCESS) return FAIL;
+    data_block_builder_->Reset(table_id_, version_);
   } else {
     for (int idx = 0; idx < payload_buffer_.buffer.size(); ++idx) {
       const EntityPayload& p = payload_buffer_.buffer[idx];

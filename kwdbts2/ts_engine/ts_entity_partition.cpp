@@ -34,26 +34,27 @@ KStatus TsEntityPartition::GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_b
       return s;
     }
   }
-  // get block span in last segment
-  std::vector<std::shared_ptr<TsLastSegment>> last_segs = partition_version_->GetAllLastSegments();
-  for (auto& last_seg : last_segs) {
-    auto s = last_seg->GetBlockSpans(block_data_filter_, *ts_block_spans);
+  if (!skip_file_data_) {
+    // get block span in last segment
+    std::vector<std::shared_ptr<TsLastSegment>> last_segs = partition_version_->GetAllLastSegments();
+    for (auto& last_seg : last_segs) {
+      auto s = last_seg->GetBlockSpans(block_data_filter_, *ts_block_spans);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetBlockSpans of mem segment failed.");
+        return s;
+      }
+    }
+    // get block span in entity segment
+    auto entity_segment = partition_version_->GetEntitySegment();
+    if (entity_segment == nullptr) {
+      // entity segment not exist
+      return KStatus::SUCCESS;
+    }
+    auto s = entity_segment->GetBlockSpans(block_data_filter_, *ts_block_spans);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
       return s;
     }
-  }
-  // get block span in entity segment
-  auto entity_segment = partition_version_->GetEntitySegment();
-  if (entity_segment == nullptr) {
-    // entity segment not exist
-    return KStatus::SUCCESS;
-  }
-
-  auto s = entity_segment->GetBlockSpans(block_data_filter_, *ts_block_spans);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetBlockSpans of mem segment failed.");
-    return s;
   }
   LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
   return KStatus::SUCCESS;

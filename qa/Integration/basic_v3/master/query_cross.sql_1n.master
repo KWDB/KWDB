@@ -1876,14 +1876,14 @@ WHERE d.location = 'area2'
         WHERE dm.modelID = d.modelID
             AND dm.TypeName = '电表'
     )
-ORDER BY d.installDate DESC;
+ORDER BY d.installDate, m.voltage DESC;
          installdate        |     voltage
 ----------------------------+-------------------
-  2023-07-01 00:00:00+00:00 | 140.690224485548
-  2023-07-01 00:00:00+00:00 | 73.3038314338742
-  2023-07-01 00:00:00+00:00 | 129.540332823266
   2023-07-01 00:00:00+00:00 | 221.252417769086
   2023-07-01 00:00:00+00:00 | 193.149378415718
+  2023-07-01 00:00:00+00:00 | 140.690224485548
+  2023-07-01 00:00:00+00:00 | 129.540332823266
+  2023-07-01 00:00:00+00:00 | 73.3038314338742
   2023-07-01 00:00:00+00:00 | 39.4609662728706
 (6 rows)
 > SELECT dm.TypeName
@@ -3451,20 +3451,20 @@ ORDER BY DeviceCount DESC;
 FROM rdb.Device d
 JOIN tsdb.MeterSuper m ON d.deviceID = m.deviceID
 WHERE d.modelID = (SELECT modelID FROM rdb.DeviceModel WHERE ModelName = '电表模型1')
-ORDER BY d.location ASC;
+ORDER BY d.location, Current ASC;
   location |     current
 -----------+-------------------
-  area1    | 51.3657007868602
   area1    | 11.3623350383022
-  area1    |  83.497262058816
+  area1    | 51.3657007868602
   area1    | 69.6333622281017
+  area1    |  83.497262058816
   area1    | 92.1571660223094
   area1    | 93.3225547467301
   area1    | 99.4678675025397
-  area2    | 38.7726102322915
   area2    |  8.0020595087802
   area2    | 21.2326354535832
   area2    |  27.444401746537
+  area2    | 38.7726102322915
 (11 rows)
 > SELECT dm.ModelName,
 t.temperature AS Temperature
@@ -4057,13 +4057,14 @@ WHERE ms.deviceID = (
     SELECT d.deviceID
     FROM rdb.Device d
     WHERE d.deviceID = 1
-);
+)
+ORDER BY ms.current;
       current
 --------------------
-  51.3657007868602
   11.3623350383022
-   83.497262058816
+  51.3657007868602
   69.6333622281017
+   83.497262058816
   92.1571660223094
   93.3225547467301
   99.4678675025397
@@ -4411,13 +4412,14 @@ JOIN tsdb.MeterSuper ms ON d.deviceID = ms.deviceID order by deviceid,current;
 FROM tsdb.MeterSuper ms
 JOIN rdb.Device d ON ms.deviceID = d.deviceID
 JOIN rdb.DeviceModel dm ON d.modelID = dm.ModelID
-WHERE d.deviceID = 1;
+WHERE d.deviceID = 1
+ORDER BY ms.current;
   deviceid |     current      | typename |        installdate
 -----------+------------------+----------+----------------------------
-         1 | 51.3657007868602 | 电表     | 2023-07-01 00:00:00+00:00
          1 | 11.3623350383022 | 电表     | 2023-07-01 00:00:00+00:00
-         1 |  83.497262058816 | 电表     | 2023-07-01 00:00:00+00:00
+         1 | 51.3657007868602 | 电表     | 2023-07-01 00:00:00+00:00
          1 | 69.6333622281017 | 电表     | 2023-07-01 00:00:00+00:00
+         1 |  83.497262058816 | 电表     | 2023-07-01 00:00:00+00:00
          1 | 92.1571660223094 | 电表     | 2023-07-01 00:00:00+00:00
          1 | 93.3225547467301 | 电表     | 2023-07-01 00:00:00+00:00
          1 | 99.4678675025397 | 电表     | 2023-07-01 00:00:00+00:00
@@ -6834,14 +6836,14 @@ WHERE d.location = 'area2'
         WHERE dm.modelID = d.modelID
             AND dm.TypeName = '电表'
     )
-ORDER BY d.installDate DESC;
+ORDER BY d.installDate, m.voltage DESC;
          installdate        |     voltage
 ----------------------------+-------------------
-  2023-07-01 00:00:00+00:00 | 140.690224485548
-  2023-07-01 00:00:00+00:00 | 73.3038314338742
-  2023-07-01 00:00:00+00:00 | 129.540332823266
   2023-07-01 00:00:00+00:00 | 221.252417769086
   2023-07-01 00:00:00+00:00 | 193.149378415718
+  2023-07-01 00:00:00+00:00 | 140.690224485548
+  2023-07-01 00:00:00+00:00 | 129.540332823266
+  2023-07-01 00:00:00+00:00 | 73.3038314338742
   2023-07-01 00:00:00+00:00 | 39.4609662728706
 (6 rows)
 > SELECT dm.ModelName, dm.TypeName, m.current, mc.status
