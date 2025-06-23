@@ -75,6 +75,7 @@ class TSBlkDataTypeConvert {
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
   KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
+  KStatus getColBitmapConverted(uint32_t scan_idx, TsBitmap& bitmap);
   KStatus GetPreCount(uint32_t scan_idx, uint16_t& count);
   KStatus GetPreSum(uint32_t scan_idx, int32_t size, void* &pre_sum, bool& is_overflow);
   KStatus GetPreMax(uint32_t scan_idx, void* &pre_max);

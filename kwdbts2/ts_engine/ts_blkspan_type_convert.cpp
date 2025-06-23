@@ -151,7 +151,7 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
   if (isVarLenType(version_conv_->blk_attrs_[blk_col_idx].type) &&
       !isVarLenType(version_conv_->scan_attrs_[scan_idx].type)) {
     char* value = nullptr;
-    auto ret = GetFixLenColAddr(scan_idx, &value, bitmap);
+    auto ret = getColBitmapConverted(scan_idx, bitmap);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetFixLenColAddr failed.");
       return ret;
@@ -159,6 +159,49 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
     return SUCCESS;
   }
   return block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, bitmap);
+}
+
+KStatus TSBlkDataTypeConvert::getColBitmapConverted(uint32_t scan_idx, TsBitmap &bitmap) {
+  auto dest_attr = version_conv_->scan_attrs_[scan_idx];
+  uint32_t dest_type_size = dest_attr.size;
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+  TsBitmap blk_bitmap;
+  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
+    return s;
+  }
+
+  auto blk_row_count = block_->GetRowNum();
+  bitmap.SetCount(blk_row_count);
+
+  char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_row_count));
+  if (allc_mem == nullptr) {
+    LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * blk_row_count);
+    return KStatus::SUCCESS;
+  }
+  memset(allc_mem, 0, dest_type_size * blk_row_count);
+  Defer defer([&]() { free(allc_mem); });
+
+
+  for (size_t i = 0; i < blk_row_count; i++) {
+    bitmap[i] = blk_bitmap[i];
+    if (bitmap[i] != DataFlags::kValid) {
+      continue;
+    }
+    TSSlice orig_value;
+    s = block_->GetValueSlice(i, blk_col_idx, version_conv_->blk_attrs_, orig_value);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", i, blk_col_idx);
+      return s;
+    }
+    std::shared_ptr<void> new_mem;
+    int err_code = ConvertDataTypeToMem(scan_idx, dest_type_size, orig_value.data, orig_value.len, &new_mem);
+    if (err_code < 0) {
+      bitmap[i] = DataFlags::kNull;
+    }
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TSBlkDataTypeConvert::GetPreCount(uint32_t scan_idx, uint16_t &count) {
