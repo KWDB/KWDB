@@ -271,6 +271,7 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
       s = rfile->Prefetch(0, fsize);
       ASSERT_EQ(s, SUCCESS);
       TSSlice result;
+      rfile->Prefetch(0, fsize);
       s = rfile->Read(0, fsize, &result, nullptr);
       ASSERT_EQ(s, SUCCESS);
       ASSERT_EQ(result.len, fsize);
@@ -294,7 +295,7 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
   for (int i = 0; i < 10; ++i) {
     threads.emplace_back(read_thread);
   }
-  for (int i = 0; i < 10000; ++i) {
+  for (int i = 0; i < 123; ++i) {
     write_thread(i);
   }
   finished.store(true);

@@ -25,7 +25,7 @@
 #include "ts_io.h"
 
 namespace kwdbts {
-static const int64_t interval = 3600 * 24 * 30;  // 30 days.
+static const int64_t interval = 3600 * 24 * 10;  // 10 days.
 
 static int64_t GetPartitionStartTime(timestamp64 timestamp) {
   int64_t index = timestamp / interval;

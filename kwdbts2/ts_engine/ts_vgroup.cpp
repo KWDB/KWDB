@@ -36,8 +36,6 @@
 
 namespace kwdbts {
 
-static const int64_t interval = 3600 * 24 * 30;  // 30 days.
-
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
                    bool enable_compact_thread)
