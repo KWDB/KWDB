@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_entity_partition.h"
+
 #include "ts_entity_segment.h"
 
 namespace kwdbts {

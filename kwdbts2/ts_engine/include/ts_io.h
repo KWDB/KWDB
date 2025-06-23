@@ -101,7 +101,7 @@ class TsMMapFile final : public TsFile {
       assert(!read_only);
       fd_ = open(path.c_str(), O_RDWR | O_CREAT, 0644);
       len_ = getpagesize();
-      ftruncate(fd_, len_);
+      fallocate(fd_, 0, 0, len_);
       base = mmap(nullptr, len_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     }
     addr_ = reinterpret_cast<char*>(base);
@@ -131,7 +131,7 @@ class TsMMapFile final : public TsFile {
     }
     int err_code;
     if (new_len != len_) {
-      err_code = ftruncate(fd_, new_len);
+      err_code = fallocate(fd_, 0, 0, new_len);
       if (err_code < 0) {
         close(fd_);
         LOG_ERROR("resize file failed, error code:%d", err_code);
@@ -174,8 +174,8 @@ class TsMMapFile final : public TsFile {
     }
 
     if (newlen != len_) {
-      if (ftruncate(fd_, newlen) == -1) {
-        LOG_ERROR("ftruncate error %s.", strerror(errno));
+      if (fallocate(fd_, 0, 0, newlen) == -1) {
+        LOG_ERROR("fallocate error %s.", strerror(errno));
         return KStatus::FAIL;
       }
       void* base = mremap(addr_, len_, newlen, MREMAP_MAYMOVE);
@@ -226,7 +226,7 @@ class TsMMapFile final : public TsFile {
     munmap(addr_, len_);
     size_ = 0;
     len_ = getpagesize();
-    ftruncate(fd_, len_);
+    fallocate(fd_, 0, 0, len_);
     void* base = mmap(nullptr, len_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (base == MAP_FAILED) {
       int err_code = errno;
@@ -436,7 +436,7 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
         return KStatus::FAIL;
       }
       file_len = getpagesize();
-      ftruncate(fd_, file_len);
+      fallocate(fd_, 0, 0, file_len);
       base = mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     }
     addrs_.push_back({reinterpret_cast<char*>(base), file_len});
@@ -475,8 +475,8 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
         new_len += threshold;
       }
     }
-    if (ftruncate(fd_, new_len) == -1) {
-      LOG_ERROR("ftruncate size[%lu] error %s.", new_len, strerror(errno));
+    if (fallocate(fd_, 0, 0, new_len) == -1) {
+      LOG_ERROR("fallocate size[%lu] error %s.", new_len, strerror(errno));
       return KStatus::FAIL;
     }
 
