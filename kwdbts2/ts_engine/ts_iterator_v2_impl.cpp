@@ -539,7 +539,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   min_last_ts_ = (last_col_idxs_.size() > 0 || has_last_row_col_) ? INT64_MIN : INT64_MAX;
 
   only_count_ts_ = (CLUSTER_SETTING_COUNT_USE_STATISTICS && scan_agg_types_.size() == 1
-        && scan_agg_types_[0] == Sumfunctype::COUNT && ts_scan_cols_.size() == 1 && ts_scan_cols_[0] == 0);
+        && scan_agg_types_[0] == Sumfunctype::COUNT && kw_scan_cols_.size() == 1 && kw_scan_cols_[0] == 0);
 
   cur_entity_index_ = 0;
 
