@@ -538,6 +538,9 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   max_first_ts_ = (first_col_idxs_.size() > 0 || has_first_row_col_) ? INT64_MAX : INT64_MIN;
   min_last_ts_ = (last_col_idxs_.size() > 0 || has_last_row_col_) ? INT64_MIN : INT64_MAX;
 
+  only_count_ts_ = (CLUSTER_SETTING_COUNT_USE_STATISTICS && scan_agg_types_.size() == 1
+        && scan_agg_types_[0] == Sumfunctype::COUNT && ts_scan_cols_.size() == 1 && ts_scan_cols_[0] == 0);
+
   cur_entity_index_ = 0;
 
   return KStatus::SUCCESS;
@@ -553,6 +556,9 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     *is_finished = true;
     return KStatus::SUCCESS;
   }
+
+  max_first_ts_ = (first_col_idxs_.size() > 0 || has_first_row_col_) ? INT64_MAX : INT64_MIN;
+  min_last_ts_ = (last_col_idxs_.size() > 0 || has_last_row_col_) ? INT64_MIN : INT64_MAX;
 
   final_agg_data_.clear();
   final_agg_data_.resize(kw_scan_cols_.size(), TSSlice{nullptr, 0});
@@ -573,9 +579,11 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   if (has_first_row_col_) {
     first_row_candidate_.blk_span = nullptr;
+    first_row_candidate_.ts = INT64_MAX;
   }
   if (has_last_row_col_) {
     last_row_candidate_.blk_span = nullptr;
+    last_row_candidate_.ts = INT64_MIN;
   }
 
   KStatus ret;
@@ -585,6 +593,12 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
 
   res->clear();
+  if (only_count_ts_ && (KInt64(final_agg_data_[0].data) == 0)) {
+    *count = 0;
+    *is_finished = false;
+    ++cur_entity_index_;
+    return KStatus::SUCCESS;
+  }
   for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
     TSSlice& slice = final_agg_data_[i];
     Batch* b;
@@ -695,7 +709,6 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   }
 
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
-    auto kw_col_idx = kw_scan_cols_[i];
     Sumfunctype agg_type = scan_agg_types_[i];
     if (agg_type == Sumfunctype::COUNT || agg_type == Sumfunctype::SUM) {
       continue;
@@ -776,7 +789,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
 }
 
 inline void TsAggIteratorV2Impl::UpdateTsSpans() {
-  if (first_last_only_agg_) {
+  if (only_need_one_record_) {
     if (max_first_ts_ < min_last_ts_) {
       int ts_span_idx = 0;
       while (ts_span_idx < ts_spans_.size() && ts_spans_[ts_span_idx].end < max_first_ts_) {
