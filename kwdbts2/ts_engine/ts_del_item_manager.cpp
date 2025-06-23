@@ -170,6 +170,32 @@ KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDel
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TsDelItemManager::RollBackDelItem(TSEntityID entity_id, const KwLSNSpan& lsn) {
+  auto node = index_.GetIndexObject(entity_id, false);
+  if (node == nullptr) {
+    // this entity has no del item.
+    return KStatus::SUCCESS;
+  }
+  {
+    RW_LATCH_S_LOCK(rw_lock_);
+    auto cur_node_offset = *node;
+    while (cur_node_offset != INVALID_POSITION) {
+      auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(cur_node_offset, sizeof(IndexNode)));
+      if (cur_node == nullptr) {
+        LOG_ERROR("GetAddrForOffset failed. offset [%lu]", *node);
+        return KStatus::FAIL;
+      }
+      if (cur_node->del_item.range.lsn_span.Equal(lsn)) {
+        cur_node->del_item.status = DEL_ITEM_ROLLBACK;
+      }
+      cur_node_offset = cur_node->pre_node_offset;
+    }
+    RW_LATCH_UNLOCK(rw_lock_);
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsDelItemManager::GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range) {
   std::list<TsEntityDelItem> del_items;
   auto s = GetDelItem(entity_id, del_items);

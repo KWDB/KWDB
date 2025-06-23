@@ -93,6 +93,7 @@ class TsDelItemManager {
   ~TsDelItemManager();
   KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);
+  KStatus RollBackDelItem(TSEntityID entity_id, const KwLSNSpan& lsn);
   KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem>& del_items);
   KStatus GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range);
   void DropAll();

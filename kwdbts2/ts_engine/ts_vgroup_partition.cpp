@@ -143,16 +143,10 @@ KStatus TsVGroupPartition::DeleteData(TSEntityID e_id, const std::vector<KwTsSpa
 }
 
 KStatus TsVGroupPartition::UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn) {
-  std::list<TsEntityDelItem> del_items;
-  auto s = del_info_.GetDelItem(e_id, del_items);
+  auto s = del_info_.RollBackDelItem(e_id, lsn);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetDelItem failed. for entity[%lu]", e_id);
+    LOG_ERROR("RollBackDelItem failed. for entity[%lu]", e_id);
     return s;
-  }
-  for (auto& del_item : del_items) {
-    if (del_item.range.lsn_span.Equal(lsn)) {
-      del_item.status = DEL_ITEM_ROLLBACK;
-    }
   }
   return KStatus::SUCCESS;
 }

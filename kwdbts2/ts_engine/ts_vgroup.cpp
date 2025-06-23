@@ -573,12 +573,13 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
-      if (t_type == WALTableType::DATA) {
-        auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
+      assert(t_type != WALTableType::DATA);
+      if (t_type == WALTableType::DATA_V2) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntryV2*>(del_log);
         p_tag = log->getPrimaryTag();
-        vector<DelRowSpan> partitions = log->getRowSpans();
-        return undoDelete(ctx, p_tag, log->getLSN(), partitions);
+        TSTableID table_id = log->getTableId();
+        vector<KwTsSpan> ts_spans = log->getTsSpans();
+        return undoDeleteData(ctx, table_id, p_tag, log->getLSN(), ts_spans);
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         TSSlice primary_tag = log->getPrimaryTag();
@@ -681,12 +682,13 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
-      if (t_type == WALTableType::DATA) {
-        auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
+      assert(t_type != WALTableType::DATA);
+      if (t_type == WALTableType::DATA_V2) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntryV2*>(del_log);
         p_tag = log->getPrimaryTag();
-        vector<DelRowSpan> partitions = log->getRowSpans();
-        return redoDelete(ctx, p_tag, log->getLSN(), partitions);
+        TSTableID table_id = log->getTableId();
+        vector<KwTsSpan> ts_spans = log->getTsSpans();
+        return redoDeleteData(ctx, table_id, p_tag, log->getLSN(), ts_spans);
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         auto p_tag_slice = log->getPrimaryTag();

@@ -251,6 +251,23 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
             }
             break;
           }
+          case WALTableType::DATA_V2 : {
+            auto wal_log =  reinterpret_cast<DeleteLogMetricsEntryV2 *>(log);
+            size_t log_len = DeleteLogMetricsEntryV2::fixed_length + (wal_log->range_size_) * sizeof(KwTsSpan) +
+                    wal_log->p_tag_len_;
+            auto del_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, wal_log->getXID(),
+                                                            wal_log->getVGroupID(), wal_log->getOldLSN(),
+                                                            WALTableType::DATA, wal_log->p_tag_len_,
+                                                            wal_log->table_id_, wal_log->range_size_,
+                                                            wal_log->encoded_primary_tags_, wal_log->ts_spans_);
+            s = writeWALInternal(ctx, del_log, log_len, current_lsn);
+            delete []del_log;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
+            break;
+          }
           case WALTableType::TAG : {
             auto wal_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
             size_t log_len = DeleteLogTagsEntry::fixed_length + wal_log->tag_len_ + wal_log->p_tag_len_;
@@ -521,6 +538,25 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
     *entry_lsn = cur_lsn;
   }
 
+  delete[] wal_log;
+  return status;
+}
+
+KStatus WALMgr::WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTableID table_id, const string& primary_tag,
+                                      const std::vector<KwTsSpan>& ts_spans,
+                                      uint64_t vgrp_id, TS_LSN* entry_lsn) {
+  auto* wal_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA_V2, table_id,
+                                                   primary_tag.length(), 0, primary_tag.data(), ts_spans.data());
+  if (wal_log == nullptr) {
+    LOG_ERROR("Failed to construct WAL, insufficient memory")
+    return KStatus::FAIL;
+  }
+  size_t log_len = DeleteLogMetricsEntryV2::fixed_length + ts_spans.size() * sizeof(KwTsSpan) + primary_tag.length();
+  TS_LSN cur_lsn;
+  KStatus status = WriteWAL(ctx, wal_log, log_len, cur_lsn);
+  if (entry_lsn != nullptr) {
+    *entry_lsn = cur_lsn;
+  }
   delete[] wal_log;
   return status;
 }

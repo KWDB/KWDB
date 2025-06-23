@@ -279,6 +279,57 @@ size_t DeleteLogMetricsEntry::getLen() {
   return len_;
 }
 
+DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+                                             TSTableID table_id, size_t p_tag_len, uint64_t range_size, char* data,
+                                              uint64_t vgrp_id, TS_LSN old_lsn)
+    : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), p_tag_len_(p_tag_len), range_size_(range_size),
+    table_id_(table_id) {
+
+  encoded_primary_tags_ = KNEW char[p_tag_len_];
+  memcpy(encoded_primary_tags_, data, p_tag_len_);
+
+  ts_spans_ = KNEW KwTsSpan[range_size];
+  size_t partition_size = range_size * sizeof(DelRowSpan);
+  memcpy(ts_spans_, data + p_tag_len_, partition_size);
+}
+
+DeleteLogMetricsEntryV2::~DeleteLogMetricsEntryV2() {
+  delete[] encoded_primary_tags_;
+  delete[] ts_spans_;
+  ts_spans_ = nullptr;
+}
+
+string DeleteLogMetricsEntryV2::getPrimaryTag() const {
+  string p_tag = string(encoded_primary_tags_, p_tag_len_);
+  return p_tag;
+}
+
+TSTableID DeleteLogMetricsEntryV2::getTableId() const {
+  return table_id_;
+}
+
+vector<KwTsSpan> DeleteLogMetricsEntryV2::getTsSpans() const {
+  vector<KwTsSpan> partitions(ts_spans_, ts_spans_ + range_size_);
+
+  return partitions;
+}
+
+size_t DeleteLogMetricsEntryV2::getLen() {
+  if (len_ == 0) {
+    len_ = sizeof(type_) +
+           sizeof(x_id_) +
+           sizeof(vgrp_id_) +
+           sizeof(old_lsn_) +
+           sizeof(table_type_) +
+           sizeof(p_tag_len_) +
+           sizeof (table_id_) +
+           sizeof(range_size_);
+    len_ += (range_size_) * sizeof(KwTsSpan);
+    len_ += p_tag_len_;
+  }
+  return len_;
+}
+
 DeleteLogTagsEntry::DeleteLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                        uint32_t group_id, uint32_t entity_id, size_t p_tag_len,
                                        size_t tag_len, char* encoded_data, uint64_t vgrp_id, TS_LSN old_lsn)

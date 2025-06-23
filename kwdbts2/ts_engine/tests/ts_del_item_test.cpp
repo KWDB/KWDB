@@ -12,30 +12,11 @@
 #include <gtest/gtest.h>
 #include "ts_del_item_manager.h"
 #include "sys_utils.h"
-#include "just_tmp_shard.h"
-#include "mmap/mmap_segment_table.h"
 
 using namespace kwdbts;  // NOLINT
 
 class TsDelItemUtilTest : public ::testing::Test {
 };
-
-TEST_F(TsDelItemUtilTest, tmptest) {
-  {
-    TesetShardPtr b;
-    {
-      // int* a = new int(3);
-      // std::shared_ptr<void> ptr((char*)(a), free);
-      // delete a;
-      int a = 3;
-      std::shared_ptr<void> ptr((char*)(&a), noFree);
-      std::shared_ptr<void> ptr1((char*)(&a), noFree);
-      // b.setPtr(ptr);
-    }
-  }
-  exit(0);
-}
-
 
 TEST(TsDelItemUtilTest, TsCrossNone) {
   STScanRange scan_range;

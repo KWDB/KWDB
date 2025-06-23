@@ -32,7 +32,7 @@ class TsVGroupPartition {
 
   std::filesystem::path path_;
 
-  TsDelItemManager del_info_;
+  TsDelItemManager del_info_;  // del_item cannot delete while its transction is not finished. maybe rollback.
   std::unique_ptr<TsEntitySegment> entity_segment_;
   TsLastSegmentManager last_segment_mgr_;
   std::unique_ptr<KRWLatch> partition_mtx_;
