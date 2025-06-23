@@ -46,7 +46,9 @@ struct AggDataAddresses {
   void* sum;
 };
 
-inline void noFree(char* data) {}
+inline void noFree(char* data) {
+  std::cout << "sdfsdfsd: " << (int)(data[0]) << std::endl;
+}
 
 class MMapSegmentTable : public TSObject, public TsTableObject {
  private:

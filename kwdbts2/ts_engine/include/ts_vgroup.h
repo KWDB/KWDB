@@ -202,7 +202,24 @@ class TsVGroup {
 
   KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
                     const std::vector<KwTsSpan>& ts_spans);
+  KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
+                              const std::vector<KwTsSpan>& ts_spans);
 
+   /**
+   * Undoes deletion of rows within a specified entity group.
+   *
+   * @param ctx Pointer to the database context.
+   * @param primary_tag Primary tag identifying the entity.
+   * @param log_lsn LSN of the log for ensuring atomicity and consistency of the operation.
+   * @param rows Collection of row spans to be undeleted.
+   * @return Status of the operation, success or failure.
+   */
+  KStatus undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
+                     const std::vector<DelRowSpan>& rows);
+  KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+  const std::vector<KwTsSpan>& ts_spans);
+  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn, 
+  const std::vector<KwTsSpan>& ts_spans);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
@@ -224,23 +241,10 @@ class TsVGroup {
    *
    * @return KStatus The status of the undo operation, indicating success or specific failure reasons.
    */
-  KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
-    // todo(liangbo01) no implementation.
-    return KStatus::FAIL;
-  }
+  KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
 
-  /**
-   * Undoes deletion of rows within a specified entity group.
-   *
-   * @param ctx Pointer to the database context.
-   * @param primary_tag Primary tag identifying the entity.
-   * @param log_lsn LSN of the log for ensuring atomicity and consistency of the operation.
-   * @param rows Collection of row spans to be undeleted.
-   * @return Status of the operation, success or failure.
-   */
-  KStatus undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
-                     const std::vector<DelRowSpan>& rows);
-
+  KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
+                     
   KStatus undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
                         uint32_t group_id, uint32_t entity_id, TSSlice& tags);
 
@@ -309,6 +313,8 @@ class TsVGroup {
 
   int saveToFile(uint32_t new_id) const;
 
+  KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID entity_id,
+    const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<TsVGroupPartition>)> func);
 
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 

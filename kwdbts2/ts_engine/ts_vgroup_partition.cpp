@@ -141,6 +141,21 @@ KStatus TsVGroupPartition::DeleteData(TSEntityID e_id, const std::vector<KwTsSpa
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TsVGroupPartition::UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn) {
+  std::list<TsEntityDelItem> del_items;
+  auto s = del_info_.GetDelItem(e_id, del_items);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelItem failed. for entity[%lu]", e_id);
+    return s;
+  }
+  for (auto& del_item : del_items) {
+    if (del_item.range.lsn_span.Equal(lsn)) {
+      del_item.status = DEL_ITEM_ROLLBACK;
+    }
+  }
+  return KStatus::SUCCESS;
+}
 KStatus TsVGroupPartition::GetDelRange(TSEntityID e_id, std::list<STDelRange>& del_items) {
   return del_info_.GetDelRange(e_id, del_items);
 }

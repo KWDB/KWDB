@@ -70,6 +70,8 @@ class TsVGroupPartition {
 
   KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn);
 
+  KStatus UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn);
+
   KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange>& del_items);
 
   TsLastSegmentManager* GetLastSegmentMgr() { return &last_segment_mgr_; }

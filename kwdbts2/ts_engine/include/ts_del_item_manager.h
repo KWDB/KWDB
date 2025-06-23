@@ -25,6 +25,9 @@ namespace kwdbts {
 struct KwLSNSpan {
   TS_LSN begin;
   TS_LSN end;
+  inline bool Equal(const KwLSNSpan& desc) {
+    return begin == desc.begin && end == desc.end;
+  }
 };
 
 // LSN and TS range struct
