@@ -87,7 +87,8 @@ KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
 // copyed from TsTimePartition::ConvertDataTypeToMem
 int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size,
                          void* old_mem, uint16_t old_var_len, std::shared_ptr<void>* new_mem) {
-  DATATYPE old_type = static_cast<DATATYPE>(version_conv_->blk_attrs_[scan_col].type);
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_col];
+  DATATYPE old_type = static_cast<DATATYPE>(version_conv_->blk_attrs_[blk_col_idx].type);
   DATATYPE new_type = static_cast<DATATYPE>(version_conv_->scan_attrs_[scan_col].type);
   ErrorInfo err_info;
   if (!isVarLenType(new_type)) {
@@ -141,12 +142,13 @@ int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_ty
 }
 
 KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
-  if (scan_idx == UINT32_MAX) {
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+  if (blk_col_idx == UINT32_MAX) {
     bitmap.SetCount(block_->GetRowNum());
     bitmap.SetAll(DataFlags::kNull);
     return SUCCESS;
   }
-  if (isVarLenType(version_conv_->blk_attrs_[scan_idx].type) &&
+  if (isVarLenType(version_conv_->blk_attrs_[blk_col_idx].type) &&
       !isVarLenType(version_conv_->scan_attrs_[scan_idx].type)) {
     char* value = nullptr;
     auto ret = GetFixLenColAddr(scan_idx, &value, bitmap);
@@ -156,7 +158,7 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
     }
     return SUCCESS;
   }
-  return block_->GetColBitmap(version_conv_->blk_cols_extended_[scan_idx], version_conv_->blk_attrs_, bitmap);
+  return block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, bitmap);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreCount(uint32_t scan_idx, uint16_t &count) {
@@ -188,7 +190,8 @@ bool TSBlkDataTypeConvert::IsColExist(uint32_t scan_idx) {
 }
 
 bool TSBlkDataTypeConvert::IsSameType(uint32_t scan_idx) {
-  return isSameType(version_conv_->blk_attrs_[scan_idx], version_conv_->scan_attrs_[scan_idx]);
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+  return isSameType(version_conv_->blk_attrs_[blk_col_idx], version_conv_->scan_attrs_[scan_idx]);
 }
 
 bool TSBlkDataTypeConvert::IsVarLenType(uint32_t scan_idx) {
@@ -204,7 +207,8 @@ int32_t TSBlkDataTypeConvert::GetColType(uint32_t scan_idx) {
 }
 
 bool TSBlkDataTypeConvert::IsColNotNull(uint32_t scan_idx) {
-  return version_conv_->blk_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
+  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+  return version_conv_->blk_attrs_[blk_col_idx].isFlag(AINFO_NOT_NULL);
 }
 
 KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap) {
