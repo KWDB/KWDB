@@ -424,6 +424,9 @@ int SubEntityGroupManager::ReuseEntities(SubGroupID group_id, std::vector<Entity
 void SubEntityGroupManager::sync(int flags) {
   wrLock();
   Defer defer{[&]() { unLock(); }};
+  if (root_table_manager_->IsCompressing()) {
+    return;
+  }
   for (auto it = subgroups_.begin() ; it != subgroups_.end() ; it++) {
     it->second->sync(flags);
   }
