@@ -1,5 +1,5 @@
 --test comment
-
+							
 USE defaultdb;DROP DATABASE IF EXISTS test_comment;
 CREATE TS DATABASE test_comment;
 CREATE TABLE test_comment.t1(
@@ -35,7 +35,7 @@ ATTRIBUTES (
             code9 VARBYTES,code10 VARBYTES(60),
             code11 VARCHAR,code12 VARCHAR(60),
             code13 CHAR(2),code14 CHAR(1023) NOT NULL,
-            code15 NCHAR,code16 NCHAR(254) NOT NULL)
+            code15 NCHAR,code16 NCHAR(254) NOT NULL) 
 PRIMARY TAGS(code1,code14,code8,code16);
 ---insert
 INSERT INTO test_comment.t1 VALUES('1976-10-20 12:00:12.123',3,10001,10000001,100000000001,-1047200.00312001,-1109810.113011921,true,'2021-3-1 12:00:00.909','test数据库语法查询测试！！！@TEST3-8','test数据库语法查询测试！！！@TEST3-9','test数据库语法查询测试！！！@TEST3-10','t','test数据库语法查询测试！！！@TEST3-12','中','test数据库语法查询测试！！！@TEST3-14','test数据库语法查询测试！！！@TEST3-15','test数据库语法查询测试！TEST3-16xaa','test数据库语法查询测试！！！@TEST3-17','test数据库语法查询测试！！！@TEST3-18',b'\xca','test数据库语法查询测试！！！@TEST3-20','test数据库语法查询测试！！！@TEST3-21','test数据库语法查询测试！！！@TEST3-22',-10001,10000001,-100000000001,1047200.00312001,-1109810.113011921,false,'test数据库语法查询测试！！！@TEST3-7','test数据库语法查询测试！！！@TEST3-8',b'\xaa','test数据库语法查询测试！！！@TEST3-10','test数据库语法查询测试！！！@TEST3-11','test数据库语法查询测试！！！@TEST3-12','t3','test数据库语法查询测试！！！@TEST3-14','中','test数据库语法查询测试！！！@TEST3-16');
@@ -264,30 +264,30 @@ comment on column db1.t1.a is null;
 SELECT column_name,"comment" FROM [SHOW COLUMNS FROM db1.t1 WITH COMMENT] ORDER BY column_name;
 
 CREATE TABLE tsdb1.t1(
-                         k_timestamp TIMESTAMPTZ NOT NULL comment 't1.ts',
-                         id INT NOT NULL comment 't1.id',
-                         e1 INT2 comment 't1.col1',
-                         e2 INT comment 't1.col2',
-                         e3 INT8 comment 't1.col3',
-                         e4 FLOAT4 comment 't1.col4',
-                         e5 FLOAT8 comment 't1.col5',
-                         e6 BOOL comment 't1.col6',
-                         e7 TIMESTAMPTZ comment 't1.col7',
-                         e8 CHAR(1023) comment 't1.col8',
-                         e9 NCHAR(255) comment 't1.col9',
-                         e10 VARCHAR(4096) comment 't1.col10',
-                         e11 CHAR comment 't1.col11',
-                         e12 CHAR(255) comment 't1.col12',
-                         e13 NCHAR comment 't1.col13',
-                         e14 NVARCHAR(4096) comment 't1.col14',
-                         e15 VARCHAR(1023) comment 't1.col15',
-                         e16 NVARCHAR(200) comment 't1.col16',
-                         e17 NCHAR(255) comment 't1.col17',
-                         e18 CHAR(200) comment 't1.col18',
-                         e19 VARBYTES comment 't1.col19',
-                         e20 VARBYTES(60) comment 't1.col20',
-                         e21 VARCHAR comment 't1.col21',
-                         e22 NVARCHAR comment 't1.col22')
+                                k_timestamp TIMESTAMPTZ NOT NULL comment 't1.ts',
+                                id INT NOT NULL comment 't1.id',
+                                e1 INT2 comment 't1.col1',
+                                e2 INT comment 't1.col2',
+                                e3 INT8 comment 't1.col3',
+                                e4 FLOAT4 comment 't1.col4',
+                                e5 FLOAT8 comment 't1.col5',
+                                e6 BOOL comment 't1.col6',
+                                e7 TIMESTAMPTZ comment 't1.col7',
+                                e8 CHAR(1023) comment 't1.col8',
+                                e9 NCHAR(255) comment 't1.col9',
+                                e10 VARCHAR(4096) comment 't1.col10',
+                                e11 CHAR comment 't1.col11',
+                                e12 CHAR(255) comment 't1.col12',
+                                e13 NCHAR comment 't1.col13',
+                                e14 NVARCHAR(4096) comment 't1.col14',
+                                e15 VARCHAR(1023) comment 't1.col15',
+                                e16 NVARCHAR(200) comment 't1.col16',
+                                e17 NCHAR(255) comment 't1.col17',
+                                e18 CHAR(200) comment 't1.col18',
+                                e19 VARBYTES comment 't1.col19',
+                                e20 VARBYTES(60) comment 't1.col20',
+                                e21 VARCHAR comment 't1.col21',
+                                e22 NVARCHAR comment 't1.col22')
     ATTRIBUTES (
             code1 INT2 NOT NULL comment 't1.tag1' ,code2 INT comment 't1.tag2',code3 INT8 comment 't1.tag3',
             code4 FLOAT4 comment 't1.tag4' ,code5 FLOAT8 comment 't1.tag5',

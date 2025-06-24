@@ -2264,5 +2264,8 @@ SQLSTATE: 22023
   2023-05-10 09:15:15.783+00:00
   2024-05-10 23:23:23.783+00:00
 (2 rows)
+> select first(k_timestamp),max(e1) from test_select_timebucket.tb3 where k_timestamp = time_bucket(k_timestamp, case when e1 is NULL then pg_catalog.timeofday() else pg_catalog.timeofday() end);
+ERROR: invalid input interval time.
+SQLSTATE: 22023
 > use defaultdb;drop database test_select_timebucket cascade;
 DROP DATABASE

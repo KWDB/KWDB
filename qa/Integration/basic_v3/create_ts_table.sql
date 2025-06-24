@@ -1,100 +1,3 @@
-create ts database test;
-create table test.sjcx01(k_timestamp timestamp not null,A INT2 null,B INT4 not null,C VARCHAR(100) null,D VARCHAR(10) not null,E CHAR(1000) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
-select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
-select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
-select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
-select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
-select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
-insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
-select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
-select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
-insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG','test2数据库语法查询测试！！！@TEST10-10', 'qqq');
-insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD','test3数据库语法查询测试！！！@TEST10-10', 'qqq1');
-insert into test.sjcx01 values (1681111110002,3,3,'C','A','test4数据库语法查询测试！！！@TEST10-10', 'A1');
-insert into test.sjcx01 values (1681111110003,4,4,'D','B','test5数据库语法查询测试！！！@TEST10-10', 'B2');
-insert into test.sjcx01 values (1681111110004,5,5,'E','C','test6数据库语法查询测试！！！@TEST10-10', 'C3');
-insert into test.sjcx01 values (1681111110006,8,9,'G','E','test7数据库语法查询测试！！！@TEST10-10', 'E5');
-insert into test.sjcx01 values (1681111110007,null,11,'H','F','test8数据库语法查询测试！！！@TEST10-10', 'F6');
-insert into test.sjcx01 values (1681111110008,12,13,null,'G','test9数据库语法查询测试！！！@TEST10-10', 'G7');
-insert into test.sjcx01 values (1681111110009,32767,13,null,'G','test9数据库语法查询测试！！！@TEST10-10', 'G7');
-select sum(a) from test.sjcx01;
-select * from test.sjcx01 order by k_timestamp;
-select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
-select A, B from test.sjcx01 order by k_timestamp;
-select A from test.sjcx01 order by k_timestamp;
-select C from test.sjcx01 order by k_timestamp;
-select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
-select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
-select * from test.sjcx01
-where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
-   or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
-order by k_timestamp;
-select count(*), count(c) from test.sjcx01;
-select count(*), count(c) from test.sjcx01 where a is not null;
-select count(a), count(distinct a) from test.sjcx01;
-select max(b), sum(a) from test.sjcx01 where k_timestamp < k_timestamp;
-select sum(a), min(b) from test.sjcx01;
-select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
-select t1_attribute, count(c), sum(a), max(b), last(a) from test.sjcx01 group by t1_attribute order by t1_attribute;
-select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
-select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
-select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
-select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
-select max(a+3), min(a+b) from test.sjcx01;
-select a+b, sum(b) from test.sjcx01 group by a+b order by a+b;
-select last(b), last(a) from test.sjcx01;
-select * from test.sjcx01 where t1_attribute = 'F6';
-SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
-drop database test cascade;
-
-create ts database test_null;
-create table test_null.t1(k_timestamp timestamp not null,A INT4 null,B INT4 not null,C VARCHAR(10) null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
-insert into test_null.t1 values (1681111110000, null, 2, null, 'ABC', 'tag1');
-insert into test_null.t1 values (1681111110001, null ,3, null, 'Xyz', 'tag2');
-select count(*), count(a), sum(a), min(a), max(a), last(a) from test_null.t1;
-select max(a+b) from test_null.t1;
-insert into test_null.t1 values (1681111110002, null, 4, null, 'ABC1', 'tag1');
-select min(k_timestamp), max(k_timestamp) from test_null.t1;
-drop database test_null cascade;
-
-create ts database test_datatype;
-create table test_datatype.t1(
-   k_timestamp timestamp not null,
-   A INT2 null, B INT8 null, C INT8 null)
-   attributes (tag1 varchar not null) primary tags(tag1);
-insert into test_datatype.t1 values (1681111110000, 32767, 2147483647, 9223372036854775807, 'tag1');
-insert into test_datatype.t1 values (1681111110001, null, null, null, 'tag2');
-insert into test_datatype.t1 values (1681111110002, -32768, -2147483648, -9223372036854775808, 'tag3');
-select max(A), max(B), max(C) from test_datatype.t1;
-select min(A), min(B), min(C) from test_datatype.t1;
-select sum(A), sum(B), sum(C) from test_datatype.t1;
-select last(A), last(B), last(C) from test_datatype.t1;
-insert into test_datatype.t1 values (1681111110100, 32767, 2147483647, 2223372036854775807, 'tag1');
-insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 822332036854775807, 'tag1');
-insert into test_datatype.t1 values (1681111110102, 32767, 2147483647, 3223372036854775807, 'tag1');
-insert into test_datatype.t1 values (1681111110103, 32767, 2147483647, 1223372036854775807, 'tag1');
-insert into test_datatype.t1 values (1681111110104, 32767, 2147483647, 7223372036854775807, 'tag1');
-select sum(A), sum(B), round(sum(C) / 10000, 0) from test_datatype.t1;
-drop database test_datatype cascade;
-
-create ts database test_alter;
-create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
-insert into test_alter.t2 values(1672531211005, 100, 200, 300, 1);
-alter table test_alter.t2 alter column a type int;
-alter table test_alter.t2 alter column b type bigint;
-alter table test_alter.t2 alter column c type varchar(120);
-insert into test_alter.t2 values(1672531211015, 65536, 65539,  'test时间精度！！！@TEST2', 1);
-select * from test_alter.t2 order by ts,attr;
-select a, b from test_alter.t2 order by ts,attr;
-
-create table test_alter.t9(ts timestamp not null, a char, b nchar(64)) tags(attr int not null) primary tags(attr);
-insert into test_alter.t9 values(1672531211005,  't',  'test时间精度通用查询测试！！！@TEST3', 1);
-alter table test_alter.t9 alter column a type char(128);
-alter table test_alter.t9 alter column b type nchar(128);
-insert into test_alter.t9 values(1672531211015,  'test时间精度！！！@TEST2',  'test时间精度通用查询测试！！！@TEST3', 1);
-select * from test_alter.t9 order by ts,attr;
-select a, b from test_alter.t9 order by ts,attr;
-drop database if exists test_alter cascade;
 --test_case0001 ;
 create ts database test;
 create table test.tt1 (k_timestamp timestamp not null,ser_id timestamp(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
@@ -234,3 +137,17 @@ create table test.atll(k_timestamp timestamp not null,e0 int not null ,e1 int2  
 drop database test cascade;
 drop database test2;
 drop database pre;
+
+--test_case0007 ;
+create ts database test;
+create table test.tt1 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (0);
+create table test.tt2 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (2000);
+create table test.tt3 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (4000);
+create table test.tt4 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (8000);
+create table test.tt5 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute) with hash (50001);
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt1';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt2';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt3';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt4';
+select count(*) from kwdb_internal.ranges where database_name='test' and table_name='tt5';
+drop database test cascade;

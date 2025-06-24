@@ -35,6 +35,11 @@ INSERT 1
 -----------
   succeed
 (1 row)
+> export into csv "nodelocal://1/tbDiscard/tb1/" from table test.tb1;
+  result
+-----------
+  succeed
+(1 row)
 > drop table test.tb1;
 DROP TABLE
 > create table test.tb1(k_timestamp timestamptz not null,  usage_user INT8,
@@ -67,6 +72,38 @@ INSERT 1
 (2 rows)
 > drop table test.tb1;
 DROP TABLE
+> SET CLUSTER SETTING ts.dedup.rule = 'discard';
+SET CLUSTER SETTING
+> create table test.tb1(k_timestamp timestamptz not null,  usage_user INT8,
+                      usage_system INT8,
+                      usage_idle INT8,
+                      usage_nice INT8,
+                      usage_iowait INT8 ,
+                      usage_irq INT8 ,
+                      usage_softirq INT8 ,
+                      usage_steal INT8 ,
+                      usage_guest INT8 ,
+                      usage_guest_nice INT8
+) TAGS (
+     hostname VARCHAR(30) NOT NULL) PRIMARY TAGS(hostname);
+CREATE TABLE
+> insert into test.tb1 values('2024-01-01 00:00:01+00:00',1,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> insert into test.tb1 values('2024-01-02 00:00:01+00:00',1,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> import into test.tb1 csv data ('nodelocal://1/tbDiscard/tb1') with writewal;
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> select * from test.tb1 order by k_timestamp, hostname;
+         k_timestamp        | usage_user | usage_system | usage_idle | usage_nice | usage_iowait | usage_irq | usage_softirq | usage_steal | usage_guest | usage_guest_nice | hostname
+----------------------------+------------+--------------+------------+------------+--------------+-----------+---------------+-------------+-------------+------------------+-----------
+  2024-01-01 00:00:01+00:00 |          1 |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
+  2024-01-02 00:00:01+00:00 |          1 |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
+(2 rows)
+> drop table test.tb1;
+DROP TABLE
 > SET CLUSTER SETTING ts.dedup.rule = 'keep';
 SET CLUSTER SETTING
 > create table test.tb1(k_timestamp timestamptz not null,  usage_user INT8,
@@ -94,10 +131,10 @@ INSERT 1
 > select * from test.tb1 order by k_timestamp, hostname;
          k_timestamp        | usage_user | usage_system | usage_idle | usage_nice | usage_iowait | usage_irq | usage_softirq | usage_steal | usage_guest | usage_guest_nice | hostname
 ----------------------------+------------+--------------+------------+------------+--------------+-----------+---------------+-------------+-------------+------------------+-----------
-  2024-01-01 00:00:01+00:00 |       NULL |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
   2024-01-01 00:00:01+00:00 |          1 |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
-  2024-01-02 00:00:01+00:00 |       NULL |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
+  2024-01-01 00:00:01+00:00 |       NULL |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
   2024-01-02 00:00:01+00:00 |          1 |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
+  2024-01-02 00:00:01+00:00 |       NULL |         NULL |       NULL |       NULL |         NULL |      NULL |          NULL |        NULL |        NULL |             NULL | host_0
 (4 rows)
 > drop table test.tb1;
 DROP TABLE
