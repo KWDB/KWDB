@@ -178,6 +178,15 @@ class DataChunk : public IChunk {
    */
   virtual DatumPtr GetData(k_uint32 row, k_uint32 col, k_uint16& len);
 
+  /**
+   * @brief Get string pointer at  (current_line_, col), and return the
+   * string length
+   * @param[in] row
+   * @param[in] col
+   * @param[in/out] string length
+   */
+  DatumPtr GetVarData(k_uint32 col, k_uint16& len);
+
   ////////////////   Insert/Copy Data   ///////////////////
 
   /**
@@ -271,6 +280,39 @@ class DataChunk : public IChunk {
         }
       }
     }
+  }
+
+  KStatus ReplaceRow(DataChunkPtr& other, k_uint32 row) {
+    if (row >= count_) {
+      return FAIL;
+    }
+    for (k_uint32 col_idx = 0; col_idx < col_num_; ++col_idx) {
+      if (other->IsNull(col_idx)) {
+        SetNull(row, col_idx);
+      } else {
+        char *src_ptr = other->GetData(col_idx);
+        k_uint32 col_offset = row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
+        std::memcpy(data_ + col_offset, src_ptr, col_info_[col_idx].fixed_storage_len);
+        SetNotNull(row, col_idx);
+      }
+    }
+  }
+
+  KStatus ReplaceRow(DataChunkPtr& other, k_uint32 row, k_uint32 other_row) {
+    if (row >= count_ || other_row >= other->Count()) {
+      return FAIL;
+    }
+    for (k_uint32 col_idx = 0; col_idx < col_num_; ++col_idx) {
+      if (other->IsNull(other_row, col_idx)) {
+        SetNull(row, col_idx);
+      } else {
+        char *src_ptr = other->GetData(other_row, col_idx);
+        k_uint32 col_offset = row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
+        std::memcpy(data_ + col_offset, src_ptr, col_info_[col_idx].fixed_storage_len);
+        SetNotNull(row, col_idx);
+      }
+    }
+    return SUCCESS;
   }
 
   KStatus OffsetSort(std::vector<k_uint32> &selection, bool is_reverse);

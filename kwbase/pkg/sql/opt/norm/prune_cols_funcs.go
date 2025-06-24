@@ -206,13 +206,13 @@ func neededMutationFetchCols(
 // needed columns from that. See the props.Relational.Rule.PruneCols comment for
 // more details.
 func (c *CustomFuncs) CanPruneCols(target memo.RelExpr, neededCols opt.ColSet) bool {
-	return !DerivePruneCols(target).SubsetOf(neededCols)
+	return !DerivePruneCols(target).SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneGapFill)
 }
 
 // CanPruneAggCols returns true if one or more of the target aggregations is not
 // referenced and can be eliminated.
 func (c *CustomFuncs) CanPruneAggCols(target memo.AggregationsExpr, neededCols opt.ColSet) bool {
-	return !target.OutputCols().SubsetOf(neededCols)
+	return !target.OutputCols().SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneGapFill)
 }
 
 // CanPruneMutationFetchCols returns true if there are any FetchCols that are
@@ -284,6 +284,17 @@ func (c *CustomFuncs) PruneAggCols(
 		item := &target[i]
 		if item.Agg.Op() == opt.ImputationOp {
 			imputationIndex++
+		}
+		if item.Agg.Op() == opt.TimeBucketGapfillOp {
+			// the sql with time_bucket_gapfill() can not prune it, otherwise,
+			// the groupByExpr will be optimized to distinctExpr, the result will be incorrect.
+			// such as:
+			// select count(*) from (select interpolate(max), ... from ... group by ...);
+			// select e1 from (select interpolate(max), e1 ... from ... group by e1);
+			if !neededCols.Contains(item.Col) {
+				c.f.TSFlags |= opt.NotPruneGapFill
+				return target
+			}
 		}
 		if neededCols.Contains(item.Col) {
 			aggs = append(aggs, *item)

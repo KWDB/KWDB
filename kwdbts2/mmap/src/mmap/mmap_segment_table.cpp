@@ -258,7 +258,6 @@ int MMapSegmentTable::open_(int char_code, const string& file_path, const std::s
         return 0;
     }
     actual_writed_count_.store(meta_data_->num_node);
-    setObjectReady();
   } else {
     if (!(bt_file_.flags() & O_CREAT)) {
       err_info.errcode = KWECORR;
@@ -316,14 +315,15 @@ int MMapSegmentTable::open(EntityBlockMetaManager* meta_manager, BLOCK_ID segmen
   // if reserve space failed while create segment, we can reserve again here.
   if (meta_data_ != nullptr && _reservedSize() == 0) {
     LOG_DEBUG("reservedSize of table[ %s ] is 0.", file_path.c_str());
-    setObjectReady();
     err_info.errcode = reserve(getReservedRows());
     if (err_info.errcode < 0) {
       err_info.setError(err_info.errcode, tbl_sub_path + file_path);
     }
     LOG_DEBUG("reserved size for table[%s],status: %s", file_path.c_str(), err_info.errmsg.c_str());
   }
-
+  if (err_info.errcode >= 0) {
+    setObjectReady();
+  }
   return err_info.errcode;
 }
 
@@ -978,7 +978,7 @@ void MMapSegmentTable::push_back_null_bitmap(kwdbts::Payload* payload, MetricRow
 }
 
 void MMapSegmentTable::sync(int flags) {
-  if (is_compressed_ || meta_data_ == nullptr) {
+  if (is_compressed_ || meta_data_ == nullptr || getSegmentStatus() >= InActiveSegment) {
     return;
   }
   meta_data_->num_node = actual_writed_count_.load();

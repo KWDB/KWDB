@@ -276,6 +276,8 @@ public:
    */
   void SetCompressStatus(bool status);
 
+  bool IsCompressing();
+
   bool TrySetMigrateStatus();
 
   void ResetMigrateStatus();

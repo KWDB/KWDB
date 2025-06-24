@@ -14,7 +14,6 @@
 
 #include "ee_pb_plan.pb.h"
 #include "ee_common.h"
-#include "ee_disk_data_container.h"
 
 namespace kwdbts {
 
