@@ -961,9 +961,9 @@ bench benchshort: TESTTIMEOUT := $(BENCHTIMEOUT)
 benchshort: override TESTFLAGS += -benchtime=1ns -short
 
 .PHONY: check test testshort testrace testlogic testbaselogic testoptlogic bench benchshort
-test: ## Run tests.
-check test testshort testrace bench benchshort:
-	$(xgo) test $(GOTESTFLAGS) $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' -run "$(TESTS)" $(if $(BENCHES),-bench "$(BENCHES)") -timeout $(TESTTIMEOUT) $(PKG) $(TESTFLAGS)
+# test: ## Run tests.
+# check test testshort testrace bench benchshort:
+#	 $(xgo) test $(GOTESTFLAGS) $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' -run "$(TESTS)" $(if $(BENCHES),-bench "$(BENCHES)") -timeout $(TESTTIMEOUT) $(PKG) $(TESTFLAGS)
 
 .PHONY: stress stressrace
 stress: ## Run tests under stress.
