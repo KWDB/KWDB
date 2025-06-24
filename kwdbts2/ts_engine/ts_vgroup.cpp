@@ -778,7 +778,7 @@ const std::vector<KwTsSpan>& ts_spans) {
   [&](std::shared_ptr<TsVGroupPartition> p) -> KStatus {
     auto ret = p->DeleteData(e_id, ts_spans, lsn);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("DeleteData partition[%s] failed!", p->GetPath());
+      LOG_ERROR("DeleteData partition[%s] failed!", p->GetPath().string().c_str());
       return ret;
     }
     return ret;
@@ -904,7 +904,7 @@ const std::vector<KwTsSpan>& ts_spans) {
       [&](std::shared_ptr<TsVGroupPartition> p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("UndoDeleteData partition[%s] failed!", p->GetPath());
+          LOG_ERROR("UndoDeleteData partition[%s] failed!", p->GetPath().string().c_str());
           return ret;
         }
         return ret;

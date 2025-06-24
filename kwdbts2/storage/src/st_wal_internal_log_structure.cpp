@@ -284,7 +284,6 @@ DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, ui
                                               uint64_t vgrp_id, TS_LSN old_lsn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), p_tag_len_(p_tag_len), range_size_(range_size),
     table_id_(table_id) {
-
   encoded_primary_tags_ = KNEW char[p_tag_len_];
   memcpy(encoded_primary_tags_, data, p_tag_len_);
 

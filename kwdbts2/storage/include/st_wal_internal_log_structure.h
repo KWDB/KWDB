@@ -441,8 +441,8 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
   char* encoded_primary_tags_{nullptr};
   KwTsSpan* ts_spans_;
 
-  DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, TSTableID table_id, size_t p_tag_len,
-                        uint64_t range_size, char* data, uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
+  DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, TSTableID table_id,
+    size_t p_tag_len, uint64_t range_size, char* data, uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
 
   ~DeleteLogMetricsEntryV2() override;
 
