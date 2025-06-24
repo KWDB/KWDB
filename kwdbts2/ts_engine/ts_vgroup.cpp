@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <memory>
 #include <regex>
+#include <list>
 #include <string>
 #include <unordered_map>
 
@@ -142,15 +143,10 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     return FAIL;
   }
   // creating partition directory while inserting data into memroy.
-  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
-  schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
-  auto ts_type = tb_schema_mgr->GetTsColDataType();
-  for (auto& row : rows) {
-    auto partition = GetPartition(row.database_id, row.ts, ts_type);
-    if (partition == nullptr) {
-      LOG_ERROR("GetPartition Failed.")
-      return KStatus::FAIL;
-    }
+  s = makeSurePartitionExist(table_id, rows);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("makeSurePartitionExist Failed.")
+    return FAIL;
   }
   return KStatus::SUCCESS;
 }
@@ -300,6 +296,28 @@ std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, 
   return partition_manager->Get(p_time, true);
 }
 
+// todo(liangbo01) create partition should at data inserting wal.
+// if at here, inserting and deleting at same time. maybe sql exec over, data all exist.
+// but restart service, data all disappeared.
+// solution: 1. delete item not store in partition. 2. creating partition before wal insert.
+KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows) {
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaMgr failed. table[%lu]", table_id);
+    return s;
+  }
+  auto ts_type = tb_schema_mgr->GetTsColDataType();
+  for (auto& row : rows) {
+    auto partition = GetPartition(row.database_id, row.ts, ts_type);
+    if (partition == nullptr) {
+      LOG_ERROR("GetPartition Failed.")
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};
   auto table_id = p.GetTableID();
@@ -343,7 +361,17 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
+    std::list<TSMemSegRowData> rows;
     s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("failed putdata.");
+      return s;
+    }
+    s = makeSurePartitionExist(table_id, rows);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("makeSurePartitionExist Failed.")
+      return FAIL;
+    }
   }
   return s;
 }
@@ -763,7 +791,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
   const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
   std::vector<DelRowSpan> dtp_list;
   TS_LSN current_lsn;
-  KStatus s = wal_manager_->WriteDeleteMetricsWAL(ctx, mtr_id, p_tag, ts_spans, dtp_list, vgroup_id_, &current_lsn);
+  KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("WriteDeleteTagWAL failed.");
     return s;
@@ -848,7 +876,7 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
       return s;
     }
   }
-  return KStatus::FAIL;
+  return KStatus::SUCCESS;
 }
 // todo(liangbo01)  delete this function after below finished.
 KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,

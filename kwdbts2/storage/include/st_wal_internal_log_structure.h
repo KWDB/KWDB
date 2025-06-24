@@ -476,7 +476,7 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
   static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
                          const WALTableType table_type, TSTableID table_id, const size_t p_tag_len,
                          const uint64_t range_size, const char* encoded_primary_tags, const KwTsSpan* row_spans) {
-    size_t len = fixed_length + (range_size) * sizeof(DelRowSpan) + p_tag_len;
+    size_t len = fixed_length + (range_size) * sizeof(KwTsSpan) + p_tag_len;
 
     char* log_ptr = KNEW char[len];
     size_t offset = 0;
@@ -497,7 +497,7 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
     memcpy(log_ptr + offset, &table_id, sizeof(table_id_));
     offset += sizeof(table_id_);
     memcpy(log_ptr + offset, &range_size, sizeof(range_size_));
-    offset += sizeof(range_size_);
+    offset += sizeof(range_size_);  
     memcpy(log_ptr + offset, encoded_primary_tags, p_tag_len);
     offset += p_tag_len;
 

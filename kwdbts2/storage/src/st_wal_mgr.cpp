@@ -546,7 +546,7 @@ KStatus WALMgr::WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTab
                                       const std::vector<KwTsSpan>& ts_spans,
                                       uint64_t vgrp_id, TS_LSN* entry_lsn) {
   auto* wal_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA_V2, table_id,
-                                                   primary_tag.length(), 0, primary_tag.data(), ts_spans.data());
+                  primary_tag.length(), ts_spans.size(), primary_tag.data(), ts_spans.data());
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
     return KStatus::FAIL;
