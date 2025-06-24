@@ -345,6 +345,7 @@ func (n *valuesNode) Close(ctx context.Context) {
 		n.rows.Close(ctx)
 		n.rows = nil
 	}
+	n.nextRow = 0
 }
 
 func newValuesListLenErr(exp, got int) error {

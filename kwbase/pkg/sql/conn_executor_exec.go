@@ -265,8 +265,8 @@ func (ex *connExecutor) execStmt(
 				if sub, ok := astSetVar.Values[0].(*tree.Subquery); ok {
 					sel := tree.Select{Select: sub.Select}
 					selInto := tree.SelectInto{
-						Names:  tree.UserDefinedVars{tree.UserDefinedVar{VarName: astSetVar.Name}},
-						Values: &sel,
+						Targets:      tree.SelectIntoTargets{tree.SelectIntoTarget{Udv: tree.UserDefinedVar{VarName: astSetVar.Name}}},
+						SelectClause: &sel,
 					}
 					stmt.AST = &selInto
 				}
@@ -1118,10 +1118,17 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 	}
 
 	var cols sqlbase.ResultColumns
-	if stmt.AST.StatementType() == tree.Rows {
+	var stmtType tree.StatementType
+	// Procedure has different statement type, getting compiled statement type when use procedure cache.
+	if planner.curPlan.mem.ProcCacheHelper.ExecViaProcedureCache {
+		stmtType = planner.curPlan.mem.ProcCacheHelper.ProcedureStmtType
+	} else {
+		stmtType = stmt.AST.StatementType()
+	}
+	if stmtType == tree.Rows {
 		cols = planColumns(planner.curPlan.plan)
 	}
-	if err := ex.initStatementResult(ctx, res, stmt, cols); err != nil {
+	if err := ex.initStatementResult(ctx, res, stmtType, cols); err != nil {
 		res.SetError(err)
 		return nil
 	}
@@ -1168,7 +1175,7 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 	}
 
 	ex.sessionTracing.TraceExecStart(ctx, "distributed")
-	bytesRead, rowsRead, err := ex.execWithDistSQLEngine(ctx, planner, stmt.AST.StatementType(), res, distributePlan, progAtomic, stmt.SQL)
+	bytesRead, rowsRead, err := ex.execWithDistSQLEngine(ctx, planner, stmtType, res, distributePlan, progAtomic, stmt.SQL)
 	ex.sessionTracing.TraceExecEnd(ctx, res.Err(), res.RowsAffected())
 	ex.statsCollector.phaseTimes[plannerEndExecStmt] = timeutil.Now()
 

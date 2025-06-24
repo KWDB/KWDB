@@ -524,6 +524,62 @@ func (n *alterTableNode) startExec(params runParams) error {
 				continue
 			}
 
+			// If the dropped column uses a sequence, remove references to it from that sequence.
+			if len(colToDrop.UsesSequenceIds) > 0 {
+				if err := params.p.removeSequenceDependencies(params.ctx, n.tableDesc, colToDrop); err != nil {
+					return err
+				}
+			}
+
+			// You can't remove a column that owns a sequence that is depended on
+			// by another column
+			if err := params.p.canRemoveAllColumnOwnedSequences(params.ctx, n.tableDesc, colToDrop, t.DropBehavior); err != nil {
+				return err
+			}
+
+			if err := params.p.dropSequencesOwnedByCol(params.ctx, colToDrop, true /* queueJob */); err != nil {
+				return err
+			}
+
+			// You can't drop a column depended on by a view unless CASCADE was
+			// specified.
+			for _, ref := range n.tableDesc.DependedOnBy {
+				found := false
+				for _, colID := range ref.ColumnIDs {
+					if colID == colToDrop.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+				err := params.p.canRemoveDependentViewGeneric(
+					params.ctx, "column", string(t.Column), n.tableDesc.ParentID, ref, t.DropBehavior,
+				)
+				if err != nil {
+					return err
+				}
+				viewDesc, skipped, err := params.p.getViewDescForCascade(
+					params.ctx, "column", string(t.Column), n.tableDesc.ParentID, ref.ID, t.DropBehavior,
+				)
+				if err != nil {
+					return err
+				}
+				if skipped {
+					// In the table whose index is being removed, filter out all back-references
+					// that refer to the view that's being removed.
+					n.tableDesc.DependedOnBy = removeMatchingReferences(n.tableDesc.DependedOnBy, ref.ID)
+					continue
+				}
+				jobDesc := fmt.Sprintf("removing view %q dependent on column %q which is being dropped",
+					viewDesc.Name, colToDrop.ColName())
+				droppedViews, err = params.p.removeDependentView(params.ctx, n.tableDesc, viewDesc, jobDesc)
+				if err != nil {
+					return err
+				}
+			}
+
 			if n.tableDesc.IsTSTable() {
 				if colToDrop.IsTagCol() {
 					return pgerror.Newf(pgcode.WrongObjectType, "%q is a tag, not a column, try use \"drop tag\" clause in DDL", colToDrop.ColName())
@@ -589,56 +645,6 @@ func (n *alterTableNode) startExec(params runParams) error {
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 				return nil
-			}
-
-			// If the dropped column uses a sequence, remove references to it from that sequence.
-			if len(colToDrop.UsesSequenceIds) > 0 {
-				if err := params.p.removeSequenceDependencies(params.ctx, n.tableDesc, colToDrop); err != nil {
-					return err
-				}
-			}
-
-			// You can't remove a column that owns a sequence that is depended on
-			// by another column
-			if err := params.p.canRemoveAllColumnOwnedSequences(params.ctx, n.tableDesc, colToDrop, t.DropBehavior); err != nil {
-				return err
-			}
-
-			if err := params.p.dropSequencesOwnedByCol(params.ctx, colToDrop, true /* queueJob */); err != nil {
-				return err
-			}
-
-			// You can't drop a column depended on by a view unless CASCADE was
-			// specified.
-			for _, ref := range n.tableDesc.DependedOnBy {
-				found := false
-				for _, colID := range ref.ColumnIDs {
-					if colID == colToDrop.ID {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-				err := params.p.canRemoveDependentViewGeneric(
-					params.ctx, "column", string(t.Column), n.tableDesc.ParentID, ref, t.DropBehavior,
-				)
-				if err != nil {
-					return err
-				}
-				viewDesc, err := params.p.getViewDescForCascade(
-					params.ctx, "column", string(t.Column), n.tableDesc.ParentID, ref.ID, t.DropBehavior,
-				)
-				if err != nil {
-					return err
-				}
-				jobDesc := fmt.Sprintf("removing view %q dependent on column %q which is being dropped",
-					viewDesc.Name, colToDrop.ColName())
-				droppedViews, err = params.p.removeDependentView(params.ctx, n.tableDesc, viewDesc, jobDesc)
-				if err != nil {
-					return err
-				}
 			}
 
 			if n.tableDesc.PrimaryIndex.ContainsColumnID(colToDrop.ID) {
@@ -920,6 +926,16 @@ func (n *alterTableNode) startExec(params runParams) error {
 			if dropped {
 				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 					"column %q in the middle of being dropped", t.Tag)
+			}
+			for _, tableRef := range n.tableDesc.DependedOnBy {
+				for _, colID := range tableRef.ColumnIDs {
+					if colID == tagColumn.ID {
+						return pgerror.New(
+							pgcode.DependentObjectsStillExist,
+							"can not alter tag type because there are objects that depend on it",
+						)
+					}
+				}
 			}
 			if err = checkIndexOnTag(n, tagColumn); err != nil {
 				return err
@@ -1219,6 +1235,46 @@ func (n *alterTableNode) startExec(params runParams) error {
 			if dropped {
 				continue
 			}
+
+			// You can't drop a column depended on by a view unless CASCADE was
+			// specified.
+			for _, ref := range n.tableDesc.DependedOnBy {
+				found := false
+				for _, colID := range ref.ColumnIDs {
+					if colID == tagColumn.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+				err := params.p.canRemoveDependentViewGeneric(
+					params.ctx, "tag", string(t.TagName), n.tableDesc.ParentID, ref, tree.DropDefault,
+				)
+				if err != nil {
+					return err
+				}
+				viewDesc, skipped, err := params.p.getViewDescForCascade(
+					params.ctx, "tag", string(t.TagName), n.tableDesc.ParentID, ref.ID, tree.DropDefault,
+				)
+				if err != nil {
+					return err
+				}
+				if skipped {
+					// In the table whose index is being removed, filter out all back-references
+					// that refer to the view that's being removed.
+					n.tableDesc.DependedOnBy = removeMatchingReferences(n.tableDesc.DependedOnBy, ref.ID)
+					continue
+				}
+				jobDesc := fmt.Sprintf("removing view %q dependent on tag %q which is being dropped",
+					viewDesc.Name, tagColumn.ColName())
+				droppedViews, err = params.p.removeDependentView(params.ctx, n.tableDesc, viewDesc, jobDesc)
+				if err != nil {
+					return err
+				}
+			}
+
 			if err = checkIndexOnTag(n, tagColumn); err != nil {
 				return err
 			}

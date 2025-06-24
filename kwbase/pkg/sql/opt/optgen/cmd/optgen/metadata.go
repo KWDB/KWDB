@@ -230,6 +230,8 @@ func newMetadata(compiled *lang.CompiledExpr, pkg string) *metadata {
 		"Statement":         {fullName: "tree.Statement", isInterface: true},
 		"Subquery":          {fullName: "tree.Subquery", isPointer: true, usePointerIntern: true},
 		"CreateTable":       {fullName: "tree.CreateTable", isPointer: true, usePointerIntern: true},
+		"CreateProcedure":   {fullName: "tree.CreateProcedure", isPointer: true, usePointerIntern: true},
+		"CallProcedure":     {fullName: "tree.CallProcedure", isPointer: true, usePointerIntern: true},
 		"Constraint":        {fullName: "constraint.Constraint", isPointer: true, usePointerIntern: true},
 		"FuncProps":         {fullName: "tree.FunctionProperties", isPointer: true, usePointerIntern: true},
 		"FuncOverload":      {fullName: "tree.Overload", isPointer: true, usePointerIntern: true},
@@ -260,6 +262,7 @@ func newMetadata(compiled *lang.CompiledExpr, pkg string) *metadata {
 		"TSOrderedScanType": {fullName: "opt.OrderedTableType", passByVal: true},
 		"TSGroupOptType":    {fullName: "opt.GroupOptType", passByVal: true},
 		"TagIndexInfo":      {fullName: "memo.TagIndexInfo", passByVal: true},
+		"ProcComms":         {fullName: "memo.ProcComms", passByVal: true},
 		"VarNames":          {fullName: "opt.VarNames", passByVal: true},
 	}
 

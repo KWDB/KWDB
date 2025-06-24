@@ -30,6 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/delegate"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/optgen/exprgen"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -127,6 +128,14 @@ type Builder struct {
 	// are disabled and certain statements (like mutations) are disallowed.
 	insideViewDef bool
 
+	// If set, we are processing a function definition; in this case catalog caches
+	// are disabled and only statements whitelisted are allowed.
+	insideProcDef bool
+
+	// If set, we are trying to compile a condition which contains Subquery expr inside
+	// a procedure, it should not be allowed.
+	isConditionContainsSubquery bool
+
 	// If set, we are collecting view dependencies in viewDeps. This can only
 	// happen inside view definitions.
 	//
@@ -172,13 +181,15 @@ type Builder struct {
 
 	// InstanceTabNames array of InstanceTabName
 	InstanceTabNames []InstanceTabName
+
+	// IsProcStatementTypeRows flags that has result output
+	IsProcStatementTypeRows bool
+	// OutPutCols records output columns
+	OutPutCols []scopeColumn
 }
 
 // TSBuilder holds the information in the semantic parsing process of the ts table.
 type TSBuilder struct {
-	// WhiteListMap record the list that can be pushed down to storage.
-	WhiteListMap *sqlbase.WhiteListMap
-
 	// TSProp property of ts builder
 	TSProp int
 }
@@ -211,7 +222,7 @@ func New(
 		semaCtx:   semaCtx,
 		evalCtx:   evalCtx,
 		catalog:   catalog,
-		TSInfo:    &TSBuilder{WhiteListMap: nil},
+		TSInfo:    &TSBuilder{},
 		TableType: make(map[tree.TableType]int),
 	}
 }
@@ -324,6 +335,20 @@ func (b *Builder) buildStmt(
 		}
 	}
 
+	if b.insideProcDef {
+		switch stmt := stmt.(type) {
+		case *tree.Insert, *tree.Update, *tree.Delete:
+		case *tree.Select, tree.SelectStatement:
+		case *tree.ProcIf:
+		case *tree.Declaration:
+		case *tree.SelectInto:
+		case *tree.ControlCursor:
+
+		default:
+			panic(unimplemented.Newf("Stored Procedures", "%s usage inside a Stored Procedure definition", stmt.StatementTag()))
+		}
+	}
+
 	switch stmt := stmt.(type) {
 	case *tree.Select:
 		return b.buildSelect(stmt, noRowLocking, desiredTypes, inScope)
@@ -351,6 +376,11 @@ func (b *Builder) buildStmt(
 
 	case *tree.CreateView:
 		return b.buildCreateView(stmt, inScope)
+
+	case *tree.CreateProcedure:
+		return b.buildCreateProcedure(stmt, inScope)
+	case *tree.CallProcedure:
+		return b.buildCallProcedure(stmt, inScope)
 
 	case *tree.Explain:
 		return b.buildExplain(stmt, inScope)
@@ -422,4 +452,94 @@ func (b *Builder) allocScope() *scope {
 	b.scopeAlloc = b.scopeAlloc[1:]
 	r.builder = b
 	return r
+}
+
+// trackReferencedColumnForViews is used to add a column to the view's
+// dependencies. This should be called whenever a column reference is made in a
+// view query.
+func (b *Builder) trackReferencedColumnForViews(col *scopeColumn) {
+	if b.trackViewDeps {
+		for i := range b.viewDeps {
+			dep := b.viewDeps[i]
+			if ord, ok := dep.ColumnIDToOrd[col.id]; ok {
+				dep.ColumnOrdinals.Add(ord)
+			}
+			b.viewDeps[i] = dep
+		}
+	}
+}
+
+// getProcCommand gets ProcCommand from block, puts input param into block before build
+func (b *Builder) getProcCommand(
+	Block *tree.Block, desiredTypes []*types.T, inScope *scope, inputParams []tree.Statement,
+) memo.ProcCommand {
+	var newBlock tree.Block
+	newBlock.Label = Block.Label
+	// append user defined parameters as declaration stmt to procedure body
+	newBlock.Body = make([]tree.Statement, len(Block.Body)+len(inputParams))
+	for i := range inputParams {
+		newBlock.Body[i] = inputParams[i]
+	}
+	copy(newBlock.Body[len(inputParams):], Block.Body)
+
+	bodyScope := inScope.push()
+	bodyScope.cols = make([]scopeColumn, len(inScope.cols))
+	copy(bodyScope.cols, inScope.cols)
+	// build each stmt
+	labels := make([]string, 0)
+	labels = append(labels, newBlock.Label)
+	return b.buildProcCommand(&newBlock, desiredTypes /* desiredTypes */, bodyScope, &labels)
+}
+
+// buildProcCommand recursively builds stmt and stmts inside itself,
+// construct memoExpr and corresponding procCommand.
+func (b *Builder) buildProcCommand(
+	stmt tree.Statement, desiredTypes []*types.T, inScope *scope, labels *[]string,
+) memo.ProcCommand {
+	switch stmt := stmt.(type) {
+	case *tree.Block:
+		return b.buildBlock(stmt, desiredTypes, inScope, labels)
+	case *tree.ControlCursor:
+		return b.buildControlCursor(stmt, inScope)
+	case *tree.Declaration:
+		return b.buildProcDeclare(stmt, inScope, labels)
+	case *tree.ProcSet:
+		return b.buildProcSet(stmt, inScope)
+	case *tree.ProcIf:
+		return b.buildProcIf(stmt, inScope, labels)
+	case *tree.ProcWhile:
+		return b.buildProcWhile(stmt, inScope, labels)
+	case *tree.ProcLeave:
+		return b.buildProcLeave(stmt, inScope, labels)
+	case *tree.ProcLoop:
+		return b.buildProcedureLoop(stmt, inScope)
+	case *tree.BeginTransaction, *tree.CommitTransaction, *tree.RollbackTransaction:
+		return b.buildProcedureTransaction(stmt)
+	case *tree.SelectInto:
+		return b.buildIntoCommand(stmt.SelectClause, stmt.Targets, inScope)
+	case *tree.Update:
+		switch returning := stmt.Returning.(type) {
+		case *tree.ReturningIntoClause:
+			return b.buildIntoCommand(stmt, returning.Targets, inScope)
+		default:
+			return b.buildProcStmt(stmt, desiredTypes, inScope)
+		}
+	case *tree.Delete:
+		switch returning := stmt.Returning.(type) {
+		case *tree.ReturningIntoClause:
+			return b.buildIntoCommand(stmt, returning.Targets, inScope)
+		default:
+			return b.buildProcStmt(stmt, desiredTypes, inScope)
+		}
+	case *tree.Insert:
+		switch returning := stmt.Returning.(type) {
+		case *tree.ReturningIntoClause:
+			return b.buildIntoCommand(stmt, returning.Targets, inScope)
+		default:
+			return b.buildProcStmt(stmt, desiredTypes, inScope)
+		}
+	default:
+		return b.buildProcStmt(stmt, desiredTypes, inScope)
+	}
+	return nil
 }

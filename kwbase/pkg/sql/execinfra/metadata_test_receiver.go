@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
@@ -150,6 +151,18 @@ func (mtr *MetadataTestReceiver) checkRowNumMetadata() *execinfrapb.ProducerMeta
 	}
 
 	return nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (mtr *MetadataTestReceiver) InitProcessorProcedure(txn *kv.Txn) {
+	if mtr.EvalCtx.IsProcedure {
+		if mtr.FlowCtx != nil {
+			mtr.FlowCtx.Txn = txn
+		}
+		mtr.Closed = false
+		mtr.State = StateRunning
+		mtr.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

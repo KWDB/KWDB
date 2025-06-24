@@ -69,8 +69,8 @@ func (ex *connExecutor) execPrepare(
 		if sub, ok := astSetVar.Values[0].(*tree.Subquery); ok {
 			sel := tree.Select{Select: sub.Select}
 			selInto := tree.SelectInto{
-				Names:  tree.UserDefinedVars{tree.UserDefinedVar{VarName: astSetVar.Name}},
-				Values: &sel,
+				Targets:      tree.SelectIntoTargets{tree.SelectIntoTarget{Udv: tree.UserDefinedVar{VarName: astSetVar.Name}}},
+				SelectClause: &sel,
 			}
 			parseCmd.Statement.AST = &selInto
 		}

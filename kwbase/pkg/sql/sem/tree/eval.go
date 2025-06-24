@@ -3150,6 +3150,8 @@ type EvalContext struct {
 	StartSinglenode     bool
 	StartDistributeMode bool
 	GroupWindow         *GroupWindow
+	// IsProcedure is true when the the SQL exec in procedure.
+	IsProcedure bool
 }
 
 // GroupWindow record group_window information.

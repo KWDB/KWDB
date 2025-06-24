@@ -110,6 +110,15 @@ const (
 	DefinedAggregation UserDefinedFunctionType = 2
 )
 
+// RoutineType is user defined routine type: procedure or function
+type RoutineType int
+
+// User Defined Routine type
+const (
+	Procedure RoutineType = iota + 1
+	Function
+)
+
 // Oid for virtual database and table.
 const (
 	CrdbInternalID = math.MaxUint32 - iota
@@ -178,6 +187,7 @@ const (
 	InformationSchemaTablesTableID
 	InformationSchemaViewsTableID
 	InformationSchemaUserPrivilegesID
+	InformationSchemaProcedurePrivilegesID
 	PgCatalogID
 	PgCatalogAmTableID
 	PgCatalogAttrDefTableID
@@ -231,7 +241,8 @@ const (
 	PgCatalogStatAllIndexesTableID
 	CrdbInternalKWDBSchedulesTableID
 	CrdbInternalKWDBFunctionsTableID
-	MinVirtualID = CrdbInternalKWDBFunctionsTableID
+	KwdbInternalKWDBProceduresTableID
+	MinVirtualID = KwdbInternalKWDBProceduresTableID
 )
 
 const (

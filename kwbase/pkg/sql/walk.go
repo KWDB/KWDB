@@ -881,6 +881,10 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 			v.observer.attr(name, "destination", n.fileName)
 		}
 		n.source = v.visit(n.source)
+	case *callProcedureNode:
+		if v.observer.attr != nil {
+			v.observer.attr(name, "call", n.procCall)
+		}
 	}
 }
 
@@ -1044,6 +1048,7 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&changePrivilegesNode{}):     "change privileges",
 	reflect.TypeOf(&commentOnColumnNode{}):      "comment on column",
 	reflect.TypeOf(&commentOnDatabaseNode{}):    "comment on database",
+	reflect.TypeOf(&commentOnProcedureNode{}):   "comment on procedure",
 	reflect.TypeOf(&commentOnIndexNode{}):       "comment on index",
 	reflect.TypeOf(&commentOnTableNode{}):       "comment on table",
 	reflect.TypeOf(&controlJobsNode{}):          "control jobs",
@@ -1054,6 +1059,8 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&createSchemaNode{}):         "create schema",
 	reflect.TypeOf(&createScheduleNode{}):       "create schedule",
 	reflect.TypeOf(&createStatsNode{}):          "create statistics",
+	reflect.TypeOf(&createProcedureNode{}):      "create procedure",
+	reflect.TypeOf(&callProcedureNode{}):        "call procedure",
 	reflect.TypeOf(&createTableNode{}):          "create table",
 	reflect.TypeOf(&createMultiInstTableNode{}): "create tables",
 	reflect.TypeOf(&CreateRoleNode{}):           "create user/role",
@@ -1073,6 +1080,7 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&DropRoleNode{}):             "drop user/role",
 	reflect.TypeOf(&dropViewNode{}):             "drop view",
 	reflect.TypeOf(&dropFunctionNode{}):         "drop function",
+	reflect.TypeOf(&dropProcedureNode{}):        "drop procedure",
 	reflect.TypeOf(&dropAuditNode{}):            "drop audit",
 	reflect.TypeOf(&errorIfRowsNode{}):          "error if rows",
 	reflect.TypeOf(&explainDistSQLNode{}):       "explain distsql",

@@ -560,6 +560,11 @@ func (h *hasher) HashViewDeps(val opt.ViewDeps) {
 	}
 }
 
+func (h *hasher) HashProcComms(val ProcComms) {
+	// Hash the length and address of the first element.
+	h.HashPointer(unsafe.Pointer(&val))
+}
+
 func (h *hasher) HashWindowFrame(val WindowFrame) {
 	h.HashInt(int(val.StartBoundType))
 	h.HashInt(int(val.EndBoundType))
@@ -1004,6 +1009,13 @@ func (h *hasher) IsViewDepsEqual(l, r opt.ViewDeps) bool {
 		return false
 	}
 	return len(l) == 0 || &l[0] == &r[0]
+}
+
+func (h *hasher) IsProcCommsEqual(l, r ProcComms) bool {
+	if l.Type() != r.Type() {
+		return false
+	}
+	return l == r
 }
 
 func (h *hasher) IsWindowFrameEqual(l, r WindowFrame) bool {

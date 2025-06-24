@@ -42,6 +42,7 @@ func TestPrivilegeDecode(t *testing.T) {
 		// We avoid 0 as a privilege value even though we use 1 << privValue.
 		{1, privilege.List{}, "", ""},
 		{2, privilege.List{privilege.ALL}, "ALL", "ALL"},
+		{1024, privilege.List{privilege.EXECUTE}, "EXECUTE", "EXECUTE"},
 		{10, privilege.List{privilege.ALL, privilege.DROP}, "ALL, DROP", "ALL,DROP"},
 		{144, privilege.List{privilege.GRANT, privilege.DELETE}, "GRANT, DELETE", "DELETE,GRANT"},
 		{1022,
@@ -49,6 +50,12 @@ func TestPrivilegeDecode(t *testing.T) {
 				privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG},
 			"ALL, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, ZONECONFIG",
 			"ALL,CREATE,DELETE,DROP,GRANT,INSERT,SELECT,UPDATE,ZONECONFIG",
+		},
+		{2046,
+			privilege.List{privilege.ALL, privilege.CREATE, privilege.DROP, privilege.GRANT,
+				privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG, privilege.EXECUTE},
+			"ALL, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, ZONECONFIG, EXECUTE",
+			"ALL,CREATE,DELETE,DROP,EXECUTE,GRANT,INSERT,SELECT,UPDATE,ZONECONFIG",
 		},
 	}
 

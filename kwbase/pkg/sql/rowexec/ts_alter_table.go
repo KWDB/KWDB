@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -105,6 +106,9 @@ func newTsAlterColumn(
 	}
 	return tat, nil
 }
+
+// InitProcessorProcedure init processor in procedure
+func (tct *tsAlterTable) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Start is part of the RowSource interface.
 func (tct *tsAlterTable) Start(ctx context.Context) context.Context {

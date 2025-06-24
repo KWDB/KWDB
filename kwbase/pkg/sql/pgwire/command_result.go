@@ -108,6 +108,12 @@ type commandResult struct {
 
 var _ sql.CommandResult = &commandResult{}
 
+// AddPGComplete is part of the CommandResult interface.
+func (r *commandResult) AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int) {
+	tag := cookTag(r.cmdCompleteTag+" result"+cmd, r.conn.writerState.tagBuf[:0], typ, rowsAffected)
+	r.conn.bufferCommandComplete(tag)
+}
+
 // Close is part of the CommandResult interface.
 func (r *commandResult) Close(ctx context.Context, t sql.TransactionStatusIndicator) {
 	r.assertNotReleased()
@@ -476,6 +482,12 @@ func (r *limitedCommandResult) AddPGResult(ctx context.Context, res []byte) erro
 		return err
 	}
 	return nil
+}
+
+// AddPGComplete is part of the CommandResult interface.
+func (r *limitedCommandResult) AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int) {
+	tag := cookTag(r.cmdCompleteTag, r.conn.writerState.tagBuf[:0], typ, rowsAffected)
+	r.conn.bufferCommandComplete(tag)
 }
 
 // IsLimit is part of the RestrictedCommandResult interface.

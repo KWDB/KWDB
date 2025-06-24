@@ -45,8 +45,9 @@ type renameIndexNode struct {
 
 // RenameIndex renames the index.
 // Privileges: CREATE on table.
-//   notes: postgres requires CREATE on the table.
-//          mysql requires ALTER, CREATE, INSERT on the table.
+//
+//	notes: postgres requires CREATE on the table.
+//	       mysql requires ALTER, CREATE, INSERT on the table.
 func (p *planner) RenameIndex(ctx context.Context, n *tree.RenameIndex) (planNode, error) {
 	_, tableDesc, err := expandMutableIndexName(ctx, p, n.Index, !n.IfExists /* requireTable */)
 	if err != nil {

@@ -1344,5 +1344,5 @@ drop database pipec_r cascade;
 drop database db_pipec cascade;
 DROP DATABASE IF EXISTS test_SELECT_join cascade;
 DROP DATABASE IF EXISTS test_SELECT_join_rel cascade;
-set cluster setting ts.sql.query_opt_mode = 1110;
+set cluster setting ts.sql.query_opt_mode = DEFAULT;
 set cluster setting sql.stats.tag_automatic_collection.enabled = true;

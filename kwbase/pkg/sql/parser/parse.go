@@ -226,13 +226,33 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 	tokens = append(tokens, lval)
 	var dot int
 	decided := false
+
+	var preValID int32
+	// This is used to track the degree of nested `BEGIN ATOMIC ... END` function
+	// body context. When greater than zero, it means that we're scanning through
+	// the function body of a `CREATE FUNCTION` statement. ';' character is only
+	// a separator of sql statements within the body instead of a finishing line
+	// of the `CREATE FUNCTION` statement.
+	curFuncBodyCnt := 0
 	for {
 		if lval.id == ERROR {
 			return p.scanner.in[startPos:], tokens, true
 		}
 		posBeforeScan := p.scanner.pos
+		preValID = lval.id
 		p.scanner.scan(&lval)
-		if lval.id == 0 || lval.id == ';' {
+		curValID := lval.id
+		if preValID == CREATE && curValID == PROCEDURE {
+			p.scanner.isCreateProc = true
+		}
+		// TODO: Perhaps TRANSACTION BEGIN need to be processed
+		if p.scanner.isCreateProc && (curValID == BEGIN || curValID == CASE) {
+			curFuncBodyCnt++
+		}
+		if curFuncBodyCnt > 0 && (curValID == END || curValID == ENDHANDLER) {
+			curFuncBodyCnt--
+		}
+		if lval.id == 0 || (curFuncBodyCnt == 0 && lval.id == ';') {
 			return p.scanner.in[startPos:posBeforeScan], tokens, (lval.id == 0)
 		}
 		lval.pos -= startPos

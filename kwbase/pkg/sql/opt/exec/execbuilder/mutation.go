@@ -173,11 +173,18 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 	}
 	var payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert
 	var err error
+	var inputRows opt.RowsValue
+
+	if tsInsert.RunInsideProcedure {
+		inputRows = tsInsert.ActualRows
+	} else {
+		inputRows = tsInsert.InputRows
+	}
 
 	// builds the payload of each node according to the input value
 	payloadNodeMap, err = BuildInputForTSInsert(
 		b.evalCtx,
-		tsInsert.InputRows,
+		inputRows,
 		cols,
 		tsInsert.ColsMap,
 		uint32(dbID),
@@ -2741,6 +2748,12 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 			colIndexs[int(cols[i].ID)] = ord
 		}
 	}
+	var inputRowVal opt.RowsValue
+	if tsDelete.RunInsideProcedure {
+		inputRowVal = tsDelete.ActualRows
+	} else {
+		inputRowVal = tsDelete.InputRows
+	}
 
 	var primaryTagVal []byte
 	var isOutOfRange bool
@@ -2749,7 +2762,7 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 		// build time series table's primary tags values through expr
 		primaryTagVal, isOutOfRange, err = BuildInputForTSDelete(
 			b.evalCtx,
-			tsDelete.InputRows,
+			inputRowVal,
 			[]int{0},
 			primaryTagCols,
 			colIndexs,

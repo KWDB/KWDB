@@ -1344,7 +1344,7 @@ CREATE TABLE pg_catalog.pg_description (
 			case keys.DatabaseCommentType:
 				// Database comments are exported in pg_shdescription.
 				continue
-			case keys.ColumnCommentType, keys.TableCommentType:
+			case keys.ColumnCommentType, keys.TableCommentType, keys.UDRCommentType:
 				objID = tree.NewDOid(tree.MustBeDInt(objID))
 				classOid = tree.NewDOid(sqlbase.PgCatalogClassTableID)
 			case keys.IndexCommentType:

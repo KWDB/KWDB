@@ -749,6 +749,9 @@ type RestrictedCommandResult interface {
 	// AddPGResult accumulates a pg result row.
 	AddPGResult(ctx context.Context, res []byte) error
 
+	// AddPGComplete adds a pg complete flag.
+	AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int)
+
 	// IsLimit if is limit command
 	IsLimit() bool
 
@@ -969,6 +972,9 @@ func (r *bufferedCommandResult) ResetStmtType(stmt tree.Statement) {
 func (r *bufferedCommandResult) AddPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
+
+// AddPGComplete is part of the RestrictedCommandResult interface.
+func (r *bufferedCommandResult) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 // IsLimit is part of the RestrictedCommandResult interface.
 func (r *bufferedCommandResult) IsLimit() bool {
