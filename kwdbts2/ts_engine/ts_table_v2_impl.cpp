@@ -179,6 +179,14 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
+                          vector<KwTsSpan>& ts_spans, std::vector<k_uint32> scan_cols, k_uint32 table_version,
+                          TsIterator** iter, k_uint32 offset, k_uint32 limit, bool reverse) {
+  // not supported yet in v3.0
+  LOG_ERROR("Not supported yeet.");
+  return KStatus::FAIL;
+}
+
 KStatus
 TsTableV2Impl::AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
                           uint32_t new_version, string& msg) {
