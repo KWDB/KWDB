@@ -294,6 +294,26 @@ message TsPutTagResponse {
   bytes discardBitmap = 3;
 }
 
+// A TsCommitRequest is the argument to insert value to TS DB in single node mode(MPP)
+message TsCommitRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  bytes id = 2 [(gogoproto.customname) = "ID",
+    (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/util/uuid.UUID",
+    (gogoproto.nullable) = false];
+}
+
+// A TsRollbackRequest is the argument to insert value to TS DB in single node mode(MPP)
+message TsRollbackRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  bytes id = 2 [(gogoproto.customname) = "ID",
+    (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/util/uuid.UUID",
+    (gogoproto.nullable) = false];
+}
+
 // A TsSpan is the span of timestamps
 message TsSpan {
   option (gogoproto.equal) = true;
@@ -2042,6 +2062,8 @@ message RequestUnion {
     TsTagUpdateRequest ts_tag_update = 59;
     TsDeleteMultiEntitiesDataRequest ts_delete_multi_entities_data = 60;
     TsPutTagRequest ts_put_tag = 61;
+    TsCommitRequest ts_commit = 62;
+    TsRollbackRequest ts_rollback = 63;
   }
   reserved 8, 15, 23, 25, 27;
 }

@@ -738,6 +738,12 @@ func (*RangeStatsRequest) Method() Method { return RangeStats }
 func (*AdminVerifyProtectedTimestampRequest) Method() Method { return AdminVerifyProtectedTimestamp }
 
 // Method implements the Request interface.
+func (*TsRollbackRequest) Method() Method { return TsRollbackTag }
+
+// Method implements the Request interface.
+func (*TsCommitRequest) Method() Method { return TsCommitTag }
+
+// Method implements the Request interface.
 func (*TsPutRequest) Method() Method { return TsPut }
 
 // Method implements the Request interface.
@@ -1035,6 +1041,18 @@ func (r *AdminVerifyProtectedTimestampRequest) ShallowCopy() Request {
 }
 
 // ShallowCopy implements the Request interface.
+func (r *TsRollbackRequest) ShallowCopy() Request {
+	shallowCopy := *r
+	return &shallowCopy
+}
+
+// ShallowCopy implements the Request interface.
+func (r *TsCommitRequest) ShallowCopy() Request {
+	shallowCopy := *r
+	return &shallowCopy
+}
+
+// ShallowCopy implements the Request interface.
 func (r *TsPutRequest) ShallowCopy() Request {
 	shallowCopy := *r
 	return &shallowCopy
@@ -1223,6 +1241,14 @@ func scanLockStrength(forUpdate bool) lock.Strength {
 		return lock.Exclusive
 	}
 	return lock.None
+}
+
+func (*TsRollbackRequest) flags() int {
+	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure
+}
+
+func (*TsCommitRequest) flags() int {
+	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure
 }
 
 func (*GetRequest) flags() int {

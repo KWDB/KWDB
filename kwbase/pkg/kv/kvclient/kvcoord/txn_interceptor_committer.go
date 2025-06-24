@@ -27,15 +27,13 @@ package kvcoord
 import (
 	"context"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
-	"sync"
-	"time"
-
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"sync"
 )
 
 var parallelCommitsEnabled = settings.RegisterBoolSetting(
@@ -551,23 +549,69 @@ func (tc *tsTxnCommitter) SendLocked(
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 	br, pErr := tc.wrapped.Send(ctx, ba)
 	ba.Txn = nil
+	exist, record, err := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
+	if !exist || err != nil {
+		// todo:
+	}
 	if pErr != nil {
-		time.Sleep(10 * time.Second)
-		var record roachpb.TsTxnRecord
-		record.ID = tc.txn.ID()
+		pErr = tc.sendRollbackRequest(ctx, ba.Txn, record.Spans, 0)
+		if pErr != nil {
+			// todo:
+		}
 		record.Status = roachpb.ABORTED
-		if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+		if err := tc.txn.DB().WriteTxnRecord(ctx, record); err != nil {
 			return nil, roachpb.NewError(err)
 		}
 		return nil, pErr
 	}
-	time.Sleep(10 * time.Second)
-	var record roachpb.TsTxnRecord
-	record.ID = tc.txn.ID()
+	pErr = tc.sendCommitRequest(ctx, ba.Txn, record.Spans, 0)
+	if pErr != nil {
+		// todo:
+	}
 	record.Status = roachpb.COMMITTED
-	if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+	if err := tc.txn.DB().WriteTxnRecord(ctx, record); err != nil {
 		return nil, roachpb.NewError(err)
 	}
 
 	return br, pErr
+}
+
+func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn *roachpb.Transaction, spans roachpb.Spans, retry int) *roachpb.Error {
+	ba := roachpb.BatchRequest{}
+	ba.Txn = txn
+	for _, span := range spans {
+		ba.Add(&roachpb.TsRollbackRequest{
+			RequestHeader: roachpb.RequestHeader{
+				Key:    span.Key,
+				EndKey: span.EndKey,
+			},
+			ID: txn.ID,
+		})
+	}
+	_, pErr := tc.wrapped.Send(ctx, ba)
+	if pErr != nil && retry < 5 {
+		retry++
+		tc.sendRollbackRequest(ctx, txn, spans, retry)
+	}
+	return pErr
+}
+
+func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn *roachpb.Transaction, spans roachpb.Spans, retry int) *roachpb.Error {
+	ba := roachpb.BatchRequest{}
+	ba.Txn = txn
+	for _, span := range spans {
+		ba.Add(&roachpb.TsCommitRequest{
+			RequestHeader: roachpb.RequestHeader{
+				Key:    span.Key,
+				EndKey: span.EndKey,
+			},
+			ID: txn.ID,
+		})
+	}
+	_, pErr := tc.wrapped.Send(ctx, ba)
+	if pErr != nil && retry < 5 {
+		retry++
+		tc.sendCommitRequest(ctx, txn, spans, retry)
+	}
+	return pErr
 }

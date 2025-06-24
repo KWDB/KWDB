@@ -454,6 +454,7 @@ type tsTxnHeartbeater struct {
 
 		finalObservedStatus roachpb.TransactionStatus
 	}
+	ranges roachpb.Spans
 }
 
 // setWrapped implements the txnInterceptor interface.
@@ -464,7 +465,30 @@ func (h *tsTxnHeartbeater) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 
-	if h.txn != nil {
+	var notInsert bool
+	for _, ru := range ba.Requests {
+		var span roachpb.Span
+		r := ru.GetInner()
+		switch tdr := r.(type) {
+		case *roachpb.TsPutRequest:
+			span.Key = tdr.Key
+			span.EndKey = tdr.EndKey
+			h.ranges = append(h.ranges, span)
+		case *roachpb.TsPutTagRequest:
+			span.Key = tdr.Key
+			span.EndKey = tdr.EndKey
+			h.ranges = append(h.ranges, span)
+		case *roachpb.TsRowPutRequest:
+			span.Key = tdr.Key
+			span.EndKey = tdr.EndKey
+			h.ranges = append(h.ranges, span)
+		default:
+			notInsert = true
+			break
+		}
+	}
+
+	if h.txn != nil && !notInsert {
 		if !h.mu.loopStarted {
 			if err := h.startHeartbeatLoopLocked(ctx); err != nil {
 				return nil, roachpb.NewError(err)
@@ -599,6 +623,7 @@ func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRe
 	record.ID = h.mu.transaction.ID
 	record.Status = roachpb.PENDING
 	record.LastHeartbeat = h.clock.Now()
+	record.Spans = append(record.Spans, h.ranges...)
 	_, txnRecord, err := h.txn.DB().ScanAndWriteTxnRecord(ctx, record)
 	if err != nil {
 		return txnRecord, err

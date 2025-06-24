@@ -684,6 +684,11 @@ func (r *Replica) stageTsBatchRequest(
 				var entitiesAffect tse.EntitiesAffect
 				payload = append(payload, req.Value.RawBytes)
 				if payload != nil {
+					if ba.Txn != nil {
+						if err := r.store.TsEngine.TransBegin(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+							// todo(tyh)
+						}
+					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutData(1, payload, tsTxnID, true); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
 						if errRollback != nil {
@@ -718,6 +723,11 @@ func (r *Replica) stageTsBatchRequest(
 				var dedupResult tse.DedupResult
 				var entitiesAffect tse.EntitiesAffect
 				if req.Values != nil {
+					if ba.Txn != nil {
+						if err := r.store.TsEngine.TransBegin(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+							// todo(tyh)
+						}
+					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
 						if errRollback != nil {
@@ -875,6 +885,15 @@ func (r *Replica) stageTsBatchRequest(
 				err = nil
 			} else {
 				log.Infof(ctx, "drop table %v succeed", req.TableId)
+			}
+
+		case *roachpb.TsCommitRequest:
+			if err := r.store.TsEngine.TransCommit(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+				// todo(tyh)
+			}
+		case *roachpb.TsRollbackRequest:
+			if err := r.store.TsEngine.TransRollback(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+				// todo(tyh)
 			}
 		}
 	}

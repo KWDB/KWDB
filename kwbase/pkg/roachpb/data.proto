@@ -345,6 +345,7 @@ message TsTxnRecord {
   util.hlc.Timestamp last_heartbeat        = 2  [(gogoproto.nullable) = false];
   TransactionStatus status = 3;
   bool rollback_success = 4;
+  repeated Span spans = 5 [(gogoproto.nullable) = false];
 }
 
 // A Transaction is a unit of work performed on the database.
