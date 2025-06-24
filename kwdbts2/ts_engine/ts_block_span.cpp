@@ -12,7 +12,6 @@
 #include "ts_agg.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
-#include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
 bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
@@ -59,6 +58,12 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
+TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow)  // NOLINT(runtime/init)
+    : vgroup_id_(vgroup_id), entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow), convert_(*this) {  // NOLINT(runtime/init)
+  assert(nrow_ >= 1);
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+}
+
 bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
   if (entity_id_ != other.entity_id_) {
     return entity_id_ < other.entity_id_;
@@ -82,6 +87,10 @@ void TsBlockSpan::operator=(TsBlockSpan &other) {
   this->nrow_ = other.nrow_;
   this->has_pre_agg_ = other.has_pre_agg_;
   this->convert_ = std::move(other.convert_);
+}
+
+uint32_t TsBlockSpan::GetVGroupID() const {
+  return vgroup_id_;
 }
 
 TSEntityID TsBlockSpan::GetEntityID() const {
@@ -237,7 +246,7 @@ KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_s
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
-  front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num,
+  front_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_, row_num,
                                         convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
   // change current span info
   start_row_ += row_num;
@@ -247,7 +256,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
-  back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num,
+  back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num, row_num,
                                        convert_.tbl_schema_mgr_);
   // change current span info
   nrow_ -= row_num;

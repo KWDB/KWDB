@@ -37,6 +37,7 @@ struct TsScanFilterParams {
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
   std::vector<STScanRange> spans_;
 };

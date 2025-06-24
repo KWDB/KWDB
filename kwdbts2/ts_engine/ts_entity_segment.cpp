@@ -265,7 +265,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
           continue;
         }
         // Because block item traverses from back to front, use push_front
-        block_spans.push_front(make_shared<TsBlockSpan>(filter.entity_id, block, row_spans[i].first,
+        block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, row_spans[i].first,
                                                         row_spans[i].second, tbl_schema_mgr,
                                                         scan_version));
       }

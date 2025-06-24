@@ -645,14 +645,14 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         if (match_found) {
           match_found = false;
-          block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, i - start_idx,
+          block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx, i - start_idx,
                                                             tbl_schema_mgr, scan_version));
         }
       }
     }
     if (match_found) {
       match_found = false;
-      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx,
+      block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
                                 end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
                                 tbl_schema_mgr, scan_version));
     }

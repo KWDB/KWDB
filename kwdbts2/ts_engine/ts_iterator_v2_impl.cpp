@@ -1516,4 +1516,455 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
   return KStatus::SUCCESS;
 }
 
+KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp64 end_ts, uint32_t* lower_cnt,
+                                                 deque<std::shared_ptr<TsBlockSpan>>& lower_block_span) {
+  uint32_t size = filter_block_spans_.size();
+  timestamp64 mid_ts = begin_ts + (end_ts - begin_ts) / 2;
+  for (uint32_t i = 0; i < size; ++i) {
+    std::shared_ptr<TsBlockSpan> block_span = filter_block_spans_.front();
+    filter_block_spans_.pop_front();
+    uint32_t vgroup_id = block_span->GetVGroupID();
+    uint32_t entity_id = block_span->GetEntityID();
+    std::shared_ptr<TsBlock> block = block_span->GetTsBlock();
+    timestamp64 min_ts, max_ts;
+    block_span->GetTSRange(&min_ts, &max_ts);
+    if ((is_reversed_ && min_ts > mid_ts) || (!is_reversed_ && max_ts <= mid_ts)) {
+      *lower_cnt += block_span->GetRowNum();
+      lower_block_span.push_back(block_span);
+    } else if ((is_reversed_ && max_ts <= min_ts) || (!is_reversed_ && min_ts > mid_ts)) {
+      filter_block_spans_.push_back(block_span);
+    } else {
+      bool is_lower_part;
+      int first_row = block_span->GetStartRow(), start_row = block_span->GetStartRow();
+      uint32_t row_num = block_span->GetRowNum();
+      for (int j = start_row; j < start_row + row_num; ++j) {
+        timestamp64 cur_ts = block_span->GetTS(j - start_row);
+        if (j == start_row) {
+          is_lower_part = (is_reversed_ == (cur_ts > mid_ts));
+          min_ts = max_ts = cur_ts;
+        } else if (is_lower_part && ((is_reversed_ && cur_ts <= mid_ts) || (!is_reversed_ && cur_ts > mid_ts))) {
+          *lower_cnt += (j - first_row);
+          lower_block_span.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row, j - first_row));
+          first_row = j;
+          is_lower_part = false;
+          min_ts = max_ts = cur_ts;
+        } else if (!is_lower_part && ((is_reversed_ && cur_ts > mid_ts) || (!is_reversed_ && cur_ts <= mid_ts))) {
+          filter_block_spans_.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row, j - first_row));
+          first_row = j;
+          is_lower_part = true;
+          min_ts = max_ts = cur_ts;
+        } else {
+          min_ts = min(min_ts, cur_ts);
+          max_ts = max(max_ts, cur_ts);
+        }
+      }
+      if (first_row < start_row + row_num) {
+        if (is_lower_part) {
+          *lower_cnt += (start_row + row_num - first_row);
+          lower_block_span.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row,
+                                                              start_row + row_num - first_row));
+        } else {
+          filter_block_spans_.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row,
+                                                                 start_row + row_num - first_row));
+        }
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::filterLower(uint32_t* cnt) {
+  *cnt = 0;
+  timestamp64 begin_ts = p_time_it_->second.begin()->second.ts_partition_range.begin;
+  timestamp64 end_ts = p_time_it_->second.begin()->second.ts_partition_range.end;
+  while (!filter_end_) {
+    uint32_t lower_cnt = 0;
+    deque<std::shared_ptr<TsBlockSpan>> lower_block_span;
+    if (divideBlockSpans(begin_ts, end_ts, &lower_cnt, lower_block_span) != KStatus::SUCCESS) {
+      return KStatus::FAIL;
+    }
+    timestamp64 mid_ts = begin_ts + (end_ts - begin_ts) / 2;
+
+    if (filter_cnt_ + lower_cnt < offset_) {
+      is_reversed_ ? end_ts = mid_ts : begin_ts = mid_ts;
+      filter_cnt_ += lower_cnt;
+    } else {
+      is_reversed_ ? begin_ts = mid_ts : end_ts = mid_ts;
+      while (!filter_block_spans_.empty()) {
+        block_spans_.push_back(filter_block_spans_.front());
+        *cnt += filter_block_spans_.front()->GetRowNum();
+        filter_block_spans_.pop_front();
+      }
+      while (!lower_block_span.empty()) {
+        filter_block_spans_.push_back(lower_block_span.front());
+        lower_block_span.pop_front();
+      }
+    }
+    filter_end_ = (filter_cnt_ > (offset_ - deviation_)) || (end_ts - begin_ts < t_time_);
+  }
+  while (!filter_block_spans_.empty()) {
+    block_spans_.push_back(filter_block_spans_.front());
+    *cnt += filter_block_spans_.front()->GetRowNum();
+    filter_block_spans_.pop_front();
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::filterUpper(uint32_t filter_num, uint32_t* cnt) {
+  *cnt = 0;
+  timestamp64 begin_ts = p_time_it_->second.begin()->second.ts_partition_range.begin;
+  timestamp64 end_ts = p_time_it_->second.begin()->second.ts_partition_range.end;
+  bool filter_end = false;
+  while (!filter_end) {
+    uint32_t lower_cnt = 0;
+    deque<std::shared_ptr<TsBlockSpan>> lower_block_span;
+    timestamp64 mid_ts = begin_ts + (end_ts - begin_ts) / 2;
+    if (divideBlockSpans(begin_ts, end_ts, &lower_cnt, lower_block_span) != KStatus::SUCCESS) {
+      return KStatus::FAIL;
+    }
+    if (lower_cnt >= filter_num) {
+      is_reversed_ ? begin_ts = mid_ts : end_ts = mid_ts;
+      std::deque<std::shared_ptr<TsBlockSpan>>().swap(filter_block_spans_);
+      while (!lower_block_span.empty()) {
+        filter_block_spans_.push_back(lower_block_span.front());
+        lower_block_span.pop_front();
+      }
+    } else {
+      is_reversed_ ? end_ts = mid_ts : begin_ts = mid_ts;
+      while (!lower_block_span.empty()) {
+        block_spans_.push_back(lower_block_span.front());
+        lower_block_span.pop_front();
+      }
+      *cnt += lower_cnt;
+      filter_num -= lower_cnt;
+    }
+    filter_end = (filter_num <= 0) || (end_ts - begin_ts < t_time_);
+  }
+  while (!filter_block_spans_.empty()) {
+    *cnt += filter_block_spans_.front()->GetRowNum();
+    block_spans_.push_back(filter_block_spans_.front());
+    filter_block_spans_.pop_front();
+  }
+  return KStatus::SUCCESS;
+}
+
+std::vector<KwTsSpan>& TsOffsetIteratorV2Impl::CalTsSpanInPartition(timestamp64 begin, timestamp64 end) {
+  std::vector<KwTsSpan> ts_span;
+  for (auto it : ts_spans_) {
+    if (it.begin > end || it.end <begin) {
+      continue;
+    }
+    KwTsSpan cur_span;
+    cur_span.begin = it.begin < begin ? begin : it.begin;
+    cur_span.end = it.end > end ? end : it.end;
+    ts_span.emplace_back(cur_span);
+  }
+  return ts_span;
+}
+
+KStatus TsOffsetIteratorV2Impl::AddMemSegmentBlockSpans() {
+  timestamp64 begin_ts = p_time_it_->second.begin()->second.ts_partition_range.begin;
+  timestamp64 end_ts = p_time_it_->second.begin()->second.ts_partition_range.end;
+  std::vector<KwTsSpan> ts_spans = CalTsSpanInPartition(begin_ts, end_ts);
+  for (const auto& it : p_time_it_->second) {
+    uint32_t vgroup_id = it.first;
+    std::vector<EntityID> entity_ids = vgroup_ids_[vgroup_id];
+    std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id];
+    // TODO(liumengzhen) filter参数能否支持多设备
+    for (auto entity_id : entity_ids) {
+      TsBlockItemFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_spans};
+      KStatus s = vgroup->GetMemSegmentMgr()->GetBlockSpans(filter, ts_block_spans_);
+      if (s != KStatus::SUCCESS) return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::AddLastSegmentBlockSpans() {
+  for (const auto& it : p_time_it_->second) {
+    uint32_t vgroup_id = it.first;
+    TsPartition partition = it.second;
+    std::vector<EntityID> entity_ids = vgroup_ids_[vgroup_id];
+
+    std::vector<std::shared_ptr<TsLastSegment>> last_segments =
+        partition.ts_vgroup_partition->GetLastSegmentMgr()->GetAllLastSegments();
+    for (auto entity_id : entity_ids) {
+      TsBlockItemFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_spans_};
+      for (std::shared_ptr<TsLastSegment> last_segment : last_segments) {
+        if (last_segment->GetBlockSpans(filter, ts_block_spans_) != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::AddEntitySegmentBlockSpans() {
+  for (const auto& it : p_time_it_->second) {
+    uint32_t vgroup_id = it.first;
+    TsPartition partition = it.second;
+    std::vector<EntityID> entity_ids = vgroup_ids_[vgroup_id];
+
+    for (auto entity_id : entity_ids) {
+      TsBlockItemFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_spans_};
+      KStatus s = partition.ts_vgroup_partition->GetEntitySegment()->GetBlockSpans(filter, ts_block_spans_);
+      if (s != KStatus::SUCCESS) return s;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
+  KStatus ret;
+  ret = AddMemSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize mem segment iterator of current partition(%ld).", p_time_it_->first);
+    return KStatus::FAIL;
+  }
+
+  ret = AddLastSegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize last segment iterator of partition(%ld).", p_time_it_->first);
+    return KStatus::FAIL;
+  }
+
+  ret = AddEntitySegmentBlockSpans();
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to initialize block segment iterator of partition(%ld).", p_time_it_->first);
+    return ret;
+  }
+  *cnt = 0;
+  for (const auto& block_span : ts_block_spans_) {
+    *cnt += block_span->GetRowNum();
+    filter_block_spans_.push_back(block_span);
+  }
+  ++p_time_it_;
+  return ret;
+}
+
+KStatus TsOffsetIteratorV2Impl::GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
+                                                   vector<AttributeInfo>& valid_schema) {
+  std::shared_ptr<MMapMetricsTable> blk_version;
+  KStatus ret = table_schema_mgr_->GetMetricSchema(version, &blk_version);
+  if (ret != SUCCESS) {
+    LOG_ERROR("GetMetricSchema failed. table version [%u]", version);
+    return ret;
+  }
+  auto& blk_schema_all = blk_version->getSchemaInfoIncludeDropped();
+  valid_schema = blk_version->getSchemaInfoExcludeDropped();
+  auto blk_valid_cols = blk_version->getIdxForValidCols();
+
+  if (const auto it = blk_scan_cols_.find(version); it != blk_scan_cols_.end()) {
+    scan_cols = it->second;
+    return KStatus::SUCCESS;
+  }
+
+  // calculate column index in current block
+  std::vector<uint32_t> blk_scan_cols;
+  blk_scan_cols.resize(ts_scan_cols_.size());
+  for (size_t i = 0; i < ts_scan_cols_.size(); i++) {
+    if (!blk_schema_all[ts_scan_cols_[i]].isFlag(AINFO_DROPPED)) {
+      bool found = false;
+      size_t j = 0;
+      for (; j < blk_valid_cols.size(); j++) {
+        if (blk_valid_cols[j] == ts_scan_cols_[i]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        blk_scan_cols[i] = UINT32_MAX;
+      } else {
+        blk_scan_cols[i] = j;
+      }
+    } else {
+      blk_scan_cols[i] = UINT32_MAX;
+    }
+  }
+  blk_scan_cols_.insert({version, blk_scan_cols});
+  scan_cols = blk_scan_cols;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
+  GetTerminationTime();
+  is_reversed_ = is_reversed;
+  db_id_ = table_schema_mgr_->GetDbID();
+  table_id_ = table_schema_mgr_->GetTableId();
+  KStatus ret = table_schema_mgr_->GetColumnsIncludeDropped(attrs_, table_version_);
+  if (ret != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+
+  for (const auto& it : vgroup_ids_) {
+    uint32_t vgroup_id = it.first;
+    std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id];
+    auto& partition_managers = vgroup->GetPartitionManagers();
+    auto p_it = partition_managers.find(db_id_);
+
+    if (p_it != partition_managers.end() && p_it->second) {
+      auto partition_manager = p_it->second.get();
+      std::unordered_map<int, std::shared_ptr<TsVGroupPartition>> partitions;
+      partition_manager->GetPartitions(&partitions);
+
+      for (const auto& [_, partition_ptr] : partitions) {
+        if (!partition_ptr) continue;
+        TsPartition ts_partition;
+        ts_partition.ts_partition_range.begin = convertSecondToPrecisionTS(partition_ptr->StartTs(), ts_col_type_);
+        ts_partition.ts_partition_range.end = convertSecondToPrecisionTS(partition_ptr->EndTs(), ts_col_type_);
+        if (isTimestampInSpans(ts_spans_, ts_partition.ts_partition_range.begin, ts_partition.ts_partition_range.end)) {
+          ts_partition.ts_vgroup_partition = partition_ptr;
+          p_times_[ts_partition.ts_partition_range.begin].push_back({vgroup_id, ts_partition});
+        }
+      }
+    }
+  }
+  p_time_it_ = p_times_.begin();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::filterBlockSpan() {
+  Defer defer{[&]() { ts_block_spans_.clear(); }};
+  uint32_t row_cnt = 0;
+  KStatus ret = ScanPartitionBlockSpans(&row_cnt);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("call ScanPartitionBlockSpans failed.");
+    return KStatus::FAIL;
+  }
+  ++p_time_it_;
+  if (0 == row_cnt) {
+    return KStatus::SUCCESS;
+  }
+  filter_end_ = (filter_cnt_ > (offset_ - deviation_));
+  if (!filter_end_) {
+    if (filter_cnt_ + row_cnt <= offset_) {
+      filter_cnt_ += row_cnt;
+      row_cnt = 0;
+      std::deque<std::shared_ptr<TsBlockSpan>>().swap(filter_block_spans_);
+      filter_end_ = (filter_cnt_ > (offset_ - deviation_));
+      return KStatus::SUCCESS;
+    } else {
+      if (filterLower(&row_cnt) != KStatus::SUCCESS) {
+        return KStatus::FAIL;
+      }
+    }
+  } else {
+    while (!filter_block_spans_.empty()) {
+      block_spans_.push_back(filter_block_spans_.front());
+      filter_block_spans_.pop_front();
+    }
+  }
+
+  uint32_t need_to_be_returned = offset_ + limit_ - filter_cnt_ - queried_cnt;
+  if (need_to_be_returned <= (row_cnt / 2)) {
+    while (!block_spans_.empty()) {
+      filter_block_spans_.push_back(block_spans_.front());
+      block_spans_.pop_front();
+    }
+    if (filterUpper(need_to_be_returned, &row_cnt) != KStatus::SUCCESS) {
+      return KStatus::FAIL;
+    }
+  }
+  queried_cnt += row_cnt;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res,
+                                                            k_uint32* count) {
+  *count = ts_blk_span->GetRowNum();
+  KStatus ret;
+  std::vector<uint32_t> blk_scan_cols;
+  std::vector<AttributeInfo> blk_schema_valid;
+  auto s = GetBlkScanColsInfo(ts_blk_span->GetTableVersion(), blk_scan_cols, blk_schema_valid);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  for (int i = 0; i < ts_scan_cols_.size(); ++i) {
+    k_uint32 col_idx = ts_scan_cols_[i];
+    auto blk_col_idx = blk_scan_cols[i];
+    Batch* batch;
+    if (blk_col_idx == UINT32_MAX) {
+      // column is dropped at block version.
+      void* bitmap = nullptr;
+      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
+    } else {
+      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
+      if (bitmap == nullptr) {
+        return KStatus::FAIL;
+      }
+      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
+      if (!isVarLenType(attrs_[col_idx].type)) {
+        TsBitmap ts_bitmap;
+        char* value;
+        char* res_value = static_cast<char*>(malloc(attrs_[col_idx].size * (*count)));
+        ret = ts_blk_span->GetFixLenColAddr(blk_col_idx, blk_schema_valid, attrs_[col_idx], &value, ts_bitmap);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return ret;
+        }
+        for (int row_idx = 0; row_idx < *count; ++row_idx) {
+          if (ts_bitmap[row_idx] != DataFlags::kValid) {
+            set_null_bitmap(bitmap, row_idx);
+          }
+        }
+        memcpy(res_value, value, attrs_[col_idx].size * (*count));
+
+        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+      } else {
+        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
+        DataFlags bitmap_var;
+        TSSlice var_data;
+        for (int row_idx = 0; row_idx < *count; ++row_idx) {
+          ret = ts_blk_span->GetVarLenTypeColAddr(
+              row_idx, blk_col_idx, blk_schema_valid, attrs_[col_idx], bitmap_var, var_data);
+          if (bitmap_var != DataFlags::kValid) {
+            set_null_bitmap(bitmap, row_idx);
+            batch->push_back(nullptr);
+          } else {
+            char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
+            KUint16(buffer) = var_data.len;
+            memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
+            std::shared_ptr<void> ptr(buffer, free);
+            batch->push_back(ptr);
+          }
+        }
+        batch->need_free_bitmap = true;
+      }
+    }
+    res->push_back(i, batch);
+  }
+  res->entity_index = {1, (uint32_t)ts_blk_span->GetEntityID(), ts_blk_span->GetVGroupID()};
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp64 ts) {
+  *count = 0;
+  KStatus ret;
+  while (block_spans_.empty()) {
+    // scan over
+    if (p_time_it_ == p_times_.end() || queried_cnt >= offset_ + limit_ - filter_cnt_) {
+      return KStatus::SUCCESS;
+    }
+    ret = filterBlockSpan();
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("call filterBlockSpan failed.");
+      return KStatus::FAIL;
+    }
+  }
+  // Return one block span data each time.
+  shared_ptr<TsBlockSpan> ts_block = block_spans_.front();
+  block_spans_.pop_front();
+  ret = ConvertBlockSpanToResultSet(ts_block, res, count);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
 }  //  namespace kwdbts
