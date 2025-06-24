@@ -497,7 +497,7 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
     memcpy(log_ptr + offset, &table_id, sizeof(table_id_));
     offset += sizeof(table_id_);
     memcpy(log_ptr + offset, &range_size, sizeof(range_size_));
-    offset += sizeof(range_size_);  
+    offset += sizeof(range_size_);
     memcpy(log_ptr + offset, encoded_primary_tags, p_tag_len);
     offset += p_tag_len;
 

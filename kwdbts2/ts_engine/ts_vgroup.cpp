@@ -832,7 +832,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 
 KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
 const std::vector<KwTsSpan>& ts_spans) {
-  auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans, 
+  auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans,
   [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
     auto ret = p->DeleteData(e_id, ts_spans, lsn);
     if (ret != KStatus::SUCCESS) {
@@ -944,7 +944,6 @@ const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<con
       }
     }
   }
-  
   return KStatus::SUCCESS;
 }
 
@@ -958,7 +957,7 @@ const std::vector<KwTsSpan>& ts_spans) {
     return s;
   }
   if (entity_id > 0) {
-    s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans, 
+    s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans,
       [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {
