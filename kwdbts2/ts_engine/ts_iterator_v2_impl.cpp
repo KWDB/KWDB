@@ -108,8 +108,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
       skip_partition_file = true;
     }
     TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter, skip_partition_file);
-    std::list<std::shared_ptr<TsMemSegment>> mems = partition_version->GetAllMemSegments();
-    auto ret = e_paritition.Init(mems);
+    auto ret = e_paritition.Init();
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetAllMemSegments failed.");
       return ret;
@@ -511,8 +510,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
       TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
-      std::list<std::shared_ptr<TsMemSegment>> mems = partition_version->GetAllMemSegments();
-      auto ret = e_paritition.Init(mems);
+      auto ret = e_paritition.Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetAllMemSegments failed.");
         return ret;
@@ -538,8 +536,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
       TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
-      std::list<std::shared_ptr<TsMemSegment>> mems = partition_version->GetAllMemSegments();
-      auto ret = e_paritition.Init(mems);
+      auto ret = e_paritition.Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetAllMemSegments failed.");
         return ret;
@@ -564,8 +561,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
       TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
-      std::list<std::shared_ptr<TsMemSegment>> mems = partition_version->GetAllMemSegments();
-      auto ret = e_paritition.Init(mems);
+      auto ret = e_paritition.Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetAllMemSegments failed.");
         return ret;
