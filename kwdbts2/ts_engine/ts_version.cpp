@@ -55,6 +55,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
     auto current = Current();
     auto it = current->partitions_.find(partition_id);
     if (it != current->partitions_.end()) {
+      last_created_partition_ = partition_id;
       return;
     }
   }
@@ -62,6 +63,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   std::unique_lock lk{mu_};
   auto it = current_->partitions_.find(partition_id);
   if (it != current_->partitions_.end()) {
+    last_created_partition_ = partition_id;
     return;
   }
 

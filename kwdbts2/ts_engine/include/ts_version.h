@@ -18,6 +18,7 @@
 #include <ostream>
 #include <set>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -173,7 +174,7 @@ class TsVersionUpdate {
       ss << "; ";
     }
     ss << "mem_segments: ";
-    for(const auto &mem_segment : valid_memseg_) {
+    for (const auto &mem_segment : valid_memseg_) {
       ss << mem_segment.get() << " ";
     }
     return ss.str();
