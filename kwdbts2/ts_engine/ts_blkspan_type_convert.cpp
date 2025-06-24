@@ -39,10 +39,10 @@ TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uin
 
 KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
   if (tbl_schema_mgr_) {
-    auto blk_version = block_->GetTableVersion();
+    const auto blk_version = block_->GetTableVersion();
     key_ = std::to_string(blk_version) + "_" + std::to_string(scan_version);
-    auto iter = tbl_schema_mgr_->GetVersionConvMap().find(key_);
-    if (iter == tbl_schema_mgr_->GetVersionConvMap().end()) {
+    auto res = tbl_schema_mgr_->FindVersionConv(key_, &version_conv_);
+    if (!res) {
       std::shared_ptr<MMapMetricsTable> blk_metric;
       KStatus s = tbl_schema_mgr_->GetMetricSchema(blk_version, &blk_metric);
       if (s != SUCCESS) {
@@ -76,9 +76,7 @@ KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
         }
       }
       version_conv_ = std::make_shared<SchemaVersionConv>(scan_version, blk_cols_extended, scan_attrs, blk_attrs);
-      tbl_schema_mgr_->GetVersionConvMap().insert({key_, version_conv_});
-    } else {
-      version_conv_ = iter->second;
+      tbl_schema_mgr_->InsertVersionConv(key_, version_conv_);
     }
   }
   return SUCCESS;
