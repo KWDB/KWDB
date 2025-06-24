@@ -11,15 +11,12 @@
 
 #pragma once
 
-#include <list>
 #include <memory>
-#include <stdexcept>
 #include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-#include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_del_item_manager.h"
 #include "ts_table_schema_manager.h"

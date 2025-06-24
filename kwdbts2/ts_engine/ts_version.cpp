@@ -27,9 +27,21 @@
 namespace kwdbts {
 static const int64_t interval = 3600 * 24 * 10;  // 10 days.
 
+// Note: we expect this function always return lower bound of both positive and negative timestamp
+// e.g. interval = 3,
+// timestamp = 0, return 0;
+// timestamp = 1, return 0
+// timestamp = 2, return 0
+// timestamp = 3, return 3
+// timestamp = -1, return -3
+// timestamp = -2, return -3
+// timestamp = -3, return -3
+// timestamp = -4, return -6
 static int64_t GetPartitionStartTime(timestamp64 timestamp) {
-  int64_t index = timestamp / interval;
-  index = timestamp < 0 ? index - 1 : index;
+  bool negative = timestamp < 0;
+  timestamp64 tmp = timestamp + negative;
+  int64_t index = tmp / interval;
+  index -= negative;
   return index * interval;
 }
 

@@ -70,7 +70,7 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
         DataFlags flag;
         TSSlice data;
         auto s =
-            span->GetVarLenTypeColAddr(irow, icol, col_schemas_, col_schemas_[icol], flag, data);
+            span->GetVarLenTypeColAddr(irow, icol, flag, data);
         if (s == FAIL) {
           return s;
         }
@@ -79,7 +79,7 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
     } else {
       char* data = nullptr;
       TsBitmap bitmap;
-      auto s = span->GetFixLenColAddr(icol, col_schemas_, col_schemas_[icol], &data, bitmap);
+      auto s = span->GetFixLenColAddr(icol, &data, bitmap);
       if (s == FAIL) {
         return s;
       }
