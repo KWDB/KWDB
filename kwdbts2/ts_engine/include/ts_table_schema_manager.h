@@ -99,6 +99,7 @@ class TsTableSchemaManager {
   std::atomic<bool> is_compressing_{false};
   std::atomic<bool> is_vacuuming_{false};
   std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
+  KRWLatch* ver_conv_rw_lock_{nullptr};
 
   /**
    * @brief Open the schema file of the specified version
@@ -115,6 +116,7 @@ class TsTableSchemaManager {
       schema_rw_lock_(RWLATCH_ID_TABLE_SCHEMA_RWLOCK) {
     metric_schema_path_ = "metric_" + std::to_string(table_id_) + "/";
     tag_schema_path_ = "tag_" + std::to_string(table_id_) + "/";
+    ver_conv_rw_lock_ = new KRWLatch(RWLATCH_ID_VERSION_CONV_RWLOCK);
   }
 
   virtual ~TsTableSchemaManager();
@@ -232,7 +234,8 @@ class TsTableSchemaManager {
    */
   const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
 
-  std::unordered_map<string, shared_ptr<SchemaVersionConv>>& GetVersionConvMap();
+  bool FindVersionConv(const string& key, std::shared_ptr<SchemaVersionConv>* version_conv);
+  void InsertVersionConv(const string& key, const shared_ptr<SchemaVersionConv>& ver_conv);
 };
 
 }  // namespace kwdbts
