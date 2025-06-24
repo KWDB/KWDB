@@ -367,10 +367,57 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
 }
 
 KStatus TsTableV2Impl::DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                                  KwTsSpan ts_span, uint64_t mtr_id) {
+KwTsSpan ts_span, uint64_t mtr_id) {
+#ifdef K_DEBUG
+  uint64_t row_num_bef = 0;
+  uint64_t row_num_aft = 0;
+  GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_bef);
+#endif
+  HashIdSpan hash_span{begin_hash, end_hash};
+  vector<EntityResultIndex> entity_store;
+  auto s = getEntityIdByHashSpan(ctx, hash_span, entity_store);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getEntityIdByHashSpan failed.");
+    return s;
+  }
+  for(auto& entity : entity_store) {
+    // no write wal ,so no lsn. we allocate one in function.
+    auto s = GetVGroupByID(entity.subGroupId)->DeleteData(ctx, table_id_, entity.entityId, UINT64_MAX, {ts_span});
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("");
+      return s;
+    }
+  }
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::getEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+vector<EntityResultIndex>& entity_store) {
+  std::vector<TagPartitionTable*> all_tag_partition_tables;
+  auto tag_bt = table_schema_mgr_->GetTagTable();
+  TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
+  tag_bt->GetTagPartitionTableManager()->GetAllPartitionTablesLessVersion(all_tag_partition_tables,
+                                                                            cur_tbl_version);
+  for (const auto& entity_tag_bt : all_tag_partition_tables) {
+    entity_tag_bt->startRead();
+    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
+      if (!entity_tag_bt->isValidRow(rownum)) {
+        continue;
+      }
+      if (!EngineOptions::isSingleNode()) {
+        uint32_t tag_hash;
+        entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+        if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
+          entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+        }
+      } else {
+        entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+      }
+    }
+    entity_tag_bt->stopRead();
+  }
+  return KStatus::SUCCESS;
+}
 
 KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags) {
   std::vector<TagPartitionTable*> all_tag_partition_tables;

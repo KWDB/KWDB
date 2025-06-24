@@ -832,7 +832,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 
 KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
 const std::vector<KwTsSpan>& ts_spans) {
-  auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans, 
+  auto s = TrasvalAllPartition(ctx, tbl_id, ts_spans, 
   [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
     auto ret = p->DeleteData(e_id, ts_spans, lsn);
     if (ret != KStatus::SUCCESS) {
@@ -846,7 +846,12 @@ const std::vector<KwTsSpan>& ts_spans) {
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                              const std::vector<KwTsSpan>& ts_spans) {
+const std::vector<KwTsSpan>& ts_spans) {
+  if (lsn == UINT64_MAX) {  // make sure lsn is not larger than current lsn.
+    wal_manager_->Lock();
+    lsn = wal_manager_->FetchCurrentLSN() + 1;  // not same with any allocated lsn.
+    wal_manager_->Unlock();
+  }
   return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
 }
 
@@ -920,7 +925,7 @@ KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID entity_id,
+KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
 const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
