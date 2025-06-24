@@ -181,4 +181,104 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 };
 
+class TsOffsetIteratorV2Impl : public TsIterator {
+ public:
+  TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
+                         std::map<uint32_t, std::vector<EntityID>>& vgroup_ids,
+                         std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
+                         std::vector<k_uint32>& ts_scan_cols, std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                         uint32_t table_version, uint32_t offset, uint32_t limit) : vgroups_(vgroups),
+                         vgroup_ids_(vgroup_ids), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
+                         ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
+                         table_version_(table_version), offset_(offset), limit_(limit) {}
+
+  ~TsOffsetIteratorV2Impl() override {}
+
+  KStatus Init(bool is_reversed);
+
+  // not available!!!
+  bool IsDisordered() override {
+    return false;
+  }
+
+  uint32_t GetFilterCount() override {
+    return filter_cnt_;
+  }
+
+  KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS) override;
+
+ private:
+  KStatus AddMemSegmentBlockSpans();
+  KStatus AddLastSegmentBlockSpans();
+  KStatus AddEntitySegmentBlockSpans();
+  KStatus ScanPartitionBlockSpans(uint32_t* cnt);
+  KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
+                             vector<AttributeInfo>& valid_schema);
+
+  KStatus divideBlockSpans(timestamp64 begin_ts, timestamp64 end_ts, uint32_t* lower_cnt,
+                           deque<std::shared_ptr<TsBlockSpan>>& lower_block_span);
+  KStatus filterLower(uint32_t* cnt);
+  KStatus filterUpper(uint32_t filter_num, uint32_t* cnt);
+  KStatus filterBlockSpan();
+
+  KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
+
+  inline void GetTerminationTime() {
+    switch (ts_col_type_) {
+      case TIMESTAMP64_LSN:
+      case TIMESTAMP64:
+        t_time_ = 10;
+        break;
+      case TIMESTAMP64_LSN_MICRO:
+      case TIMESTAMP64_MICRO:
+        t_time_ = 10000;
+        break;
+      case TIMESTAMP64_LSN_NANO:
+      case TIMESTAMP64_NANO:
+        t_time_ = 10000000;
+        break;
+      default:
+        assert(false);
+        break;
+    }
+  }
+
+  std::vector<KwTsSpan>& CalTsSpanInPartition(timestamp64 begin, timestamp64 end);
+
+ private:
+  uint32_t db_id_;
+  TSTableID table_id_;
+  uint32_t table_version_;
+  // column attributes
+  vector<AttributeInfo> attrs_;
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
+
+  DATATYPE ts_col_type_;
+  bool is_reversed_ = false;
+  // the data time range queried by the iterator
+  std::vector<KwTsSpan> ts_spans_;
+  // column index
+  std::vector<uint32_t> ts_scan_cols_;
+  std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
+
+  std::map<uint32_t, std::vector<EntityID>> vgroup_ids_;
+  std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups_;
+  // map<timestamp, {vgroup_id, TsPartition}>
+  map<timestamp64, std::vector<pair<uint32_t, TsPartition>>> p_times_;
+  map<timestamp64, std::vector<pair<uint32_t, TsPartition>>>::iterator p_time_it_;
+  
+  std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
+  std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;
+  std::deque<std::shared_ptr<TsBlockSpan>> filter_block_spans_;
+
+  int32_t offset_;
+  int32_t limit_;
+  int32_t filter_cnt_ = 0;
+  int32_t queried_cnt = 0;
+  bool filter_end_ = false;
+
+  timestamp t_time_ = 0;
+  int32_t deviation_ = 1000;
+};
+
 }  //  namespace kwdbts

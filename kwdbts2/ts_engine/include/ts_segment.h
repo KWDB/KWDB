@@ -29,6 +29,7 @@ class TsSegmentBase;
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
   const std::vector<KwTsSpan>& ts_spans_;
 };

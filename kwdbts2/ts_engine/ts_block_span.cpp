@@ -12,7 +12,6 @@
 #include "ts_agg.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
-#include "ts_iterator_v2_impl.h"
 
 namespace kwdbts {
 
@@ -175,6 +174,12 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
+TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow)  // NOLINT(runtime/init)
+    : vgroup_id_(vgroup_id), entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow), convert_(*this) {  // NOLINT(runtime/init)
+  assert(nrow_ >= 1);
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+}
+
 bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
   if (entity_id_ != other.entity_id_) {
     return entity_id_ < other.entity_id_;
@@ -189,6 +194,10 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
       return seq_no > other_seq_no;
     }
   }
+}
+
+uint32_t TsBlockSpan::GetVGroupID() const {
+  return vgroup_id_;
 }
 
 TSEntityID TsBlockSpan::GetEntityID() const {
@@ -302,7 +311,7 @@ KStatus TsBlockSpan::GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
-  front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num);
+  front_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_, row_num);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -310,7 +319,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
-  back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num);
+  back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num, row_num);
   convert_ = TSBlkDataTypeConvert(*this);
   // change current span info
   nrow_ -= row_num;

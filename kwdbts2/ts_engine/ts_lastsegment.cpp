@@ -693,7 +693,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       }
       int end = FindUpperBound({entity_id, current_span.end}, entities, ts, start, info.nrow);
       if (end - start > 0) {
-        block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start,
+        block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start,
                             end - start));
       }
 

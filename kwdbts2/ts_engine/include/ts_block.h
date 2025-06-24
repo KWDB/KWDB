@@ -78,6 +78,7 @@ class TsBlock {
 struct TsBlockSpan {
  private:
   std::shared_ptr<TsBlock> block_ = nullptr;
+  uint32_t vgroup_id_ = 0;
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
@@ -90,8 +91,11 @@ struct TsBlockSpan {
 
   TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow);
 
+  TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow);
+
   bool operator<(const TsBlockSpan& other) const;
 
+  uint32_t GetVGroupID() const;
   TSEntityID GetEntityID() const;
   int GetRowNum() const;
   int GetStartRow() const;
