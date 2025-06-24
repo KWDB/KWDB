@@ -23,13 +23,16 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "ts_file_vector_index.h"
 #include "sys_utils.h"
+#include "ts_file_vector_index.h"
 
 namespace kwdbts {
 
@@ -98,7 +101,7 @@ class TsMMapFile final : public TsFile {
       assert(!read_only);
       fd_ = open(path.c_str(), O_RDWR | O_CREAT, 0644);
       len_ = getpagesize();
-      ftruncate(fd_, len_);
+      fallocate(fd_, 0, 0, len_);
       base = mmap(nullptr, len_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     }
     addr_ = reinterpret_cast<char*>(base);
@@ -128,7 +131,7 @@ class TsMMapFile final : public TsFile {
     }
     int err_code;
     if (new_len != len_) {
-      err_code = ftruncate(fd_, new_len);
+      err_code = fallocate(fd_, 0, 0, new_len);
       if (err_code < 0) {
         close(fd_);
         LOG_ERROR("resize file failed, error code:%d", err_code);
@@ -171,8 +174,8 @@ class TsMMapFile final : public TsFile {
     }
 
     if (newlen != len_) {
-      if (ftruncate(fd_, newlen) == -1) {
-        LOG_ERROR("ftruncate error %s.", strerror(errno));
+      if (fallocate(fd_, 0, 0, newlen) == -1) {
+        LOG_ERROR("fallocate error %s.", strerror(errno));
         return KStatus::FAIL;
       }
       void* base = mremap(addr_, len_, newlen, MREMAP_MAYMOVE);
@@ -223,7 +226,7 @@ class TsMMapFile final : public TsFile {
     munmap(addr_, len_);
     size_ = 0;
     len_ = getpagesize();
-    ftruncate(fd_, len_);
+    fallocate(fd_, 0, 0, len_);
     void* base = mmap(nullptr, len_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (base == MAP_FAILED) {
       int err_code = errno;
@@ -248,6 +251,155 @@ class TsMMapFile final : public TsFile {
   KStatus Flush() override { return KStatus::SUCCESS; }
 
   size_t GetFileSize() const override { return size_; }
+};
+
+
+// Prepare for TsVersion
+
+class TsAppendOnlyFile {
+ protected:
+  const std::string path_;
+
+ public:
+  explicit TsAppendOnlyFile(const std::string& path) : path_(path) {}
+  virtual ~TsAppendOnlyFile() {}
+
+  virtual KStatus Append(std::string_view) = 0;
+  virtual KStatus Append(TSSlice slice) {
+    return this->Append(std::string_view{slice.data, slice.len});
+  }
+
+  virtual size_t GetFileSize() const = 0;
+  std::string GetFilePath() const { return path_; }
+
+  virtual KStatus Sync() = 0;
+  virtual KStatus Flush() = 0;
+
+  virtual KStatus Close() = 0;
+};
+
+class TsRandomReadFile {
+ protected:
+  bool delete_after_free = false;  // remove it later
+  const std::string path_;
+
+ public:
+  explicit TsRandomReadFile(const std::string& path) : path_(path) {}
+  virtual ~TsRandomReadFile() {
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
+  }
+
+  virtual KStatus Prefetch(size_t offset, size_t n) = 0;
+  virtual KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) const = 0;
+
+  virtual size_t GetFileSize() const = 0;
+  std::string GetFilePath() const { return path_; }
+
+  void MarkDelete() { delete_after_free = true; }
+};
+
+class TsSequentialReadFile {
+ protected:
+  bool delete_after_free = false;  // remove it later
+  const std::string path_;
+
+ public:
+  explicit TsSequentialReadFile(const std::string& path) : path_(path) {}
+  virtual ~TsSequentialReadFile() {
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
+  }
+
+  virtual KStatus Read(size_t n, TSSlice* slice, char* buf) = 0;
+  virtual KStatus Skip(size_t n) = 0;
+};
+
+class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
+ private:
+  int fd_;
+
+  char* mmap_start_ = nullptr;
+  char* mmap_end_ = nullptr;
+  char* dest_ = nullptr;
+  char* synced_ = nullptr;  // address before synced_ are synced by msync
+
+  const size_t page_size_;
+  size_t mmap_size_;
+  size_t file_size_;
+
+  KStatus UnmapCurrent();
+  KStatus MMapNew();
+
+ public:
+  TsMMapAppendOnlyFile(const std::string& path, int fd, size_t offset /*append from offset*/)
+      : TsAppendOnlyFile(path),
+        fd_(fd),
+        page_size_(getpagesize()),
+        mmap_size_(16 * page_size_),
+        file_size_(offset) {}
+  ~TsMMapAppendOnlyFile();
+
+  KStatus Append(std::string_view data) override;
+  size_t GetFileSize() const override { return file_size_; }
+  KStatus Sync() override;
+  KStatus Flush() override { return SUCCESS; }
+
+  KStatus Close() override;
+};
+
+class TsMMapRandomReadFile : public TsRandomReadFile {
+  int fd_;
+  char* mmap_start_;
+  size_t file_size_;
+  size_t page_size_;
+
+ public:
+  TsMMapRandomReadFile(const std::string& path, int fd, char* addr, size_t filesize)
+      : TsRandomReadFile(path),
+        fd_(fd),
+        mmap_start_(addr),
+        file_size_(filesize),
+        page_size_(getpagesize()) {
+    assert(mmap_start_);
+    assert(file_size_ > 0);
+  }
+  ~TsMMapRandomReadFile() {
+    munmap(mmap_start_, file_size_);
+    close(fd_);
+  }
+  KStatus Prefetch(size_t offset, size_t n) override;
+  KStatus Read(size_t offset, size_t n, TSSlice* result, char* buffer) const override;
+
+  size_t GetFileSize() const override { return file_size_; }
+};
+
+class TsIOEnv {
+ public:
+  virtual ~TsIOEnv() {}
+  virtual KStatus NewAppendOnlyFile(const std::string& filepath,
+                                    std::unique_ptr<TsAppendOnlyFile>* file, bool overwrite = true,
+                                    size_t offset = -1) = 0;
+  virtual KStatus NewRandomReadFile(const std::string& filepath,
+                                    std::unique_ptr<TsRandomReadFile>* file,
+                                    size_t file_size = -1) = 0;
+  virtual KStatus NewDirectory(const std::string& path) = 0;
+  virtual KStatus DeleteDir(const std::string& path) = 0;
+  virtual KStatus DeleteFile(const std::string& path) = 0;
+};
+
+class TsMMapIOEnv : public TsIOEnv {
+ public:
+  static TsIOEnv& GetInstance();
+  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                            bool overrite = true, size_t offset = -1) override;
+  KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                            size_t file_size = -1) override;
+  KStatus NewDirectory(const std::string& path) override;
+  KStatus DeleteFile(const std::string& path) override;
+  KStatus DeleteDir(const std::string& path) override;
 };
 
 class TsMMapAllocFile : public FileWithIndex {
@@ -284,7 +436,7 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
         return KStatus::FAIL;
       }
       file_len = getpagesize();
-      ftruncate(fd_, file_len);
+      fallocate(fd_, 0, 0, file_len);
       base = mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     }
     addrs_.push_back({reinterpret_cast<char*>(base), file_len});
@@ -323,8 +475,8 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
         new_len += threshold;
       }
     }
-    if (ftruncate(fd_, new_len) == -1) {
-      LOG_ERROR("ftruncate size[%lu] error %s.", new_len, strerror(errno));
+    if (fallocate(fd_, 0, 0, new_len) == -1) {
+      LOG_ERROR("fallocate size[%lu] error %s.", new_len, strerror(errno));
       return KStatus::FAIL;
     }
 

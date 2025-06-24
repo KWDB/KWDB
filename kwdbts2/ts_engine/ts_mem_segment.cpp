@@ -15,38 +15,39 @@
 
 namespace kwdbts {
 
+TsMemSegment::TsMemSegment(int32_t height) : skiplist_(comp_, &arena_, height) {}
+
+TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup)
+    : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
+  segment_.push_back(cur_mem_seg_);
+}
+
 // WAL CreateCheckPoint call this function to persistent metric datas.
 void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments) {
-  segments->reset();
-  segment_lock_.lock();
-  if (segment_.size() > 0) {
-    *segments = segment_.back();
-    segment_.push_back(TsMemSegment::Create(EngineOptions::mem_segment_max_height));
-    cur_mem_seg_ = segment_.back();
-  }
-  segment_lock_.unlock();
-  if (segments->get() != nullptr) {
-    if (!(*segments)->SetImm()) {
+  {
+    std::unique_lock lock{segment_lock_};
+    if (!cur_mem_seg_->SetImm()) {
       LOG_ERROR("can not switch mem segment.");
     }
-    auto row_num = (*segments)->GetRowNum();
-    uint32_t new_heigh = log2(row_num);
-    if (EngineOptions::mem_segment_max_height < new_heigh) {
-      EngineOptions::mem_segment_max_height = new_heigh;
-    }
+    *segments = cur_mem_seg_;
+    cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
+    segment_.push_back(cur_mem_seg_);
+  }
+  auto row_num = (*segments)->GetRowNum();
+  uint32_t new_heigh = log2(row_num);
+  if (EngineOptions::mem_segment_max_height < new_heigh) {
+    EngineOptions::mem_segment_max_height = new_heigh;
   }
 }
 
 void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
-  segment_lock_.lock();
+  std::unique_lock lock{segment_lock_};
   segment_.remove(mem_seg);
-  segment_lock_.unlock();
 }
 
 void TsMemSegmentManager::GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems) {
-  segment_lock_.lock();
+  std::shared_lock lock(segment_lock_);
   *mems = segment_;
-  segment_lock_.unlock();
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema,
@@ -86,13 +87,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   TSMemSegRowData row_data(vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id), table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);
   uint32_t row_num = pd.GetRowCount();
-  if (cur_mem_seg_ == 0) {
-    segment_lock_.lock();
-    segment_.push_back(TsMemSegment::Create(EngineOptions::mem_segment_max_height));
-    cur_mem_seg_ = segment_.back();
-    segment_lock_.unlock();
-  }
-  auto cur_mem_seg = cur_mem_seg_;
+  auto cur_mem_seg = CurrentMemSegment();
   cur_mem_seg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
     auto row_ts = pd.GetTS(i);
@@ -120,9 +115,11 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter
                                            std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                            std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                            uint32_t scan_version) {
-  segment_lock_.lock();
-  std::list<std::shared_ptr<TsMemSegment>> segments = segment_;
-  segment_lock_.unlock();
+  std::list<std::shared_ptr<TsMemSegment>> segments;
+  {
+    std::shared_lock lock(segment_lock_);
+    segments = segment_;
+  }
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   std::list<std::shared_ptr<TsMemSegBlock>> mem_block;
   for (auto& mem : segments) {
@@ -464,4 +461,3 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 }
 
 }  //  namespace kwdbts
-

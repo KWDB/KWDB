@@ -11,6 +11,8 @@
 
 #include "ts_entity_partition.h"
 
+#include "ts_entity_segment.h"
+
 namespace kwdbts {
 
 KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) {
@@ -37,7 +39,7 @@ KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) 
   }
   if (!skip_file_data_) {
     // get block span in last segment
-    std::vector<std::shared_ptr<TsLastSegment>> last_segs = files_->GetLastSegmentMgr()->GetAllLastSegments();
+    std::vector<std::shared_ptr<TsLastSegment>> last_segs = partition_version_->GetAllLastSegments();
     for (auto& last_seg : last_segs) {
       auto s = last_seg->GetBlockSpans(block_data_filter_, *ts_block_spans, tbl_schema_mgr, scan_version);
       if (s != KStatus::SUCCESS) {
@@ -46,7 +48,12 @@ KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) 
       }
     }
     // get block span in entity segment
-    auto s = files_->GetEntitySegment()->GetBlockSpans(block_data_filter_, *ts_block_spans,
+    auto entity_segment = partition_version_->GetEntitySegment();
+    if (entity_segment == nullptr) {
+      // entity segment not exist
+      return KStatus::SUCCESS;
+    }
+    auto s = entity_segment->GetBlockSpans(block_data_filter_, *ts_block_spans,
                                                        tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
@@ -59,14 +66,14 @@ KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) 
 
 KStatus TsEntityPartition::SetFilter() {
   std::list<STDelRange> del_range;
-  auto s = files_->GetDelRange(scan_filter_.entity_id, del_range);
+  auto s = partition_version_->GetDelRange(scan_filter_.entity_id, del_range);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelRange failed.");
     return s;
   }
   KwTsSpan partition_span;
-  partition_span.begin = convertSecondToPrecisionTS(files_->StartTs(), ts_type_);
-  partition_span.end = convertSecondToPrecisionTS(files_->EndTs(), ts_type_) - 1;
+  partition_span.begin = convertSecondToPrecisionTS(partition_version_->GetStartTime(), ts_type_);
+  partition_span.end = convertSecondToPrecisionTS(partition_version_->GetEndTime(), ts_type_) - 1;
   std::vector<STScanRange> cur_scan_range;
   for (auto& scan : scan_filter_.ts_spans_) {
     KwTsSpan cross_part;
@@ -88,8 +95,8 @@ KStatus TsEntityPartition::SetFilter() {
 
 void TsEntityPartition::AddMemSegment(std::list<std::shared_ptr<TsMemSegment>>& mems) {
   KwTsSpan partition_span;
-  partition_span.begin = convertSecondToPrecisionTS(files_->StartTs(), ts_type_);
-  partition_span.end = convertSecondToPrecisionTS(files_->EndTs(), ts_type_) - 1;
+  partition_span.begin = convertSecondToPrecisionTS(partition_version_->GetStartTime(), ts_type_);
+  partition_span.end = convertSecondToPrecisionTS(partition_version_->GetEndTime(), ts_type_) - 1;
   TsScanFilterParams mem_filter{scan_filter_.db_id, scan_filter_.table_id, scan_filter_.entity_id, {partition_span}};
   for (auto& mem : mems) {
     if (mem->HasEntityRows(mem_filter)) {
@@ -97,6 +104,5 @@ void TsEntityPartition::AddMemSegment(std::list<std::shared_ptr<TsMemSegment>>& 
     }
   }
 }
-
 
 }  // namespace kwdbts

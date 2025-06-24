@@ -37,7 +37,6 @@
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
 #include "ts_io.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_segment.h"
 namespace kwdbts {
 
@@ -58,7 +57,7 @@ static void ParseBlockInfo(TSSlice data, TsLastSegmentBlockInfo* info) {
   assert(data.len == 0);
 }
 
-static KStatus LoadBlockInfo(TsFile* file, const TsLastSegmentBlockIndex& index,
+static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockIndex& index,
                              TsLastSegmentBlockInfo* info) {
   assert(info != nullptr);
   TSSlice result;
@@ -71,7 +70,7 @@ static KStatus LoadBlockInfo(TsFile* file, const TsLastSegmentBlockIndex& index,
   return SUCCESS;
 }
 
-static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
+static KStatus ReadColumnBitmap(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                 std::unique_ptr<TsBitmap>* bitmap) {
   size_t offset = info.block_offset + info.col_infos[col_id].offset;
   size_t len = info.col_infos[col_id].bitmap_len;
@@ -84,12 +83,13 @@ static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info
   }
 
   bitmap->reset();
+  char* ptr = result.data;
   if (has_bitmap) {
-    BitmapCompAlg alg = static_cast<BitmapCompAlg>(buf[0]);
+    BitmapCompAlg alg = static_cast<BitmapCompAlg>(ptr[0]);
     switch (alg) {
       case BitmapCompAlg::kPlain: {
         size_t len = info.col_infos[col_id].bitmap_len - 1;
-        *bitmap = std::make_unique<TsBitmap>(TSSlice{buf.get() + 1, len}, info.nrow);
+        *bitmap = std::make_unique<TsBitmap>(TSSlice{ptr + 1, len}, info.nrow);
         break;
       }
       case BitmapCompAlg::kCompressed:
@@ -101,7 +101,7 @@ static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info
   return SUCCESS;
 }
 
-static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
+static KStatus ReadColumnBlock(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {
   bitmap->reset();
   auto s = ReadColumnBitmap(file, info, col_id, bitmap);
@@ -128,7 +128,7 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   return ok ? SUCCESS : FAIL;
 }
 
-static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
+static KStatus ReadVarcharBlock(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info,
                                 std::string* out) {
   bool has_varchar = info.var_offset != 0;
   if (!has_varchar) {
@@ -142,7 +142,8 @@ static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info
 
   assert(len > 0);
   file->Read(offset, len, &result, buf.get());
-  GenCompAlg type = static_cast<GenCompAlg>(buf[0]);
+  char *ptr = result.data;
+  GenCompAlg type = static_cast<GenCompAlg>(ptr[0]);
   RemovePrefix(&result, 1);
   int ok = true;
   switch (type) {
@@ -164,111 +165,18 @@ static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info
 KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
   TSSlice result;
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
-  file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
+  auto s =
+      file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
+  if (s == FAIL) {
+    return s;
+  }
+  // important, Read function may not fill the buffer;
+  *footer = *reinterpret_cast<TsLastSegmentFooter*>(result.data);
   if (result.len != sizeof(TsLastSegmentFooter) || footer->magic_number != FOOTER_MAGIC) {
     LOG_ERROR("last segment[%s] GetFooter failed.", file_->GetFilePath().c_str());
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
-}
-
-std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) const {
-  char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "last.ver-%012u", file_number);
-  auto filename = dir_path_ / buffer;
-  return filename;
-}
-
-KStatus TsLastSegmentManager::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
-                                                 uint32_t* file_number) {
-  *file_number = current_file_number_.fetch_add(1, std::memory_order_relaxed);
-  auto filename = LastSegmentFileName(*file_number);
-  *last_segment = std::make_unique<TsMMapFile>(filename, false /*read_only*/);
-  return KStatus::SUCCESS;
-}
-
-KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
-                                                  std::shared_ptr<TsLastSegment>* lastsegment) {
-  // 1. find from cache.
-  {
-    std::shared_lock lk{s_mutex_};
-    auto it = last_segments_.find(file_number);
-    if (it != last_segments_.end()) {
-      // found, assign and return
-      *lastsegment = it->second;
-      return SUCCESS;
-    }
-  }
-
-  // 2. open from disk.
-  auto file = TsLastSegment::Create(file_number, LastSegmentFileName(file_number));
-  auto s = file->Open();
-  if (s == FAIL) {
-    LOG_ERROR("can not open file %s", LastSegmentFileName(file_number).c_str());
-    return FAIL;
-  }
-  {
-    std::unique_lock lk{s_mutex_};
-    // find again before insert
-    auto it = last_segments_.find(file_number);
-    if (it != last_segments_.end()) {
-      *lastsegment = it->second;
-      return SUCCESS;
-    }
-
-    // now we can really insert it to cache
-    *lastsegment = file;
-    auto [iter, ok] = last_segments_.insert_or_assign(file_number, std::move(file));
-    assert(ok);
-  }
-  n_lastsegment_.fetch_add(1, std::memory_order_relaxed);
-  return SUCCESS;
-}
-
-// TODO(zzr) get last segments from VersionManager, this method must be atomic
-KStatus TsLastSegmentManager::GetCompactLastSegments(
-    std::vector<std::shared_ptr<TsLastSegment>>& result) {
-  std::shared_lock lk{s_mutex_};
-  if (!NeedCompact()) {
-    return FAIL;
-  }
-  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
-  result.reserve(compact_num);
-  auto it = last_segments_.begin();
-  for (int i = 0; i < compact_num; ++i, ++it) {
-    result.push_back(it->second);
-  }
-  return SUCCESS;
-}
-
-std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetAllLastSegments() const {
-  std::shared_lock lk{s_mutex_};
-  std::vector<std::shared_ptr<TsLastSegment>> result;
-  result.reserve(last_segments_.size());
-  for (auto i : last_segments_) {
-    result.push_back(i.second);
-  }
-  return result;
-}
-
-bool TsLastSegmentManager::NeedCompact() {
-  return n_lastsegment_.load(std::memory_order_relaxed) > EngineOptions::max_last_segment_num;
-}
-
-void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
-  {
-    std::unique_lock lk{s_mutex_};
-    for (auto it = last_segments_.begin(); it != last_segments_.end();) {
-      assert(it->first == it->second->GetVersion());
-      if (it->second->GetVersion() <= ver) {
-        it->second->MarkDelete();
-        it = last_segments_.erase(it);
-        n_lastsegment_.fetch_sub(1, std::memory_order_relaxed);
-      } else {
-        ++it;
-      }
-    }
-  }
 }
 
 KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indices) {

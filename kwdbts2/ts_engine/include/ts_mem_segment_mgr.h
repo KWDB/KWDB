@@ -162,7 +162,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_;
 
-  explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
+  explicit TsMemSegment(int32_t max_height);
 
  public:
   template <class... Args>
@@ -303,16 +303,22 @@ class TsMemSegmentManager {
   TsVGroup* vgroup_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
-  std::mutex segment_lock_;
+  mutable std::shared_mutex segment_lock_;
 
  public:
-  explicit TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
+  explicit TsMemSegmentManager(TsVGroup* vgroup);
 
   ~TsMemSegmentManager() {
     segment_.clear();
   }
 
   // WAL CreateCheckPoint call this function to persistent metric datas.
+
+  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
+    std::shared_lock lock(segment_lock_);
+    return cur_mem_seg_;
+  }
+
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);

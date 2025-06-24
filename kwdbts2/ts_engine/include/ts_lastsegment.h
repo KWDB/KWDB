@@ -73,9 +73,9 @@ static constexpr uint64_t FOOTER_MAGIC = 0xcb2ffe9321847271;
 struct TsLastSegmentFooter {
   uint64_t block_info_idx_offset, n_data_block;
   uint64_t meta_block_idx_offset, n_meta_block;
-  uint8_t padding[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  uint8_t padding[16];
   uint64_t file_version;
-  const uint64_t magic_number = FOOTER_MAGIC;
+  uint64_t magic_number;
 };
 static_assert(sizeof(TsLastSegmentFooter) == 64);
 
@@ -116,11 +116,11 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
 
  private:
   uint32_t file_number_;
-  std::unique_ptr<TsFile> file_;
+  std::unique_ptr<TsRandomReadFile> file_;
   std::unique_ptr<TsBloomFilter> bloom_filter_;
 
-  explicit TsLastSegment(uint32_t file_number, const std::string& path)
-      : file_number_(file_number), file_(std::make_unique<TsMMapFile>(path, true)) {}
+  explicit TsLastSegment(uint32_t file_number, std::unique_ptr<TsRandomReadFile>&& file)
+      : file_number_(file_number), file_(std::move(file)) {}
 
  public:
   template <class... Args>
@@ -143,7 +143,7 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
       return s;
     }
     if (footer.magic_number != FOOTER_MAGIC) {
-      LOG_ERROR("magic mismatch")
+      LOG_ERROR("magic mismatch");
       return FAIL;
     }
 
@@ -187,7 +187,7 @@ class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<
     return SUCCESS;
   }
 
-  uint32_t GetVersion() const { return file_number_; }
+  uint32_t GetFileNumber() const { return file_number_; }
 
   std::string GetFilePath() const { return file_->GetFilePath(); }
 

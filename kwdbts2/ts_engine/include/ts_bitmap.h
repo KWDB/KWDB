@@ -117,6 +117,7 @@ class TsBitmap {
   }
 
   TSSlice GetData() { return {rep_.data(), rep_.size()}; }
+  const std::string &GetStr() const { return rep_; }
 
   size_t GetCount() const { return nrows_; }
 
@@ -125,5 +126,26 @@ class TsBitmap {
   bool IsAllValid() const {
     return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
   }
+
+  TsBitmap &operator+=(const TsBitmap &rhs) {
+    size_t old_count = this->GetCount();
+    size_t new_count = old_count + rhs.GetCount();
+    nrows_ = new_count;
+    rep_.resize(GetBitmapLen(new_count));
+    nvalid_ += new_count - old_count;
+    for (int i = 0; i < rhs.GetCount(); ++i) {
+      (*this)[i + old_count] = rhs[i];
+    }
+    return *this;
+  }
+
+  void push_back(DataFlags flag) {
+    rep_.resize(GetBitmapLen(nrows_ + 1));
+    nrows_++;
+    nvalid_++;
+    (*this)[nrows_ - 1] = flag;
+  }
+
+  void push_back(Proxy flag) { this->push_back(static_cast<DataFlags>(flag)); }
 };
 }  // namespace kwdbts

@@ -11,25 +11,27 @@
 
 #pragma once
 
+#include <atomic>
+#include <list>
 #include <map>
 #include <memory>
-#include <utility>
-#include <list>
 #include <set>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
-#include <atomic>
-#include "libkwdbts2.h"
-#include "kwdb_type.h"
-#include "ts_common.h"
-#include "settings.h"
+
 #include "cm_kwdb_context.h"
-#include "ts_vgroup.h"
-#include "ts_engine_schema_manager.h"
 #include "engine.h"
-#include "ts_table_v2_impl.h"
+#include "kwdb_type.h"
+#include "libkwdbts2.h"
+#include "settings.h"
+#include "ts_common.h"
+#include "ts_engine_schema_manager.h"
 #include "ts_flush_manager.h"
+#include "ts_table_v2_impl.h"
+#include "ts_version.h"
+#include "ts_vgroup.h"
 extern bool g_go_start_service;
 
 namespace kwdbts {
@@ -46,9 +48,9 @@ class TSEngineV2Impl : public TSEngine {
   std::mutex table_mutex_;
   TsLSNFlushManager flush_mgr_;
   std::unique_ptr<WALMgr> wal_mgr_ = nullptr;
-  std::map<uint64_t, uint64_t> range_indexes_map_{};
-  std::unique_ptr<WALMgr> wal_sys_{nullptr};
-  std::unique_ptr<TSxMgr> tsx_manager_sys_{nullptr};
+  std::map<uint64_t, uint64_t> range_indexes_map_;
+  std::unique_ptr<WALMgr> wal_sys_ = nullptr;
+  std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -215,7 +217,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   KStatus SwitchMemSegments(TS_LSN lsn) {
-    return flush_mgr_.FlashMemSegment(lsn);
+    return flush_mgr_.FlushMemSegment(lsn);
   }
 
   TS_LSN GetFinishedLSN() {

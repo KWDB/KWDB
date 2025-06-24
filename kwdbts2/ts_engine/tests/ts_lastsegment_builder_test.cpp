@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <functional>
 #include <initializer_list>
-#include <iostream>
 #include <memory>
 #include <numeric>
 #include <random>
@@ -27,8 +26,11 @@
 #include "ts_engine_schema_manager.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_payload.h"
+
+static TsIOEnv *env = &TsMMapIOEnv::GetInstance();
+
+static std::string filename = "lastsegment";
 
 using namespace roachpb;
 std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,   DataType::BIGINT,
@@ -38,7 +40,6 @@ std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,   Data
 struct R {
   std::unique_ptr<TsLastSegmentBuilder> builder;
   std::shared_ptr<TsEngineSchemaManager> schema_mgr;
-  std::unique_ptr<TsLastSegmentManager> last_mgr;
   std::vector<AttributeInfo> metric_schema;
   std::vector<TagInfo> tag_schema;
 };
@@ -47,12 +48,12 @@ class LastSegmentReadWriteTest : public testing::Test {
  protected:
   void SetUp() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-000000000000");
+    std::filesystem::remove(filename);
     mgr = std::make_shared<TsEngineSchemaManager>("schema");
   }
   void TearDown() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-000000000000");
+    std::filesystem::remove(filename);
   }
 
   void BuilderWithBasicCheck(TSTableID table_id, int nrow);
@@ -65,11 +66,16 @@ public:
   std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
 };
 
-
+static void OpenLastSegment(const std::string &name, std::shared_ptr<TsLastSegment> *file) {
+  std::unique_ptr<TsRandomReadFile> rfile;
+  ASSERT_EQ(env->NewRandomReadFile(filename, &rfile), SUCCESS);
+  *file = TsLastSegment::Create(0, std::move(rfile));
+  ASSERT_NE(file, nullptr);
+  ASSERT_EQ((*file)->Open(), kwdbts::SUCCESS);
+}
 
 void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nrow) {
   ASSERT_NE(nrow, 0);
-  std::string filename;
   {
     CreateTsTable meta;
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
@@ -86,12 +92,9 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     s = schema_mgr->GetTagMeta(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
-    TsLastSegmentManager last_segment_mgr("./");
-    std::unique_ptr<TsFile> last_segment;
-    uint32_t file_number;
-    last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
-    ASSERT_EQ(file_number, 0);
-    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), file_number);
+    std::unique_ptr<TsAppendOnlyFile> last_segment;
+    env->NewAppendOnlyFile(filename, &last_segment);
+    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), 0);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};
@@ -102,11 +105,6 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     }
     builder.Finalize();
     free(payload.data);
-
-    std::shared_ptr<TsLastSegment> lastseg;
-    s = last_segment_mgr.OpenLastSegmentFile(0, &lastseg);
-    EXPECT_EQ(s, SUCCESS);
-    filename = lastseg->GetFilePath();
   }
 
   auto file = std::make_unique<TsMMapFile>(filename, true);
@@ -158,10 +156,8 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
 }
 
 void LastSegmentReadWriteTest::IteratorCheck(TSTableID table_id) {
-  TsLastSegmentManager manager("./");
   std::shared_ptr<TsLastSegment> file;
-  manager.OpenLastSegmentFile(0, &file);
-  ASSERT_TRUE(file->Open() == kwdbts::SUCCESS);
+  OpenLastSegment(filename, &file);
 
   std::list<shared_ptr<TsBlockSpan>> spans;
   ASSERT_EQ(file->GetBlockSpans(spans, mgr.get()), SUCCESS);
@@ -201,6 +197,7 @@ R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   CreateTsTable meta;
   ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
   auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+  EXPECT_EQ(s, SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 
@@ -209,18 +206,13 @@ R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
-  auto last_segment_mgr = std::make_unique<TsLastSegmentManager>("./");
-  std::unique_ptr<TsFile> last_segment;
-  uint32_t file_number;
-  last_segment_mgr->NewLastSegmentFile(&last_segment, &file_number);
-  EXPECT_EQ(file_number, 0);
+  std::unique_ptr<TsAppendOnlyFile> last_segment;
+  env->NewAppendOnlyFile(filename, &last_segment);
   R res;
-  res.builder =
-      std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), file_number);
+  res.builder = std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), 0);
   res.metric_schema = std::move(metric_schema);
   res.tag_schema = std::move(tag_schema);
   res.schema_mgr = mgr;
-  res.last_mgr = std::move(last_segment_mgr);
   return res;
 }
 
@@ -341,7 +333,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   res.builder.reset();
 
   std::shared_ptr<TsLastSegment> last_segment;
-  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  OpenLastSegment(filename, &last_segment);
   {  // test bloom filter....
     std::set<TSEntityID> eids{dev_ids.begin(), dev_ids.end()};
     for (auto eid : dev_ids) {
@@ -457,7 +449,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   res.builder.reset();
 
   std::shared_ptr<TsLastSegment> last_segment;
-  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  OpenLastSegment(filename, &last_segment);
   {  // test bloom filter....
     std::set<TSEntityID> eids{dev_ids.begin(), dev_ids.end()};
     for (auto eid : dev_ids) {
@@ -626,7 +618,7 @@ TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
   res.builder.reset();
 
   std::shared_ptr<TsLastSegment> last_segment;
-  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  OpenLastSegment(filename, &last_segment);
   int sum = 0;
 
   std::shared_ptr<TsTableSchemaManager> schema_mgr;

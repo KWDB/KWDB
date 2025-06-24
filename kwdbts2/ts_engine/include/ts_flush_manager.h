@@ -36,7 +36,7 @@ class TsLSNFlushManager {
     JobStatus status;
     TS_LSN lsn;
     KThreadID thread_id;
-    std::list<std::pair<TsVGroup*, std::shared_ptr<TsMemSegment>>> vgrp_mem_segs;
+    std::vector<TsVGroup*> vgroups;
   };
   const std::vector<std::shared_ptr<TsVGroup>>& vgrps_;
   std::mutex job_mutex_;
@@ -58,12 +58,13 @@ class TsLSNFlushManager {
     auto now_size = mem_size_.load();
     if (now_size > EngineOptions::mem_segment_max_size) {
       if (mem_size_.compare_exchange_strong(now_size, 0)) {
-        FlashMemSegment(total_size);
+        // TODO(zzr, liangbo): total_size input as LSN?
+        FlushMemSegment(total_size);
       }
     }
   }
 
-  KStatus FlashMemSegment(TS_LSN lsn) {
+  KStatus FlushMemSegment(TS_LSN lsn) {
     for (auto& job : jobs_) {
       if (job.lsn == lsn) {
         LOG_ERROR("wal file [%lu] already in jobs.", lsn);
@@ -79,10 +80,7 @@ class TsLSNFlushManager {
     flush_job.lsn = lsn;
     std::shared_ptr<TsMemSegment> cur_mem;
     for (auto& grp : vgrps_) {
-      grp->SwitchMemSegment(&cur_mem);
-      if (cur_mem != nullptr) {
-        flush_job.vgrp_mem_segs.push_back(std::make_pair(grp.get(), cur_mem));
-      }
+      flush_job.vgroups.push_back(grp.get());
     }
     kwdbts::KWDBOperatorInfo kwdb_operator_info;
     kwdb_operator_info.SetOperatorName("flushMemSegment");
@@ -141,19 +139,18 @@ class TsLSNFlushManager {
     assert(job_info->status == JOB_CREATED);
     job_info->status = JOB_RUNNING;
     bool flush_success = true;
-    for (auto& mem : job_info->vgrp_mem_segs) {
+    for (auto& vgroup : job_info->vgroups) {
       if (kwdbts::KWDBDynamicThreadPool::GetThreadPool().IsCancel()) {
         job_info->status = JOB_CANCELED;
         break;
       }
-      if (mem.second == nullptr || mem.first == nullptr) {
+      if (vgroup == nullptr) {
         continue;
       }
-      auto s = mem.first->FlushImmSegment(mem.second);
+      auto s = vgroup->Flush();
       if (s == KStatus::SUCCESS) {
         // mem segment flush success. no need flush anymore.
-        mem.first = nullptr;
-        mem.second.reset();
+        vgroup = nullptr;
       } else {
         flush_success = false;
       }
