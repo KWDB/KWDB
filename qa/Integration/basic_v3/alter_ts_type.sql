@@ -344,7 +344,7 @@ ALTER TABLE test_alter.t17 ALTER COLUMN e1 TYPE BIGINT;
 select * from test_alter.t17;
 select * from test_alter.t17 where k_timestamp = '2022-06-06 10:10:02';
 select * from test_alter.t17 where k_timestamp > '2022-06-06 10:10:02';
---select count(e1),max(e1),min(e1),avg(e1),sum(e1),first(e1),last(e1),first_row(e1),last_row(e1) from test_alter.t17;
+select count(e1),max(e1),min(e1),avg(e1),sum(e1),first(e1),last(e1),first_row(e1),last_row(e1) from test_alter.t17;
 
 --ZDP-41335
 CREATE TABLE test_alter.ts_t1 (

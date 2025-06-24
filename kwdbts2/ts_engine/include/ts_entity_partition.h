@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <list>
+#include <vector>
 #include "ts_mem_segment_mgr.h"
 #include "ts_version.h"
 
@@ -38,7 +39,9 @@ class TsEntityPartition {
   // initialize current object.
   KStatus Init(std::list<std::shared_ptr<TsMemSegment>>& mems);
   // filter all blocks, and return block span list.
-  KStatus GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_block_spans);
+  KStatus GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
+                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                      uint32_t scan_version);
 
  private:
   KStatus SetFilter();

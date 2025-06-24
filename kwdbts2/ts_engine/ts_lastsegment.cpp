@@ -521,7 +521,8 @@ int FindLowerBound(const Element_& target, const TSEntityID* entities, const tim
   return r;
 }
 
-KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     TsEngineSchemaManager* schema_mgr) {
   std::vector<TsLastSegmentBlockIndex> block_indices;
   auto s = GetAllBlockIndex(&block_indices);
   if (s == FAIL) {
@@ -547,13 +548,19 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
     if (ts == nullptr) {
       LOG_ERROR("cannot load timestamp column");
     }
+    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = {nullptr};
+    s = schema_mgr->GetTableSchemaMgr(block->GetTableId(), tbl_schema_mgr);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("get table schema manager failed. table id: %lu", block->GetTableId());
+      return s;
+    }
     while (prev_end < info.nrow) {
       int start = prev_end;
       auto current_entity = entities[start];
       auto upper_bound =
           FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
       block_spans.emplace_back(
-          make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start));
+          make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start, tbl_schema_mgr));
       prev_end = upper_bound;
     }
   }
@@ -561,7 +568,9 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<shared_ptr<TsBlockSpan>>& block_spans) {
+                                     std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                     uint32_t scan_version) {
   if (!MayExistEntity(filter.entity_id)) {
     return SUCCESS;
   }
@@ -636,19 +645,16 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         if (match_found) {
           match_found = false;
-          block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, i - start_idx));
+          block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, i - start_idx,
+                                                            tbl_schema_mgr, scan_version));
         }
       }
     }
     if (match_found) {
       match_found = false;
       block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx,
-                                end_idx == 0 ? row_num - start_idx : end_idx - start_idx));
-    }
-    if (match_found) {
-      match_found = false;
-      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx,
-                               end_idx == 0 ? row_num - start_idx : end_idx - start_idx));
+                                end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
+                                tbl_schema_mgr, scan_version));
     }
   }
 
