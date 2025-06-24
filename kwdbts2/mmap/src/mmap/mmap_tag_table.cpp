@@ -356,6 +356,24 @@ int TagTable::UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, in
   return 0;
 }
 
+// update tag record
+int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
+  // 1. delete
+  TSSlice tmp_primary_tag = payload.GetPrimaryTag();
+  if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info) < 0) {
+    err_info.errmsg = "delete tag data failed";
+    LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
+    return err_info.errcode;
+  }
+
+  // 2. insert
+  if ((err_info.errcode = this->InsertTagRecord(payload, sub_group_id, entity_id)) < 0 ) {
+    err_info.errmsg = "insert tag data fail";
+    return err_info.errcode;
+  }
+  return 0;
+}
+
 // delete tag record by ptag
 int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_info) {
   // 1. find
