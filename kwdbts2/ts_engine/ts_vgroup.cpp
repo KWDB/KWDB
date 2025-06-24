@@ -279,27 +279,6 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
 }
 
-std::shared_ptr<TsVGroupPartition> TsVGroup::GetPartition(uint32_t database_id, timestamp64 p_time) {
-  PartitionManager* partition_manager = nullptr;
-  RW_LATCH_S_LOCK(&partitions_latch_);
-  auto iter = partitions_.find(database_id);
-  if (iter != partitions_.end()) {
-    partition_manager = iter->second.get();
-  }
-  RW_LATCH_UNLOCK(&partitions_latch_);
-  if (partition_manager == nullptr) {
-    // TODO(zzr): interval should be fetched form global setting;
-    RW_LATCH_X_LOCK(&partitions_latch_);
-    iter = partitions_.find(database_id);
-    if (iter == partitions_.end()) {
-      partitions_[database_id] = std::make_unique<PartitionManager>(this, database_id, interval);
-    }
-    partition_manager = partitions_[database_id].get();
-    RW_LATCH_UNLOCK(&partitions_latch_);
-  }
-  return partition_manager->Get(p_time, true);
-}
-
 // todo(liangbo01) create partition should at data inserting wal.
 // if at here, inserting and deleting at same time. maybe sql exec over, data all exist.
 // but restart service, data all disappeared.
@@ -313,11 +292,8 @@ KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSM
   }
   auto ts_type = tb_schema_mgr->GetTsColDataType();
   for (auto& row : rows) {
-    auto partition = GetPartition(row.database_id, row.ts, ts_type);
-    if (partition == nullptr) {
-      LOG_ERROR("GetPartition Failed.")
-      return KStatus::FAIL;
-    }
+    auto p_time = convertTsToPTime(row.ts, ts_type);
+    version_manager_->AddPartition(row.database_id, p_time);
   }
   return KStatus::SUCCESS;
 }
@@ -857,10 +833,11 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
 const std::vector<KwTsSpan>& ts_spans) {
   auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans, 
-  [&](std::shared_ptr<TsVGroupPartition> p) -> KStatus {
+  [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
     auto ret = p->DeleteData(e_id, ts_spans, lsn);
     if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("DeleteData partition[%s] failed!", p->GetPath().string().c_str());
+      LOG_ERROR("DeleteData partition[%u/%lu] failed!",
+              std::get<0>(p->GetPartitionIdentifier()), std::get<1>(p->GetPartitionIdentifier()));
       return ret;
     }
     return ret;
@@ -982,10 +959,11 @@ const std::vector<KwTsSpan>& ts_spans) {
   }
   if (entity_id > 0) {
     s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans, 
-      [&](std::shared_ptr<TsVGroupPartition> p) -> KStatus {
+      [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("UndoDeleteData partition[%s] failed!", p->GetPath().string().c_str());
+          LOG_ERROR("UndoDeleteData partition[%u/%lu] failed!",
+              std::get<0>(p->GetPartitionIdentifier()), std::get<1>(p->GetPartitionIdentifier()));
           return ret;
         }
         return ret;
