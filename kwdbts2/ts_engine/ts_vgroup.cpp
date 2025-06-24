@@ -135,6 +135,10 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
       return KStatus::FAIL;
     }
   }
+  // TODO(limeng04): import and export current lsn that temporarily use wal
+  if (engine_options_.wal_level != WALMode::OFF && !write_wal) {
+    current_lsn = wal_manager_->FetchCurrentLSN();
+  }
   std::list<TSMemSegRowData> rows;
   auto s = mem_segment_mgr_.PutData(*payload, entity_id, current_lsn, &rows);
   if (s == KStatus::FAIL) {

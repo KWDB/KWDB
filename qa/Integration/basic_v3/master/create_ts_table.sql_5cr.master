@@ -1,394 +1,480 @@
 > create ts database test;
 CREATE TS DATABASE
-> create table test.sjcx01(k_timestamp timestamp not null,A INT2 null,B INT4 not null,C VARCHAR(100) null,D VARCHAR(10) not null,E CHAR(1000) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+> create table test.t1 (k_timestamp timestamp not null,ser_id timestamp(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+ERROR: timeseries table can not use timestamp type with precision
+SQLSTATE: 42611
+> create table test.t1 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+ERROR: timeseries table can not use timestamptz type with precision
+SQLSTATE: 42611
+> create table test.t1 (k_timestamp timestamp not null,ser_id timestamptz(7) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+ERROR: at or near ")": syntax error: precision 7 out of range
+SQLSTATE: 42601
+DETAIL: source SQL:
+create table test.t1 (k_timestamp timestamp not null,ser_id timestamptz(7) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute)
+                                                                         ^
+> create table test.logon (k_timestamp timestamp not null,ser_id INT4 not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
-> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
-  count | sum  | max  | max  | count | min  | max  | min  | max  | min  | max
---------+------+------+------+-------+------+------+------+------+------+-------
-      0 | NULL | NULL | NULL |     0 | NULL | NULL | NULL | NULL | NULL | NULL
-(1 row)
-> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
-  last | last | last | last | lastts | lastts | lastts | lastts | last | lastts
--------+------+------+------+--------+--------+--------+--------+------+---------
-  NULL | NULL | NULL | NULL | NULL   | NULL   | NULL   | NULL   | NULL | NULL
-(1 row)
-> select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
-  first | first | first | first | firstts | firstts | firstts | firstts | first | firstts
---------+-------+-------+-------+---------+---------+---------+---------+-------+----------
-  NULL  | NULL  | NULL  | NULL  | NULL    | NULL    | NULL    | NULL    | NULL  | NULL
-(1 row)
-> select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
-  last_row | last_row | last_row | last_row | last_row_ts | last_row_ts | last_row_ts | last_row_ts | last_row | last_row_ts
------------+----------+----------+----------+-------------+-------------+-------------+-------------+----------+--------------
-  NULL     | NULL     | NULL     | NULL     | NULL        | NULL        | NULL        | NULL        | NULL     | NULL
-(1 row)
-> select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
-  first_row | first_row | first_row | first_row | first_row_ts | first_row_ts | first_row_ts | first_row_ts | first_row | first_row_ts
-------------+-----------+-----------+-----------+--------------+--------------+--------------+--------------+-----------+---------------
-  NULL      | NULL      | NULL      | NULL      | NULL         | NULL         | NULL         | NULL         | NULL      | NULL
-(1 row)
-> insert into test.sjcx01 values (1681111110005,null,7,null,'D','test1', 'D4');
-INSERT 1
-> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
-  count | sum | max  | max | count | min  | max  | min | max |  min  |  max
---------+-----+------+-----+-------+------+------+-----+-----+-------+--------
-      0 |   7 | NULL |   7 |     0 | NULL | NULL | D   | D   | test1 | test1
-(1 row)
-> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
-  last | last | last | last | lastts |            lastts             | lastts |            lastts             | last  |            lastts
--------+------+------+------+--------+-------------------------------+--------+-------------------------------+-------+--------------------------------
-  NULL | D    | NULL |    7 | NULL   | 2023-04-10 07:18:30.005+00:00 | NULL   | 2023-04-10 07:18:30.005+00:00 | test1 | 2023-04-10 07:18:30.005+00:00
-(1 row)
-> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG','test2数据库语法查询测试！！！@TEST10-10', 'qqq');
-INSERT 1
-> insert into test.sjcx01 values (1681111110001,2,2,'B','DFFDARGD','test3数据库语法查询测试！！！@TEST10-10', 'qqq1');
-INSERT 1
-> insert into test.sjcx01 values (1681111110002,3,3,'C','A','test4数据库语法查询测试！！！@TEST10-10', 'A1');
-INSERT 1
-> insert into test.sjcx01 values (1681111110003,4,4,'D','B','test5数据库语法查询测试！！！@TEST10-10', 'B2');
-INSERT 1
-> insert into test.sjcx01 values (1681111110004,5,5,'E','C','test6数据库语法查询测试！！！@TEST10-10', 'C3');
-INSERT 1
-> insert into test.sjcx01 values (1681111110006,8,9,'G','E','test7数据库语法查询测试！！！@TEST10-10', 'E5');
-INSERT 1
-> insert into test.sjcx01 values (1681111110007,null,11,'H','F','test8数据库语法查询测试！！！@TEST10-10', 'F6');
-INSERT 1
-> insert into test.sjcx01 values (1681111110008,12,13,null,'G','test9数据库语法查询测试！！！@TEST10-10', 'G7');
-INSERT 1
-> insert into test.sjcx01 values (1681111110009,32767,13,null,'G','test9数据库语法查询测试！！！@TEST10-10', 'G7');
-INSERT 1
-> select sum(a) from test.sjcx01;
-   sum
----------
-  32802
-(1 row)
-> select * from test.sjcx01 order by k_timestamp;
-           k_timestamp          |   a   | b  |  c   |    d     |                    e                    | t1_attribute
---------------------------------+-------+----+------+----------+-----------------------------------------+---------------
-  2023-04-10 07:18:30+00:00     |     1 |  1 | A    | DFFDARG  | test2数据库语法查询测试！！！@TEST10-10 | qqq
-  2023-04-10 07:18:30.001+00:00 |     2 |  2 | B    | DFFDARGD | test3数据库语法查询测试！！！@TEST10-10 | qqq1
-  2023-04-10 07:18:30.002+00:00 |     3 |  3 | C    | A        | test4数据库语法查询测试！！！@TEST10-10 | A1
-  2023-04-10 07:18:30.003+00:00 |     4 |  4 | D    | B        | test5数据库语法查询测试！！！@TEST10-10 | B2
-  2023-04-10 07:18:30.004+00:00 |     5 |  5 | E    | C        | test6数据库语法查询测试！！！@TEST10-10 | C3
-  2023-04-10 07:18:30.005+00:00 | NULL  |  7 | NULL | D        | test1                                   | D4
-  2023-04-10 07:18:30.006+00:00 |     8 |  9 | G    | E        | test7数据库语法查询测试！！！@TEST10-10 | E5
-  2023-04-10 07:18:30.007+00:00 | NULL  | 11 | H    | F        | test8数据库语法查询测试！！！@TEST10-10 | F6
-  2023-04-10 07:18:30.008+00:00 |    12 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
-  2023-04-10 07:18:30.009+00:00 | 32767 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
-(10 rows)
-> select k_timestamp, A, B from test.sjcx01 order by k_timestamp;
-           k_timestamp          |   a   | b
---------------------------------+-------+-----
-  2023-04-10 07:18:30+00:00     |     1 |  1
-  2023-04-10 07:18:30.001+00:00 |     2 |  2
-  2023-04-10 07:18:30.002+00:00 |     3 |  3
-  2023-04-10 07:18:30.003+00:00 |     4 |  4
-  2023-04-10 07:18:30.004+00:00 |     5 |  5
-  2023-04-10 07:18:30.005+00:00 | NULL  |  7
-  2023-04-10 07:18:30.006+00:00 |     8 |  9
-  2023-04-10 07:18:30.007+00:00 | NULL  | 11
-  2023-04-10 07:18:30.008+00:00 |    12 | 13
-  2023-04-10 07:18:30.009+00:00 | 32767 | 13
-(10 rows)
-> select A, B from test.sjcx01 order by k_timestamp;
-    a   | b
---------+-----
-      1 |  1
-      2 |  2
-      3 |  3
-      4 |  4
-      5 |  5
-  NULL  |  7
-      8 |  9
-  NULL  | 11
-     12 | 13
-  32767 | 13
-(10 rows)
-> select A from test.sjcx01 order by k_timestamp;
-    a
----------
-      1
-      2
-      3
-      4
-      5
-  NULL
-      8
-  NULL
-     12
-  32767
-(10 rows)
-> select C from test.sjcx01 order by k_timestamp;
-   c
---------
-  A
-  B
-  C
-  D
-  E
-  NULL
-  G
-  H
-  NULL
-  NULL
-(10 rows)
-> select * from test.sjcx01 where k_timestamp > '2023-04-10 07:00:30+00:00' and k_timestamp <= '2023-04-10 08:00:30+00:00' order by k_timestamp;
-           k_timestamp          |   a   | b  |  c   |    d     |                    e                    | t1_attribute
---------------------------------+-------+----+------+----------+-----------------------------------------+---------------
-  2023-04-10 07:18:30+00:00     |     1 |  1 | A    | DFFDARG  | test2数据库语法查询测试！！！@TEST10-10 | qqq
-  2023-04-10 07:18:30.001+00:00 |     2 |  2 | B    | DFFDARGD | test3数据库语法查询测试！！！@TEST10-10 | qqq1
-  2023-04-10 07:18:30.002+00:00 |     3 |  3 | C    | A        | test4数据库语法查询测试！！！@TEST10-10 | A1
-  2023-04-10 07:18:30.003+00:00 |     4 |  4 | D    | B        | test5数据库语法查询测试！！！@TEST10-10 | B2
-  2023-04-10 07:18:30.004+00:00 |     5 |  5 | E    | C        | test6数据库语法查询测试！！！@TEST10-10 | C3
-  2023-04-10 07:18:30.005+00:00 | NULL  |  7 | NULL | D        | test1                                   | D4
-  2023-04-10 07:18:30.006+00:00 |     8 |  9 | G    | E        | test7数据库语法查询测试！！！@TEST10-10 | E5
-  2023-04-10 07:18:30.007+00:00 | NULL  | 11 | H    | F        | test8数据库语法查询测试！！！@TEST10-10 | F6
-  2023-04-10 07:18:30.008+00:00 |    12 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
-  2023-04-10 07:18:30.009+00:00 | 32767 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
-(10 rows)
-> select * from test.sjcx01 where k_timestamp > '2023-04-10 07:18:30.002+00:00' and k_timestamp <= '2023-04-10 07:18:30.006+00:00' order by k_timestamp;
-           k_timestamp          |  a   | b |  c   | d |                    e                    | t1_attribute
---------------------------------+------+---+------+---+-----------------------------------------+---------------
-  2023-04-10 07:18:30.003+00:00 |    4 | 4 | D    | B | test5数据库语法查询测试！！！@TEST10-10 | B2
-  2023-04-10 07:18:30.004+00:00 |    5 | 5 | E    | C | test6数据库语法查询测试！！！@TEST10-10 | C3
-  2023-04-10 07:18:30.005+00:00 | NULL | 7 | NULL | D | test1                                   | D4
-  2023-04-10 07:18:30.006+00:00 |    8 | 9 | G    | E | test7数据库语法查询测试！！！@TEST10-10 | E5
-(4 rows)
-> select * from test.sjcx01
-where k_timestamp >= '2023-04-10 07:18:30.001+00:00' and k_timestamp < '2023-04-10 07:18:30.003+00:00'
-   or (k_timestamp > '2023-04-10 07:18:30.005+00:00' and k_timestamp <= '2023-04-10 07:18:30.009+00:00')
-order by k_timestamp;
-           k_timestamp          |   a   | b  |  c   |    d     |                    e                    | t1_attribute
---------------------------------+-------+----+------+----------+-----------------------------------------+---------------
-  2023-04-10 07:18:30.001+00:00 |     2 |  2 | B    | DFFDARGD | test3数据库语法查询测试！！！@TEST10-10 | qqq1
-  2023-04-10 07:18:30.002+00:00 |     3 |  3 | C    | A        | test4数据库语法查询测试！！！@TEST10-10 | A1
-  2023-04-10 07:18:30.006+00:00 |     8 |  9 | G    | E        | test7数据库语法查询测试！！！@TEST10-10 | E5
-  2023-04-10 07:18:30.007+00:00 | NULL  | 11 | H    | F        | test8数据库语法查询测试！！！@TEST10-10 | F6
-  2023-04-10 07:18:30.008+00:00 |    12 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
-  2023-04-10 07:18:30.009+00:00 | 32767 | 13 | NULL | G        | test9数据库语法查询测试！！！@TEST10-10 | G7
-(6 rows)
-> select count(*), count(c) from test.sjcx01;
-  count | count
---------+--------
-     10 |     7
-(1 row)
-> select count(*), count(c) from test.sjcx01 where a is not null;
-  count | count
---------+--------
-      8 |     6
-(1 row)
-> select count(a), count(distinct a) from test.sjcx01;
-  count | count
---------+--------
-      8 |     8
-(1 row)
-> select max(b), sum(a) from test.sjcx01 where k_timestamp < k_timestamp;
-  max  | sum
--------+-------
-  NULL | NULL
-(1 row)
-> select sum(a), min(b) from test.sjcx01;
-   sum  | min
---------+------
-  32802 |   1
-(1 row)
-> select count(a), sum(b), max(a), max(b), count(c), min(c), max(c), min(d), max(d), min(E), max(E) from test.sjcx01;
-  count | sum |  max  | max | count | min | max | min | max |  min  |                   max
---------+-----+-------+-----+-------+-----+-----+-----+-----+-------+------------------------------------------
-      8 |  68 | 32767 |  13 |     7 | A   | H   | A   | G   | test1 | test9数据库语法查询测试！！！@TEST10-10
-(1 row)
-> select t1_attribute, count(c), sum(a), max(b), last(a) from test.sjcx01 group by t1_attribute order by t1_attribute;
-  t1_attribute | count |  sum  | max | last
----------------+-------+-------+-----+--------
-  A1           |     1 |     3 |   3 |     3
-  B2           |     1 |     4 |   4 |     4
-  C3           |     1 |     5 |   5 |     5
-  D4           |     0 | NULL  |   7 | NULL
-  E5           |     1 |     8 |   9 |     8
-  F6           |     1 | NULL  |  11 | NULL
-  G7           |     0 | 32779 |  13 | 32767
-  qqq          |     1 |     1 |   1 |     1
-  qqq1         |     1 |     2 |   2 |     2
-(9 rows)
-> select last(c), last(d), last(a), last(b), lastts(c), lastts(d), lastts(a), lastts(b), last(e), lastts(e) from test.sjcx01;
-  last | last | last  | last |            lastts             |            lastts             |            lastts             |            lastts             |                  last                   |            lastts
--------+------+-------+------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------------------------------+--------------------------------
-  H    | G    | 32767 |   13 | 2023-04-10 07:18:30.007+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | test9数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30.009+00:00
-(1 row)
-> select last_row(c), last_row(d), last_row(a), last_row(b), last_row_ts(c), last_row_ts(d), last_row_ts(a), last_row_ts(b), last_row(e), last_row_ts(e) from test.sjcx01;
-  last_row | last_row | last_row | last_row |          last_row_ts          |          last_row_ts          |          last_row_ts          |          last_row_ts          |                last_row                 |          last_row_ts
------------+----------+----------+----------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------------------------------+--------------------------------
-  NULL     | G        |    32767 |       13 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | 2023-04-10 07:18:30.009+00:00 | test9数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30.009+00:00
-(1 row)
-> select first_row(c), first_row(d), first_row(a), first_row(b), first_row_ts(c), first_row_ts(d), first_row_ts(a), first_row_ts(b), first_row(e), first_row_ts(e) from test.sjcx01;
-  first_row | first_row | first_row | first_row |       first_row_ts        |       first_row_ts        |       first_row_ts        |       first_row_ts        |                first_row                |       first_row_ts
-------------+-----------+-----------+-----------+---------------------------+---------------------------+---------------------------+---------------------------+-----------------------------------------+----------------------------
-  A         | DFFDARG   |         1 |         1 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | test2数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30+00:00
-(1 row)
-> select first(c), first(d), first(a), first(b), firstts(c), firstts(d), firstts(a), firstts(b), first(e), firstts(e) from test.sjcx01;
-  first |  first  | first | first |          firstts          |          firstts          |          firstts          |          firstts          |                  first                  |          firstts
---------+---------+-------+-------+---------------------------+---------------------------+---------------------------+---------------------------+-----------------------------------------+----------------------------
-  A     | DFFDARG |     1 |     1 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30+00:00 | test2数据库语法查询测试！！！@TEST10-10 | 2023-04-10 07:18:30+00:00
-(1 row)
-> select max(a+3), min(a+b) from test.sjcx01;
-   max  | min
---------+------
-  32770 |   2
-(1 row)
-> select a+b, sum(b) from test.sjcx01 group by a+b order by a+b;
-  ?column? | sum
------------+------
-      NULL |  18
-         2 |   1
-         4 |   2
-         6 |   3
-         8 |   4
-        10 |   5
-        17 |   9
-        25 |  13
-     32780 |  13
-(9 rows)
-> select last(b), last(a) from test.sjcx01;
-  last | last
--------+--------
-    13 | 32767
-(1 row)
-> select * from test.sjcx01 where t1_attribute = 'F6';
-           k_timestamp          |  a   | b  | c | d |                    e                    | t1_attribute
---------------------------------+------+----+---+---+-----------------------------------------+---------------
-  2023-04-10 07:18:30.007+00:00 | NULL | 11 | H | F | test8数据库语法查询测试！！！@TEST10-10 | F6
-(1 row)
-> SELECT time_bucket(k_timestamp, '60s'), max(A) FROM test.sjcx01  GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
-         time_bucket        |  max
-----------------------------+--------
-  2023-04-10 07:18:00+00:00 | 32767
-(1 row)
+> create table test.sjgx03(k_timestamp timestamp not null,A VARCHAR(10) not null,B VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+ERROR: null value in column "a" violates not-null constraint
+SQLSTATE: 23502
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq');
+INSERT 8
+> create table test.ti(dt timestamp not null ,id int4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
 > drop database test cascade;
 DROP DATABASE
-> create ts database test_null;
+> create ts database test;
 CREATE TS DATABASE
-> create table test_null.t1(k_timestamp timestamp not null,A INT4 null,B INT4 not null,C VARCHAR(10) null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
-> insert into test_null.t1 values (1681111110000, null, 2, null, 'ABC', 'tag1');
-INSERT 1
-> insert into test_null.t1 values (1681111110001, null ,3, null, 'Xyz', 'tag2');
-INSERT 1
-> select count(*), count(a), sum(a), min(a), max(a), last(a) from test_null.t1;
-  count | count | sum  | min  | max  | last
---------+-------+------+------+------+-------
-      2 |     0 | NULL | NULL | NULL | NULL
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+ERROR: null value in column "a" violates not-null constraint
+SQLSTATE: 23502
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq');
+INSERT 8
+> show create TABLE test.sjcx01;
+      table_name     |                          create_statement
+---------------------+---------------------------------------------------------------------
+  test.public.sjcx01 | CREATE TABLE sjcx01 (
+                     |     k_timestamp TIMESTAMPTZ NOT NULL,
+                     |     a INT4 NOT NULL,
+                     |     b INT4 NOT NULL,
+                     |     c VARCHAR(10) NOT NULL,
+                     |     d VARCHAR(10) NOT NULL
+                     | ) TAGS (
+                     |     t1_attribute VARCHAR(64) NOT NULL ) PRIMARY TAGS(t1_attribute)
 (1 row)
-> select max(a+b) from test_null.t1;
-  max
---------
-  NULL
-(1 row)
-> insert into test_null.t1 values (1681111110002, null, 4, null, 'ABC1', 'tag1');
-INSERT 1
-> select min(k_timestamp), max(k_timestamp) from test_null.t1;
-             min            |              max
-----------------------------+--------------------------------
-  2023-04-10 07:18:30+00:00 | 2023-04-10 07:18:30.002+00:00
-(1 row)
-> drop database test_null cascade;
+> create ts database db;
+CREATE TS DATABASE
+> drop database db;
 DROP DATABASE
-> create ts database test_datatype;
-CREATE TS DATABASE
-> create table test_datatype.t1(
-   k_timestamp timestamp not null,
-   A INT2 null, B INT8 null, C INT8 null)
-   attributes (tag1 varchar not null) primary tags(tag1);
-CREATE TABLE
-> insert into test_datatype.t1 values (1681111110000, 32767, 2147483647, 9223372036854775807, 'tag1');
-INSERT 1
-> insert into test_datatype.t1 values (1681111110001, null, null, null, 'tag2');
-INSERT 1
-> insert into test_datatype.t1 values (1681111110002, -32768, -2147483648, -9223372036854775808, 'tag3');
-INSERT 1
-> select max(A), max(B), max(C) from test_datatype.t1;
-   max  |    max     |         max
---------+------------+----------------------
-  32767 | 2147483647 | 9223372036854775807
-(1 row)
-> select min(A), min(B), min(C) from test_datatype.t1;
-   min   |     min     |         min
----------+-------------+-----------------------
-  -32768 | -2147483648 | -9223372036854775808
-(1 row)
-> select sum(A), sum(B), sum(C) from test_datatype.t1;
-  sum | sum | sum
-------+-----+------
-   -1 |  -1 |  -1
-(1 row)
-> select last(A), last(B), last(C) from test_datatype.t1;
-   last  |    last     |         last
----------+-------------+-----------------------
-  -32768 | -2147483648 | -9223372036854775808
-(1 row)
-> insert into test_datatype.t1 values (1681111110100, 32767, 2147483647, 2223372036854775807, 'tag1');
-INSERT 1
-> insert into test_datatype.t1 values (1681111110101, 32767, 2147483647, 822332036854775807, 'tag1');
-INSERT 1
-> insert into test_datatype.t1 values (1681111110102, 32767, 2147483647, 3223372036854775807, 'tag1');
-INSERT 1
-> insert into test_datatype.t1 values (1681111110103, 32767, 2147483647, 1223372036854775807, 'tag1');
-INSERT 1
-> insert into test_datatype.t1 values (1681111110104, 32767, 2147483647, 7223372036854775807, 'tag1');
-INSERT 1
-> select sum(A), sum(B), round(sum(C) / 10000, 0) from test_datatype.t1;
-   sum   |     sum     |      round
----------+-------------+-------------------
-  163834 | 10737418234 | 1471582018427388
-(1 row)
-> drop database test_datatype cascade;
+> drop database test cascade;
 DROP DATABASE
-> create ts database test_alter;
+> create ts database test;
 CREATE TS DATABASE
-> create table test_alter.t2(ts timestamp not null, a smallint, b smallint, c smallint) tags(attr int not null) primary tags(attr);
+> USE TEST;
+SET
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null ,D VARCHAR(10) not null) attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
-> insert into test_alter.t2 values(1672531211005, 100, 200, 300, 1);
-INSERT 1
-> alter table test_alter.t2 alter column a type int;
-ALTER TABLE
-> alter table test_alter.t2 alter column b type bigint;
-ALTER TABLE
-> alter table test_alter.t2 alter column c type varchar(120);
-ALTER TABLE
-> insert into test_alter.t2 values(1672531211015, 65536, 65539,  'test时间精度！！！@TEST2', 1);
-INSERT 1
-> select * from test_alter.t2 order by ts,attr;
-               ts               |   a   |   b   |            c             | attr
---------------------------------+-------+-------+--------------------------+-------
-  2023-01-01 00:00:11.005+00:00 |   100 |   200 | 300                      |    1
-  2023-01-01 00:00:11.015+00:00 | 65536 | 65539 | test时间精度！！！@TEST2 |    1
-(2 rows)
-> select a, b from test_alter.t2 order by ts,attr;
-    a   |   b
---------+--------
-    100 |   200
-  65536 | 65539
-(2 rows)
-> create table test_alter.t9(ts timestamp not null, a char, b nchar(64)) tags(attr int not null) primary tags(attr);
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+ERROR: null value in column "a" violates not-null constraint
+SQLSTATE: 23502
+> show create table test.sjcx01;
+      table_name     |                          create_statement
+---------------------+---------------------------------------------------------------------
+  test.public.sjcx01 | CREATE TABLE sjcx01 (
+                     |     k_timestamp TIMESTAMPTZ NOT NULL,
+                     |     a INT4 NOT NULL,
+                     |     b INT4 NOT NULL,
+                     |     c VARCHAR(10) NOT NULL,
+                     |     d VARCHAR(10) NOT NULL
+                     | ) TAGS (
+                     |     t1_attribute VARCHAR(64) NOT NULL ) PRIMARY TAGS(t1_attribute)
+(1 row)
+> show create table test.sjcx01;
+      table_name     |                          create_statement
+---------------------+---------------------------------------------------------------------
+  test.public.sjcx01 | CREATE TABLE sjcx01 (
+                     |     k_timestamp TIMESTAMPTZ NOT NULL,
+                     |     a INT4 NOT NULL,
+                     |     b INT4 NOT NULL,
+                     |     c VARCHAR(10) NOT NULL,
+                     |     d VARCHAR(10) NOT NULL
+                     | ) TAGS (
+                     |     t1_attribute VARCHAR(64) NOT NULL ) PRIMARY TAGS(t1_attribute)
+(1 row)
+> drop table test.sjcx01;
+DROP TABLE
+> drop database test cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create table test.S(k_timestamp timestamp not null,A INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
 CREATE TABLE
-> insert into test_alter.t9 values(1672531211005,  't',  'test时间精度通用查询测试！！！@TEST3', 1);
-INSERT 1
-> alter table test_alter.t9 alter column a type char(128);
-ALTER TABLE
-> alter table test_alter.t9 alter column b type nchar(128);
-ALTER TABLE
-> insert into test_alter.t9 values(1672531211015,  'test时间精度！！！@TEST2',  'test时间精度通用查询测试！！！@TEST3', 1);
-INSERT 1
-> select * from test_alter.t9 order by ts,attr;
-               ts               |            a             |                  b                   | attr
---------------------------------+--------------------------+--------------------------------------+-------
-  2023-01-01 00:00:11.005+00:00 | t                        | test时间精度通用查询测试！！！@TEST3 |    1
-  2023-01-01 00:00:11.015+00:00 | test时间精度！！！@TEST2 | test时间精度通用查询测试！！！@TEST3 |    1
-(2 rows)
-> select a, b from test_alter.t9 order by ts,attr;
-             a             |                  b
----------------------------+---------------------------------------
-  t                        | test时间精度通用查询测试！！！@TEST3
-  test时间精度！！！@TEST2 | test时间精度通用查询测试！！！@TEST3
-(2 rows)
-> drop database if exists test_alter cascade;
+> create table test.S1(k_timestamp timestamp not null,A INT4 not null,b INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.S2(k_timestamp timestamp not null,A INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database test;
+CREATE TS DATABASE
+> create ts database 1;
+ERROR: at or near "1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 1.0;
+ERROR: at or near "1.0": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1.0
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 1.23;
+ERROR: at or near "1.23": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1.23
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database -1.23;
+ERROR: at or near "-": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database -1.23
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '-1.23';
+ERROR: at or near "-1.23": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '-1.23'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '-1';
+ERROR: at or near "-1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '-1'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 123123131388888888888888888888888888888888888888888888888888123132;
+ERROR: at or near "123123131388888888888888888888888888888888888888888888888888123132": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 123123131388888888888888888888888888888888888888888888888888123132
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '一二三';
+ERROR: at or near "一二三": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '一二三'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database a;
+CREATE TS DATABASE
+> create ts database 'a';
+ERROR: at or near "a": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 'a'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database "a";
+ERROR: database "a" already exists
+SQLSTATE: 42P04
+> create ts database 's';
+ERROR: at or near "s": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 's'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database "q";
+CREATE TS DATABASE
+> create ts database 1+1;
+ERROR: at or near "1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1+1
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 2021-1-1;
+ERROR: at or near "2021": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 2021-1-1
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 2021-1-5 11:15:45;
+ERROR: at or near "2021": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 2021-1-5 11:15:45
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '2021-1-5 11:15:45';
+ERROR: at or near "2021-1-5 11:15:45": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '2021-1-5 11:15:45'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database now();
+ERROR: at or near "(": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database now()
+                      ^
+> create ts database 1670976000;
+ERROR: at or near "1670976000": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1670976000
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database !;
+ERROR: at or near "!": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database !
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database @;
+ERROR: at or near "@": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database @
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '#';
+ERROR: at or near "#": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '#'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database $;
+ERROR: at or near "$": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database $
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '"';
+ERROR: at or near """: syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '"'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '♠';
+ERROR: at or near "♠": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '♠'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '--';
+ERROR: at or near "--": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '--'
+                   ^
+HINT: try \h CREATE DATABASE
+> show  databases;
+  database_name | engine_type
+----------------+--------------
+  a             | TIME SERIES
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  q             | TIME SERIES
+  system        | RELATIONAL
+  test          | TIME SERIES
+(6 rows)
+> drop database '!';
+ERROR: at or near "!": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '!'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '#';
+ERROR: at or near "#": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '#'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '$';
+ERROR: at or near "$": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '$'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '-';
+ERROR: at or near "-": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '-'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '--';
+ERROR: at or near "--": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '--'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '-1';
+ERROR: at or near "-1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '-1'
+              ^
+HINT: try \h DROP DATABASE
+> drop database 1;
+ERROR: at or near "1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 1
+              ^
+HINT: try \h DROP DATABASE
+> drop database 1670976000;
+ERROR: at or near "1670976000": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 1670976000
+              ^
+HINT: try \h DROP DATABASE
+> drop database 2021;
+ERROR: at or near "2021": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 2021
+              ^
+HINT: try \h DROP DATABASE
+> drop database '@';
+ERROR: at or near "@": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '@'
+              ^
+HINT: try \h DROP DATABASE
+> drop database test cascade;
+DROP DATABASE
+> drop database a;
+DROP DATABASE
+> drop database kaiwudb;
+ERROR: database "kaiwudb" does not exist
+SQLSTATE: 3D000
+> drop database now;
+ERROR: database "now" does not exist
+SQLSTATE: 3D000
+> drop database 'null';
+ERROR: at or near "null": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 'null'
+              ^
+HINT: try \h DROP DATABASE
+> drop database q;
+DROP DATABASE
+> drop database s;
+ERROR: database "s" does not exist
+SQLSTATE: 3D000
+> drop database '♠';
+ERROR: at or near "♠": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '♠'
+              ^
+HINT: try \h DROP DATABASE
+> show  databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+(3 rows)
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database test;
+CREATE TS DATABASE
+> create table test.TB(k_timestamp timestamp not null,A INT4 not null,B FLOAT not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> show databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+(3 rows)
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB;
+DROP DATABASE
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB CASCADE;
+DROP DATABASE
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create ts database test2;
+CREATE TS DATABASE
+> create ts database pre;
+CREATE TS DATABASE
+> create table test.et1(k_timestamp timestamp not null,a INT2 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et2(k_timestamp timestamp not null,a INT not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et3(k_timestamp timestamp not null,a bool not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et4(k_timestamp timestamp not null,a float not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et5(k_timestamp timestamp not null,a int8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et6(k_timestamp timestamp not null,a float8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et7(k_timestamp timestamp not null,a timestamp not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et8(k_timestamp timestamp not null,a char(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et9(k_timestamp timestamp not null,a nchar(255) not null)attributes (t1_attribute varchar  not null);
+CREATE TABLE
+> create table test.et10(k_timestamp timestamp not null,a varchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et11(k_timestamp timestamp not null,a char not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et12(k_timestamp timestamp not null,a char(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et13(k_timestamp timestamp not null,a nchar not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et14(k_timestamp timestamp not null,a varchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et15(k_timestamp timestamp not null,a nvarchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et16(k_timestamp timestamp not null,a varbytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et17(k_timestamp timestamp not null,a nvarchar(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et18(k_timestamp timestamp not null,a nvarchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et19(k_timestamp timestamp not null,a bytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et20(k_timestamp timestamp not null,a bytes(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et21(k_timestamp timestamp not null,a varbytes(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et22(k_timestamp timestamp not null,a varbytes(254) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.atll(k_timestamp timestamp not null,e0 int not null ,e1 int2  not null ,e2 int  not null , e3 bool  not null ,e4 float  not null ,e5 int8  not null ,e6 float8  not null ,e7 timestamp  not null ,e8 char(1023)  not null ,e9 nchar(255)  not null ,e10 varchar(4096)  not null ,e11 char  not null ,e12 char(255)  not null ,e13 nchar  not null ,e14 varchar(128)  not null ,                e15 nvarchar(4096)  not null , e16 varbytes  not null ,e17 nvarchar(255)  not null ,e18 nvarchar(128)   not null ,                e19 bytes  not null ,e20 bytes(1023)  not null ,e21 varbytes(4096)  not null ,e22 varbytes(254)  not null )attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> drop database test2;
+DROP DATABASE
+> drop database pre;
 DROP DATABASE
