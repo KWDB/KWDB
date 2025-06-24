@@ -624,8 +624,248 @@ execute test_pre2('1960-1-1 08:00:14', '2024-1-1 08:00:16');
 execute test_pre3('1960-1-1 08:00:14', '2024-1-1 08:00:22');
 execute test_pre4;
 
+--- fix-bug-precision
+CREATE TABLE test_delete.tb5(
+                               k_timestamp TIMESTAMPTZ(6) NOT NULL,
+                               e1 INT2,
+                               e2 INT,
+                               e3 INT8,
+                               e4 FLOAT4,
+                               e5 FLOAT,
+                               e6 BOOL,
+                               e7 TIMESTAMP,
+                               e8 CHAR(1023),
+                               e9 VARCHAR,
+                               e10 VARCHAR(4096),
+                               e11 NCHAR(255),
+                               e12 VARBYTES(6))
+    TAGS (code1 INT4 NOT NULL, code2 VARCHAR(128) NOT NULL, code3 CHAR(200) NOT NULL, code4 INT8 NOT NULL,
+code5 INT4 NOT NULL, code6 VARCHAR(128) NOT NULL, code7 CHAR(200) NOT NULL, code8 INT8 NOT NULL)
+PRIMARY TAGS (code1,code2);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:01',10001,1000001,100000001,110011.110011,110011.110011,true,'2010-10-10 10:10:11.101','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',b'\x61',1001,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:02',10001,1000001,100000001,110011.110011,110011.110011,true,'2010-10-10 10:10:11.101','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',b'\x61',1001,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:03',20002,2000002,200000002,220022.220022,220022.220022,false,'2020-12-12 00:10:59.222','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',b'\x80',1002,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808,2147483647,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:04',20002,2000002,200000002,220022.220022,220022.220022,false,'2020-12-12 00:10:59.222','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',b'\x80',1002,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808,2147483647,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:05',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, 1003,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:06',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, 1003,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:07',30003,3000003,300000003,330033.330033,330033.330033,true,'2230-3-30 10:10:00.3','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',b'\xcc',1004,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807,-2147483648,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:08',30003,3000003,300000003,330033.330033,330033.330033,true,'2230-3-30 10:10:00.3','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',b'\xcc',1004,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807,-2147483648,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:09',30004,4000004,400000004,440044.440044,440044.440044,false,'2010-10-10 10:10:11.101','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',b'\x61',1005,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0,0,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:10',30004,4000004,400000004,440044.440044,440044.440044,false,'2010-10-10 10:10:11.101','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',b'\x61',1005,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0,0,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:11',30005,5000005,500000005,550055.550055,550055.550055,true,'2230-3-30 10:10:00.3','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',b'\xcc',1006,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0,0,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:12',30005,5000005,500000005,550055.550055,550055.550055,true,'2230-3-30 10:10:00.3','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',b'\xcc',1006,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0,0,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:13',30006,6000006,600000006,660066.660066,660066.660066,true,'2230-3-30 10:10:00.3','','','','','',1007,'','',0,0,'','',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:14',30006,6000006,600000006,660066.660066,660066.660066,true,'2230-3-30 10:10:00.3','','','','','',1007,'','',0,0,'','',0);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:15',30007,7000007,700000007,770077.770077,770077.770077,true,'2230-3-30 10:10:00.3','     ','     ','     ','     ',' ',1008,'     ','     ',0,0,'     ','     ',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:16',30007,7000007,700000007,770077.770077,770077.770077,true,'2230-3-30 10:10:00.3','     ','     ','     ','     ',' ',1008,'     ','     ',0,0,'     ','     ',0);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:17',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','','','','','0',1009,'','',0,0,'','',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:18',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','','','','','0',1009,'','',0,0,'','',0);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:19',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','\','\','\','\','\\',1010,'\','\',0,0,'\','\',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:20',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','\','\','\','\','\\',1010,'\','\',0,0,'\','\',0);
+
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:21',30009,9000009,900000009,90099.990099,990099.990099,true,'2230-3-30 10:10:00.3',e'\\',e'\\',e'\\',e'\\',e'\\\\',1011,e'\\',e'\\',0,0,e'\\',e'\\',0);
+INSERT INTO test_delete.tb5 VALUES('2024-1-1 08:00:22',30009,9000009,900000009,90099.990099,990099.990099,true,'2230-3-30 10:10:00.3',e'\\',e'\\',e'\\',e'\\',e'\\\\',1011,e'\\',e'\\',0,0,e'\\',e'\\',0);
+
+
+select count(*) from test_delete.tb5;
+delete from test_delete.tb5 where k_timestamp ='2024-1-1 08:00:01';
+delete from test_delete.tb5 where k_timestamp ='2024-1-1 08:00:02' or k_timestamp ='2024-1-1 08:00:03';
+delete from test_delete.tb5 where k_timestamp ='2024-1-1 08:00:02' and k_timestamp ='2024-1-1 08:00:03';
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+delete from test_delete.tb5 where k_timestamp <'2024-1-1 08:00:05';
+delete from test_delete.tb5 where k_timestamp >'2024-1-1 08:00:21';
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+delete from test_delete.tb5 where k_timestamp >='2024-1-1 08:00:10' and k_timestamp <='2024-1-1 08:00:12';
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+delete from test_delete.tb5 where k_timestamp <='2024-1-1 08:00:06' or k_timestamp >'2024-1-1 08:00:20';
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+delete from test_delete.tb5 where k_timestamp in('2024-1-1 08:00:07','2024-1-1 08:00:20');
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+delete from test_delete.tb5 where k_timestamp not in('2024-1-1 08:00:15','2024-1-1 08:00:09','2024-1-1 08:00:18');
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+delete from test_delete.tb5;
+select k_timestamp from test_delete.tb5 order by k_timestamp;
+
+CREATE TABLE test_delete.tb6(
+                                k_timestamp TIMESTAMPTZ(9) NOT NULL,
+                                e1 INT2,
+                                e2 INT,
+                                e3 INT8,
+                                e4 FLOAT4,
+                                e5 FLOAT,
+                                e6 BOOL,
+                                e7 TIMESTAMP,
+                                e8 CHAR(1023),
+                                e9 VARCHAR,
+                                e10 VARCHAR(4096),
+                                e11 NCHAR(255),
+                                e12 VARBYTES(6))
+    TAGS (code1 INT4 NOT NULL, code2 VARCHAR(128) NOT NULL, code3 CHAR(200) NOT NULL, code4 INT8 NOT NULL,
+code5 INT4 NOT NULL, code6 VARCHAR(128) NOT NULL, code7 CHAR(200) NOT NULL, code8 INT8 NOT NULL)
+PRIMARY TAGS (code1,code2);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:01',10001,1000001,100000001,110011.110011,110011.110011,true,'2010-10-10 10:10:11.101','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',b'\x61',1001,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:02',10001,1000001,100000001,110011.110011,110011.110011,true,'2010-10-10 10:10:11.101','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',b'\x61',1001,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:03',20002,2000002,200000002,220022.220022,220022.220022,false,'2020-12-12 00:10:59.222','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',b'\x80',1002,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808,2147483647,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:04',20002,2000002,200000002,220022.220022,220022.220022,false,'2020-12-12 00:10:59.222','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',b'\x80',1002,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808,2147483647,'《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',-9223372036854775808);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:05',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, 1003,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:06',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, 1003,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182,9182,'《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',-9182);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:07',30003,3000003,300000003,330033.330033,330033.330033,true,'2230-3-30 10:10:00.3','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',b'\xcc',1004,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807,-2147483648,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:08',30003,3000003,300000003,330033.330033,330033.330033,true,'2230-3-30 10:10:00.3','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',b'\xcc',1004,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807,-2147483648,'《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',9223372036854775807);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:09',30004,4000004,400000004,440044.440044,440044.440044,false,'2010-10-10 10:10:11.101','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',b'\x61',1005,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0,0,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:10',30004,4000004,400000004,440044.440044,440044.440044,false,'2010-10-10 10:10:11.101','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',b'\x61',1005,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0,0,'\0《test2中文YingYu@!!!》\0\0\0','\0《test2中文YingYu@!!!》\0\0\0',0);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:11',30005,5000005,500000005,550055.550055,550055.550055,true,'2230-3-30 10:10:00.3','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',b'\xcc',1006,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0,0,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:12',30005,5000005,500000005,550055.550055,550055.550055,true,'2230-3-30 10:10:00.3','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',b'\xcc',1006,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0,0,'《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',0);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:13',30006,6000006,600000006,660066.660066,660066.660066,true,'2230-3-30 10:10:00.3','','','','','',1007,'','',0,0,'','',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:14',30006,6000006,600000006,660066.660066,660066.660066,true,'2230-3-30 10:10:00.3','','','','','',1007,'','',0,0,'','',0);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:15',30007,7000007,700000007,770077.770077,770077.770077,true,'2230-3-30 10:10:00.3','     ','     ','     ','     ',' ',1008,'     ','     ',0,0,'     ','     ',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:16',30007,7000007,700000007,770077.770077,770077.770077,true,'2230-3-30 10:10:00.3','     ','     ','     ','     ',' ',1008,'     ','     ',0,0,'     ','     ',0);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:17',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','','','','','0',1009,'','',0,0,'','',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:18',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','','','','','0',1009,'','',0,0,'','',0);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:19',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','\','\','\','\','\\',1010,'\','\',0,0,'\','\',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:20',30008,8000008,800000008,880088.880088,880088.880088,true,'2230-3-30 10:10:00.3','\','\','\','\','\\',1010,'\','\',0,0,'\','\',0);
+
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:21',30009,9000009,900000009,90099.990099,990099.990099,true,'2230-3-30 10:10:00.3',e'\\',e'\\',e'\\',e'\\',e'\\\\',1011,e'\\',e'\\',0,0,e'\\',e'\\',0);
+INSERT INTO test_delete.tb6 VALUES('2024-1-1 08:00:22',30009,9000009,900000009,90099.990099,990099.990099,true,'2230-3-30 10:10:00.3',e'\\',e'\\',e'\\',e'\\',e'\\\\',1011,e'\\',e'\\',0,0,e'\\',e'\\',0);
+
+
+select count(*) from test_delete.tb6;
+delete from test_delete.tb6 where k_timestamp ='2024-1-1 08:00:01';
+delete from test_delete.tb6 where k_timestamp ='2024-1-1 08:00:02' or k_timestamp ='2024-1-1 08:00:03';
+delete from test_delete.tb6 where k_timestamp ='2024-1-1 08:00:02' and k_timestamp ='2024-1-1 08:00:03';
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+delete from test_delete.tb6 where k_timestamp <'2024-1-1 08:00:05';
+delete from test_delete.tb6 where k_timestamp >'2024-1-1 08:00:21';
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+delete from test_delete.tb6 where k_timestamp >='2024-1-1 08:00:10' and k_timestamp <='2024-1-1 08:00:12';
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+delete from test_delete.tb6 where k_timestamp <='2024-1-1 08:00:06' or k_timestamp >'2024-1-1 08:00:20';
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+delete from test_delete.tb6 where k_timestamp in('2024-1-1 08:00:07','2024-1-1 08:00:20');
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+delete from test_delete.tb6 where k_timestamp not in('2024-1-1 08:00:15','2024-1-1 08:00:09','2024-1-1 08:00:18');
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+delete from test_delete.tb6;
+select k_timestamp from test_delete.tb6 order by k_timestamp;
+
+create table test_delete.tb7(ts timestamp(3) not null, a int) tags(b int not null) primary tags(b);
+insert into test_delete.tb7 values('2020-02-02 10:10:10.123',1,1);
+delete from test_delete.tb7 where ts > '2020-02-02 10:10:10.1227';
+insert into test_delete.tb7 values('2020-02-02 10:10:10.123',1,1);
+delete from test_delete.tb7 where ts >= '2020-02-02 10:10:10.1227';
+insert into test_delete.tb7 values('2020-02-02 10:10:10.123',1,1);
+delete from test_delete.tb7 where ts >= '2020-02-02 10:10:10.1234';
+insert into test_delete.tb7 values('2020-02-02 10:10:10.123',1,1);
+delete from test_delete.tb7 where ts = '2020-02-02 10:10:10.1227';
+delete from test_delete.tb7 where ts < '2020-02-02 10:10:10.1227';
+delete from test_delete.tb7 where ts <= '2020-02-02 10:10:10.1227';
+delete from test_delete.tb7 where ts < '2020-02-02 10:10:10.1235';
+insert into test_delete.tb7 values('2020-02-02 10:10:10.123',1,1);
+delete from test_delete.tb7 where ts <= '2020-02-02 10:10:10.1234';
+
 USE defaultdb;DROP DATABASE IF EXISTS test_delete CASCADE;
 
+USE defaultdb;DROP DATABASE IF EXISTS test_delete_timestamp9 CASCADE;
+CREATE TS DATABASE test_delete_timestamp9;
+CREATE TABLE test_delete_timestamp9.tb1(
+k_timestamp TIMESTAMPTZ(9) NOT NULL,
+e1 INT2,
+e2 INT,
+e3 INT8,
+e4 FLOAT4,
+e5 FLOAT,
+e6 BOOL,
+e7 TIMESTAMP,
+e8 CHAR(1023),
+e9 VARCHAR,
+e10 VARCHAR(4096),
+e11 NCHAR(255),
+e12 VARBYTES,
+e13 NVARCHAR,
+e14 VARBYTES)
+TAGS (code1 INT2 NOT NULL,code2 CHAR(10),code3 VARCHAR(128))
+PRIMARY TAGS (code1);
+INSERT INTO test_delete_timestamp9.tb1 VALUES(1001000000000000000,1001,1000001,100000001,110011.110011,110011.110011,true,'2010-10-10 10:10:11.101','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',b'\x61','《test1中文YingYu@!!!》',b'\x61',0,'ATEST(1','ATEST(2');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(2002000000000000000,2002,2000002,200000002,220022.220022,220022.220022,false,'2020-12-12 00:10:59.222','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',b'\x80','《test2中文YingYu@!!!》',b'\x80',0,'BTEST(2','BTEST(3');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(3003000000000000000,3003,3000003,300000003,330033.330033,330033.330033,true,'2130-3-30 10:10:00.3','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',b'\xcc','《test3中文YingYu@!!!》',b'\xcc',0,'CTEST(3','CTEST(4');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(4004000000000000000,4004,4000004,400000004,440044.440044,440044.440044,false,'2140-1-31 10:10:00.45','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',b'\xcc','《test4中文YingYu@!!!》',b'\xcc',0,'DTEST(4','DTEST(5');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(5005000000000000000,5005,5000005,500000005,550055.550055,550055.550055,false,'2150-5-01 10:10:00.381','《test5中文YingYu@!!!》','《test5中文YingYu@!!!》','《test5中文YingYu@!!!》','《test5中文YingYu@!!!》',b'\xcc','《test5中文YingYu@!!!》',b'\xcc',32767,'ETEST(5','ETEST(6');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(6006000000000000000,6006,6000006,600000006,660066.660066,660066.660066,true,'2160-2-12 10:10:22.491','《test6中文YingYu@!!!》','《test6中文YingYu@!!!》','《test6中文YingYu@!!!》','《test6中文YingYu@!!!》',b'\xcc','《test6中文YingYu@!!!》',b'\xcc',32767,'FTEST(6','FTEST(7');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(7007000000000000000,7007,7000007,700000007,770077.770077,770077.770077,false,'2170-6-08 10:10:01.123','《test7中文YingYu@!!!》','《test7中文YingYu@!!!》','《test7中文YingYu@!!!》','《test7中文YingYu@!!!》',b'\xcc','《test7中文YingYu@!!!》',b'\xcc',32767,'GTEST(7','GTEST(8');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(8008000000000000000,8008,8000008,800000008,880088.880088,880088.880088,true,'2180-9-27 10:10:00.111','《test8中文YingYu@!!!》','《test8中文YingYu@!!!》','《test8中文YingYu@!!!》','《test8中文YingYu@!!!》',b'\xcc','《test8中文YingYu@!!!》',b'\xcc',32767,'HTEST(8','HTEST(9');
+INSERT INTO test_delete_timestamp9.tb1 VALUES(9009000000000000000,9009,9000009,900000009,990099.990099,990099.990099,true,'2261-10-17 10:10:10.568','《test9中文YingYu@!!!》','《test9中文YingYu@!!!》','《test9中文YingYu@!!!》','《test9中文YingYu@!!!》',b'\xcc','《test9中文YingYu@!!!》',b'\xcc',32767,'ITEST(9','ITEST(10');
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+SELECT * FROM [SHOW tag values FROM test_delete_timestamp9.tb1] ORDER BY code1;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp in ('1960-01-01 07:00:00','2262-04-12 08:47:16.854');
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp in ('1970-01-01 08:00:00','2001-09-20 23:33:20');
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp >'2223-10-07 12:26:40';
+SELECT code1 FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp >= '2262-01-01 00:00:00.001';
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp <= '1970-01-01 00:00:00.000000';
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp >= '2262-04-12 07:47:16.854';
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb1 WHERE k_timestamp <= '1308-10-30 02:38:43.144';
+SELECT * FROM test_delete_timestamp9.tb1 ORDER BY k_timestamp;
+
+CREATE TABLE test_delete_timestamp9.tb2(
+k_timestamp TIMESTAMPTZ(6) NOT NULL,
+e1 INT2,
+e2 INT,
+e3 INT8,
+e4 FLOAT4,
+e5 FLOAT,
+e6 BOOL,
+e7 TIMESTAMP,
+e8 CHAR(1023),
+e9 VARCHAR,
+e10 VARCHAR(4096),
+e11 NCHAR(255),
+e12 VARBYTES,
+e13 NVARCHAR,
+e14 VARBYTES)
+TAGS (code1 INT2 NOT NULL,code2 CHAR(10),code3 VARCHAR(128))
+PRIMARY TAGS (code1);
+INSERT INTO test_delete_timestamp9.tb2 VALUES(1001000000000000,1001,1000001,100000001,110011.110011,110011.110011,true,'2010-10-10 10:10:11.101','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》','《test1中文YingYu@!!!》',b'\x61','《test1中文YingYu@!!!》',b'\x61',0,'ATEST(1','ATEST(2');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(2002000000000000,2002,2000002,200000002,220022.220022,220022.220022,false,'2020-12-12 00:10:59.222','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》','《test2中文YingYu@!!!》',b'\x80','《test2中文YingYu@!!!》',b'\x80',0,'BTEST(2','BTEST(3');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(3003000000000000,3003,3000003,300000003,330033.330033,330033.330033,true,'2130-3-30 10:10:00.3','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》','《test3中文YingYu@!!!》',b'\xcc','《test3中文YingYu@!!!》',b'\xcc',0,'CTEST(3','CTEST(4');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(4004000000000000,4004,4000004,400000004,440044.440044,440044.440044,false,'2140-1-31 10:10:00.45','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》','《test4中文YingYu@!!!》',b'\xcc','《test4中文YingYu@!!!》',b'\xcc',0,'DTEST(4','DTEST(5');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(5005000000000000,5005,5000005,500000005,550055.550055,550055.550055,false,'2150-5-01 10:10:00.381','《test5中文YingYu@!!!》','《test5中文YingYu@!!!》','《test5中文YingYu@!!!》','《test5中文YingYu@!!!》',b'\xcc','《test5中文YingYu@!!!》',b'\xcc',32767,'ETEST(5','ETEST(6');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(6006000000000000,6006,6000006,600000006,660066.660066,660066.660066,true,'2160-2-12 10:10:22.491','《test6中文YingYu@!!!》','《test6中文YingYu@!!!》','《test6中文YingYu@!!!》','《test6中文YingYu@!!!》',b'\xcc','《test6中文YingYu@!!!》',b'\xcc',32767,'FTEST(6','FTEST(7');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(7007000000000000,7007,7000007,700000007,770077.770077,770077.770077,false,'2170-6-08 10:10:01.123','《test7中文YingYu@!!!》','《test7中文YingYu@!!!》','《test7中文YingYu@!!!》','《test7中文YingYu@!!!》',b'\xcc','《test7中文YingYu@!!!》',b'\xcc',32767,'GTEST(7','GTEST(8');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(8008000000000000,8008,8000008,800000008,880088.880088,880088.880088,true,'2180-9-27 10:10:00.111','《test8中文YingYu@!!!》','《test8中文YingYu@!!!》','《test8中文YingYu@!!!》','《test8中文YingYu@!!!》',b'\xcc','《test8中文YingYu@!!!》',b'\xcc',32767,'HTEST(8','HTEST(9');
+INSERT INTO test_delete_timestamp9.tb2 VALUES(9009000000000000,9009,9000009,900000009,990099.990099,990099.990099,true,'2261-10-17 10:10:10.568','《test9中文YingYu@!!!》','《test9中文YingYu@!!!》','《test9中文YingYu@!!!》','《test9中文YingYu@!!!》',b'\xcc','《test9中文YingYu@!!!》',b'\xcc',32767,'ITEST(9','ITEST(10');
+SELECT * FROM test_delete_timestamp9.tb2 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb2 WHERE k_timestamp >= '2970-01-01 00:00:00.000000';
+SELECT * FROM test_delete_timestamp9.tb2 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb2 WHERE k_timestamp <= '0000-01-01 00:00:00.000000';
+SELECT * FROM test_delete_timestamp9.tb2 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb2 WHERE k_timestamp >= '294471208-01-20 15:30:42.775808';
+SELECT * FROM test_delete_timestamp9.tb2 ORDER BY k_timestamp;
+DELETE FROM test_delete_timestamp9.tb2 WHERE k_timestamp <= '-292469238-11-11 08:29:17.224191';
+SELECT * FROM test_delete_timestamp9.tb2 ORDER BY k_timestamp;
+
+DROP DATABASE test_delete_timestamp9 CASCADE;
 
 -- bug ZDP-39156
 -- case 1

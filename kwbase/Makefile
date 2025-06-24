@@ -983,7 +983,7 @@ roachprod-stress roachprod-stressrace: bin/roachprod-stress
 	    -test.run "$(TESTS)" $(filter-out -v,$(TESTFLAGS)) -test.v -test.timeout $(TESTTIMEOUT); \
 	fi
 
-testlogic: testbaselogic testoptlogic
+# testlogic: testbaselogic testoptlogic
 
 testbaselogic: ## Run SQL Logic Tests.
 testbaselogic: bin/logictest
