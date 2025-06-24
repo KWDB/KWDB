@@ -38,6 +38,7 @@ struct TSMemSegRowData {
   TSEntityID entity_id;
   timestamp64 ts;
   TS_LSN lsn;
+  uint32_t row_idx_in_lsn;
   TSSlice row_data;
 
  private:
@@ -53,13 +54,14 @@ struct TSMemSegRowData {
   inline bool operator<(const TSMemSegRowData& b) const {
     return Compare(b) < 0;
   }
-  void SetData(timestamp64 cts, TS_LSN clsn, const TSSlice& crow_data) {
+  void SetData(timestamp64 cts, TS_LSN clsn, uint32_t row_idx, const TSSlice& crow_data) {
     ts = cts;
     lsn = clsn;
+    row_idx_in_lsn = row_idx;
     row_data = crow_data;
   }
   static size_t GetKeyLen() {
-    return 4 + 8 + 4 + 8 + 8 + 8 + 8;
+    return 4 + 8 + 4 + 8 + 8 + 8 + 4;
   }
 
 #define HTOBEFUNC(buf, value, size) { \
@@ -77,7 +79,7 @@ struct TSMemSegRowData {
     uint64_t cts = ts - INT64_MIN;
     HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
     HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
-    HTOBEFUNC(buf, htobe64(*reinterpret_cast<uint64_t*>(&row_data.data)), sizeof(uint64_t));
+    HTOBEFUNC(buf, htobe32(row_idx_in_lsn), sizeof(row_idx_in_lsn));
   }
 
   inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {

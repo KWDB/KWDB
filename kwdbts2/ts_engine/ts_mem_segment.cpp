@@ -102,7 +102,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       continue;
     }
     // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(row_ts, lsn, pd.GetRowData(i));
+    row_data.SetData(row_ts, lsn, i + 1, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);
@@ -288,7 +288,7 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
   while (true) {
     TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
                             (filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(INT64_MIN, 0, {nullptr, 0});
+    begin->SetData(INT64_MIN, 0, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;
@@ -327,7 +327,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
   while (true) {
     TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
                             (filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(INT64_MIN, 0, {nullptr, 0});
+    begin->SetData(INT64_MIN, 0, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;
