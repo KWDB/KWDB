@@ -2175,7 +2175,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if err := sql.InitScheduleForKWDB(ctx, s.db, s.internalExecutor); err != nil {
 		return err
 	}
-
+	if err := sql.InitTsTxnJob(ctx, s.db, s.internalExecutor, s.jobRegistry); err != nil {
+		return err
+	}
 	if err := sql.InitCompressInterval(ctx, s.internalExecutor); err != nil {
 		return err
 	}
