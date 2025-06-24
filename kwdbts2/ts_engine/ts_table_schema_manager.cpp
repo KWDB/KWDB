@@ -170,6 +170,10 @@ TsTableSchemaManager::~TsTableSchemaManager() {
   wrLock();
   Defer defer([&]() { unLock(); });
   metric_schemas_.clear();
+  if (ver_conv_rw_lock_) {
+    delete ver_conv_rw_lock_;
+    ver_conv_rw_lock_ = nullptr;
+  }
 }
 
 bool TsTableSchemaManager::IsSchemaDirsExist() {
@@ -777,6 +781,23 @@ const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_
   rdLock();
   Defer defer([&]() { unLock(); });
   return Get(table_version, false)->getIdxForValidCols();
+}
+
+bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<SchemaVersionConv>* version_conv) {
+  RW_LATCH_S_LOCK(ver_conv_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
+  const auto iter = version_conv_map.find(key);
+  if (iter == version_conv_map.end()) {
+    return false;
+  }
+  *version_conv = iter->second;
+  return true;
+}
+
+void TsTableSchemaManager::InsertVersionConv(const string &key, const shared_ptr<SchemaVersionConv>& ver_conv) {
+  RW_LATCH_X_LOCK(ver_conv_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
+  version_conv_map.insert(make_pair(key, ver_conv));
 }
 
 TSTableID TsTableSchemaManager::GetTableId() {

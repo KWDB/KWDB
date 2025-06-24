@@ -107,7 +107,8 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
 
   vgroups_.clear();
   for (size_t i = 0; i < EngineOptions::vgroup_max_num; i++) {
-    auto vgroup = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
+    auto vgroup =
+        std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -1310,6 +1311,14 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     }
   }
 
+  // TODO(zzr): Recover TsVersion for each VGroup.
+  // After WAL RedoPut, TsVersion should be updated.
+  for (auto vgroup : vgroups_) {
+    auto s = vgroup->SetReady();
+    if (s == FAIL) {
+      return FAIL;
+    }
+  }
   return KStatus::SUCCESS;
 }
 

@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <list>
 #include <map>
@@ -18,11 +19,12 @@
 #include <vector>
 #include <utility>
 #include "ts_block.h"
+#include "ts_engine_schema_manager.h"
 #include "ts_entity_segment_data.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_lastsegment.h"
+#include "ts_version.h"
 
 
 namespace kwdbts {
@@ -177,7 +179,9 @@ class TsEntitySegmentMetaManager {
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, TsEntitySegment* blk_segment,
-                        std::list<shared_ptr<TsBlockSpan>>& block_spans);
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version);
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -192,7 +196,6 @@ struct TsEntitySegmentColumnBlock {
   std::vector<std::string> var_rows;
 };
 
-class TsVGroupPartition;
 class TsEntityBlock : public TsBlock {
  private:
   uint32_t table_id_ = 0;
@@ -220,7 +223,7 @@ class TsEntityBlock : public TsBlock {
   TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item, TsEntitySegment* block_segment);
   // for write
   TsEntityBlock(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
-                std::vector<AttributeInfo>& metric_schema);
+                std::vector<AttributeInfo>& metric_schema, TsEntitySegment* block_segment);
   TsEntityBlock(const TsEntityBlock& other);
   ~TsEntityBlock() {}
 
@@ -269,7 +272,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus Append(shared_ptr<TsBlockSpan> span, bool& is_full);
 
-  KStatus Flush(TsVGroupPartition* partition);
+  KStatus Flush();
 
   KStatus LoadLSNColData(TSSlice buffer);
 
@@ -310,10 +313,6 @@ class TsEntityBlock : public TsBlock {
   KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_max) override;
   KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
   KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
-
-  KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
-                       const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                       const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow) override;
 };
 
 class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
@@ -336,7 +335,9 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version) override;
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                          TsEntityBlock* block);
@@ -359,16 +360,31 @@ class TsEntitySegmentBuilder {
     }
   };
 
+  KStatus NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>*, uint64_t *file_number);
+
+  std::filesystem::path root_path_;
+  TsEngineSchemaManager* schema_manager_;
+  TsVersionManager* version_manager_;
+
+  PartitionIdentifier partition_id_;
+  std::shared_ptr<TsEntitySegment> entity_segment_;
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
-  TsVGroupPartition* partition_;
 
  public:
-  explicit TsEntitySegmentBuilder(std::vector<std::shared_ptr<TsLastSegment>> last_segments,
-                                 TsVGroupPartition* partition = nullptr) :
-                                 last_segments_(last_segments), partition_(partition) {}
-  ~TsEntitySegmentBuilder() {}
+  explicit TsEntitySegmentBuilder(const std::string& root_path,
+                                  TsEngineSchemaManager* schema_manager,
+                                  TsVersionManager* version_manager,
+                                  PartitionIdentifier partition_id,
+                                  std::shared_ptr<TsEntitySegment> entity_segment,
+                                  std::vector<std::shared_ptr<TsLastSegment>> last_segments)
+      : root_path_(root_path),
+        schema_manager_(schema_manager),
+        version_manager_(version_manager),
+        partition_id_(partition_id),
+        entity_segment_(entity_segment),
+        last_segments_(last_segments) {}
 
-  KStatus BuildAndFlush();
+  KStatus BuildAndFlush(TsVersionUpdate *update);
 };
 
 }  // namespace kwdbts

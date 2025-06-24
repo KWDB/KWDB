@@ -15,6 +15,7 @@
 #include <vector>
 #include "libkwdbts2.h"
 #include "ts_common.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
@@ -95,6 +96,8 @@ struct EngineOptions {
   static uint32_t max_compact_num;
   static size_t max_rows_per_block;
   static size_t min_rows_per_block;
+
+  TsIOEnv* io_env = &TsMMapIOEnv::GetInstance();
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 

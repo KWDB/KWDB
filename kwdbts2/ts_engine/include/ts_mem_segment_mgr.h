@@ -164,7 +164,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_;
 
-  explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
+  explicit TsMemSegment(int32_t max_height);
 
  public:
   template <class... Args>
@@ -213,7 +213,13 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     status_.store(MEM_SEGMENT_DELETING);
   }
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version) override;
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
+    return GetBlockSpans(filter, blocks, nullptr, 0);
+  }
 };
 
 class TsMemSegBlock : public TsBlock {
@@ -299,16 +305,22 @@ class TsMemSegmentManager {
   TsVGroup* vgroup_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
-  std::mutex segment_lock_;
+  mutable std::shared_mutex segment_lock_;
 
  public:
-  explicit TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
+  explicit TsMemSegmentManager(TsVGroup* vgroup);
 
   ~TsMemSegmentManager() {
     segment_.clear();
   }
 
   // WAL CreateCheckPoint call this function to persistent metric datas.
+
+  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
+    std::shared_lock lock(segment_lock_);
+    return cur_mem_seg_;
+  }
+
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
@@ -320,7 +332,9 @@ class TsMemSegmentManager {
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
                               LifeTime* lifetime = nullptr);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version = 0);
 };
 
 }  // namespace kwdbts

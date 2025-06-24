@@ -15,7 +15,7 @@ namespace kwdbts {
 
 static inline bool __isVarType(int type) { return ((type == VARSTRING) || (type == VARBINARY)); }
 
-TsRawPayloadRowParser::TsRawPayloadRowParser(const std::vector<AttributeInfo>& data_schema)
+TsRawPayloadRowParser::TsRawPayloadRowParser(std::vector<AttributeInfo> data_schema)
     : schema_(data_schema) {
   auto bitmap_len = (schema_.size() + 7) / 8;
   int cur_offset = bitmap_len;
