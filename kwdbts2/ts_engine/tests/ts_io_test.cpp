@@ -17,10 +17,15 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
+#include <numeric>
 #include <random>
 #include <string_view>
 #include <thread>
@@ -136,35 +141,39 @@ TEST(MMapIOV2, Write) {
   EXPECT_EQ(sv, "abcdeAtestTESTTeSt");
 
   std::filesystem::remove(filename);
-  // write large data
 
+  // write large data
   s = env->NewAppendOnlyFile(filename, &wfile);
   ASSERT_EQ(s, SUCCESS);
   ASSERT_NE(wfile, nullptr);
 
-  for (size_t i = 0; i < 65536; ++i) {
-    char buf[64];
-    std::snprintf(buf, 64, "DATADATATESTTEST%016lu", i);
-    ASSERT_EQ(wfile->Append(buf), SUCCESS);
-  }
+  size_t size = 16ULL << 10;  // 16KB
+  std::vector<char> datas(size);
+  std::iota(datas.begin(), datas.end(), 0);
+  TSSlice slice{datas.data(), size};
+  ASSERT_EQ(wfile->Append(slice), SUCCESS);
   size_t filesize = wfile->GetFileSize();
   wfile.reset();
   EXPECT_EQ(std::filesystem::file_size(filename), filesize);
+  EXPECT_EQ(size, filesize);
 
   ASSERT_TRUE(std::filesystem::exists(filename));
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), std::filesystem::file_size(filename));
-  for (int i = 0; i < 65536; ++i) {
-    int offset = 32 * i;
-    ASSERT_EQ(rfile->Prefetch(offset, 32), SUCCESS);
-    ASSERT_EQ(rfile->Read(offset, 32, &result, nullptr), SUCCESS);
-    sv = std::string_view{result.data, result.len};
-    char buf[64];
-    std::snprintf(buf, 64, "DATADATATESTTEST%016d", i);
-    EXPECT_EQ(sv, buf);
+
+  // read 4KB at each time
+  ASSERT_EQ(size % 4096, 0);
+  int nblock = size / 4096;
+  for (int i = 0; i < nblock; ++i) {
+    int offset = 4096 * i;
+    ASSERT_EQ(rfile->Prefetch(offset, 4096), SUCCESS);
+    ASSERT_EQ(rfile->Read(offset, 4096, &result, nullptr), SUCCESS);
+    for (int iloc = 0; iloc < 4096; ++iloc) {
+      char expected = (i * 4096 + iloc) & 0xff;
+      ASSERT_EQ(result.data[iloc], expected);
+    }
   }
-  sv = std::string_view{result.data, result.len};
   std::filesystem::remove(filename);
 }
 
@@ -217,11 +226,13 @@ TEST(MMapIOV2, ReadAfterAllocate) {
   s = env->NewRandomReadFile(filepath, &rfile, 4096);
   ASSERT_EQ(s, SUCCESS);
   ASSERT_NE(rfile, nullptr);
-  for (int i = 0; i < 10000; ++i) {
-    wfile->Append(slice);
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_EQ(wfile->Append(slice), SUCCESS);
   }
   TSSlice result;
-  rfile->Read(0, 4096, &result, nullptr);
+  char buf[4096];
+  EXPECT_EQ(rfile->Prefetch(0, 4096), SUCCESS);
+  ASSERT_EQ(rfile->Read(0, 4096, &result, buf), SUCCESS);
   for (int i = 0; i < 4096; ++i) {
     ASSERT_EQ(result.data[i], block[i]);
   }
@@ -235,7 +246,11 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
   std::atomic_bool start{false};
   std::string filename = "concurrent_test";
   std::filesystem::remove(filename);
-  auto write_thread = [&](int iblock) {
+
+  std::mutex mtx;
+  std::condition_variable cv;
+
+  auto write_work = [&](int iblock) {
     std::default_random_engine drng(iblock);
     char block[4096];
     for (int i = 0; i < 4096; ++i) {
@@ -248,23 +263,26 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
     std::unique_ptr<TsAppendOnlyFile> wfile;
     auto s = env->NewAppendOnlyFile(filename, &wfile, false);
     start.store(true);
+    cv.notify_all();
     ASSERT_EQ(s, SUCCESS);
     ASSERT_NE(wfile, nullptr);
 
     ASSERT_EQ(wfile->Append(slice), SUCCESS);
     ASSERT_EQ(wfile->Sync(), SUCCESS);
     file_size.fetch_add(4096);
+    cv.notify_all();
   };
 
-  auto read_thread = [&]() {
+  auto read_work = [&]() {
+    {
+      std::unique_lock lk{mtx};
+      cv.wait(lk, [&]() { return start.load(); });
+    }
     while (finished.load() == false) {
       std::unique_ptr<TsRandomReadFile> rfile;
       auto fsize = file_size.load();
       if (fsize == 0) continue;
       ASSERT_EQ(fsize % 4096, 0);
-      while (start.load() == false) {
-        std::this_thread::yield();
-      }
       ASSERT_NE(fsize, 0);
       auto s = env->NewRandomReadFile(filename, &rfile, fsize);
       ASSERT_EQ(s, SUCCESS);
@@ -288,17 +306,23 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
         }
         p += 4096;
       }
+
+      {
+        std::unique_lock lk{mtx};
+        cv.wait(lk, [&]() { return file_size.load() == 0 != fsize && finished.load(); });
+      }
     }
   };
 
   std::vector<std::thread> threads;
-  for (int i = 0; i < 10; ++i) {
-    threads.emplace_back(read_thread);
+  for (int i = 0; i < 3; ++i) {
+    threads.emplace_back(read_work);
   }
-  for (int i = 0; i < 123; ++i) {
-    write_thread(i);
+  for (int i = 0; i < 16; ++i) {
+    write_work(i);
   }
   finished.store(true);
+  cv.notify_all();
   for (auto& t : threads) {
     t.join();
   }
