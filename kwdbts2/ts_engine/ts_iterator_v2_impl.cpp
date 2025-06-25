@@ -943,10 +943,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             break;
           }
         }
-        if (candidate.blk_span == nullptr) {
-          // Did not find the first candidate, so move on to the next first col.
-          --i;
-        }
+        --i;
       }
     }
 
@@ -986,9 +983,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             break;
           }
         }
-        if (!can_remove_last_candidate || candidate.blk_span == nullptr) {
-          --i;
-        }
+        --i;
       }
     }
   }
