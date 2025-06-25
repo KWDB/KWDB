@@ -501,7 +501,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   // Scan forwards to aggrate first col along with other agg functions
   int first_partition_idx = 0;
   for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
-    if (cur_first_col_idxs_.empty()) {
+    if (cur_first_col_idxs_.empty() && !has_first_row_col_) {
       break;
     }
     cur_partition_index_ = first_partition_idx;
@@ -527,7 +527,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   // Scan backwards to aggrate last col along with other agg functions
   int last_partition_idx = ts_partitions_.size() - 1;
   for (; last_partition_idx >= first_partition_idx; --last_partition_idx) {
-    if (cur_last_col_idxs_.empty()) {
+    if (cur_last_col_idxs_.empty() && !has_last_row_col_) {
       break;
     }
     cur_partition_index_ = last_partition_idx;
