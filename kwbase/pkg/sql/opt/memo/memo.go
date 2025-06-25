@@ -176,7 +176,6 @@ type Memo struct {
 	tsOrderedScan              bool
 	tsQueryOptMode             int64
 	maxPushLimitNumber         int64
-	tsCanPushSorterToTsEngine  bool
 	insideOutRowRatio          float64
 
 	// curID is the highest currently in-use scalar expression ID.
@@ -517,9 +516,7 @@ func (m *Memo) Init(evalCtx *tree.EvalContext) {
 	m.saveTablesPrefix = evalCtx.SessionData.SaveTablesPrefix
 	m.insertFastPath = evalCtx.SessionData.InsertFastPath
 	m.maxPushLimitNumber = evalCtx.SessionData.MaxPushLimitNumber
-	m.tsCanPushSorterToTsEngine = evalCtx.SessionData.CanPushSorter
 	m.insideOutRowRatio = evalCtx.SessionData.InsideOutRowRatio
-
 	if evalCtx.Settings != nil {
 		m.tsOrderedScan = opt.TSOrderedTable.Get(&evalCtx.Settings.SV)
 		m.tsCanPushAllProcessor = opt.PushdownAll.Get(&evalCtx.Settings.SV)
@@ -690,8 +687,7 @@ func (m *Memo) IsStale(
 		m.tsQueryOptMode != opt.TSQueryOptMode.Get(&evalCtx.Settings.SV) ||
 		m.tsForcePushGroupToTSEngine == stats.AutomaticTsStatisticsClusterMode.Get(&evalCtx.Settings.SV) ||
 		m.maxPushLimitNumber != evalCtx.SessionData.MaxPushLimitNumber ||
-		m.insideOutRowRatio != evalCtx.SessionData.InsideOutRowRatio ||
-		m.tsCanPushSorterToTsEngine != evalCtx.SessionData.CanPushSorter {
+		m.insideOutRowRatio != evalCtx.SessionData.InsideOutRowRatio {
 		return true, nil
 	}
 
@@ -1240,17 +1236,6 @@ func setOrderedForce(expr *TSScanExpr) {
 	expr.OrderedScanType = opt.ForceOrderedScan
 }
 
-// check sorter can push to ts engine.
-// if tsCanPushSorterToTsEngine is true,
-// rowCount of sorter less than maxPushLimitNumber,
-// sorter can push to ts engine
-func (m *Memo) checkSorterCanPushToTsEngine(sort *SortExpr) bool {
-	if m.tsCanPushSorterToTsEngine && int64(sort.Relational().Stats.RowCount) <= m.maxPushLimitNumber {
-		return true
-	}
-	return false
-}
-
 // dealWithOrderBy set engine and add flag for the child of order by
 // when it's child can exec in ts engine.
 // sort is memo.SortExpr of memo tree.
@@ -1259,10 +1244,7 @@ func (m *Memo) checkSorterCanPushToTsEngine(sort *SortExpr) bool {
 // props is not nil when there is a OrderGroupBy.
 func (m *Memo) dealWithOrderBy(sort *SortExpr, ret *CrossEngCheckResults, props *bestProps) {
 	if ret.execInTSEngine {
-		if m.checkSorterCanPushToTsEngine(sort) {
-			sort.SetEngineTS()
-		}
-
+		sort.SetEngineTS()
 		addSynchronize(&ret.hasAddSynchronizer, sort.Input)
 	}
 	// OrderGroupBy case, reset bestProps of (memo.GroupByExpr or memo.DistinctOnExpr)
@@ -1564,7 +1546,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		return retTmp.disableExecInTSEngine()
 	case *GroupByExpr:
 		input := source.Input
-		if source.IsInsideOut {
+		if source.OptFlags.CanApplyInsideOut() {
 			m.SetFlag(opt.IsApplyMultiOpt)
 		}
 		sortExpr, ok := (*src).Child(0).(*SortExpr)
@@ -2631,7 +2613,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 			if element, ok := proj.Element.(opt.Expr); ok {
 				if execInTSEngine, _ := CheckExprCanExecInTSEngine(element, ExprPosProjList,
 					m.GetWhiteList().CheckWhiteListParam, false, false); !execInTSEngine {
-					gp.CanApplyOutsideIn = false
+					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}
 			}
@@ -2642,7 +2624,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 	gp.GroupingCols.ForEach(func(col opt.ColumnID) {
 		if !CheckDataType(m.metadata.ColumnMeta(col).Type) ||
 			!CheckDataLength(m.metadata.ColumnMeta(col).Type) {
-			gp.CanApplyOutsideIn = false
+			gp.OptFlags.ResetApplyOutsideIn()
 			return
 		}
 	})
@@ -2656,17 +2638,17 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 		for i := 0; i < srcExpr.ChildCount(); i++ {
 			if scalarExpr, ok := srcExpr.Child(i).(opt.ScalarExpr); ok {
 				if !CheckDataType(scalarExpr.DataType()) {
-					gp.CanApplyOutsideIn = false
+					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}
 			}
 		}
 		if !m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList) {
-			gp.CanApplyOutsideIn = false
+			gp.OptFlags.ResetApplyOutsideIn()
 			return
 		}
 	}
-	gp.CanApplyOutsideIn = true
+	gp.OptFlags |= opt.ApplyOutsideIn
 	return
 }
 

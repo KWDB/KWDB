@@ -1074,7 +1074,6 @@ var varGen = map[string]sessionVar{
 			return formatBoolAsPostgresSetting(hashShardedIndexesEnabledClusterMode.Get(sv))
 		},
 	},
-
 	`max_push_limit_number`: {
 		Hidden:       true,
 		GetStringVal: makeIntGetStringValFn(`max_push_limit_number`),
@@ -1092,25 +1091,6 @@ var varGen = map[string]sessionVar{
 		},
 		GlobalDefault: func(sv *settings.Values) string {
 			return "1000"
-		},
-	},
-
-	`can_push_sorter`: {
-		Hidden:       true,
-		GetStringVal: makePostgresBoolGetStringValFn(`can_push_sorter`),
-		Set: func(_ context.Context, m *sessionDataMutator, s string) error {
-			b, err := parsePostgresBool(s)
-			if err != nil {
-				return err
-			}
-			m.SetCanPushSorter(b)
-			return nil
-		},
-		Get: func(evalCtx *extendedEvalContext) string {
-			return formatBoolAsPostgresSetting(evalCtx.SessionData.CanPushSorter)
-		},
-		GlobalDefault: func(sv *settings.Values) string {
-			return "off"
 		},
 	},
 	`need_control_inside_out`: {

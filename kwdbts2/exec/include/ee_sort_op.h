@@ -21,10 +21,17 @@
 #include "ee_sort_flow_spec.h"
 #include "kwdb_type.h"
 #include "ee_memory_data_container.h"
+#include "ee_heap_sort_container.h"
 #include "ee_disk_data_container.h"
 #include "ee_pb_plan.pb.h"
 
 namespace kwdbts {
+
+enum EESortType {
+  EE_SORT_MEMORY = 0,  // Use in-memory sorting when the total memory of datachunk < SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_HEAP,  // Use heap sorting when (limit + offset) * row_size < SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_DISK  // Use external sorting when the total memory of datachunk >= SORT_MAX_MEM_BUFFER_SIZE
+};
 
 class SortOperator : public BaseOperator {
  public:
@@ -74,45 +81,13 @@ class SortOperator : public BaseOperator {
   std::vector<Field*>& input_fields_;
 
   bool is_done_{false};
-  bool is_mem_container{true};   // sort type
+  EESortType sort_type_{EE_SORT_MEMORY};   // sort type
 
   ColumnInfo* input_col_info_{nullptr};
   k_int32 input_col_num_{0};
 
  private:
   static const k_uint64 SORT_MAX_MEM_BUFFER_SIZE = BaseOperator::DEFAULT_MAX_MEM_BUFFER_SIZE;
-
-  KStatus initContainer(k_uint32 size, std::queue<DataChunkPtr> &buffer) {
-    // create container
-    KStatus ret = SUCCESS;
-    if (is_mem_container) {
-      container_ =
-          std::make_unique<MemRowContainer>(order_info_, input_col_info_, input_col_num_, size);
-    } else {
-      container_ =
-          std::make_unique<DiskDataContainer>(order_info_, input_col_info_, input_col_num_);
-    }
-    ret = container_->Init();
-    if (ret != SUCCESS) {
-      container_ = nullptr;
-      return ret;
-    }
-    if (limit_ > 0) {
-      container_->SetMaxOutputRows(limit_ + offset_);
-    }
-
-    // copy buffer to container
-    while (!buffer.empty()) {
-      auto& buf = buffer.front();
-      ret = container_->Append(buf.get());
-      if (ret != SUCCESS) {
-        return ret;
-      }
-      buffer.pop();
-    }
-
-    return ret;
-  }
 };
 
 }  // namespace kwdbts

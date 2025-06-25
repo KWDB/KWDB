@@ -2158,7 +2158,7 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 	private := groupBy.Private().(*memo.GroupingPrivate)
 
 	// case: outside-in use cbo ande agg can execute in ts engine.
-	if opt.CheckOptMode(opt.TSQueryOptMode.Get(&b.evalCtx.Settings.SV), opt.OutsideInUseCBO) && private.CanApplyOutsideIn {
+	if opt.CheckOptMode(opt.TSQueryOptMode.Get(&b.evalCtx.Settings.SV), opt.OutsideInUseCBO) && private.OptFlags.CanApplyOutsideIn() {
 		blj = b.factory.UpdateGroupInput(&input.root)
 	}
 

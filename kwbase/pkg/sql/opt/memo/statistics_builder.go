@@ -1824,7 +1824,7 @@ func (sb *statisticsBuilder) buildGroupBy(
 			// many aggs and grouping cols.
 			if colStat.DistinctCount > inputStats.RowCount*0.1 {
 				if gp, ok := groupNode.Private().(*GroupingPrivate); ok {
-					if gp.IsInsideOut {
+					if gp.OptFlags.CanApplyInsideOut() {
 						rowRatio := sb.evalCtx.SessionData.InsideOutRowRatio
 						if relProps.Stats.Available {
 							//if sb.evalCtx.SessionData.NeedControlIndideOut {

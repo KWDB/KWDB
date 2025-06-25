@@ -2259,11 +2259,6 @@ func (m *sessionDataMutator) SetMaxPushLimitNumber(val int64) {
 	m.data.MaxPushLimitNumber = val
 }
 
-// CanPushSorter set CanPushSorter
-func (m *sessionDataMutator) SetCanPushSorter(val bool) {
-	m.data.CanPushSorter = val
-}
-
 // SetNeedControlIndideOut set NeedControlIndideOut of sessionData.
 func (m *sessionDataMutator) SetNeedControlIndideOut(val bool) {
 	m.data.NeedControlIndideOut = val

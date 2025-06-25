@@ -118,6 +118,7 @@ INSERT 1
                          | distributed    | true
                          | vectorized     | false
   sort                   |                |
+   │                     | engine type    | time series
    │                     | order          | +usage_user
    └── synchronizer      |                |
         └── render       |                |
@@ -128,7 +129,7 @@ INSERT 1
                          | access mode    | tagIndex
                          | filter         | usage_system > 2000
                          | ptag filter[0] | hostname = 'host_0'
-(13 rows)
+(14 rows)
 > explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 limit 1;
              tree             |     field      |     description
 ------------------------------+----------------+----------------------
@@ -162,6 +163,7 @@ INSERT 1
         │                     | engine type    | time series
         │                     | count          | 2
         └── sort              |                |
+             │                | engine type    | time series
              │                | order          | +usage_user
              └── synchronizer |                |
                   └── ts scan |                |
@@ -169,15 +171,17 @@ INSERT 1
                               | access mode    | tagIndex
                               | filter         | usage_system > 2000
                               | ptag filter[0] | hostname = 'host_0'
-(16 rows)
+(17 rows)
 > explain select usage_user from cpu where usage_system>2000 order by usage_idle;
              tree             |    field    |     description
 ------------------------------+-------------+----------------------
                               | distributed | true
                               | vectorized  | false
   render                      |             |
+   │                          | engine type | time series
    │                          | usage_user  | usage_user
    └── sort                   |             |
+        │                     | engine type | time series
         │                     | order       | +usage_idle
         └── synchronizer      |             |
              └── render       |             |
@@ -188,7 +192,7 @@ INSERT 1
                               | ts-table    | cpu
                               | access mode | metaTable
                               | filter      | usage_system > 2000
-(15 rows)
+(17 rows)
 > explain select usage_user from cpu where usage_system>2000 limit 1;
              tree             |    field    |     description
 ------------------------------+-------------+----------------------
@@ -221,13 +225,14 @@ INSERT 1
         │                     | engine type | time series
         │                     | count       | 2
         └── sort              |             |
+             │                | engine type | time series
              │                | order       | +usage_idle
              └── synchronizer |             |
                   └── ts scan |             |
                               | ts-table    | cpu
                               | access mode | metaTable
                               | filter      | usage_system > 2000
-(15 rows)
+(16 rows)
 > explain select max(usage_user) from cpu where ts>'2022-2-1 0:0:0' and ts<'2022-2-2 0:0:0' group by hostname;
              tree             |        field        |            description
 ------------------------------+---------------------+------------------------------------
@@ -392,6 +397,7 @@ INSERT 1
                          | distributed    | true
                          | vectorized     | false
   sort                   |                |
+   │                     | engine type    | time series
    │                     | order          | +usage_user
    └── synchronizer      |                |
         └── render       |                |
@@ -402,7 +408,7 @@ INSERT 1
                          | access mode    | tagIndex
                          | filter         | usage_system > 2000
                          | ptag filter[0] | hostname = 'host_0'
-(13 rows)
+(14 rows)
 > explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 limit 1;
              tree             |     field      |     description
 ------------------------------+----------------+----------------------
@@ -436,6 +442,7 @@ INSERT 1
         │                     | engine type    | time series
         │                     | count          | 2
         └── sort              |                |
+             │                | engine type    | time series
              │                | order          | +usage_user
              └── synchronizer |                |
                   └── ts scan |                |
@@ -443,13 +450,14 @@ INSERT 1
                               | access mode    | tagIndex
                               | filter         | usage_system > 2000
                               | ptag filter[0] | hostname = 'host_0'
-(16 rows)
+(17 rows)
 > explain select usage_user from cpu where usage_system>2000 order by usage_user;
            tree          |    field    |     description
 -------------------------+-------------+----------------------
                          | distributed | true
                          | vectorized  | false
   sort                   |             |
+   │                     | engine type | time series
    │                     | order       | +usage_user
    └── synchronizer      |             |
         └── render       |             |
@@ -459,7 +467,7 @@ INSERT 1
                          | ts-table    | cpu
                          | access mode | metaTable
                          | filter      | usage_system > 2000
-(12 rows)
+(13 rows)
 > explain select usage_user from cpu where usage_system>2000 limit 1;
              tree             |    field    |     description
 ------------------------------+-------------+----------------------
@@ -492,13 +500,14 @@ INSERT 1
         │                     | engine type | time series
         │                     | count       | 2
         └── sort              |             |
+             │                | engine type | time series
              │                | order       | +usage_user
              └── synchronizer |             |
                   └── ts scan |             |
                               | ts-table    | cpu
                               | access mode | metaTable
                               | filter      | usage_system > 2000
-(15 rows)
+(16 rows)
 > explain select max(usage_user) from cpu where ts>'2022-2-1 0:0:0' and ts<'2022-2-2 0:0:0' group by hostname;
              tree             |        field        |            description
 ------------------------------+---------------------+------------------------------------

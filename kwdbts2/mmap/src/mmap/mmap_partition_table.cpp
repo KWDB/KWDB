@@ -1274,6 +1274,7 @@ void TsTimePartition::ScheduledCompress(timestamp64 compress_ts_p, uint32_t& com
         // Compress segment data
         LOG_INFO("MMapSegmentTable[%s] compress start", segment_tbl->GetPath().c_str());
         segment_tbl->setSegmentStatus(ImmuSegment);
+        segment_tbl->sync(MS_SYNC);
         bool ok = compress(db_path_, tbl_sub_path_, std::to_string(segment_tbl->segment_id()),
                            g_mk_squashfs_option.processors_scheduled, err_info);
         if (!ok) {

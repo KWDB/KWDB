@@ -669,6 +669,9 @@ type PlanningCtx struct {
 	// hasBatchLookUpJoin is set to true if the query has batchLookUpJoin node.
 	hasBatchLookUpJoin bool
 
+	// useQueryShortCircuit is set to true if the query can use query short circuit.
+	useQueryShortCircuit bool
+
 	planner *planner
 	// ignoreClose, when set to true, will prevent the closing of the planner's
 	// current plan. Only the top-level query needs to close it, but everything
@@ -6674,6 +6677,11 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	finalOut.Streams = append(finalOut.Streams, execinfrapb.StreamEndpointSpec{
 		Type: execinfrapb.StreamEndpointType_SYNC_RESPONSE,
 	})
+
+	// When query short circuiting is available, do not use vector calculation.
+	if plan.AllProcessorsExecInTSEngine && !planCtx.ExtendedEvalCtx.SessionData.OutFormats {
+		planCtx.useQueryShortCircuit = true
+	}
 
 	// Assign processor IDs.
 	for i := range plan.Processors {

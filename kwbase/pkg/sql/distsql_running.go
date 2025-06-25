@@ -430,7 +430,7 @@ func (dsp *DistSQLPlanner) Run(
 	recv.resultToStreamColMap = plan.PlanToStreamColMap
 
 	vectorizedThresholdMet := !planCtx.hasBatchLookUpJoin &&
-		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold
+		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold && !planCtx.useQueryShortCircuit
 
 	if len(flows) == 1 {
 		// We ended up planning everything locally, regardless of whether we
