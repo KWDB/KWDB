@@ -436,7 +436,7 @@ KStatus TsEntityBlock::Append(shared_ptr<TsBlockSpan> span, bool& is_full) {
     }
   }
   n_rows_ += written_rows;
-  span->Truncate(written_rows);
+  span->TrimFront(written_rows);
   is_full = n_rows_ == EngineOptions::max_rows_per_block;
   return KStatus::SUCCESS;
 }
