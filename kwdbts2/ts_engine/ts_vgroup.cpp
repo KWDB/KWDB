@@ -799,7 +799,8 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     return KStatus::FAIL;
   }
-  TagTuplePack* tag_pack = tb_schema_manager->GetTagTable()->GenTagPack(p_tag.data(), p_tag.size());
+  auto tag_table = tb_schema_manager->GetTagTable();
+  TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
   if (UNLIKELY(nullptr == tag_pack)) {
     return KStatus::FAIL;
   }
@@ -809,12 +810,27 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     LOG_ERROR("WriteDeleteTagWAL failed.");
     return s;
   }
-  // todo(liangbo01) we should delete current entity metric datas.
-  TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
-  std::vector<KwTsSpan> ts_spans;
-  ts_spans.push_back({INT64_MIN, INT64_MAX});
-  // delete current entity metric datas.
-  return DeleteData(ctx, table_id, e_id, cur_lsn, ts_spans);
+  // if any error, end the delete loop and return ERROR to the caller.
+  // Delete tag and its index
+  ErrorInfo err_info;
+  tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info);
+  if (err_info.errcode < 0) {
+    LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())
+    return KStatus::FAIL;
+  }
+  if (*count != 0) {
+    // todo(liangbo01) we should delete current entity metric datas.
+    TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
+    std::vector<KwTsSpan> ts_spans;
+    ts_spans.push_back({INT64_MIN, INT64_MAX});
+    // delete current entity metric datas.
+    s = DeleteData(ctx, table_id, e_id, cur_lsn, ts_spans);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("DeleteData failed.");
+      return s;
+    }
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
