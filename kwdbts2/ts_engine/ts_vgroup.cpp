@@ -977,8 +977,9 @@ const std::vector<KwTsSpan>& ts_spans) {
   }
   return KStatus::SUCCESS;
 }
-KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn, 
-const std::vector<KwTsSpan>& ts_spans) {
+
+KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+                                 const std::vector<KwTsSpan>& ts_spans) {
   TSEntityID entity_id;
   TSSlice p_tag{primary_tag.data(), primary_tag.length()};
   auto s = getEntityIdByPTag(ctx, tbl_id, p_tag, &entity_id);
