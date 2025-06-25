@@ -10,6 +10,9 @@
 // See the Mulan PSL v2 for more details.
 
 #include <cstdint>
+#include <vector>
+#include <list>
+#include <memory>
 #include "ts_mem_segment_mgr.h"
 #include "ts_vgroup.h"
 
@@ -97,7 +100,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       continue;
     }
     // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(row_ts, lsn, i + 1, pd.GetRowData(i));
+    row_data.SetData(row_ts, lsn, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);
@@ -266,6 +269,7 @@ bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
     memcpy(cur_row, &row, sizeof(TSMemSegRowData));
     cur_row->row_data.data = buf + sizeof(TSMemSegRowData) + TSMemSegRowData::GetKeyLen();
     cur_row->row_data.len = row.row_data.len;
+    cur_row->row_idx_in_mem_seg = row_idx_.fetch_add(1);
     memcpy(cur_row->row_data.data, row.row_data.data, row.row_data.len);
     cur_row->GenKey(buf);
     auto ok = skiplist_.InsertConcurrently(buf);
@@ -287,7 +291,7 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
   while (true) {
     TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
                             (filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(INT64_MIN, 0, 0, {nullptr, 0});
+    begin->SetData(INT64_MIN, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;
@@ -326,7 +330,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
   while (true) {
     TSMemSegRowData* begin = new(key + TSMemSegRowData::GetKeyLen()) TSMemSegRowData
                             (filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(INT64_MIN, 0, 0, {nullptr, 0});
+    begin->SetData(INT64_MIN, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;

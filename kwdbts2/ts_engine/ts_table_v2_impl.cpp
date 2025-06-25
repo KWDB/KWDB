@@ -355,6 +355,7 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
     if (s != KStatus::SUCCESS) {
       LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
+    
   }
   return KStatus::SUCCESS;
 }

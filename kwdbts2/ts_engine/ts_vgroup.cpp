@@ -348,7 +348,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
     std::list<TSMemSegRowData> rows;
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
@@ -1051,7 +1051,17 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::T
   assert(vgroup_id == GetVGroupID());
   uint8_t payload_data_flag = p.GetRowType();
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+    std::list<TSMemSegRowData> rows;
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("failed putdata.");
+      return s;
+    }
+    s = makeSurePartitionExist(table_id, rows);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("makeSurePartitionExist Failed.")
+      return FAIL;
+    }
   } else {
     LOG_WARN("no data need inserted.");
   }
