@@ -15,12 +15,13 @@
 
 namespace kwdbts {
 
-KStatus TsEntityPartition::Init(std::list<std::shared_ptr<TsMemSegment>>& mems) {
+KStatus TsEntityPartition::Init() {
   auto s = SetFilter();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("SetFilter failed.");
     return s;
   }
+  std::list<std::shared_ptr<TsMemSegment>> mems = partition_version_->GetAllMemSegments();
   AddMemSegment(mems);
   return KStatus::SUCCESS;
 }

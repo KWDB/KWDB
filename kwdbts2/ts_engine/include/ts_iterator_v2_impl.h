@@ -55,12 +55,10 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   ~TsStorageIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
 
  protected:
   KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans();
-  KStatus ScanPartitionBlockSpans();
 
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
   /*
@@ -74,7 +72,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
    */
   KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans(timestamp64 ts);
-  KStatus ScanPartitionBlockSpans(timestamp64 ts);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -86,21 +83,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<TsPartition> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
-};
-
-class TsRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
- public:
-  TsRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                          std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
-  ~TsRawDataIteratorV2Impl();
-
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
-  bool IsDisordered() override;
-
- protected:
-  KStatus NextBlockSpan(ResultSet* res, k_uint32* count, timestamp64 ts);
 };
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {

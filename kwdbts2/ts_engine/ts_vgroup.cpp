@@ -17,6 +17,7 @@
 #include <memory>
 #include <regex>
 #include <shared_mutex>
+#include <list>
 #include <string>
 #include <unordered_map>
 
@@ -163,18 +164,10 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     return FAIL;
   }
   // creating partition directory while inserting data into memroy.
-  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
-  schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
-  auto ts_type = tb_schema_mgr->GetTsColDataType();
-  for (auto& row : rows) {
-    // auto partition = GetPartition(row.database_id, row.ts, ts_type);
-    // if (partition == nullptr) {
-    //   LOG_ERROR("GetPartition Failed.")
-    //   return KStatus::FAIL;
-    // }
-
-    auto p_time = convertTsToPTime(row.ts, ts_type);
-    version_manager_->AddPartition(row.database_id, p_time);
+  s = makeSurePartitionExist(table_id, rows);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("makeSurePartitionExist Failed.")
+    return FAIL;
   }
   return KStatus::SUCCESS;
 }
@@ -282,7 +275,28 @@ KStatus TsVGroup::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>
 
 KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) { return KStatus::SUCCESS; }
 
-TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const { return schema_mgr_; }
+TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
+  return schema_mgr_;
+}
+
+// todo(liangbo01) create partition should at data inserting wal.
+// if at here, inserting and deleting at same time. maybe sql exec over, data all exist.
+// but restart service, data all disappeared.
+// solution: 1. delete item not store in partition. 2. creating partition before wal insert.
+KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows) {
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaMgr failed. table[%lu]", table_id);
+    return s;
+  }
+  auto ts_type = tb_schema_mgr->GetTsColDataType();
+  for (auto& row : rows) {
+    auto p_time = convertTsToPTime(row.ts, ts_type);
+    version_manager_->AddPartition(row.database_id, p_time);
+  }
+  return KStatus::SUCCESS;
+}
 
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};
@@ -327,7 +341,17 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
+    std::list<TSMemSegRowData> rows;
     s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("failed putdata.");
+      return s;
+    }
+    s = makeSurePartitionExist(table_id, rows);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("makeSurePartitionExist Failed.")
+      return FAIL;
+    }
   }
   return s;
 }
@@ -484,6 +508,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         // 3. get partition for metric data.
         auto p_time = convertTsToPTime(tbl->ts, (DATATYPE)last_row_info.info[0].type);
         auto partition = current->GetPartition(last_row_info.database_id, p_time);
+        if (partition == nullptr) {
+          LOG_ERROR("cannot find partition: database_id[%u], p_time[%lu]", last_row_info.database_id, p_time);
+        }
         assert(partition != nullptr);
         if (!partition->HasDirectoryCreated() &&
             new_created_partitions.find(partition) == new_created_partitions.end()) {
@@ -612,12 +639,13 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
-      if (t_type == WALTableType::DATA) {
-        auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
+      assert(t_type != WALTableType::DATA);
+      if (t_type == WALTableType::DATA_V2) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntryV2*>(del_log);
         p_tag = log->getPrimaryTag();
-        vector<DelRowSpan> partitions = log->getRowSpans();
-        return undoDelete(ctx, p_tag, log->getLSN(), partitions);
+        TSTableID table_id = log->getTableId();
+        vector<KwTsSpan> ts_spans = log->getTsSpans();
+        return undoDeleteData(ctx, table_id, p_tag, log->getLSN(), ts_spans);
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         TSSlice primary_tag = log->getPrimaryTag();
@@ -717,12 +745,13 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
-      if (t_type == WALTableType::DATA) {
-        auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
+      assert(t_type != WALTableType::DATA);
+      if (t_type == WALTableType::DATA_V2) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntryV2*>(del_log);
         p_tag = log->getPrimaryTag();
-        vector<DelRowSpan> partitions = log->getRowSpans();
-        return redoDelete(ctx, p_tag, log->getLSN(), partitions);
+        TSTableID table_id = log->getTableId();
+        vector<KwTsSpan> ts_spans = log->getTsSpans();
+        return redoDeleteData(ctx, table_id, p_tag, log->getLSN(), ts_spans);
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         auto p_tag_slice = log->getPrimaryTag();
@@ -795,7 +824,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
   std::vector<DelRowSpan> dtp_list;
   TS_LSN current_lsn;
-  KStatus s = wal_manager_->WriteDeleteMetricsWAL(ctx, mtr_id, p_tag, ts_spans, dtp_list, vgroup_id_, &current_lsn);
+  KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("WriteDeleteTagWAL failed.");
     return s;
@@ -804,8 +833,98 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
   return DeleteData(ctx, tbl_id, e_id, current_lsn, ts_spans);
 }
 
+KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
+const std::vector<KwTsSpan>& ts_spans) {
+  auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans,
+  [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
+    auto ret = p->DeleteData(e_id, ts_spans, lsn);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("DeleteData partition[%u/%lu] failed!",
+              std::get<0>(p->GetPartitionIdentifier()), std::get<1>(p->GetPartitionIdentifier()));
+      return ret;
+    }
+    return ret;
+  });
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                             const std::vector<KwTsSpan>& ts_spans) {
+                              const std::vector<KwTsSpan>& ts_spans) {
+  return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
+}
+
+KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload) {
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s =  tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+    return s;
+  }
+  uint32_t sub_group_id = 0;
+  uint32_t cur_entity_id = 0;
+  if (!tag_table->hasPrimaryKey(ptag.data, ptag.len, cur_entity_id, sub_group_id)) {
+    LOG_INFO("getEntityIdByPTag failed, table id[%lu]", table_id);
+    *entity_id = 0;
+  } else {
+    *entity_id = cur_entity_id;
+    assert(sub_group_id == this->GetVGroupID());
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
+  TsRawPayload p{payload};
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
+  auto tbl_version = p.GetTableVersion();
+  TSEntityID entity_id;
+  auto s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("undoPut failed.");
+    return s;
+  }
+  if (entity_id > 0) {
+    auto row_num = p.GetRowCount();
+    std::vector<KwTsSpan> ts_spans;
+    for (size_t i = 0; i < row_num; i++) {
+      timestamp64 cur_ts = p.GetTS(i);
+      ts_spans.push_back({cur_ts, cur_ts});
+    }
+    s = deleteData(ctx, table_id, entity_id, {log_lsn, log_lsn}, ts_spans);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("deleteData failed.");
+      return s;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+// todo(liangbo01)  delete this function after below finished.
+KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
+                   const std::vector<DelRowSpan>& rows) {
+  return KStatus::SUCCESS;
+}
+// todo(liangbo01)  delete this function after below finished.
+KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
+ const vector<DelRowSpan>& rows) {
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID entity_id,
+const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
   if (s == KStatus::FAIL) {
@@ -815,16 +934,15 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_i
   auto db_id = tb_schema_mgr->GetDbID();
   auto ts_type = tb_schema_mgr->GetTsColDataType();
 
-  auto current = CurrentVersion();
-  auto partitions = current->GetPartitions(db_id);
-  for (auto& p : partitions) {
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ps = version_manager_->Current()->GetPartitions(db_id);
+  for (auto& p : ps) {
     KTimestamp p_start = convertSecondToPrecisionTS(p->GetStartTime(), ts_type);
     KTimestamp p_end = convertSecondToPrecisionTS(p->GetEndTime(), ts_type);
     // check if current partition is cross with ts_spans.
     if (isTimestampInSpans(ts_spans, p_start, p_end)) {
-      s = p->DeleteData(e_id, ts_spans, {0, lsn});
+      s = func(p);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot DeleteData for entity[%lu]", e_id);
+        LOG_ERROR("cannot DeleteData for entity[%lu]", entity_id);
         return s;
       }
     }
@@ -832,23 +950,49 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) { return KStatus::SUCCESS; }
-
-KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload) {
+KStatus TsVGroup::undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+const std::vector<KwTsSpan>& ts_spans) {
+  TSEntityID entity_id;
+  TSSlice p_tag{primary_tag.data(), primary_tag.length()};
+  auto s = getEntityIdByPTag(ctx, tbl_id, p_tag, &entity_id);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getEntityIdByPTag failed.");
+    return s;
+  }
+  if (entity_id > 0) {
+    s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans,
+      [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
+        auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("UndoDeleteData partition[%u/%lu] failed!",
+              std::get<0>(p->GetPartitionIdentifier()), std::get<1>(p->GetPartitionIdentifier()));
+          return ret;
+        }
+        return ret;
+      });
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TrasvalAllPartition failed.");
+      return s;
+    }
+  }
   return KStatus::SUCCESS;
 }
-
-/**
- * Undoes deletion of rows within a specified entity group.
- *
- * @param ctx Pointer to the database context.
- * @param primary_tag Primary tag identifying the entity.
- * @param log_lsn LSN of the log for ensuring atomicity and consistency of the operation.
- * @param rows Collection of row spans to be undeleted.
- * @return Status of the operation, success or failure.
- */
-KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
-                             const std::vector<DelRowSpan>& rows) {
+KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn, 
+const std::vector<KwTsSpan>& ts_spans) {
+  TSEntityID entity_id;
+  TSSlice p_tag{primary_tag.data(), primary_tag.length()};
+  auto s = getEntityIdByPTag(ctx, tbl_id, p_tag, &entity_id);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getEntityIdByPTag failed.");
+    return s;
+  }
+  if (entity_id > 0) {
+    s = DeleteData(ctx, tbl_id, entity_id, log_lsn, ts_spans);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("DeleteData failed.");
+      return s;
+    }
+  }
   return KStatus::SUCCESS;
 }
 
@@ -940,11 +1084,6 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TS
 }
 
 KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
-  return KStatus::SUCCESS;
-}
-
-KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
-                             const vector<DelRowSpan>& rows) {
   return KStatus::SUCCESS;
 }
 

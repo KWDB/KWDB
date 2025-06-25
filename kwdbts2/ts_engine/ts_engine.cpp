@@ -412,6 +412,51 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   return KStatus::SUCCESS;
 }
 
+// TODO(wal): add WAL
+KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id) {
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  ErrorInfo err_info;
+  uint32_t vgroup_id;
+  TSEntityID entity_id;
+
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  for (size_t i = 0; i < payload_num; i++) {
+    TsRawPayload p{payload_data[i]};
+    TSSlice primary_key = p.GetPrimaryTag();
+    auto tbl_version = p.GetTableVersion();
+    s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
+      return s;
+    }
+    bool new_tag;
+    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    auto vgroup = GetVGroupByID(ctx, vgroup_id);
+    assert(vgroup != nullptr);
+
+    ErrorInfo err_info;
+    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
+    if (err_info.errcode < 0) {
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineV2Impl::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable *meta) {
   return schema_mgr_->GetMeta(ctx, table_id, version, meta);
 }

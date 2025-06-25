@@ -4,7 +4,7 @@ CREATE TS DATABASE
 CREATE TABLE
 > set cluster setting ts.parallel_degree = 8;
 SET CLUSTER SETTING
-> set statement_timeout='1s';
+> set statement_timeout='10s';
 SET
 > use test_vacuum;
 SET
@@ -280,7 +280,7 @@ CREATE TS DATABASE
 CREATE TABLE
 > set cluster setting ts.parallel_degree = 8;
 SET CLUSTER SETTING
-> set statement_timeout='1s';
+> set statement_timeout='10s';
 SET
 > WITH
 jennifer_0 AS (select
