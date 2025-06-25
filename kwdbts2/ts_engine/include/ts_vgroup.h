@@ -174,7 +174,7 @@ class TsVGroup {
                      const std::vector<DelRowSpan>& rows);
   KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
-  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn, 
+  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
@@ -195,7 +195,7 @@ class TsVGroup {
   KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
 
   KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
-                     
+
   KStatus undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
                         uint32_t group_id, uint32_t entity_id, TSSlice& tags);
 

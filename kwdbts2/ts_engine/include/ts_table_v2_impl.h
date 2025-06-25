@@ -28,14 +28,13 @@ class TsTableV2Impl : public TsTable {
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
-                const std::vector<std::shared_ptr<TsVGroup>>& vgroups) :
-            TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), vgroups_(vgroups) {}
+            const std::vector<std::shared_ptr<TsVGroup>>& vgroups) :
+            TsTable(nullptr, "./wrong/", 0),
+            table_schema_mgr_(table_schema), vgroups_(vgroups) {
+              table_id_ = table_schema->GetTableId();
+            }
 
   ~TsTableV2Impl();
-
-  KTableKey GetTableId() override {
-    return table_schema_mgr_->GetTableId();
-  }
 
   uint32_t GetCurrentTableVersion() override {
     return table_schema_mgr_->GetCurrentVersion();
@@ -46,7 +45,7 @@ class TsTableV2Impl : public TsTable {
   }
 
   TsVGroup* GetVGroupByID(uint32_t vgroup_id) {
-    assert(EngineOptions::vgroup_max_num >= vgroup_id);
+    assert(EngineOptions::vgroup_max_num >= vgroup_id && vgroup_id > 0);
     return vgroups_[vgroup_id - 1].get();
   }
 

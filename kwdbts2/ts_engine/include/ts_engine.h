@@ -96,7 +96,7 @@ class TSEngineV2Impl : public TSEngine {
   }
 
   KStatus PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                    TSSlice* payload_data, int payload_num, uint64_t mtr_id) override { return KStatus::SUCCESS; }
+                    TSSlice* payload_data, int payload_num, uint64_t mtr_id) override;
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
