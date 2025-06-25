@@ -82,7 +82,7 @@ typedef enum {
      (((a) > 0 && (b) > 0 && (INT64_MAX / (a)) >= (b)) || \
       ((a) > 0 && (b) < 0 && (INT64_MIN / (a)) <= (b)) || \
       ((a) < 0 && (b) > 0 && (INT64_MIN / (b)) <= (a)) || \
-      ((a) < 0 && (b) < 0 && (INT64_MAX / (b)) >= (a))))
+      ((a) < 0 && (b) < 0 && (INT64_MAX / (b)) <= (a))))
 #define MAX_PG_ERROR_MSG_LEN 128
 struct EEPgErrorInfo {
   // error code

@@ -487,7 +487,10 @@ func (expr *CastExpr) TypeCheck(ctx *SemaContext, _ *types.T) (TypedExpr, error)
 			switch expr.Type.Family() {
 			case types.BoolFamily, types.DateFamily, types.TimeFamily, types.TimestampFamily, types.TimestampTZFamily,
 				types.IntervalFamily, types.BytesFamily:
-				return expr.Expr.TypeCheck(ctx, expr.Type)
+				// varbytes is BytesFamily, but it has length.
+				if expr.Type.Oid() != oid.T_varbytea {
+					return expr.Expr.TypeCheck(ctx, expr.Type)
+				}
 			}
 		}
 	case ctx.isUnresolvedPlaceholder(expr.Expr):

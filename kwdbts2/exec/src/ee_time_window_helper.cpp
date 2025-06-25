@@ -56,7 +56,7 @@ void TimeWindowHelper::CalSkipTsSpan(kwdbts::KTimestampTz &ts) {
   }
 }
 
-void TimeWindowHelper::NextSkipTsSpan() {
+void TimeWindowHelper::NextSkipTsSpan(KTimestampTz &ts) {
   if (d_var_) {
     if (d_year_) {
       last_tm_.tm_mon = 0;
@@ -72,10 +72,10 @@ void TimeWindowHelper::NextSkipTsSpan() {
     src_first_ts_ = src_last_ts_;
     src_last_ts_ = last_ts_;
   } else {
-    first_ts_ = last_ts_;
-    last_ts_ = first_ts_ + duration_;
-    src_first_ts_ = src_last_ts_;
-    src_last_ts_ = src_first_ts_ + duration_;
+    last_ts_ = first_ts_ + (ts + duration_ - first_ts_) / duration_ * duration_;
+    first_ts_ = last_ts_ - duration_;
+    src_last_ts_ = src_first_ts_ + (ts + duration_ - src_first_ts_) / duration_ * duration_;
+    src_first_ts_ = src_last_ts_ - duration_;
   }
 }
 
@@ -133,7 +133,7 @@ EEIteratorErrCode TimeWindowHelper::Materialize(kwdbContext_p ctx,
     if (ts >= src_last_ts_) {
       group_id_++;
       do {
-        NextSkipTsSpan();
+        NextSkipTsSpan(ts);
         fill_first_ts_ = false;
       } while (ts >= src_last_ts_);
     }
