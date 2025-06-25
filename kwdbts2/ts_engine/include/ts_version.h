@@ -80,6 +80,7 @@ class TsPartitionVersion {
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
   KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
+  KStatus UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn) const;
   KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange> &del_items) const {
     return del_info_->GetDelRange(e_id, del_items);
   }

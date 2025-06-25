@@ -432,6 +432,82 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
   }
 };
 
+
+class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
+ public:
+  size_t p_tag_len_;
+  TSTableID table_id_;
+  uint64_t range_size_;
+  char* encoded_primary_tags_{nullptr};
+  KwTsSpan* ts_spans_;
+
+  DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, TSTableID table_id,
+    size_t p_tag_len, uint64_t range_size, char* data, uint64_t vgrp_id = 0, TS_LSN old_lsn = 0);
+
+  ~DeleteLogMetricsEntryV2() override;
+
+  char* encode() override {
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_type_, table_id_, p_tag_len_, range_size_,
+                     encoded_primary_tags_, ts_spans_);
+  }
+
+  size_t getLen() override;
+
+  [[nodiscard]] TSTableID getTableId() const;
+
+  [[nodiscard]] string getPrimaryTag() const;
+
+  [[nodiscard]] vector<KwTsSpan> getTsSpans() const;
+
+ public:
+  static const size_t header_length = sizeof(p_tag_len_) +
+                                      sizeof(range_size_);
+
+  static const size_t fixed_length = sizeof(type_) +
+                                     sizeof(x_id_) +
+                                     sizeof(vgrp_id_) +
+                                     sizeof(old_lsn_) +
+                                     sizeof(table_type_) +
+                                     sizeof(p_tag_len_) +
+                                     sizeof(table_id_) +
+                                     sizeof(range_size_);
+
+
+  static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
+                         const WALTableType table_type, TSTableID table_id, const size_t p_tag_len,
+                         const uint64_t range_size, const char* encoded_primary_tags, const KwTsSpan* row_spans) {
+    size_t len = fixed_length + (range_size) * sizeof(KwTsSpan) + p_tag_len;
+
+    char* log_ptr = KNEW char[len];
+    size_t offset = 0;
+
+    memcpy(log_ptr, &type, sizeof(type_));
+    offset += sizeof(type_);
+    memcpy(log_ptr + offset, &x_id, sizeof(x_id_));
+    offset += sizeof(x_id_);
+    memcpy(log_ptr + offset, &vgrp_id, sizeof(vgrp_id_));
+    offset += sizeof(vgrp_id_);
+    memcpy(log_ptr + offset, &old_lsn, sizeof(old_lsn_));
+    offset += sizeof(old_lsn_);
+    memcpy(log_ptr + offset, &table_type, sizeof(table_type_));
+    offset += sizeof(table_type_);
+
+    memcpy(log_ptr + offset, &p_tag_len, sizeof(p_tag_len_));
+    offset += sizeof(p_tag_len_);
+    memcpy(log_ptr + offset, &table_id, sizeof(table_id_));
+    offset += sizeof(table_id_);
+    memcpy(log_ptr + offset, &range_size, sizeof(range_size_));
+    offset += sizeof(range_size_);
+    memcpy(log_ptr + offset, encoded_primary_tags, p_tag_len);
+    offset += p_tag_len;
+
+    for (int i = 0; i < range_size; i++) {
+      memcpy(log_ptr + offset, &row_spans[i], sizeof(KwTsSpan));
+      offset += sizeof(KwTsSpan);
+    }
+    return log_ptr;
+  }
+};
 class DeleteLogTagsEntry : public DeleteLogEntry {
  public:
   uint32_t group_id_;

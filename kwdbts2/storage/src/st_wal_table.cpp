@@ -582,7 +582,7 @@ KStatus LoggedTsEntityGroup::applyWal(kwdbContext_p ctx, LogEntry* wal_log,
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
+      assert(t_type != WALTableType::DATA_V2);
       if (t_type == WALTableType::DATA) {
         auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
         p_tag = log->getPrimaryTag();
@@ -739,7 +739,7 @@ KStatus LoggedTsEntityGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
+      assert(t_type != WALTableType::DATA_V2);
       if (t_type == WALTableType::DATA) {
         auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
         p_tag = log->getPrimaryTag();

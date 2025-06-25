@@ -246,4 +246,13 @@ KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSp
   }
   return KStatus::SUCCESS;
 }
+KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn)
+const {
+  auto s = del_info_->RollBackDelItem(e_id, lsn);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("RollBackDelItem failed. for entity[%lu]", e_id);
+    return s;
+  }
+  return KStatus::SUCCESS;
+}
 }  // namespace kwdbts
