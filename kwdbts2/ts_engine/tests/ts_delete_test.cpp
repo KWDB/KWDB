@@ -245,3 +245,63 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   }
   free(pay_load.data);
 }
+
+TEST_F(TestV2DeleteTest, undoDelete) {
+  TSTableID table_id = 999;
+  roachpb::CreateTsTable pb_meta;
+  ConstructRoachpbTable(&pb_meta, table_id);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  std::vector<AttributeInfo> metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  std::vector<TagInfo> tag_schema;
+  s = table_schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  timestamp64 start_ts = 3600;
+  int row_num = 3;
+  auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+  std::shared_ptr<TsVGroup> entity_v_group;
+  for (const auto& vgroup : *ts_vgroups) {
+    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+        continue;
+    }
+    entity_v_group = vgroup;
+    break;
+  }
+
+  uint64_t p_tag_entity_id = 1;
+  std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
+  TSSlice p_tag{p_key.data(), p_key.length()};
+  TSEntityID cur_entity_id;
+  s = entity_v_group->getEntityIdByPTag(ctx_, table_id, p_tag, &cur_entity_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  for (size_t i = 0; i < 5; i++) {
+    s = entity_v_group->DeleteData(ctx_, table_id, cur_entity_id, 10086000 + i * 5000, {{start_ts, INT64_MAX}});
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    KwTsSpan ts_span = {start_ts, INT64_MAX};
+    CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, 0);
+    s = entity_v_group->undoDeleteData(ctx_, table_id, p_key, 10086000 + i * 5000, {{start_ts, INT64_MAX}});
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, (i + 2) * row_num);
+  }
+  free(pay_load.data);
+}

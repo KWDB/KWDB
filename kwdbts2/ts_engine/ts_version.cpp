@@ -46,24 +46,29 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp) {
 }
 
 void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
-  auto current = Current();
   timestamp64 start = GetPartitionStartTime(ptime);
   PartitionIdentifier partition_id{dbid, start};
-  auto it = current->partitions_.find(partition_id);
-  if (it != current->partitions_.end()) {
+  if (partition_id == this->last_created_partition_) {
     return;
   }
-
+  {
+    auto current = Current();
+    auto it = current->partitions_.find(partition_id);
+    if (it != current->partitions_.end()) {
+      last_created_partition_ = partition_id;
+      return;
+    }
+  }
   // find partition again under exclusive lock
   std::unique_lock lk{mu_};
-  it = current_->partitions_.find(partition_id);
+  auto it = current_->partitions_.find(partition_id);
   if (it != current_->partitions_.end()) {
+    last_created_partition_ = partition_id;
     return;
   }
 
   // create new partition under exclusive lock
-
-  auto new_version = std::make_unique<TsVGroupVersion>(*current);
+  auto new_version = std::make_unique<TsVGroupVersion>(*current_);
   std::unique_ptr<TsPartitionVersion> partition(new TsPartitionVersion{start, start + interval, partition_id});
   partition->valid_memseg_ = new_version->valid_memseg_;
 
@@ -74,6 +79,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
     std::filesystem::path db_path = options_.db_path;
     auto partition_dir = db_path / VGroupDirName(vgroup_id_) / PartitionDirName(partition_id);
     options_.io_env->NewDirectory(partition_dir);
+    LOG_INFO("Partition directory created: %s", partition_dir.string().c_str());
     partition->directory_created_ = true;
 
     partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
@@ -83,6 +89,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
 
   // update current version
   current_ = std::move(new_version);
+  last_created_partition_ = partition_id;
 }
 
 KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
@@ -102,7 +109,7 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
   if (update.mem_segments_updated_) {
     new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(std::move(update.valid_memseg_));
   }
-  // looping over all updated partitions
+  // looping over all partitions
   for (auto [par_id, par] : new_vgroup_version->partitions_) {
     auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
     if (update.mem_segments_updated_) {
@@ -167,6 +174,7 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
   }
 
   current_ = std::move(new_vgroup_version);
+  LOG_INFO("%s", update.DebugStr().c_str());
   return SUCCESS;
 }
 
@@ -243,6 +251,15 @@ KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSp
       LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
       return s;
     }
+  }
+  return KStatus::SUCCESS;
+}
+KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan>& ts_spans, const KwLSNSpan& lsn)
+const {
+  auto s = del_info_->RollBackDelItem(e_id, lsn);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("RollBackDelItem failed. for entity[%lu]", e_id);
+    return s;
   }
   return KStatus::SUCCESS;
 }
