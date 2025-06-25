@@ -6411,53 +6411,62 @@ SET
 	iot_hub_name NCHAR(64) NOT NULL ) PRIMARY TAGS(device, iot_hub_name);
 CREATE TABLE
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 980;
-        tree        |       field       |  description
---------------------+-------------------+-----------------
-                    | distributed       | true
-                    | vectorized        | false
-  render            |                   |
-   │                | engine type       | time series
-   │                | timestamp         | ts
-   │                | ts                | ts
-   │                | data              | data
-   │                | type              | type
-   │                | parse             | parse
-   │                | device            | device
-   │                | iot_hub_name      | iot_hub_name
-   └── limit        |                   |
-        │           | engine type       | time series
-        │           | count             | 1000
-        │           | offset            | 980
-        │           | useOffsetOptimize | true
-        └── ts scan |                   |
-                    | ts-table          | stbl_raw
-                    | ordered type      | order scan
-                    | access mode       | tableTableMeta
-(20 rows)
+                tree               |     field     |  description
+-----------------------------------+---------------+-----------------
+                                   | distributed   | true
+                                   | vectorized    | false
+  render                           |               |
+   │                               | engine type   | time series
+   │                               | timestamp     | ts
+   │                               | ts            | ts
+   │                               | data          | data
+   │                               | type          | type
+   │                               | parse         | parse
+   │                               | device        | device
+   │                               | iot_hub_name  | iot_hub_name
+   └── limit                       |               |
+        │                          | engine type   | time series
+        │                          | offset        | 980
+        └── limit                  |               |
+             │                     | engine type   | time series
+             │                     | count         | 1000
+             │                     | useSorterScan | true
+             └── sort              |               |
+                  │                | engine type   | time series
+                  │                | order         | -ts
+                  └── synchronizer |               |
+                       └── ts scan |               |
+                                   | ts-table      | stbl_raw
+                                   | access mode   | tableTableMeta
+(25 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 981;
-        tree        |       field       |  description
---------------------+-------------------+-----------------
-                    | distributed       | true
-                    | vectorized        | false
-  render            |                   |
-   │                | engine type       | time series
-   │                | timestamp         | ts
-   │                | ts                | ts
-   │                | data              | data
-   │                | type              | type
-   │                | parse             | parse
-   │                | device            | device
-   │                | iot_hub_name      | iot_hub_name
-   └── limit        |                   |
-        │           | engine type       | time series
-        │           | count             | 1001
-        │           | offset            | 981
-        │           | useOffsetOptimize | true
-        └── ts scan |                   |
-                    | ts-table          | stbl_raw
-                    | ordered type      | order scan
-                    | access mode       | tableTableMeta
-(20 rows)
+                tree               |    field     |  description
+-----------------------------------+--------------+-----------------
+                                   | distributed  | true
+                                   | vectorized   | false
+  render                           |              |
+   │                               | engine type  | time series
+   │                               | timestamp    | ts
+   │                               | ts           | ts
+   │                               | data         | data
+   │                               | type         | type
+   │                               | parse        | parse
+   │                               | device       | device
+   │                               | iot_hub_name | iot_hub_name
+   └── limit                       |              |
+        │                          | engine type  | time series
+        │                          | offset       | 981
+        └── limit                  |              |
+             │                     | engine type  | time series
+             │                     | count        | 1001
+             └── sort              |              |
+                  │                | engine type  | time series
+                  │                | order        | -ts
+                  └── synchronizer |              |
+                       └── ts scan |              |
+                                   | ts-table     | stbl_raw
+                                   | access mode  | tableTableMeta
+(24 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1000;
              tree             |     field     |  description
 ------------------------------+---------------+-----------------
@@ -6568,53 +6577,62 @@ SET
                               | access mode  | tableTableMeta
 (21 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 1080;
-        tree        |       field       |  description
---------------------+-------------------+-----------------
-                    | distributed       | true
-                    | vectorized        | false
-  render            |                   |
-   │                | engine type       | time series
-   │                | timestamp         | ts
-   │                | ts                | ts
-   │                | data              | data
-   │                | type              | type
-   │                | parse             | parse
-   │                | device            | device
-   │                | iot_hub_name      | iot_hub_name
-   └── limit        |                   |
-        │           | engine type       | time series
-        │           | count             | 1100
-        │           | offset            | 1080
-        │           | useOffsetOptimize | true
-        └── ts scan |                   |
-                    | ts-table          | stbl_raw
-                    | ordered type      | order scan
-                    | access mode       | tableTableMeta
-(20 rows)
+                tree               |     field     |  description
+-----------------------------------+---------------+-----------------
+                                   | distributed   | true
+                                   | vectorized    | false
+  render                           |               |
+   │                               | engine type   | time series
+   │                               | timestamp     | ts
+   │                               | ts            | ts
+   │                               | data          | data
+   │                               | type          | type
+   │                               | parse         | parse
+   │                               | device        | device
+   │                               | iot_hub_name  | iot_hub_name
+   └── limit                       |               |
+        │                          | engine type   | time series
+        │                          | offset        | 1080
+        └── limit                  |               |
+             │                     | engine type   | time series
+             │                     | count         | 1100
+             │                     | useSorterScan | true
+             └── sort              |               |
+                  │                | engine type   | time series
+                  │                | order         | -ts
+                  └── synchronizer |               |
+                       └── ts scan |               |
+                                   | ts-table      | stbl_raw
+                                   | access mode   | tableTableMeta
+(25 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 1081;
-        tree        |       field       |  description
---------------------+-------------------+-----------------
-                    | distributed       | true
-                    | vectorized        | false
-  render            |                   |
-   │                | engine type       | time series
-   │                | timestamp         | ts
-   │                | ts                | ts
-   │                | data              | data
-   │                | type              | type
-   │                | parse             | parse
-   │                | device            | device
-   │                | iot_hub_name      | iot_hub_name
-   └── limit        |                   |
-        │           | engine type       | time series
-        │           | count             | 1101
-        │           | offset            | 1081
-        │           | useOffsetOptimize | true
-        └── ts scan |                   |
-                    | ts-table          | stbl_raw
-                    | ordered type      | order scan
-                    | access mode       | tableTableMeta
-(20 rows)
+                tree               |    field     |  description
+-----------------------------------+--------------+-----------------
+                                   | distributed  | true
+                                   | vectorized   | false
+  render                           |              |
+   │                               | engine type  | time series
+   │                               | timestamp    | ts
+   │                               | ts           | ts
+   │                               | data         | data
+   │                               | type         | type
+   │                               | parse        | parse
+   │                               | device       | device
+   │                               | iot_hub_name | iot_hub_name
+   └── limit                       |              |
+        │                          | engine type  | time series
+        │                          | offset       | 1081
+        └── limit                  |              |
+             │                     | engine type  | time series
+             │                     | count        | 1101
+             └── sort              |              |
+                  │                | engine type  | time series
+                  │                | order        | -ts
+                  └── synchronizer |              |
+                       └── ts scan |              |
+                                   | ts-table     | stbl_raw
+                                   | access mode  | tableTableMeta
+(24 rows)
 > reset max_push_limit_number;
 SET
 > use defaultdb;
