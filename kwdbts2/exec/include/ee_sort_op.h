@@ -21,10 +21,17 @@
 #include "ee_sort_flow_spec.h"
 #include "kwdb_type.h"
 #include "ee_memory_data_container.h"
+#include "ee_heap_sort_container.h"
 #include "ee_disk_data_container.h"
 #include "ee_pb_plan.pb.h"
 
 namespace kwdbts {
+
+enum EESortType {
+  EE_SORT_MEMORY = 0,  // Use in-memory sorting when the total memory of datachunk < SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_HEAP,  // Use heap sorting when (limit + offset) * row_size < SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_DISK  // Use external sorting when the total memory of datachunk >= SORT_MAX_MEM_BUFFER_SIZE
+};
 
 class SortOperator : public BaseOperator {
  public:
@@ -74,7 +81,7 @@ class SortOperator : public BaseOperator {
   std::vector<Field*>& input_fields_;
 
   bool is_done_{false};
-  bool is_mem_container_{true};   // sort type
+  EESortType sort_type_{EE_SORT_MEMORY};   // sort type
 
   ColumnInfo* input_col_info_{nullptr};
   k_int32 input_col_num_{0};

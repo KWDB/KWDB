@@ -1271,10 +1271,13 @@ func (b *Builder) constructProjectionCol(
 		args := make(memo.ScalarListExpr, 1)
 		args[0] = b.factory.ConstructVariable(1)
 
+		// the time accuracy of the function needs to be consistent with the column.
+		col.typ = args[0].DataType()
+
 		// Construct a private FuncOpDef that refers to a resolved function overload.
 		out := b.factory.ConstructFunction(args, &memo.FunctionPrivate{
 			Name:       def.Name,
-			Typ:        f.ResolvedType(),
+			Typ:        col.typ,
 			Properties: &def.FunctionProperties,
 			Overload:   f.ResolvedOverload(),
 		})

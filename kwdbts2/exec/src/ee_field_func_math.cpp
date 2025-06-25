@@ -57,17 +57,7 @@ template <typename T>
 bool checkOverflow(T input, roachpb::DataType out_type) {
   switch (out_type) {
     case roachpb::DataType::SMALLINT:
-      if (input > (std::numeric_limits<k_int16>::max()) ||
-          input < (std::numeric_limits<k_int16>::min())) {
-        return false;
-      }
-      return true;
     case roachpb::DataType::INT:
-      if (input > (std::numeric_limits<k_int32>::max()) ||
-          input < (std::numeric_limits<k_int32>::min())) {
-        return false;
-      }
-      return true;
     case roachpb::DataType::BIGINT:
       if (input > (std::numeric_limits<k_int64>::max()) ||
           input < (std::numeric_limits<k_int64>::min())) {
@@ -223,6 +213,33 @@ k_double64 kdivdouble(k_double64 x, k_double64 y) {
   return val;
 }
 
+k_int64 kpow(k_int64 x, k_int64 y) {
+  if (y == 0) {
+    return 1;
+  }
+  k_int64 result = 1;
+  k_int64 current = x;
+  k_int64 exp = y;
+  while (exp > 0) {
+    if (exp % 2 == 1) {
+      if (!I64_SAFE_MUL_CHECK(result, current)) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                      "pow(): integer out of range");
+        return 0;
+      }
+      result *= current;
+    }
+    exp /= 2;
+    if (!I64_SAFE_MUL_CHECK(current, current) && exp != 0) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                    "pow(): integer out of range");
+      return 0;
+    }
+    current *= current;
+  }
+  return result;
+}
+
 k_int64 kdivint(k_int64 x, k_int64 y) { return x / y; }
 
 k_double64 sinFunc(Field **args, k_int32 arg_count) {
@@ -242,6 +259,9 @@ k_double64 acosFunc(Field **args, k_int32 arg_count) {
 }
 k_double64 atanFunc(Field **args, k_int32 arg_count) {
   return doubleMathFunc1(args, atan);
+}
+k_int64 powIntFunc(Field **args, k_int32 arg_count) {
+  return intMathFunc2(args, kpow);
 }
 k_double64 powFunc(Field **args, k_int32 arg_count) {
   return doubleMathFunc2(args, pow);
@@ -536,7 +556,7 @@ const FieldMathFuncion mathFuncBuiltins2[] = {
     {
         .name = "pow",
         .func_type = FieldFunc::Functype::POWER_FUNC,
-        .int_func = nullptr,
+        .int_func = powIntFunc,
         .double_func = powFunc,
         .precheck_func = powPreCheck,
         .field_type_func = enlargeNumType,
@@ -545,7 +565,7 @@ const FieldMathFuncion mathFuncBuiltins2[] = {
     {
         .name = "power",
         .func_type = FieldFunc::Functype::POWER_FUNC,
-        .int_func = nullptr,
+        .int_func = powIntFunc,
         .double_func = powFunc,
         .precheck_func = powPreCheck,
         .field_type_func = enlargeNumType,
@@ -592,6 +612,7 @@ FieldFuncMath::FieldFuncMath(const std::list<Field *> &fields,
   } else {
     set_storage_info();
   }
+  name_ = func.name;
   func_type_ = func.func_type;
   int_func_ = func.int_func;
   double_func_ = func.double_func;
@@ -610,6 +631,7 @@ FieldFuncMath::FieldFuncMath(Field *left, Field *right,
   } else {
     set_storage_info();
   }
+  name_ = func.name;
   func_type_ = func.func_type;
   int_func_ = func.int_func;
   double_func_ = func.double_func;
@@ -621,7 +643,8 @@ k_int64 FieldFuncMath::ValInt() {
   if (ptr) {
     return FieldFunc::ValInt(ptr);
   }
-  KString et = error_tag.empty() ? "integer" : error_tag;
+  KString et = name_ + "(): ";
+  et += error_tag.empty() ? "integer" : error_tag;
   if (precheck_func != nullptr && precheck_func(args_, arg_count_) != SUCCESS) {
     return 0;
   }
@@ -651,7 +674,8 @@ k_double64 FieldFuncMath::ValReal() {
   if (ptr) {
     return FieldFunc::ValReal(ptr);
   }
-  KString et = error_tag.empty() ? "float" : error_tag;
+  KString et = name_ + "(): ";
+  et += error_tag.empty() ? "float" : error_tag;
   if (precheck_func != nullptr && precheck_func(args_, arg_count_) != SUCCESS) {
     return 0;
   }
@@ -722,6 +746,10 @@ KStatus FieldFuncMath::set_storage_info() {
     if (args_[i]->get_sql_type() > sql_type_) {
       sql_type_ = args_[i]->get_sql_type();
     }
+  }
+  if (storage_type_ == roachpb::DataType::SMALLINT || storage_type_ == roachpb::DataType::INT) {
+    storage_len_ = sizeof(k_int64);
+    storage_type_ = roachpb::DataType::BIGINT;
   }
   return SUCCESS;
 }

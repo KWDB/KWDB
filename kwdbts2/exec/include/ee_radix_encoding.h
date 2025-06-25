@@ -262,7 +262,7 @@ struct Radix {
     return buff;
   }
 
-  static inline double DecodeDouble(k_uint32 input) {
+  static inline double DecodeDouble(k_uint64 input) {
     // nan
     if (input == ULLONG_MAX) {
       return std::numeric_limits<double>::quiet_NaN();
@@ -523,18 +523,18 @@ inline void Radix::EncodeDataInvert<k_float64>(k_uint8* dataptr, k_uint8* valuep
 
 template <>
 inline void Radix::DecodeData<k_float64>(k_uint8* dataptr, k_uint8* valueptr) {
-  float converted_value =
+  k_double64 converted_value =
       DecodeDouble(BSwap(*reinterpret_cast<uint64_t*>(valueptr)));
-  memcpy(dataptr, &converted_value, sizeof(double));
+  memcpy(dataptr, &converted_value, sizeof(k_double64));
 }
 
 template <>
 inline void Radix::DecodeDataInvert<k_float64>(k_uint8* dataptr, k_uint8* valueptr) {
   k_uint64 temp_value;
-  StoreInvert(reinterpret_cast<k_uint8*>(&temp_value), valueptr, sizeof(k_uint32));
-  float converted_value =
+  StoreInvert(reinterpret_cast<k_uint8*>(&temp_value), valueptr, sizeof(k_uint64));
+  k_double64 converted_value =
       DecodeDouble(BSwap(temp_value));
-  memcpy(dataptr, &converted_value, sizeof(double));
+  memcpy(dataptr, &converted_value, sizeof(k_double64));
 }
 
 };  // namespace kwdbts

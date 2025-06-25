@@ -837,7 +837,7 @@ func (c *coster) computeGroupingCost(grouping memo.RelExpr, required *physical.R
 	}
 
 	var insideoutCostFactor memo.Cost = 1.0
-	if private.IsInsideOut {
+	if private.OptFlags.CanApplyInsideOut() {
 		if grouping.Relational().Stats.Available {
 			tsDop := c.mem.GetTsDop()
 			if tsDop > 0 && tsDop < 8 {

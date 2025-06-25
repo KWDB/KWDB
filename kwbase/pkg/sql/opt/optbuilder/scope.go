@@ -1083,12 +1083,13 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 			panic(err)
 		}
 
-		// time_window_end() and time_window_start() are user invisible, only for internal use.
-		// when timeWindowWithFirstLast is set, means they are being used internally, not need for error reporting.
-		if (def.Name == "time_window_end" || def.Name == "time_window_start") && !s.checkAggExtendFlag(timeWindowWithFirstLast) {
+		// 1.time_window_end() and time_window_start() are user invisible, only for internal use, however,
+		// when timeWindowWithFirstLast is setted, means they are being used internally, not need for error reporting.
+		// 2.min_extend() and max_extend() are user invisible, only for internal use.
+		if ((def.Name == "time_window_end" || def.Name == "time_window_start") && !s.checkAggExtendFlag(timeWindowWithFirstLast)) ||
+			(def.Name == "min_extend" || def.Name == "max_extend") {
 			panic(pgerror.Wrapf(pgerror.New(pgcode.ReservedName, "function reserved for internal use"), pgcode.ReservedName,
 				"%s()", errors.Safe(def.Name)))
-
 		}
 
 		// UDF can not use memo cache

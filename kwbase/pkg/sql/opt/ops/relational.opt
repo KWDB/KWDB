@@ -541,12 +541,6 @@ define GroupingPrivate {
 
     # OptFlags flags of group by type, type is opt.GroupOptType
     OptFlags TSGroupOptType
-
-    # IsInsideOut is set when the GroupByExpr or ScalarGroupByExpr is 
-    # contruct in inside-out case, use for adjust output rows.
-    IsInsideOut bool
-
-    CanApplyOutsideIn bool
 }
 
 # ScalarGroupBy computes aggregate functions over the complete set of input

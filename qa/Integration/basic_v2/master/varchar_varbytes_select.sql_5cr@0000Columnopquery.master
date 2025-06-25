@@ -306,7 +306,7 @@ SQLSTATE: 2201F
   NULL
 (18 rows)
 > SELECT e1^9223372036854775807 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
-ERROR: exponent out of range
+ERROR: pow(): integer out of range
 SQLSTATE: 22003
 > SELECT e6&e6 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
 ERROR: unsupported binary operator: <bool> & <bool>
