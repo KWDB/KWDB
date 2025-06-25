@@ -11,10 +11,14 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <list>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <set>
+#include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -30,6 +34,12 @@ using DatabaseID = uint32_t;
 using PartitionIdx = int64_t;
 using PartitionIdentifier = std::tuple<DatabaseID, timestamp64>;  // (dbid, start_time);
 using MemSegList = std::list<std::shared_ptr<TsMemSegment>>;
+
+inline std::ostream &operator<<(std::ostream &os, const PartitionIdentifier &p) {
+  auto [dbid, start_time] = p;
+  os << "{" << dbid << ", " << start_time << "}";
+  return os;
+}
 
 class TsVGroupVersion;
 class TsEntitySegment;
@@ -145,11 +155,37 @@ class TsVersionUpdate {
     entity_segment_[partition_id] = entity_segment;
     empty = false;
   }
+
+  std::string DebugStr() const {
+    std::stringstream ss;
+    ss << "TsVersionUpdate: lastseg_created: ";
+    for (const auto &[partition_id, file_numbers] : new_lastsegs_) {
+      ss << partition_id << ": ";
+      for (const auto &file_number : file_numbers) {
+        ss << file_number << " ";
+      }
+      ss << "; ";
+    }
+    ss << "lastseg_deleted: ";
+    for (const auto &[partition_id, file_numbers] : delete_lastsegs_) {
+      ss << partition_id << ": ";
+      for (const auto &file_number : file_numbers) {
+        ss << file_number << " ";
+      }
+      ss << "; ";
+    }
+    ss << "mem_segments: ";
+    for (const auto &mem_segment : valid_memseg_) {
+      ss << mem_segment.get() << " ";
+    }
+    return ss.str();
+  }
 };
 
 class TsVersionManager {
  private:
   mutable std::shared_mutex mu_;
+  mutable PartitionIdentifier last_created_partition_{-1, INVALID_TS};  // Initial as invalid
 
   std::shared_ptr<const TsVGroupVersion> current_;
 
