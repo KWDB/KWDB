@@ -37,7 +37,7 @@ class TsEntityPartition {
         scan_filter_(filter),
         skip_file_data_(skip_file_data) {}
   // initialize current object.
-  KStatus Init(std::list<std::shared_ptr<TsMemSegment>>& mems);
+  KStatus Init();
   // filter all blocks, and return block span list.
   KStatus GetBlockSpan(std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
                       std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,

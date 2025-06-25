@@ -1499,7 +1499,7 @@ func (r *TsEngine) DeleteData(
 	for i := 0; i < len(tsSpans); i++ {
 		// todo(liangbo01) ts span invaild, ignore it.
 		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
-			fmt.Println("error ts span. start:", tsSpans[i].TsStart, ", end: ", tsSpans[i].TsEnd)
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
 			continue
 		}
 		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
