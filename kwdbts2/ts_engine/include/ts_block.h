@@ -88,7 +88,7 @@ struct TsBlockSpan {
               uint32_t scan_version);
 
   TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-              std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
               uint32_t scan_version = 0);
 
   bool operator<(const TsBlockSpan& other) const;
