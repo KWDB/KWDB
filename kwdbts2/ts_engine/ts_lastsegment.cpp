@@ -560,7 +560,7 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
       auto upper_bound =
           FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
       block_spans.emplace_back(
-          make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start, tbl_schema_mgr));
+          make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start, tbl_schema_mgr, 0));
       prev_end = upper_bound;
     }
   }

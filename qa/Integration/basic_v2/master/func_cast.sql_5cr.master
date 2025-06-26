@@ -209,3 +209,282 @@ SET
 (2 rows)
 > drop database ts_db cascade;
 DROP DATABASE
+> select '127'::int1;
+  int1
+--------
+   127
+(1 row)
+> select '128'::int1;
+ERROR: value is out of range for type int1
+SQLSTATE: 22003
+> select '-128'::int1;
+  int1
+--------
+  -128
+(1 row)
+> select '-129'::int1;
+ERROR: value is out of range for type int1
+SQLSTATE: 22003
+> select '32767'::int2;
+  int2
+---------
+  32767
+(1 row)
+> select '32768'::int2;
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> select '-32768'::int2;
+   int2
+----------
+  -32768
+(1 row)
+> select '-32769'::int2;
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> select '2147483647'::int4;
+     int4
+--------------
+  2147483647
+(1 row)
+> select '2147483648'::int4;
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> select '-2147483648'::int4;
+     int4
+---------------
+  -2147483648
+(1 row)
+> select '-2147483649'::int4;
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> select '9223372036854775807'::int8;
+         int8
+-----------------------
+  9223372036854775807
+(1 row)
+> select '9223372036854775808'::int8;
+ERROR: could not parse "9223372036854775808" as type int: strconv.ParseInt: parsing "9223372036854775808": value out of range
+SQLSTATE: 22P02
+> select '-9223372036854775808'::int8;
+          int8
+------------------------
+  -9223372036854775808
+(1 row)
+> select '-9223372036854775809'::int8;
+ERROR: could not parse "-9223372036854775809" as type int: strconv.ParseInt: parsing "-9223372036854775809": value out of range
+SQLSTATE: 22P02
+> select 123::bit;
+  bit
+-------
+    1
+(1 row)
+> select 123::bit(5);
+   bit
+---------
+  11011
+(1 row)
+> select 123::bit(10);
+     bit
+--------------
+  0001111011
+(1 row)
+> select '1010'::bit(2);
+  bit
+-------
+   10
+(1 row)
+> select '1010'::bit(5);
+   bit
+---------
+  10100
+(1 row)
+> select '1010'::bit(10);
+     bit
+--------------
+  1010000000
+(1 row)
+> select '1010'::varbit(2);
+  varbit
+----------
+      10
+(1 row)
+> select '1010'::varbit(10);
+  varbit
+----------
+    1010
+(1 row)
+> select string'1010'::bit(2);
+  bit
+-------
+   10
+(1 row)
+> select string'1010'::bit(5);
+   bit
+---------
+  10100
+(1 row)
+> select string'1010'::bit(10);
+     bit
+--------------
+  1010000000
+(1 row)
+> select string'1010'::varbit(2);
+  varbit
+----------
+      10
+(1 row)
+> select string'1010'::varbit(10);
+  varbit
+----------
+    1010
+(1 row)
+> select 123::bool;
+  bool
+--------
+  true
+(1 row)
+> select 1::bool;
+  bool
+--------
+  true
+(1 row)
+> select 0::bool;
+  bool
+---------
+  false
+(1 row)
+> select timestamp'2025-04-29 12:12:12'::float;
+      float8
+-------------------
+  1.745928732e+12
+(1 row)
+> select timestamp'1970-01-01 00:00:12'::float;
+  float8
+----------
+   12000
+(1 row)
+> select timestamp'1970-01-01 00:00:00.001'::float;
+  float8
+----------
+       1
+(1 row)
+> select interval'1day'::float;
+  float8
+----------
+   86400
+(1 row)
+> select interval'1s'::float;
+  float8
+----------
+       1
+(1 row)
+> select 'abc'::string(2);
+  text
+--------
+  ab
+(1 row)
+> select 'hello'::string(20);
+  text
+---------
+  hello
+(1 row)
+> select 'abc'::bytes;
+   bytea
+------------
+  \x616263
+(1 row)
+> select 'abc'::varbytes;
+  varbytea
+------------
+  \x616263
+(1 row)
+> select 'abc'::varbytes(2);
+  varbytea
+------------
+  \x6162
+(1 row)
+> select 'hello'::varbytes(4);
+   varbytea
+--------------
+  \x68656c6c
+(1 row)
+> select 1::date;
+            date
+-----------------------------
+  1970-01-02 00:00:00+00:00
+(1 row)
+> select 123::date;
+            date
+-----------------------------
+  1970-05-04 00:00:00+00:00
+(1 row)
+> select timestamp'2025-04-29 12:12:12'::date;
+            date
+-----------------------------
+  2025-04-29 00:00:00+00:00
+(1 row)
+> select timestamp'1970-01-01 00:00:12'::date;
+            date
+-----------------------------
+  1970-01-01 00:00:00+00:00
+(1 row)
+> select timestamp'1970-01-01 00:00:00.001'::date;
+            date
+-----------------------------
+  1970-01-01 00:00:00+00:00
+(1 row)
+> select timestamp'2025-04-29 12:12:12'::time;
+            time
+-----------------------------
+  0000-01-01 12:12:12+00:00
+(1 row)
+> select timestamp'1970-01-01 00:00:12'::time;
+            time
+-----------------------------
+  0000-01-01 00:00:12+00:00
+(1 row)
+> select timestamp'1970-01-01 00:00:00.001'::time;
+              time
+---------------------------------
+  0000-01-01 00:00:00.001+00:00
+(1 row)
+> select interval'1day'::time;
+            time
+-----------------------------
+  0000-01-01 00:00:00+00:00
+(1 row)
+> select interval'1s'::time;
+            time
+-----------------------------
+  0000-01-01 00:00:01+00:00
+(1 row)
+> select interval'1hour'::time;
+            time
+-----------------------------
+  0000-01-01 01:00:00+00:00
+(1 row)
+> select interval'1month2day3hour4s'::time;
+            time
+-----------------------------
+  0000-01-01 03:00:04+00:00
+(1 row)
+> select int64'9223372036854775807'::timestamp;
+              timestamp
+--------------------------------------
+  292278994-08-17 07:12:55.807+00:00
+(1 row)
+> select int64'-9223372036854775808'::timestamp;
+               timestamp
+---------------------------------------
+  -292275055-05-16 16:47:04.192+00:00
+(1 row)
+> select int64'9223372036854775807'::timestamptz;
+             timestamptz
+--------------------------------------
+  292278994-08-17 15:12:55.807+08:00
+(1 row)
+> select int64'-9223372036854775808'::timestamptz;
+              timestamptz
+---------------------------------------
+  -292275055-05-17 00:47:04.192+08:00
+(1 row)

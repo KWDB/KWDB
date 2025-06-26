@@ -51,7 +51,7 @@ KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_
 }
 
 TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version)
+                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
     : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow),
       convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
   assert(nrow_ >= 1);
@@ -59,7 +59,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
 }
 
 TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version)
+                         const std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version)
     : vgroup_id_(vgroup_id), entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow),
       convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
   assert(nrow_ >= 1);
@@ -80,15 +80,6 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
       return seq_no > other_seq_no;
     }
   }
-}
-
-void TsBlockSpan::operator=(TsBlockSpan &other) {
-  this->entity_id_ = other.entity_id_;
-  this->block_ = other.block_;
-  this->start_row_ = other.start_row_;
-  this->nrow_ = other.nrow_;
-  this->has_pre_agg_ = other.has_pre_agg_;
-  this->convert_ = std::move(other.convert_);
 }
 
 uint32_t TsBlockSpan::GetVGroupID() const {
@@ -259,13 +250,13 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num, row_num,
-                                       convert_.tbl_schema_mgr_);
+                                       convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
   // change current span info
   nrow_ -= row_num;
   convert_ = TSBlkDataTypeConvert(*this, convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
 }
 
-void TsBlockSpan::Truncate(int row_num) {
+void TsBlockSpan::TrimFront(int row_num) {
   start_row_ += row_num;
   nrow_ -= row_num;
   convert_ = TSBlkDataTypeConvert(*this, convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);

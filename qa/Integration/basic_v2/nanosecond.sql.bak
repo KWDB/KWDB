@@ -152,7 +152,7 @@ select '2024-01-01 00:00:00.123456789'::timestamptz(9)::timetz(6), '2024-01-01 0
 
 select '2024-01-01 00:00:00.123456789'::date::timestamp(9), '2024-01-01 00:00:00.123456789'::date::timestamp;
 
-select '2024-01-01 00:00:00.123456789'::timestamp::int::timestamp;
+select '2024-01-01 00:00:00.123456789'::timestamp::int8::timestamp;
 
 select '2024-01-01 00:00:00.123456789'::timestamptz(9)::timestamp(9), '2024-01-01 00:00:00.123456789'::timestamptz(9)::timestamp;
 
@@ -160,7 +160,7 @@ select '2024-01-01 00:00:00.123456789'::timestamptz(9)::timestamp(9), '2024-01-0
 
 select '2024-01-01 00:00:00.123456789'::date::timestamptz(9), '2024-01-01 00:00:00.123456789'::date::timestamptz;
 
-select '2024-01-01 00:00:00.123456789'::timestamp::int::timestamptz;
+select '2024-01-01 00:00:00.123456789'::timestamp::int8::timestamptz;
 
 select '2024-01-01 00:00:00.123456789'::timestamp(9)::timestamptz(9), '2024-01-01 00:00:00.123456789'::timestamp(9)::timestamptz;
 

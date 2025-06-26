@@ -86,8 +86,9 @@ TEST_F(TestSortRowChunk, TestChunk) {
       {3, TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC});
 
   // check append
+  k_uint64 chunk_size = 64 * 1024;
   row_chunk_1 = std::make_unique<kwdbts::SortRowChunk>(
-      col_info, order_info, col_num, 64 * 1024, UINT32_MAX, 0, false);
+      col_info, order_info, col_num, chunk_size, UINT32_MAX, 0, false);
   ASSERT_EQ(row_chunk_1->Initialize(), true);
   k_uint32 i = 0;
   ASSERT_EQ(row_chunk_1->Append(chunk, i, i + 1), KStatus::SUCCESS);
@@ -96,7 +97,7 @@ TEST_F(TestSortRowChunk, TestChunk) {
   ASSERT_EQ(row_chunk_1->GetColumnInfo(), static_cast<ColumnInfo*>(col_info));
 
   row_chunk_2 = std::make_unique<kwdbts::SortRowChunk>(
-      col_info, order_info, col_num, 64 * 1024, UINT32_MAX, 0, false);
+      col_info, order_info, col_num, chunk_size, UINT32_MAX, 0, false);
 
   ASSERT_EQ(row_chunk_2->Initialize(), true);
 

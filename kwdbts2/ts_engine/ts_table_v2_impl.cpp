@@ -9,6 +9,10 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 #include "ts_table_v2_impl.h"
 #include "ts_tag_iterator_v2_impl.h"
 #include "ts_engine.h"
@@ -35,10 +39,10 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
   auto primary_key = p.GetPrimaryTag();
   auto vgroup = GetVGroupByID(v_group_id);
   assert(vgroup != nullptr);
-  auto s = vgroup->PutData(ctx, GetTableId(), mtr_id, &primary_key, KUint64(entity_id), payload, true);
+  auto s = vgroup->PutData(ctx, table_id_, mtr_id, &primary_key, KUint64(entity_id), payload, true);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
-    LOG_ERROR("putdata failed. table id[%lu], group id[%lu]", GetTableId(), v_group_id);
+    LOG_ERROR("putdata failed. table id[%lu], group id[%lu]", table_id_, v_group_id);
     return s;
   }
   return KStatus::SUCCESS;
@@ -54,10 +58,10 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   }
   auto primary_key = p.GetPrimaryTag();
   auto payload = p.GetPayload();
-  auto s = v_group->PutData(ctx, GetTableId(), mtr_id, &primary_key, entity_id, &payload, write_wal);
+  auto s = v_group->PutData(ctx, table_id_, mtr_id, &primary_key, entity_id, &payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
-    LOG_ERROR("putdata failed. table id[%lu], group id[%u]", GetTableId(), v_group->GetVGroupID());
+    LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
     return s;
   }
   return KStatus::SUCCESS;
@@ -387,7 +391,6 @@ std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint3
 KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag,
   uint64_t* count, uint64_t mtr_id) {
   *count = 0;
-  ErrorInfo err_info;
   auto tag_table = table_schema_mgr_->GetTagTable();
   for (auto p_tags : primary_tag) {
     uint32_t v_group_id, entity_id;
@@ -395,28 +398,18 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
       LOG_INFO("primary key[%s] dose not exist, no need to delete", p_tags.c_str())
       continue;
     }
-    if (count != nullptr) {
-      std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
-      std::vector<KwTsSpan> ts_spans{{INT64_MIN, INT64_MAX}};
-      uint64_t cur_entity_count = 0;
-      auto s = GetEntityRowCount(ctx, es, ts_spans, &cur_entity_count);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetEntityRowCount failed.");
-        return s;
-      }
-      *count += cur_entity_count;
-    }
-    // write WAL and remove metric datas.
-    auto s = GetVGroupByID(v_group_id)->DeleteEntity(ctx, table_id_, p_tags, entity_id, count, mtr_id);
+    std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
+    std::vector<KwTsSpan> ts_spans{{INT64_MIN, INT64_MAX}};
+    uint64_t cur_entity_count = 0;
+    auto s = GetEntityRowCount(ctx, es, ts_spans, &cur_entity_count);
     if (s != KStatus::SUCCESS) {
-      return s;
+      LOG_WARN("GetEntityRowCount failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
-    // if any error, end the delete loop and return ERROR to the caller.
-    // Delete tag and its index
-    tag_table->DeleteTagRecord(p_tags.data(), p_tags.size(), err_info);
-    if (err_info.errcode < 0) {
-      LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())
-      return KStatus::FAIL;
+    *count += cur_entity_count;
+    // write WAL and remove tag, if cur_entity_count > 0 remove metric data.
+    s = GetVGroupByID(v_group_id)->DeleteEntity(ctx, table_id_, p_tags, entity_id, &cur_entity_count, mtr_id);
+    if (s != KStatus::SUCCESS) {
+      LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
   }
   return KStatus::SUCCESS;
@@ -520,7 +513,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
     }
   }
   // write WAL and remove metric datas.
-  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_schema_mgr_->GetTableId(), primary_tag, entity_id,
+  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_id_, primary_tag, entity_id,
                                                 ts_spans, count, mtr_id);
   if (s != KStatus::SUCCESS) {
     return s;
@@ -534,7 +527,11 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
   uint32_t table_version = 1;
   TsIterator* iter = nullptr;
-  Defer defer{[&]() { if (iter != nullptr) { delete iter; } }};
+  Defer defer{[&]() {
+    if (iter != nullptr) {
+      delete iter;
+    }
+  }};
   std::vector<timestamp64> ts_points;
   KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, {}, scan_agg_types, table_version,
                                 &iter, ts_points, false, false);

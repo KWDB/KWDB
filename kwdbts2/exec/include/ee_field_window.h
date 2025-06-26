@@ -184,7 +184,13 @@ class FieldFuncTimeWindowStart : public FieldFunc {
   explicit FieldFuncTimeWindowStart(Field *a) : FieldFunc(a) {
     type_ = FIELD_FUNC;
     sql_type_ = a->get_sql_type();
-    storage_type_ = a->get_storage_type();
+    if (a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_MICRO ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_NANO) {
+      storage_type_ = roachpb::DataType::TIMESTAMPTZ;
+    } else {
+      storage_type_ = roachpb::DataType::TIMESTAMP;
+    }
     storage_len_ = a->get_storage_length();
     set_allow_null(false);
   }
@@ -207,7 +213,13 @@ class FieldFuncTimeWindowEnd : public FieldFunc {
   explicit FieldFuncTimeWindowEnd(Field *a) : FieldFunc(a) {
     type_ = FIELD_FUNC;
     sql_type_ = a->get_sql_type();
-    storage_type_ = a->get_storage_type();
+    if (a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_MICRO ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_NANO) {
+      storage_type_ = roachpb::DataType::TIMESTAMPTZ;
+    } else {
+      storage_type_ = roachpb::DataType::TIMESTAMP;
+    }
     storage_len_ = a->get_storage_length();
     set_allow_null(false);
   }

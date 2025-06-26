@@ -105,7 +105,7 @@ class TimeWindowHelper : public WindowHelper {
 
  private:
   inline void CalSkipTsSpan(KTimestampTz &ts);
-  inline void NextSkipTsSpan();
+  inline void NextSkipTsSpan(KTimestampTz &ts);
   void CalSlidingTsSpan(KTimestampTz &ts);
   void NextSlidingTsSpan();
 

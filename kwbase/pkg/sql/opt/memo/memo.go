@@ -1586,7 +1586,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		return retTmp.disableExecInTSEngine()
 	case *GroupByExpr:
 		input := source.Input
-		if source.IsInsideOut {
+		if source.OptFlags.CanApplyInsideOut() {
 			m.SetFlag(opt.IsApplyMultiOpt)
 		}
 		sortExpr, ok := (*src).Child(0).(*SortExpr)
@@ -2640,7 +2640,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 			if element, ok := proj.Element.(opt.Expr); ok {
 				if execInTSEngine, _ := CheckExprCanExecInTSEngine(element, ExprPosProjList,
 					m.GetWhiteList().CheckWhiteListParam, false, false); !execInTSEngine {
-					gp.CanApplyOutsideIn = false
+					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}
 			}
@@ -2651,7 +2651,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 	gp.GroupingCols.ForEach(func(col opt.ColumnID) {
 		if !CheckDataType(m.metadata.ColumnMeta(col).Type) ||
 			!CheckDataLength(m.metadata.ColumnMeta(col).Type) {
-			gp.CanApplyOutsideIn = false
+			gp.OptFlags.ResetApplyOutsideIn()
 			return
 		}
 	})
@@ -2665,17 +2665,17 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 		for i := 0; i < srcExpr.ChildCount(); i++ {
 			if scalarExpr, ok := srcExpr.Child(i).(opt.ScalarExpr); ok {
 				if !CheckDataType(scalarExpr.DataType()) {
-					gp.CanApplyOutsideIn = false
+					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}
 			}
 		}
 		if !m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList) {
-			gp.CanApplyOutsideIn = false
+			gp.OptFlags.ResetApplyOutsideIn()
 			return
 		}
 	}
-	gp.CanApplyOutsideIn = true
+	gp.OptFlags |= opt.ApplyOutsideIn
 	return
 }
 

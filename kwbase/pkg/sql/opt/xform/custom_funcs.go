@@ -3527,7 +3527,9 @@ func PushAggIntoJoinTSEngineNode(
 		}
 	})
 
-	newExpr := f.ConstructGroupBy(tsEngineTable, optHelper.Aggs, &memo.GroupingPrivate{GroupingCols: optHelper.Grouping, IsInsideOut: true})
+	newPrivate := &memo.GroupingPrivate{GroupingCols: optHelper.Grouping}
+	newPrivate.OptFlags |= opt.ApplyInsideOut
+	newExpr := f.ConstructGroupBy(tsEngineTable, optHelper.Aggs, newPrivate)
 	if p, ok := newExpr.Child(0).(*memo.ProjectExpr); ok {
 		p.IsInsideOut = true
 	}
