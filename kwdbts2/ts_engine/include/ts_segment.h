@@ -34,7 +34,7 @@ struct TsScanFilterParams {
   const std::vector<KwTsSpan>& ts_spans_;
 };
 
-// conditions used for flitering blockitem data.
+// conditions used for filtering blockitem data.
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
