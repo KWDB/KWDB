@@ -188,6 +188,10 @@ func (ru RequestUnion) GetInner() Request {
 		return t.TsDeleteMultiEntitiesData
 	case *RequestUnion_TsPutTag:
 		return t.TsPutTag
+	case *RequestUnion_TsCommit:
+		return t.TsCommit
+	case *RequestUnion_TsRollback:
+		return t.TsRollback
 	default:
 		return nil
 	}
@@ -300,6 +304,10 @@ func (ru ResponseUnion) GetInner() Response {
 		return t.TsDeleteMultiEntitiesData
 	case *ResponseUnion_TsPutTag:
 		return t.TsPutTag
+	case *ResponseUnion_TsCommit:
+		return t.TsCommit
+	case *ResponseUnion_TsRollback:
+		return t.TsRollback
 	default:
 		return nil
 	}
@@ -488,6 +496,10 @@ func (ru *RequestUnion) SetInner(r Request) bool {
 		union = &RequestUnion_TsDeleteMultiEntitiesData{t}
 	case *TsPutTagRequest:
 		union = &RequestUnion_TsPutTag{t}
+	case *TsCommitRequest:
+		union = &RequestUnion_TsCommit{t}
+	case *TsRollbackRequest:
+		union = &RequestUnion_TsRollback{t}
 	default:
 		return false
 	}
@@ -603,6 +615,10 @@ func (ru *ResponseUnion) SetInner(r Response) bool {
 		union = &ResponseUnion_TsDeleteMultiEntitiesData{t}
 	case *TsPutTagResponse:
 		union = &ResponseUnion_TsPutTag{t}
+	case *TsCommitResponse:
+		union = &ResponseUnion_TsCommit{t}
+	case *TsRollbackResponse:
+		union = &ResponseUnion_TsRollback{t}
 	default:
 		return false
 	}
@@ -610,7 +626,7 @@ func (ru *ResponseUnion) SetInner(r Response) bool {
 	return true
 }
 
-type reqCounts [53]int32
+type reqCounts [55]int32
 
 // getReqCounts returns the number of times each
 // request type appears in the batch.
@@ -724,6 +740,10 @@ func (ba *BatchRequest) getReqCounts() reqCounts {
 			counts[51]++
 		case *RequestUnion_TsPutTag:
 			counts[52]++
+		case *RequestUnion_TsCommit:
+			counts[53]++
+		case *RequestUnion_TsRollback:
+			counts[54]++
 		default:
 			panic(fmt.Sprintf("unsupported request: %+v", ru))
 		}
@@ -785,6 +805,8 @@ var requestNames = []string{
 	"TsTagUpdate",
 	"TsDelMultiEntitiesData",
 	"TsPutTag",
+	"TsCommit",
+	"TsRollback",
 }
 
 // Summary prints a short summary of the requests in a batch.
@@ -1028,6 +1050,14 @@ type tsPutTagResponseAlloc struct {
 	union ResponseUnion_TsPutTag
 	resp  TsPutTagResponse
 }
+type tsCommitResponseAlloc struct {
+	union ResponseUnion_TsCommit
+	resp  TsCommitResponse
+}
+type tsRollbackResponseAlloc struct {
+	union ResponseUnion_TsRollback
+	resp  TsRollbackResponse
+}
 
 // CreateReply creates replies for each of the contained requests, wrapped in a
 // BatchResponse. The response objects are batch allocated to minimize
@@ -1091,6 +1121,8 @@ func (ba *BatchRequest) CreateReply() *BatchResponse {
 	var buf50 []tsTagUpdateResponseAlloc
 	var buf51 []tsDeleteMultiEntitiesDataResponseAlloc
 	var buf52 []tsPutTagResponseAlloc
+	var buf53 []tsCommitResponseAlloc
+	var buf54 []tsRollbackResponseAlloc
 
 	for i, r := range ba.Requests {
 		switch r.GetValue().(type) {
@@ -1465,6 +1497,20 @@ func (ba *BatchRequest) CreateReply() *BatchResponse {
 			buf52[0].union.TsPutTag = &buf52[0].resp
 			br.Responses[i].Value = &buf52[0].union
 			buf52 = buf52[1:]
+		case *RequestUnion_TsCommit:
+			if buf53 == nil {
+				buf53 = make([]tsCommitResponseAlloc, counts[53])
+			}
+			buf53[0].union.TsCommit = &buf53[0].resp
+			br.Responses[i].Value = &buf53[0].union
+			buf53 = buf53[1:]
+		case *RequestUnion_TsRollback:
+			if buf54 == nil {
+				buf54 = make([]tsRollbackResponseAlloc, counts[54])
+			}
+			buf54[0].union.TsRollback = &buf54[0].resp
+			br.Responses[i].Value = &buf54[0].union
+			buf54 = buf54[1:]
 		default:
 			panic(fmt.Sprintf("unsupported request: %+v", r))
 		}

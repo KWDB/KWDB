@@ -455,6 +455,7 @@ type tsTxnHeartbeater struct {
 		finalObservedStatus roachpb.TransactionStatus
 	}
 	ranges roachpb.Spans
+	tsTxn  roachpb.TsTransaction
 }
 
 // setWrapped implements the txnInterceptor interface.
@@ -466,6 +467,7 @@ func (h *tsTxnHeartbeater) SendLocked(
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 
 	var notInsert bool
+	var tsTxn roachpb.TsTransaction
 	for _, ru := range ba.Requests {
 		var span roachpb.Span
 		r := ru.GetInner()
@@ -478,10 +480,14 @@ func (h *tsTxnHeartbeater) SendLocked(
 			span.Key = tdr.Key
 			span.EndKey = tdr.EndKey
 			h.ranges = append(h.ranges, span)
+			tsTxn.ID = h.tsTxn.ID
+			tdr.TsTransaction = &tsTxn
 		case *roachpb.TsRowPutRequest:
 			span.Key = tdr.Key
 			span.EndKey = tdr.EndKey
 			h.ranges = append(h.ranges, span)
+			tsTxn.ID = h.tsTxn.ID
+			tdr.TsTransaction = &tsTxn
 		default:
 			notInsert = true
 			break

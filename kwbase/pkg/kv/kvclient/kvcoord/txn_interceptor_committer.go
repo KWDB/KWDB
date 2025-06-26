@@ -541,6 +541,7 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 type tsTxnCommitter struct {
 	wrapped kv.Sender
 	txn     *kv.Txn
+	tsTxn   roachpb.TsTransaction
 }
 
 // SendLocked implements the lockedSender interface.
@@ -548,13 +549,12 @@ func (tc *tsTxnCommitter) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 	br, pErr := tc.wrapped.Send(ctx, ba)
-	ba.Txn = nil
 	exist, record, err := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
 	if !exist || err != nil {
 		// todo:
 	}
 	if pErr != nil {
-		pErr = tc.sendRollbackRequest(ctx, ba.Txn, record.Spans, 0)
+		pErr = tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
 		if pErr != nil {
 			// todo:
 		}
@@ -564,7 +564,7 @@ func (tc *tsTxnCommitter) SendLocked(
 		}
 		return nil, pErr
 	}
-	pErr = tc.sendCommitRequest(ctx, ba.Txn, record.Spans, 0)
+	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, record.Spans, 0)
 	if pErr != nil {
 		// todo:
 	}
@@ -576,16 +576,17 @@ func (tc *tsTxnCommitter) SendLocked(
 	return br, pErr
 }
 
-func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn *roachpb.Transaction, spans roachpb.Spans, retry int) *roachpb.Error {
+func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
-	ba.Txn = txn
 	for _, span := range spans {
 		ba.Add(&roachpb.TsRollbackRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    span.Key,
 				EndKey: span.EndKey,
 			},
-			ID: txn.ID,
+			TsTransaction: &roachpb.TsTransaction{
+				ID: txn.ID,
+			},
 		})
 	}
 	_, pErr := tc.wrapped.Send(ctx, ba)
@@ -596,16 +597,17 @@ func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn *roachpb.
 	return pErr
 }
 
-func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn *roachpb.Transaction, spans roachpb.Spans, retry int) *roachpb.Error {
+func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
-	ba.Txn = txn
 	for _, span := range spans {
 		ba.Add(&roachpb.TsCommitRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    span.Key,
 				EndKey: span.EndKey,
 			},
-			ID: txn.ID,
+			TsTransaction: &roachpb.TsTransaction{
+				ID: txn.ID,
+			},
 		})
 	}
 	_, pErr := tc.wrapped.Send(ctx, ba)

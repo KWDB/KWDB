@@ -684,8 +684,8 @@ func (r *Replica) stageTsBatchRequest(
 				var entitiesAffect tse.EntitiesAffect
 				payload = append(payload, req.Value.RawBytes)
 				if payload != nil {
-					if ba.Txn != nil {
-						if err := r.store.TsEngine.TransBegin(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+					if req.TsTransaction != nil {
+						if err := r.store.TsEngine.TransBegin(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
 							// todo(tyh)
 						}
 					}
@@ -723,8 +723,8 @@ func (r *Replica) stageTsBatchRequest(
 				var dedupResult tse.DedupResult
 				var entitiesAffect tse.EntitiesAffect
 				if req.Values != nil {
-					if ba.Txn != nil {
-						if err := r.store.TsEngine.TransBegin(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+					if req.TsTransaction != nil {
+						if err := r.store.TsEngine.TransBegin(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
 							// todo(tyh)
 						}
 					}
@@ -888,11 +888,11 @@ func (r *Replica) stageTsBatchRequest(
 			}
 
 		case *roachpb.TsCommitRequest:
-			if err := r.store.TsEngine.TransCommit(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+			if err := r.store.TsEngine.TransCommit(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
 				// todo(tyh)
 			}
 		case *roachpb.TsRollbackRequest:
-			if err := r.store.TsEngine.TransRollback(1, ba.Txn.ID.GetBytes() /*txnid*/); err != nil {
+			if err := r.store.TsEngine.TransRollback(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
 				// todo(tyh)
 			}
 		}
