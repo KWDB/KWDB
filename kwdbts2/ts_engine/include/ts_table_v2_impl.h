@@ -71,6 +71,10 @@ class TsTableV2Impl : public TsTable {
                           std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                           uint32_t table_version = 1) override;
 
+  KStatus GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
+                                    const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
+                                    uint32_t table_version) override;
+
   KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                             std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
                             std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,

@@ -109,6 +109,23 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
+                            const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
+                            uint32_t table_version) {
+  std::shared_ptr<TagTable> tag_table;
+  KStatus ret = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
+  if (ret != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  if (tag_table->GetTagList(ctx, entity_id_list, scan_tags, res, count,
+                            table_version) < 0) {
+    LOG_ERROR("GetTagList error ");
+    return KStatus::FAIL;
+  }
+
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                                    std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
                                    std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
