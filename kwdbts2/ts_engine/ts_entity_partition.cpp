@@ -91,6 +91,7 @@ KStatus TsEntityPartition::SetFilter() {
   block_data_filter_.db_id = scan_filter_.db_id;
   block_data_filter_.entity_id = scan_filter_.entity_id;
   block_data_filter_.table_id = scan_filter_.table_id;
+  block_data_filter_.vgroup_id = scan_filter_.vgroup_id;
   return KStatus::SUCCESS;
 }
 
@@ -98,7 +99,8 @@ void TsEntityPartition::AddMemSegment(std::list<std::shared_ptr<TsMemSegment>>& 
   KwTsSpan partition_span;
   partition_span.begin = convertSecondToPrecisionTS(partition_version_->GetStartTime(), ts_type_);
   partition_span.end = convertSecondToPrecisionTS(partition_version_->GetEndTime(), ts_type_) - 1;
-  TsScanFilterParams mem_filter{scan_filter_.db_id, scan_filter_.table_id, scan_filter_.entity_id, {partition_span}};
+  TsScanFilterParams mem_filter{scan_filter_.db_id, scan_filter_.table_id, scan_filter_.vgroup_id,
+                                scan_filter_.entity_id, {partition_span}};
   for (auto& mem : mems) {
     if (mem->HasEntityRows(mem_filter)) {
       mems_.push_back(mem);

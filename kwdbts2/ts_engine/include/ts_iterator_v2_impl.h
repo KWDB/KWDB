@@ -174,10 +174,11 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
                          std::map<uint32_t, std::vector<EntityID>>& vgroup_ids,
                          std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                         std::vector<k_uint32>& ts_scan_cols, std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
                          uint32_t table_version, uint32_t offset, uint32_t limit) : vgroups_(vgroups),
                          vgroup_ids_(vgroup_ids), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
-                         ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
+                         kw_scan_cols_(kw_scan_cols), ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
                          table_version_(table_version), offset_(offset), limit_(limit) {}
 
   ~TsOffsetIteratorV2Impl() override {}
@@ -196,12 +197,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS) override;
 
  private:
-  KStatus AddMemSegmentBlockSpans();
-  KStatus AddLastSegmentBlockSpans();
-  KStatus AddEntitySegmentBlockSpans();
   KStatus ScanPartitionBlockSpans(uint32_t* cnt);
-  KStatus GetBlkScanColsInfo(uint32_t version, std::vector<uint32_t>& scan_cols,
-                             vector<AttributeInfo>& valid_schema);
 
   KStatus divideBlockSpans(timestamp64 begin_ts, timestamp64 end_ts, uint32_t* lower_cnt,
                            deque<std::shared_ptr<TsBlockSpan>>& lower_block_span);
@@ -231,8 +227,6 @@ class TsOffsetIteratorV2Impl : public TsIterator {
     }
   }
 
-  std::vector<KwTsSpan>& CalTsSpanInPartition(timestamp64 begin, timestamp64 end);
-
  private:
   uint32_t db_id_;
   TSTableID table_id_;
@@ -246,6 +240,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   // the data time range queried by the iterator
   std::vector<KwTsSpan> ts_spans_;
   // column index
+  std::vector<k_uint32> kw_scan_cols_;
   std::vector<uint32_t> ts_scan_cols_;
   std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
 
@@ -267,6 +262,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
 
   timestamp t_time_ = 0;
   int32_t deviation_ = 1000;
+  // todo(liangbo) set lsn parameter.
+  TS_LSN scan_lsn_{UINT64_MAX};
 };
 
 }  //  namespace kwdbts

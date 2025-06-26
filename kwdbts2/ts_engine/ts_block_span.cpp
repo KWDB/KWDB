@@ -58,8 +58,10 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
-TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow)  // NOLINT(runtime/init)
-    : vgroup_id_(vgroup_id), entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow), convert_(*this) {  // NOLINT(runtime/init)
+TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version)
+    : vgroup_id_(vgroup_id), entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow),
+      convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
   assert(nrow_ >= 1);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }

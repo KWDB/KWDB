@@ -197,6 +197,7 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<En
     for (k_uint32 vgroup_id = 1; vgroup_id <= max_vgroup_id; ++vgroup_id) {
       std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id - 1];
       std::vector<EntityID> entities(vgroup->GetMaxEntityID());
+      if (entities.empty()) continue;
       std::iota(entities.begin(), entities.end(), 1);
       vgroup_ids[vgroup_id] = entities;
       vgroups[vgroup_id] = vgroup;
@@ -211,7 +212,7 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<En
   }
 
   TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, ts_spans, ts_col_type,
-                                                               ts_scan_cols, table_schema_mgr_,
+                                                               scan_cols, ts_scan_cols, table_schema_mgr_,
                                                                table_version, offset, limit);
   KStatus s = ts_iter->Init(reverse);
   if (s != KStatus::SUCCESS) {
