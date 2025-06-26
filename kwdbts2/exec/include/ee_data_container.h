@@ -26,9 +26,7 @@
 #include "ee_pb_plan.pb.h"
 #include "ee_global.h"
 
-class BigTable;
 
-struct AttributeInfo;
 
 namespace kwdbts {
 

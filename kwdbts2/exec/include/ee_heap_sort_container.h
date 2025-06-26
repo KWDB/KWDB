@@ -21,35 +21,42 @@
 
 #include "kwdb_type.h"
 #include "ee_data_chunk.h"
+// #include "rocksdb/db.h"
 #include "ee_pb_plan.pb.h"
 
 namespace kwdbts {
 
 /**
- * @brief MemRowContainer
- * @details A memory-sorting container based on DataChunk
+ * @brief HeapSortContainer
+ * @details A memory-heap-sorting container based on DataChunk
  */
-class MemRowContainer : public DataContainer, public std::enable_shared_from_this<MemRowContainer> {
+class HeapSortContainer : public DataContainer, public std::enable_shared_from_this<HeapSortContainer> {
  public:
-  explicit MemRowContainer(ColumnInfo* col_info, k_int32 col_num)
-      : col_info_(col_info), col_num_(col_num) {
-    row_size_ = DataChunk::ComputeRowSize(col_info, col_num);
-    capacity_ = ComputeCapacity();
-  }
-
-  MemRowContainer(std::vector<ColumnOrderInfo>& order_info,
-                         ColumnInfo* col_info, k_int32 col_num)
+  HeapSortContainer(std::vector<ColumnOrderInfo>& order_info,
+                    ColumnInfo* col_info, k_int32 col_num)
       : order_info_(order_info),
         col_info_(col_info),
-        col_num_(col_num) {
+        col_num_(col_num),
+        compare_(this, order_info_),
+        selection_heap_(compare_) {
     row_size_ = DataChunk::ComputeRowSize(col_info, col_num);
     capacity_ = ComputeCapacity();
   }
 
+  HeapSortContainer(std::vector<ColumnOrderInfo>& order_info,
+                    ColumnInfo* col_info, k_int32 col_num, k_uint32 capacity)
+      : order_info_(order_info),
+        col_info_(col_info),
+        col_num_(col_num),
+        compare_(this, order_info_),
+        selection_heap_(compare_),
+        capacity_(capacity) {
+    row_size_ = DataChunk::ComputeRowSize(col_info, col_num);
+  }
 
-  ~MemRowContainer() override;
+  ~HeapSortContainer() override;
 
-  std::shared_ptr<MemRowContainer> Ptr() {
+  std::shared_ptr<HeapSortContainer> Ptr() {
     return shared_from_this();
   }
   KStatus Append(DataChunkPtr& chunk) override;
@@ -83,9 +90,6 @@ class MemRowContainer : public DataContainer, public std::enable_shared_from_thi
 
   void Reset();
 
-  void GetRowInCacheChunks(k_uint32 row, k_uint32* chunk_index,
-                               k_uint32* row_in_chunk);
-
   KStatus UpdateWriteCacheChunk(bool& isUpdated);
 
   ColumnInfo* col_info_{nullptr};  // column info
@@ -95,11 +99,12 @@ class MemRowContainer : public DataContainer, public std::enable_shared_from_thi
 
   std::vector<ColumnOrderInfo> order_info_;
   std::vector<k_uint32> selection_;
-  k_int32 current_sel_idx_{-1};
+  OrderColumnCompare compare_;
+  std::priority_queue<k_uint32, std::vector<k_uint32>, OrderColumnCompare> selection_heap_;
   k_uint32 count_{0};  // total row number
-
-  std::vector<DataChunkPtr> mem_chunk_ptrs_;
-  DataChunkPtr sorted_chunk_ptr_;
+  k_int32 current_line_{-1};  // current row
+  DataChunk* input_chunk_ptr_;
+  DataChunkPtr mem_chunk_ptr_;
   k_bool disorder_{true};
 };
 

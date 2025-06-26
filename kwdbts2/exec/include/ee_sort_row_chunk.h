@@ -59,6 +59,7 @@ class ISortableChunk : public DataChunk {
 };
 class ColumnCompare {
  public:
+  virtual ~ColumnCompare() = default;
   virtual bool operator()(DatumPtr a_ptr, DatumPtr b_ptr) = 0;
   k_uint32 sort_row_size_;
 };
@@ -76,6 +77,8 @@ class AllConstantColumnCompare : public ColumnCompare {
   explicit AllConstantColumnCompare(ISortableChunk *chunk) : chunk_(chunk) {
     sort_row_size_ = chunk->GetSortRowSize();
   }
+
+  ~AllConstantColumnCompare() override = default;
 
   bool operator()(DatumPtr a_ptr, DatumPtr b_ptr) override;
 
@@ -99,6 +102,8 @@ class HasNonConstantColumnCompare : public ColumnCompare {
         col_offset_(chunk->GetColOffset()) {
           sort_row_size_ = chunk->GetSortRowSize();
         }
+
+  ~HasNonConstantColumnCompare() override = default;
 
   bool operator()(DatumPtr a_ptr, DatumPtr b_ptr) override;
 
@@ -154,6 +159,20 @@ class SortRowChunk : public ISortableChunk {
     col_num_ = col_num;
   }
 
+  explicit SortRowChunk(ColumnInfo *col_info,
+                        std::vector<ColumnOrderInfo> order_info,
+                        k_int32 col_num, k_uint32 capacity,
+                        k_int64 max_output_count, k_uint64 base_count,
+                        k_bool force_constant)
+      : order_info_(order_info),
+        max_output_count_(max_output_count),
+        base_count_(base_count),
+        force_constant_(force_constant) {
+    capacity_ = capacity;
+    col_info_ = col_info;
+    col_num_ = col_num;
+  }
+
   k_bool Initialize() override;
   ColumnInfo *GetColumnInfo() override { return ISortableChunk::col_info_; }
 
@@ -166,7 +185,7 @@ class SortRowChunk : public ISortableChunk {
   DatumPtr GetRowData(k_uint32 row);
   DatumPtr GetRowData();
   KStatus CopyWithSortFrom(SortRowChunkPtr &data_chunk_ptr);
-
+  KStatus Sort();
   [[nodiscard]] inline k_uint32 Capacity() const { return capacity_; }
   [[nodiscard]] inline DatumPtr GetData() const { return data_; }
   [[nodiscard]] inline DatumPtr GetNonConstantData() const {

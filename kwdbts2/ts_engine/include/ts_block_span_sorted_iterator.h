@@ -196,7 +196,7 @@ class TsBlockSpanSortedIterator {
             dedup_row_info = next_span_row_info;
             iter++;
           }
-          cur_block_span->Truncate(1);
+          cur_block_span->TrimFront(1);
         } else {
           cur_block_span->SplitFront(row_idx, block_span);
           iter = span_row_infos_.end();
@@ -221,7 +221,7 @@ class TsBlockSpanSortedIterator {
           if (!is_reverse_) {
             iter->block_span->SplitFront(1, block_span);
           } else {
-            iter->block_span->Truncate(1);
+            iter->block_span->TrimFront(1);
           }
           if (iter->block_span->GetRowNum() != 0) {
             TsBlockSpanRowInfo next_row_info = getFirstRowInfo(iter->block_span);
@@ -262,7 +262,7 @@ class TsBlockSpanSortedIterator {
             dedup_row_info = next_span_row_info;
             iter++;
           }
-          cur_block_span->Truncate(1);
+          cur_block_span->TrimFront(1);
         } else {
           cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
           iter = span_row_infos_.end();
@@ -273,7 +273,7 @@ class TsBlockSpanSortedIterator {
       while (iter != span_row_infos_.end()) {
         if (iter->IsSameEntityAndTs(dedup_row_info)) {
           if (!is_reverse_) {
-            iter->block_span->Truncate(1);
+            iter->block_span->TrimFront(1);
           } else {
             iter->block_span->SplitFront(1, block_span);
           }

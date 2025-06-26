@@ -514,6 +514,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         // 3. get partition for metric data.
         auto p_time = convertTsToPTime(tbl->ts, (DATATYPE)last_row_info.info[0].type);
         auto partition = current->GetPartition(last_row_info.database_id, p_time);
+        if (partition == nullptr) {
+          LOG_ERROR("cannot find partition: database_id[%u], p_time[%lu]", last_row_info.database_id, p_time);
+        }
         assert(partition != nullptr);
         if (!partition->HasDirectoryCreated() &&
             new_created_partitions.find(partition) == new_created_partitions.end()) {
@@ -1001,8 +1004,9 @@ const std::vector<KwTsSpan>& ts_spans) {
   }
   return KStatus::SUCCESS;
 }
+
 KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
-const std::vector<KwTsSpan>& ts_spans) {
+                                 const std::vector<KwTsSpan>& ts_spans) {
   TSEntityID entity_id;
   TSSlice p_tag{primary_tag.data(), primary_tag.length()};
   auto s = getEntityIdByPTag(ctx, tbl_id, p_tag, &entity_id);

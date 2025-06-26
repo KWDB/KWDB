@@ -358,7 +358,6 @@ KStatus TagRowBatch::GetEntities(std::vector<EntityResultIndex> *entities) {
     if (hash_entity_indexs_.empty()) {
       return FAIL;
     }
-    // 获取指向第一个元素的迭代器
     auto it = hash_entity_indexs_.begin();
     entities->reserve(it->second.size());
 
@@ -367,7 +366,6 @@ KStatus TagRowBatch::GetEntities(std::vector<EntityResultIndex> *entities) {
       entities->push_back(entity_indexs_[i]);
     }
 
-    // 从map中删除第一个元素
     hash_entity_indexs_.erase(it);
     return SUCCESS;
   }
@@ -409,11 +407,9 @@ void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
     if (isFilter_) {
       for (const auto &selection : selection_) {
         k_uint32 key = entity_indexs_[selection.entity_].hash_point;
-        // 如果映射中没有这个键，就创建一个新的vector
         if (hash_entity_indexs_.find(key) == hash_entity_indexs_.end()) {
           hash_entity_indexs_[key] = std::vector<k_uint32>();
         }
-        // 将EntityResultIndex对象添加到对应的vector中
         hash_entity_indexs_[key].emplace_back(selection.entity_);
       }
 
@@ -424,7 +420,6 @@ void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
         if (hash_entity_indexs_.find(key) == hash_entity_indexs_.end()) {
           hash_entity_indexs_[key] = std::vector<k_uint32>();
         }
-        // 将EntityResultIndex对象添加到对应的vector中
         hash_entity_indexs_[key].emplace_back(i);
       }
     }

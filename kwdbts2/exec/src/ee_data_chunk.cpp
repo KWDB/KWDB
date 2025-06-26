@@ -358,6 +358,12 @@ DatumPtr DataChunk::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
   return data_ + col_offset + sizeof(k_uint16);
 }
 
+DatumPtr DataChunk::GetVarData(k_uint32 col, k_uint16& len) {
+  k_uint32 col_offset = current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
+  std::memcpy(&len, data_ + col_offset, sizeof(k_uint16));
+  return data_ + col_offset + sizeof(k_uint16);
+}
+
 DatumPtr DataChunk::GetData(k_uint32 col) {
   return data_ + current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
 }
@@ -802,7 +808,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
     Return(FAIL);
   }
 
-  for (k_uint16 col = 0; col < col_num_; ++col) {
+  for (k_uint32 col = 0; col < col_num_; ++col) {
     if (IsNull(row, col)) {
       // write a negative value to indicate that the column is NULL
       if (ee_sendint(info, -1, 4) != SUCCESS) {

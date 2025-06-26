@@ -21,7 +21,7 @@
 
 namespace kwdbts {
 
-constexpr k_int64 OptimalDiskDataSize = 268435456;  // 256m
+constexpr k_uint64 OptimalDiskDataSize = 268435456;  // 256m
 
 void LoserTree::Init(k_int32 size, std::vector<io_file_reader_t>& reader_ptrs,
                      ColumnCompare* compare) {
@@ -91,9 +91,9 @@ KStatus DiskDataContainer::Init() {
         write_cache_chunk_ptr_->IsAllConstantInOrderCol();
     col_offset_ = write_cache_chunk_ptr_->GetColOffset();
     if (all_constant_in_order_col_) {
-      compare_ = new AllConstantColumnCompare(this);
+      compare_ = KNEW AllConstantColumnCompare(this);
     } else {
-      compare_ = new HasNonConstantColumnCompare(this);
+      compare_ = KNEW HasNonConstantColumnCompare(this);
     }
   }
   return SUCCESS;
@@ -131,6 +131,21 @@ KStatus DiskDataContainer::Append(DataChunkPtr &chunk) {
   return SUCCESS;
 }
 
+k_int32 DiskDataContainer::NextLine() {
+  if (current_line_ + 1 >= count_) {
+    current_line_ = -1;
+    return -1;
+  }
+  if (output_chunk_ptr_ == nullptr || output_chunk_ptr_->NextLine() == -1) {
+    auto code = NextChunk(output_chunk_ptr_);
+    if (code != EEIteratorErrCode::EE_OK || output_chunk_ptr_->NextLine() == -1) {
+      return -1;
+    }
+  }
+  current_line_++;
+  return current_line_;
+}
+
 EEIteratorErrCode DiskDataContainer::NextChunk(DataChunkPtr& chunk) {
   if (current_chunk_ + 1 >= read_merge_infos_->chunk_infos_.size()) {
     return EEIteratorErrCode::EE_END_OF_RECORD;
@@ -145,9 +160,15 @@ EEIteratorErrCode DiskDataContainer::NextChunk(DataChunkPtr& chunk) {
   if (ret != SUCCESS) {
     return EEIteratorErrCode::EE_ERROR;
   }
-  EEIteratorErrCode code = mergeMultipleLists(0u, &current_line_, true);
+  EEIteratorErrCode code = mergeMultipleLists(0u, &sorted_count_, true);
   if (code != EEIteratorErrCode::EE_OK) return code;
   write_cache_chunk_ptr_->DecodeData();
+  output_chunk_start_row_index_ = write_merge_infos_->count_;
+  write_merge_infos_->chunk_infos_.push_back(
+      {write_cache_chunk_ptr_->Count(), write_merge_infos_->count_, 0,
+       0});  //  useless offset and non constant size after last merge sort
+  write_merge_infos_->batch_chunk_indexs_.back().push(write_merge_infos_->chunk_infos_.size() - 1);
+  write_merge_infos_->count_ += write_cache_chunk_ptr_->Count();
   chunk = std::move(write_cache_chunk_ptr_);
   current_chunk_++;
   return EEIteratorErrCode::EE_OK;
@@ -160,6 +181,41 @@ k_uint32 DiskDataContainer::ComputeCapacity() {
   } else {
     return static_cast<k_uint32>(capacity);
   }
+}
+
+bool DiskDataContainer::IsNull(k_uint32 row, k_uint32 col) {
+  if (row < output_chunk_start_row_index_ || row >= write_merge_infos_->count_) {
+    return true;
+  }
+  return output_chunk_ptr_->IsNull(
+      row - output_chunk_start_row_index_,
+      col);
+}
+
+bool DiskDataContainer::IsNull(k_uint32 col) {
+  return output_chunk_ptr_->IsNull(col);
+}
+
+DatumPtr DiskDataContainer::GetData(k_uint32 row, k_uint32 col) {
+  if (row < output_chunk_start_row_index_ || row >= write_merge_infos_->count_) {
+    return nullptr;
+  }
+  return output_chunk_ptr_->GetData(
+      row - output_chunk_start_row_index_,
+      col);
+}
+
+DatumPtr DiskDataContainer::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
+  if (row < output_chunk_start_row_index_ || row >= write_merge_infos_->count_) {
+    return nullptr;
+  }
+  return output_chunk_ptr_->GetData(
+      row - output_chunk_start_row_index_,
+      col, len);
+}
+
+DatumPtr DiskDataContainer::GetData(k_uint32 col) {
+  return output_chunk_ptr_->GetData(col);
 }
 
 KStatus DiskDataContainer::UpdateReadCacheChunk() {
@@ -243,7 +299,7 @@ void DiskDataContainer::Sort() {
     loser_tree_.Init(read_merge_infos_->batch_chunk_indexs_.size(), cache_chunk_readers_, compare_);
   }
 
-  current_line_ = 0;
+  sorted_count_ = 0;
 }
 
 void DiskDataContainer::ReloadReadPtr(
