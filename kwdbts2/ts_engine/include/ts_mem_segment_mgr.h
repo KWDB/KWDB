@@ -38,7 +38,7 @@ struct TSMemSegRowData {
   TSEntityID entity_id;
   timestamp64 ts;
   TS_LSN lsn;
-  uint32_t row_idx_in_lsn;
+  uint32_t row_idx_in_mem_seg;
   TSSlice row_data;
 
  private:
@@ -54,10 +54,9 @@ struct TSMemSegRowData {
   inline bool operator<(const TSMemSegRowData& b) const {
     return Compare(b) < 0;
   }
-  void SetData(timestamp64 cts, TS_LSN clsn, uint32_t row_idx, const TSSlice& crow_data) {
+  void SetData(timestamp64 cts, TS_LSN clsn, const TSSlice& crow_data) {
     ts = cts;
     lsn = clsn;
-    row_idx_in_lsn = row_idx;
     row_data = crow_data;
   }
   static size_t GetKeyLen() {
@@ -79,7 +78,7 @@ struct TSMemSegRowData {
     uint64_t cts = ts - INT64_MIN;
     HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
     HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
-    HTOBEFUNC(buf, htobe32(row_idx_in_lsn), sizeof(row_idx_in_lsn));
+    HTOBEFUNC(buf, htobe32(row_idx_in_mem_seg), sizeof(row_idx_in_mem_seg));
   }
 
   inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {
@@ -156,6 +155,7 @@ struct TSRowDataComparator {
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
  private:
+  std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> cur_size_{0};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
@@ -327,7 +327,8 @@ class TsMemSegmentManager {
 
   void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems);
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows = nullptr);
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
+    std::list<TSMemSegRowData>* rows = nullptr);
 
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
                               LifeTime* lifetime = nullptr);

@@ -100,7 +100,7 @@ TEST_F(TsMemSegMgrTest, empty) {
 TEST_F(TsMemSegMgrTest, insertOneRow) {
   uint64_t row_value = 123456789;
   TSMemSegRowData tmp_data(1, 1001, 9, 100001);
-  tmp_data.SetData(10086, 1009, 1, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
+  tmp_data.SetData(10086, 1009, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
   auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
   ASSERT_TRUE(s == KStatus::SUCCESS);
 }
@@ -108,7 +108,7 @@ TEST_F(TsMemSegMgrTest, insertOneRow) {
 TEST_F(TsMemSegMgrTest, insertOneRowAndSearch) {
   uint64_t row_value = 123456789;
   TSMemSegRowData tmp_data(1, 1001, 9, 100001);
-  tmp_data.SetData(10086, 1009, 1, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
+  tmp_data.SetData(10086, 1009, TSSlice{reinterpret_cast<char*>(&row_value), sizeof(row_value)});
   auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
   ASSERT_TRUE(s == KStatus::SUCCESS);
   std::list<shared_ptr<TsBlockSpan>> blocks;
@@ -141,7 +141,7 @@ TEST_F(TsMemSegMgrTest, insertSomeRowsAndSearch) {
     uint64_t* cur_value = new uint64_t(row_value + i);
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9, entity_id);
-    tmp_data.SetData(10086 + i, 1009 + i, 1, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
+    tmp_data.SetData(10086 + i, 1009 + i, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
@@ -182,7 +182,7 @@ TEST_F(TsMemSegMgrTest, DiffLSNAndSearch) {
     uint64_t* cur_value = new uint64_t(row_value + i);
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9, entity_id);
-    tmp_data.SetData(10086, 1009 + i, 1, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
+    tmp_data.SetData(10086, 1009 + i, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
@@ -222,7 +222,7 @@ TEST_F(TsMemSegMgrTest, DiffEntityAndSearch) {
     uint64_t* cur_value = new uint64_t(row_value + i);
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9, i % entity_num + 1);
-    tmp_data.SetData(10086 + i, 1009, 1, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
+    tmp_data.SetData(10086 + i, 1009, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
@@ -266,7 +266,7 @@ TEST_F(TsMemSegMgrTest, DiffVersionAndSearch) {
     uint64_t* cur_value = new uint64_t(row_value + i);
     values.push_back(cur_value);
     TSMemSegRowData tmp_data(db_id, table_id, 9 + i % version_num, entity_id);
-    tmp_data.SetData(10086 + i, 1009, 1, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
+    tmp_data.SetData(10086 + i, 1009, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
     auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
@@ -313,7 +313,7 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
         uint64_t* cur_value = new uint64_t(row_value + i);
         values.push_back(cur_value);
         TSMemSegRowData tmp_data(db_id, table_id + tbl_id, 9 + v_num, entity_id);
-        tmp_data.SetData(10086 + i, 1009 + i, 1, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
+        tmp_data.SetData(10086 + i, 1009 + i, TSSlice{reinterpret_cast<char*>(cur_value), sizeof(uint64_t)});
         auto s = mem_seg_mgr_.PutData({reinterpret_cast<char*>(&tmp_data), sizeof(tmp_data)}, tmp_data.entity_id, 1);
         ASSERT_TRUE(s == KStatus::SUCCESS);
       }
