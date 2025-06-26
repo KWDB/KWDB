@@ -32,6 +32,7 @@
 #include "libkwdbts2.h"
 #include "sys_utils.h"
 #include "ts_entity_segment.h"
+#include "ts_entity_segment_builder.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_iterator_v2_impl.h"
@@ -436,23 +437,27 @@ KStatus TsVGroup::Compact(int thread_num) {
         auto entity_segment = cur_partition->GetEntitySegment();
 
         auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
-        if (entity_segment == nullptr) {
-          entity_segment = std::make_shared<TsEntitySegment>(root_path.string());
-        }
 
         // 2. Build the column block.
-        TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                       cur_partition->GetPartitionIdentifier(), entity_segment, last_segments);
-        KStatus s = builder.BuildAndFlush(&update);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("partition[%s] compact failed", path_.c_str());
+        {
+          TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
+                                         cur_partition->GetPartitionIdentifier(), entity_segment, last_segments);
+          KStatus s = builder.Open();
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
+          }
+          s = builder.BuildAndFlush(&update);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
+          }
         }
-        // 3. Set the compacted version.
 
+        // 3. Set the compacted version.
         for (auto& last_segment : last_segments) {
           update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
         }
-
+        uint64_t entity_header_num = entity_segment == nullptr ? 1 : entity_segment->GetEntityHeaderFileNum() + 1;
+        entity_segment = std::make_shared<TsEntitySegment>(root_path.string(), entity_header_num);
         update.SetEntitySegment(cur_partition->GetPartitionIdentifier(), entity_segment);
       }
     });

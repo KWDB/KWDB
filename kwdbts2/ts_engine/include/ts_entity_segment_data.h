@@ -19,20 +19,19 @@
 
 namespace kwdbts {
 static constexpr uint64_t TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC = 0xcb2ffe9321847274;
+static constexpr uint64_t TS_ENTITY_SEGMENT_AGG_FILE_MAGIC = 0xcb2ffe9321847275;
+
+struct TsAggAndBlockFileHeader {
+  uint64_t magic;
+  int32_t encoding;
+  int32_t status;
+};
 
 class TsEntitySegmentBlockFile {
  private:
   string file_path_;
-  std::unique_ptr<TsFile> file_ = nullptr;
-  std::unique_ptr<KRWLatch> file_mtx_;
-
-  struct TsBlockFileHeader {
-    uint64_t magic;
-    int32_t encoding;
-    int32_t status;
-  };
-
-  TsBlockFileHeader header_;
+  std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
+  TsAggAndBlockFileHeader header_;
 
  public:
   explicit TsEntitySegmentBlockFile(const string& file_path);
@@ -40,8 +39,7 @@ class TsEntitySegmentBlockFile {
   ~TsEntitySegmentBlockFile();
 
   KStatus Open();
-  KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
-  KStatus ReadData(uint64_t offset, char* buff, size_t len);
+  KStatus ReadData(uint64_t offset, char** buff, size_t len);
 };
 
 /*
@@ -81,17 +79,10 @@ class TsEntitySegmentBlockFile {
  * - min_str: Actual string length
  */
 class TsEntitySegmentAggFile {
+ private:
   string file_path_;
-  std::unique_ptr<TsFile> file_;
-  std::unique_ptr<KRWLatch> agg_file_mtx_;
-
-  struct TsAggFileHeader {
-    uint64_t magic;               // Magic number for block.e file.
-    int32_t encoding;             // Encoding scheme.
-    int32_t status;               // status flag.
-  };
-
-  TsAggFileHeader header_;
+  std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
+  TsAggAndBlockFileHeader header_;
 
  public:
   explicit TsEntitySegmentAggFile(const string& file_path);
@@ -99,8 +90,7 @@ class TsEntitySegmentAggFile {
   ~TsEntitySegmentAggFile() {}
 
   KStatus Open();
-  KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
-  KStatus ReadAggData(uint64_t offset, char* buff, size_t len);
+  KStatus ReadAggData(uint64_t offset, char** buff, size_t len);
 };
 
 }  // namespace kwdbts
