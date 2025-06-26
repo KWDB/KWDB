@@ -137,9 +137,13 @@ class TsTableV2Impl : public TsTable {
    */
   KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                     KwTsSpan ts_span, uint64_t mtr_id) override;
-
+  KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) override;
+  KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                const KwTsSpan& ts_span, uint64_t* volume) override;
+  KStatus GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                const KwTsSpan& ts_span, timestamp64* half_ts) override;
   KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                            KwTsSpan ts_span, uint64_t* count);
+                            KwTsSpan ts_span, uint64_t* count) override;
   /**
    * @brief Delete data within a hash range, usually used for data migration.
    * @param[in] range_group_id RangeGroupID

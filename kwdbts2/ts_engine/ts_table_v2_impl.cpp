@@ -355,7 +355,23 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
     if (s != KStatus::SUCCESS) {
       LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
-    
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+KwTsSpan ts_span, uint64_t* count) {
+  HashIdSpan hash_span{begin_hash, end_hash};
+  vector<EntityResultIndex> entity_store;
+  auto s = getEntityIdByHashSpan(ctx, hash_span, entity_store);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getEntityIdByHashSpan failed.");
+    return s;
+  }
+  s = GetEntityRowCount(ctx, entity_store, {ts_span}, count);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityRowCount failed.");
+    return s;
   }
   return KStatus::SUCCESS;
 }
@@ -366,6 +382,10 @@ KwTsSpan ts_span, uint64_t mtr_id) {
   uint64_t row_num_bef = 0;
   uint64_t row_num_aft = 0;
   GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_bef);
+  if (row_num_bef > 0) {
+    LOG_INFO("DeleteTotalRange hash[%lu ~ %lu], ts[%ld ~ %ld], rows[%lu].",
+      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num_bef);
+  }
 #endif
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
@@ -374,14 +394,109 @@ KwTsSpan ts_span, uint64_t mtr_id) {
     LOG_ERROR("getEntityIdByHashSpan failed.");
     return s;
   }
-  for(auto& entity : entity_store) {
+  for (auto& entity : entity_store) {
     // no write wal ,so no lsn. we allocate one in function.
     auto s = GetVGroupByID(entity.subGroupId)->DeleteData(ctx, table_id_, entity.entityId, UINT64_MAX, {ts_span});
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("");
+      LOG_ERROR("DeleteData failed.");
       return s;
     }
   }
+  #ifdef K_DEBUG
+    GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_aft);
+      LOG_INFO("DeleteTotalRange hash[%lu ~ %lu], ts[%ld ~ %ld], before rows[%lu], after rows[%lu].",
+        begin_hash, end_hash, ts_span.begin, ts_span.end, row_num_bef, row_num_aft);
+  #endif
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) {
+  // fixed tuple length of one row.
+  size_t row_length = 0;
+  std::vector<AttributeInfo> schemas;
+  auto s = table_schema_mgr_->GetColumnsExcludeDropped(schemas);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetAvgTableRowSize failed. at getting schema.");
+    return s;
+  }
+  for (auto& col : schemas) {
+    if (col.type == DATATYPE::VARSTRING || col.type == DATATYPE::VARBINARY) {
+      row_length += col.max_len;
+    } else {
+      row_length += col.size;
+    }
+  }
+  // todo(liangbo01): make precise estimate if needed.
+  *row_size = row_length;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+const KwTsSpan& ts_span, uint64_t* volume) {
+  uint64_t row_num = 0;
+  auto s = GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDataVolume hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
+      begin_hash, end_hash, ts_span.begin, ts_span.end);
+    return s;
+  }
+  uint64_t row_size = 0;
+  s = GetAvgTableRowSize(ctx, &row_size);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDataVolume hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
+      begin_hash, end_hash, ts_span.begin, ts_span.end);
+    return s;
+  }
+  *volume = row_num * row_size;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+const KwTsSpan& ts_span, timestamp64* half_ts) {
+  uint64_t row_num = 0;
+  HashIdSpan hash_span{begin_hash, end_hash};
+  vector<EntityResultIndex> entity_store;
+  auto s = getEntityIdByHashSpan(ctx, hash_span, entity_store);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getEntityIdByHashSpan failed.");
+    return s;
+  }
+  s = GetEntityRowCount(ctx, entity_store, {ts_span}, &row_num);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
+      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
+    return s;
+  }
+  if (row_num == 0) {
+    LOG_INFO("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] has no rows left.",
+      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
+    *half_ts = (ts_span.begin + ts_span.end) / 2;
+    return KStatus::SUCCESS;
+  }
+  std::vector<KwTsSpan> ts_spans{ts_span};
+  std::vector<k_uint32> scan_cols{0};
+  TsIterator *iter = nullptr;
+  Defer defer{[&]() {
+    if (iter != nullptr) {
+      delete iter;
+    }
+  }};
+  // find half ts by offset iterator.
+  s = GetOffsetIterator(ctx, entity_store, ts_spans, scan_cols, 1, &iter, row_num / 2, 1, false);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetOffsetIterator failed.");
+    return s;
+  }
+  uint32_t count;
+  ResultSet res;
+  res.setColumnNum(1);
+  s = iter->Next(&res, &count);
+  if (KStatus::FAIL == s) {
+    LOG_ERROR("TsTableIterator::Next() Failed");
+    return s;
+  }
+  assert(count == 1);
+  *half_ts = KTimestamp(res.data[0][0]->mem);
   return KStatus::SUCCESS;
 }
 

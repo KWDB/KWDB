@@ -966,7 +966,7 @@ const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<con
     if (isTimestampInSpans(ts_spans, p_start, p_end)) {
       s = func(p);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot DeleteData for entity[%lu]", entity_id);
+        LOG_ERROR("func failed.");
         return s;
       }
     }
@@ -984,7 +984,7 @@ const std::vector<KwTsSpan>& ts_spans) {
     return s;
   }
   if (entity_id > 0) {
-    s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans,
+    s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
       [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {
