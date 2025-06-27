@@ -1244,11 +1244,11 @@ func scanLockStrength(forUpdate bool) lock.Strength {
 }
 
 func (*TsRollbackRequest) flags() int {
-	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure
+	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure | isRange
 }
 
 func (*TsCommitRequest) flags() int {
-	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure
+	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure | isRange
 }
 
 func (*GetRequest) flags() int {

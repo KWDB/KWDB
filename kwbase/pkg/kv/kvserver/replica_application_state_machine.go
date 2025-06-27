@@ -27,6 +27,7 @@ package kvserver
 import (
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
@@ -646,7 +647,9 @@ func (r *Replica) stageTsBatchRequest(
 			*roachpb.TsDeleteRequest,
 			*roachpb.TsDeleteMultiEntitiesDataRequest,
 			*roachpb.TsDeleteEntityRequest,
-			*roachpb.TsTagUpdateRequest:
+			*roachpb.TsTagUpdateRequest,
+			*roachpb.TsCommitRequest,
+			*roachpb.TsRollbackRequest:
 			tableID = uint64(r.Desc().TableId)
 			isTsRequest = true
 		case *roachpb.ClearRangeRequest:
@@ -685,8 +688,12 @@ func (r *Replica) stageTsBatchRequest(
 				payload = append(payload, req.Value.RawBytes)
 				if payload != nil {
 					if req.TsTransaction != nil {
+						_, tableID, err = keys.DecodeTablePrefix(req.Key)
+						if err != nil {
+							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+						}
 						if err := r.store.TsEngine.TransBegin(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
-							// todo(tyh)
+							//return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutData(1, payload, tsTxnID, true); err != nil {
@@ -724,8 +731,12 @@ func (r *Replica) stageTsBatchRequest(
 				var entitiesAffect tse.EntitiesAffect
 				if req.Values != nil {
 					if req.TsTransaction != nil {
-						if err := r.store.TsEngine.TransBegin(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
-							// todo(tyh)
+						_, tableID, err = keys.DecodeTablePrefix(req.Key)
+						if err != nil {
+							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+						}
+						if err := r.store.TsEngine.TransBegin(tableID, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
+							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL); err != nil {
@@ -888,12 +899,20 @@ func (r *Replica) stageTsBatchRequest(
 			}
 
 		case *roachpb.TsCommitRequest:
-			if err := r.store.TsEngine.TransCommit(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
-				// todo(tyh)
+			_, tableID, err = keys.DecodeTablePrefix(req.Key)
+			if err != nil {
+				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+			}
+			if err := r.store.TsEngine.TransCommit(tableID, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
+				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to commit transaction")
 			}
 		case *roachpb.TsRollbackRequest:
-			if err := r.store.TsEngine.TransRollback(1, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
-				// todo(tyh)
+			_, tableID, err = keys.DecodeTablePrefix(req.Key)
+			if err != nil {
+				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+			}
+			if err := r.store.TsEngine.TransRollback(tableID, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
+				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
 			}
 		}
 	}

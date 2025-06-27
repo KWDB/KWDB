@@ -454,7 +454,7 @@ type tsTxnHeartbeater struct {
 
 		finalObservedStatus roachpb.TransactionStatus
 	}
-	ranges roachpb.Spans
+	ranges *roachpb.Spans
 	tsTxn  roachpb.TsTransaction
 }
 
@@ -475,17 +475,17 @@ func (h *tsTxnHeartbeater) SendLocked(
 		case *roachpb.TsPutRequest:
 			span.Key = tdr.Key
 			span.EndKey = tdr.EndKey
-			h.ranges = append(h.ranges, span)
+			*h.ranges = append(*h.ranges, span)
 		case *roachpb.TsPutTagRequest:
 			span.Key = tdr.Key
 			span.EndKey = tdr.EndKey
-			h.ranges = append(h.ranges, span)
+			*h.ranges = append(*h.ranges, span)
 			tsTxn.ID = h.tsTxn.ID
 			tdr.TsTransaction = &tsTxn
 		case *roachpb.TsRowPutRequest:
 			span.Key = tdr.Key
 			span.EndKey = tdr.EndKey
-			h.ranges = append(h.ranges, span)
+			*h.ranges = append(*h.ranges, span)
 			tsTxn.ID = h.tsTxn.ID
 			tdr.TsTransaction = &tsTxn
 		default:
@@ -629,7 +629,7 @@ func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRe
 	record.ID = h.mu.transaction.ID
 	record.Status = roachpb.PENDING
 	record.LastHeartbeat = h.clock.Now()
-	record.Spans = append(record.Spans, h.ranges...)
+	record.Spans = append(record.Spans, *h.ranges...)
 	_, txnRecord, err := h.txn.DB().ScanAndWriteTxnRecord(ctx, record)
 	if err != nil {
 		return txnRecord, err

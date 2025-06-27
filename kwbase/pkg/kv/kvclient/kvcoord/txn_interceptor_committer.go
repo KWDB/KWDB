@@ -542,6 +542,7 @@ type tsTxnCommitter struct {
 	wrapped kv.Sender
 	txn     *kv.Txn
 	tsTxn   roachpb.TsTransaction
+	ranges  *roachpb.Spans
 }
 
 // SendLocked implements the lockedSender interface.
@@ -564,10 +565,11 @@ func (tc *tsTxnCommitter) SendLocked(
 		}
 		return nil, pErr
 	}
-	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, record.Spans, 0)
+	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, *tc.ranges, 0)
 	if pErr != nil {
 		// todo:
 	}
+	record.ID = tc.tsTxn.ID
 	record.Status = roachpb.COMMITTED
 	if err := tc.txn.DB().WriteTxnRecord(ctx, record); err != nil {
 		return nil, roachpb.NewError(err)
@@ -589,6 +591,7 @@ func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.T
 			},
 		})
 	}
+	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
@@ -610,6 +613,7 @@ func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn roachpb.TsT
 			},
 		})
 	}
+	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++

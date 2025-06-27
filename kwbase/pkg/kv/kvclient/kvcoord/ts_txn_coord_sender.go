@@ -238,6 +238,9 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 		}
 	}
 	if b.Txn() != nil {
+		var ranges roachpb.Spans
+		db.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
+		db.tss.interceptorAlloc.tsTxnCommitter.ranges = &ranges
 		db.tss.txn = b.Txn().Sender().Transaction()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = b.Txn().ID()
