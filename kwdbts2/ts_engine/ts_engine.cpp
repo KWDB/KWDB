@@ -154,6 +154,10 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
   std::shared_ptr<TsTable>& ts_table) {
   LOG_INFO("Create TsTable %lu begin.", table_id);
   KStatus s;
+  table_mutex_.lock();
+  Defer defer{[&]() {
+    table_mutex_.unlock();
+  }};
   ts_table = tables_cache_->Get(table_id);
   if (ts_table != nullptr) {
     LOG_INFO("TsTable %lu exist. no need create again.", table_id);

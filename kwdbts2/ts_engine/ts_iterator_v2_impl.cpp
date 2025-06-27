@@ -10,9 +10,13 @@
 // See the Mulan PSL v2 for more details.
 #include <limits>
 #include <cstring>
+#include <list>
+#include <memory>
+#include <vector>
+#include <algorithm>
+#include <string>
 #include "ts_vgroup.h"
 #include "ts_iterator_v2_impl.h"
-#include "ts_entity_partition.h"
 #include "engine.h"
 #include "ee_global.h"
 
@@ -49,18 +53,7 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
 
   auto current = vgroup_->CurrentVersion();
-  auto partitions_v = current->GetPartitions(db_id_);
-
-  ts_partitions_.clear();
-  for (const auto& partition_ptr : partitions_v) {
-    TsPartition ts_partition;
-    ts_partition.ts_partition_range.begin = convertSecondToPrecisionTS(partition_ptr->GetStartTime(), ts_col_type_);
-    ts_partition.ts_partition_range.end = convertSecondToPrecisionTS(partition_ptr->GetEndTime(), ts_col_type_);
-    if (isTimestampInSpans(ts_spans_, ts_partition.ts_partition_range.begin, ts_partition.ts_partition_range.end)) {
-      ts_partition.ts_partition_version = partition_ptr;
-      ts_partitions_.emplace_back(ts_partition);
-    }
-  }
+  ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   return KStatus::SUCCESS;
 }
 
@@ -100,24 +93,17 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   ts_block_spans_.clear();
   UpdateTsSpans(ts);
   for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
-    bool skip_partition_file = false;
-    if (IsFilteredOut(ts_partitions_[cur_partition_index_].ts_partition_range.begin,
-                      ts_partitions_[cur_partition_index_].ts_partition_range.end, ts))  {
-      skip_partition_file = true;
-    }
-    TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter, skip_partition_file);
-    auto ret = e_paritition.Init();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetAllMemSegments failed.");
-      return ret;
+    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+    auto partition_version = ts_partitions_[cur_partition_index_];
+    if (IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
+                      partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
+      continue;
     }
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    ret = e_paritition.GetBlockSpan(&cur_block_span, table_schema_mgr_, table_version_);
-    if (ret != KStatus::SUCCESS) {
+    auto s = partition_version->GetBlockSpan(filter, &cur_block_span, table_schema_mgr_, table_version_);
+    if (s != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
-      return ret;
+      return s;
     }
     ts_block_spans_.splice(ts_block_spans_.begin(), cur_block_span);
   }
@@ -298,8 +284,8 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
 }
 
-inline bool PartitionLessThan(TsPartition& a, TsPartition& b) {
-  return a.ts_partition_version->GetStartTime() < b.ts_partition_version->GetEndTime();
+inline bool PartitionLessThan(std::shared_ptr<const TsPartitionVersion>& a, std::shared_ptr<const TsPartitionVersion>& b) {
+  return a->GetStartTime() < b->GetEndTime();
 }
 
 KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
@@ -505,15 +491,9 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       break;
     }
     cur_partition_index_ = first_partition_idx;
-    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
-    TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
-    auto ret = e_paritition.Init();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetAllMemSegments failed.");
-      return ret;
-    }
-    ret = e_paritition.GetBlockSpan(&ts_block_spans_, table_schema_mgr_, table_version_);
+    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+    auto partition_version = ts_partitions_[cur_partition_index_];
+    auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -531,15 +511,9 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       break;
     }
     cur_partition_index_ = last_partition_idx;
-    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-    auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
-    TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
-    auto ret = e_paritition.Init();
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetAllMemSegments failed.");
-      return ret;
-    }
-    ret = e_paritition.GetBlockSpan(&ts_block_spans_, table_schema_mgr_, table_version_);
+    TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+    auto partition_version = ts_partitions_[cur_partition_index_];
+    auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -556,15 +530,9 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     cur_last_col_idxs_.clear();
     for (; first_partition_idx <= last_partition_idx; ++first_partition_idx) {
       cur_partition_index_ = first_partition_idx;
-      TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_spans_};
-      auto partition_version = ts_partitions_[cur_partition_index_].ts_partition_version;
-      TsEntityPartition e_paritition(partition_version, scan_lsn_, ts_col_type_, filter);
-      auto ret = e_paritition.Init();
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("GetAllMemSegments failed.");
-        return ret;
-      }
-      ret = e_paritition.GetBlockSpan(&ts_block_spans_, table_schema_mgr_, table_version_);
+      TsScanFilterParams filter{db_id_, table_id_, entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+      auto partition_version = ts_partitions_[cur_partition_index_];
+      auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
