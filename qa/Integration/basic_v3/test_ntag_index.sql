@@ -439,5 +439,17 @@ CREATE INDEX index_2 ON test_ntag_hash.t3(t_int8_1,code3,code5);
 explain select * from t3 where t_int8_1=8 and code3=3 and code5=5;
 select * from t3 where t_int8_1=8 and code3=3 and code5=5;
 
+create table test_ntag_hash.t4(k_timestamp timestamptz not null,
+                              e1 int2  not null,
+                              e2 int
+) ATTRIBUTES (code0 int2 not null,code1 int2, code2 int4, code3 int8, code4 int8 ,code5 int8, val1 float4,val2 float8, location VARCHAR, color VARCHAR(128) not null,age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code0);
+INSERT INTO test_ntag_hash.t4 VALUES('2024-2-21 16:32:33.823',20002,1000002,  900,100,200,300,400,500,100.0,200.0,'beijing','red','2','社会性别女','1','cuteandlovely');
+select * from test_ntag_hash.t4;
+delete from test_ntag_hash.t4 where code0 = 900;
+select * from test_ntag_hash.t4;
+select * from [show tag values from test_ntag_hash.t1];
+select * from test_ntag_hash.t4 where code0 = 900;
+
+
 use defaultdb;
 drop database test_ntag_hash cascade;
