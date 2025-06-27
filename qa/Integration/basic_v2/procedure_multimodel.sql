@@ -1,6 +1,7 @@
 -- TEST multi model
 set cluster setting ts.sql.query_opt_mode = 111100;
 set cluster setting sql.stats.tag_automatic_collection.enabled = false;
+set cluster setting sql.stats.automatic_collection.enabled = false;
 DROP DATABASE IF EXISTS db_pipec cascade;
 CREATE TS DATABASE db_pipec;
 -- TS table
@@ -1139,7 +1140,6 @@ set cluster setting sql.stats.tag_automatic_collection.enabled = true;
 
 set cluster setting ts.sql.query_opt_mode = 1100;
 set cluster setting sql.stats.tag_automatic_collection.enabled = false;
-set cluster setting sql.stats.automatic_collection.enabled = false;
 CREATE TS DATABASE runba;
 
 CREATE TABLE runba.firegases00001 (

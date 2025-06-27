@@ -568,4 +568,32 @@ CALL test_procedure_my_rel.test_limit(1);
 CALL test_procedure_my_rel.test_limit(1);
 drop database test_procedure_my_ts cascade;
 drop database test_procedure_my_rel cascade;
+
+set cluster setting sql.pg_encode_short_circuit.enabled=true;
+
+drop database if exists ts_db cascade;
+create ts database ts_db;
+CREATE TABLE ts_db.st(k_timestamp TIMESTAMP(9) not null,ts TIMESTAMPTZ, e1 DOUBLE) tags (code1 INT not null) primary tags(code1);
+INSERT INTO ts_db.st values(123100000, 123 ,-1.98, 1);
+INSERT INTO ts_db.st values(1000000, 1 ,-1.98, 1);
+
+set time zone 0;
+SELECT ts, k_timestamp, ts - k_timestamp FROM ts_db.st WHERE ts - k_timestamp BETWEEN '-60y' AND '60y' ORDER BY k_timestamp;
+select ln(e1) from ts_db.st;
+
+drop database ts_db cascade;
+
+drop database if exists test_alter cascade;
+create ts database test_alter;
+create table test_alter.t15(ts timestamp not null, a varchar(20)) tags(ptag int not null, attr1 varchar(100)) primary tags(ptag);
+insert into test_alter.t15 values(1000000007, NULL, 3, 'c');
+insert into test_alter.t15 values(1000000008, '-1.23', 3, 'c');
+insert into test_alter.t15 values(1000000009, '3.4e+100', 3, 'c');
+insert into test_alter.t15 values(1000000010, '3.4e+38', 4, 'd');
+select * from test_alter.t15 order by ts,ptag;;
+select * from test_alter.t15 where cast_check(a as float4)=false order by ts,ptag;
+alter table test_alter.t15 alter column a type float4;
+select * from test_alter.t15 order by ts,ptag;
+
+drop database test_alter cascade;
 set cluster setting sql.pg_encode_short_circuit.enabled=false;
