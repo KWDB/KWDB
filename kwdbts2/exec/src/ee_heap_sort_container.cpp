@@ -14,6 +14,7 @@
 #include <parallel/algorithm>
 #include <algorithm>
 #include <utility>
+#include <memory>
 
 #include "ee_common.h"
 #include "utils/big_table_utils.h"
@@ -68,7 +69,8 @@ KStatus HeapSortContainer::Append(DataChunkPtr& chunk) {
     count_ = mem_chunk_ptr_->Count();
     return ret;
   }
-  k_uint32 input_chunk_line = 0;
+  chunk->ResetLine();
+  k_int32 input_chunk_line = 0;
   if (resudual_count > 0) {
     ret = mem_chunk_ptr_->Append(chunk.get(), 0, resudual_count);
     for (k_uint32 i = 0; i <= resudual_count; i++) {
@@ -176,7 +178,7 @@ EEIteratorErrCode HeapSortContainer::NextChunk(DataChunkPtr& data_chunk) {
   return EEIteratorErrCode::EE_ERROR;
 }
 
-void HeapSortContainer::Sort() {
+KStatus HeapSortContainer::Sort() {
   selection_.resize(count_);
   for (k_int32 i = count_ - 1; i >= 0; i--) {
     selection_[i] = selection_heap_.top();
@@ -184,6 +186,7 @@ void HeapSortContainer::Sort() {
   }
 
   disorder_ = false;
+  return KStatus::SUCCESS;
 }
 
 }  // namespace kwdbts

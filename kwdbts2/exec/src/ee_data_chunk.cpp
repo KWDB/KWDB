@@ -917,7 +917,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         }
       } break;
       case KWDBTypeFamily::FloatFamily: {
-        k_char buf[30] = {0};
+        k_char buf[50] = {0};
         k_int32 n = 0;
 
         DatumPtr raw = GetData(row, col);
@@ -932,16 +932,17 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
           n = snprintf(buf, sizeof(buf), "%.17g", d);
         }
 
-        // write the length of column value
-        if (ee_sendint(info, n, 4) != SUCCESS) {
-          Return(FAIL);
-        }
         if (std::isnan(d)) {
           buf[0] = 'N';
           buf[1] = 'a';
           buf[2] = 'N';
           n = 3;
         }
+        // write the length of column value
+        if (ee_sendint(info, n, 4) != SUCCESS) {
+          Return(FAIL);
+        }
+
         // write string format
         if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
           Return(FAIL);
