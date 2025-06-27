@@ -961,17 +961,13 @@ const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<con
   auto db_id = tb_schema_mgr->GetDbID();
   auto ts_type = tb_schema_mgr->GetTsColDataType();
 
-  std::vector<std::shared_ptr<const TsPartitionVersion>> ps = version_manager_->Current()->GetPartitions(db_id);
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ps =
+    version_manager_->Current()->GetPartitions(db_id, ts_spans, ts_type);
   for (auto& p : ps) {
-    KTimestamp p_start = convertSecondToPrecisionTS(p->GetStartTime(), ts_type);
-    KTimestamp p_end = convertSecondToPrecisionTS(p->GetEndTime(), ts_type);
-    // check if current partition is cross with ts_spans.
-    if (isTimestampInSpans(ts_spans, p_start, p_end)) {
-      s = func(p);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("func failed.");
-        return s;
-      }
+    s = func(p);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("func failed.");
+      return s;
     }
   }
   return KStatus::SUCCESS;

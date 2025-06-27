@@ -83,7 +83,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
 
     auto current = vgroup->CurrentVersion();
-    auto partitions = current->GetPartitions(1);
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
     ASSERT_EQ(partitions.size(), 1);
 
     auto entity_segment = partitions[0]->GetEntitySegment();
@@ -221,7 +221,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     }
 
     current = vgroup->CurrentVersion();
-    partitions = current->GetPartitions(1);
+    partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
     ASSERT_EQ(partitions.size(), 1);
     std::vector<std::shared_ptr<TsLastSegment>> result = partitions[0]->GetAllLastSegments();
     ASSERT_EQ(result.size(), 1);
