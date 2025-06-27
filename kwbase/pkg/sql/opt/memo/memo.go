@@ -2536,25 +2536,27 @@ func addSortExprForTwaFunc(source RelExpr, sortExpr *SortExpr, hasSortExpr bool)
 			} else if src, ok := source.(*ScalarGroupByExpr); ok {
 				newSortExpr.Input = src.Input
 			}
-			provided = newSortExpr.ProvidedPhysical()
+			provided = newSortExpr.Input.ProvidedPhysical()
 		}
 
+		tsOrdered := false
 		// Add the columns associated with TWA functions to the ordering.
 		tsColSet.ForEach(func(i opt.ColumnID) {
-			alreadyExists := false
 			for _, orderingCol := range provided.Ordering {
 				if opt.ColumnID(orderingCol) == i {
-					alreadyExists = true
+					tsOrdered = true
 					break
 				}
 			}
-			if !alreadyExists {
+			if hasSortExpr {
 				provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(i, false))
+			} else {
+				newSortExpr.ProvidedPhysical().Ordering = append(newSortExpr.ProvidedPhysical().Ordering, opt.MakeOrderingColumn(i, false))
 			}
 		})
 
 		// If hasSortExpr is false, update the source input with the new sort expression.
-		if !hasSortExpr {
+		if !hasSortExpr && !tsOrdered {
 			if src, ok := source.(*GroupByExpr); ok {
 				src.Input = newSortExpr
 			} else if src, ok := source.(*ScalarGroupByExpr); ok {
