@@ -359,11 +359,13 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   metric_schemas_.insert({ts_version, tmp_bt});
   cur_metric_schema_ = tmp_bt;
 
-  tag_table_ = std::make_shared<TagTable>(schema_root_path_, tag_schema_path_, table_id_, 1);
-  if (tag_table_->create(tag_schema, ts_version, err_info) < 0) {
-    LOG_ERROR("failed to create the tag table %s%lu, error: %s",
-              tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
-    return FAIL;
+  if (tag_table_ == nullptr) {
+    tag_table_ = std::make_shared<TagTable>(schema_root_path_, tag_schema_path_, table_id_, 1);
+    if (tag_table_->create(tag_schema, ts_version, err_info) < 0) {
+      LOG_ERROR("failed to create the tag table %s%lu, error: %s",
+                tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
+      return FAIL;
+    }
   }
 
   // Update the latest version of table and other information
