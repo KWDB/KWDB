@@ -497,6 +497,63 @@ inline timestamp64 intersectLength(timestamp64 start1, timestamp64 end1, timesta
   // Otherwise, the intersection length is the difference between minEnd and maxStart
   return min_end - max_start;
 }
+// compare two values
+inline int cmp(void* l, void* r, int32_t type, int32_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+    case DATATYPE::BOOL:
+    case DATATYPE::BINARY: {
+      k_int32 ret = memcmp(l, r, size);
+      return ret;
+    }
+    case DATATYPE::INT16: {
+      k_int16 lv = *(static_cast<k_int16*>(l));
+      k_int16 rv = *(static_cast<k_int16*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP: {
+      k_int32 lv = *(static_cast<k_int32*>(l));
+      k_int32 rv = *(static_cast<k_int32*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO: {
+      k_int64 lv = *(static_cast<k_int64*>(l));
+      k_int64 rv = *(static_cast<k_int64*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::TIMESTAMP64_LSN:
+    case DATATYPE::TIMESTAMP64_LSN_MICRO:
+    case DATATYPE::TIMESTAMP64_LSN_NANO: {
+      timestamp64 lv = static_cast<TimeStamp64LSN*>(l)->ts64;
+      timestamp64 rv = static_cast<TimeStamp64LSN*>(r)->ts64;
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::FLOAT: {
+      float lv = *(static_cast<float*>(l));
+      float rv = *(static_cast<float*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::DOUBLE: {
+      double lv = *(static_cast<double*>(l));
+      double rv = *(static_cast<double*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::STRING: {
+      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size);
+      return ret;
+    }
+      break;
+    default:
+      break;
+  }
+  return false;
+}
 
 // [start, end] cross with spans
 inline bool isTimestampInSpans(const std::vector<KwTsSpan>& spans,

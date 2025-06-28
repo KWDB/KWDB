@@ -1666,57 +1666,6 @@ KStatus TSEngineImpl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
   return KStatus::SUCCESS;
 }
 
-int AggCalculator::cmp(void* l, void* r) {
-  switch (type_) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
-    case DATATYPE::BINARY: {
-      k_int32 ret = memcmp(l, r, size_);
-      return ret;
-    }
-    case DATATYPE::INT16: {
-      k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
-      return ret;
-    }
-    case DATATYPE::INT32:
-    case DATATYPE::TIMESTAMP: {
-      k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::INT64:
-    case DATATYPE::TIMESTAMP64:
-    case DATATYPE::TIMESTAMP64_MICRO:
-    case DATATYPE::TIMESTAMP64_NANO: {
-      double diff = (*(static_cast<k_int64*>(l))) - (*(static_cast<k_int64*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::TIMESTAMP64_LSN:
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-    case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      double diff = (*(static_cast<TimeStamp64LSN*>(l))).ts64 - (*(static_cast<TimeStamp64LSN*>(r))).ts64;
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::FLOAT: {
-      double diff = (*(static_cast<float*>(l))) - (*(static_cast<float*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::DOUBLE: {
-      double diff = (*(static_cast<double*>(l))) - (*(static_cast<double*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::STRING: {
-      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size_);
-      return ret;
-    }
-      break;
-    default:
-      break;
-  }
-  return false;
-}
-
 bool AggCalculator::isnull(size_t row) {
   if (!bitmap_) {
     return false;
@@ -1742,11 +1691,11 @@ void* AggCalculator::GetMax(void* base, bool need_to_new) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
   }
-  if (base && cmp(base, max) > 0) {
+  if (base && cmp(base, max, type_, size_) > 0) {
     max = base;
   }
   if (need_to_new && max) {
@@ -1764,11 +1713,11 @@ void* AggCalculator::GetMin(void* base, bool need_to_new) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
   }
-  if (base && cmp(base, min) < 0) {
+  if (base && cmp(base, min, type_, size_) < 0) {
     min = base;
   }
   if (need_to_new && min) {
@@ -1926,10 +1875,10 @@ bool AggCalculator::CalAllAgg(void* min_base, void* max_base, void* sum_base, vo
     }
 
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
     if (isSumType(type_)) {
