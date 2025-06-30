@@ -372,7 +372,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
       idx_info.emplace_back(meta->index_info(i));
     }
     // Note:: "idx_info" is the index that exists in the current version.
-    if(tag_table_->AddNewPartitionVersion(tag_schema, ts_version, err_info, idx_info) < 0) {
+    if (tag_table_->AddNewPartitionVersion(tag_schema, ts_version, err_info, idx_info) < 0) {
       LOG_ERROR("CreateTable add tag new version[%d] failed.", ts_version);
     }
   }
