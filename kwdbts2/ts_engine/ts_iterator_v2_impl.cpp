@@ -1524,6 +1524,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
 KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
   GetTerminationTime();
   is_reversed_ = is_reversed;
+  comparator_.is_reversed = is_reversed_;
   KStatus ret;
   ret = table_schema_mgr_->GetColumnsExcludeDropped(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {

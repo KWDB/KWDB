@@ -171,6 +171,16 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 };
 
+struct TimestampComparator {
+  bool is_reversed = false;
+  TimestampComparator() {}
+  TimestampComparator(bool reversed) : is_reversed(reversed) {}
+
+  bool operator()(const timestamp64& a, const timestamp64& b) const {
+    return is_reversed ? a < b : a > b;
+  }
+};
+
 class TsOffsetIteratorV2Impl : public TsIterator {
  public:
   TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
@@ -179,7 +189,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
                          uint32_t table_version, uint32_t offset, uint32_t limit) : vgroups_(vgroups),
-                         vgroup_ids_(vgroup_ids), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
+                         vgroup_ids_(vgroup_ids), comparator_(false), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
                          kw_scan_cols_(kw_scan_cols), ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
                          table_version_(table_version), offset_(offset), limit_(limit) {}
 
@@ -249,7 +259,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids_;
   std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups_;
   // map<timestamp, {vgroup_id, TsPartition}>
-  map<timestamp64, std::vector<pair<uint32_t, TsPartition>>> p_times_;
+  TimestampComparator comparator_;
+  map<timestamp64, std::vector<pair<uint32_t, TsPartition>>, TimestampComparator> p_times_;
   map<timestamp64, std::vector<pair<uint32_t, TsPartition>>>::iterator p_time_it_;
   
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
