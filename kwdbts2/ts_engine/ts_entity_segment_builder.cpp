@@ -191,8 +191,10 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
         block.bitmap[row_idx_in_block] = data_flag;
         uint32_t var_offset = block.buffer.size();
         memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
-        block.buffer.append(value.data, value.len);
-        block.var_rows.emplace_back(value.data, value.len);
+        if (data_flag == kValid) {
+          block.buffer.append(value.data, value.len);
+          block.var_rows.emplace_back(value.data, value.len);
+        }
       } else if (col_idx == 1) {
         block.buffer.append(col_val + span_row_idx * d_size, sizeof(timestamp64));
       }
@@ -367,7 +369,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
   KStatus s = KStatus::SUCCESS;
   if (cur_entity_item_.entity_id != entity_key.entity_id) {
     if (cur_entity_item_.entity_id != 0) {
-      s = entity_item_builder_.AppendEntityItem(cur_entity_item_);
+      s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append entity item failed.")
         return s;
@@ -384,7 +386,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
       } else {
         cur_entity_item_ = {entity_id};
       }
-      s = entity_item_builder_.AppendEntityItem(cur_entity_item_);
+      s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append entity item failed.")
         return s;
@@ -402,7 +404,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
     }
   }
   block_item.prev_block_id = cur_entity_item_.cur_block_id;
-  s = block_item_builder_.AppendBlockItem(block_item);
+  s = block_item_builder_->AppendBlockItem(block_item);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block item failed.")
     return s;
@@ -427,12 +429,12 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
     LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get block compress data failed.")
     return s;
   }
-  s = block_file_builder_.AppendBlock({data_buffer.data(), data_buffer.size()}, &block_item.block_offset);
+  s = block_file_builder_->AppendBlock({data_buffer.data(), data_buffer.size()}, &block_item.block_offset);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block failed.")
     return s;
   }
-  s = agg_file_builder_.AppendAggBlock({agg_buffer.data(), agg_buffer.size()}, &block_item.agg_offset);
+  s = agg_file_builder_->AppendAggBlock({agg_buffer.data(), agg_buffer.size()}, &block_item.agg_offset);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append agg block failed.")
   }
@@ -444,22 +446,22 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
 }
 
 KStatus TsEntitySegmentBuilder::Open() {
-  KStatus s = entity_item_builder_.Open();
+  KStatus s = entity_item_builder_->Open();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Open Entity Item File Failed");
     return s;
   }
-  s = block_item_builder_.Open();
+  s = block_item_builder_->Open();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Open Block Item File Failed");
     return s;
   }
-  s = block_file_builder_.Open();
+  s = block_file_builder_->Open();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Open Block File Failed");
     return s;
   }
-  s = agg_file_builder_.Open();
+  s = agg_file_builder_->Open();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Open Agg File Failed");
   }
@@ -586,7 +588,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     }
   }
   if (cur_entity_item_.entity_id != 0) {
-    entity_item_builder_.AppendEntityItem(cur_entity_item_);
+    entity_item_builder_->AppendEntityItem(cur_entity_item_);
   }
   if (cur_entity_segment_) {
     for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
@@ -596,7 +598,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
         return s;
       }
-      s = entity_item_builder_.AppendEntityItem(cur_entity_item_);
+      s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append entity item failed.")
         return s;

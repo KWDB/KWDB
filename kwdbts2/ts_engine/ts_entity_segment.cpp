@@ -37,15 +37,15 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
     LOG_ERROR("TsEntitySegmentEntityItemFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = *(TsEntityItemFileHeader*)result.data;
-  if (header_.status != TsFileStatus::READY) {
+  header_ = reinterpret_cast<TsEntityItemFileHeader*>(result.data);
+  if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentEntityItemFile not ready, file_path=%s", file_path_.c_str())
   }
   return s;
 }
 
 KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
-  if (entity_id > header_.entity_num) {
+  if (entity_id > header_->entity_num) {
     is_exist = false;
     entity_item = TsEntityItem{};
     entity_item.entity_id = entity_id;
@@ -69,11 +69,11 @@ uint32_t TsEntitySegmentEntityItemFile::GetFileNum() {
 }
 
 uint64_t TsEntitySegmentEntityItemFile::GetEntityNum() {
-  return header_.entity_num;
+  return header_->entity_num;
 }
 
 bool TsEntitySegmentEntityItemFile::IsReady() {
-  return header_.status == TsFileStatus::READY;
+  return header_->status == TsFileStatus::READY;
 }
 
 KStatus TsEntitySegmentBlockItemFile::Open() {
@@ -87,14 +87,14 @@ KStatus TsEntitySegmentBlockItemFile::Open() {
     LOG_ERROR("TsEntitySegmentBlockItemFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = *(TsBlockItemFileHeader*)result.data;
-  if (header_.status != TsFileStatus::READY) {
+  header_ = reinterpret_cast<TsBlockItemFileHeader*>(result.data);
+  if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentBlockItemFile not ready, file_path=%s", file_path_.c_str())
   }
   return s;
 }
 
-KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem& blk_item) {
+KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item) {
   TSSlice result;
   KStatus s = r_file_->Read(sizeof(TsBlockItemFileHeader) + (blk_id - 1) * sizeof(TsEntitySegmentBlockItem),
                             sizeof(TsEntitySegmentBlockItem), &result, nullptr);
@@ -102,7 +102,7 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
     LOG_ERROR("TsEntitySegmentBlockItemFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  blk_item = *(TsEntitySegmentBlockItem*)result.data;
+  *blk_item = reinterpret_cast<TsEntitySegmentBlockItem*>(result.data);
   return KStatus::SUCCESS;
 }
 
@@ -129,7 +129,7 @@ KStatus TsEntitySegmentMetaManager::Open() {
 }
 
 KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
-                                                    std::vector<TsEntitySegmentBlockItem>* blk_items) {
+                                                    std::vector<TsEntitySegmentBlockItem*>* blk_items) {
   TsEntityItem entity_item;
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
@@ -138,14 +138,14 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
 
-  TsEntitySegmentBlockItem cur_blk_item;
+  TsEntitySegmentBlockItem* cur_blk_item;
   while (last_blk_id > 0) {
-    s = block_header_.GetBlockItem(last_blk_id, cur_blk_item);
+    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item);
     if (s != KStatus::SUCCESS) {
       return s;
     }
     blk_items->push_back(cur_blk_item);
-    last_blk_id = cur_blk_item.prev_block_id;
+    last_blk_id = cur_blk_item->prev_block_id;
   }
   return KStatus::SUCCESS;
 }
@@ -163,16 +163,16 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
 
-  TsEntitySegmentBlockItem cur_blk_item;
+  TsEntitySegmentBlockItem* cur_blk_item;
   while (last_blk_id > 0) {
-    s = block_header_.GetBlockItem(last_blk_id, cur_blk_item);
+    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("get block item failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
       return s;
     }
     // todo(liangbo)  change lsn range if block item store.
     // todo(limeng) opts: Because block item traverses from back to front, use push_front
-    if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item.min_ts, cur_blk_item.max_ts}, {0, UINT64_MAX})) {
+    if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item->min_ts, cur_blk_item->max_ts}, {0, UINT64_MAX})) {
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
                                                                              blk_segment);
       // std::vector<std::pair<start_row, row_num>>
@@ -191,25 +191,25 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
                                                         scan_version));
       }
     }
-    last_blk_id = cur_blk_item.prev_block_id;
+    last_blk_id = cur_blk_item->prev_block_id;
   }
   return KStatus::SUCCESS;
 }
 
-TsEntityBlock::TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item,
+TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_item,
                              std::shared_ptr<TsEntitySegment> block_segment) {
   table_id_ = table_id;
-  table_version_ = block_item.table_version;
-  entity_id_ = block_item.entity_id;
-  n_rows_ = block_item.n_rows;
-  n_cols_ = block_item.n_cols;
-  block_offset_ = block_item.block_offset;
-  block_length_ = block_item.block_len;
-  agg_offset_ = block_item.agg_offset;
-  agg_length_ = block_item.agg_len;
+  table_version_ = block_item->table_version;
+  entity_id_ = block_item->entity_id;
+  n_rows_ = block_item->n_rows;
+  n_cols_ = block_item->n_cols;
+  block_offset_ = block_item->block_offset;
+  block_length_ = block_item->block_len;
+  agg_offset_ = block_item->agg_offset;
+  agg_length_ = block_item->agg_len;
   entity_segment_ = block_segment;
   // column blocks
-  column_blocks_.resize(block_item.n_cols);
+  column_blocks_.resize(block_item->n_cols);
 }
 
 TsEntityBlock::TsEntityBlock(const TsEntityBlock& other) {
@@ -626,7 +626,7 @@ KStatus TsEntitySegment::Open() {
 }
 
 KStatus TsEntitySegment::GetAllBlockItems(TSEntityID entity_id,
-                                         std::vector<TsEntitySegmentBlockItem>* blk_items) {
+                                         std::vector<TsEntitySegmentBlockItem*>* blk_items) {
   return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
 }
 

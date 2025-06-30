@@ -35,7 +35,7 @@ KStatus TsEntitySegmentBlockFile::Open() {
     LOG_ERROR("TsEntitySegmentBlockFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = *(TsAggAndBlockFileHeader*)result.data;
+  header_ = *reinterpret_cast<TsAggAndBlockFileHeader*>(result.data);
   if (header_.status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentBlockFile not ready, file_path=%s", file_path_.c_str())
   }
@@ -74,7 +74,7 @@ KStatus TsEntitySegmentAggFile::Open() {
     LOG_ERROR("TsEntitySegmentAggFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = *(TsAggAndBlockFileHeader*)result.data;
+  header_ = *reinterpret_cast<TsAggAndBlockFileHeader*>(result.data);
   if (header_.status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentAggFile not ready, file_path=%s", file_path_.c_str())
   }

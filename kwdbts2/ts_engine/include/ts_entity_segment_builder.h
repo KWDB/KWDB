@@ -183,10 +183,10 @@ class TsEntitySegmentBuilder {
   std::shared_ptr<TsEntitySegment> cur_entity_segment_;
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
 
-  TsEntitySegmentEntityItemFileBuilder entity_item_builder_;
-  TsEntitySegmentBlockItemFileBuilder block_item_builder_;
-  TsEntitySegmentBlockFileBuilder block_file_builder_;
-  TsEntitySegmentAggFileBuilder agg_file_builder_;
+  std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
+  std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
+  std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
+  std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
   std::shared_ptr<TsEntityBlockBuilder> block = nullptr;
 
   TsEntityItem cur_entity_item_;
@@ -198,13 +198,18 @@ class TsEntitySegmentBuilder {
                                   PartitionIdentifier partition_id,
                                   std::shared_ptr<TsEntitySegment> entity_segment,
                                   std::vector<std::shared_ptr<TsLastSegment>> last_segments)
-    : root_path_(root_path), schema_manager_(schema_manager), version_manager_(version_manager),
-      partition_id_(partition_id), cur_entity_segment_(entity_segment), last_segments_(last_segments),
-      entity_item_builder_(root_path + "/" +
-      EntityHeaderFileName(entity_segment == nullptr ? 1 : entity_segment->GetEntityHeaderFileNum() + 1)),
-      block_item_builder_(root_path + "/" + block_item_file_name),
-      block_file_builder_(root_path + "/" + block_data_file_name),
-      agg_file_builder_(root_path + "/" + block_agg_file_name) {}
+        : root_path_(root_path), schema_manager_(schema_manager), version_manager_(version_manager),
+          partition_id_(partition_id), cur_entity_segment_(entity_segment), last_segments_(last_segments) {
+    std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_segment == nullptr ? 1 :
+                                                     entity_segment->GetEntityHeaderFileNum() + 1);
+    entity_item_builder_ = std::make_shared<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path);
+    std::string block_header_file_path = root_path + "/" + block_item_file_name;
+    block_item_builder_ = std::make_shared<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+    std::string block_file_path = root_path + "/" + block_data_file_name;
+    block_file_builder_ = std::make_shared<TsEntitySegmentBlockFileBuilder>(block_file_path);
+    std::string agg_file_path = root_path + "/" + block_agg_file_name;
+    agg_file_builder_ = std::make_shared<TsEntitySegmentAggFileBuilder>(agg_file_path);
+  }
 
   KStatus Open();
 

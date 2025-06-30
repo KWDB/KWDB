@@ -80,7 +80,7 @@ class TsEntitySegmentEntityItemFile {
  private:
   string file_path_;
   std::unique_ptr<TsRandomReadFile> r_file_;
-  TsEntityItemFileHeader header_;
+  TsEntityItemFileHeader* header_ = nullptr;
 
  public:
   explicit TsEntitySegmentEntityItemFile(const string& file_path) : file_path_(file_path) {
@@ -118,7 +118,7 @@ class TsEntitySegmentBlockItemFile {
  private:
   string file_path_;
   std::unique_ptr<TsRandomReadFile> r_file_;
-  TsBlockItemFileHeader header_;
+  TsBlockItemFileHeader* header_ = nullptr;
 
  public:
   explicit TsEntitySegmentBlockItemFile(const string& file_path) : file_path_(file_path) {
@@ -134,7 +134,7 @@ class TsEntitySegmentBlockItemFile {
 
   KStatus Open();
 
-  KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem& blk_item);
+  KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item);
 };
 
 class TsEntitySegment;
@@ -156,12 +156,12 @@ class TsEntitySegmentMetaManager {
   bool IsReady() { return entity_header_.IsReady(); }
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
-    entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
+    return entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
   }
 
   KStatus Open();
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem*>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> blk_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
@@ -203,7 +203,7 @@ class TsEntityBlock : public TsBlock {
 
  public:
   TsEntityBlock() = delete;
-  TsEntityBlock(uint32_t table_id, const TsEntitySegmentBlockItem& block_item,
+  TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_item,
                 std::shared_ptr<TsEntitySegment> block_segment);
   TsEntityBlock(const TsEntityBlock& other);
   ~TsEntityBlock() {}
@@ -297,12 +297,12 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   uint64_t GetEntityHeaderFileNum() { return meta_mgr_.GetEntityHeaderFileNum(); }
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
-    meta_mgr_.GetEntityItem(entity_id, entity_item, is_exist);
+    return meta_mgr_.GetEntityItem(entity_id, entity_item, is_exist);
   }
 
   uint64_t GetEntityNum() { return meta_mgr_.GetEntityNum(); }
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem*>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) override;
