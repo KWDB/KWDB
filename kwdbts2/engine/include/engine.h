@@ -842,8 +842,6 @@ class AggCalculator {
   void UndoAgg(void* min_base, void* max_base, void* sum_base, void* count_base);
 
  private:
-  int cmp(void* l, void* r);
-
   bool isnull(size_t row);
 
   bool isDeleted(char* delete_flags, size_t row);

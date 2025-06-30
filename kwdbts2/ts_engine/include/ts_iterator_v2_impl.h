@@ -121,7 +121,6 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                             bool can_remove_last_candidate);
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
-  int valcmp(void* l, void* r, int32_t type, int32_t size);
   void UpdateTsSpans();
   void ConvertToDoubleIfOverflow(uint32_t blk_col_idx, TSSlice& agg_data);
   KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,

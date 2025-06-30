@@ -725,63 +725,6 @@ inline void TsAggIteratorV2Impl::InitSumValue(void* data, int32_t type) {
   }
 }
 
-inline int TsAggIteratorV2Impl::valcmp(void* l, void* r, int32_t type, int32_t size) {
-  switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
-    case DATATYPE::BINARY: {
-      k_int32 ret = memcmp(l, r, size);
-      return ret;
-    }
-    case DATATYPE::INT16: {
-      // k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
-      k_int16 lv = *(static_cast<k_int16*>(l));
-      k_int16 rv = *(static_cast<k_int16*>(r));
-      k_int32 diff = static_cast<k_int32>(lv) - static_cast<k_int32>(rv);
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::INT32:
-    case DATATYPE::TIMESTAMP: {
-      // k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
-      k_int32 lv = *(static_cast<k_int32*>(l));
-      k_int32 rv = *(static_cast<k_int32*>(r));
-      k_int64 diff = static_cast<k_int64>(lv) - static_cast<k_int64>(rv);
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::INT64:
-    case DATATYPE::TIMESTAMP64:
-    case DATATYPE::TIMESTAMP64_MICRO:
-    case DATATYPE::TIMESTAMP64_NANO: {
-      double diff = (*(static_cast<k_int64*>(l))) - (*(static_cast<k_int64*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::TIMESTAMP64_LSN:
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-    case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      double diff = (*(static_cast<TimeStamp64LSN*>(l))).ts64 - (*(static_cast<TimeStamp64LSN*>(r))).ts64;
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::FLOAT: {
-      double diff = (*(static_cast<float*>(l))) - (*(static_cast<float*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::DOUBLE: {
-      double diff = (*(static_cast<double*>(l))) - (*(static_cast<double*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::STRING: {
-      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size);
-      return ret;
-    }
-      break;
-    default:
-      break;
-  }
-  return false;
-}
-
 inline void TsAggIteratorV2Impl::ConvertToDoubleIfOverflow(uint32_t col_idx, TSSlice& agg_data) {
   if (is_overflow_[col_idx]) {
     *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
@@ -1090,7 +1033,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           agg_data.len = size;
           InitAggData(agg_data);
           need_copy = true;
-        } else if (valcmp(pre_max, agg_data.data, type, kw_col_idx == 0 ? 8 : size) > 0) {
+        } else if (cmp(pre_max, agg_data.data, type, kw_col_idx == 0 ? 8 : size) > 0) {
           need_copy = true;
         }
         if (need_copy) {
@@ -1142,7 +1085,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             if (agg_extend_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
             }
-          } else if (valcmp(current, agg_data.data, type, size) > 0) {
+          } else if (cmp(current, agg_data.data, type, size) > 0) {
             memcpy(agg_data.data, current, size);
             if (agg_extend_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
@@ -1218,7 +1161,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           agg_data.len = size;
           InitAggData(agg_data);
           need_copy = true;
-        } else if (valcmp(pre_min, agg_data.data, type, kw_col_idx == 0 ? 8 : size) < 0) {
+        } else if (cmp(pre_min, agg_data.data, type, kw_col_idx == 0 ? 8 : size) < 0) {
           need_copy = true;
         }
         if (need_copy) {
@@ -1270,7 +1213,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
             if (agg_extend_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
             }
-          } else if (valcmp(current, agg_data.data, type, size) < 0) {
+          } else if (cmp(current, agg_data.data, type, size) < 0) {
             memcpy(agg_data.data, current, size);
             if (agg_extend_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
