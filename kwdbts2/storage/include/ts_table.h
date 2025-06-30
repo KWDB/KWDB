@@ -285,7 +285,7 @@ class TsTable {
   KStatus GetEntityIndexWithRowNum(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                   std::vector<std::pair<int, EntityResultIndex>> &entity_tag);
 
-  KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
+  virtual KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
 
   virtual KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                 const KwTsSpan& ts_span, uint64_t* volume);

@@ -349,7 +349,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
     std::list<TSMemSegRowData> rows;
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
@@ -862,7 +862,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 
 KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
 const std::vector<KwTsSpan>& ts_spans) {
-  auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans,
+  auto s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
   [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
     auto ret = p->DeleteData(e_id, ts_spans, lsn);
     if (ret != KStatus::SUCCESS) {
@@ -876,7 +876,12 @@ const std::vector<KwTsSpan>& ts_spans) {
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                              const std::vector<KwTsSpan>& ts_spans) {
+const std::vector<KwTsSpan>& ts_spans) {
+  if (lsn == UINT64_MAX) {  // make sure lsn is not larger than current lsn.
+    wal_manager_->Lock();
+    lsn = wal_manager_->FetchCurrentLSN() + 1;  // not same with any allocated lsn.
+    wal_manager_->Unlock();
+  }
   return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
 }
 
@@ -950,7 +955,7 @@ KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID entity_id,
+KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
 const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
@@ -961,17 +966,13 @@ const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<con
   auto db_id = tb_schema_mgr->GetDbID();
   auto ts_type = tb_schema_mgr->GetTsColDataType();
 
-  std::vector<std::shared_ptr<const TsPartitionVersion>> ps = version_manager_->Current()->GetPartitions(db_id);
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ps =
+    version_manager_->Current()->GetPartitions(db_id, ts_spans, ts_type);
   for (auto& p : ps) {
-    KTimestamp p_start = convertSecondToPrecisionTS(p->GetStartTime(), ts_type);
-    KTimestamp p_end = convertSecondToPrecisionTS(p->GetEndTime(), ts_type);
-    // check if current partition is cross with ts_spans.
-    if (isTimestampInSpans(ts_spans, p_start, p_end)) {
-      s = func(p);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot DeleteData for entity[%lu]", entity_id);
-        return s;
-      }
+    s = func(p);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("func failed.");
+      return s;
     }
   }
   return KStatus::SUCCESS;
@@ -987,7 +988,7 @@ const std::vector<KwTsSpan>& ts_spans) {
     return s;
   }
   if (entity_id > 0) {
-    s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans,
+    s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
       [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {
@@ -1060,7 +1061,17 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::T
   assert(vgroup_id == GetVGroupID());
   uint8_t payload_data_flag = p.GetRowType();
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
+    std::list<TSMemSegRowData> rows;
+    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("failed putdata.");
+      return s;
+    }
+    s = makeSurePartitionExist(table_id, rows);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("makeSurePartitionExist Failed.")
+      return FAIL;
+    }
   } else {
     LOG_WARN("no data need inserted.");
   }

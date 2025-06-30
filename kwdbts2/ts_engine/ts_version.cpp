@@ -14,9 +14,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <utility>
 #include <memory>
 #include <mutex>
-
+#include <vector>
+#include <list>
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -178,12 +180,16 @@ KStatus TsVersionManager::ApplyUpdate(const TsVersionUpdate &update) {
   return SUCCESS;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(uint32_t target_dbid) const {
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(uint32_t target_dbid,
+  const std::vector<KwTsSpan>& ts_spans, DATATYPE ts_type) const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   for (const auto &[k, v] : partitions_) {
     const auto &[dbid, _] = k;
     if (dbid == target_dbid) {
-      result.push_back(v);
+      // check if current partition is cross with ts_spans.
+      if (isTimestampInSpans(ts_spans, v->GetTsColTypeStartTime(ts_type), v->GetTsColTypeEndTime(ts_type))) {
+        result.push_back(v);
+      }
     }
   }
   return result;
@@ -263,4 +269,81 @@ const {
   }
   return KStatus::SUCCESS;
 }
+KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
+  std::list<STDelRange> del_range;
+  auto s = GetDelRange(filter.entity_id, del_range);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelRange failed.");
+    return s;
+  }
+  KwTsSpan partition_span;
+  partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type);
+  partition_span.end = convertSecondToPrecisionTS(GetEndTime(), filter.table_ts_type) - 1;
+  std::vector<STScanRange> cur_scan_range;
+  for (auto& scan : filter.ts_spans_) {
+    KwTsSpan cross_part;
+    cross_part.begin = std::max(partition_span.begin, scan.begin);
+    cross_part.end = std::min(partition_span.end, scan.end);
+    if (cross_part.begin <= cross_part.end) {
+      cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn}));
+    }
+  }
+  for (auto& del : del_range) {
+    cur_scan_range = LSNRangeUtil::MergeScanAndDelRange(cur_scan_range, del);
+  }
+  block_data_filter.spans_ = std::move(cur_scan_range);
+  block_data_filter.db_id = filter.db_id;
+  block_data_filter.entity_id = filter.entity_id;
+  block_data_filter.table_id = filter.table_id;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionVersion::GetBlockSpan(const TsScanFilterParams& filter,
+std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
+std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
+  TsBlockItemFilterParams block_data_filter;
+  auto s = getFilter(filter, block_data_filter);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("getFilter failed.");
+    return s;
+  }
+
+  ts_block_spans->clear();
+  // get block span in mem segment
+  for (auto& mem : GetAllMemSegments()) {
+    auto s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetBlockSpans of mem segment failed.");
+      return s;
+    }
+  }
+  if (!skip_last) {
+    // get block span in last segment
+    std::vector<std::shared_ptr<TsLastSegment>> last_segs = GetAllLastSegments();
+    for (auto& last_seg : last_segs) {
+      auto s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetBlockSpans of mem segment failed.");
+        return s;
+      }
+    }
+  }
+  if (!skip_entity) {
+    // get block span in entity segment
+    auto entity_segment = GetEntitySegment();
+    if (entity_segment == nullptr) {
+      // entity segment not exist
+      return KStatus::SUCCESS;
+    }
+    auto s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans,
+             tbl_schema_mgr, scan_version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetBlockSpans of mem segment failed.");
+      return s;
+    }
+  }
+  LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
+  return KStatus::SUCCESS;
+}
+
 }  // namespace kwdbts

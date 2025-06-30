@@ -40,11 +40,6 @@ class TsMemSegmentIterator;
 class TsLastSegmentIterator;
 class TsEntitySegmentIterator;
 
-struct TsPartition {
-  std::shared_ptr<const TsPartitionVersion> ts_partition_version;
-  KwTsSpan ts_partition_range;
-};
-
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
@@ -80,7 +75,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  std::vector<TsPartition> ts_partitions_;
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
 };
@@ -120,11 +115,12 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus Aggregate();
-  KStatus UpdateAggregation();
-  KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span);
+  KStatus UpdateAggregation(bool can_remove_last_candidate);
+  KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
+                            bool aggregate_first_last_cols,
+                            bool can_remove_last_candidate);
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
-  int valcmp(void* l, void* r, int32_t type, int32_t size);
   void UpdateTsSpans();
   void ConvertToDoubleIfOverflow(uint32_t blk_col_idx, TSSlice& agg_data);
   KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,
@@ -146,8 +142,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<int64_t> first_col_ts_;
   std::vector<k_uint32> last_col_idxs_;
   std::vector<int64_t> last_col_ts_;
-  int64_t max_first_ts_;
-  int64_t min_last_ts_;
+
+  std::vector<k_uint32> cur_first_col_idxs_;
+  std::vector<k_uint32> cur_last_col_idxs_;
 
   std::map<k_uint32, k_uint32> max_map_;
   std::map<k_uint32, k_uint32> min_map_;
@@ -164,7 +161,6 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   bool has_first_row_col_;
   bool has_last_row_col_;
   bool only_count_ts_{false};
-  bool only_need_one_record_{false};
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 };

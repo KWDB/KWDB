@@ -175,7 +175,7 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(uint32_t scan_idx, TsBitmap 
 
   char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_row_count));
   if (allc_mem == nullptr) {
-    LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * blk_row_count);
+    LOG_ERROR("malloc failed. alloc size: %lu", dest_type_size * blk_row_count);
     return KStatus::SUCCESS;
   }
   memset(allc_mem, 0, dest_type_size * blk_row_count);
@@ -298,7 +298,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
       TSSlice orig_value;
       s = block_->GetValueSlice(start_row_idx_+ i, blk_col_idx, version_conv_->blk_attrs_, orig_value);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", start_row_idx_+ i, blk_col_idx);
+        LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", start_row_idx_+ i, blk_col_idx);
         return s;
       }
       std::shared_ptr<void> new_mem;
