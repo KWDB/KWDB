@@ -15,6 +15,7 @@
 #include <vector>
 #include <cstdio>
 #include <list>
+#include <utility>
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_common.h"
 #include "ts_const.h"
@@ -25,16 +26,16 @@ class TsBatchDataJob {
   uint64_t job_id_;
 
  public:
-  TsBatchDataJob(uint64_t job_id) : job_id_(job_id) {}
+  explicit TsBatchDataJob(uint64_t job_id) : job_id_(job_id) {}
   ~TsBatchDataJob() {}
 
-  virtual KStatus Read(TSSlice* data, int32_t* row_num) {};
+  virtual KStatus Read(TSSlice* data, int32_t* row_num) {}
 
-  virtual KStatus Write(TSSlice* data, int32_t* row_num) {};
+  virtual KStatus Write(TSSlice* data, int32_t* row_num) {}
 
-  virtual void Finish() {};
+  virtual void Finish() {}
 
-  virtual void Cancel() {};
+  virtual void Cancel() {}
 };
 
 class TsReadBatchDataJob : public TsBatchDataJob {
@@ -49,23 +50,19 @@ class TsReadBatchDataJob : public TsBatchDataJob {
   uint64_t cur_entity_idx_ = 0;
   TsBlockSpanSortedIterator* cur_entity_block_spans_ = nullptr;
 
-public:
+ public:
   TsReadBatchDataJob(TSEngine* ts_engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash, uint64_t end_hash,
                      KwTsSpan ts_span, uint64_t job_id, std::vector<std::pair<uint64_t, uint64_t>> entity_ids)
                      : TsBatchDataJob(job_id), ts_engine_(ts_engine), table_id_(table_id), table_version_(table_version),
-                     begin_hash_(begin_hash), end_hash_(end_hash), ts_span_(ts_span), entity_ids_(entity_ids) {};
+                     begin_hash_(begin_hash), end_hash_(end_hash), ts_span_(ts_span), entity_ids_(entity_ids) {}
 
   KStatus Read(TSSlice* data, int32_t* row_num) override {
     return KStatus::SUCCESS;
   }
 
-  void Finish() {
+  void Finish() override {}
 
-  }
-
-  void Cancel() {
-
-  }
+  void Cancel() override {}
 };
 
 class TsWriteBatchDataJob : public TsBatchDataJob {
@@ -76,19 +73,15 @@ class TsWriteBatchDataJob : public TsBatchDataJob {
 
  public:
   TsWriteBatchDataJob(TSEngine* ts_engine, TSTableID table_id, uint32_t table_version, uint64_t job_id)
-    : TsBatchDataJob(job_id), ts_engine_(ts_engine), table_id_(table_id), table_version_(table_version) {};
+    : TsBatchDataJob(job_id), ts_engine_(ts_engine), table_id_(table_id), table_version_(table_version) {}
 
   KStatus Write(TSSlice* data, int32_t* row_num) override {
     return KStatus::SUCCESS;
   }
 
-  void Finish() {
+  void Finish() override {}
 
-  }
-
-  void Cancel() {
-
-  }
+  void Cancel() override {}
 };
 
 }  // namespace kwdbts
