@@ -80,7 +80,7 @@ func (b *Builder) buildCallProcedure(cp *tree.CallProcedure, inScope *scope) (ou
 		panic(procStmt.SQL)
 	}
 
-	blockComm := b.getProcCommand(&createProcStmt.Block, nil, inScope, inputParams)
+	blockComm := b.getProcCommand(&createProcStmt.Block, nil, inScope, inputParams, nil)
 	if b.IsProcStatementTypeRows {
 		cp.IsRows = true
 	}

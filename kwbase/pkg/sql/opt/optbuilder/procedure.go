@@ -58,7 +58,7 @@ import (
 
 // buildStatements builds all statements to proc command, return ArrayCommand
 func (b *Builder) buildStatements(
-	states []tree.Statement, inScope *scope, labels *[]string,
+	states []tree.Statement, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	var result memo.ArrayCommand
 	// put parent scope's scopeColumn into current scope
@@ -76,7 +76,7 @@ func (b *Builder) buildStatements(
 
 // buildIf builds if command that have condition and block
 func (b *Builder) buildIf(
-	condition tree.Expr, then []tree.Statement, inScope *scope, labels *[]string,
+	condition tree.Expr, then []tree.Statement, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	if condition == nil {
 		return b.buildStatements(then, inScope, labels)
@@ -98,7 +98,9 @@ func (b *Builder) buildIf(
 }
 
 // buildProcIf compiles proc_if_stmt (see sql.y)
-func (b *Builder) buildProcIf(t *tree.ProcIf, inScope *scope, labels *[]string) memo.ProcCommand {
+func (b *Builder) buildProcIf(
+	t *tree.ProcIf, inScope *scope, labels map[string]struct{},
+) memo.ProcCommand {
 	b.ensureScopeHasExpr(inScope)
 	var Array memo.ArrayCommand
 	Array.Bodys = append(Array.Bodys, b.buildIf(t.Condition, t.ThenBody, inScope, labels))
@@ -112,11 +114,19 @@ func (b *Builder) buildProcIf(t *tree.ProcIf, inScope *scope, labels *[]string) 
 
 // buildProcWhile compiles proc_while_stmt (see sql.y)
 func (b *Builder) buildProcWhile(
-	t *tree.ProcWhile, inScope *scope, labels *[]string,
+	t *tree.ProcWhile, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	var whileComm memo.WhileCommand
 	whileComm.Label = t.Label
-	*labels = append(*labels, t.Label)
+	if labels != nil {
+		if _, ok := labels[t.Label]; ok && t.Label != "" {
+			panic(pgerror.Newf(pgcode.UndefinedObject, "Label %s already exist", t.Label))
+		}
+		labels[t.Label] = struct{}{}
+		defer func() {
+			delete(labels, t.Label)
+		}()
+	}
 	// build condition of WHILE
 	cond := b.buildSQLExpr(t.Condition, types.Bool, inScope)
 	whileComm.Cond = cond
@@ -163,7 +173,7 @@ func makeDefaultExpr(ctx tree.ParseTimeContext, t *types.T) tree.Expr {
 
 // buildBlock compiles block statement
 func (b *Builder) buildBlock(
-	block *tree.Block, desiredTypes []*types.T, inScope *scope, labels *[]string,
+	block *tree.Block, desiredTypes []*types.T, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	blockExpr := memo.BlockCommand{Label: block.Label}
 
@@ -241,7 +251,7 @@ func (b *Builder) buildCloseCursor(cursorName tree.Name, inScope *scope) memo.Pr
 
 // buildProcDeclare compiles declare_stmt, which involved variable, handler and cursor (see sql.y)
 func (b *Builder) buildProcDeclare(
-	declStmt *tree.Declaration, inScope *scope, labels *[]string,
+	declStmt *tree.Declaration, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	if declStmt.IsVar() {
 		return b.buildDeclareVar(declStmt.Variable, inScope)
@@ -307,7 +317,7 @@ func (b *Builder) buildDeclareCursor(dc tree.DeclareCursor, inScope *scope) memo
 }
 
 func (b *Builder) buildDeclareHandler(
-	dh tree.DeclareHandler, inScope *scope, labels *[]string,
+	dh tree.DeclareHandler, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	var handComm memo.DeclHandlerCommand
 	switch dh.HandlerOp {
@@ -364,14 +374,14 @@ func (b *Builder) buildProcSet(procSet *tree.ProcSet, inScope *scope) memo.ProcC
 
 // buildProcLeave compiles proc_leave_stmt (see sql.y)
 func (b *Builder) buildProcLeave(
-	t *tree.ProcLeave, inScope *scope, labels *[]string,
+	t *tree.ProcLeave, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
-	for _, label := range *labels {
-		if label == t.Label {
-			return &memo.LeaveCommand{Label: t.Label}
+	if labels != nil {
+		if _, ok := labels[t.Label]; !ok {
+			panic(pgerror.Newf(pgcode.UndefinedObject, "Label %s does not exist", t.Label))
 		}
 	}
-	panic(pgerror.Newf(pgcode.UndefinedObject, "Label %s does not exist", t.Label))
+	return &memo.LeaveCommand{Label: t.Label}
 }
 
 func (b *Builder) buildProcedureLoop(cv *tree.ProcLoop, inScope *scope) memo.ProcCommand {

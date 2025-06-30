@@ -471,7 +471,11 @@ func (b *Builder) trackReferencedColumnForViews(col *scopeColumn) {
 
 // getProcCommand gets ProcCommand from block, puts input param into block before build
 func (b *Builder) getProcCommand(
-	Block *tree.Block, desiredTypes []*types.T, inScope *scope, inputParams []tree.Statement,
+	Block *tree.Block,
+	desiredTypes []*types.T,
+	inScope *scope,
+	inputParams []tree.Statement,
+	labels map[string]struct{},
 ) memo.ProcCommand {
 	var newBlock tree.Block
 	newBlock.Label = Block.Label
@@ -485,16 +489,20 @@ func (b *Builder) getProcCommand(
 	bodyScope := inScope.push()
 	bodyScope.cols = make([]scopeColumn, len(inScope.cols))
 	copy(bodyScope.cols, inScope.cols)
+	if labels != nil {
+		labels[Block.Label] = struct{}{}
+		defer func() {
+			delete(labels, Block.Label)
+		}()
+	}
 	// build each stmt
-	labels := make([]string, 0)
-	labels = append(labels, newBlock.Label)
-	return b.buildProcCommand(&newBlock, desiredTypes /* desiredTypes */, bodyScope, &labels)
+	return b.buildProcCommand(&newBlock, desiredTypes /* desiredTypes */, bodyScope, labels)
 }
 
 // buildProcCommand recursively builds stmt and stmts inside itself,
 // construct memoExpr and corresponding procCommand.
 func (b *Builder) buildProcCommand(
-	stmt tree.Statement, desiredTypes []*types.T, inScope *scope, labels *[]string,
+	stmt tree.Statement, desiredTypes []*types.T, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
 	switch stmt := stmt.(type) {
 	case *tree.Block:

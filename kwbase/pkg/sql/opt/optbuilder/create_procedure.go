@@ -81,7 +81,8 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 	}
 
 	fmtCtx := tree.NewFmtCtx(tree.FmtParsable)
-	b.getProcCommand(&cv.Block, nil, inScope, inputParams)
+	labels := make(map[string]struct{}, 0)
+	b.getProcCommand(&cv.Block, nil, inScope, inputParams, labels)
 	fmtCtx.FormatNode(cv)
 	cv.BodyStr = fmtCtx.CloseAndGetString()
 

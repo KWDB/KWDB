@@ -53,9 +53,20 @@ drop procedure if exists test_procedure_dxy.pro3;
 CREATE PROCEDURE test_procedure_dxy.pro3() LABEL my_label: BEGIN DECLARE a INT; DECLARE d INT; SET a=1; SET d=2; SELECT '我是直接跳出body的'; LABEL my_loop: WHILE a<4 DO SELECT d; SET a=a+1; LEAVE my; ENDWHILE my_loop;END my_label;
 
 drop procedure if exists test_procedure_dxy.pro4;
-CREATE PROCEDURE test_procedure_dxy.pro4() BEGIN DECLARE err INT; DECLARE b INT DEFAULT 1; DECLARE continue handler FOR NOT FOUND,SQLEXCEPTION BEGIN SELECT id FROM test_procedure_dxy.t1 ORDER BY id LIMIT 5; SET err=-1; ENDHANDLER; WHILE b>-3 DO SELECT 1; SELECT e1 FROM test_procedure_dxy.t1 ORDER BY id LIMIT -6; SET b=b-1; ENDWHILE; SELECT err,b; END;
-call test_procedure_dxy.pro4();
-drop procedure test_procedure_dxy.pro4;
+CREATE PROCEDURE test_procedure_dxy.pro4() LABEL my_label: BEGIN DECLARE a INT; DECLARE d INT; SET a=1; LABEL my_label1: WHILE a<2 DO SET a=a+1; ENDWHILE my_label1; LABEL my_label2: WHILE a<10 DO SET a=a+1; IF a>4 then SELECT '跳出my_label1'; leave my_label1; SELECT '跳出my_label2'; leave my_label2; ENDIF; ENDWHILE my_label2; END my_label;
+
+drop procedure if exists test_procedure_dxy.pro5;
+CREATE PROCEDURE test_procedure_dxy.pro5() LABEL my_label: BEGIN DECLARE a INT; DECLARE d INT; SET a=1; LABEL my_label: WHILE a<2 DO SET a=a+1; ENDWHILE my_label; END my_label;
+
+drop procedure if exists test_procedure_dxy.pro6;
+CREATE PROCEDURE test_procedure_dxy.pro6() LABEL my_label: BEGIN DECLARE a INT; DECLARE d INT; SET a=1; SET d=2; SELECT '我是直接跳出body的'; LEAVE my_label; WHILE a<4 DO SELECT d; SET a=a+1; ENDWHILE; END my_label;
+call test_procedure_dxy.pro6();
+drop procedure test_procedure_dxy.pro6;
+
+drop procedure if exists test_procedure_dxy.pro7;
+CREATE PROCEDURE test_procedure_dxy.pro7() BEGIN DECLARE err INT; DECLARE b INT DEFAULT 1; DECLARE continue handler FOR NOT FOUND,SQLEXCEPTION BEGIN SELECT id FROM test_procedure_dxy.t1 ORDER BY id LIMIT 5; SET err=-1; ENDHANDLER; WHILE b>-3 DO SELECT 1; SELECT e1 FROM test_procedure_dxy.t1 ORDER BY id LIMIT -6; SET b=b-1; ENDWHILE; SELECT err,b; END;
+call test_procedure_dxy.pro7();
+drop procedure test_procedure_dxy.pro7;
 
 use defaultdb;
 drop database test_procedure_dxy cascade;
