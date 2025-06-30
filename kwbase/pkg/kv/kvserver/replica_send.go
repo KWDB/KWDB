@@ -76,7 +76,7 @@ func (r *Replica) Send(
 			log.Warningf(ctx, "%+v receive ts request when still be default range", r.Desc())
 			return nil, roachpb.NewError(&roachpb.DefaultReplicaReceiveTSRequestError{})
 		}
-		log.VEventf(ctx, 3, "replica : +%v", r)
+		log.VEventf(ctx, 3, "replica : %+v", r)
 		return r.sendTS(ctx, &ba)
 	}
 	return r.sendWithRangeID(ctx, r.RangeID, &ba)
