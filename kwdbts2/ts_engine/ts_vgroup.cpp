@@ -437,11 +437,13 @@ KStatus TsVGroup::Compact(int thread_num) {
         auto entity_segment = cur_partition->GetEntitySegment();
 
         auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
+        uint64_t new_entity_header_num = version_manager_->NewFileNumber();
 
         // 2. Build the column block.
         {
           TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                         cur_partition->GetPartitionIdentifier(), entity_segment, last_segments);
+                                         cur_partition->GetPartitionIdentifier(), entity_segment,
+                                         new_entity_header_num, last_segments);
           KStatus s = builder.Open();
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
@@ -456,8 +458,7 @@ KStatus TsVGroup::Compact(int thread_num) {
         for (auto& last_segment : last_segments) {
           update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
         }
-        uint64_t entity_header_num = entity_segment == nullptr ? 1 : entity_segment->GetEntityHeaderFileNum() + 1;
-        entity_segment = std::make_shared<TsEntitySegment>(root_path.string(), entity_header_num);
+        entity_segment = std::make_shared<TsEntitySegment>(root_path.string(), new_entity_header_num);
         update.SetEntitySegment(cur_partition->GetPartitionIdentifier(), entity_segment);
       }
     });
