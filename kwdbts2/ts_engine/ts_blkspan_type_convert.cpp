@@ -38,6 +38,14 @@ TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uin
 }
 
 KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
+  AssertNotNull(tbl_schema_mgr_);
+  Assert(scan_version > 0);
+  if (tbl_schema_mgr_ == nullptr) {
+    // TODO(zhangwg): tmp testing
+    LOG_ERROR("tbl_schema_mgr_ is null, scan_version[%d]", scan_version);
+    exit(1);
+  }
+
   if (tbl_schema_mgr_) {
     const auto blk_version = block_->GetTableVersion();
     key_ = std::to_string(blk_version) + "_" + std::to_string(scan_version);
