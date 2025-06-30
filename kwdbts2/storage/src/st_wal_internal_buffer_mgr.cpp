@@ -1098,9 +1098,10 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
 
       memcpy(&p_tag_len, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::p_tag_len_));
       construct_offset += sizeof(DeleteLogMetricsEntryV2::p_tag_len_);
-      memcpy(&table_id, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::table_id_));
-      construct_offset += sizeof(DeleteLogMetricsEntryV2::table_id_);
       memcpy(&range_size, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::range_size_));
+      construct_offset += sizeof(DeleteLogMetricsEntryV2::range_size_);
+      memcpy(&table_id, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::table_id_));
+
       delete[] res;
       res = nullptr;
 
