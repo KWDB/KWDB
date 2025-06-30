@@ -456,7 +456,7 @@ func newBaseQueue(
 	// NB: addOrMaybeAddSemSize coupled with tight scanner intervals in tests
 	// unfortunately bog down the race build if they are increased too much.
 	if cfg.addOrMaybeAddSemSize == 0 {
-		cfg.addOrMaybeAddSemSize = 20
+		cfg.addOrMaybeAddSemSize = 100
 	}
 
 	ambient := store.cfg.AmbientCtx
