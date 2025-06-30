@@ -416,8 +416,10 @@ KStatus TsEntityBlock::Append(shared_ptr<TsBlockSpan> span, bool& is_full) {
         block.bitmap[row_idx_in_block] = data_flag;
         uint32_t var_offset = block.buffer.size();
         memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
-        block.buffer.append(value.data, value.len);
-        block.var_rows.emplace_back(value.data, value.len);
+        if (data_flag == kValid) {
+          block.buffer.append(value.data, value.len);
+          block.var_rows.emplace_back(value.data, value.len);
+        }
       } else if (col_idx == 1) {
         block.buffer.append(col_val + span_row_idx * d_size, sizeof(timestamp64));
       }
