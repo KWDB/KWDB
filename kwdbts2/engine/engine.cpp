@@ -1462,6 +1462,7 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey& table_id, ch
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
     err_msg = "Table does not exist";
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1479,11 +1480,14 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey& table_id, ch
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
   s = table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Add column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1496,6 +1500,7 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey& table_id, c
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1512,11 +1517,15 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey& table_id, c
   // Write Alter DDL into WAL, which type is DROP_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s == KStatus::FAIL) {
+    err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
   s = table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Drop column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1558,6 +1567,7 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1567,6 +1577,8 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   // Write Alter DDL into WAL, which type is ALTER_COLUMN_TYPE.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s == KStatus::FAIL) {
+    err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
@@ -1578,6 +1590,8 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   }
   s = table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 

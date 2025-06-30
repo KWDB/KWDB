@@ -137,19 +137,18 @@ KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_
     getDataTypeSize(attr_info);  // update max_len
   }
 
-  if (attr_info.isAttrType(COL_GENERAL_TAG)) {
-    if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
-      LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
-      return KStatus::FAIL;
-    }
-  } else if (attr_info.isAttrType(COL_TS_DATA)) {
+  bool need_undo_tag = attr_info.isAttrType(COL_GENERAL_TAG) || attr_info.isAttrType(COL_TS_DATA);
+  if (attr_info.isAttrType(COL_TS_DATA)) {
     s = RollBack(cur_version, new_version);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    if (tag_table_->GetTagTableVersionManager()->RollbackTableVersion(new_version, err_info) < 0) {
+  }
+
+  if (need_undo_tag) {
+    if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
       LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
-      return FAIL;
+      return KStatus::FAIL;
     }
   }
   return s;
