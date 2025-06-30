@@ -461,7 +461,8 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
 
  public:
   static const size_t header_length = sizeof(p_tag_len_) +
-                                      sizeof(range_size_);
+                                      sizeof(range_size_) +
+                                      sizeof(table_id_);
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
@@ -494,10 +495,10 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
 
     memcpy(log_ptr + offset, &p_tag_len, sizeof(p_tag_len_));
     offset += sizeof(p_tag_len_);
-    memcpy(log_ptr + offset, &table_id, sizeof(table_id_));
-    offset += sizeof(table_id_);
     memcpy(log_ptr + offset, &range_size, sizeof(range_size_));
     offset += sizeof(range_size_);
+    memcpy(log_ptr + offset, &table_id, sizeof(table_id_));
+    offset += sizeof(table_id_);
     memcpy(log_ptr + offset, encoded_primary_tags, p_tag_len);
     offset += p_tag_len;
 
