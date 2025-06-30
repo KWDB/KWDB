@@ -29,6 +29,7 @@
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_flush_manager.h"
+#include "ts_batch_data_job.h"
 #include "ts_table_v2_impl.h"
 #include "ts_version.h"
 #include "ts_vgroup.h"
@@ -51,6 +52,9 @@ class TSEngineV2Impl : public TSEngine {
   std::map<uint64_t, uint64_t> range_indexes_map_;
   std::unique_ptr<WALMgr> wal_sys_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
+
+  std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataJob>>> batch_data_jobs_;
+  KRWLatch batch_jobs_lock_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -140,6 +144,17 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
                               const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
+
+  KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                        uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
+                        int32_t* row_num) override;
+
+  KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                         TSSlice* data, int32_t* row_num) override;
+
+  KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) override;
+
+  KStatus BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) override;
 
 
   KStatus FlushBuffer(kwdbContext_p ctx) override { return KStatus::SUCCESS; }

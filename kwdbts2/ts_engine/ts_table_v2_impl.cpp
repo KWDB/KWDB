@@ -559,6 +559,48 @@ KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& h
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                              vector<std::pair<uint64_t, uint64_t>>* entity_ids) {
+  std::vector<TagPartitionTable*> all_tag_partition_tables;
+  auto tag_bt = table_schema_mgr_->GetTagTable();
+  TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
+  tag_bt->GetTagPartitionTableManager()->GetAllPartitionTablesLessVersion(all_tag_partition_tables,
+                                                                          cur_tbl_version);
+  for (const auto& entity_tag_bt : all_tag_partition_tables) {
+    entity_tag_bt->startRead();
+    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
+      if (!entity_tag_bt->isValidRow(rownum)) {
+        continue;
+      }
+      if (!EngineOptions::isSingleNode()) {
+        uint32_t tag_hash;
+        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+        if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
+          string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
+                             entity_tag_bt->primaryTagSize());
+          uint32_t v_group_id, entity_id;
+          if (!tag_bt->hasPrimaryKey(primary_tag.data(), primary_tag.size(), entity_id, v_group_id)) {
+            LOG_ERROR("primary key[%s] dose not exist", primary_tag.c_str())
+            return FAIL;
+          }
+          entity_ids->emplace_back(v_group_id, entity_id);
+        }
+      } else {
+        string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
+                           entity_tag_bt->primaryTagSize());
+        uint32_t v_group_id, entity_id;
+        if (!tag_bt->hasPrimaryKey(primary_tag.data(), primary_tag.size(), entity_id, v_group_id)) {
+          LOG_ERROR("primary key[%s] dose not exist", primary_tag.c_str())
+          return FAIL;
+        }
+        entity_ids->emplace_back(v_group_id, entity_id);
+      }
+    }
+    entity_tag_bt->stopRead();
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
                                     uint64_t* count, uint64_t mtr_id) {
   *count = 0;
