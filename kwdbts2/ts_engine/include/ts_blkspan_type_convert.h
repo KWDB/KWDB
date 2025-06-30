@@ -60,6 +60,14 @@ class TSBlkDataTypeConvert {
 
   KStatus Init(uint32_t scan_version);
 
+  void SetStartRowIdx(uint32_t start_row_idx) {
+    start_row_idx_ = start_row_idx;
+  }
+
+  void SetRowNum(uint32_t row_num) {
+    row_num_ = row_num;
+  }
+
   int ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size,
                            void* old_mem, uint16_t old_var_len, std::shared_ptr<void>* new_mem);
 
