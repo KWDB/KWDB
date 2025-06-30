@@ -461,8 +461,8 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
 
  public:
   static const size_t header_length = sizeof(p_tag_len_) +
-                                      sizeof(range_size_) +
-                                      sizeof(table_id_);
+                                      sizeof(table_id_) +
+                                      sizeof(range_size_);
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
