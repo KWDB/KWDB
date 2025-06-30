@@ -337,14 +337,25 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY) {
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
-    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-    KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_manager);
+
+    TSSlice primary_key = payload.GetPrimaryTag();
+    auto tbl_version = payload.GetTableVersion();
+    std::shared_ptr<kwdbts::TsTable> ts_table;
+    KStatus s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
+      return s;
+    }
+
+    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+    s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetTableSchemaMgr failed. table id: %lu", table_id);
     }
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed get table id[%d] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
     err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id);

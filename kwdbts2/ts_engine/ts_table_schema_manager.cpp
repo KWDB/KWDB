@@ -353,7 +353,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   int64_t ts = meta->ts_table().life_time();
   LifeTime life_time {ts, precision};
   tmp_bt->SetLifeTime(life_time);
-  LOG_INFO("Create table %lu with life time[%ld:%d]", table_id_, life_time.ts, life_time.precision);
+  LOG_INFO("Create table %lu with life time[%ld:%d], version:%d.", table_id_, life_time.ts, life_time.precision, ts_version);
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({ts_version, tmp_bt});
@@ -365,6 +365,15 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
       LOG_ERROR("failed to create the tag table %s%lu, error: %s",
                 tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
       return FAIL;
+    }
+  } else {
+    std::vector<roachpb::NTagIndexInfo> idx_info;
+    for (int i = 0; i < meta->index_info_size(); i++) {
+      idx_info.emplace_back(meta->index_info(i));
+    }
+    // Note:: "idx_info" is the index that exists in the current version.
+    if(tag_table_->AddNewPartitionVersion(tag_schema, ts_version, err_info, idx_info) < 0) {
+      LOG_ERROR("CreateTable add tag new version[%d] failed.", ts_version);
     }
   }
 
@@ -527,6 +536,9 @@ KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
 }
 
 KStatus TsTableSchemaManager::GetTagSchema(kwdbContext_p ctx, std::shared_ptr<TagTable>* schema) {
+  if (tag_table_ == nullptr) {
+    return FAIL;
+  }
   *schema = tag_table_;
   return SUCCESS;
 }
