@@ -51,9 +51,7 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEn
       entity_counter_(0),
       engine_options_(engine_options),
       version_manager_(std::make_unique<TsVersionManager>(engine_options, vgroup_id)),
-      enable_compact_thread_(enable_compact_thread) {
-  initCompactThread();
-}
+      enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
@@ -66,6 +64,9 @@ TsVGroup::~TsVGroup() {
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
+  version_manager_->Recover();
+  initCompactThread();
+
   MakeDirectory(path_);
   wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_);
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
@@ -95,7 +96,6 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     entity_counter_ = KUint32(config_file_->memAddr());
   }
 
-  version_manager_->Recover();
 
   // recover partitions
   // std::error_code ec;
