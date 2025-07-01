@@ -1,20 +1,26 @@
-#include "data_type.h"
-#include "gtest/gtest.h"
-#include "kwdb_type.h"
-#include "ts_filename.h"
-#include "ts_io.h"
-#include "ts_lastsegment_builder.h"
 #include "ts_version.h"
+
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 #include <cstdint>
 #include <filesystem>
+
+#include "data_type.h"
+#include "gtest/gtest.h"
+#include "kwdb_type.h"
+#include "libkwdbts2.h"
+#include "ts_filename.h"
+#include "ts_io.h"
+#include "ts_lastsegment_builder.h"
 
 class TsVersionTest : public testing::Test {
  protected:
   TsIOEnv *env = &TsMMapIOEnv::GetInstance();
   std::filesystem::path vgroup_root = "version_test";
+
+  KwTsSpan all_data{INT64_MIN, INT64_MAX};
 
   void SetUp() override {
     env->DeleteDir(vgroup_root);
@@ -38,7 +44,7 @@ class TsVersionTest : public testing::Test {
     TsVersionUpdate update;
     auto root = vgroup_root / PartitionDirName(par_id);
     auto current = mgr->Current();
-    auto partitions = current->GetPartitions(1);
+    auto partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
     auto lastsegments = partitions[0]->GetAllLastSegments();
     uint64_t filenumber = mgr->NewFileNumber();
     auto last_seg_filename = root / LastSegmentFileName(filenumber);
@@ -96,11 +102,11 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
   }
   {
     TsVersionUpdate update;
-    update.PartitionDirCreated({1,2,3});
-    update.PartitionDirCreated({4,5,6});
-    update.PartitionDirCreated({7,8,9});
-    update.PartitionDirCreated({10,11,12});
-    update.PartitionDirCreated({13,14,15});
+    update.PartitionDirCreated({1, 2, 3});
+    update.PartitionDirCreated({4, 5, 6});
+    update.PartitionDirCreated({7, 8, 9});
+    update.PartitionDirCreated({10, 11, 12});
+    update.PartitionDirCreated({13, 14, 15});
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
 
@@ -188,11 +194,11 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
     EXPECT_EQ(s, SUCCESS);
 
     auto current = mgr->Current();
-    auto partitions = current->GetPartitions(1);
+    auto partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions.size(), 3);
-    partitions = current->GetPartitions(2);
+    partitions = current->GetPartitions(2, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions.size(), 2);
-    partitions = current->GetPartitions(4);
+    partitions = current->GetPartitions(4, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions.size(), 1);
 
     {
@@ -220,15 +226,15 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
     EXPECT_EQ(s, SUCCESS);
 
     auto current = mgr->Current();
-    auto partitions = current->GetPartitions(1);
+    auto partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions.size(), 4);
-    partitions = current->GetPartitions(2);
+    partitions = current->GetPartitions(2, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions.size(), 2);
-    partitions = current->GetPartitions(4);
+    partitions = current->GetPartitions(4, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions.size(), 1);
     EXPECT_EQ(mgr->NewFileNumber(), 12);
 
-    partitions = current->GetPartitions(1);
+    partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
     EXPECT_EQ(partitions[0]->GetStartTime(), 2);
     EXPECT_EQ(partitions[0]->GetEndTime(), 3);
     auto lasts = partitions[0]->GetAllLastSegments();
@@ -289,7 +295,7 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
     auto s = mgr->Recover();
     ASSERT_EQ(s, SUCCESS);
     auto current = mgr->Current();
-    auto partitions = current->GetPartitions(1);
+    auto partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
     EXPECT_EQ(partitions[0]->GetAllLastSegments().size(),
               (2 * 10) /*flush*/ + (2 - 2 * 2) /*compaction*/ - 1 /*corruption*/);

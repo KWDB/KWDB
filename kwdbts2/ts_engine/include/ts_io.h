@@ -384,7 +384,7 @@ class TsIOEnv {
   virtual KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                                     size_t file_size = -1) = 0;
   virtual KStatus NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
-                                        size_t file_size);
+                                        size_t file_size) = 0;
   virtual KStatus NewDirectory(const std::string& path) = 0;
   virtual KStatus DeleteDir(const std::string& path) = 0;
   virtual KStatus DeleteFile(const std::string& path) = 0;
@@ -417,7 +417,7 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
   int fd_ = -1;
   std::vector<TSSlice> addrs_;
   std::mutex mutex_;
-  KRWLatch* rw_lock_;
+  KRWLatch* rw_lock_ = nullptr;
 
  public:
   explicit TsMMapAllocFile(const std::string& path) : path_(path) {}

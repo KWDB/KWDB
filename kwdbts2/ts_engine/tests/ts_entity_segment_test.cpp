@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "settings.h"
@@ -65,7 +66,8 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     EngineOptions::mem_segment_max_size = INT32_MAX;
     opts.db_path = "db001-123";
     auto vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), false);
-    vgroup->Init(&ctx);
+    EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
+    EXPECT_EQ(vgroup->VersionRecover(), KStatus::SUCCESS);
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;

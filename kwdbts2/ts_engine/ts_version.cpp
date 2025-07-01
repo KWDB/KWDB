@@ -65,6 +65,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   }
   {
     auto current = Current();
+    assert(current!= nullptr);
     auto it = current->partitions_.find(partition_id);
     if (it != current->partitions_.end()) {
       last_created_partition_ = partition_id;
