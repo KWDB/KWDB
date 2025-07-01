@@ -238,8 +238,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups_;
   // map<timestamp, {vgroup_id, TsPartition}>
   TimestampComparator comparator_;
-  map<timestamp64, std::vector<pair<uint32_t, TsPartition>>, TimestampComparator> p_times_;
-  map<timestamp64, std::vector<pair<uint32_t, TsPartition>>>::iterator p_time_it_;
+  map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>, TimestampComparator> p_times_;
+  map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>>::iterator p_time_it_;
   
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;

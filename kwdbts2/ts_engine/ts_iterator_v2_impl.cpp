@@ -1327,8 +1327,8 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
 
 KStatus TsOffsetIteratorV2Impl::filterLower(uint32_t* cnt) {
   *cnt = 0;
-  timestamp64 begin_ts = p_time_it_->second.begin()->second.ts_partition_range.begin;
-  timestamp64 end_ts = p_time_it_->second.begin()->second.ts_partition_range.end;
+  timestamp64 begin_ts = convertSecondToPrecisionTS(p_time_it_->second.begin()->second->GetStartTime(), ts_col_type_);
+  timestamp64 end_ts = convertSecondToPrecisionTS(p_time_it_->second.begin()->second->GetEndTime(), ts_col_type_);
   while (!filter_end_) {
     uint32_t lower_cnt = 0;
     deque<std::shared_ptr<TsBlockSpan>> lower_block_span;
@@ -1364,8 +1364,8 @@ KStatus TsOffsetIteratorV2Impl::filterLower(uint32_t* cnt) {
 
 KStatus TsOffsetIteratorV2Impl::filterUpper(uint32_t filter_num, uint32_t* cnt) {
   *cnt = 0;
-  timestamp64 begin_ts = p_time_it_->second.begin()->second.ts_partition_range.begin;
-  timestamp64 end_ts = p_time_it_->second.begin()->second.ts_partition_range.end;
+  timestamp64 begin_ts = convertSecondToPrecisionTS(p_time_it_->second.begin()->second->GetStartTime(), ts_col_type_);
+  timestamp64 end_ts = convertSecondToPrecisionTS(p_time_it_->second.begin()->second->GetEndTime(), ts_col_type_);
   bool filter_end = false;
   while (!filter_end) {
     uint32_t lower_cnt = 0;
@@ -1405,22 +1405,16 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
   KStatus ret;
   for (const auto& it : p_time_it_->second) {
     uint32_t vgroup_id = it.first;
-    std::shared_ptr<const TsPartitionVersion> partition_version = it.second.ts_partition_version;
+    std::shared_ptr<const TsPartitionVersion> partition_version = it.second;
     std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id];
     std::vector<EntityID> entity_ids = vgroup_ids_[vgroup_id];
     // TODO(liumengzhen) filter参数能否支持多设备
     for (auto entity_id : entity_ids) {
-      TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_spans_};
-      TsEntityPartition e_partition(partition_version, scan_lsn_, ts_col_type_, filter);
-      ret = e_partition.Init();
+      TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_lsn_, ts_spans_};
+      ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("GetAllMemSegments failed.");
-        return ret;
-      }
-      ret = e_partition.GetBlockSpan(&ts_block_spans_, table_schema_mgr_, table_version_);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("e_partition GetBlockSpan failed.");
-        return ret;
+        LOG_ERROR("GetBlockSpan failed.");
+        return KStatus::FAIL;
       }
       for (const auto& block_span : ts_block_spans_) {
         *cnt += block_span->GetRowNum();
@@ -1449,16 +1443,10 @@ KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
     uint32_t vgroup_id = it.first;
     std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id];
     auto current = vgroup->CurrentVersion();
-    auto partitions_v = current->GetPartitions(db_id_);
+    auto ts_partitions = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
 
-    for (const auto& partition_ptr : partitions_v) {
-      TsPartition ts_partition;
-      ts_partition.ts_partition_range.begin = convertSecondToPrecisionTS(partition_ptr->GetStartTime(), ts_col_type_);
-      ts_partition.ts_partition_range.end = convertSecondToPrecisionTS(partition_ptr->GetEndTime(), ts_col_type_);
-      if (isTimestampInSpans(ts_spans_, ts_partition.ts_partition_range.begin, ts_partition.ts_partition_range.end)) {
-        ts_partition.ts_partition_version = partition_ptr;
-        p_times_[ts_partition.ts_partition_range.begin].push_back({vgroup_id, ts_partition});
-      }
+    for (const auto& partition : ts_partitions) {
+      p_times_[partition->GetStartTime()].push_back({vgroup_id, partition});
     }
   }
   p_time_it_ = p_times_.begin();
