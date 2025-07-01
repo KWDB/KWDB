@@ -10,10 +10,12 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <vector>
 #include <list>
 #include <map>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include "ts_common.h"
@@ -240,7 +242,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   TimestampComparator comparator_;
   map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>, TimestampComparator> p_times_;
   map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>>::iterator p_time_it_;
-  
+
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> filter_block_spans_;

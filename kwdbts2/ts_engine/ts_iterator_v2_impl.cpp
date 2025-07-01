@@ -156,7 +156,8 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   ts_block_spans_.clear();
   UpdateTsSpans(ts);
   for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(), entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
+                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     if (IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
                       partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
@@ -491,7 +492,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       break;
     }
     cur_partition_index_ = first_partition_idx;
-    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(), entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
+                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
@@ -511,7 +513,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       break;
     }
     cur_partition_index_ = last_partition_idx;
-    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(), entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
+                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
@@ -530,7 +533,8 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     cur_last_col_idxs_.clear();
     for (; first_partition_idx <= last_partition_idx; ++first_partition_idx) {
       cur_partition_index_ = first_partition_idx;
-      TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(), entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+      TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
+                                entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
       auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
