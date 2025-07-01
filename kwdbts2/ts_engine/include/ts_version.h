@@ -78,8 +78,14 @@ class TsPartitionVersion {
 
   DatabaseID GetDatabaseID() const { return std::get<0>(partition_info_); }
 
-  timestamp64 GetStartTime() const { return std::get<1>(partition_info_); }
-  timestamp64 GetEndTime() const { return std::get<2>(partition_info_); }
+  inline timestamp64 GetStartTime() const { return std::get<1>(partition_info_); }
+  inline timestamp64 GetEndTime() const { return std::get<2>(partition_info_); }
+  inline timestamp64 GetTsColTypeStartTime(DATATYPE ts_type) const {
+    return convertSecondToPrecisionTS(GetStartTime(), ts_type);
+  }
+  inline timestamp64 GetTsColTypeEndTime(DATATYPE ts_type) const {
+    return convertSecondToPrecisionTS(GetEndTime(), ts_type);
+  }
 
   PartitionIdentifier GetPartitionIdentifier() const { return partition_info_; }
 
@@ -97,6 +103,10 @@ class TsPartitionVersion {
   KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange> &del_items) const {
     return del_info_->GetDelRange(e_id, del_items);
   }
+  KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
+  KStatus GetBlockSpan(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
+  std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
+  bool skip_last = false, bool skip_entity = false) const;
 };
 class TsVGroupVersion {
   friend class TsVersionManager;
@@ -107,7 +117,8 @@ class TsVGroupVersion {
   std::shared_ptr<MemSegList> valid_memseg_;
 
  public:
-  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid) const;
+  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid,
+    const std::vector<KwTsSpan>& ts_spans, DATATYPE ts_type) const;
 
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToCompact() const;
 

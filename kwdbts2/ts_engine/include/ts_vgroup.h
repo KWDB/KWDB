@@ -267,7 +267,7 @@ class TsVGroup {
   // check partition of rows exist. if not creating it.
   KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
 
-  KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID entity_id,
+  KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
     const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);
 
   int saveToFile(uint32_t new_id) const;
