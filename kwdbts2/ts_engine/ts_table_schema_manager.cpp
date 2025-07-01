@@ -41,8 +41,8 @@ KStatus TsTableSchemaManager::alterTableTag(kwdbContext_p ctx, AlterType alter_t
     msg = err_info.errmsg;
     return FAIL;
   }
-  if (UpdateVersion(cur_version, new_version) != SUCCESS) {
-    msg = "Update table version error";
+  if (UpdateMetricVersion(cur_version, new_version) != SUCCESS) {
+    msg = "Update metric version error";
     return FAIL;
   }
   return SUCCESS;
@@ -121,37 +121,28 @@ KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type
   } else if (attr_info.isAttrType(COL_TS_DATA)) {
     s = alterTableCol(ctx, alter_type, attr_info, cur_version, new_version, msg);
   }
-  LOG_INFO("AlterTable end. table_id: %lu alter_type: %hhu ", table_id_, alter_type);
+  if (s == SUCCESS) {
+    LOG_INFO("AlterTable succeeded. table_id: %lu alter_type: %hhu cur_version: %u new_version: %u is_general_tag: %d",
+           table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
+  } else {
+    LOG_INFO("AlterTable failed. table_id: %lu alter_type: %hhu cur_version: %u new_version: %u is_general_tag: %d",
+           table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
+  }
   return s;
 }
 
 KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                        uint32_t cur_version, uint32_t new_version) {
-  AttributeInfo attr_info;
   ErrorInfo err_info;
-  KStatus s = TsEntityGroup::GetColAttributeInfo(ctx, *column, attr_info, false);
-  if (s != KStatus::SUCCESS) {
+  auto s = UndoAlterCol(cur_version, new_version);
+  if (s != SUCCESS) {
     return s;
   }
-  if (alter_type == AlterType::ALTER_COLUMN_TYPE) {
-    getDataTypeSize(attr_info);  // update max_len
+  if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
+    LOG_ERROR("UndoAlterTagTable failed. error: %s ", err_info.errmsg.c_str());
+    return FAIL;
   }
-
-  bool need_undo_tag = attr_info.isAttrType(COL_GENERAL_TAG) || attr_info.isAttrType(COL_TS_DATA);
-  if (attr_info.isAttrType(COL_TS_DATA)) {
-    s = RollBack(cur_version, new_version);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-  }
-
-  if (need_undo_tag) {
-    if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
-      LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
-      return KStatus::FAIL;
-    }
-  }
-  return s;
+  return SUCCESS;
 }
 
 std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::open(uint32_t ts_version, ErrorInfo& err_info) {
@@ -300,11 +291,6 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   if (metric_schemas_.find(ts_version) != metric_schemas_.end()) {
     LOG_INFO("Creating root table that already exists.");
     return SUCCESS;
-  }
-  if (cur_schema_version_ >= ts_version) {
-    LOG_ERROR("cannot create low version table: current version[%d], create version[%d]",
-              cur_schema_version_, ts_version)
-    return FAIL;
   }
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
@@ -614,18 +600,6 @@ bool TsTableSchemaManager::IsDropped() {
   return cur_metric_schema_->isDropped();
 }
 
-bool TsTableSchemaManager::TrySetCompressStatus(bool desired) {
-  bool expected = !desired;
-  if (is_compressing_.compare_exchange_strong(expected, desired)) {
-    return true;
-  }
-  return false;
-}
-
-void TsTableSchemaManager::SetCompressStatus(bool status) {
-  is_compressing_.store(status);
-}
-
 KStatus TsTableSchemaManager::RemoveAll() {
   wrLock();
   Defer defer([&]() { unLock(); });
@@ -641,7 +615,7 @@ KStatus TsTableSchemaManager::RemoveAll() {
   return SUCCESS;
 }
 
-KStatus TsTableSchemaManager::RollBack(uint32_t old_version, uint32_t new_version) {
+KStatus TsTableSchemaManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
   wrLock();
   Defer defer([&]() { unLock(); });
   if (cur_schema_version_ == old_version) {
@@ -666,7 +640,7 @@ KStatus TsTableSchemaManager::RollBack(uint32_t old_version, uint32_t new_versio
   return SUCCESS;
 }
 
-KStatus TsTableSchemaManager::UpdateVersion(uint32_t cur_version, uint32_t new_version) {
+KStatus TsTableSchemaManager::UpdateMetricVersion(uint32_t cur_version, uint32_t new_version) {
   std::vector<AttributeInfo> schema;
   auto s = GetColumnsIncludeDropped(schema, cur_version);
   if (s != SUCCESS) {
@@ -679,21 +653,6 @@ KStatus TsTableSchemaManager::UpdateVersion(uint32_t cur_version, uint32_t new_v
     return s;
   }
   return SUCCESS;
-}
-
-KStatus TsTableSchemaManager::UpdateTableVersionOfLastData(uint32_t version) {
-  wrLock();
-  Defer defer([&]() { unLock(); });
-  Get(cur_schema_version_, false)->tableVersionOfLatestData() = version;
-  return SUCCESS;
-}
-
-uint32_t TsTableSchemaManager::GetTableVersionOfLatestData() {
-  rdLock();
-  Defer defer([&]() { unLock(); });
-  uint32_t version = Get(cur_schema_version_, false)->tableVersionOfLatestData();
-  // Version compatibility
-  return version == 0 ? 1 : version;
 }
 
 KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
