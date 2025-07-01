@@ -137,19 +137,18 @@ KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_
     getDataTypeSize(attr_info);  // update max_len
   }
 
-  if (attr_info.isAttrType(COL_GENERAL_TAG)) {
-    if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
-      LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
-      return KStatus::FAIL;
-    }
-  } else if (attr_info.isAttrType(COL_TS_DATA)) {
+  bool need_undo_tag = attr_info.isAttrType(COL_GENERAL_TAG) || attr_info.isAttrType(COL_TS_DATA);
+  if (attr_info.isAttrType(COL_TS_DATA)) {
     s = RollBack(cur_version, new_version);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    if (tag_table_->GetTagTableVersionManager()->RollbackTableVersion(new_version, err_info) < 0) {
+  }
+
+  if (need_undo_tag) {
+    if (tag_table_->UndoAlterTagTable(cur_version, new_version, err_info) < 0) {
       LOG_ERROR("AlterTableTag failed. error: %s ", err_info.errmsg.c_str());
-      return FAIL;
+      return KStatus::FAIL;
     }
   }
   return s;
@@ -353,17 +352,28 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   int64_t ts = meta->ts_table().life_time();
   LifeTime life_time {ts, precision};
   tmp_bt->SetLifeTime(life_time);
-  LOG_INFO("Create table %lu with life time[%ld:%d]", table_id_, life_time.ts, life_time.precision);
+  LOG_INFO("Create table %lu with life time[%ld:%d], version:%d.", table_id_, life_time.ts, life_time.precision, ts_version);
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_schemas_.insert({ts_version, tmp_bt});
   cur_metric_schema_ = tmp_bt;
 
-  tag_table_ = std::make_shared<TagTable>(schema_root_path_, tag_schema_path_, table_id_, 1);
-  if (tag_table_->create(tag_schema, ts_version, err_info) < 0) {
-    LOG_ERROR("failed to create the tag table %s%lu, error: %s",
-              tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
-    return FAIL;
+  if (tag_table_ == nullptr) {
+    tag_table_ = std::make_shared<TagTable>(schema_root_path_, tag_schema_path_, table_id_, 1);
+    if (tag_table_->create(tag_schema, ts_version, err_info) < 0) {
+      LOG_ERROR("failed to create the tag table %s%lu, error: %s",
+                tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
+      return FAIL;
+    }
+  } else {
+    std::vector<roachpb::NTagIndexInfo> idx_info;
+    for (int i = 0; i < meta->index_info_size(); i++) {
+      idx_info.emplace_back(meta->index_info(i));
+    }
+    // Note:: "idx_info" is the index that exists in the current version.
+    if (tag_table_->AddNewPartitionVersion(tag_schema, ts_version, err_info, idx_info) < 0) {
+      LOG_ERROR("CreateTable add tag new version[%d] failed.", ts_version);
+    }
   }
 
   // Update the latest version of table and other information
@@ -525,6 +535,9 @@ KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
 }
 
 KStatus TsTableSchemaManager::GetTagSchema(kwdbContext_p ctx, std::shared_ptr<TagTable>* schema) {
+  if (tag_table_ == nullptr) {
+    return FAIL;
+  }
   *schema = tag_table_;
   return SUCCESS;
 }

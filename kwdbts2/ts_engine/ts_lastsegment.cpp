@@ -381,6 +381,14 @@ class TsLastBlock : public TsBlock {
     return const_cast<uint64_t*>(&seq_nos[row_num]);
   }
 
+  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
+  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
   int GetBlockID() const { return block_id_; }
 
  private:

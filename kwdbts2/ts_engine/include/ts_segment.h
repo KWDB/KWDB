@@ -31,6 +31,8 @@ struct TsScanFilterParams {
   TSTableID table_id;
   uint32_t vgroup_id;
   TSEntityID entity_id;
+  DATATYPE  table_ts_type;
+  TS_LSN end_lsn;
   const std::vector<KwTsSpan>& ts_spans_;
 };
 

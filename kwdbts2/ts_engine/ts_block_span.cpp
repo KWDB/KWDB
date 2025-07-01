@@ -185,18 +185,23 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
 }
 
 KStatus TsBlockSpan::GetSum(uint32_t scan_idx, void *&pre_sum, bool &is_overflow) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetMax(uint32_t scan_idx, void *&pre_max) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetMin(uint32_t scan_idx, void *&pre_min) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetVarMax(uint32_t scan_idx, TSSlice &pre_max) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetVarMin(uint32_t scan_idx, TSSlice &pre_min) {
+  return SUCCESS;
 }
 
 bool TsBlockSpan::HasPreAgg() {
@@ -244,7 +249,8 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_ = TSBlkDataTypeConvert(*this, convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
+  convert_.SetStartRowIdx(start_row_);
+  convert_.SetRowNum(nrow_);
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
@@ -253,13 +259,15 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
                                        convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
   // change current span info
   nrow_ -= row_num;
-  convert_ = TSBlkDataTypeConvert(*this, convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
+  convert_.SetRowNum(nrow_);
 }
 
 void TsBlockSpan::TrimFront(int row_num) {
+  assert(row_num <= nrow_);
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_ = TSBlkDataTypeConvert(*this, convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
+  convert_.SetStartRowIdx(start_row_);
+  convert_.SetRowNum(nrow_);
 }
 
 void TsBlockSpan::Clear() {

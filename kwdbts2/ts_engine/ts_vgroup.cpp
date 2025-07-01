@@ -32,6 +32,7 @@
 #include "libkwdbts2.h"
 #include "sys_utils.h"
 #include "ts_entity_segment.h"
+#include "ts_entity_segment_builder.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_iterator_v2_impl.h"
@@ -51,9 +52,7 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEn
       entity_counter_(0),
       engine_options_(engine_options),
       version_manager_(std::make_unique<TsVersionManager>(engine_options, vgroup_id)),
-      enable_compact_thread_(enable_compact_thread) {
-  initCompactThread();
-}
+      enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
@@ -66,6 +65,9 @@ TsVGroup::~TsVGroup() {
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
+  version_manager_->Recover();
+  initCompactThread();
+
   MakeDirectory(path_);
   wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_);
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
@@ -95,7 +97,6 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     entity_counter_ = KUint32(config_file_->memAddr());
   }
 
-  version_manager_->Recover();
 
   // recover partitions
   // std::error_code ec;
@@ -436,23 +437,28 @@ KStatus TsVGroup::Compact(int thread_num) {
         auto entity_segment = cur_partition->GetEntitySegment();
 
         auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
-        if (entity_segment == nullptr) {
-          entity_segment = std::make_shared<TsEntitySegment>(root_path.string());
-        }
+        uint64_t new_entity_header_num = version_manager_->NewFileNumber();
 
         // 2. Build the column block.
-        TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                       cur_partition->GetPartitionIdentifier(), entity_segment, last_segments);
-        KStatus s = builder.BuildAndFlush(&update);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("partition[%s] compact failed", path_.c_str());
+        {
+          TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
+                                         cur_partition->GetPartitionIdentifier(), entity_segment,
+                                         new_entity_header_num, last_segments);
+          KStatus s = builder.Open();
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
+          }
+          s = builder.BuildAndFlush(&update);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
+          }
         }
-        // 3. Set the compacted version.
 
+        // 3. Set the compacted version.
         for (auto& last_segment : last_segments) {
           update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
         }
-
+        entity_segment = std::make_shared<TsEntitySegment>(root_path.string(), new_entity_header_num);
         update.SetEntitySegment(cur_partition->GetPartitionIdentifier(), entity_segment);
       }
     });
@@ -857,7 +863,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 
 KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
 const std::vector<KwTsSpan>& ts_spans) {
-  auto s = TrasvalAllPartition(ctx, tbl_id, e_id, ts_spans,
+  auto s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
   [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
     auto ret = p->DeleteData(e_id, ts_spans, lsn);
     if (ret != KStatus::SUCCESS) {
@@ -871,7 +877,12 @@ const std::vector<KwTsSpan>& ts_spans) {
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                              const std::vector<KwTsSpan>& ts_spans) {
+const std::vector<KwTsSpan>& ts_spans) {
+  if (lsn == UINT64_MAX) {  // make sure lsn is not larger than current lsn.
+    wal_manager_->Lock();
+    lsn = wal_manager_->FetchCurrentLSN() + 1;  // not same with any allocated lsn.
+    wal_manager_->Unlock();
+  }
   return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
 }
 
@@ -945,7 +956,7 @@ KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID entity_id,
+KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
 const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
@@ -956,17 +967,13 @@ const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<con
   auto db_id = tb_schema_mgr->GetDbID();
   auto ts_type = tb_schema_mgr->GetTsColDataType();
 
-  std::vector<std::shared_ptr<const TsPartitionVersion>> ps = version_manager_->Current()->GetPartitions(db_id);
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ps =
+    version_manager_->Current()->GetPartitions(db_id, ts_spans, ts_type);
   for (auto& p : ps) {
-    KTimestamp p_start = convertSecondToPrecisionTS(p->GetStartTime(), ts_type);
-    KTimestamp p_end = convertSecondToPrecisionTS(p->GetEndTime(), ts_type);
-    // check if current partition is cross with ts_spans.
-    if (isTimestampInSpans(ts_spans, p_start, p_end)) {
-      s = func(p);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("cannot DeleteData for entity[%lu]", entity_id);
-        return s;
-      }
+    s = func(p);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("func failed.");
+      return s;
     }
   }
   return KStatus::SUCCESS;
@@ -982,7 +989,7 @@ const std::vector<KwTsSpan>& ts_spans) {
     return s;
   }
   if (entity_id > 0) {
-    s = TrasvalAllPartition(ctx, tbl_id, entity_id, ts_spans,
+    s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
       [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {

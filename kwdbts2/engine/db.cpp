@@ -1179,6 +1179,64 @@ TSStatus TSDeleteSnapshot(TSEngine* engine, TSTableID table_id, uint64_t snapsho
   return kTsSuccess;
 }
 
+TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, int32_t* row_num) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->ReadBatchData(ctx, table_id, table_version, begin_hash, end_hash, ts_span, job_id, data, row_num);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("ReadBatchData Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                          TSSlice* data, int32_t* row_num) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->WriteBatchData(ctx, table_id, table_version, job_id, data, row_num);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("WriteBatchData Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->CancelBatchJob(ctx, job_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("CancelBatchJob Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->BatchJobFinish(ctx, job_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("BatchJobFinish Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
 TSStatus TSClose(TSEngine* engine) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;

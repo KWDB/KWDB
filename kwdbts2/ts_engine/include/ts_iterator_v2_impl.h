@@ -40,11 +40,6 @@ class TsMemSegmentIterator;
 class TsLastSegmentIterator;
 class TsEntitySegmentIterator;
 
-struct TsPartition {
-  std::shared_ptr<const TsPartitionVersion> ts_partition_version;
-  KwTsSpan ts_partition_range;
-};
-
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
@@ -76,7 +71,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
   std::shared_ptr<TsVGroup> vgroup_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  std::vector<TsPartition> ts_partitions_;
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
 };
@@ -122,7 +117,6 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                             bool can_remove_last_candidate);
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
-  int valcmp(void* l, void* r, int32_t type, int32_t size);
   void UpdateTsSpans();
   void ConvertToDoubleIfOverflow(uint32_t blk_col_idx, TSSlice& agg_data);
   KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,

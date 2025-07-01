@@ -271,7 +271,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
-    LOG_ERROR("Tag table version[%u] doesnot exist.", payload.GetTableVersion());
+    LOG_ERROR("Tag table id[%d] version[%u] doesnot exist.", this->m_table_id, payload.GetTableVersion());
     return -1;
   }
   TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;

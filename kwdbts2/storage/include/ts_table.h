@@ -285,7 +285,7 @@ class TsTable {
   KStatus GetEntityIndexWithRowNum(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                   std::vector<std::pair<int, EntityResultIndex>> &entity_tag);
 
-  KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
+  virtual KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
 
   virtual KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                 const KwTsSpan& ts_span, uint64_t* volume);
@@ -439,6 +439,11 @@ class TsTable {
   GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
              const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
              uint32_t table_version);
+
+  virtual KStatus GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                         vector<std::pair<uint64_t, uint64_t>>* entity_ids) {
+    return KStatus::SUCCESS;
+  }
 
   /**
    * @brief Create an iterator TsStorageIterator for Tag tables

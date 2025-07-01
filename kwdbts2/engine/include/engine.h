@@ -351,6 +351,25 @@ struct TSEngine {
     return KStatus::FAIL;
   }
 
+  virtual KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                                uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
+                                int32_t* row_num) {
+    return FAIL;
+  }
+
+  virtual KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                                 TSSlice* data, int32_t* row_num) {
+    return FAIL;
+  }
+
+  virtual KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
+    return FAIL;
+  }
+
+  virtual KStatus BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
+    return FAIL;
+  }
+
   /**
  * @brief  calculate pushdown
  * @param[in] req
@@ -842,8 +861,6 @@ class AggCalculator {
   void UndoAgg(void* min_base, void* max_base, void* sum_base, void* count_base);
 
  private:
-  int cmp(void* l, void* r);
-
   bool isnull(size_t row);
 
   bool isDeleted(char* delete_flags, size_t row);

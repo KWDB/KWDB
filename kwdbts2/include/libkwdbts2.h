@@ -415,6 +415,16 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
  */
 TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id);
 
+TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, int32_t* row_num);
+
+TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                          TSSlice* data, int32_t* row_num);
+
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id);
+
+TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id);
+
 /**
  * @brief Delete snapshot object
  * @param[in] table_id id of the time series table

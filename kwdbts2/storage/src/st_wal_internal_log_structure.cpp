@@ -288,7 +288,7 @@ DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, ui
   memcpy(encoded_primary_tags_, data, p_tag_len_);
 
   ts_spans_ = KNEW KwTsSpan[range_size];
-  size_t partition_size = range_size * sizeof(DelRowSpan);
+  size_t partition_size = range_size * sizeof(KwTsSpan);
   memcpy(ts_spans_, data + p_tag_len_, partition_size);
 }
 

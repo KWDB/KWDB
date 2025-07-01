@@ -13,62 +13,6 @@
 #include "engine.h"
 
 namespace kwdbts {
-int AggCalculatorV2::cmp(void* l, void* r) {
-  switch (type_) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
-    case DATATYPE::BINARY: {
-      k_int32 ret = memcmp(l, r, size_);
-      return ret;
-    }
-    case DATATYPE::INT16: {
-      // k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
-      k_int16 lv = *(static_cast<k_int16*>(l));
-      k_int16 rv = *(static_cast<k_int16*>(r));
-      k_int32 diff = static_cast<k_int32>(lv) - static_cast<k_int32>(rv);
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::INT32:
-    case DATATYPE::TIMESTAMP: {
-      // k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
-      k_int32 lv = *(static_cast<k_int32*>(l));
-      k_int32 rv = *(static_cast<k_int32*>(r));
-      k_int64 diff = static_cast<k_int64>(lv) - static_cast<k_int64>(rv);
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::INT64:
-    case DATATYPE::TIMESTAMP64:
-    case DATATYPE::TIMESTAMP64_MICRO:
-    case DATATYPE::TIMESTAMP64_NANO: {
-      double diff = (*(static_cast<k_int64*>(l))) - (*(static_cast<k_int64*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::TIMESTAMP64_LSN:
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-    case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      double diff = (*(static_cast<TimeStamp64LSN*>(l))).ts64 - (*(static_cast<TimeStamp64LSN*>(r))).ts64;
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::FLOAT: {
-      double diff = (*(static_cast<float*>(l))) - (*(static_cast<float*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::DOUBLE: {
-      double diff = (*(static_cast<double*>(l))) - (*(static_cast<double*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::STRING: {
-      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size_);
-      return ret;
-    }
-      break;
-    default:
-      break;
-  }
-  return false;
-}
 
 bool AggCalculatorV2::isnull(size_t row) {
   if (!bitmap_) {
@@ -90,10 +34,10 @@ bool AggCalculatorV2::CalcAggForFlush(uint16_t& count, void* max_addr, void* min
     ++count;
     auto current = reinterpret_cast<void*>(reinterpret_cast<intptr_t>(mem_) + i * size_);
 
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
     if (isSumType(type_) && sum_addr != nullptr) {
@@ -245,7 +189,7 @@ KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype 
         agg_data.len = size_;
         InitAggData(agg_data);
         memcpy(agg_data.data, current, size_);
-      } else if (cmp(current, agg_data.data) > 0) {
+      } else if (cmp(current, agg_data.data, type_, size_) > 0) {
         memcpy(agg_data.data, current, size_);
       }
     }
@@ -256,7 +200,7 @@ KStatus AggCalculatorV2::MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype 
         agg_data.len = size_;
         InitAggData(agg_data);
         memcpy(agg_data.data, current, size_);
-      } else if (cmp(current, agg_data.data) < 0) {
+      } else if (cmp(current, agg_data.data, type_, size_) < 0) {
         memcpy(agg_data.data, current, size_);
       }
     }
@@ -365,7 +309,7 @@ KStatus AggCalculatorV2::MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype
         agg_data.len = size_;
         InitAggData(agg_data);
         memcpy(agg_data.data, max, size_);
-      } else if (cmp(max, agg_data.data) > 0) {
+      } else if (cmp(max, agg_data.data, type_, size_) > 0) {
         memcpy(agg_data.data, max, size_);
       }
       break;
@@ -377,7 +321,7 @@ KStatus AggCalculatorV2::MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype
         agg_data.len = size_;
         InitAggData(agg_data);
         memcpy(agg_data.data, min, size_);
-      } else if (cmp(min, agg_data.data) < 0) {
+      } else if (cmp(min, agg_data.data, type_, size_) < 0) {
         memcpy(agg_data.data, min, size_);
       }
       break;
