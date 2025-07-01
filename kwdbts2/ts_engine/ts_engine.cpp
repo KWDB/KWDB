@@ -342,14 +342,25 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY) {
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
-    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-    KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_manager);
+
+    TSSlice primary_key = payload.GetPrimaryTag();
+    auto tbl_version = payload.GetTableVersion();
+    std::shared_ptr<kwdbts::TsTable> ts_table;
+    KStatus s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
+      return s;
+    }
+
+    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+    s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetTableSchemaMgr failed. table id: %lu", table_id);
     }
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed get table id[%d] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
     err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id);
@@ -505,9 +516,15 @@ KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, 
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
-  return ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Add column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+          table_id, cur_version, new_version, err_msg.c_str());
+  }
+  return s;
 }
 
 KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
@@ -532,10 +549,15 @@ KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id,
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
-  return ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta,
-                              cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Drop column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+          table_id, cur_version, new_version, err_msg.c_str());
+  }
+  return s;
 }
 
 KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
@@ -560,10 +582,15 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
-  return ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
-                              cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+    table_id, cur_version, new_version, err_msg.c_str());
+  }
+  return s;
 }
 
 KStatus TSEngineV2Impl::AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) {

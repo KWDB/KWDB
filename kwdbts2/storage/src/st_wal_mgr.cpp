@@ -257,8 +257,8 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
                     wal_log->p_tag_len_;
             auto del_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, wal_log->getXID(),
                                                             wal_log->getVGroupID(), wal_log->getOldLSN(),
-                                                            WALTableType::DATA, wal_log->p_tag_len_,
-                                                            wal_log->table_id_, wal_log->range_size_,
+                                                            WALTableType::DATA_V2, wal_log->table_id_,
+                                                            wal_log->p_tag_len_, wal_log->range_size_,
                                                             wal_log->encoded_primary_tags_, wal_log->ts_spans_);
             s = writeWALInternal(ctx, del_log, log_len, current_lsn);
             delete []del_log;

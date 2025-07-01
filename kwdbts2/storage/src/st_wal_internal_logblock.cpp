@@ -126,7 +126,7 @@ KStatus EntryBlock::readBytes(size_t& offset, char*& res, size_t length,
   }
   res = KNEW char[length];
   if (res == nullptr) {
-    LOG_ERROR("Failed to malloc memory.")
+    LOG_ERROR("Failed to malloc memory, length:%d", length)
     return FAIL;
   }
 
