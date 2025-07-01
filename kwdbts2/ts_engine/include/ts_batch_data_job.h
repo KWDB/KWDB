@@ -11,6 +11,7 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 #include <cstdio>
@@ -57,8 +58,9 @@ class TsReadBatchDataJob : public TsBatchDataJob {
   std::vector<std::shared_ptr<TsVGroup>>* vgroups_ = nullptr;
 
  public:
-  TsReadBatchDataJob(TSEngineV2Impl* ts_engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash, uint64_t end_hash,
-                     KwTsSpan ts_span, uint64_t job_id, std::vector<std::pair<uint64_t, uint64_t>> entity_ids);
+  TsReadBatchDataJob(TSEngineV2Impl* ts_engine, TSTableID table_id, uint32_t table_version,
+                     uint64_t begin_hash, uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id,
+                     std::vector<std::pair<uint64_t, uint64_t>> entity_ids);
 
   KStatus Read(TSSlice* data, int32_t* row_num) override;
 
