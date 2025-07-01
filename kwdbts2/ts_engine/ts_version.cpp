@@ -172,8 +172,8 @@ KStatus TsVersionManager::Recover() {
     }
 
     next_logfile_number = std::stoull(res.str(1)) + 1;
-    std::unique_ptr<TsRandomReadFile> log_file;
-    s = env_->NewRandomReadFile(root_path_ / log_filename, &log_file);
+    std::unique_ptr<TsSequentialReadFile> log_file;
+    s = env_->NewSequentialReadFile(root_path_ / log_filename, &log_file);
     if (s == FAIL) {
       LOG_ERROR("can not open update log file");
       return FAIL;
@@ -783,24 +783,19 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   static constexpr size_t kHeaderSize = sizeof(uint32_t) + sizeof(uint32_t);
   *eof = false;
 
-  size_t filesize = file_->GetFileSize();
-  if (offset_ >= filesize) {
+  if (file_->IsEOF()) {
     *eof = true;
     return SUCCESS;
   }
 
   TSSlice result;
   auto buf = std::make_unique<char[]>(kHeaderSize);
-  auto s = file_->Read(offset_, kHeaderSize, &result, buf.get());
-  if (s == FAIL){
-    return FAIL;
-  }
+  auto s = file_->Read(kHeaderSize, &result, buf.get());
   if (result.len != kHeaderSize) {
-    LOG_WARN("Failed to read record header, skip this record");
+    LOG_WARN("Failed to read a full record header, skip this record");
     *eof = true;
     return SUCCESS;
   }
-  offset_ += kHeaderSize;
   const char *ptr = result.data;
   uint32_t checksum = DecodeFixed32(ptr);
   ptr += sizeof(uint32_t);
@@ -808,15 +803,10 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   ptr += sizeof(uint32_t);
 
   buf = std::make_unique<char[]>(size);
-  file_->Prefetch(offset_, size);
-  s = file_->Read(offset_, size, &result, buf.get());
-  if (s == FAIL) {
-    return FAIL;
-  }
-  offset_ += size;
+  s = file_->Read(size, &result, buf.get());
   if (result.len != size) {
     *eof = true;
-    LOG_WARN("Failed to read record data, skip this record");
+    LOG_WARN("Failed to read a full record data, skip this record");
     return SUCCESS;
   }
 

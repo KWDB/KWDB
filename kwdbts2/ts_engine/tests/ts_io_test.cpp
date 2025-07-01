@@ -24,12 +24,14 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <numeric>
 #include <random>
 #include <string_view>
 #include <thread>
 
+#include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 
@@ -177,6 +179,35 @@ TEST(MMapIOV2, Write) {
   std::filesystem::remove(filename);
 }
 
+TEST(MMapIOV2, SequentialRead) {
+  std::string filename = "sequential_test";
+  std::filesystem::remove(filename);
+  std::ofstream f(filename);
+  f << "0123456789";
+  f.close();
+
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  std::unique_ptr<TsSequentialReadFile> sfile;
+  auto s = env->NewSequentialReadFile(filename, &sfile);
+  ASSERT_EQ(s, SUCCESS);
+
+  EXPECT_EQ(sfile->GetFileSize(), 10);
+
+  TSSlice result;
+  EXPECT_EQ(sfile->Read(1, &result, nullptr), SUCCESS);
+  std::string_view sv{result.data, result.len};
+  EXPECT_EQ(sv, "0");
+  EXPECT_EQ(sfile->Read(5, &result, nullptr), SUCCESS);
+  sv = std::string_view{result.data, result.len};
+  EXPECT_EQ(sv, "12345");
+  EXPECT_EQ(sfile->Read(9, &result, nullptr), SUCCESS);
+  sv = std::string_view{result.data, result.len};
+  EXPECT_EQ(sv, "6789");
+  EXPECT_EQ(sfile->Read(10, &result, nullptr), SUCCESS);
+  sv = std::string_view{result.data, result.len};
+  EXPECT_EQ(sv, "");
+}
+
 TEST(MMapIOV2, FailedCases) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
@@ -194,12 +225,14 @@ TEST(MMapIOV2, FailedCases) {
   }
   s = env->NewRandomReadFile(filename, &rfile);
   EXPECT_EQ(s, SUCCESS);
-  EXPECT_EQ(rfile->Prefetch(1000, 1000), FAIL);
+  EXPECT_EQ(rfile->Prefetch(1000, 1000), SUCCESS);
   EXPECT_EQ(rfile->Prefetch(5, 1000), SUCCESS);
 
   TSSlice result;
-  EXPECT_EQ(rfile->Read(10, 1000, &result, nullptr), FAIL);
+  EXPECT_EQ(rfile->Read(10, 1000, &result, nullptr), SUCCESS);
+  EXPECT_EQ(result.len, 0);
   EXPECT_EQ(rfile->Read(9, 1000, &result, nullptr), SUCCESS);
+  EXPECT_EQ(result.len, 1);
   std::string_view sv{result.data, result.len};
   EXPECT_EQ(sv, "9");
   std::filesystem::remove(filename);

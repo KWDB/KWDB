@@ -282,11 +282,10 @@ class TsVersionManager::Logger {
 
 class TsVersionManager::RecordReader {
  private:
-  std::unique_ptr<TsRandomReadFile> file_;
-  size_t offset_ = 0;
+  std::unique_ptr<TsSequentialReadFile> file_;
 
  public:
-  RecordReader(std::unique_ptr<TsRandomReadFile> &&file) : file_(std::move(file)) {}
+  RecordReader(std::unique_ptr<TsSequentialReadFile> &&file) : file_(std::move(file)) {}
   KStatus ReadRecord(std::string *record, bool *eof);
 };
 

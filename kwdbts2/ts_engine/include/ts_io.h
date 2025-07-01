@@ -305,8 +305,11 @@ class TsSequentialReadFile {
   bool delete_after_free = false;  // remove it later
   const std::string path_;
 
+  size_t offset_ = 0;
+  size_t file_size_ = 0;
+
  public:
-  explicit TsSequentialReadFile(const std::string& path) : path_(path) {}
+  explicit TsSequentialReadFile(const std::string& path, size_t file_size) : path_(path), file_size_(file_size) {}
   virtual ~TsSequentialReadFile() {
     if (delete_after_free) {
       unlink(path_.c_str());
@@ -314,7 +317,20 @@ class TsSequentialReadFile {
   }
 
   virtual KStatus Read(size_t n, TSSlice* slice, char* buf) = 0;
-  virtual KStatus Skip(size_t n) = 0;
+  virtual KStatus Skip(size_t n) {
+    offset_ += n;
+    return SUCCESS;
+  }
+  virtual KStatus Seek(size_t offset) {
+    offset_ = offset;
+    return SUCCESS;
+  }
+
+  size_t GetFileSize() const { return file_size_; }
+  std::string GetFilePath() const { return path_; }
+  bool IsEOF() const { return offset_ >= file_size_; }
+
+  void MarkDelete() { delete_after_free = true; }
 };
 
 class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
@@ -376,6 +392,21 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
   size_t GetFileSize() const override { return file_size_; }
 };
 
+class TsMMapSequentialReadFile : public TsSequentialReadFile {
+ private:
+  int fd_;
+  char* mmap_start_;
+  size_t page_size_;
+
+ public:
+  TsMMapSequentialReadFile(const std::string& path, int fd, char* addr, size_t filesize)
+      : TsSequentialReadFile(path, filesize), fd_(fd), mmap_start_(addr), page_size_(getpagesize()) {
+    assert(mmap_start_);
+    assert(file_size_ > 0);
+  }
+  KStatus Read(size_t n, TSSlice* slice, char* buf) override;
+};
+
 class TsIOEnv {
  public:
   virtual ~TsIOEnv() {}
@@ -384,7 +415,7 @@ class TsIOEnv {
   virtual KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                                     size_t file_size = -1) = 0;
   virtual KStatus NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
-                                        size_t file_size) = 0;
+                                        size_t file_size = -1) = 0;
   virtual KStatus NewDirectory(const std::string& path) = 0;
   virtual KStatus DeleteDir(const std::string& path) = 0;
   virtual KStatus DeleteFile(const std::string& path) = 0;

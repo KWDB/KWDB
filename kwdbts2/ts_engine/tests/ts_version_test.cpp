@@ -178,12 +178,12 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
     EXPECT_EQ(s, SUCCESS);
 
     TsVersionUpdate update;
-    update.PartitionDirCreated({1, 2, 3});
-    update.PartitionDirCreated({1, 5, 6});
-    update.PartitionDirCreated({1, 8, 9});
-    update.PartitionDirCreated({2, 11, 12});
-    update.PartitionDirCreated({2, 14, 15});
-    update.PartitionDirCreated({4, 14, 15});
+    std::vector<PartitionIdentifier> par_ids = {
+        {{1, 2, 3}, {1, 5, 6}, {1, 8, 9}, {2, 11, 12}, {2, 14, 15}, {4, 14, 15}}};
+    for (auto pid : par_ids) {
+      env->NewDirectory(vgroup_root / PartitionDirName(pid));
+      update.PartitionDirCreated(pid);
+    }
     s = mgr->ApplyUpdate(&update);
     EXPECT_EQ(s, SUCCESS);
   }
@@ -203,6 +203,7 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
     {
       TsVersionUpdate update;
+      env->NewDirectory(vgroup_root / PartitionDirName({1, 9, 10}));
       update.PartitionDirCreated({1, 9, 10});
       s = mgr->ApplyUpdate(&update);
       EXPECT_EQ(s, SUCCESS);
