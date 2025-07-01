@@ -128,21 +128,24 @@ class TsVGroupVersion {
 
 enum class VersionUpdateType : uint8_t {
   kNewPartition = 1,
-  kNewLastSegment = 2,
-  kDeleteLastSegment = 3,
-  kSetEntitySegment = 4,
-  kNextFileNumber = 5,
+  kDeletePartition = 2,
+
+  kNewLastSegment = 3,
+  kDeleteLastSegment = 4,
+
+  kSetEntitySegment = 5,
+  kNextFileNumber = 6,
 };
 
 class TsVersionUpdate {
   friend class TsVersionManager;
 
  public:
-  struct EntitySegmentInfo {
+  struct EntitySegmentVersionInfo {
     uint64_t block_file_size;
     uint64_t header_b_size;
+    uint64_t agg_file_size;
     uint64_t header_e_file_number;
-    std::shared_ptr<TsEntitySegment> entity_segment;  // TODO(zzr): remove this field later
   };
 
  private:
@@ -159,7 +162,7 @@ class TsVersionUpdate {
   std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
 
   bool has_entity_segment_ = false;
-  std::map<PartitionIdentifier, EntitySegmentInfo> entity_segment_;
+  std::map<PartitionIdentifier, EntitySegmentVersionInfo> entity_segment_;
 
   bool has_next_file_number_ = false;
   uint64_t next_file_number_ = 0;
@@ -193,7 +196,7 @@ class TsVersionUpdate {
     has_mem_segments_ = true;
   }
 
-  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentInfo info) {
+  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentVersionInfo info) {
     std::unique_lock lk{mu_};
     entity_segment_[partition_id] = info;
     has_entity_segment_ = true;
@@ -233,7 +236,7 @@ class TsVersionUpdate {
     ss << "entity_segment: ";
     for (const auto &[partition_id, info] : entity_segment_) {
       ss << partition_id << ": " << info.block_file_size << " " << info.header_b_size << " "
-         << info.header_e_file_number << " " << info.entity_segment.get() << "; ";
+         << info.header_e_file_number << " " << info.agg_file_size << "; ";
     }
     return ss.str();
   }

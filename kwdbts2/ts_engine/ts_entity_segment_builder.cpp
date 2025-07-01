@@ -14,6 +14,7 @@
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_filename.h"
 #include "ts_lastsegment_builder.h"
+#include "ts_version.h"
 
 namespace kwdbts {
 
@@ -643,6 +644,13 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     }
     update->AddLastSegment(partition_id_, builder->GetFileNumber());
   }
+
+  TsVersionUpdate::EntitySegmentVersionInfo info;
+  info.agg_file_size = agg_file_builder_->GetFileSize();
+  info.block_file_size = block_file_builder_->GetFileSize();
+  info.header_b_size = block_item_builder_->GetFileSize();
+  info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 

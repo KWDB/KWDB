@@ -409,6 +409,7 @@ KStatus TsVGroup::Compact(int thread_num) {
 
   // Compact partitions
   TsVersionUpdate update;
+  std::atomic_bool success{true};
   std::vector<std::thread> workers;
   for (uint32_t thread_idx = 0; thread_idx < thread_num; thread_idx++) {
     workers.emplace_back([&, thread_idx]() {
@@ -425,15 +426,19 @@ KStatus TsVGroup::Compact(int thread_num) {
         // 2. Build the column block.
         {
           TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                         cur_partition->GetPartitionIdentifier(), entity_segment,
-                                         new_entity_header_num, last_segments);
+                                         cur_partition->GetPartitionIdentifier(), entity_segment, new_entity_header_num,
+                                         last_segments);
           KStatus s = builder.Open();
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
+            success = false;
+            return;
           }
           s = builder.BuildAndFlush(&update);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
+            success = false;
+            return;
           }
         }
 
@@ -441,14 +446,16 @@ KStatus TsVGroup::Compact(int thread_num) {
         for (auto& last_segment : last_segments) {
           update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
         }
-        entity_segment = std::make_shared<TsEntitySegment>(root_path.string(), new_entity_header_num);
-        // TODO(zzr): set the filesize and filenumber to correct value.
-        update.SetEntitySegment(cur_partition->GetPartitionIdentifier(), {0, 0, 0, entity_segment});
       }
     });
   }
   for (auto& worker : workers) {
     worker.join();
+  }
+
+  if (!success) {
+    LOG_ERROR("compact failed.");
+    return FAIL;
   }
   // 4. Update the version.
   return version_manager_->ApplyUpdate(&update);

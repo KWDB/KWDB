@@ -31,33 +31,10 @@
 #include <string_view>
 #include <thread>
 
-#include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 
 using namespace kwdbts;  // NOLINT
-TEST(MMAP, ReadWrite) {
-  std::filesystem::remove("test");
-  TsMMapFile* f = new TsMMapFile("test", false);
-  f->Append("12345");
-  f->Append("12345");
-  std::string long_string(10000, 31);
-  f->Append(long_string);
-  f->Sync();
-  delete f;
-
-  auto f2 = new TsMMapFile("test", true);
-  f2->MarkDelete();
-
-  char buf[64];
-  TSSlice result;
-  f2->Read(3, 2, &result, buf);
-  ASSERT_TRUE(memcmp(result.data, "45", result.len) == 0);
-  delete f2;
-
-  ASSERT_FALSE(std::filesystem::exists("test"));
-}
-
 TEST(MMapIOV2, Write) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
   std::unique_ptr<TsAppendOnlyFile> wfile;

@@ -211,17 +211,14 @@ KStatus TsVersionManager::Recover() {
       return FAIL;
     }
     builder.AddUpdate(update);
+
+    LOG_INFO("!!!!!!!!!%s", update.DebugStr().c_str());
+
   } while (!eof);
   TsVersionUpdate update;
   builder.Finalize(&update);
 
-  // TODO(zzr): handle entity segment update, remove this after entity segment read-write split is implemented
-  if (update.has_entity_segment_) {
-    for (auto [par_id, _] : update.entity_segment_) {
-      auto entity_segment = std::make_shared<TsEntitySegment>(root_path_ / PartitionDirName(par_id));
-      update.SetEntitySegment(par_id, {0, 0, 0, std::move(entity_segment)});
-    }
-  }
+  LOG_INFO("~~~~~~~~~~~~~%s", update.DebugStr().c_str());
 
   assert(logger_ != nullptr);
   s = ApplyUpdate(&update);
@@ -352,7 +349,11 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     // Process entity segment update, used by Compact()
     auto it = update->entity_segment_.find(par_id);
     if (it != update->entity_segment_.end()) {
-      new_partition_version->entity_segment_ = it->second.entity_segment;
+      std::string root = root_path_ / PartitionDirName(par_id);
+      if (new_partition_version->entity_segment_) {
+        new_partition_version->entity_segment_->MarkDeleteEntityHeader();
+      }
+      new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(root, it->second);
     }
 
     // VGroupVersion accepts the new partition version
@@ -614,7 +615,8 @@ inline const char *DecodePartitonFiles(const char *ptr, const char *limit,
 }
 
 inline void EncodeEntitySegment(
-    std::string *result, const std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentInfo> &entity_segments) {
+    std::string *result,
+    const std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> &entity_segments) {
   uint32_t npartition = entity_segments.size();
   PutVarint32(result, npartition);
   for (const auto &[par_id, info] : entity_segments) {
@@ -622,11 +624,12 @@ inline void EncodeEntitySegment(
     PutVarint64(result, info.block_file_size);
     PutVarint64(result, info.header_b_size);
     PutVarint64(result, info.header_e_file_number);
+    PutVarint64(result, info.agg_file_size);
   }
 }
 
 const char *DecodeEntitySegment(const char *ptr, const char *limit,
-                                std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentInfo> *entity_segments) {
+                                std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> *entity_segments) {
   uint32_t npartition = 0;
   ptr = DecodeVarint32(ptr, limit, &npartition);
   if (ptr == nullptr) {
@@ -639,14 +642,15 @@ const char *DecodeEntitySegment(const char *ptr, const char *limit,
     if (ptr == nullptr) {
       return nullptr;
     }
-    TsVersionUpdate::EntitySegmentInfo info;
+    TsVersionUpdate::EntitySegmentVersionInfo info;
     ptr = DecodeVarint64(ptr, limit, &info.block_file_size);
     ptr = DecodeVarint64(ptr, limit, &info.header_b_size);
     ptr = DecodeVarint64(ptr, limit, &info.header_e_file_number);
+    ptr = DecodeVarint64(ptr, limit, &info.agg_file_size);
     if (ptr == nullptr) {
       return nullptr;
     }
-    entity_segments->insert({par_id, info});
+    entity_segments->insert_or_assign(par_id, info);
   }
   return ptr;
 }
@@ -848,7 +852,9 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
 
   if (update.has_entity_segment_) {
     all_updates_.has_entity_segment_ = true;
-    all_updates_.entity_segment_ = update.entity_segment_;
+    for (auto [par_id, info] : update.entity_segment_) {
+      all_updates_.entity_segment_[par_id] = info;
+    }
   }
 
   if (update.has_next_file_number_) {

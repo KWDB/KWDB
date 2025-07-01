@@ -40,7 +40,8 @@ class TsVersionTest : public testing::Test {
     ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
   }
 
-  void MimicCompaction(TsVersionManager *mgr, PartitionIdentifier par_id, TsVersionUpdate::EntitySegmentInfo info) {
+  void MimicCompaction(TsVersionManager *mgr, PartitionIdentifier par_id,
+                       TsVersionUpdate::EntitySegmentVersionInfo info) {
     TsVersionUpdate update;
     auto root = vgroup_root / PartitionDirName(par_id);
     auto current = mgr->Current();
@@ -129,11 +130,11 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
 
   {
     TsVersionUpdate update;
-    update.SetEntitySegment({1, 2, 3}, {1, 2, 3, nullptr});
-    update.SetEntitySegment({4, 5, 6}, {4, 5, 6, nullptr});
-    update.SetEntitySegment({7, 8, 9}, {7, 8, 9, nullptr});
-    update.SetEntitySegment({10, 11, 12}, {10, 11, 12, nullptr});
-    update.SetEntitySegment({13, 14, 15}, {13, 14, 15, nullptr});
+    update.SetEntitySegment({1, 2, 3}, {1, 2, 3, 4});
+    update.SetEntitySegment({4, 5, 6}, {4, 5, 6, 7});
+    update.SetEntitySegment({7, 8, 9}, {7, 8, 9, 10});
+    update.SetEntitySegment({10, 11, 12}, {10, 11, 12, 13});
+    update.SetEntitySegment({13, 14, 15}, {13, 14, 15, 14});
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
 
@@ -149,7 +150,7 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     update.AddLastSegment({1, 2, 3}, 6);
     update.DeleteLastSegment({1, 2, 3}, 4);
     update.SetNextFileNumber(7);
-    update.SetEntitySegment({1, 2, 3}, {9, 10, 11, nullptr});
+    update.SetEntitySegment({1, 2, 3}, {9, 10, 11, 12});
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
 
@@ -216,8 +217,8 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
     // mimic compaction
     {
-      MimicCompaction(mgr.get(), par_id, {1, 2, 3, nullptr});
-      MimicCompaction(mgr.get(), par_id, {4, 5, 6, nullptr});
+      MimicCompaction(mgr.get(), par_id, {1, 2, 3, 4});
+      MimicCompaction(mgr.get(), par_id, {4, 5, 6, 7});
     }
   }
 
@@ -264,8 +265,8 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
 
     // mimic compaction
     {
-      MimicCompaction(mgr.get(), par_id, {7, 8, 9, nullptr});
-      MimicCompaction(mgr.get(), par_id, {10, 11, 12, nullptr});
+      MimicCompaction(mgr.get(), par_id, {7, 8, 9, 10});
+      MimicCompaction(mgr.get(), par_id, {10, 11, 12, 13});
     }
 
     for (int i = 0; i < 10; i++) {

@@ -103,6 +103,8 @@ class TsEntitySegmentEntityItemFile {
   uint64_t GetEntityNum();
 
   bool IsReady();
+
+  void MarkDelete() { r_file_->MarkDelete(); }
 };
 
 struct TsBlockItemFileHeader {
@@ -121,9 +123,9 @@ class TsEntitySegmentBlockItemFile {
   TsBlockItemFileHeader* header_ = nullptr;
 
  public:
-  explicit TsEntitySegmentBlockItemFile(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentBlockItemFile(const string& file_path, uint64_t file_size) : file_path_(file_path) {
     TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-    if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
+    if (env->NewRandomReadFile(file_path_, &r_file_, file_size) != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBlockItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
       assert(false);
     }
@@ -145,7 +147,7 @@ class TsEntitySegmentMetaManager {
   TsEntitySegmentBlockItemFile block_header_;
 
  public:
-  explicit TsEntitySegmentMetaManager(const string& dir_path, uint64_t entity_header_file_num);
+  explicit TsEntitySegmentMetaManager(const string& dir_path, uint64_t header_e_file_num, uint64_t header_b_file_size);
 
   ~TsEntitySegmentMetaManager() {}
 
@@ -167,6 +169,8 @@ class TsEntitySegmentMetaManager {
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                         uint32_t scan_version);
+
+  void MarkDeleteEntityHeader() {entity_header_.MarkDelete(); }
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -296,7 +300,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
  public:
   TsEntitySegment() = delete;
 
-  explicit TsEntitySegment(const std::filesystem::path& root, uint64_t entity_header_file_num);
+  explicit TsEntitySegment(const std::filesystem::path& root, TsVersionUpdate::EntitySegmentVersionInfo info);
 
   ~TsEntitySegment() {}
 
@@ -318,6 +322,8 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TsEntityBlock* block);
 
   KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block);
+
+  void MarkDeleteEntityHeader() { meta_mgr_.MarkDeleteEntityHeader(); }
 };
 
 }  // namespace kwdbts
