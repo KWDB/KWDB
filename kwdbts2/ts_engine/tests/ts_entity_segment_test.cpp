@@ -67,7 +67,6 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     opts.db_path = "db001-123";
     auto vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
-    EXPECT_EQ(vgroup->VersionRecover(), KStatus::SUCCESS);
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;

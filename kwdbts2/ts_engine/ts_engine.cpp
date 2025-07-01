@@ -1406,15 +1406,6 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
 }
 
 KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
-  // Recover TsVersion first
-  for (int i = 0; i < vgroups_.size(); ++i) {
-    auto s = vgroups_[i]->VersionRecover();
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to recover TsVersion for vgroup %d", i)
-      return s;
-    }
-  }
-
   /*
    * 1. get engine chk wal log.
    * 2. get all vgroup wal log from last checkpoint lsn.

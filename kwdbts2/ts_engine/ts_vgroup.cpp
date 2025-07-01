@@ -64,10 +64,18 @@ TsVGroup::~TsVGroup() {
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
-  version_manager_->Recover();
+  auto s = engine_options_.io_env->NewDirectory(path_);
+  if (s == FAIL) {
+    LOG_ERROR("Failed to create directory: %s", path_.c_str());
+    return s;
+  }
+
+  s = version_manager_->Recover();
+  if (s == FAIL) {
+    LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+  }
   initCompactThread();
 
-  MakeDirectory(path_);
   wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_);
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
   auto res = wal_manager_->Init(ctx);
@@ -104,14 +112,6 @@ KStatus TsVGroup::SetReady() {
   mem_segment_mgr_.GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
   return version_manager_->ApplyUpdate(&update);
-}
-
-KStatus TsVGroup::VersionRecover() {
-  auto s = version_manager_->Recover();
-  if (s == FAIL) {
-    LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
-  }
-  return s;
 }
 
 KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta) {

@@ -80,8 +80,6 @@ class TsVGroup {
 
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus VersionRecover();
-
   KStatus SetReady();
 
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);

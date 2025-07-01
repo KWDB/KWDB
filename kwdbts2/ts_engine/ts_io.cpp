@@ -281,7 +281,7 @@ KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::uni
 
 KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
   std::error_code ec;
-  bool ok = std::filesystem::create_directory(path, ec);
+  bool ok = std::filesystem::create_directories(path, ec);
   if (!ok) {
     if (std::filesystem::exists(path)) {
       return SUCCESS;
