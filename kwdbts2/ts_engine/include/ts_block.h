@@ -50,6 +50,10 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
+  virtual KStatus GetCompressData(TSSlice* data, int32_t* row_num) = 0;
+
+  virtual KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) = 0;
+
   /*
   * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
   */

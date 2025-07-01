@@ -269,6 +269,14 @@ class TsEntityBlock : public TsBlock {
 
   uint64_t* GetLSNAddr(int row_num);
 
+  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
+  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
   KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count) override;
   KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) override;
