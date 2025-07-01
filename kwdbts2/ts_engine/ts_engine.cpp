@@ -900,13 +900,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   rewrite.clear();
 
   // 5. trig all vgroup flush
-  // for (const auto &vgrp : vgroups_) {
-  //   s = vgrp->Flush();
-  //   if (s == KStatus::FAIL) {
-  //     LOG_ERROR("Failed to flush metric file.")
-  //     return s;
-  //   }
-  // }
+  for (const auto &vgrp : vgroups_) {
+    s = vgrp->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
+  }
 
   // 6.write EndWAL to chk file
   TS_LSN lsn;
@@ -1259,6 +1259,15 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
 }
 
 KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
+  // Recover TsVersion first
+  for (int i = 0; i < vgroups_.size(); ++i) {
+    auto s = vgroups_[i]->VersionRecover();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to recover TsVersion for vgroup %d", i)
+      return s;
+    }
+  }
+
   /*
    * 1. get engine chk wal log.
    * 2. get all vgroup wal log from last checkpoint lsn.

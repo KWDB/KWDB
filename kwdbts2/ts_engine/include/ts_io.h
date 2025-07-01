@@ -379,12 +379,12 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
 class TsIOEnv {
  public:
   virtual ~TsIOEnv() {}
-  virtual KStatus NewAppendOnlyFile(const std::string& filepath,
-                                    std::unique_ptr<TsAppendOnlyFile>* file, bool overwrite = true,
-                                    size_t offset = -1) = 0;
-  virtual KStatus NewRandomReadFile(const std::string& filepath,
-                                    std::unique_ptr<TsRandomReadFile>* file,
+  virtual KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                    bool overwrite = true, size_t offset = -1) = 0;
+  virtual KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                                     size_t file_size = -1) = 0;
+  virtual KStatus NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                        size_t file_size);
   virtual KStatus NewDirectory(const std::string& path) = 0;
   virtual KStatus DeleteDir(const std::string& path) = 0;
   virtual KStatus DeleteFile(const std::string& path) = 0;
@@ -393,10 +393,11 @@ class TsIOEnv {
 class TsMMapIOEnv : public TsIOEnv {
  public:
   static TsIOEnv& GetInstance();
-  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
-                            bool overrite = true, size_t offset = -1) override;
+  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file, bool overrite = true,
+                            size_t offset = -1) override;
   KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                             size_t file_size = -1) override;
+  KStatus NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file, size_t file_size = -1) override;
   KStatus NewDirectory(const std::string& path) override;
   KStatus DeleteFile(const std::string& path) override;
   KStatus DeleteDir(const std::string& path) override;

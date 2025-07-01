@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
+#include <string>
 #include <system_error>
 
 #include "kwdb_type.h"
@@ -243,6 +244,19 @@ KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath,
     return FAIL;
   }
   file->reset(new TsMMapRandomReadFile(filepath, fd, static_cast<char*>(ptr), file_size));
+  return SUCCESS;
+}
+
+KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                           size_t file_size) {
+  int fd = -1;
+  do {
+    fd = open(filepath.c_str(), O_RDONLY);
+  } while (fd < 0 && errno == EINTR);
+  if (fd < 0) {
+    LOG_ERROR("cannot open file %s, reason: %s", filepath.c_str(), strerror(errno));
+    return FAIL;
+  }
   return SUCCESS;
 }
 

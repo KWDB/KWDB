@@ -12,8 +12,8 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <string_view>
 
-#include "data_type.h"
 #include "ts_version.h"
 namespace kwdbts {
 inline std::string LastSegmentFileName(uint64_t file_number) {
@@ -30,8 +30,22 @@ inline std::string VGroupDirName(uint32_t vgroup_id) {
 
 inline std::string PartitionDirName(PartitionIdentifier partition_id) {
   char buffer[64];
-  auto [database_id, start] = partition_id;
-  std::snprintf(buffer, sizeof(buffer), "db%02d-%014ld", database_id, start);
+  auto [database_id, start, _] = partition_id;
+  std::snprintf(buffer, sizeof(buffer), "db%05d_%+014ld", database_id, start);
+  return buffer;
+}
+
+inline std::string VersionUpdateName(uint64_t file_number) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "TSVERSION-%012lu", file_number);
+  return buffer;
+}
+
+inline std::string CurrentVersionName() { return "CURRENT"; }
+
+inline std::string TempFileName(const std::string& filename) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), ".%s.kwdbts", filename.data());
   return buffer;
 }
 
