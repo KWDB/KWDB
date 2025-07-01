@@ -14,81 +14,81 @@
 namespace kwdbts {
 
 TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& file_path) : file_path_(file_path) {
-  file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
-  file_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_BLOCK_FILE_RWLOCK);
-  memset(&header_, 0, sizeof(TsBlockFileHeader));
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBlockFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
+    assert(false);
+  }
+  memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
 }
 
 TsEntitySegmentBlockFile::~TsEntitySegmentBlockFile() {}
 
 KStatus TsEntitySegmentBlockFile::Open() {
-  TSSlice result;
-  KStatus s = file_->Read(0, sizeof(TsBlockFileHeader), &result, reinterpret_cast<char *>(&header_));
-  if (header_.status != TsFileStatus::READY) {
-    file_->Reset();
-    header_.status = TsFileStatus::READY;
-    header_.magic = TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC;
-    s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsBlockFileHeader)});
-  }
-  return s == KStatus::SUCCESS ? KStatus::SUCCESS : KStatus::FAIL;
-}
-
-KStatus TsEntitySegmentBlockFile::AppendBlock(const TSSlice& block, uint64_t* offset) {
-  RW_LATCH_X_LOCK(file_mtx_);
-  *offset = file_->GetFileSize();
-  file_->Append(block);
-  RW_LATCH_UNLOCK(file_mtx_);
-  return KStatus::SUCCESS;
-}
-
-KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, char* buff, size_t len) {
-  RW_LATCH_S_LOCK(file_mtx_);
-  TSSlice result;
-  file_->Read(offset, len, &result, buff);
-  if (result.len != len) {
-    LOG_ERROR("TsEntitySegmentBlockFile read block failed, offset=%lu, len=%zu", offset, len)
+  if (r_file_->GetFileSize() < sizeof(TsAggAndBlockFileHeader)) {
+    LOG_ERROR("TsEntitySegmentBlockFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
-  RW_LATCH_UNLOCK(file_mtx_);
-  return KStatus::SUCCESS;
-}
-
-TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& file_path)
-        : file_path_(file_path) {
-  file_ = std::make_unique<TsMMapFile>(file_path, false /*read_only*/);
-  agg_file_mtx_ = std::make_unique<KRWLatch>(RWLATCH_ID_BLOCK_AGG_RWLOCK);
-  memset(&header_, 0, sizeof(TsAggFileHeader));
-}
-
-KStatus TsEntitySegmentAggFile::Open() {
   TSSlice result;
-  auto s = file_->Read(0, sizeof(TsAggFileHeader), &result, reinterpret_cast<char *>(&header_));
+  KStatus s = r_file_->Read(0, sizeof(TsAggAndBlockFileHeader), &result, nullptr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBlockFile read failed, file_path=%s", file_path_.c_str())
+    return s;
+  }
+  header_ = *reinterpret_cast<TsAggAndBlockFileHeader*>(result.data);
   if (header_.status != TsFileStatus::READY) {
-    file_->Reset();
-    header_.magic = TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC;
-    header_.status = TsFileStatus::READY;
-    s = file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsAggFileHeader)});
+    LOG_ERROR("TsEntitySegmentBlockFile not ready, file_path=%s", file_path_.c_str())
   }
   return s;
 }
 
-KStatus TsEntitySegmentAggFile::AppendAggBlock(const TSSlice& agg, uint64_t* offset) {
-  RW_LATCH_X_LOCK(agg_file_mtx_);
-  *offset = file_->GetFileSize();
-  file_->Append(agg);
-  RW_LATCH_UNLOCK(agg_file_mtx_);
-  return SUCCESS;
+KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, char** buff, size_t len) {
+  TSSlice result;
+  KStatus s = r_file_->Read(offset, len, &result, nullptr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBlockFile read block failed, offset=%lu, len=%zu", offset, len)
+    return KStatus::FAIL;
+  }
+  *buff = result.data;
+  return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, char* buff, size_t len) {
-  RW_LATCH_S_LOCK(agg_file_mtx_);
+TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& file_path)
+  : file_path_(file_path) {
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentAggFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
+    assert(false);
+  }
+  memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
+}
+
+KStatus TsEntitySegmentAggFile::Open() {
+  if (r_file_->GetFileSize() < sizeof(TsAggAndBlockFileHeader)) {
+    LOG_ERROR("TsEntitySegmentAggFile open failed, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
+  }
   TSSlice result;
-  file_->Read(offset, len, &result, buff);
+  KStatus s = r_file_->Read(0, sizeof(TsAggAndBlockFileHeader), &result, nullptr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentAggFile read failed, file_path=%s", file_path_.c_str())
+    return s;
+  }
+  header_ = *reinterpret_cast<TsAggAndBlockFileHeader*>(result.data);
+  if (header_.status != TsFileStatus::READY) {
+    LOG_ERROR("TsEntitySegmentAggFile not ready, file_path=%s", file_path_.c_str())
+  }
+  return s;
+}
+
+KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, char** buff, size_t len) {
+  TSSlice result;
+  r_file_->Read(offset, len, &result, nullptr);
   if (result.len != len) {
     LOG_ERROR("TsEntitySegmentAggFile read agg block failed, offset=%lu, len=%zu", offset, len)
     return FAIL;
   }
-  RW_LATCH_UNLOCK(agg_file_mtx_);
+  *buff = result.data;
   return SUCCESS;
 }
 
