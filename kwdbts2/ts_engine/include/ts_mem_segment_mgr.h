@@ -279,6 +279,14 @@ class TsMemSegBlock : public TsBlock {
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
 
+  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
+  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
   bool InsertRow(TSMemSegRowData* row) {
     bool can_insert = true;
     if (row_data_.size() != 0) {

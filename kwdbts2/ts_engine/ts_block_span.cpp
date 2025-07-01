@@ -174,18 +174,23 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
 }
 
 KStatus TsBlockSpan::GetSum(uint32_t scan_idx, void *&pre_sum, bool &is_overflow) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetMax(uint32_t scan_idx, void *&pre_max) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetMin(uint32_t scan_idx, void *&pre_min) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetVarMax(uint32_t scan_idx, TSSlice &pre_max) {
+  return SUCCESS;
 }
 
 KStatus TsBlockSpan::GetVarMin(uint32_t scan_idx, TSSlice &pre_min) {
+  return SUCCESS;
 }
 
 bool TsBlockSpan::HasPreAgg() {
@@ -247,6 +252,7 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
 }
 
 void TsBlockSpan::TrimFront(int row_num) {
+  assert(row_num <= nrow_);
   start_row_ += row_num;
   nrow_ -= row_num;
   convert_.SetStartRowIdx(start_row_);
