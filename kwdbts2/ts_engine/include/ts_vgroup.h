@@ -28,6 +28,8 @@
 
 namespace kwdbts {
 
+class TsEntitySegmentBuilder;
+
 /**
  * table group used for organizing a series of table(super table of device).
  * in current time vgroup is same as database
@@ -56,6 +58,9 @@ class TsVGroup {
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
+
+  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
+  std::shared_mutex builders_mutex_;
 
   // compact thread flag
   bool enable_compact_thread_{true};
@@ -145,6 +150,10 @@ class TsVGroup {
                       std::shared_ptr<TsVGroup> vgroup,
                       std::vector<timestamp64> ts_points, bool reverse, bool sorted);
 
+  KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
+                        std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                        std::list<std::shared_ptr<TsBlockSpan>>* block_spans);
+
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log);
 
   KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete);
@@ -160,6 +169,13 @@ class TsVGroup {
                     const std::vector<KwTsSpan>& ts_spans);
   KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
                               const std::vector<KwTsSpan>& ts_spans);
+
+  KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
+                         timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
+
+  KStatus FinishWriteBatchData();
+
+  KStatus ClearWriteBatchData();
 
    /**
    * Undoes deletion of rows within a specified entity group.

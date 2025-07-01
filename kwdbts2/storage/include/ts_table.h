@@ -441,7 +441,7 @@ class TsTable {
              uint32_t table_version);
 
   virtual KStatus GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                         vector<std::pair<uint64_t, uint64_t>>* entity_ids) {
+                                         queue<std::pair<uint32_t, uint32_t>>* vgroup_entity_ids) {
     return KStatus::SUCCESS;
   }
 

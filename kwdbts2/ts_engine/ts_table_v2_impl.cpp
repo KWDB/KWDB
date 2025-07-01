@@ -515,9 +515,9 @@ vector<EntityResultIndex>& entity_store) {
       }
       if (!EngineOptions::isSingleNode()) {
         uint32_t tag_hash;
-        entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
         if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
-          entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+          entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
         }
       } else {
         entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
@@ -560,7 +560,7 @@ KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& h
 }
 
 KStatus TsTableV2Impl::GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                              vector<std::pair<uint64_t, uint64_t>>* entity_ids) {
+                                              queue<std::pair<uint32_t, uint32_t>>* vgroup_entity_ids) {
   std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
   TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
@@ -583,7 +583,7 @@ KStatus TsTableV2Impl::GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpa
             LOG_ERROR("primary key[%s] dose not exist", primary_tag.c_str())
             return FAIL;
           }
-          entity_ids->emplace_back(v_group_id, entity_id);
+          vgroup_entity_ids->push({v_group_id, entity_id});
         }
       } else {
         string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
@@ -593,7 +593,7 @@ KStatus TsTableV2Impl::GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpa
           LOG_ERROR("primary key[%s] dose not exist", primary_tag.c_str())
           return FAIL;
         }
-        entity_ids->emplace_back(v_group_id, entity_id);
+        vgroup_entity_ids->push({v_group_id, entity_id});
       }
     }
     entity_tag_bt->stopRead();

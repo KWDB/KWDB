@@ -269,13 +269,7 @@ class TsEntityBlock : public TsBlock {
 
   uint64_t* GetLSNAddr(int row_num);
 
-  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
-    return KStatus::SUCCESS;
-  }
+  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override;
 
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
   KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count) override;
@@ -315,7 +309,11 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) override;
 
+  KStatus GetBlockData(TsEntityBlock* block, std::string& data);
+
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TsEntityBlock* block);
+
+  KStatus GetAggData(TsEntityBlock *block, std::string& data);
 
   KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block);
 };

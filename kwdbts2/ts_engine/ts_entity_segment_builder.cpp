@@ -122,11 +122,11 @@ TsEntityBlockBuilder::TsEntityBlockBuilder(uint32_t table_id, uint32_t table_ver
     column_block.bitmap.Reset(EngineOptions::max_rows_per_block);
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     if (isVarLenType(d_type)) {
-      column_block.buffer.resize((EngineOptions::max_rows_per_block + 1) * sizeof(uint32_t));
+      column_block.buffer.resize(EngineOptions::max_rows_per_block * sizeof(uint32_t));
     }
   }
-  block_info_.col_block_offset.resize(n_cols_ + 1);
-  block_info_.col_agg_offset.resize(n_cols_);
+  block_info_.col_block_offset.resize(n_cols_);
+  block_info_.col_agg_offset.resize(n_cols_ - 1);
 }
 
 uint64_t TsEntityBlockBuilder::GetLSN(uint32_t row_idx) {
@@ -142,9 +142,13 @@ KStatus TsEntityBlockBuilder::GetMetricValue(uint32_t row_idx, std::vector<TSSli
   for (int col_idx = 1; col_idx < n_cols_; ++col_idx) {
     char* ptr = column_blocks_[col_idx].buffer.data();
     if (isVarLenType(metric_schema_[col_idx - 1].type)) {
-      uint32_t start_offset = *reinterpret_cast<uint32_t*>(ptr + row_idx * sizeof(uint32_t));
-      uint32_t end_offset = *reinterpret_cast<uint32_t*>(ptr + (row_idx + 1) * sizeof(uint32_t));
-      value.push_back({ptr + start_offset, end_offset - start_offset});
+      uint32_t start_offset = 0;
+      if (row_idx != 0) {
+        start_offset = *reinterpret_cast<uint32_t *>(ptr + (row_idx - 1) * sizeof(uint32_t));
+      }
+      uint32_t end_offset = *reinterpret_cast<uint32_t*>(ptr + row_idx * sizeof(uint32_t));
+      uint32_t var_data_offset = EngineOptions::max_rows_per_block * sizeof(uint32_t);
+      value.push_back({ptr + var_data_offset + start_offset, end_offset - start_offset});
     } else {
       size_t d_size = col_idx == 1 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
       value.push_back({ptr + row_idx * d_size, d_size});
@@ -160,12 +164,14 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
   assert(span->GetRowNum() >= written_rows);
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
-    size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].size);
+    size_t d_size = col_idx == 0 ? 8 : metric_schema_[col_idx - 1].size;
     // lsn column do not contain bitmaps
     bool has_bitmap = col_idx != 0;
 
     bool is_var_col = isVarLenType(d_type);
     TsEntitySegmentColumnBlock& block = column_blocks_[col_idx];
+    std::string var_offsets_data;
+    uint32_t var_offsets_len = EngineOptions::max_rows_per_block * sizeof(uint32_t);
     size_t row_idx_in_block = n_rows_;
     char* col_val = nullptr;
     TsBitmap bitmap;
@@ -189,21 +195,18 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
           return s;
         }
         block.bitmap[row_idx_in_block] = data_flag;
-        uint32_t var_offset = block.buffer.size();
-        memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
         if (data_flag == kValid) {
           block.buffer.append(value.data, value.len);
           block.var_rows.emplace_back(value.data, value.len);
         }
+        uint32_t var_offset = block.buffer.size() - var_offsets_len;
+        memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
       } else if (col_idx == 1) {
         block.buffer.append(col_val + span_row_idx * d_size, sizeof(timestamp64));
       }
       row_idx_in_block++;
     }
-    if (is_var_col) {
-      uint32_t var_offset = block.buffer.size();
-      memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
-    } else {
+    if (!is_var_col) {
       if (col_idx == 0) {
         char* lsn_col_value = reinterpret_cast<char *>(span->GetLSNAddr(0));
         block.buffer.append(lsn_col_value, written_rows * d_size);
@@ -222,9 +225,11 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // compressor manager
   const auto& mgr = CompressorManager::GetInstance();
   // init col data offsets to data buffer
-  data_buffer.resize((n_cols_ + 1) * sizeof(uint32_t));
+  uint32_t block_header_size = n_cols_ * sizeof(uint32_t);
+  data_buffer.resize(block_header_size);
   // init col agg offsets to agg buffer, exclude lsn col
-  agg_buffer.resize(n_cols_ * sizeof(uint32_t));
+  uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
+  agg_buffer.resize(agg_header_size);
 
   // write column block data and column agg
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
@@ -232,9 +237,6 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
     bool has_bitmap = col_idx > 1;
     bool is_var_col = isVarLenType(d_type);
-
-    // record col offset
-    block_info_.col_block_offset[col_idx] = data_buffer.size();
 
     TsEntitySegmentColumnBlock& block = column_blocks_[col_idx];
     // compress
@@ -249,20 +251,50 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     }
     TsBitmap* b = has_bitmap ? &block.bitmap : nullptr;
     // compress col data & write to buffer
-    std::string compressed;
     auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
-    TSSlice plain{block.buffer.data(), block.buffer.size()};
-    mgr.CompressData(plain, b, n_rows_, &compressed, first, second);
-    data_buffer.append(compressed);
+    if (is_var_col) {
+      // varchar use Gorilla algorithm
+      first = TsCompAlg::kChimp_32;
+      // var offset data
+      std::string compressed;
+      TSSlice var_offsets = {block.buffer.data(), n_rows_ * sizeof(uint32_t)};
+      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed, first, second);
+      if (!ok) {
+        LOG_ERROR("Compress var offset data failed");
+        return KStatus::SUCCESS;
+      }
+      uint32_t compressed_len = compressed.size();
+      data_buffer.append(reinterpret_cast<const char *>(&compressed_len), sizeof(uint32_t));
+      data_buffer.append(compressed);
+      // var data
+      compressed.clear();
+      uint32_t var_data_offset = EngineOptions::max_rows_per_block * sizeof(uint32_t);
+      ok = mgr.CompressVarchar({block.buffer.data() + var_data_offset, block.buffer.size() - var_data_offset},
+                               &compressed, GenCompAlg::kSnappy);
+      if (!ok) {
+        LOG_ERROR("Compress var data failed");
+        return KStatus::SUCCESS;
+      }
+      data_buffer.append(compressed);
+    } else {
+      std::string compressed;
+      TSSlice plain{block.buffer.data(), block.buffer.size()};
+      mgr.CompressData(plain, b, n_rows_, &compressed, first, second);
+      data_buffer.append(compressed);
+    }
+    // record col offset
+    block_info_.col_block_offset[col_idx] = data_buffer.size() - block_header_size;
+    // write col data offset
+    memcpy(data_buffer.data() + col_idx * sizeof(uint32_t), &(block_info_.col_block_offset[col_idx]), sizeof(uint32_t));
     // calculate aggregate
     if (0 == col_idx) {
       continue;
     }
     string col_agg;
     Defer defer {[&]() {
-      uint32_t offset = agg_buffer.size();
-      memcpy(agg_buffer.data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
       agg_buffer.append(col_agg);
+      uint32_t offset = agg_buffer.size() - agg_header_size;
+      memcpy(agg_buffer.data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
     }};
     if (!is_var_col) {
       TsBitmap* bitmap = nullptr;
@@ -308,15 +340,6 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
     }
   }
-  uint32_t offset = agg_buffer.size();
-  memcpy(agg_buffer.data() + (n_cols_ - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
-
-  // record last col dataoffset
-  block_info_.col_block_offset[n_cols_] = data_buffer.size();
-  // write col data offset
-  for (int i = 0; i < n_cols_ + 1; ++i) {
-    memcpy(data_buffer.data() + i * sizeof(uint32_t), &(block_info_.col_block_offset[i]), sizeof(uint32_t));
-  }
 
   // flush
   timestamp64 min_ts = GetTimestamp(0);
@@ -345,15 +368,15 @@ void TsEntityBlockBuilder::Clear() {
     column_block.buffer.clear();
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     if (isVarLenType(d_type)) {
-      column_block.buffer.resize((EngineOptions::max_rows_per_block + 1) * sizeof(uint32_t));
+      column_block.buffer.resize(EngineOptions::max_rows_per_block * sizeof(uint32_t));
     }
     column_block.agg.clear();
     column_block.var_rows.clear();
   }
   block_info_.col_agg_offset.clear();
-  block_info_.col_agg_offset.resize(n_cols_);
+  block_info_.col_agg_offset.resize(n_cols_ - 1);
   block_info_.col_block_offset.clear();
-  block_info_.col_block_offset.resize(n_cols_ + 1);
+  block_info_.col_block_offset.resize(n_cols_);
 }
 
 KStatus TsEntitySegmentBuilder::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* file,
@@ -376,15 +399,14 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
       }
     }
     for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id < entity_key.entity_id; ++entity_id) {
+      cur_entity_item_ = {entity_id};
       if (cur_entity_segment_) {
         bool is_exist = true;
         s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
-        if (s != KStatus::SUCCESS) {
+        if (s != KStatus::SUCCESS && is_exist) {
           LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
           return s;
         }
-      } else {
-        cur_entity_item_ = {entity_id};
       }
       s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
@@ -392,15 +414,14 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
         return s;
       }
     }
+    cur_entity_item_ = {entity_key.entity_id};
     if (cur_entity_segment_) {
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_key.entity_id, cur_entity_item_, is_exist);
-      if (s != KStatus::SUCCESS) {
+      if (s != KStatus::SUCCESS && is_exist) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
         return s;
       }
-    } else {
-      cur_entity_item_ = {entity_key.entity_id};
     }
   }
   block_item.prev_block_id = cur_entity_item_.cur_block_id;
@@ -469,6 +490,7 @@ KStatus TsEntitySegmentBuilder::Open() {
 }
 
 KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
+  std::shared_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
@@ -593,9 +615,10 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
   if (cur_entity_segment_) {
     uint64_t max_entity_id = cur_entity_segment_->GetEntityNum();
     for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id <= max_entity_id; ++entity_id) {
+      cur_entity_item_ = {entity_id};
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
-      if (s != KStatus::SUCCESS) {
+      if (s != KStatus::SUCCESS && is_exist) {
         LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
         return s;
       }
@@ -642,6 +665,110 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
       return s;
     }
     update->AddLastSegment(partition_id_, builder->GetFileNumber());
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEntitySegmentBuilder::Flush(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
+  std::shared_lock lock{mutex_};
+  auto it = entity_cur_block_id_.find(entity_id);
+  if (it == entity_cur_block_id_.end()) {
+    TsEntityItem entity_item{entity_id};
+    bool is_exist = true;
+    KStatus s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
+    if (s != KStatus::SUCCESS && is_exist) {
+      LOG_ERROR("entity item[%d] not found", entity_id);
+      return s;
+    }
+    entity_cur_block_id_[entity_id] = entity_item.cur_block_id;
+  }
+
+  uint32_t block_data_header_size = 2 * sizeof(timestamp64) + 3 * sizeof(uint32_t);
+  TsEntitySegmentBlockItem block_item;
+  block_item.entity_id = entity_id;
+  block_item.prev_block_id = entity_cur_block_id_[entity_id];     // pre block item id
+  block_item.table_version = table_version;
+  uint32_t n_cols = *(uint32_t*)(block_data.data + sizeof(uint32_t) + 2 * sizeof(timestamp64));
+  block_item.n_cols = n_cols;
+  uint32_t n_rows = *(uint32_t*)(block_data.data + 2 * sizeof(uint32_t) + 2 * sizeof(timestamp64));
+  block_item.n_rows = n_rows;
+  block_item.block_len = *(uint32_t*)(block_data.data + block_data_header_size + (n_cols - 1) * sizeof(uint32_t));
+  block_item.min_ts = *(timestamp64*)(block_data.data + sizeof(uint32_t));
+  block_item.max_ts = *(timestamp64*)(block_data.data + sizeof(uint32_t) + sizeof(timestamp64));
+  block_item.agg_len = *(uint32_t*)(block_data.data + block_data_header_size + n_cols * sizeof(uint32_t) +
+                     block_item.block_len + (n_cols - 2) * sizeof(uint32_t));
+
+  TSSlice data_buffer = {block_data.data + block_data_header_size + n_cols * sizeof(uint32_t),
+                         block_item.block_len};
+  KStatus s = block_file_builder_->AppendBlock(data_buffer, &block_item.block_offset);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block failed.")
+    return s;
+  }
+
+  TSSlice agg_buffer = {block_data.data + block_data_header_size + n_cols * sizeof(uint32_t) +
+                        block_item.block_len + (n_cols - 1) * sizeof(uint32_t), block_item.agg_len};
+  s = agg_file_builder_->AppendAggBlock(agg_buffer, &block_item.agg_offset);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append agg block failed.")
+  }
+
+  s = block_item_builder_->AppendBlockItem(block_item);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block item failed.")
+    return s;
+  }
+  entity_cur_block_id_[entity_id] = block_item.block_id;
+}
+
+KStatus TsEntitySegmentBuilder::Finish() {
+  std::shared_lock lock{mutex_};
+  // write entity header
+  KStatus s = KStatus::SUCCESS;
+  uint32_t cur_entity_id = 0;
+  for (auto kv : entity_cur_block_id_) {
+    for (uint32_t entity_id = cur_entity_id + 1; entity_id < kv.first; ++entity_id) {
+      TsEntityItem entity_item{entity_id};
+      bool is_exist = true;
+      s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
+      if (s != KStatus::SUCCESS && is_exist) {
+        LOG_ERROR("GetEntityItem[entity_id=%d] failed", entity_id)
+        return s;
+      }
+      s = entity_item_builder_->AppendEntityItem(entity_item);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("AppendEntityItem[entity_id=%d] failed", entity_id)
+        return s;
+      }
+    }
+    TsEntityItem entity_item{kv.first};
+    bool is_exist = true;
+    s = cur_entity_segment_->GetEntityItem(kv.first, entity_item, is_exist);
+    if (s != KStatus::SUCCESS && is_exist) {
+      LOG_ERROR("GetEntityItem[entity_id=%d] failed", kv.first)
+      return s;
+    }
+    entity_item.cur_block_id = kv.second;
+    s = entity_item_builder_->AppendEntityItem(entity_item);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("AppendEntityItem[entity_id=%d] failed", kv.first)
+      return s;
+    }
+    cur_entity_id = kv.first;
+  }
+  for (uint32_t entity_id = cur_entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
+    TsEntityItem entity_item{entity_id};
+    bool is_exist = true;
+    s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
+    if (s != KStatus::SUCCESS && is_exist) {
+      LOG_ERROR("GetEntityItem[entity_id=%d] failed", entity_id)
+      return s;
+    }
+    s = entity_item_builder_->AppendEntityItem(entity_item);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("AppendEntityItem[entity_id=%d] failed", entity_id)
+      return s;
+    }
   }
   return KStatus::SUCCESS;
 }

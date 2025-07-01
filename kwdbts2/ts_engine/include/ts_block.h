@@ -50,9 +50,7 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
-  virtual KStatus GetCompressData(TSSlice* data, int32_t* row_num) = 0;
-
-  virtual KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) = 0;
+  virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
 
   /*
   * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
@@ -103,6 +101,8 @@ struct TsBlockSpan {
   timestamp64 GetFirstTS() const;
   timestamp64 GetLastTS() const;
   uint64_t* GetLSNAddr(int row_idx) const;
+
+  KStatus GetCompressData(std::string& data);
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);

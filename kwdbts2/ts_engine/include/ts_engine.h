@@ -29,7 +29,7 @@
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_flush_manager.h"
-#include "ts_batch_data_job.h"
+#include "ts_batch_data_worker.h"
 #include "ts_table_v2_impl.h"
 #include "ts_version.h"
 #include "ts_vgroup.h"
@@ -53,8 +53,10 @@ class TSEngineV2Impl : public TSEngine {
   std::unique_ptr<WALMgr> wal_sys_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
 
-  std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataJob>>> batch_data_jobs_;
-  KRWLatch batch_jobs_lock_;
+  std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataWorker>>> read_batch_data_workers_;
+  KRWLatch read_batch_workers_lock_;
+  std::shared_ptr<TsBatchDataWorker> write_batch_data_worker_;
+  KRWLatch write_batch_worker_lock_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -89,6 +91,8 @@ class TSEngineV2Impl : public TSEngine {
                      uint32_t version = 0) override;
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
+
+  std::shared_ptr<TsVGroup> GetTsVGroup(uint32_t vgroup_id);
 
   KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override;
@@ -237,6 +241,10 @@ class TSEngineV2Impl : public TSEngine {
 
   TS_LSN GetFinishedLSN() {
     return flush_mgr_.GetFinishedLSN();
+  }
+
+  std::unique_ptr<TsEngineSchemaManager>& GetEngineSchemaManager() {
+    return schema_mgr_;
   }
 
   KStatus DropResidualTsTable(kwdbContext_p ctx) override;
