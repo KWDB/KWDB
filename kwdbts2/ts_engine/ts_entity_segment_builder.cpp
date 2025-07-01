@@ -591,7 +591,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     entity_item_builder_->AppendEntityItem(cur_entity_item_);
   }
   if (cur_entity_segment_) {
-    for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
+    for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id <= cur_entity_segment_->GetEntityNum(); ++entity_id) {
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
       if (s != KStatus::SUCCESS) {

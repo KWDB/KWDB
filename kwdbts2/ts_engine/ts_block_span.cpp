@@ -251,6 +251,7 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
 }
 
 void TsBlockSpan::TrimFront(int row_num) {
+  assert(row_num <= nrow_);
   start_row_ += row_num;
   nrow_ -= row_num;
   convert_ = TSBlkDataTypeConvert(*this, convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
