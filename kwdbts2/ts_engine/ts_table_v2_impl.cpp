@@ -243,7 +243,7 @@ KStatus TsTableV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t tr
         return FAIL;
     }
 
-    auto s = table_schema_mgr_->UpdateVersion(cur_version, new_version);
+    auto s = table_schema_mgr_->UpdateMetricVersion(cur_version, new_version);
     if (s != KStatus::SUCCESS) {
         LOG_ERROR("Update table version error");
         return s;
@@ -267,7 +267,7 @@ KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t tran
         LOG_ERROR("Failed to drop normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
         return FAIL;
     }
-    auto s = table_schema_mgr_->UpdateVersion(cur_version, new_version);
+    auto s = table_schema_mgr_->UpdateMetricVersion(cur_version, new_version);
     if (s != KStatus::SUCCESS) {
         LOG_ERROR("Update table version error");
         return s;
@@ -289,7 +289,7 @@ KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
     LOG_ERROR("Failed to UndoCreateHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
     return FAIL;
   }
-  auto s = table_schema_mgr_->RollBack(cur_version, new_version);
+  auto s = table_schema_mgr_->UndoAlterCol(cur_version, new_version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("RollBack table version error");
     return s;
@@ -318,7 +318,7 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
     LOG_ERROR("Failed to UndoDropHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
     return FAIL;
   }
-  auto s = table_schema_mgr_->RollBack(cur_version, new_version);
+  auto s = table_schema_mgr_->UndoAlterCol(cur_version, new_version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("RollBack table version error");
     return s;
