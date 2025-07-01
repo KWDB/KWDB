@@ -18,6 +18,69 @@
 
 namespace kwdbts {
 
+KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, shared_ptr<TsBlockSpan>& ts_blk_span,
+                                    ResultSet* res, k_uint32* count) {
+  *count = ts_blk_span->GetRowNum();
+  KStatus ret;
+  for (int i = 0; i < kw_scan_cols.size(); ++i) {
+    auto kw_col_idx = kw_scan_cols[i];
+    Batch* batch;
+    if (!ts_blk_span->IsColExist(kw_col_idx)) {
+      // column is dropped at block version.
+      void* bitmap = nullptr;
+      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
+    } else {
+      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
+      if (bitmap == nullptr) {
+        return KStatus::FAIL;
+      }
+      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
+      if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
+        TsBitmap ts_bitmap;
+        char* value;
+        char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
+        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return ret;
+        }
+        for (int row_idx = 0; row_idx < *count; ++row_idx) {
+          if (ts_bitmap[row_idx] != DataFlags::kValid) {
+            set_null_bitmap(bitmap, row_idx);
+          }
+        }
+        memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
+
+        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
+        batch->is_new = true;
+        batch->need_free_bitmap = true;
+      } else {
+        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
+        DataFlags bitmap_var;
+        TSSlice var_data;
+        for (int row_idx = 0; row_idx < *count; ++row_idx) {
+          ret = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, bitmap_var, var_data);
+          if (bitmap_var != DataFlags::kValid) {
+            set_null_bitmap(bitmap, row_idx);
+            batch->push_back(nullptr);
+          } else {
+            char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
+            KUint16(buffer) = var_data.len;
+            memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
+            std::shared_ptr<void> ptr(buffer, free);
+            batch->push_back(ptr);
+          }
+        }
+        batch->need_free_bitmap = true;
+      }
+    }
+    res->push_back(i, batch);
+  }
+  res->entity_index = {1, (uint32_t)ts_blk_span->GetEntityID(), ts_blk_span->GetVGroupID()};
+
+  return KStatus::SUCCESS;
+}
+
 TsStorageIteratorV2Impl::TsStorageIteratorV2Impl() {
 }
 
@@ -125,69 +188,6 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span,
-                                                              ResultSet* res, k_uint32* count) {
-  *count = ts_blk_span->GetRowNum();
-  KStatus ret;
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    auto kw_col_idx = kw_scan_cols_[i];
-    Batch* batch;
-    if (!ts_blk_span->IsColExist(kw_col_idx)) {
-      // column is dropped at block version.
-      void* bitmap = nullptr;
-      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
-    } else {
-      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
-      if (bitmap == nullptr) {
-        return KStatus::FAIL;
-      }
-      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
-      if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
-        TsBitmap ts_bitmap;
-        char* value;
-        char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap);
-        if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("GetFixLenColAddr failed.");
-          return ret;
-        }
-        for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_bitmap[row_idx] != DataFlags::kValid) {
-            set_null_bitmap(bitmap, row_idx);
-          }
-        }
-        memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
-
-        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
-        batch->is_new = true;
-        batch->need_free_bitmap = true;
-      } else {
-        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
-        DataFlags bitmap_var;
-        TSSlice var_data;
-        for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          ret = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, bitmap_var, var_data);
-          if (bitmap_var != DataFlags::kValid) {
-            set_null_bitmap(bitmap, row_idx);
-            batch->push_back(nullptr);
-          } else {
-            char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
-            KUint16(buffer) = var_data.len;
-            memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
-            std::shared_ptr<void> ptr(buffer, free);
-            batch->push_back(ptr);
-          }
-        }
-        batch->need_free_bitmap = true;
-      }
-    }
-    res->push_back(i, batch);
-  }
-  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
-
-  return KStatus::SUCCESS;
-}
-
 TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
@@ -263,7 +263,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       }
       if (!is_done && !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
         // Found a block span which might contain satisfied rows.
-        ret = ConvertBlockSpanToResultSet(block_span, res, count);
+        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, block_span, res, count);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
@@ -1517,7 +1517,6 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
       }
     }
   }
-  ++p_time_it_;
   return ret;
 }
 
@@ -1525,6 +1524,8 @@ KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
   GetTerminationTime();
   is_reversed_ = is_reversed;
   comparator_.is_reversed = is_reversed_;
+  decltype(p_times_) t_map(comparator_);
+  p_times_.swap(t_map);
   KStatus ret;
   ret = table_schema_mgr_->GetColumnsExcludeDropped(attrs_, table_version_);
   if (ret != KStatus::SUCCESS) {
@@ -1598,69 +1599,6 @@ KStatus TsOffsetIteratorV2Impl::filterBlockSpan() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsOffsetIteratorV2Impl::ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res,
-                                                            k_uint32* count) {
-  *count = ts_blk_span->GetRowNum();
-  KStatus ret;
-  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    auto kw_col_idx = kw_scan_cols_[i];
-    Batch* batch;
-    if (!ts_blk_span->IsColExist(kw_col_idx)) {
-      // column is dropped at block version.
-      void* bitmap = nullptr;
-      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
-    } else {
-      unsigned char* bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
-      if (bitmap == nullptr) {
-        return KStatus::FAIL;
-      }
-      memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
-      if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
-        TsBitmap ts_bitmap;
-        char* value;
-        char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap);
-        if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("GetFixLenColAddr failed.");
-          return ret;
-        }
-        for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_bitmap[row_idx] != DataFlags::kValid) {
-            set_null_bitmap(bitmap, row_idx);
-          }
-        }
-        memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
-
-        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
-        batch->is_new = true;
-        batch->need_free_bitmap = true;
-      } else {
-        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
-        DataFlags bitmap_var;
-        TSSlice var_data;
-        for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          ret = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, bitmap_var, var_data);
-          if (bitmap_var != DataFlags::kValid) {
-            set_null_bitmap(bitmap, row_idx);
-            batch->push_back(nullptr);
-          } else {
-            char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
-            KUint16(buffer) = var_data.len;
-            memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
-            std::shared_ptr<void> ptr(buffer, free);
-            batch->push_back(ptr);
-          }
-        }
-        batch->need_free_bitmap = true;
-      }
-    }
-    res->push_back(i, batch);
-  }
-  res->entity_index = {1, (uint32_t)ts_blk_span->GetEntityID(), ts_blk_span->GetVGroupID()};
-
-  return KStatus::SUCCESS;
-}
-
 KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp64 ts) {
   *count = 0;
   KStatus ret;
@@ -1674,11 +1612,12 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
       LOG_ERROR("call filterBlockSpan failed.");
       return KStatus::FAIL;
     }
+    ++p_time_it_;
   }
   // Return one block span data each time.
   shared_ptr<TsBlockSpan> ts_block = block_spans_.front();
   block_spans_.pop_front();
-  ret = ConvertBlockSpanToResultSet(ts_block, res, count);
+  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, ts_block, res, count);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
     return KStatus::FAIL;

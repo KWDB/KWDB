@@ -57,9 +57,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus Init(bool is_reversed) override;
 
  protected:
-  KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
-  KStatus ScanEntityBlockSpans();
-
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
   /*
    * Update ts_spans_ to reduce the data scanning from storage based on timestamp(ts)
@@ -70,7 +67,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
    * Convert block span data to result set which will be returned to execution engine
    * for further process.
    */
-  KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans(timestamp64 ts);
 
   k_int32 cur_entity_index_{-1};
@@ -171,16 +167,6 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 };
 
-struct TimestampComparator {
-  bool is_reversed = false;
-  TimestampComparator() {}
-  TimestampComparator(bool reversed) : is_reversed(reversed) {}
-
-  bool operator()(const timestamp64& a, const timestamp64& b) const {
-    return is_reversed ? a < b : a > b;
-  }
-};
-
 class TsOffsetIteratorV2Impl : public TsIterator {
  public:
   TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
@@ -189,7 +175,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
                          uint32_t table_version, uint32_t offset, uint32_t limit) : vgroups_(vgroups),
-                         vgroup_ids_(vgroup_ids), comparator_(false), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
+                         vgroup_ids_(vgroup_ids), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
                          kw_scan_cols_(kw_scan_cols), ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
                          table_version_(table_version), offset_(offset), limit_(limit) {}
 
@@ -216,8 +202,6 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   KStatus filterLower(uint32_t* cnt);
   KStatus filterUpper(uint32_t filter_num, uint32_t* cnt);
   KStatus filterBlockSpan();
-
-  KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
 
   inline void GetTerminationTime() {
     switch (ts_col_type_) {
