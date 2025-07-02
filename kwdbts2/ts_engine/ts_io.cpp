@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
+#include <string>
 #include <system_error>
 
 #include "kwdb_type.h"
@@ -55,8 +56,7 @@ KStatus TsMMapAppendOnlyFile::MMapNew() {
   // int ok = posix_fallocate(fd_, file_size_, mmap_size_);
   int ok = fallocate(fd_, 0, file_size_, mmap_size_);
   if (ok < 0) {
-    LOG_ERROR("can not allocate space %lu on file %s, reason: %s", mmap_size_, path_.c_str(),
-              strerror(errno));
+    LOG_ERROR("can not allocate space %lu on file %s, reason: %s", mmap_size_, path_.c_str(), strerror(errno));
     return FAIL;
   }
   size_t mmap_offset = TruncateToPage(file_size_, page_size_);
@@ -67,8 +67,7 @@ KStatus TsMMapAppendOnlyFile::MMapNew() {
   }
   ok = madvise(ptr, mmap_size_, MADV_SEQUENTIAL);
   if (ok < 0) {
-    LOG_ERROR("madvise failed, reason: %s", strerror(errno));
-    return FAIL;
+    LOG_WARN("madvise failed, reason %s", strerror(errno));
   }
   mmap_start_ = static_cast<char*>(ptr);
   mmap_end_ = mmap_start_ + mmap_size_;
@@ -147,40 +146,43 @@ TsMMapAppendOnlyFile::~TsMMapAppendOnlyFile() {
 }
 
 KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
-  if (offset >= file_size_) {
-    LOG_ERROR("offset %lu larger than filesize %lu", offset, file_size_);
-    return FAIL;
-  }
   if (offset + n > file_size_) {
-    n = file_size_ - offset;
+    n = offset > file_size_ ? 0 : file_size_ - offset;
   }
+  if (n == 0) {
+    return SUCCESS;
+  }
+
   size_t page_offset = TruncateToPage(offset, page_size_);
   char* p1 = mmap_start_ + page_offset;
   int ok = madvise(p1, n + (offset - page_offset), MADV_WILLNEED);
   if (ok < 0) {
-    LOG_ERROR("madvise failed, reason %s", strerror(errno));
-    return FAIL;
+    LOG_WARN("madvise failed, reason %s", strerror(errno));
   }
   return SUCCESS;
 }
 
 KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TSSlice* result, char* buffer) const {
-  if (offset >= file_size_) {
-    *result = {};
-    LOG_ERROR("offset %lu larger than filesize %lu", offset, file_size_);
-    return FAIL;
-  }
   if (offset + n > file_size_) {
-    n = file_size_ - offset;
+    n = offset > file_size_ ? 0 : file_size_ - offset;
   }
   result->data = mmap_start_ + offset;
   result->len = n;
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath,
-                                       std::unique_ptr<TsAppendOnlyFile>* file, bool overrite,
-                                       size_t offset) {
+KStatus TsMMapSequentialReadFile::Read(size_t n, TSSlice* slice, char* buf) {
+  if (offset_ + n > file_size_) {
+    n = offset_ > file_size_ ? 0 : file_size_ - offset_;
+  }
+  slice->data = mmap_start_ + offset_;
+  slice->len = n;
+  offset_ += n;
+  return SUCCESS;
+}
+
+KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                       bool overrite, size_t offset) {
   int fd = -1;
   int flag = O_RDWR | O_CREAT;
   if (overrite) {
@@ -206,49 +208,80 @@ KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath,
     }
     append_offset = offset;
   }
-  file->reset(new TsMMapAppendOnlyFile(filepath, fd, append_offset));
 
+  auto new_file = std::make_unique<TsMMapAppendOnlyFile>(filepath, fd, append_offset);
+  *file = std::move(new_file);
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath,
-                                       std::unique_ptr<TsRandomReadFile>* file, size_t file_size) {
+static std::pair<int, size_t> OpenReadOnlyFile(const std::string& filepath, size_t file_size) {
   int fd = -1;
   do {
     fd = open(filepath.c_str(), O_RDONLY);
   } while (fd < 0 && errno == EINTR);
   if (fd < 0) {
     LOG_ERROR("cannot open file %s, reason: %s", filepath.c_str(), strerror(errno));
-    return FAIL;
+    return {-1, -1};
   }
   size_t actual_size = lseek(fd, 0, SEEK_END);
   if (actual_size == -1) {
     LOG_ERROR("lseek failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
-    return FAIL;
+    return {-1, -1};
   }
 
   if (file_size == -1) {
     file_size = actual_size;
   }
   if (file_size > actual_size) {
-    LOG_ERROR("error on file %s, the input file size %lu is larger than actual size %lu",
-              filepath.c_str(), file_size, actual_size);
-    return FAIL;
+    LOG_ERROR("error on file %s, the input file size %lu is larger than actual size %lu", filepath.c_str(), file_size,
+              actual_size);
+    return {-1, -1};
   }
   assert(file_size <= actual_size);
+  return {fd, file_size};
+}
 
-  void* ptr = mmap(nullptr, file_size, PROT_READ, MAP_SHARED, fd, 0);
+KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                                       size_t file_size) {
+  auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
+  if (fd < 0) {
+    return FAIL;
+  }
+
+  void* ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
   if (ptr == MAP_FAILED) {
     LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
     return FAIL;
   }
-  file->reset(new TsMMapRandomReadFile(filepath, fd, static_cast<char*>(ptr), file_size));
+  auto new_file = std::make_unique<TsMMapRandomReadFile>(filepath, fd, static_cast<char*>(ptr), readable_size);
+  *file = std::move(new_file);
+  return SUCCESS;
+}
+
+KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                           size_t file_size) {
+  auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
+  if (fd < 0) {
+    return FAIL;
+  }
+  void* ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
+  if (ptr == MAP_FAILED) {
+    LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
+    return FAIL;
+  }
+  int ok = madvise(ptr, readable_size, MADV_SEQUENTIAL);
+  if (ok < 0) {
+    LOG_WARN("madvise failed, reason %s", strerror(errno));
+  }
+
+  auto new_file = std::make_unique<TsMMapSequentialReadFile>(filepath, fd, static_cast<char*>(ptr), readable_size);
+  *file = std::move(new_file);
   return SUCCESS;
 }
 
 KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
   std::error_code ec;
-  bool ok = std::filesystem::create_directory(path, ec);
+  bool ok = std::filesystem::create_directories(path, ec);
   if (!ok) {
     if (std::filesystem::exists(path)) {
       return SUCCESS;

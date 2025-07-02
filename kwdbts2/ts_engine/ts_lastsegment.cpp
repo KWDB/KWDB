@@ -381,6 +381,14 @@ class TsLastBlock : public TsBlock {
     return const_cast<uint64_t*>(&seq_nos[row_num]);
   }
 
+  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
+  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
   int GetBlockID() const { return block_id_; }
 
  private:
@@ -645,14 +653,14 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         if (match_found) {
           match_found = false;
-          block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx, i - start_idx,
+          block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx, i - start_idx,
                                                             tbl_schema_mgr, scan_version));
         }
       }
     }
     if (match_found) {
       match_found = false;
-      block_spans.emplace_back(make_shared<TsBlockSpan>(entity_id, block, start_idx,
+      block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
                                 end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
                                 tbl_schema_mgr, scan_version));
     }

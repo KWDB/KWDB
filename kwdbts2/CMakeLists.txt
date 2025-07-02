@@ -292,6 +292,11 @@ set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
+file(GLOB_RECURSE STV3_SRC ts_engine/*cpp)
+set_source_files_properties(${STV3_SRC} PROPERTIES
+  # COMPILE_FLAGS " -Werror"
+)
+
 # Compile and generate test case executables
 if (WITH_TESTS)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)

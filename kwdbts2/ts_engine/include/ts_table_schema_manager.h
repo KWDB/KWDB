@@ -27,22 +27,6 @@
 #include "mmap/mmap_metrics_table.h"
 
 namespace kwdbts {
-
-#define Def_Column(col_var, col_id, pname, ptype, poffset, psize, plength, pencoding, \
-       pflag, pmax_len, pversion, pattrtype)      \
-    struct AttributeInfo col_var;          \
-    {col_var.id = col_id; snprintf(col_var.name, sizeof(col_var.name), "%s", pname); \
-    col_var.type = ptype; col_var.offset = poffset; }  \
-    {col_var.size = psize; col_var.length = plength; }      \
-    {col_var.encoding = pencoding; col_var.flag = pflag; }      \
-    {col_var.max_len = pmax_len; col_var.version = pversion; }      \
-    {col_var.col_flag = (ColumnFlag)pattrtype; }
-
-#define Def_Tag(tag_var, id, data_type, data_length, tag_type)    \
-    struct TagInfo tag_var;          \
-    {tag_var.m_id = id; tag_var.m_data_type = data_type; tag_var.m_length = data_length; }  \
-    {tag_var.m_size = data_length; tag_var.m_tag_type = tag_type; }
-
 class SchemaVersionConv {
  public:
   uint32_t scan_version_{0};
@@ -64,12 +48,6 @@ class SchemaVersionConv {
 class TsTableSchemaManager {
  private:
   TSTableID table_id_;
-
-  struct Schema {
-    std::vector<AttributeInfo> metric;
-    std::vector<TagInfo> tag;
-  };
-
   // schema path of the database
   string schema_root_path_;
   // schema path of the metric
@@ -95,9 +73,6 @@ class TsTableSchemaManager {
   std::shared_ptr<TagTable> tag_table_{nullptr};
   // Partition interval.
   uint64_t partition_interval_;
-  // Compression status.
-  std::atomic<bool> is_compressing_{false};
-  std::atomic<bool> is_vacuuming_{false};
   std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
   KRWLatch* ver_conv_rw_lock_{nullptr};
 
@@ -139,8 +114,6 @@ class TsTableSchemaManager {
     return tag_table_;
   }
 
-  KStatus CreateTableSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t ts_version,
-                            ErrorInfo& err_info, uint32_t cur_version = 0);
   KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
                       uint32_t ts_version, ErrorInfo& err_info);
 
@@ -196,19 +169,7 @@ class TsTableSchemaManager {
 
   bool IsDropped();
 
-  bool TrySetCompressStatus(bool desired);
-
-  void SetCompressStatus(bool status);
-
   KStatus RemoveAll();
-
-  KStatus RollBack(uint32_t old_version, uint32_t new_version);
-
-  KStatus UpdateVersion(uint32_t cur_version, uint32_t new_version);
-
-  KStatus UpdateTableVersionOfLastData(uint32_t version);
-
-  uint32_t GetTableVersionOfLatestData();
 
   static KStatus GetColAttrInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
                                      AttributeInfo& attr_info, bool first_col);
@@ -218,6 +179,10 @@ class TsTableSchemaManager {
 
   KStatus UndoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version);
+
+  KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
+
+  KStatus UpdateMetricVersion(uint32_t cur_version, uint32_t new_version);
 
   /**
    * @brief Gets the data type of table first column.
