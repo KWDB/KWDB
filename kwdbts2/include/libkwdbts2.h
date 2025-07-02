@@ -262,7 +262,7 @@ TSStatus TSPutEntity(TSEngine* engine, TSTableID tableId, TSSlice* payload, size
 
 TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
-                   bool writeWAL);
+                   bool writeWAL, const char* tsx_id = nullptr);
 
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
 
@@ -282,11 +282,13 @@ TSStatus TSCreateCheckpoint(TSEngine* engine);
 TSStatus TSCreateCheckpointForTable(TSEngine* engine, TSTableID table_id);
 
 TSStatus TSMtrBegin(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                    uint64_t range_id, uint64_t index, uint64_t* mtr_id);
+                    uint64_t range_id, uint64_t index, uint64_t* mtr_id, const char* tsx_id = nullptr);
 
-TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id);
+TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                     const char* tsx_id = nullptr);
 
-TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id);
+TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                       const char* tsx_id = nullptr);
 
 TSStatus TSxBegin(TSEngine* engine, TSTableID tableId, char* transaction_id);
 

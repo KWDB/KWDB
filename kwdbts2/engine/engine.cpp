@@ -497,7 +497,8 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
 
 KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                               TSSlice* payload, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                              uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL) {
+                              uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL,
+                              const char* tsx_id) {
   std::shared_ptr<TsTable> table;
   KStatus s;
   s = GetTsTable(ctx, table_id, table);
@@ -1074,7 +1075,7 @@ KStatus TSEngineImpl::FlushBuffer(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineImpl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                 uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+                                 uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3) {
     mtr_id = 0;
     return KStatus::SUCCESS;
@@ -1121,7 +1122,7 @@ KStatus TSEngineImpl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, u
 }
 
 KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                                  uint64_t range_group_id, uint64_t mtr_id) {
+                                  uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3) {
     return KStatus::SUCCESS;
   }
@@ -1166,7 +1167,7 @@ KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
 }
 
 KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                    uint64_t range_group_id, uint64_t mtr_id) {
+                                    uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3 || mtr_id == 0) {
     return KStatus::SUCCESS;
   }

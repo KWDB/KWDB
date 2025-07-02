@@ -373,7 +373,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
 
 KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal, const char* tsx_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   uint32_t vgroup_id;
@@ -397,6 +397,9 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
+    if (tsx_id != nullptr) {
+      mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
+    }
     if (new_tag) {
       if (options_.wal_level != WALMode::OFF && write_wal) {
         // no need lock, lock inside.
@@ -613,29 +616,27 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
 }
 
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                   uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+                                   uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
-  return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
+  auto vgroup = GetVGroupByID(ctx, 1);
+  return vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                                    uint64_t range_group_id, uint64_t mtr_id) {
+                                    uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
-  return vgroup->MtrCommit(ctx, mtr_id);
+  auto vgroup = GetVGroupByID(ctx, 1);
+  return vgroup->MtrCommit(ctx, mtr_id, tsx_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                      uint64_t range_group_id, uint64_t mtr_id) {
+                                      uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -649,9 +650,8 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
   KStatus s;
 
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
-  s = vgroup->MtrRollback(ctx, mtr_id);
+  auto vgroup = GetVGroupByID(ctx, 1);
+  s = vgroup->MtrRollback(ctx, mtr_id, tsx_id);
   if (s == FAIL) {
     Return(s);
   }
@@ -1454,12 +1454,16 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
 
-  // 3. apply redo log
+  // 3. apply redo log && insert MtrID
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
   for (auto wal_log : logs) {
     if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
       auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
       incomplete.insert(std::pair<TS_LSN, MTRBeginEntry *>(log->getXID(), log));
+      if (log->getTsxID().c_str() != LogEntry::DEFAULT_TS_TRANS_ID) {
+        vgroup_mtr->SetMtrIDByTsxID(log->getXID(), log->getTsxID().c_str());
+      }
     }
   }
 
@@ -1494,8 +1498,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     auto log_entry = it.second;
     uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
-      std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-      auto vgroup = GetVGroupByID(ctx, distrib(gen));
+      auto vgroup = GetVGroupByID(ctx, 1);
       s = vgroup->MtrCommit(ctx, mtr_id);
       if (s == FAIL) return s;
     } else {

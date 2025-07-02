@@ -393,7 +393,7 @@ TSStatus TSPutEntity(TSEngine* engine, TSTableID table_id, TSSlice* payload, siz
 
 TSStatus TSPutData(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
-                   bool writeWAL) {
+                   bool writeWAL, const char* tsx_id) {
   KWDB_DURATION(StStatistics::Get().ts_put);
   // The CGO calls the interface, and the GO layer code will call this interface to write data
   kwdbContext_t context;
@@ -411,7 +411,7 @@ TSStatus TSPutData(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_
   // Parse range_group_id from payload
   uint64_t tmp_range_group_id = 1;
   s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload, payload_num, mtr_id,
-                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
   if (s != KStatus::SUCCESS) {
     std::ostringstream ss;
     ss << tmp_range_group_id;
@@ -548,42 +548,43 @@ TSStatus TSCreateCheckpointForTable(TSEngine* engine, TSTableID table_id) {
 }
 
 TSStatus TSMtrBegin(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                    uint64_t range_id, uint64_t index, uint64_t* mtr_id) {
+                    uint64_t range_id, uint64_t index, uint64_t* mtr_id, const char* tsx_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSMtrBegin(ctx_p, table_id, range_group_id, range_id, index, *mtr_id);
+  s = engine->TSMtrBegin(ctx_p, table_id, range_group_id, range_id, index, *mtr_id, tsx_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Failed to begin the TS mini-transaction!");
   }
   return kTsSuccess;
 }
 
-TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id) {
+TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSMtrCommit(ctx_p, table_id, range_group_id, mtr_id);
+  s = engine->TSMtrCommit(ctx_p, table_id, range_group_id, mtr_id, tsx_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Failed to commit the TS mini-transaction!");
   }
   return kTsSuccess;
 }
 
-TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id) {
+TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                       const char* tsx_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSMtrRollback(ctx_p, table_id, range_group_id, mtr_id);
+  s = engine->TSMtrRollback(ctx_p, table_id, range_group_id, mtr_id, tsx_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Failed to rollback the TS mini-transaction!");
   }
