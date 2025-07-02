@@ -231,34 +231,18 @@ if (BUILD_KWBASE)
         set(KWBASE_MAKEFILE "Makefile_ent")
     endif()
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_custom_target(
-                kwbase ALL
-                COMMAND make build -f ${KWBASE_MAKEFILE}
-                PROTOBUF_DIR=${PROTOBUF_DIR}
-                OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
-                KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
-                GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
-                ${PARALLEL_LEVEL}
-                ENABLE_ROCKSDB_ASSERTIONS=1
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
-                COMMENT "====== compile kwbase ======"
-                DEPENDS kwdbts2 common
+    add_custom_target(
+        kwbase ALL
+        COMMAND make build -f ${KWBASE_MAKEFILE}
+        PROTOBUF_DIR=${PROTOBUF_DIR}
+        OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
+        KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
+        GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
+        ${PARALLEL_LEVEL}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
+        COMMENT "====== compile kwbase ======"
+        DEPENDS kwdbts2 common
         )
-    else ()
-        add_custom_target(
-                kwbase ALL
-                COMMAND make build -f ${KWBASE_MAKEFILE}
-                PROTOBUF_DIR=${PROTOBUF_DIR}
-                OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
-                KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
-                GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
-                ${PARALLEL_LEVEL}
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
-                COMMENT "====== compile kwbase ======"
-                DEPENDS kwdbts2 common
-        )
-    endif ()
 endif()
 
 if (WITH_TESTS)

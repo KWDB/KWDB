@@ -28,14 +28,13 @@ class TsTableV2Impl : public TsTable {
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
-                const std::vector<std::shared_ptr<TsVGroup>>& vgroups) :
-            TsTable(nullptr, "./wrong/", 0), table_schema_mgr_(table_schema), vgroups_(vgroups) {}
+            const std::vector<std::shared_ptr<TsVGroup>>& vgroups) :
+            TsTable(nullptr, "./wrong/", 0),
+            table_schema_mgr_(table_schema), vgroups_(vgroups) {
+              table_id_ = table_schema->GetTableId();
+            }
 
   ~TsTableV2Impl();
-
-  KTableKey GetTableId() override {
-    return table_schema_mgr_->GetTableId();
-  }
 
   uint32_t GetCurrentTableVersion() override {
     return table_schema_mgr_->GetCurrentVersion();
@@ -46,7 +45,7 @@ class TsTableV2Impl : public TsTable {
   }
 
   TsVGroup* GetVGroupByID(uint32_t vgroup_id) {
-    assert(EngineOptions::vgroup_max_num >= vgroup_id);
+    assert(EngineOptions::vgroup_max_num >= vgroup_id && vgroup_id > 0);
     return vgroups_[vgroup_id - 1].get();
   }
 
@@ -71,11 +70,19 @@ class TsTableV2Impl : public TsTable {
                           std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                           uint32_t table_version = 1) override;
 
+  KStatus GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
+                                    const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
+                                    uint32_t table_version) override;
+
   KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                             std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
                             std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
                             k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                             bool reverse, bool sorted) override;
+
+  KStatus GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
+                            vector<KwTsSpan>& ts_spans, std::vector<k_uint32> scan_cols, k_uint32 table_version,
+                            TsIterator** iter, k_uint32 offset, k_uint32 limit, bool reverse) override;
 
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg) override;
@@ -134,7 +141,13 @@ class TsTableV2Impl : public TsTable {
    */
   KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                     KwTsSpan ts_span, uint64_t mtr_id) override;
-
+  KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) override;
+  KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                const KwTsSpan& ts_span, uint64_t* volume) override;
+  KStatus GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                const KwTsSpan& ts_span, timestamp64* half_ts) override;
+  KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                            KwTsSpan ts_span, uint64_t* count) override;
   /**
    * @brief Delete data within a hash range, usually used for data migration.
    * @param[in] range_group_id RangeGroupID
@@ -174,6 +187,10 @@ class TsTableV2Impl : public TsTable {
   KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);
   KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
+  KStatus getEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<EntityResultIndex>& entity_store);
+
+  KStatus GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                 vector<std::pair<uint64_t, uint64_t>>* entity_ids) override;
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;

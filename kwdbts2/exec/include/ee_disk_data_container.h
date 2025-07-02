@@ -81,7 +81,7 @@ class LoserTree {
  * for efficient merging of sorted data chunks and maintains various metadata about the
  * stored data.
  */
-class DiskDataContainer : public DataContainer, ISortableChunk {
+class DiskDataContainer : public DataContainer, public ISortableChunk {
  public:
   DiskDataContainer(std::vector<ColumnOrderInfo>& order_info,
                          ColumnInfo* col_info, k_int32 col_num)
@@ -104,23 +104,21 @@ class DiskDataContainer : public DataContainer, ISortableChunk {
   KStatus Append(DataChunkPtr& chunk);
   k_uint32 Count() override { return count_; }
 
-  EEIteratorErrCode NextChunk(DataChunkPtr& data_chunk);
+  EEIteratorErrCode NextChunk(DataChunkPtr& data_chunk) override;
 
   [[nodiscard]] k_uint32 GetSortRowSize() override { return sort_row_size_; }
 
   KStatus Append(std::queue<DataChunkPtr>& buffer) override { return FAIL; }
 
-  bool IsNull(k_uint32 row, k_uint32 col) override { return true; }
+  bool IsNull(k_uint32 row, k_uint32 col) override;
 
-  bool IsNull(k_uint32 col) override { return true; }
+  bool IsNull(k_uint32 col) override;
 
-  DatumPtr GetData(k_uint32 row, k_uint32 col) override { return nullptr; }
+  DatumPtr GetData(k_uint32 row, k_uint32 col) override;
 
-  DatumPtr GetData(k_uint32 row, k_uint32 col, k_uint16& len) override {
-    return nullptr;
-  };
+  DatumPtr GetData(k_uint32 row, k_uint32 col, k_uint16& len) override;
 
-  DatumPtr GetData(k_uint32 col) override { return nullptr; }
+  DatumPtr GetData(k_uint32 col) override;
 
     std::vector<ColumnOrderInfo>* GetOrderInfo() override { return &order_info_; }
 
@@ -128,7 +126,7 @@ class DiskDataContainer : public DataContainer, ISortableChunk {
 
   k_uint32* GetColOffset() override { return col_offset_; }
 
-  k_int32 NextLine() override { return -1; }
+  k_int32 NextLine() override;
 
  private:
   k_uint32 ComputeCapacity();
@@ -148,6 +146,7 @@ class DiskDataContainer : public DataContainer, ISortableChunk {
   k_uint32 row_size_{0};
   k_uint32 sort_row_size_{0};
   k_uint64 count_{0};         // total row number
+  k_int64 sorted_count_{0};         // total row number
   k_int64 current_line_{-1};  // current row
   k_uint8 current_read_pool_size_{MAX_CHUNK_BATCH_NUM};
   k_bool all_constant_{true};
@@ -156,6 +155,8 @@ class DiskDataContainer : public DataContainer, ISortableChunk {
   k_int32 current_chunk_{-1};
   std::vector<io_file_reader_t> cache_chunk_readers_;
   SortRowChunkPtr write_cache_chunk_ptr_{nullptr};
+  DataChunkPtr output_chunk_ptr_{nullptr};
+  k_uint32 output_chunk_start_row_index_{0};
   ColumnCompare* compare_{nullptr};
   LoserTree loser_tree_;
 

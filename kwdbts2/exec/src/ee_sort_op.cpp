@@ -195,9 +195,9 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
     total_count += chunk->Count();
     buffer_size += chunk->RowSize() * chunk->Count();
     KStatus ret = SUCCESS;
-    if (is_mem_container_ && buffer_size > SORT_MAX_MEM_BUFFER_SIZE) {
-      is_mem_container_ = false;
-      // if (is_all_col_sort_) {
+    if (sort_type_ == EESortType::EE_SORT_MEMORY) {
+      if (buffer_size > SORT_MAX_MEM_BUFFER_SIZE) {
+        sort_type_ = EESortType::EE_SORT_DISK;
         auto disk_container = std::make_unique<DiskDataContainer>(
             order_info_, input_col_info_, input_col_num_);
         disk_container->Init();
@@ -215,8 +215,27 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
             Return(EEIteratorErrCode::EE_ERROR);
           }
         }
-
         container_ = std::move(disk_container);
+      } else if (limit_ > 0 && (limit_ + offset_) * chunk->RowSize() <
+                                   SORT_MAX_MEM_BUFFER_SIZE) {
+        sort_type_ = EESortType::EE_SORT_HEAP;
+        auto heap_container = std::make_unique<HeapSortContainer>(
+            order_info_, input_col_info_, input_col_num_, limit_ + offset_);
+        heap_container->Init();
+        heap_container->SetLimitOffset(limit_, offset_);
+        while (true) {
+          DataChunkPtr mem_chunk;
+          auto code = container_->NextChunk(mem_chunk);
+          if (code != EEIteratorErrCode::EE_OK) {
+            break;
+          }
+          ret = heap_container->Append(mem_chunk);
+          if (ret != SUCCESS) {
+            Return(EEIteratorErrCode::EE_ERROR);
+          }
+        }
+        container_ = std::move(heap_container);
+      }
     }
     ret = container_->Append(chunk);
     // }
@@ -245,34 +264,31 @@ EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx,
   if (is_done_) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
-
   auto start = std::chrono::high_resolution_clock::now();
-  if (is_mem_container_) {
-    if (nullptr == chunk) {
-      chunk = std::make_unique<DataChunk>(output_col_info_, output_col_num_);
-      if (chunk->Initialize() != true) {
-        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
-                                      "Insufficient memory");
-        chunk = nullptr;
-        Return(EEIteratorErrCode::EE_ERROR);
-      }
+  if (nullptr == chunk) {
+    chunk = std::make_unique<DataChunk>(output_col_info_, output_col_num_);
+    if (chunk->Initialize() != true) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
+                                    "Insufficient memory");
+      chunk = nullptr;
+      Return(EEIteratorErrCode::EE_ERROR);
     }
+  }
+  k_uint32 BATCH_SIZE = chunk->Capacity();
     thd->SetDataChunk(container_.get());
-    k_uint32 BATCH_SIZE = chunk->Capacity();
     // record location in current result batch.
     k_uint32 location = 0;
     while (scanned_rows_ < container_->Count()) {
-      k_int32 row = container_->NextLine();
-      if (row < 0) {
-        break;
-      }
-      ++scanned_rows_;
-
       // limit
       if (limit_ && examined_rows_ >= limit_) {
         is_done_ = true;
         break;
       }
+      k_int32 row = container_->NextLine();
+      if (row < 0) {
+        break;
+      }
+      ++scanned_rows_;
 
       // offset
       if (cur_offset_ > 0) {
@@ -293,14 +309,6 @@ EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx,
     if (scanned_rows_ == container_->Count()) {
       is_done_ = true;
     }
-  } else {
-    thd->SetDataChunk(container_.get());
-    code = container_->NextChunk(chunk);
-    if (code != EEIteratorErrCode::EE_OK) {
-      Return(code);
-    }
-    scanned_rows_ += chunk->Count();
-  }
 
   OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
   auto end = std::chrono::high_resolution_clock::now();

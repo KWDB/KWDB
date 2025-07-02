@@ -61,6 +61,7 @@ class FieldFuncMath : public FieldFunc {
   KStatus set_storage_info();
   k_bool field_is_nullable() override;
 
+  KString name_;
   Functype func_type_;
   _int_fn int_func_;
   _double_fn double_func_;

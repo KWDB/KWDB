@@ -54,7 +54,6 @@ class AggCalculatorV2 {
   KStatus MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype agg_type, bool& is_overflow);
 
  private:
-  int cmp(void* l, void* r);
   void InitSumValue(void* ptr);
   void InitAggData(TSSlice& agg_data);
   bool isnull(size_t row);

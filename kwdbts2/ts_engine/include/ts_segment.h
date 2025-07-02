@@ -11,17 +11,16 @@
 
 #pragma once
 
-#include <list>
 #include <memory>
-#include <stdexcept>
 #include <vector>
+#include <list>
 
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-#include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_del_item_manager.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
@@ -30,14 +29,18 @@ class TsSegmentBase;
 struct TsScanFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
+  DATATYPE  table_ts_type;
+  TS_LSN end_lsn;
   const std::vector<KwTsSpan>& ts_spans_;
 };
 
-// conditions used for flitering blockitem data.
+// conditions used for filtering blockitem data.
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
   std::vector<STScanRange> spans_;
 };
@@ -47,7 +50,9 @@ class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<shared_ptr<TsBlockSpan>>& block_spans) = 0;
+                                std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                uint32_t scan_version) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }
 

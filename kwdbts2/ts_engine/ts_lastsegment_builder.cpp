@@ -19,6 +19,7 @@
 #include "ts_common.h"
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
+#include "ts_io.h"
 #include "ts_lastsegment.h"
 
 namespace kwdbts {
@@ -289,16 +290,20 @@ KStatus TsLastSegmentBuilder::Finalize() {
 
   // TODO(zzr) meta block API
   int nmeta = meta_blocks_.size();
-  std::vector<uint64_t> meta_offset(nmeta);
-  std::vector<uint64_t> meta_len(nmeta);
+  std::vector<uint64_t> meta_offset;
+  std::vector<uint64_t> meta_len;
 
   for (int i = 0; i < nmeta; ++i) {
-    meta_offset[i] = last_segment_->GetFileSize();
     std::string serialized;
     meta_blocks_[i]->Serialize(&serialized);
+    if (serialized.empty()) {
+      continue;
+    }
+    meta_offset.push_back(last_segment_->GetFileSize());
     last_segment_->Append(serialized);
-    meta_len[i] = serialized.size();
+    meta_len.push_back(serialized.size());
   }
+  nmeta = meta_offset.size();
   size_t meta_index_offset = last_segment_->GetFileSize();
   std::string meta_idx_data;
   meta_idx_data.reserve(nmeta * 16);
@@ -317,8 +322,12 @@ KStatus TsLastSegmentBuilder::Finalize() {
   footer.meta_block_idx_offset = meta_index_offset;
   footer.n_meta_block = nmeta;
   footer.file_version = 1;
-  s = last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
-  if (s != KStatus::SUCCESS) {
+  footer.magic_number = FOOTER_MAGIC;
+
+  // TODO(zzr): take care of endian
+  auto ss =
+      last_segment_->Append(TSSlice{reinterpret_cast<char*>(&footer), sizeof(TsLastSegmentFooter)});
+  if (ss != KStatus::SUCCESS) {
     LOG_ERROR("IO error when write lastsegment.");
     return FAIL;
   }
@@ -565,7 +574,7 @@ size_t TsLastSegmentBuilder::InfoHandle::RecordBlock(size_t block_length, const 
   return length;
 }
 
-KStatus TsLastSegmentBuilder::InfoHandle::WriteInfo(TsFile* file) {
+KStatus TsLastSegmentBuilder::InfoHandle::WriteInfo(TsAppendOnlyFile* file) {
   std::string buf;
   assert(infos_.size() == offset_.size());
   for (int i = 0; i < infos_.size(); ++i) {
@@ -599,7 +608,7 @@ void TsLastSegmentBuilder::IndexHandle::ApplyInfoBlockOffset(size_t offset) {
   }
 }
 
-KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsFile* file) {
+KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsAppendOnlyFile* file) {
   assert(finished_);
   std::string buf;
   for (const auto idx : indices_) {

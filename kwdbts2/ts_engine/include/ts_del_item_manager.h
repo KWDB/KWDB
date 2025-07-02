@@ -10,12 +10,10 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
-#include <filesystem>
 #include <vector>
 #include <string>
 #include <list>
 #include "libkwdbts2.h"
-#include "data_type.h"
 #include "ts_io.h"
 #include "ts_file_vector_index.h"
 
@@ -25,6 +23,9 @@ namespace kwdbts {
 struct KwLSNSpan {
   TS_LSN begin;
   TS_LSN end;
+  inline bool Equal(const KwLSNSpan& desc) {
+    return begin == desc.begin && end == desc.end;
+  }
 };
 
 // LSN and TS range struct
@@ -90,6 +91,7 @@ class TsDelItemManager {
   ~TsDelItemManager();
   KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);
+  KStatus RollBackDelItem(TSEntityID entity_id, const KwLSNSpan& lsn);
   KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem>& del_items);
   KStatus GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range);
   void DropAll();

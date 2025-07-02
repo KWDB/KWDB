@@ -82,6 +82,7 @@ class CompressorManager {
 
     bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out) const;
     bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); }
+
     std::tuple<TsCompAlg, GenCompAlg> GetAlgorithms() const;
   };
 
@@ -105,8 +106,10 @@ class CompressorManager {
 
   bool CompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, std::string* output,
                     TsCompAlg fisrt, GenCompAlg second) const;
+  bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
   bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count,
                       std::string* output) const;
+  bool DecompressVarchar(TSSlice input, std::string* output) const;
 };
 
 }  //  namespace kwdbts

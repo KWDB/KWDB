@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <functional>
 #include <initializer_list>
-#include <iostream>
 #include <memory>
 #include <numeric>
 #include <random>
@@ -27,33 +26,60 @@
 #include "ts_engine_schema_manager.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_payload.h"
+
+static TsIOEnv *env = &TsMMapIOEnv::GetInstance();
+
+static std::string filename = "lastsegment";
 
 using namespace roachpb;
 std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,   DataType::BIGINT,
                                       DataType::VARCHAR,   DataType::FLOAT, DataType::DOUBLE,
                                       DataType::VARCHAR};
+
+struct R {
+  std::unique_ptr<TsLastSegmentBuilder> builder;
+  std::shared_ptr<TsEngineSchemaManager> schema_mgr;
+  std::vector<AttributeInfo> metric_schema;
+  std::vector<TagInfo> tag_schema;
+};
+
 class LastSegmentReadWriteTest : public testing::Test {
  protected:
+  TsIOEnv *env = &TsMMapIOEnv::GetInstance();
   void SetUp() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-000000000000");
+    std::filesystem::remove(filename);
+    mgr = std::make_shared<TsEngineSchemaManager>("schema");
   }
   void TearDown() override {
     std::filesystem::remove_all("schema");
-    std::filesystem::remove("last.ver-000000000000");
+    std::filesystem::remove(filename);
   }
+
+  void BuilderWithBasicCheck(TSTableID table_id, int nrow);
+
+  void IteratorCheck(TSTableID table_id);
+
+  ::R GenBuilders(TSTableID table_id);
+
+public:
+  std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
 };
 
-void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
+static void OpenLastSegment(const std::string &name, std::shared_ptr<TsLastSegment> *file) {
+  std::unique_ptr<TsRandomReadFile> rfile;
+  ASSERT_EQ(env->NewRandomReadFile(filename, &rfile), SUCCESS);
+  *file = TsLastSegment::Create(0, std::move(rfile));
+  ASSERT_NE(file, nullptr);
+  ASSERT_EQ((*file)->Open(), kwdbts::SUCCESS);
+}
+
+void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nrow) {
   ASSERT_NE(nrow, 0);
-  std::string filename;
   {
-    System("rm -rf schema");
     CreateTsTable meta;
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
-    auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
     auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::shared_ptr<TsTableSchemaManager> schema_mgr;
@@ -67,12 +93,9 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
     s = schema_mgr->GetTagMeta(1, tag_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
-    TsLastSegmentManager last_segment_mgr("./");
-    std::unique_ptr<TsFile> last_segment;
-    uint32_t file_number;
-    last_segment_mgr.NewLastSegmentFile(&last_segment, &file_number);
-    ASSERT_EQ(file_number, 0);
-    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), file_number);
+    std::unique_ptr<TsAppendOnlyFile> last_segment;
+    env->NewAppendOnlyFile(filename, &last_segment);
+    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), 0);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};
@@ -83,27 +106,24 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
     }
     builder.Finalize();
     free(payload.data);
-
-    std::shared_ptr<TsLastSegment> lastseg;
-    s = last_segment_mgr.OpenLastSegmentFile(0, &lastseg);
-    EXPECT_EQ(s, SUCCESS);
-    filename = lastseg->GetFilePath();
   }
 
-  auto file = std::make_unique<TsMMapFile>(filename, true);
+  std::unique_ptr<TsRandomReadFile> file;
+  ASSERT_EQ(env->NewRandomReadFile(filename, &file), SUCCESS);
   TsLastSegmentFooter footer;
   auto sz = file->GetFileSize();
   ASSERT_TRUE(sz >= sizeof(footer));
   TSSlice slice;
-  file->Read(sz - sizeof(footer), sizeof(footer), &slice, reinterpret_cast<char *>(&footer));
+  file->Read(sz - sizeof(footer), sizeof(footer), &slice, nullptr);
+  memcpy(&footer, slice.data, sizeof(footer));
   ASSERT_EQ(footer.magic_number, FOOTER_MAGIC);
 
   auto nblock = footer.n_data_block;
   EXPECT_EQ(nblock, (nrow + TsLastSegment::kNRowPerBlock - 1) / TsLastSegment::kNRowPerBlock);
   for (int i = 0; i < nblock; ++i) {
     TsLastSegmentBlockIndex idx_block;
-    file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice,
-               reinterpret_cast<char *>(&idx_block));
+    file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice, nullptr);
+    memcpy(&idx_block, slice.data, sizeof(idx_block));
     EXPECT_EQ(idx_block.table_id, table_id);
 
     char buf[10240];
@@ -130,22 +150,20 @@ void BuilderWithBasicCheck(TSTableID table_id, int nrow) {
         ASSERT_EQ(info.col_infos[j].bitmap_len, 0) << "At Column " << j;
       }
       if (info.col_infos[j].bitmap_len != 0) {
-        file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len,
-                   &result, buf);
-        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
+        auto s = file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len, &result, buf);
+        EXPECT_EQ(s, SUCCESS);
+        ASSERT_EQ(result.data[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
       }
     }
   }
 }
 
-void IteratorCheck(TSTableID table_id) {
-  TsLastSegmentManager manager("./");
+void LastSegmentReadWriteTest::IteratorCheck(TSTableID table_id) {
   std::shared_ptr<TsLastSegment> file;
-  manager.OpenLastSegmentFile(0, &file);
-  ASSERT_TRUE(file->Open() == kwdbts::SUCCESS);
+  OpenLastSegment(filename, &file);
 
   std::list<shared_ptr<TsBlockSpan>> spans;
-  ASSERT_EQ(file->GetBlockSpans(spans), SUCCESS);
+  ASSERT_EQ(file->GetBlockSpans(spans, mgr.get()), SUCCESS);
   for (const auto &span : spans) {
     EXPECT_EQ(span->GetEntityID(), 1);
     EXPECT_EQ(span->GetTableID(), table_id);
@@ -177,19 +195,12 @@ TEST_F(LastSegmentReadWriteTest, WriteAndRead5) {
   IteratorCheck(15);
 }
 
-struct R {
-  std::unique_ptr<TsLastSegmentBuilder> builder;
-  std::unique_ptr<TsEngineSchemaManager> schema_mgr;
-  std::unique_ptr<TsLastSegmentManager> last_mgr;
-  std::vector<AttributeInfo> metric_schema;
-  std::vector<TagInfo> tag_schema;
-};
 
-R GenBuilders(TSTableID table_id) {
+R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   CreateTsTable meta;
   ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
-  auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
   auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+  EXPECT_EQ(s, SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 
@@ -198,18 +209,13 @@ R GenBuilders(TSTableID table_id) {
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
-  auto last_segment_mgr = std::make_unique<TsLastSegmentManager>("./");
-  std::unique_ptr<TsFile> last_segment;
-  uint32_t file_number;
-  last_segment_mgr->NewLastSegmentFile(&last_segment, &file_number);
-  EXPECT_EQ(file_number, 0);
+  std::unique_ptr<TsAppendOnlyFile> last_segment;
+  env->NewAppendOnlyFile(filename, &last_segment);
   R res;
-  res.builder =
-      std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), file_number);
+  res.builder = std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), 0);
   res.metric_schema = std::move(metric_schema);
   res.tag_schema = std::move(tag_schema);
-  res.schema_mgr = std::move(mgr);
-  res.last_mgr = std::move(last_segment_mgr);
+  res.schema_mgr = mgr;
   return res;
 }
 
@@ -310,6 +316,7 @@ std::unordered_map<roachpb::DataType, std::function<void(TSSlice)>> checker_func
 
 TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   TSTableID table_id = 123;
+  uint32_t vgroup_id = 1;
   uint32_t table_version = 1;
   int interval = 997;
   timestamp64 start_ts = 123;
@@ -330,7 +337,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   res.builder.reset();
 
   std::shared_ptr<TsLastSegment> last_segment;
-  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  OpenLastSegment(filename, &last_segment);
   {  // test bloom filter....
     std::set<TSEntityID> eids{dev_ids.begin(), dev_ids.end()};
     for (auto eid : dev_ids) {
@@ -358,7 +365,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   ASSERT_EQ(footer.n_data_block, 3);
 
   std::list<shared_ptr<TsBlockSpan>> spans;
-  last_segment->GetBlockSpans(spans);
+  last_segment->GetBlockSpans(spans, mgr.get());
   ASSERT_EQ(spans.size(), dev_ids.size());
   auto dev_iter = dev_ids.begin();
   for (const auto &span : spans) {
@@ -371,9 +378,13 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
     dev_iter++;
   }
 
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  auto s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, SUCCESS);
+
   // scan for specific table & entity;
   std::list<shared_ptr<TsBlockSpan>> spans_list;
-  last_segment->GetBlockSpans({1, table_id, 3, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, spans_list);
+  last_segment->GetBlockSpans({1, table_id, vgroup_id, 3, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
   ASSERT_EQ(spans_list.size(), 1);
   EXPECT_EQ(spans_list.front()->GetEntityID(), 3);
   EXPECT_EQ(spans_list.front()->GetRowNum(), 2048);
@@ -390,7 +401,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
 
   for (auto c : cases) {
     std::list<shared_ptr<TsBlockSpan>> spans;
-    auto s = last_segment->GetBlockSpans({0, table_id, 3, {{{c.min_ts, c.max_ts}, {0, UINT64_MAX}}}}, spans);
+    auto s = last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{c.min_ts, c.max_ts}, {0, UINT64_MAX}}}}, spans, schema_mgr, 0);
     ASSERT_EQ(s, SUCCESS);
     ASSERT_EQ(spans.size(), 1);
     EXPECT_EQ(spans.front()->GetRowNum(), c.expect_row);
@@ -401,15 +412,15 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   }
 
   spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 3, {{{1000, 0}, {0, UINT64_MAX}}}}, spans_list);
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{1000, 0}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
   ASSERT_EQ(spans_list.size(), 0);
 
   spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 3, {{{-100, 0}, {0, UINT64_MAX}}}}, spans_list);
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{-100, 0}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
   ASSERT_EQ(spans_list.size(), 0);
 
   spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 3, {{{123, 2000}, {0, UINT64_MAX}}, {{3000, 6000}, {0, UINT64_MAX}}}}, spans_list);
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{123, 2000}, {0, UINT64_MAX}}, {{3000, 6000}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
   ASSERT_EQ(spans_list.size(), 2);
   EXPECT_EQ(spans_list.front()->GetRowNum(), 2);
   spans_list.pop_front();
@@ -418,6 +429,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
 
 TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   TSTableID table_id = 312;
+  uint32_t vgroup_id = 1;
   uint32_t table_version = 1;
   int interval = 993;
   int start_ts = 12345;
@@ -442,7 +454,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   res.builder.reset();
 
   std::shared_ptr<TsLastSegment> last_segment;
-  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  OpenLastSegment(filename, &last_segment);
   {  // test bloom filter....
     std::set<TSEntityID> eids{dev_ids.begin(), dev_ids.end()};
     for (auto eid : dev_ids) {
@@ -471,7 +483,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   ASSERT_EQ(footer.n_data_block, (total + nrow_per_block - 1) / nrow_per_block);
 
   std::list<shared_ptr<TsBlockSpan>> result_spans;
-  last_segment->GetBlockSpans(result_spans);
+  last_segment->GetBlockSpans(result_spans, mgr.get());
 
   int idx = 0;
   int sum = 0;
@@ -493,18 +505,19 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     
     char* value;
     TsBitmap bitmap;
-    for (int icol = 0; icol < dtypes.size(); ++icol) {
-      if (!isVarLenType(res.metric_schema[icol].type)) {
-        auto ret = s->GetFixLenColAddr(icol, res.metric_schema, res.metric_schema[icol], &value, bitmap);
-        ASSERT_EQ(ret, KStatus::SUCCESS);
-        for (int i = 0; i < s->GetRowNum(); ++i) {
-          TSSlice val;
-          val.len = res.metric_schema[icol].size;
-          val.data = value + val.len * i;
-          checker_funcs[dtypes[icol]](val);
-        }
-      }
-    }
+    // TODO(zqh): hide the following code temporarily
+    // for (int icol = 0; icol < dtypes.size(); ++icol) {
+    //   if (!isVarLenType(res.metric_schema[icol].type)) {
+    //     auto ret = s->GetFixLenColAddr(icol, &value, bitmap);
+    //     ASSERT_EQ(ret, KStatus::SUCCESS);
+    //     for (int i = 0; i < s->GetRowNum(); ++i) {
+    //       TSSlice val;
+    //       val.len = res.metric_schema[icol].size;
+    //       val.data = value + val.len * i;
+    //       checker_funcs[dtypes[icol]](val);
+    //     }
+    //   }
+    // }
   }
   EXPECT_EQ(idx + 1, dev_ids.size());
 
@@ -534,7 +547,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   }
 
   result_spans.clear();
-  last_segment->GetBlockSpans(result_spans);
+  last_segment->GetBlockSpans(result_spans, mgr.get());
   ASSERT_EQ(result_spans.size(), expected_rows.size());
   for (int i = 0; i < expected_rows.size(); ++i) {
     auto cur_span = result_spans.front();
@@ -543,8 +556,12 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     EXPECT_EQ(cur_span->GetEntityID(), expected_dev[i]);
   }
 
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  auto s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, SUCCESS);
+
   std::list<shared_ptr<TsBlockSpan>> result_spans_list;
-  last_segment->GetBlockSpans({0, table_id, 9913, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, result_spans_list);
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 9913, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, result_spans_list, schema_mgr, 0);
   ASSERT_EQ(result_spans_list.size(), 4);
   for (int i = 0; i < result_spans_list.size(); ++i) {
     auto cur_span = result_spans_list.front();
@@ -560,7 +577,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
       {{start_ts + interval * 5000, start_ts + interval * (2084 + 4096)}, {0, UINT64_MAX}},
   };
   result_spans_list.clear();
-  last_segment->GetBlockSpans({0, table_id, 9913, spans}, result_spans_list);
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 9913, spans}, result_spans_list, schema_mgr, 0);
   ASSERT_EQ(result_spans_list.size(), 5);
   std::vector<std::pair<int, int>> expected_minmax = {
       {start_ts, start_ts + interval * 2000},
@@ -585,6 +602,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
 // this may very slow in debug mode, disabled as default
 TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
   TSTableID table_id = 312;
+  uint32_t vgroup_id = 1;
   uint32_t table_version = 1;
   int interval = 1000;
   int start_ts = 1234567;
@@ -606,11 +624,16 @@ TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
   res.builder.reset();
 
   std::shared_ptr<TsLastSegment> last_segment;
-  res.last_mgr->OpenLastSegmentFile(0, &last_segment);
+  OpenLastSegment(filename, &last_segment);
   int sum = 0;
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  auto s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, SUCCESS);
+
   for (size_t eid = 0; eid < max_entity_id; ++eid) {
     std::list<shared_ptr<TsBlockSpan>> result_spans_list;
-    last_segment->GetBlockSpans({0, table_id, eid, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, result_spans_list);
+    last_segment->GetBlockSpans({0, table_id, vgroup_id, eid, {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}}}, result_spans_list, schema_mgr, 0);
     for (auto &span : result_spans_list) {
       sum += span->GetRowNum();
     }

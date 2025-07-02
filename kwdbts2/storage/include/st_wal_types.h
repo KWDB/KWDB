@@ -47,7 +47,8 @@ enum WALLogType : uint8_t {
 
 enum WALTableType : uint8_t {
   DATA = 0,
-  TAG = 1
+  TAG = 1,
+  DATA_V2 = 2,
 };
 
 enum AlterType : uint8_t {

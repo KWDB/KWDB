@@ -680,6 +680,16 @@ class TsTableIterator : public TsIterator {
   std::vector<TsStorageIterator*> iterators_;
 };
 
+struct TimestampComparator {
+  bool is_reversed = false;
+  TimestampComparator() {}
+  TimestampComparator(bool reversed) : is_reversed(reversed) {}
+
+  bool operator()(const timestamp64& a, const timestamp64& b) const {
+    return is_reversed ? a > b : a < b;
+  }
+};
+
 class TsOffsetIterator : public TsIterator {
  public:
   TsOffsetIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id,
@@ -736,7 +746,8 @@ class TsOffsetIterator : public TsIterator {
   uint64_t entity_group_id_{0};
   std::map<SubGroupID, std::vector<EntityID>> entity_ids_;
   // map<timestamp, {subgroup_id}>
-  map<timestamp64, vector<uint32_t>> p_times_;
+  TimestampComparator comparator_;
+  map<timestamp64, vector<uint32_t>, TimestampComparator> p_times_;
   map<timestamp64, vector<uint32_t>>::iterator p_time_it_;
   // unordered_map<subgroup_id, TsSubGroupPTIterator>
   unordered_map<uint32_t, std::shared_ptr<TsSubGroupPTIterator>> partition_table_iter_;

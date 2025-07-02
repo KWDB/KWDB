@@ -153,7 +153,7 @@ bool OrderColumnCompare::operator()(k_uint32 a, k_uint32 b) {
         return true;
     }
   }
-  return false;
+  return a < b;
 }
 
 }  // namespace kwdbts

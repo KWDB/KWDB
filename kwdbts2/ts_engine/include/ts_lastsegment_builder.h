@@ -19,12 +19,13 @@
 #include "libkwdbts2.h"
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_payload.h"
 
 namespace kwdbts {
 class TsLastSegmentBuilder {
-  std::unique_ptr<TsFile> last_segment_;
+  std::unique_ptr<TsAppendOnlyFile> last_segment_;
 
   struct BlockInfo;
   class MetricBlockBuilder;  // Helper for build DataBlock
@@ -137,7 +138,7 @@ class TsLastSegmentBuilder {
   KStatus FlushColDataBuffer();
 
  public:
-  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsFile>&& last_segment,
+  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsAppendOnlyFile>&& last_segment,
                        uint32_t file_number)
       : last_segment_(std::move(last_segment)),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
@@ -205,7 +206,7 @@ class TsLastSegmentBuilder::InfoHandle {
 
  public:
   size_t RecordBlock(size_t block_length, const BlockInfo& info);
-  KStatus WriteInfo(TsFile*);
+  KStatus WriteInfo(TsAppendOnlyFile*);
 };
 
 class TsLastSegmentBuilder::IndexHandle {
@@ -217,7 +218,7 @@ class TsLastSegmentBuilder::IndexHandle {
  public:
   void RecordBlockInfo(size_t info_length, const BlockInfo& info);
   void ApplyInfoBlockOffset(size_t offset);
-  KStatus WriteIndex(TsFile*);
+  KStatus WriteIndex(TsAppendOnlyFile*);
 };
 class TsLastSegmentBuilder::MetricBlockBuilder {
  private:

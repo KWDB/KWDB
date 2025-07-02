@@ -27,11 +27,11 @@ namespace kwdbts {
 
 class TsRawPayloadRowParser {
  private:
-  const std::vector<AttributeInfo>& schema_;
+  const std::vector<AttributeInfo> schema_;
   std::vector<int> col_offset_;
 
  public:
-  explicit TsRawPayloadRowParser(const std::vector<AttributeInfo>& data_schema);
+  explicit TsRawPayloadRowParser(std::vector<AttributeInfo> data_schema);
   ~TsRawPayloadRowParser() {}
 
   bool IsColNull(const TSSlice& row_data, int col_id) {

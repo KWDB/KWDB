@@ -10,43 +10,47 @@
 // See the Mulan PSL v2 for more details.
 
 #include <cstdint>
+#include <vector>
+#include <list>
+#include <memory>
 #include "ts_mem_segment_mgr.h"
 #include "ts_vgroup.h"
 
 namespace kwdbts {
 
+TsMemSegment::TsMemSegment(int32_t height) : skiplist_(comp_, &arena_, height) {}
+
+TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup)
+    : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
+  segment_.push_back(cur_mem_seg_);
+}
+
 // WAL CreateCheckPoint call this function to persistent metric datas.
 void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments) {
-  segments->reset();
-  segment_lock_.lock();
-  if (segment_.size() > 0) {
-    *segments = segment_.back();
-    segment_.push_back(TsMemSegment::Create(EngineOptions::mem_segment_max_height));
-    cur_mem_seg_ = segment_.back();
-  }
-  segment_lock_.unlock();
-  if (segments->get() != nullptr) {
-    if (!(*segments)->SetImm()) {
+  {
+    std::unique_lock lock{segment_lock_};
+    if (!cur_mem_seg_->SetImm()) {
       LOG_ERROR("can not switch mem segment.");
     }
-    auto row_num = (*segments)->GetRowNum();
-    uint32_t new_heigh = log2(row_num);
-    if (EngineOptions::mem_segment_max_height < new_heigh) {
-      EngineOptions::mem_segment_max_height = new_heigh;
-    }
+    *segments = cur_mem_seg_;
+    cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
+    segment_.push_back(cur_mem_seg_);
+  }
+  auto row_num = (*segments)->GetRowNum();
+  uint32_t new_heigh = log2(row_num);
+  if (EngineOptions::mem_segment_max_height < new_heigh) {
+    EngineOptions::mem_segment_max_height = new_heigh;
   }
 }
 
 void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
-  segment_lock_.lock();
+  std::unique_lock lock{segment_lock_};
   segment_.remove(mem_seg);
-  segment_lock_.unlock();
 }
 
 void TsMemSegmentManager::GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems) {
-  segment_lock_.lock();
+  std::shared_lock lock(segment_lock_);
   *mems = segment_;
-  segment_lock_.unlock();
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version, std::vector<AttributeInfo>& schema,
@@ -86,13 +90,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   TSMemSegRowData row_data(vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id), table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);
   uint32_t row_num = pd.GetRowCount();
-  if (cur_mem_seg_ == 0) {
-    segment_lock_.lock();
-    segment_.push_back(TsMemSegment::Create(EngineOptions::mem_segment_max_height));
-    cur_mem_seg_ = segment_.back();
-    segment_lock_.unlock();
-  }
-  auto cur_mem_seg = cur_mem_seg_;
+  auto cur_mem_seg = CurrentMemSegment();
   cur_mem_seg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
     auto row_ts = pd.GetTS(i);
@@ -117,10 +115,14 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 }
 
 KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                           std::list<shared_ptr<TsBlockSpan>>& block_spans) {
-  segment_lock_.lock();
-  std::list<std::shared_ptr<TsMemSegment>> segments = segment_;
-  segment_lock_.unlock();
+                                           std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                           std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                           uint32_t scan_version) {
+  std::list<std::shared_ptr<TsMemSegment>> segments;
+  {
+    std::shared_lock lock(segment_lock_);
+    segments = segment_;
+  }
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   std::list<std::shared_ptr<TsMemSegBlock>> mem_block;
   for (auto& mem : segments) {
@@ -177,8 +179,9 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter
     }
   }
   for (auto& mem_blk : mem_block) {
-    block_spans.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(),
-                                  mem_blk, 0, mem_blk->GetRowNum()));
+    uint32_t vgroup_id = vgroup_ ? vgroup_->GetVGroupID() : 0;
+    block_spans.push_back(make_shared<TsBlockSpan>(vgroup_id, mem_blk->GetEntityId(), mem_blk, 0, mem_blk->GetRowNum(),
+                                                   tbl_schema_mgr, scan_version));
   }
   return KStatus::SUCCESS;
 }
@@ -267,6 +270,7 @@ bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
     memcpy(cur_row, &row, sizeof(TSMemSegRowData));
     cur_row->row_data.data = buf + sizeof(TSMemSegRowData) + TSMemSegRowData::GetKeyLen();
     cur_row->row_data.len = row.row_data.len;
+    cur_row->row_idx_in_mem_seg = row_idx_.fetch_add(1);
     memcpy(cur_row->row_data.data, row.row_data.data, row.row_data.len);
     cur_row->GenKey(buf);
     auto ok = skiplist_.InsertConcurrently(buf);
@@ -400,7 +404,9 @@ void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, boo
 }
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                    std::list<shared_ptr<TsBlockSpan>>& blocks) {
+                                    std::list<shared_ptr<TsBlockSpan>>& blocks,
+                                    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                    uint32_t scan_version) {
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {
@@ -453,11 +459,10 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     }
   }
   for (auto& mem_blk : mem_blocks) {
-    blocks.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(),
-                                  mem_blk, 0, mem_blk->GetRowNum()));
+    blocks.push_back(make_shared<TsBlockSpan>(filter.vgroup_id, mem_blk->GetEntityId(),
+                                  mem_blk, 0, mem_blk->GetRowNum(), tbl_schema_mgr, scan_version));
   }
   return KStatus::SUCCESS;
 }
 
 }  //  namespace kwdbts
-

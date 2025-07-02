@@ -97,11 +97,9 @@ class MemRowContainer : public DataContainer, public std::enable_shared_from_thi
   std::vector<k_uint32> selection_;
   k_int32 current_sel_idx_{-1};
   k_uint32 count_{0};  // total row number
-  std::vector<k_uint16> line_chunk_indexer_;
-  std::vector<k_uint32> cumulative_count_;
-  k_int32 current_line_{-1};  // current row
 
   std::vector<DataChunkPtr> mem_chunk_ptrs_;
+  DataChunkPtr sorted_chunk_ptr_;
   k_bool disorder_{true};
 };
 

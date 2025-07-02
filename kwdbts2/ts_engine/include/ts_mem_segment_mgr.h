@@ -38,6 +38,7 @@ struct TSMemSegRowData {
   TSEntityID entity_id;
   timestamp64 ts;
   TS_LSN lsn;
+  uint32_t row_idx_in_mem_seg;
   TSSlice row_data;
 
  private:
@@ -59,7 +60,7 @@ struct TSMemSegRowData {
     row_data = crow_data;
   }
   static size_t GetKeyLen() {
-    return 4 + 8 + 4 + 8 + 8 + 8 + 8;
+    return 4 + 8 + 4 + 8 + 8 + 8 + 4;
   }
 
 #define HTOBEFUNC(buf, value, size) { \
@@ -77,7 +78,7 @@ struct TSMemSegRowData {
     uint64_t cts = ts - INT64_MIN;
     HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
     HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
-    HTOBEFUNC(buf, htobe64(*reinterpret_cast<uint64_t*>(&row_data.data)), sizeof(uint64_t));
+    HTOBEFUNC(buf, htobe32(row_idx_in_mem_seg), sizeof(row_idx_in_mem_seg));
   }
 
   inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {
@@ -154,6 +155,7 @@ struct TSRowDataComparator {
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
  private:
+  std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> cur_size_{0};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
@@ -162,7 +164,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   TSRowDataComparator comp_;
   InlineSkipList<TSRowDataComparator> skiplist_;
 
-  explicit TsMemSegment(int32_t max_height) : skiplist_(comp_, &arena_, max_height) {}
+  explicit TsMemSegment(int32_t max_height);
 
  public:
   template <class... Args>
@@ -211,7 +213,13 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     status_.store(MEM_SEGMENT_DELETING);
   }
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) override;
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version) override;
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
+    return GetBlockSpans(filter, blocks, nullptr, 0);
+  }
 };
 
 class TsMemSegBlock : public TsBlock {
@@ -271,6 +279,14 @@ class TsMemSegBlock : public TsBlock {
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
 
+  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
+  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
   bool InsertRow(TSMemSegRowData* row) {
     bool can_insert = true;
     if (row_data_.size() != 0) {
@@ -297,28 +313,37 @@ class TsMemSegmentManager {
   TsVGroup* vgroup_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
-  std::mutex segment_lock_;
+  mutable std::shared_mutex segment_lock_;
 
  public:
-  explicit TsMemSegmentManager(TsVGroup *vgroup) : vgroup_(vgroup) {}
+  explicit TsMemSegmentManager(TsVGroup* vgroup);
 
   ~TsMemSegmentManager() {
     segment_.clear();
   }
 
   // WAL CreateCheckPoint call this function to persistent metric datas.
+
+  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
+    std::shared_lock lock(segment_lock_);
+    return cur_mem_seg_;
+  }
+
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
   void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems);
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows = nullptr);
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
+    std::list<TSMemSegRowData>* rows = nullptr);
 
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
                               LifeTime* lifetime = nullptr);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans);
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        uint32_t scan_version = 0);
 };
 
 }  // namespace kwdbts

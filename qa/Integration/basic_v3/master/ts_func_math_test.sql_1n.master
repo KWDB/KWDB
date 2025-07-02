@@ -26,6 +26,12 @@ e1 float4 not null,
 e2 float8 not null
 ) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
 CREATE TABLE
+> create table ts_db.t4(
+k_timestamp timestamp not null,
+e1 int8 not null,
+e2 int4 not null
+) TAGS (code1 int2 not null) PRIMARY TAGS(code1);
+CREATE TABLE
 > insert into ts_db.t1 values('2018-10-10 10:00:00', -1000, 2000, 233, 123.45, 196.32, 'e2', 'a3', b'\x123', b'\xaa\xbb\xee', 100);
 INSERT 1
 > insert into ts_db.t1 values('2018-10-10 10:00:01', 0, 3000, 322, 0.0, 156.89, 'abc', 'e2f', b'\x1234', b'\xaa\xbb\xcc', 100);
@@ -45,6 +51,8 @@ INSERT 1
 > insert into ts_db.t3 values('2018-10-10 10:00:08', -98.63, 298.36, 100);
 INSERT 1
 > insert into ts_db.t3 values('2018-10-10 10:00:09', 98.63, -298.36, 100);
+INSERT 1
+> insert into ts_db.t4 values('2018-10-10 10:00:09', 9223372036854775807, 2147483647, 100);
 INSERT 1
 > SELECT isnan(e4) FROM ts_db.t1;
   isnan
@@ -265,10 +273,10 @@ SQLSTATE: 22012
   0.3200000000000003
 (5 rows)
 > SELECT pow(e1, e2) FROM ts_db.t1;
-ERROR: integer out of range
+ERROR: pow(): integer out of range
 SQLSTATE: 22003
 > SELECT pow(e2, e1) FROM ts_db.t1;
-ERROR: integer out of range
+ERROR: pow(): integer out of range
 SQLSTATE: 22003
 > SELECT pow(e4, e5) FROM ts_db.t1;
            pow
@@ -291,6 +299,22 @@ SQLSTATE: 22003
 > SELECT pow(0,0) FROM ts_db.t1;
 ERROR: invalid argument for power function
 SQLSTATE: 2201F
+> SELECT pow(e1,1) FROM ts_db.t4;
+          pow
+-----------------------
+  9223372036854775807
+(1 row)
+> SELECT pow(e1,2) FROM ts_db.t4;
+ERROR: pow(): integer out of range
+SQLSTATE: 22003
+> SELECT pow(e2,2) FROM ts_db.t4;
+          pow
+-----------------------
+  4611686014132420609
+(1 row)
+> SELECT pow(e2,3) FROM ts_db.t4;
+ERROR: pow(): integer out of range
+SQLSTATE: 22003
 > SELECT round(e4) FROM ts_db.t1;
   round
 ---------
