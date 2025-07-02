@@ -10,18 +10,16 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <list>
 #include <map>
 #include <memory>
-#include <ostream>
 #include <set>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "data_type.h"
@@ -250,7 +248,7 @@ class TsVersionManager::Logger {
   std::unique_ptr<TsAppendOnlyFile> file_;
 
  public:
-  Logger(std::unique_ptr<TsAppendOnlyFile> &&file) : file_(std::move(file)) {}
+  explicit Logger(std::unique_ptr<TsAppendOnlyFile> &&file) : file_(std::move(file)) {}
   KStatus AddRecord(std::string_view);
 };
 
@@ -259,7 +257,7 @@ class TsVersionManager::RecordReader {
   std::unique_ptr<TsSequentialReadFile> file_;
 
  public:
-  RecordReader(std::unique_ptr<TsSequentialReadFile> &&file) : file_(std::move(file)) {}
+  explicit RecordReader(std::unique_ptr<TsSequentialReadFile> &&file) : file_(std::move(file)) {}
   KStatus ReadRecord(std::string *record, bool *eof);
 };
 

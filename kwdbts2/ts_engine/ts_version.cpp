@@ -108,7 +108,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
 KStatus TsVersionManager::Recover() {
   // based on empty version, recover from log file
   current_ = std::make_shared<TsVGroupVersion>();
-  
+
   auto current_path = root_path_ / CurrentVersionName();
   if (!std::filesystem::exists(current_path)) {
     //  Brand new database, create current version
@@ -756,7 +756,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
         return FAIL;
     }
   }
-  if(ptr != end) {
+  if (ptr != end) {
     LOG_ERROR("unexpected end of version update slice");
     return FAIL;
   }
@@ -776,7 +776,7 @@ KStatus TsVersionManager::Logger::AddRecord(std::string_view record) {
   PutFixed32(&data, record.size());
   data.append(record);
   auto s = file_->Append(data);
-  if(s != SUCCESS) {
+  if (s != SUCCESS) {
     return FAIL;
   }
   return file_->Sync();
@@ -794,6 +794,9 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   TSSlice result;
   auto buf = std::make_unique<char[]>(sizeof(kTsVersionMagicNumber));
   auto s = file_->Read(sizeof(kTsVersionMagicNumber), &result, buf.get());
+  if (s == FAIL) {
+    return FAIL;
+  }
   if (result.len != sizeof(kTsVersionMagicNumber)) {
     *eof = true;
     return SUCCESS;
@@ -801,15 +804,19 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
 
   uint32_t magic_number = DecodeFixed32(result.data);
   if (magic_number != kTsVersionMagicNumber) {
-    LOG_WARN("Invalid magic number, expect %x, actual %x, skip this record", kTsVersionMagicNumber, magic_number);
+    LOG_WARN("Invalid magic number, expect %x, actual %x, ignore following records", kTsVersionMagicNumber,
+             magic_number);
     *eof = true;
     return SUCCESS;
   }
 
   buf = std::make_unique<char[]>(kHeaderSize);
   s = file_->Read(kHeaderSize, &result, buf.get());
+  if (s == FAIL) {
+    return FAIL;
+  }
   if (result.len != kHeaderSize) {
-    LOG_WARN("Failed to read a full record header, finish reading");
+    LOG_WARN("Failed to read a full record header, ignore following records");
     *eof = true;
     return SUCCESS;
   }
@@ -821,9 +828,12 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
 
   buf = std::make_unique<char[]>(size);
   s = file_->Read(size, &result, buf.get());
+  if (s == FAIL) {
+    return FAIL;
+  }
   if (result.len != size) {
     *eof = true;
-    LOG_WARN("Failed to read a full record data, expect %u, actual %lu, finish reading", size, result.len);
+    LOG_WARN("Failed to read a full record data, expect %u, actual %lu, ignore following records", size, result.len);
     return SUCCESS;
   }
 
@@ -832,8 +842,9 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
     tmp += static_cast<uint8_t>(result.data[i]);
   }
   if (checksum != tmp) {
-    LOG_ERROR("Checksum mismatch");
-    return FAIL;
+    LOG_ERROR("Checksum mismatch, expect %u, actual %u, ignore following records", checksum, tmp);
+    *eof = true;
+    return SUCCESS;
   }
   record->assign(result.data, size);
   return SUCCESS;
