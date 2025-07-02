@@ -94,7 +94,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       {
         // scan [500, INT64_MAX]
         std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
@@ -138,7 +138,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       {
         // scan [INT64_MIN, 622]
         std::vector<STScanRange> spans{{{INT64_MIN, 622}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
@@ -179,7 +179,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       {
         // scan [INT64_MIN, INT64_MAX]
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
@@ -228,7 +228,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
         result[j]->GetBlockSpans(filter, block_span, schema_mgr, 1);
         for (auto block : block_span) {
@@ -327,7 +327,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDouvleCompact) {
       {
         // scan [500, INT64_MAX]
         std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
@@ -364,7 +364,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDouvleCompact) {
       {
         // scan [INT64_MIN, 622]
         std::vector<STScanRange> spans{{{INT64_MIN, 622}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
@@ -402,7 +402,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDouvleCompact) {
       {
         // scan [INT64_MIN, INT64_MAX]
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
         EXPECT_EQ(s, KStatus::SUCCESS);
@@ -448,7 +448,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDouvleCompact) {
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
-        TsBlockItemFilterParams filter{0, table_id, (TSEntityID)(1 + i * 123), spans};
+        TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
         result[j]->GetBlockSpans(filter, block_span, schema_mgr, 1);
         for (auto block : block_span) {

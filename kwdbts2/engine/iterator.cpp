@@ -2301,6 +2301,9 @@ TsOffsetIterator::~TsOffsetIterator() {
 KStatus TsOffsetIterator::Init(bool is_reversed) {
   GetTerminationTime();
   is_reversed_ = is_reversed;
+  comparator_.is_reversed = is_reversed_;
+  decltype(p_times_) t_map(comparator_);
+  p_times_.swap(t_map);
   auto sub_grp_mgr = entity_group_->GetSubEntityGroupManager();
   if (sub_grp_mgr == nullptr) {
     LOG_ERROR("can not found sub entitygroup manager for entitygroup [%lu].", entity_group_id_);

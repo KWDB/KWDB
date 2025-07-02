@@ -294,6 +294,7 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   block_data_filter.spans_ = std::move(cur_scan_range);
   block_data_filter.db_id = filter.db_id;
   block_data_filter.entity_id = filter.entity_id;
+  block_data_filter.vgroup_id = filter.vgroup_id;
   block_data_filter.table_id = filter.table_id;
   return KStatus::SUCCESS;
 }

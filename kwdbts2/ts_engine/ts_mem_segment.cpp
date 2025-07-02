@@ -179,7 +179,8 @@ KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter
     }
   }
   for (auto& mem_blk : mem_block) {
-    block_spans.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(), mem_blk, 0, mem_blk->GetRowNum(),
+    uint32_t vgroup_id = vgroup_ ? vgroup_->GetVGroupID() : 0;
+    block_spans.push_back(make_shared<TsBlockSpan>(vgroup_id, mem_blk->GetEntityId(), mem_blk, 0, mem_blk->GetRowNum(),
                                                    tbl_schema_mgr, scan_version));
   }
   return KStatus::SUCCESS;
@@ -458,7 +459,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     }
   }
   for (auto& mem_blk : mem_blocks) {
-    blocks.push_back(make_shared<TsBlockSpan>(mem_blk->GetEntityId(),
+    blocks.push_back(make_shared<TsBlockSpan>(filter.vgroup_id, mem_blk->GetEntityId(),
                                   mem_blk, 0, mem_blk->GetRowNum(), tbl_schema_mgr, scan_version));
   }
   return KStatus::SUCCESS;

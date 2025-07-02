@@ -645,7 +645,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
 //    3) For ALTER operations, roll back to the previous schema version;
 //  4. If the rollback fails, a system log is generated and an error exit is reported.
   if (options_.wal_level == WALMode::OFF) {
-    return KStatus::SUCCESS;
+    Return(KStatus::SUCCESS);
   }
   KStatus s;
 
@@ -653,7 +653,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   auto vgroup = GetVGroupByID(ctx, distrib(gen));
   s = vgroup->MtrRollback(ctx, mtr_id);
   if (s == FAIL) {
-    return s;
+    Return(s);
   }
 
   // for range
