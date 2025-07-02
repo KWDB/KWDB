@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <string_view>
 
 #include "data_type.h"
 #include "gtest/gtest.h"
@@ -282,7 +283,8 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
     int n = read(fd, buf, 1024);
     ASSERT_GE(n, 0);
     close(fd);
-    ASSERT_EQ(std::string_view(buf), "TSVERSION-000000000000\n");
+    ASSERT_LT(n, 1024);
+    ASSERT_EQ(std::string_view(buf, n), "TSVERSION-000000000000\n");
 
     fd = open((vgroup_root / "TSVERSION-000000000000").c_str(), O_RDWR);
     ASSERT_GT(fd, 0);
