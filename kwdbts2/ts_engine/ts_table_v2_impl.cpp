@@ -17,6 +17,7 @@
 #include "ts_tag_iterator_v2_impl.h"
 #include "ts_engine.h"
 #include "ts_vgroup.h"
+#include "ts_iterator_v2_impl.h"
 
 extern bool g_go_start_service;
 
@@ -112,6 +113,23 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
+                            const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
+                            uint32_t table_version) {
+  std::shared_ptr<TagTable> tag_table;
+  KStatus ret = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
+  if (ret != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  if (tag_table->GetTagList(ctx, entity_id_list, scan_tags, res, count,
+                            table_version) < 0) {
+    LOG_ERROR("GetTagList error ");
+    return KStatus::FAIL;
+  }
+
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                                    std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
                                    std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
@@ -126,12 +144,6 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
       *iter = nullptr;
     }
   }};
-
-  std::shared_ptr<TagTable> tag_table;
-  s = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
 
   auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
   std::vector<k_uint32> ts_scan_cols;
@@ -184,11 +196,55 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
 }
 
 KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                          vector<KwTsSpan>& ts_spans, std::vector<k_uint32> scan_cols, k_uint32 table_version,
-                          TsIterator** iter, k_uint32 offset, k_uint32 limit, bool reverse) {
-  // not supported yet in v3.0
-  LOG_ERROR("Not supported yeet.");
-  return KStatus::FAIL;
+                                         vector<KwTsSpan>& ts_spans, std::vector<k_uint32> scan_cols,
+                                         k_uint32 table_version, TsIterator** iter, k_uint32 offset, k_uint32 limit,
+                                         bool reverse) {
+  DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
+  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
+  std::vector<k_uint32> ts_scan_cols;
+  for (auto col : scan_cols) {
+    if (col >= actual_cols.size()) {
+      // In the concurrency scenario, after the storage has deleted the column, kwsql sends query again
+      LOG_ERROR("GetOffsetIterator Error : TsTable no column %d", col);
+      return KStatus::FAIL;
+    }
+    ts_scan_cols.emplace_back(actual_cols[col]);
+  }
+
+  std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
+  std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups;
+  if (entity_ids.empty()) {
+    k_uint32 max_vgroup_id = vgroups_.size();
+    for (k_uint32 vgroup_id = 1; vgroup_id <= max_vgroup_id; ++vgroup_id) {
+      std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id - 1];
+      std::vector<EntityID> entities(vgroup->GetMaxEntityID());
+      if (entities.empty()) continue;
+      std::iota(entities.begin(), entities.end(), 1);
+      vgroup_ids[vgroup_id] = entities;
+      vgroups[vgroup_id] = vgroup;
+    }
+  } else {
+    for (auto& entity : entity_ids) {
+      vgroup_ids[entity.subGroupId].push_back(entity.entityId);
+      if (!vgroups.count(entity.subGroupId)) {
+        vgroups[entity.subGroupId] = vgroups_[entity.subGroupId - 1];
+      }
+    }
+  }
+
+  TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, ts_spans, ts_col_type,
+                                                               scan_cols, ts_scan_cols, table_schema_mgr_,
+                                                               table_version, offset, limit);
+  KStatus s = ts_iter->Init(reverse);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsOffsetIteratorV2Impl Init failed")
+    delete ts_iter;
+    ts_iter = nullptr;
+    return s;
+  }
+  *iter = ts_iter;
+  LOG_DEBUG("TsTableV2Impl::GetOffsetIterator success.");
+  return KStatus::SUCCESS;
 }
 
 KStatus

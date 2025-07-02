@@ -55,10 +55,7 @@ CREATE TABLE sensor_data (
 ) TAGS (
     device_id INT4 NOT NULL,
     location VARCHAR(10),
-    model VARCHAR(10) ) PRIMARY TAGS(device_id)
-    retentions 4320000s
-    activetime 1d
-    partition interval 10d;
+    model VARCHAR(10) ) PRIMARY TAGS(device_id);
 
 insert into sensor_data values
                             ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
@@ -83,10 +80,7 @@ CREATE TABLE sensor_data (
 ) TAGS (
     device_id INT4 NOT NULL,
     location VARCHAR(10),
-    model VARCHAR(10) ) PRIMARY TAGS(device_id)
-    retentions 4320000s
-    activetime 1d
-    partition interval 10d;
+    model VARCHAR(10) ) PRIMARY TAGS(device_id);
 
 insert into sensor_data values
                             ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
@@ -111,10 +105,7 @@ CREATE TABLE sensor_data (
 ) TAGS (
     device_id INT4 NOT NULL,
     location VARCHAR(10),
-    model VARCHAR(10) ) PRIMARY TAGS(device_id)
-    retentions 4320000s
-    activetime 1d
-    partition interval 10d;
+    model VARCHAR(10) ) PRIMARY TAGS(device_id);
 
 insert into sensor_data values
                             ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
@@ -139,10 +130,7 @@ CREATE TABLE sensor_data (
 ) TAGS (
     device_id INT4 NOT NULL,
     location VARCHAR(10),
-    model VARCHAR(10) ) PRIMARY TAGS(device_id)
-    retentions 4320000s
-    activetime 1d
-    partition interval 10d;
+    model VARCHAR(10) ) PRIMARY TAGS(device_id);
 
 insert into sensor_data values
                             ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),
@@ -167,10 +155,7 @@ CREATE TABLE sensor_data (
 ) TAGS (
     device_id INT4 NOT NULL,
     location VARCHAR(10),
-    model VARCHAR(10) ) PRIMARY TAGS(device_id)
-    retentions 4320000s
-    activetime 1d
-    partition interval 10d;
+    model VARCHAR(10) ) PRIMARY TAGS(device_id);
 
 insert into sensor_data values
                             ('2025-04-02 02:25:00+00:00',25.4,225,'normal',106,'zone_G','X200'),

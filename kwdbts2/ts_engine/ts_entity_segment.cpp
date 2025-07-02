@@ -22,6 +22,7 @@
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
+#include "ts_version.h"
 
 namespace kwdbts {
 
@@ -106,10 +107,11 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, uint64_t entity_header_file_num) :
-  entity_header_(dir_path + "/" + EntityHeaderFileName(entity_header_file_num)),
-  block_header_(dir_path + "/" + block_item_file_name), dir_path_(dir_path) {
-}
+TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, uint64_t entity_header_file_num,
+                                                       uint64_t header_b_file_size)
+    : entity_header_(dir_path + "/" + EntityHeaderFileName(entity_header_file_num)),
+      block_header_(dir_path + "/" + block_item_file_name, header_b_file_size),
+      dir_path_(dir_path) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
@@ -186,7 +188,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
           continue;
         }
         // Because block item traverses from back to front, use push_front
-        block_spans.push_front(make_shared<TsBlockSpan>(filter.entity_id, block, row_spans[i].first,
+        block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, row_spans[i].first,
                                                         row_spans[i].second, tbl_schema_mgr,
                                                         scan_version));
       }
@@ -602,10 +604,11 @@ KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   return KStatus::SUCCESS;
 }
 
-TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, uint64_t entity_header_file_num) :
-                                 dir_path_(root), meta_mgr_(root, entity_header_file_num),
-                                 block_file_(root / block_data_file_name),
-                                 agg_file_(root / block_agg_file_name) {
+TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, TsVersionUpdate::EntitySegmentVersionInfo info)
+    : dir_path_(root),
+      meta_mgr_(root, info.header_e_file_number, info.header_b_size),
+      block_file_(root / block_data_file_name, info.block_file_size),
+      agg_file_(root / block_agg_file_name, info.agg_file_size) {
   Open();
 }
 
