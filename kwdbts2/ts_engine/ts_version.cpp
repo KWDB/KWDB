@@ -766,13 +766,13 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
 constexpr static uint32_t kTsVersionMagicNumber = 0x54535654;
 
 KStatus TsVersionManager::Logger::AddRecord(std::string_view record) {
-  uint32_t checksum = kTsVersionMagicNumber;
+  uint16_t checksum = 0;
   for (uint32_t i = 0; i < record.size(); ++i) {
     checksum = checksum + static_cast<uint8_t>(record[i]);
   }
   std::string data;
-  PutFixed32(&data, checksum);
-  assert(record.size() <= std::numeric_limits<uint16_t>::max());
+  PutFixed32(&data, kTsVersionMagicNumber);
+  PutFixed16(&data, checksum);
   PutFixed32(&data, record.size());
   data.append(record);
   auto s = file_->Append(data);
@@ -783,7 +783,7 @@ KStatus TsVersionManager::Logger::AddRecord(std::string_view record) {
 }
 
 KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eof) {
-  static constexpr size_t kHeaderSize = sizeof(uint32_t) + sizeof(uint32_t);
+  static constexpr size_t kHeaderSize = sizeof(uint16_t) + sizeof(uint32_t);
   *eof = false;
 
   if (file_->IsEOF()) {
@@ -792,16 +792,30 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   }
 
   TSSlice result;
-  auto buf = std::make_unique<char[]>(kHeaderSize);
-  auto s = file_->Read(kHeaderSize, &result, buf.get());
+  auto buf = std::make_unique<char[]>(sizeof(kTsVersionMagicNumber));
+  auto s = file_->Read(sizeof(kTsVersionMagicNumber), &result, buf.get());
+  if (result.len != sizeof(kTsVersionMagicNumber)) {
+    *eof = true;
+    return SUCCESS;
+  }
+
+  uint32_t magic_number = DecodeFixed32(result.data);
+  if (magic_number != kTsVersionMagicNumber) {
+    LOG_WARN("Invalid magic number, expect %x, actual %x, skip this record", kTsVersionMagicNumber, magic_number);
+    *eof = true;
+    return SUCCESS;
+  }
+
+  buf = std::make_unique<char[]>(kHeaderSize);
+  s = file_->Read(kHeaderSize, &result, buf.get());
   if (result.len != kHeaderSize) {
-    LOG_WARN("Failed to read a full record header, skip this record");
+    LOG_WARN("Failed to read a full record header, finish reading");
     *eof = true;
     return SUCCESS;
   }
   const char *ptr = result.data;
-  uint32_t checksum = DecodeFixed32(ptr);
-  ptr += sizeof(uint32_t);
+  uint32_t checksum = DecodeFixed16(ptr);
+  ptr += sizeof(uint16_t);
   uint32_t size = DecodeFixed32(ptr);
   ptr += sizeof(uint32_t);
 
@@ -809,11 +823,11 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   s = file_->Read(size, &result, buf.get());
   if (result.len != size) {
     *eof = true;
-    LOG_WARN("Failed to read a full record data, skip this record");
+    LOG_WARN("Failed to read a full record data, expect %u, actual %lu, finish reading", size, result.len);
     return SUCCESS;
   }
 
-  uint32_t tmp = kTsVersionMagicNumber;
+  uint16_t tmp = 0;
   for (uint32_t i = 0; i < size; ++i) {
     tmp += static_cast<uint8_t>(result.data[i]);
   }
