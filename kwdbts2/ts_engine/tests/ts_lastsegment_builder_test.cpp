@@ -150,9 +150,9 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
         ASSERT_EQ(info.col_infos[j].bitmap_len, 0) << "At Column " << j;
       }
       if (info.col_infos[j].bitmap_len != 0) {
-        file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len,
-                   &result, buf);
-        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
+        auto s = file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len, &result, buf);
+        EXPECT_EQ(s, SUCCESS);
+        ASSERT_EQ(result.data[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
       }
     }
   }
