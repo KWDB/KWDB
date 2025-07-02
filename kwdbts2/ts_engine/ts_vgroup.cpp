@@ -580,9 +580,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
     update.AddLastSegment(k->GetPartitionIdentifier(), v.GetFileNumber());
   }
-  // todo(liangbo01) add all new files into new_file_list.
-  // version_mgr_->ApplyUpdate(update);
-  //  todo(liangbo01) atomic: mem segment delete, and last segments load.
   mem_seg->SetDeleting();
   mem_segment_mgr_.RemoveMemSegment(mem_seg);
   std::list<std::shared_ptr<TsMemSegment>> mems;

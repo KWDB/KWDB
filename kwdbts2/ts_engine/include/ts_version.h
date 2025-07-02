@@ -39,12 +39,6 @@ using PartitionIdx = int64_t;
 using PartitionIdentifier = std::tuple<DatabaseID, timestamp64, timestamp64>;  // (dbid, start_time, end_time);
 using MemSegList = std::list<std::shared_ptr<TsMemSegment>>;
 
-inline std::ostream &operator<<(std::ostream &os, const PartitionIdentifier &p) {
-  auto [dbid, start_time, end_time] = p;
-  os << "{" << dbid << ", " << start_time << ", " << end_time << "}";
-  return os;
-}
-
 class TsVGroupVersion;
 class TsEntitySegment;
 class TsPartitionVersion {
@@ -167,6 +161,8 @@ class TsVersionUpdate {
   bool has_next_file_number_ = false;
   uint64_t next_file_number_ = 0;
 
+  std::set<PartitionIdentifier> updated_partitions_;
+
   std::mutex mu_;
 
   bool NeedRecordFileNumber() const { return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_; }
@@ -178,15 +174,18 @@ class TsVersionUpdate {
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
     partitions_created_.insert(partition_id);
+    updated_partitions_.insert(partition_id);
     has_new_partition_ = true;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
+    updated_partitions_.insert(partition_id);
     new_lastsegs_[partition_id].insert(file_number);
     has_new_lastseg_ = true;
   }
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
+    updated_partitions_.insert(partition_id);
     delete_lastsegs_[partition_id].insert(file_number);
     has_delete_lastseg_ = true;
   }
@@ -198,6 +197,7 @@ class TsVersionUpdate {
 
   void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentVersionInfo info) {
     std::unique_lock lk{mu_};
+    updated_partitions_.insert(partition_id);
     entity_segment_[partition_id] = info;
     has_entity_segment_ = true;
   }
@@ -210,36 +210,7 @@ class TsVersionUpdate {
   std::string EncodeToString() const;
   KStatus DecodeFromSlice(TSSlice input);
 
-  std::string DebugStr() const {
-    std::stringstream ss;
-    ss << "TsVersionUpdate: new lastsegs: ";
-    for (const auto &[partition_id, file_numbers] : new_lastsegs_) {
-      ss << partition_id << ": ";
-      for (const auto &file_number : file_numbers) {
-        ss << file_number << " ";
-      }
-      ss << "; ";
-    }
-    ss << "deleted lastsegs: ";
-    for (const auto &[partition_id, file_numbers] : delete_lastsegs_) {
-      ss << partition_id << ": ";
-      for (const auto &file_number : file_numbers) {
-        ss << file_number << " ";
-      }
-      ss << "; ";
-    }
-    ss << "mem_segments: ";
-    for (const auto &mem_segment : valid_memseg_) {
-      ss << mem_segment.get() << " ";
-    }
-
-    ss << "entity_segment: ";
-    for (const auto &[partition_id, info] : entity_segment_) {
-      ss << partition_id << ": " << info.block_file_size << " " << info.header_b_size << " "
-         << info.header_e_file_number << " " << info.agg_file_size << "; ";
-    }
-    return ss.str();
-  }
+  std::string DebugStr() const;
 };
 
 class TsVersionManager {

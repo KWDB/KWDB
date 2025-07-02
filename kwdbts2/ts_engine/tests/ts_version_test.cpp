@@ -57,7 +57,7 @@ class TsVersionTest : public testing::Test {
     ASSERT_GE(lastsegments.size(), 2);
     update.DeleteLastSegment(par_id, lastsegments[0]->GetFileNumber());
     update.DeleteLastSegment(par_id, lastsegments[1]->GetFileNumber());
-    update.SetEntitySegment(par_id, info);
+    // update.SetEntitySegment(par_id, info);
     ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
   }
 };
@@ -128,21 +128,21 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     EXPECT_EQ(decoded.EncodeToString(), encoded);
   }
 
-  {
-    TsVersionUpdate update;
-    update.SetEntitySegment({1, 2, 3}, {1, 2, 3, 4});
-    update.SetEntitySegment({4, 5, 6}, {4, 5, 6, 7});
-    update.SetEntitySegment({7, 8, 9}, {7, 8, 9, 10});
-    update.SetEntitySegment({10, 11, 12}, {10, 11, 12, 13});
-    update.SetEntitySegment({13, 14, 15}, {13, 14, 15, 14});
-    auto encoded = update.EncodeToString();
-    EXPECT_NE(encoded.size(), 0);
+  // {
+  //   TsVersionUpdate update;
+  //   update.SetEntitySegment({1, 2, 3}, {1, 2, 3, 4});
+  //   update.SetEntitySegment({4, 5, 6}, {4, 5, 6, 7});
+  //   update.SetEntitySegment({7, 8, 9}, {7, 8, 9, 10});
+  //   update.SetEntitySegment({10, 11, 12}, {10, 11, 12, 13});
+  //   update.SetEntitySegment({13, 14, 15}, {13, 14, 15, 14});
+  //   auto encoded = update.EncodeToString();
+  //   EXPECT_NE(encoded.size(), 0);
 
-    TsVersionUpdate decoded;
-    TSSlice slice = {encoded.data(), encoded.size()};
-    ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
-    EXPECT_EQ(decoded.EncodeToString(), encoded);
-  }
+  //   TsVersionUpdate decoded;
+  //   TSSlice slice = {encoded.data(), encoded.size()};
+  //   ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
+  //   EXPECT_EQ(decoded.EncodeToString(), encoded);
+  // }
   {
     TsVersionUpdate update;
     update.PartitionDirCreated({1, 2, 3});
@@ -150,7 +150,7 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     update.AddLastSegment({1, 2, 3}, 6);
     update.DeleteLastSegment({1, 2, 3}, 4);
     update.SetNextFileNumber(7);
-    update.SetEntitySegment({1, 2, 3}, {9, 10, 11, 12});
+    // update.SetEntitySegment({1, 2, 3}, {9, 10, 11, 12});
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
 

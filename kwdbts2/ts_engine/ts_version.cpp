@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
 #include <utility>
 #include <memory>
 #include <mutex>
@@ -211,15 +212,9 @@ KStatus TsVersionManager::Recover() {
       return FAIL;
     }
     builder.AddUpdate(update);
-
-    LOG_INFO("!!!!!!!!!%s", update.DebugStr().c_str());
-
   } while (!eof);
   TsVersionUpdate update;
   builder.Finalize(&update);
-
-  LOG_INFO("~~~~~~~~~~~~~%s", update.DebugStr().c_str());
-
   assert(logger_ != nullptr);
   s = ApplyUpdate(&update);
   if (s == FAIL) {
@@ -286,7 +281,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
   }
 
   if (update->has_mem_segments_) {
-    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(std::move(update->valid_memseg_));
+    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(update->valid_memseg_);
   }
   // looping over all partitions
   for (auto [par_id, par] : new_vgroup_version->partitions_) {
@@ -369,7 +364,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     logger_->AddRecord(encoded_update);
   }
   current_ = std::move(new_vgroup_version);
-  LOG_INFO("%s", update->DebugStr().c_str());
+  LOG_INFO("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
   return SUCCESS;
 }
 
@@ -780,7 +775,11 @@ KStatus TsVersionManager::Logger::AddRecord(std::string_view record) {
   assert(record.size() <= std::numeric_limits<uint16_t>::max());
   PutFixed32(&data, record.size());
   data.append(record);
-  return file_->Append(data);
+  auto s = file_->Append(data);
+  if(s != SUCCESS) {
+    return FAIL;
+  }
+  return file_->Sync();
 }
 
 KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eof) {
@@ -880,4 +879,69 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
   update->has_next_file_number_ = all_updates_.has_next_file_number_;
   update->next_file_number_ = all_updates_.next_file_number_;
 }
+
+static std::ostream &operator<<(std::ostream &os, const PartitionIdentifier &p) {
+  auto [dbid, start_time, end_time] = p;
+  os << "{" << dbid << "," << start_time << "}";
+  return os;
+}
+
+static std::ostream &operator<<(std::ostream &os, const std::set<uint64_t> &info) {
+  os << "(";
+  for (auto it = info.begin(); it != info.end(); ++it) {
+    os << *it;
+    if (std::next(it) != info.end()) {
+      os << ",";
+    }
+  }
+  os << ")";
+  return os;
+}
+
+static std::ostream &operator<<(std::ostream &os, const TsVersionUpdate::EntitySegmentVersionInfo &info) {
+  os << "[" << info.block_file_size << "," << info.header_b_size << "," << info.header_e_file_number << ","
+     << info.agg_file_size << "]";
+  return os;
+}
+
+std::string TsVersionUpdate::DebugStr() const {
+  std::stringstream ss;
+  ss << "update:";
+  if (has_mem_segments_) {
+    ss << "mem_segments(" << valid_memseg_.size() << "):{";
+    for (const auto &mem_segment : valid_memseg_) {
+      ss << mem_segment.get() << " ";
+    }
+    ss << "};";
+  }
+  for (auto par_id : updated_partitions_) {
+    if (partitions_created_.find(par_id) != partitions_created_.end()) {
+      ss << "+";
+    }
+    ss << par_id << ":{";
+    {
+      auto it = new_lastsegs_.find(par_id);
+      if (it != new_lastsegs_.end()) {
+        ss << "+" << it->second << ";";
+      }
+    }
+
+    {
+      auto it = delete_lastsegs_.find(par_id);
+      if (it != delete_lastsegs_.end()) {
+        ss << "-" << it->second << ";";
+      }
+    }
+
+    {
+      auto it = entity_segment_.find(par_id);
+      if (it != entity_segment_.end()) {
+        ss << it->second << ";";
+      }
+    }
+    ss << "}";
+  }
+  return ss.str();
+}
+
 }  // namespace kwdbts
