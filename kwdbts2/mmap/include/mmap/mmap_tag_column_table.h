@@ -159,7 +159,7 @@ class TagColumn : public MMapFile {
 
   int rename(std::string& new_col_file_name);
 
-  inline const uint64_t getLSN() {
+  inline uint64_t getLSN() {
     return tagColumnMetaData().m_lsn;
   }
 
@@ -419,9 +419,9 @@ class MMapTagColumnTable: public TSObject {
 
   int insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, const char *rec, size_t* row_id);
 
-  inline const size_t recordSize() {return m_meta_data_->m_record_size;}
+  inline size_t recordSize() {return m_meta_data_->m_record_size;}
 
-  inline const int numColumn() {return m_meta_data_->m_column_count;}
+  inline int numColumn() {return m_meta_data_->m_column_count;}
 
   inline bool isNull(size_t row, size_t col) {
     if (m_cols_[col]->isPrimaryTag()) {

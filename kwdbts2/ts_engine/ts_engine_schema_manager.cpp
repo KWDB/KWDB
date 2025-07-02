@@ -61,10 +61,12 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db
   if (meta->ts_table().has_ts_version()) {
     ts_version = meta->ts_table().ts_version();
   }
-  uint64_t partition_interval = EngineOptions::iot_interval;
-  if (meta->ts_table().has_partition_interval()) {
-    partition_interval = meta->ts_table().partition_interval();
-  }
+
+  //  TODO(zzr): customize partition interval
+  // uint64_t partition_interval = EngineOptions::iot_interval;
+  // if (meta->ts_table().has_partition_interval()) {
+  //   partition_interval = meta->ts_table().partition_interval();
+  // }
 
   string metric_schema_path = root_path_.string() + "/metric_" + std::to_string(table_id);
   ErrorInfo err_info;

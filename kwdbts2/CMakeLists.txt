@@ -287,14 +287,13 @@ target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
 	)
 
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
-  # COMPILE_FLAGS "-Werror -Wunused-variable"
   COMPILE_FLAGS " -fno-plt"
   POSITION_INDEPENDENT_CODE ON
 )
 
 file(GLOB_RECURSE STV3_SRC ts_engine/*cpp)
 set_source_files_properties(${STV3_SRC} PROPERTIES
-  # COMPILE_FLAGS " -Werror"
+ COMPILE_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing"
 )
 
 # Compile and generate test case executables

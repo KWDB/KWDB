@@ -319,7 +319,7 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
 
       {
         std::unique_lock lk{mtx};
-        cv.wait(lk, [&]() { return file_size.load() == 0 != fsize && finished.load(); });
+        cv.wait(lk, [&]() { return file_size.load() != fsize && finished.load(); });
       }
     }
   };

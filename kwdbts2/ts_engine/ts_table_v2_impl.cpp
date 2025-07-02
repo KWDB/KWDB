@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include "ts_table_v2_impl.h"
+#include "kwdb_type.h"
 #include "ts_tag_iterator_v2_impl.h"
 #include "ts_engine.h"
 #include "ts_vgroup.h"
@@ -131,12 +132,15 @@ KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityRes
 }
 
 KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                                   std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                   std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
-                                   k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
-                                   bool reverse, bool sorted) {
+                                         std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
+                                         std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                                         k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
+                                         bool reverse, bool sorted) {
   auto ts_table_iterator = new TsTableIterator();
-  KStatus s;
+
+  //  TODO(wyy): code review here; s is uninitialized and in most return path, it is not assigned to any value.
+  //  just make s = SUCCESS to avoid compile error.
+  KStatus s = SUCCESS;
   Defer defer{[&]() {
     if (s == FAIL) {
       delete ts_table_iterator;
@@ -339,10 +343,10 @@ KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
   uint32_t index_id = index_log->getIndexID();
   uint32_t cur_version = index_log->getCurTsVersion();
   uint32_t new_version = index_log->getNewTsVersion();
-  LOG_INFO("UndoCreateHashIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoCreateHashIndex start, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   if (!table_schema_mgr_->UndoCreateHashIndex(index_id, cur_version, new_version, err_info)) {
-    LOG_ERROR("Failed to UndoCreateHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
+    LOG_ERROR("Failed to UndoCreateHashIndex, table id:%lu, index id:%u.", this->table_id_, index_id);
     return FAIL;
   }
   auto s = table_schema_mgr_->UndoAlterCol(cur_version, new_version);
@@ -350,7 +354,7 @@ KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
     LOG_ERROR("RollBack table version error");
     return s;
   }
-  LOG_INFO("UndoCreateHashIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoCreateHashIndex success, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -368,10 +372,10 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
   uint32_t index_id = index_log->getIndexID();
   uint32_t cur_version = index_log->getCurTsVersion();
   uint32_t new_version = index_log->getNewTsVersion();
-  LOG_INFO("UndoDropHashIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoDropHashIndex start, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   if (!table_schema_mgr_->UndoDropHashIndex(tags, index_id, cur_version, new_version, err_info)) {
-    LOG_ERROR("Failed to UndoDropHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
+    LOG_ERROR("Failed to UndoDropHashIndex, table id:%lu, index id:%u.", this->table_id_, index_id);
     return FAIL;
   }
   auto s = table_schema_mgr_->UndoAlterCol(cur_version, new_version);
@@ -379,7 +383,7 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
     LOG_ERROR("RollBack table version error");
     return s;
   }
-  LOG_INFO("UndoDropHashIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoDropHashIndex success, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -519,12 +523,12 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
   }
   s = GetEntityRowCount(ctx, entity_store, {ts_span}, &row_num);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
+    LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed, row_num[%lu].",
       begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
     return s;
   }
   if (row_num == 0) {
-    LOG_INFO("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] has no rows left.",
+    LOG_INFO("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] has no rows left, row_num[%lu].",
       begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
     *half_ts = (ts_span.begin + ts_span.end) / 2;
     return KStatus::SUCCESS;
@@ -571,9 +575,9 @@ vector<EntityResultIndex>& entity_store) {
       }
       if (!EngineOptions::isSingleNode()) {
         uint32_t tag_hash;
-        entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
         if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
-          entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+          entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
         }
       } else {
         entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);

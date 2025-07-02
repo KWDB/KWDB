@@ -20,7 +20,7 @@ std::vector<STScanRange> LSNRangeUtil::MergeScanAndDelRange(const std::vector<ST
   for (auto& range : ranges) {
     MergeRangeCross(range, del, &result);
   }
-  return std::move(result);
+  return result;
 }
 
 #define  IsMinLSN(lsn) (lsn == 0)

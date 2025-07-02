@@ -17,6 +17,7 @@
 #include <list>
 #include <utility>
 #include <unordered_map>
+#include "data_type.h"
 #include "libkwdbts2.h"
 #include "kwdb_type.h"
 #include "mmap/mmap_tag_column_table.h"
@@ -169,7 +170,7 @@ class TsSnapshotProductor : public TsTableEntitiesSnapshot {
     std::shared_ptr<TsEntityGroup> cur_entity_group{nullptr};
     TsSubEntityGroup* cur_sub_group{nullptr};
     TsSubGroupIteratorEntityBased* sub_grp_data_iter{nullptr};
-    SnapshotBlockDataInfo entity_first_batch{nullptr, 0};
+    SnapshotBlockDataInfo entity_first_batch{nullptr, 0, false, nullptr};
     EntityResultIndex cur_block_entity_info;
   };
   struct TagRowNum {

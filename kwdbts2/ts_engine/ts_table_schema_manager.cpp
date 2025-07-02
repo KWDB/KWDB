@@ -729,7 +729,7 @@ KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::K
 
   attr_info.size = getDataTypeSize(attr_info);
   attr_info.id = col.column_id();
-  strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN);
+  strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN - 1);
   attr_info.length = col.storage_len();
   if (!col.nullable()) {
     attr_info.setFlag(AINFO_NOT_NULL);
@@ -802,7 +802,7 @@ KStatus TsTableSchemaManager::DropNormalTagIndex(kwdbContext_p ctx, const uint64
 
 KStatus TsTableSchemaManager::UndoCreateHashIndex(uint32_t index_id, uint32_t cur_version, uint32_t new_version,
                                               ErrorInfo& err_info) {
-  LOG_INFO("UndoCreateHashIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  LOG_INFO("UndoCreateHashIndex index_id:%u, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
   ErrorInfo errorInfo;
   errorInfo.errcode = tag_table_->UndoCreateHashIndex(index_id, cur_version, new_version, errorInfo);
   if (errorInfo.errcode < 0) {
@@ -813,7 +813,7 @@ KStatus TsTableSchemaManager::UndoCreateHashIndex(uint32_t index_id, uint32_t cu
 
 KStatus TsTableSchemaManager::UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_version,
                       uint32_t new_version, ErrorInfo& err_info) {
-  LOG_INFO("UndoDropHashIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  LOG_INFO("UndoDropHashIndex index_id:%u, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
   ErrorInfo errorInfo;
   errorInfo.errcode = tag_table_->UndoDropHashIndex(tags, index_id, cur_version, new_version, errorInfo);
   if (errorInfo.errcode < 0) {

@@ -61,10 +61,6 @@ std::time_t ModifyTime(const std::string& filePath);
  * @return true/false
  */
 bool System(const string& cmd,  bool print_log = true, ErrorInfo& error_info = getDummyErrorInfo());
-/**
- * @brief Get the file size of file
- * @param filePath The path of file
- * @return file size
 
 /**
  * @brief Move the files in one directory to another directory

@@ -244,10 +244,13 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   // 1. read chk wal log
   wal_manager_->Lock();
   std::vector<uint64_t> ignore;
-  TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();
-  if (last_lsn != 0) {
-    chk_lsn = last_lsn;
-  }
+
+  // TODO(xy): code review here, last_lsn is not used, should we remove it?
+  // TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();
+  // if (last_lsn != 0) {
+  //   chk_lsn = last_lsn;
+  // }
+
   KStatus s =
       wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(), wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
@@ -726,6 +729,14 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       //        return KStatus::FAIL;
       //      }
       //      break;
+    }
+
+    // TODO(xy): code review here, the following cases are not handled.
+    case WALLogType::CREATE_INDEX:
+    case WALLogType::DROP_INDEX:
+    case WALLogType::END_CHECKPOINT: {
+      assert(false);
+      break;
     }
   }
 
