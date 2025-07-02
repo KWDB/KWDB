@@ -121,68 +121,183 @@ TEST_F(TsBlockSpanSortedIteratorTest, empty) {
 }
 
 TEST_F(TsBlockSpanSortedIteratorTest, multiTS) {
-  std::list<shared_ptr<TsBlockSpan>> spans;
   int ts_num = 10;
-
-  spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
-  TsBlockSpanSortedIterator iter(spans);
-  auto s = iter.Init();
-  EXPECT_TRUE(s == KStatus::SUCCESS);
-  bool is_finished;
-  std::shared_ptr<kwdbts::TsBlockSpan> block_span;
-  uint32_t total_rows = 0;
-  do {
-    auto s = iter.Next(block_span, &is_finished);
-    EXPECT_TRUE(s == KStatus::SUCCESS);
-    if (!is_finished) {
-      total_rows += block_span->GetRowNum();
+  std::vector<DedupRule> dedup_rules = {DedupRule::KEEP, DedupRule::OVERRIDE, DedupRule::DISCARD};
+  for (auto rule : dedup_rules) {
+    uint32_t total_rows = 0;
+    {
+      std::list<shared_ptr<TsBlockSpan>> spans;
+      spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
+      TsBlockSpanSortedIterator iter(spans, rule);
+      auto s = iter.Init();
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      bool is_finished;
+      std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+      do {
+        auto s = iter.Next(block_span, &is_finished);
+        EXPECT_TRUE(s == KStatus::SUCCESS);
+        if (!is_finished) {
+          total_rows += block_span->GetRowNum();
+        }
+      } while (!is_finished);
+      EXPECT_TRUE(total_rows == ts_num);
     }
-  } while (!is_finished);
-  EXPECT_TRUE(total_rows == ts_num);
+    total_rows = 0;
+    {
+      std::list<shared_ptr<TsBlockSpan>> spans;
+      spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
+      TsBlockSpanSortedIterator iter(spans, rule, true);
+      auto s = iter.Init();
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      bool is_finished;
+      std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+      uint32_t total_rows = 0;
+      do {
+        auto s = iter.Next(block_span, &is_finished);
+        EXPECT_TRUE(s == KStatus::SUCCESS);
+        if (!is_finished) {
+          total_rows += block_span->GetRowNum();
+        }
+      } while (!is_finished);
+      EXPECT_TRUE(total_rows == ts_num);
+    }
+  }
 }
 
 TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
-  std::list<shared_ptr<TsBlockSpan>> spans;
-  int ts_num = 10;
-  int span_num = 5;
-  for (size_t i = 0; i < span_num; i++) {
-    spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
-  }
-  TsBlockSpanSortedIterator iter(spans);
-  auto s = iter.Init();
-  EXPECT_TRUE(s == KStatus::SUCCESS);
-  bool is_finished;
-  std::shared_ptr<kwdbts::TsBlockSpan> block_span;
-  uint32_t total_rows = 0;
-  do {
-    auto s = iter.Next(block_span, &is_finished);
-    EXPECT_TRUE(s == KStatus::SUCCESS);
-    if (!is_finished) {
-      total_rows += block_span->GetRowNum();
+  std::vector<DedupRule> dedup_rules = {DedupRule::KEEP, DedupRule::OVERRIDE, DedupRule::DISCARD};
+  for (auto rule : dedup_rules) {
+    uint32_t total_rows = 0;
+    int ts_num = 10;
+    int span_num = 5;
+    {
+      std::list<shared_ptr<TsBlockSpan>> spans;
+      for (size_t i = 0; i < span_num; i++) {
+        spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
+      }
+      TsBlockSpanSortedIterator iter(spans, rule);
+      auto s = iter.Init();
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      bool is_finished;
+      std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+      do {
+        auto s = iter.Next(block_span, &is_finished);
+        EXPECT_TRUE(s == KStatus::SUCCESS);
+        if (!is_finished) {
+          total_rows += block_span->GetRowNum();
+        }
+      } while (!is_finished);
+      switch (rule) {
+        case DedupRule::KEEP:
+          EXPECT_TRUE(total_rows == span_num * ts_num);
+          break;
+        case DedupRule::OVERRIDE:
+          EXPECT_TRUE(total_rows == ts_num);
+          break;
+        case DedupRule::DISCARD:
+          EXPECT_TRUE(total_rows == ts_num);
+          break;
+      }
     }
-  } while (!is_finished);
-  EXPECT_EQ(total_rows, ts_num);
+    total_rows = 0;
+    {
+      std::list<shared_ptr<TsBlockSpan>> spans;
+      for (size_t i = 0; i < span_num; i++) {
+        spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
+      }
+      TsBlockSpanSortedIterator iter(spans, rule, true);
+      auto s = iter.Init();
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      bool is_finished;
+      std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+      uint32_t total_rows = 0;
+      do {
+        auto s = iter.Next(block_span, &is_finished);
+        EXPECT_TRUE(s == KStatus::SUCCESS);
+        if (!is_finished) {
+          total_rows += block_span->GetRowNum();
+        }
+      } while (!is_finished);
+      switch (rule) {
+        case DedupRule::KEEP:
+          EXPECT_TRUE(total_rows == span_num * ts_num);
+          break;
+        case DedupRule::OVERRIDE:
+          EXPECT_TRUE(total_rows == ts_num);
+          break;
+        case DedupRule::DISCARD:
+          EXPECT_TRUE(total_rows == ts_num);
+          break;
+      }
+    }
+  }
 }
 
 TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
-  std::list<shared_ptr<TsBlockSpan>> spans;
-  int ts_num = 10;
-  int span_num = 5;
-  for (size_t i = 0; i < span_num; i++) {
-    spans.push_back(GenBlockWithSpan1(1000 + i, 1, ts_num, 1));
-  }
-  TsBlockSpanSortedIterator iter(spans);
-  auto s = iter.Init();
-  EXPECT_TRUE(s == KStatus::SUCCESS);
-  bool is_finished;
-  std::shared_ptr<kwdbts::TsBlockSpan> block_span;
-  uint32_t total_rows = 0;
-  do {
-    auto s = iter.Next(block_span, &is_finished);
-    EXPECT_TRUE(s == KStatus::SUCCESS);
-    if (!is_finished) {
-      total_rows += block_span->GetRowNum();
+  std::vector<DedupRule> dedup_rules = {DedupRule::KEEP, DedupRule::OVERRIDE, DedupRule::DISCARD};
+  for (auto rule : dedup_rules) {
+    int ts_num = 10;
+    int span_num = 5;
+    uint32_t total_rows = 0;
+    {
+      std::list<shared_ptr<TsBlockSpan>> spans;
+      for (size_t i = 0; i < span_num; i++) {
+        spans.push_back(GenBlockWithSpan1(1000 + i, 1, ts_num, 1));
+      }
+      TsBlockSpanSortedIterator iter(spans, rule);
+      auto s = iter.Init();
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      bool is_finished;
+      std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+      do {
+        auto s = iter.Next(block_span, &is_finished);
+        EXPECT_TRUE(s == KStatus::SUCCESS);
+        if (!is_finished) {
+          total_rows += block_span->GetRowNum();
+        }
+      } while (!is_finished);
+      switch (rule) {
+        case DedupRule::KEEP:
+          EXPECT_EQ(total_rows, ts_num * span_num);
+          break;
+        case DedupRule::OVERRIDE:
+          EXPECT_TRUE(total_rows == ts_num + span_num - 1);
+          break;
+        case DedupRule::DISCARD:
+          EXPECT_TRUE(total_rows == ts_num + span_num - 1);
+          break;
+      }
     }
-  } while (!is_finished);
-  EXPECT_EQ(total_rows, ts_num + span_num - 1);
+    total_rows = 0;
+    {
+      std::list<shared_ptr<TsBlockSpan>> spans;
+      for (size_t i = 0; i < span_num; i++) {
+        spans.push_back(GenBlockWithSpan1(1000 + i, 1, ts_num, 1));
+      }
+      TsBlockSpanSortedIterator iter(spans, rule, true);
+      auto s = iter.Init();
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      bool is_finished;
+      std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+      uint32_t total_rows = 0;
+      do {
+        auto s = iter.Next(block_span, &is_finished);
+        EXPECT_TRUE(s == KStatus::SUCCESS);
+        if (!is_finished) {
+          total_rows += block_span->GetRowNum();
+        }
+      } while (!is_finished);
+      switch (rule) {
+        case DedupRule::KEEP:
+          EXPECT_EQ(total_rows, ts_num * span_num);
+          break;
+        case DedupRule::OVERRIDE:
+          EXPECT_TRUE(total_rows == ts_num + span_num - 1);
+          break;
+        case DedupRule::DISCARD:
+          EXPECT_TRUE(total_rows == ts_num + span_num - 1);
+          break;
+      }
+    }
+  }
 }

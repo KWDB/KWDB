@@ -483,6 +483,11 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
       return s;
     }
   }
+  for (auto& block_span_list : block_spans) {
+    for (auto& block_span : block_span_list) {
+      std::cout << block_span->GetEntityID() << std::endl;
+    }
+  }
   TsBlockSpanSortedIterator iter(block_spans, EngineOptions::g_dedup_rule);
   block_spans.clear();
   iter.Init();

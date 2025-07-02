@@ -233,6 +233,7 @@ KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_s
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
+  assert(block_ != nullptr);
   front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num,
                                         convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
   // change current span info
@@ -244,6 +245,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
+  assert(block_ != nullptr);
   back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num,
                                        convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
   // change current span info
@@ -251,8 +253,16 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   convert_.SetRowNum(nrow_);
 }
 
+void TsBlockSpan::TrimBack(int row_num) {
+  assert(row_num <= nrow_);
+  assert(block_ != nullptr);
+  nrow_ -= row_num;
+  convert_.SetRowNum(nrow_);
+}
+
 void TsBlockSpan::TrimFront(int row_num) {
   assert(row_num <= nrow_);
+  assert(block_ != nullptr);
   start_row_ += row_num;
   nrow_ -= row_num;
   convert_.SetStartRowIdx(start_row_);
@@ -260,10 +270,7 @@ void TsBlockSpan::TrimFront(int row_num) {
 }
 
 void TsBlockSpan::Clear() {
-  if (block_.use_count() > 2) {
-    LOG_ERROR("block{entity_id=%lu, start_row=%d, nrow=%d} is being used by others", entity_id_, start_row_, nrow_);
-    assert(false);
-  }
+  assert(block_ != nullptr);
   block_ = nullptr;
   entity_id_ = 0;
   start_row_ = 0;

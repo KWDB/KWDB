@@ -145,6 +145,8 @@ struct TsBlockSpan {
 
   void SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span);
 
+  void TrimBack(int row_num);
+
   void TrimFront(int row_num);
 
   void Clear();
