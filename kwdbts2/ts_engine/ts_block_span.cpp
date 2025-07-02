@@ -260,6 +260,10 @@ void TsBlockSpan::TrimFront(int row_num) {
 }
 
 void TsBlockSpan::Clear() {
+  if (block_.use_count() > 2) {
+    LOG_ERROR("block{entity_id=%lu, start_row=%d, nrow=%d} is being used by others", entity_id_, start_row_, nrow_);
+    assert(false);
+  }
   block_ = nullptr;
   entity_id_ = 0;
   start_row_ = 0;
