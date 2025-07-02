@@ -46,6 +46,7 @@ struct R {
 
 class LastSegmentReadWriteTest : public testing::Test {
  protected:
+  TsIOEnv *env = &TsMMapIOEnv::GetInstance();
   void SetUp() override {
     std::filesystem::remove_all("schema");
     std::filesystem::remove(filename);
@@ -107,20 +108,22 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     free(payload.data);
   }
 
-  auto file = std::make_unique<TsMMapFile>(filename, true);
+  std::unique_ptr<TsRandomReadFile> file;
+  ASSERT_EQ(env->NewRandomReadFile(filename, &file), SUCCESS);
   TsLastSegmentFooter footer;
   auto sz = file->GetFileSize();
   ASSERT_TRUE(sz >= sizeof(footer));
   TSSlice slice;
-  file->Read(sz - sizeof(footer), sizeof(footer), &slice, reinterpret_cast<char *>(&footer));
+  file->Read(sz - sizeof(footer), sizeof(footer), &slice, nullptr);
+  memcpy(&footer, slice.data, sizeof(footer));
   ASSERT_EQ(footer.magic_number, FOOTER_MAGIC);
 
   auto nblock = footer.n_data_block;
   EXPECT_EQ(nblock, (nrow + TsLastSegment::kNRowPerBlock - 1) / TsLastSegment::kNRowPerBlock);
   for (int i = 0; i < nblock; ++i) {
     TsLastSegmentBlockIndex idx_block;
-    file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice,
-               reinterpret_cast<char *>(&idx_block));
+    file->Read(footer.block_info_idx_offset + i * sizeof(idx_block), sizeof(idx_block), &slice, nullptr);
+    memcpy(&idx_block, slice.data, sizeof(idx_block));
     EXPECT_EQ(idx_block.table_id, table_id);
 
     char buf[10240];
@@ -147,9 +150,9 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
         ASSERT_EQ(info.col_infos[j].bitmap_len, 0) << "At Column " << j;
       }
       if (info.col_infos[j].bitmap_len != 0) {
-        file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len,
-                   &result, buf);
-        ASSERT_EQ(buf[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
+        auto s = file->Read(info.block_offset + info.col_infos[j].offset, info.col_infos[j].bitmap_len, &result, buf);
+        EXPECT_EQ(s, SUCCESS);
+        ASSERT_EQ(result.data[0], 0) << "At block: " << i << ", Column: " << j << " with nrow = " << nrow;
       }
     }
   }

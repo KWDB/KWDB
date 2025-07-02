@@ -173,8 +173,8 @@ inline void PutVarint64(std::string *dst, uint64_t v) {
 }
 
 inline const char *DecodeVarint32(const char *ptr, const char *limit, uint32_t *v) {
+  if (ptr == nullptr) return nullptr;
   *v = 0;
-  int shift = 0;
   for (int shift = 0; ptr < limit && shift <= 28; shift += 7) {
     uint32_t b = static_cast<uint8_t>(*ptr);
     ++ptr;
@@ -184,8 +184,8 @@ inline const char *DecodeVarint32(const char *ptr, const char *limit, uint32_t *
   return nullptr;
 }
 inline const char *DecodeVarint64(const char *ptr, const char *limit, uint64_t *v) {
+  if (ptr == nullptr) return nullptr;
   *v = 0;
-  int shift = 0;
   for (int shift = 0; ptr < limit && shift <= 63; shift += 7) {
     uint64_t b = static_cast<uint8_t>(*ptr);
     ++ptr;

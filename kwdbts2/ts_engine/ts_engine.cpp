@@ -932,13 +932,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   rewrite.clear();
 
   // 5. trig all vgroup flush
-  // for (const auto &vgrp : vgroups_) {
-  //   s = vgrp->Flush();
-  //   if (s == KStatus::FAIL) {
-  //     LOG_ERROR("Failed to flush metric file.")
-  //     return s;
-  //   }
-  // }
+  for (const auto &vgrp : vgroups_) {
+    s = vgrp->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
+  }
 
   // 6.write EndWAL to chk file
   TS_LSN lsn;

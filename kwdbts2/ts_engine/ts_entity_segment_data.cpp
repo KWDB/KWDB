@@ -13,9 +13,9 @@
 
 namespace kwdbts {
 
-TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& file_path) : file_path_(file_path) {
+TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& file_path, size_t filesize) : file_path_(file_path) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
+  if (env->NewRandomReadFile(file_path_, &r_file_, filesize) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
     assert(false);
   }
@@ -53,10 +53,9 @@ KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, char** buff, size_t 
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& file_path)
-  : file_path_(file_path) {
+TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& file_path, size_t filesize) : file_path_(file_path) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
+  if (env->NewRandomReadFile(file_path_, &r_file_, filesize) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
     assert(false);
   }
