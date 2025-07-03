@@ -28,7 +28,7 @@ class TsBatchDataJob {
 
  public:
   explicit TsBatchDataJob(uint64_t job_id) : job_id_(job_id) {}
-  ~TsBatchDataJob() {}
+  virtual ~TsBatchDataJob() {}
 
   virtual KStatus Read(TSSlice* data, int32_t* row_num) {
     return KStatus::SUCCESS;

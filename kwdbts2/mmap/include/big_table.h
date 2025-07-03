@@ -59,7 +59,7 @@ public:
   int unLock() override;
 
   // name of table
-  virtual string name() const;
+  virtual string name() const override;
 
   virtual int getDeletableColumn() const;
 

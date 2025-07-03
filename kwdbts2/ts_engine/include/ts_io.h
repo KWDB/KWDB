@@ -15,8 +15,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <cstddef>
@@ -50,9 +48,7 @@ class TsAppendOnlyFile {
   virtual ~TsAppendOnlyFile() {}
 
   virtual KStatus Append(std::string_view) = 0;
-  virtual KStatus Append(TSSlice slice) {
-    return this->Append(std::string_view{slice.data, slice.len});
-  }
+  KStatus Append(TSSlice slice) { return this->Append(std::string_view{slice.data, slice.len}); }
 
   virtual size_t GetFileSize() const = 0;
   std::string GetFilePath() const { return path_; }

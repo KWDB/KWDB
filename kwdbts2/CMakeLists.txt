@@ -293,7 +293,7 @@ set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
 
 file(GLOB_RECURSE STV3_SRC ts_engine/*cpp)
 set_source_files_properties(${STV3_SRC} PROPERTIES
- COMPILE_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wnull-dereference -Winit-self -Wuninitialized -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing"
+ COMPILE_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wshift-overflow -Wnon-virtual-dtor -Wnull-dereference -Winit-self -Wuninitialized -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing"
 )
 
 # Compile and generate test case executables

@@ -467,8 +467,8 @@ class SnapshotFactory {
   static void TestSetType(int type) { factory_type_ = type; }
   virtual TsSnapshotProductor* NewProductor() { return nullptr; }
   virtual TsSnapshotConsumer* NewConsumer() { return nullptr; }
+  virtual ~SnapshotFactory() {}
 };
-
 
 class TsPayloadSnapshotFactory : public SnapshotFactory {
  public:
