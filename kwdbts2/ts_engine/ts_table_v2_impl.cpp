@@ -139,6 +139,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   auto ts_table_iterator = new TsTableIterator();
 
   //  TODO(wyy): code review here; s is uninitialized and in most return path, it is not assigned to any value.
+  //  But it is used in the defer function, so it should be initialized to SUCCESS or FAIL.
   //  just make s = SUCCESS to avoid compile error.
   KStatus s = SUCCESS;
   Defer defer{[&]() {
