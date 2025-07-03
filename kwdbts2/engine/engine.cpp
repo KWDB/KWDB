@@ -1671,44 +1671,48 @@ int AggCalculator::cmp(void* l, void* r) {
     case DATATYPE::CHAR:
     case DATATYPE::BOOL:
     case DATATYPE::BINARY: {
-      k_int32 ret = memcmp(l, r, size_);
-      return ret;
+      return memcmp(l, r, size_);
     }
     case DATATYPE::INT16: {
-      k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
-      return ret;
+      k_int16 l_val = *(static_cast<k_int16*>(l));
+      k_int16 r_val = *(static_cast<k_int16*>(r));
+      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
     }
     case DATATYPE::INT32:
     case DATATYPE::TIMESTAMP: {
-      k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
+      k_int32 l_val = *(static_cast<k_int32*>(l));
+      k_int32 r_val = *(static_cast<k_int32*>(r));
+      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
     }
     case DATATYPE::INT64:
     case DATATYPE::TIMESTAMP64:
     case DATATYPE::TIMESTAMP64_MICRO:
     case DATATYPE::TIMESTAMP64_NANO: {
-      double diff = (*(static_cast<k_int64*>(l))) - (*(static_cast<k_int64*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
+      timestamp64 l_val = *(static_cast<k_int64*>(l));
+      timestamp64 r_val = *(static_cast<k_int64*>(r));
+      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
     }
     case DATATYPE::TIMESTAMP64_LSN:
     case DATATYPE::TIMESTAMP64_LSN_MICRO:
     case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      double diff = (*(static_cast<TimeStamp64LSN*>(l))).ts64 - (*(static_cast<TimeStamp64LSN*>(r))).ts64;
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
+      timestamp64 l_val = (*(static_cast<TimeStamp64LSN*>(l))).ts64;
+      timestamp64 r_val = (*(static_cast<TimeStamp64LSN*>(r))).ts64;
+      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
     }
     case DATATYPE::FLOAT: {
-      double diff = (*(static_cast<float*>(l))) - (*(static_cast<float*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
+      float l_val = *(static_cast<float*>(l));
+      float r_val = *(static_cast<float*>(r));
+      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
     }
     case DATATYPE::DOUBLE: {
-      double diff = (*(static_cast<double*>(l))) - (*(static_cast<double*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
+      double l_val = *(static_cast<double*>(l));
+      double r_val = *(static_cast<double*>(r));
+      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
     }
     case DATATYPE::STRING: {
       k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size_);
       return ret;
     }
-      break;
     default:
       break;
   }
