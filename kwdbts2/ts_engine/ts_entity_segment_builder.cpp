@@ -485,6 +485,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     }
   }
   TsBlockSpanSortedIterator iter(block_spans, EngineOptions::g_dedup_rule);
+  block_spans.clear();
   iter.Init();
   TsEntityKey entity_key;
   std::vector<std::shared_ptr<TsEntityBlockBuilder>> cached_blocks;

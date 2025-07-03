@@ -123,7 +123,7 @@ class TsVGroup {
 
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
-  KStatus Compact(int thread_num = 1);
+  KStatus Compact();
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);
