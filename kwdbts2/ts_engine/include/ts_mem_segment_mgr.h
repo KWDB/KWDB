@@ -59,7 +59,7 @@ struct TSMemSegRowData {
     lsn = clsn;
     row_data = crow_data;
   }
-  static size_t GetKeyLen() {
+  static constexpr size_t GetKeyLen() {
     return 4 + 8 + 4 + 8 + 8 + 8 + 4;
   }
 

@@ -794,7 +794,9 @@ bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) co
   }
 
   auto it = general_compressor_.find(alg);
-  assert(it != general_compressor_.end());
+  if (it == general_compressor_.end()) {
+    return false;
+  }
   std::string tmp;
   output->clear();
   return it->second->Decompress(input, output);

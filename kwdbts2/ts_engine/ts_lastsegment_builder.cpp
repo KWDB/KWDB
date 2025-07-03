@@ -70,6 +70,9 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
       }
       last_entity_payload = &payload_buffer_.buffer[idx];
     }
+
+    //  Double check 
+    if (data_block_builder_ == nullptr) return SUCCESS;
     data_block_builder_->Add(last_entity_payload->entity_id, last_entity_payload->lsn, last_entity_payload->metric);
     data_block_builder_->Finish();
     auto s = WriteMetricBlock(data_block_builder_.get());
