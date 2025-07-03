@@ -972,7 +972,10 @@ func (r *TsEngine) tsExecute(
 	}
 	var retInfo C.QueryInfo
 	retInfo.value = nil
-	C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	if retErr := statusToError(status); retErr != nil {
+		// log.Errorf(context.TODO(), "failed to execute query")
+	}
 	fet := tsQueryInfo.Fetcher
 	tsRespInfo.Fetcher = fet
 	tsRespInfo.ID = int(retInfo.id)
@@ -1048,7 +1051,10 @@ func (r *TsEngine) tsVectorizedExecute(
 	}
 	var retInfo C.QueryInfo
 	retInfo.value = nil
-	C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	if retErr := statusToError(status); retErr != nil {
+		// log.Errorf(context.TODO(), "failed to execute query")
+	}
 	fet := tsQueryInfo.Fetcher
 	tsRespInfo.Fetcher = fet
 	tsRespInfo.ID = int(retInfo.id)
