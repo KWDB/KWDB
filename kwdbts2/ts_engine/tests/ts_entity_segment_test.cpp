@@ -250,7 +250,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
   }
 }
 
-TEST_F(TsEntitySegmentTest, simpleInsertDouvleCompact) {
+TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
   EngineOptions::g_dedup_rule = DedupRule::KEEP;
   EngineOptions::max_compact_num = 20;
   EngineOptions::max_rows_per_block = 1000;

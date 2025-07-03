@@ -21,7 +21,7 @@
 #include "ts_table_v2_impl.h"
 
 // V2
-int EngineOptions::vgroup_max_num = 6;
+int EngineOptions::vgroup_max_num = 4;
 DedupRule EngineOptions::g_dedup_rule = DedupRule::OVERRIDE;
 size_t EngineOptions::mem_segment_max_size = 64 << 20;
 int32_t EngineOptions::mem_segment_max_height = 12;
