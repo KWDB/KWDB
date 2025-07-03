@@ -16,6 +16,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -84,6 +85,7 @@ struct TsLastSegmentFooter {
   uint64_t magic_number;
 };
 static_assert(sizeof(TsLastSegmentFooter) == 64);
+static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter> == true);
 
 struct TsLastSegmentBlockIndex {
   uint64_t offset, length;

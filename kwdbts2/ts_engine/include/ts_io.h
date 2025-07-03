@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include "kwdb_type.h"
@@ -132,11 +133,7 @@ class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
 
  public:
   TsMMapAppendOnlyFile(const std::string& path, int fd, size_t offset /*append from offset*/)
-      : TsAppendOnlyFile(path),
-        fd_(fd),
-        page_size_(getpagesize()),
-        mmap_size_(16 * page_size_),
-        file_size_(offset) {}
+      : TsAppendOnlyFile(path), fd_(fd), page_size_(getpagesize()), mmap_size_(16 * page_size_), file_size_(offset) {}
   ~TsMMapAppendOnlyFile();
 
   KStatus Append(std::string_view data) override;
@@ -155,11 +152,7 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
 
  public:
   TsMMapRandomReadFile(const std::string& path, int fd, char* addr, size_t filesize)
-      : TsRandomReadFile(path),
-        fd_(fd),
-        mmap_start_(addr),
-        file_size_(filesize),
-        page_size_(getpagesize()) {
+      : TsRandomReadFile(path), fd_(fd), mmap_start_(addr), file_size_(filesize), page_size_(getpagesize()) {
     assert(mmap_start_);
     assert(file_size_ > 0);
   }
@@ -224,7 +217,8 @@ class TsMMapAllocFile : public FileWithIndex {
     uint64_t index_header_offset;
     char reserved[104];
   };
-static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
+  static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
+  static_assert(std::has_unique_object_representations_v<FileHeader> == true, "padding in struct FileHeader");
 
   std::string path_;
   int fd_ = -1;
@@ -271,13 +265,9 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
     }
   }
 
-  uint64_t GetStartPos() {
-    return sizeof(FileHeader);
-  }
+  uint64_t GetStartPos() { return sizeof(FileHeader); }
 
-  FileHeader* getHeader() {
-    return reinterpret_cast<FileHeader*>(addrs_[0].data);
-  }
+  FileHeader* getHeader() { return reinterpret_cast<FileHeader*>(addrs_[0].data); }
 
   KStatus resize(uint64_t add_size) {
     size_t new_len = getHeader()->file_len;
