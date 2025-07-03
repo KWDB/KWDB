@@ -22,12 +22,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <numeric>
 #include <random>
+#include <string>
 #include <string_view>
 #include <thread>
 
@@ -185,6 +187,60 @@ TEST(MMapIOV2, SequentialRead) {
   EXPECT_EQ(sv, "");
 }
 
+TEST(MMapIOV2, OpenZeroSizeFile) {
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+
+  std::string filename = "zero_size_file";
+  std::filesystem::remove(filename);
+  std::string cmd = "touch " + filename;
+  std::system(cmd.c_str());
+
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_TRUE(env->NewRandomReadFile(filename, &rfile));
+    EXPECT_EQ(rfile->GetFileSize(), 0);
+
+    TSSlice result;
+    EXPECT_EQ(rfile->Read(0, 10, &result, nullptr), SUCCESS);
+    EXPECT_EQ(result.len, 0);
+
+    EXPECT_EQ(rfile->Read(1, 2, &result, nullptr), SUCCESS);
+    EXPECT_EQ(result.len, 0);
+
+    EXPECT_EQ(rfile->Read(3, 4, &result, nullptr), SUCCESS);
+    EXPECT_EQ(result.len, 0);
+  }
+
+  {
+    std::unique_ptr<TsSequentialReadFile> rfile;
+    ASSERT_TRUE(env->NewSequentialReadFile(filename, &rfile));
+    EXPECT_EQ(rfile->GetFileSize(), 0);
+
+    TSSlice result;
+    EXPECT_EQ(rfile->Read(10, &result, nullptr), SUCCESS);
+    EXPECT_EQ(result.len, 0);
+
+    EXPECT_EQ(rfile->Read(2, &result, nullptr), SUCCESS);
+    EXPECT_EQ(result.len, 0);
+
+    EXPECT_EQ(rfile->Read(4, &result, nullptr), SUCCESS);
+    EXPECT_EQ(result.len, 0);
+  }
+  {
+    std::unique_ptr<TsAppendOnlyFile> wfile;
+    ASSERT_TRUE(env->NewAppendOnlyFile(filename, &wfile, false));
+    EXPECT_EQ(wfile->GetFileSize(), 0);
+    wfile->Append("123123123123");
+    wfile->Sync();
+    EXPECT_EQ(wfile->GetFileSize(), 12);
+  }
+  {
+    std::unique_ptr<TsSequentialReadFile> rfile;
+    ASSERT_TRUE(env->NewSequentialReadFile(filename, &rfile));
+    EXPECT_EQ(rfile->GetFileSize(), 12);
+  }
+}
+
 TEST(MMapIOV2, FailedCases) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
@@ -319,7 +375,7 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
 
       {
         std::unique_lock lk{mtx};
-        cv.wait(lk, [&]() { return file_size.load() == 0 != fsize && finished.load(); });
+        cv.wait(lk, [&]() { return file_size.load() != fsize && finished.load(); });
       }
     }
   };
