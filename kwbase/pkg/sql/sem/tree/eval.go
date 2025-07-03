@@ -3151,8 +3151,8 @@ type EvalContext struct {
 	StartDistributeMode bool
 	GroupWindow         *GroupWindow
 	// IsProcedure is true when the the SQL exec in procedure.
-	IsProcedure bool
-	Kwengineversion     string
+	IsProcedure     bool
+	Kwengineversion string
 }
 
 // GroupWindow record group_window information.
