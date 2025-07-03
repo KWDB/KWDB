@@ -350,4 +350,4 @@ set enable_multimodel=false;
 drop database pipec_r cascade;
 drop database mtagdb cascade;
 delete from system.table_statistics where name = '_stats_';
-set cluster setting ts.sql.query_opt_mode = 1110;
+set cluster setting ts.sql.query_opt_mode = DEFAULT;
