@@ -212,8 +212,6 @@ KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
     LOG_ERROR("schema[%s] open error : %s", bt_path.c_str(), err_info.errmsg.c_str());
     return FAIL;
   }
-  // Save to map cache
-  put(max_table_version, tmp_bt);
 
   tag_table_ = std::make_shared<TagTable>(schema_root_path_, tag_schema_path_, table_id_, 1);
   if (tag_table_->open(err_info) < 0) {
@@ -221,6 +219,8 @@ KStatus TsTableSchemaManager::Init(kwdbContext_p ctx) {
               tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
     return FAIL;
   }
+  // Save to map cache
+  put(max_table_version, tmp_bt);
   LOG_INFO("Table schema manager init success")
   return SUCCESS;
 }
@@ -234,50 +234,11 @@ void TsTableSchemaManager::put(uint32_t ts_version, const std::shared_ptr<MMapMe
     metric_schemas_.erase(iter);
   }
   metric_schemas_.insert({ts_version, schema});
-  if (cur_schema_version_ < ts_version) {
+  if (cur_metric_version_ < ts_version) {
     cur_metric_schema_ = schema;
-    cur_schema_version_ = ts_version;
+    cur_metric_version_ = ts_version;
     partition_interval_ = schema->partitionInterval();
   }
-}
-
-std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::Get(uint32_t ts_version, bool lock) {
-  bool need_open = false;
-  // Try to get the root table using a read lock
-  {
-    if (lock) {
-      rdLock();
-    }
-    Defer defer([&]() { if (lock) { unLock(); }});
-    if (ts_version == 0 || ts_version == cur_schema_version_) {
-      return cur_metric_schema_;
-    }
-    auto bt_it = metric_schemas_.find(ts_version);
-    if (bt_it != metric_schemas_.end()) {
-      if (!bt_it->second) {
-        need_open = true;
-      } else {
-        return bt_it->second;
-      }
-    }
-  }
-  if (!need_open) {
-    return nullptr;
-  }
-  // Open the root table using a write lock
-  if (lock) {
-    wrLock();
-  }
-  Defer defer([&]() { if (lock) { unLock(); }});
-  auto bt_it = metric_schemas_.find(ts_version);
-  if (bt_it != metric_schemas_.end()) {
-    if (!bt_it->second) {
-      ErrorInfo err_info;
-      bt_it->second = open(bt_it->first, err_info);
-    }
-    return bt_it->second;
-  }
-  return nullptr;
 }
 
 KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
@@ -363,7 +324,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
 
   // Update the latest version of table and other information
-  cur_schema_version_ = ts_version;
+  cur_metric_version_ = ts_version;
   partition_interval_ = tmp_bt->partitionInterval();
   return SUCCESS;
 }
@@ -376,9 +337,9 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
     LOG_INFO("metric schema version %d already exists, table id %lu", new_version, table_id_);
     return SUCCESS;
   }
-  if (cur_schema_version_ >= new_version) {
+  if (cur_metric_version_ >= new_version) {
     LOG_ERROR("cannot add low version schema: current version[%d], create version[%d]",
-              cur_schema_version_, new_version)
+              cur_metric_version_, new_version)
     return FAIL;
   }
   for (auto& attr : schema) {
@@ -428,7 +389,7 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
   metric_schemas_.insert({new_version, tmp_bt});
   cur_metric_schema_ = tmp_bt;
   // Update the latest version of table and other information
-  cur_schema_version_ = new_version;
+  cur_metric_version_ = new_version;
   partition_interval_ = tmp_bt->partitionInterval();
   return SUCCESS;
 }
@@ -474,7 +435,7 @@ KStatus TsTableSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, uin
 }
 
 KStatus TsTableSchemaManager::GetColumnsExcludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version) {
-  std::shared_ptr<MMapMetricsTable> schema_table = Get(ts_version);
+  std::shared_ptr<MMapMetricsTable> schema_table = getMetricsTable(ts_version);
   if (!schema_table) {
     LOG_ERROR("schema version [%u] does not exists", ts_version);
     return FAIL;
@@ -484,7 +445,7 @@ KStatus TsTableSchemaManager::GetColumnsExcludeDropped(std::vector<AttributeInfo
 }
 
 KStatus TsTableSchemaManager::GetColumnsIncludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version) {
-  std::shared_ptr<MMapMetricsTable> schema_table = Get(ts_version);
+  std::shared_ptr<MMapMetricsTable> schema_table = getMetricsTable(ts_version);
   if (!schema_table) {
     LOG_ERROR("schema version [%u] does not exists", ts_version);
     return FAIL;
@@ -512,7 +473,7 @@ KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>&
 
 KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
                                               std::shared_ptr<MMapMetricsTable>* schema) {
-  *schema = Get(version);
+  *schema = getMetricsTable(version);
   if (!schema) {
     LOG_ERROR("schema version [%u] does not exists", version);
     return FAIL;
@@ -618,23 +579,23 @@ KStatus TsTableSchemaManager::RemoveAll() {
 KStatus TsTableSchemaManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  if (cur_schema_version_ == old_version) {
+  if (cur_metric_version_ == old_version) {
     return SUCCESS;
   }
-  if (cur_schema_version_ == new_version) {
+  if (cur_metric_version_ == new_version) {
     // Get the previous version of root table
-    auto bt = Get(old_version, false);
+    auto bt = getMetricsTable(old_version, false);
     // Clear the current version of the data
     metric_schemas_.erase(new_version);
     cur_metric_schema_->remove();
     cur_metric_schema_.reset();
     // Update the latest version information
     cur_metric_schema_ = bt;
-    cur_schema_version_ = old_version;
+    cur_metric_version_ = old_version;
     partition_interval_ = bt->partitionInterval();
-  } else if (cur_schema_version_ < old_version) {
+  } else if (cur_metric_version_ < old_version) {
     LOG_ERROR("incorrect version: current table version is [%u], but roll back to version is [%u]",
-              cur_schema_version_, old_version);
+              cur_metric_version_, old_version);
     return FAIL;
   }
   return SUCCESS;
@@ -746,13 +707,13 @@ KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::K
 DATATYPE TsTableSchemaManager::GetTsColDataType() {
   rdLock();
   Defer defer([&]() { unLock(); });
-  return (DATATYPE)(Get(cur_schema_version_, false)->getSchemaInfoExcludeDropped()[0].type);
+  return (DATATYPE)(getMetricsTable(cur_metric_version_, false)->getSchemaInfoExcludeDropped()[0].type);
 }
 
 const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_version) {
   rdLock();
   Defer defer([&]() { unLock(); });
-  return Get(table_version, false)->getIdxForValidCols();
+  return getMetricsTable(table_version, false)->getIdxForValidCols();
 }
 
 bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<SchemaVersionConv>* version_conv) {
@@ -826,6 +787,57 @@ vector<uint32_t> TsTableSchemaManager::GetNTagIndexInfo(uint32_t ts_version, uin
     std::vector<uint32_t> ret{};
     ret = tag_table_->GetNTagIndexInfo(ts_version, index_id);
     return ret;
+}
+
+bool TsTableSchemaManager::IsExistTableVersion(uint32_t version) {
+  if (getMetricsTable(version) == nullptr) {
+    LOG_ERROR("Couldn't find metrics table with version: %u", version);
+    return false;
+  }
+  if (tag_table_->GetTagTableVersionManager()->GetVersionObject(version) == nullptr) {
+    LOG_ERROR("Couldn't find table tag with version: %u", version);
+    return false;
+  }
+  return true;
+}
+
+std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::getMetricsTable(uint32_t ts_version, bool lock) {
+  bool need_open = false;
+  // Try to get the root table using a read lock
+  {
+    if (lock) {
+      rdLock();
+    }
+    Defer defer([&]() { if (lock) { unLock(); }});
+    if (ts_version == 0 || ts_version == cur_metric_version_) {
+      return cur_metric_schema_;
+    }
+    auto bt_it = metric_schemas_.find(ts_version);
+    if (bt_it != metric_schemas_.end()) {
+      if (!bt_it->second) {
+        need_open = true;
+      } else {
+        return bt_it->second;
+      }
+    }
+  }
+  if (!need_open) {
+    return nullptr;
+  }
+  // Open the root table using a write lock
+  if (lock) {
+    wrLock();
+  }
+  Defer defer([&]() { if (lock) { unLock(); }});
+  auto bt_it = metric_schemas_.find(ts_version);
+  if (bt_it != metric_schemas_.end()) {
+    if (!bt_it->second) {
+      ErrorInfo err_info;
+      bt_it->second = open(bt_it->first, err_info);
+    }
+    return bt_it->second;
+  }
+  return nullptr;
 }
 }  //  namespace kwdbts
 

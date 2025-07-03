@@ -65,7 +65,7 @@ class TsTableSchemaManager {
                         uint32_t cur_version, uint32_t new_version, string& msg);
 
  protected:
-  uint32_t cur_schema_version_{0};
+  uint32_t cur_metric_version_{0};
   // metric schema of current version
   std::shared_ptr<MMapMetricsTable> cur_metric_schema_;
   // schemas of all versions
@@ -102,10 +102,8 @@ class TsTableSchemaManager {
 
   void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);
 
-  std::shared_ptr<MMapMetricsTable> Get(uint32_t ts_version, bool lock = true);
-
   inline uint32_t GetCurrentVersion() {
-    return cur_schema_version_;
+    return cur_metric_version_;
   }
 
   TSTableID GetTableId();
@@ -201,6 +199,11 @@ class TsTableSchemaManager {
 
   bool FindVersionConv(const string& key, std::shared_ptr<SchemaVersionConv>* version_conv);
   void InsertVersionConv(const string& key, const shared_ptr<SchemaVersionConv>& ver_conv);
+
+  bool IsExistTableVersion(uint32_t version);
+
+private:
+  std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version, bool lock = true);
 };
 
 }  // namespace kwdbts
