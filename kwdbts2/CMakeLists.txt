@@ -199,6 +199,28 @@ file(GLOB_RECURSE NART_PROTOS_META
 generate_proto(${NART_PROTOS_META})
 generate_proto(${NART_PROTOS_EE})
 
+# Build third-party libraries
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party)
+
+# Snappy
+set(SNAPPY_INSTALL_DIR ${THIRD_PARTY_DIR}/snappy_install)
+set(SNAPPY_CMAKE_ARGS 
+  -DCMAKE_INSTALL_PREFIX=${SNAPPY_INSTALL_DIR} 
+  -DCMAKE_CXX_STANDARD=17 
+  -DSNAPPY_BUILD_TESTS=OFF 
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  -DCMAKE_BUILD_TYPE=Release
+)
+
+ExternalProject_Add(
+  snappy
+  PREFIX ${THIRD_PARTY_DIR}/snappy_build
+  SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../kwbase/c-deps/snappy
+  CMAKE_ARGS ${SNAPPY_CMAKE_ARGS}
+)
+set(SNAPPY_INCLUDE ${SNAPPY_INSTALL_DIR}/include)
+set(SNAPPY_LIB ${SNAPPY_INSTALL_DIR}/lib/libsnappy.a)
+
 # include file of kwdbts2
 set(TS_INCLUDE
         ../common/src/h
@@ -207,11 +229,13 @@ set(TS_INCLUDE
         include
         roachpb
         engine/include
+        ts_engine/include
         common/include
         storage/include
         mmap/include
         exec/include
         statistic/include
+        ${SNAPPY_INCLUDE}
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -224,6 +248,7 @@ file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
         storage/src/*.cpp
         roachpb/*.cc
         engine/*.cpp
+        ts_engine/*.cpp
         mmap/src/*.cpp
         mmap/src/lib/*.c
         statistic/src/*.cpp
@@ -235,6 +260,7 @@ else ()
             storage/src/*.cpp
             roachpb/*.cc
             engine/*.cpp
+            ts_engine/*.cpp
             mmap/src/*.cpp
             mmap/src/lib/*.c
             statistic/src/*.cpp
@@ -249,12 +275,27 @@ if (ENABLE_COVERAGE)
 endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
+add_dependencies(${KWDBTS2_SERVER_LIB} snappy)
+target_link_libraries(${KWDBTS2_SERVER_LIB} 
+  PRIVATE ${SNAPPY_LIB}
+)
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
     ${TS_INCLUDE}
 	)
+
+set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
+  # COMPILE_FLAGS "-Werror -Wunused-variable"
+  COMPILE_FLAGS " -fno-plt"
+  POSITION_INDEPENDENT_CODE ON
+)
+
+file(GLOB_RECURSE STV3_SRC ts_engine/*cpp)
+set_source_files_properties(${STV3_SRC} PROPERTIES
+  # COMPILE_FLAGS " -Werror"
+)
 
 # Compile and generate test case executables
 if (WITH_TESTS)
@@ -266,9 +307,10 @@ if (WITH_TESTS)
   if (KWBASE_OSS)
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
               mmap/tests/*.cpp
-              storage/tests/*.cpp
+              #storage/tests/*.cpp
               exec/tests/*.cpp
-              engine/tests/*.cpp
+              #engine/tests/*.cpp
+              ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               )
   else ()
@@ -277,6 +319,7 @@ if (WITH_TESTS)
               storage/tests/*.cpp
               exec/tests/*.cpp
               engine/tests/*.cpp
+              ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp
       )
@@ -313,7 +356,7 @@ if (WITH_TESTS)
                 )
     endif()
     #end make test[i]
-    add_test(NAME ${tname} 
+    add_test(NAME ${tname}
       COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/${tname}
       WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir)
     add_dependencies(check ${tname})
@@ -324,7 +367,6 @@ endif ()
 if (CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.1)
         target_link_libraries(${KWDBTS2_SERVER_LIB} stdc++fs)
 endif ()
-
 INSTALL(TARGETS ${KWDBTS2_SERVER_LIB}
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 

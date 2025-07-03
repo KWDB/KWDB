@@ -434,7 +434,7 @@ DatumPtr SortRowChunk::GetRowData() {
 }
 
 DatumPtr SortRowChunk::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
-  if (!col_info_[col].is_string) {
+  if (IsNull(row, col) || !col_info_[col].is_string) {
     return nullptr;
   }
   if (force_constant_) {

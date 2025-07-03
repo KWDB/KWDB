@@ -3152,6 +3152,7 @@ type EvalContext struct {
 	GroupWindow         *GroupWindow
 	// IsProcedure is true when the the SQL exec in procedure.
 	IsProcedure bool
+	Kwengineversion     string
 }
 
 // GroupWindow record group_window information.

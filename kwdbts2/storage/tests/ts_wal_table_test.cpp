@@ -340,7 +340,8 @@ TEST_F(TestTSWALTable, mulitiInsert) {
   wal2->Init(ctx_);
 
   vector<LogEntry*> redo_logs;
-  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   // metric log + tag log
   EXPECT_EQ(redo_logs.size(), thread_num * payload_num * batch_times + 1);
 
@@ -982,7 +983,8 @@ TEST_F(TestTSWALTable, incompleteRecover) {
 
   auto wal3_ = new WALMgr(kDbPath + "/", table_id_, range_group_id_, &opt_);
   wal3_->Init(ctx_);
-  wal3_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal3_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 1);
 
   for (auto& log : wal_logs) {
@@ -1060,7 +1062,8 @@ TEST_F(TestTSWALTable, incompleteRollbackRecover) {
 
   auto wal3_ = new WALMgr(kDbPath + "/", table_id_, range_group_id_, &opt_);
   wal3_->Init(ctx_);
-  wal3_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal3_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 0);
 
   for (auto& log : wal_logs) {
@@ -1125,7 +1128,8 @@ TEST_F(TestTSWALTable, deleteRollbackRecover) {
   wal2->Flush(ctx_);
 
   std::vector<LogEntry*> wal_logs;
-  wal2->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 3);
   for (auto& log : wal_logs) {
     delete log;
@@ -1133,7 +1137,7 @@ TEST_F(TestTSWALTable, deleteRollbackRecover) {
   wal_logs.clear();
 
   // Indicates the total number of logs. Two logs are duplicate data
-  wal2->ReadWALLog(wal_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  wal2->ReadWALLog(wal_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   ASSERT_EQ(wal_logs.size(), 5);
 
   delete wal2;
@@ -1250,7 +1254,7 @@ TEST_F(TestTSWALTable, putEntityRecover) {
   std::vector<k_uint32> scan_tags = {1, 2};
   std::vector<k_uint32> hps;
   make_hashpoint(&hps);
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
@@ -1316,7 +1320,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   // tagiterator
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   std::vector<k_uint32> hps;
   make_hashpoint(&hps);
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags, hps,&iter, 1), KStatus::SUCCESS);
@@ -1369,7 +1373,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   ASSERT_EQ(GetTableRows(table_id_, ranges_, ts_span), row_num);
 
   count = 0;
-  TagIterator *iter1;
+  BaseEntityIterator *iter1;
   ResultSet res1{(k_uint32) scan_tags.size()};
   // std::vector<k_uint32> hps = {0,1,2,3,4,5,6,7,8,9};
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter1, 1), KStatus::SUCCESS);
@@ -1399,7 +1403,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   ts_span = {start_ts, start_ts + row_num * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   ASSERT_EQ(GetTableRows(table_id_, ranges_, ts_span), row_num);
-  TagIterator *iter2;
+  BaseEntityIterator *iter2;
   ResultSet res2{(k_uint32) scan_tags.size()};
   // std::vector<k_uint32> hps = {0,1,2,3,4,5,6,7,8,9};
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter2, 1), KStatus::SUCCESS);

@@ -1,0 +1,38 @@
+> select  
+  subq_1.c0 as c0, 
+  subq_1.c0 as c1, 
+  subq_1.c0 as c2, 
+  subq_1.c0 as c3, 
+  subq_1.c0 as c4, 
+  subq_1.c0 as c5
+from 
+  (select  
+        subq_0.c6 as c0
+      from 
+        (select  
+              ref_0.abs_pos as c0, 
+              93 as c1, 
+              ref_0.cur_tool_len as c2, 
+              ref_0.sp_load as c3, 
+              ref_0.cur_tool_len_val as c4, 
+              ref_0.alarm_code as c5, 
+              ref_0.axis_unit as c6, 
+              ref_0.cnc_sw_mver as c7, 
+              ref_0.sprog_num as c8, 
+              ref_0.axis_unit as c9, 
+              ref_0.value5 as c10, 
+              ref_0.prog_seq_num as c11
+            from 
+              public.t_cnc as ref_0
+            where ref_0.axis_path is NULL
+            limit 106) as subq_0
+      where cast(coalesce(cast(null as "timestamp"),
+          pg_catalog.transaction_timestamp()) as "timestamp") IS NOT DISTINCT FROM cast(coalesce(case when (cast(null as _bytea) IS NOT DISTINCT FROM cast(null as _bytea)) 
+              or (cast(null as "timestamptz") >= cast(null as "timestamp")) then cast(null as "timestamp") else cast(null as "timestamp") end
+            ,
+          case when false then cast(null as "timestamp") else cast(null as "timestamp") end
+            ) as "timestamp")) as subq_1
+where subq_1.c0 is NULL;
+  c0 | c1 | c2 | c3 | c4 | c5
+-----+----+----+----+----+-----
+(0 rows)

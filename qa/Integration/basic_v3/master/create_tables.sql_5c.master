@@ -1,0 +1,259 @@
+> create ts database 中文;
+ERROR: Naming of time series objects only supports letters, numbers and symbols
+SQLSTATE: 42602
+> create ts database ts_db;
+CREATE TS DATABASE
+> use ts_db;
+SET
+> create table ts_db.中文(ts timestamp not null, a int) tags (size int);
+ERROR: Naming of time series objects only supports letters, numbers and symbols
+SQLSTATE: 42602
+> create table ts_db.st(ts timestamp not null, 中文 int) tags (size int);
+ERROR: Naming of column/tag in timeseries table only supports letters, numbers and symbols
+SQLSTATE: 42602
+> create table ts_db.st11(ts timestamp not null, a int) tags (中文 int);
+ERROR: Naming of column/tag in timeseries table only supports letters, numbers and symbols
+SQLSTATE: 42602
+> create table ts_db.st(
+                         k_timestamp timestamp not null,
+                         e1 int2  not null,
+                         e2 int,
+                         e3 int8 not null,
+                         e4 float,
+                         e5 float8 not null,
+                         e6 bool,
+                         e7 timestamp not null,
+                         e8 char(1023),
+                         e9 nchar(255) not null,
+                         e10 varchar(4096),
+                         e11 char not null,
+                         e12 varchar(255),
+                         e13 nchar not null,
+                         e14 varchar,
+                         e15 nvarchar(4096) not null,
+                         e16 varbytes,
+                         e17 nvarchar(255) not null,
+                         e18 nvarchar,
+                         e19 bytes not null,
+                         e20 bytes(1023),
+                         e21 varbytes(4096) not null,
+                         e22 varbytes(254)
+) TAGS (code1 int2,code2 int,code3 int8,flag BOOL,val1 float,val2 float8,location VARCHAR,color VARCHAR(65536),name BYTES(10),state BYTES(1023),tall VARBYTES,screen VARBYTES(65536),age CHAR(10),sex CHAR(1023),year NCHAR(10),type NCHAR(254));
+CREATE TABLE
+> create table ts_db.st1(
+                          k_timestamp timestamp not null,
+                          e1 int2  not null,
+                          e2 int,
+                          e3 int8 not null,
+                          e4 float,
+                          e5 float8 not null,
+                          e6 bool,
+                          e7 timestamp not null,
+                          e8 char(1023),
+                          e9 nchar(255) not null,
+                          e10 varchar(4096),
+                          e11 char not null,
+                          e12 varchar(255),
+                          e13 nchar not null,
+                          e14 varchar,
+                          e15 nvarchar(4096) not null,
+                          e16 varbytes,
+                          e17 nvarchar(255) not null,
+                          e18 nvarchar,
+                          e19 bytes not null,
+                          e20 bytes(1023),
+                          e21 varbytes(4096) not null,
+                          e22 varbytes(254)
+) TAGS (code1 int2,code2 int,code3 int8,flag BOOL,val1 float,val2 float8,location VARCHAR,color VARCHAR(65536),name BYTES(10),state BYTES(1023),tall VARBYTES,screen VARBYTES(65536),age CHAR(10),sex CHAR(1023),year NCHAR(10),type NCHAR(254));
+CREATE TABLE
+> create table ts_db.st2(
+                          k_timestamp timestamp not null,
+                          e1 int2  not null
+) TAGS (code1 int2,code2 int,code3 int8,flag BOOL,val1 float,val2 float8,location VARCHAR,color VARCHAR(65536),name BYTES(10),state BYTES(1023),tall VARBYTES,screen VARBYTES(65536),age CHAR(10),sex CHAR(1023),year NCHAR(10),type NCHAR(254));
+CREATE TABLE
+> create table ts_db.st3(
+                          k_timestamp timestamp not null,
+                          e1 int2  not null,
+                          e2 int,
+                          e3 int8 not null,
+                          e4 float,
+                          e5 float8 not null,
+                          e6 bool
+) ATTRIBUTES (code1 int2);
+CREATE TABLE
+> create table ts_db.st4(
+                          k_timestamp timestamp not null,
+                          e1 int2  not null,
+                          e2 int,
+                          e3 int8 not null,
+                          e4 float,
+                          e5 float8 not null,
+                          e6 bool,
+                          e7 timestamp not null,
+                          e8 char(1023),
+                          e9 nchar(255) not null,
+                          e10 varchar(4096),
+                          e11 char not null,
+                          e12 varchar(255),
+                          e13 nchar not null,
+                          e14 varchar,
+                          e15 nvarchar(4096) not null,
+                          e16 varbytes,
+                          e17 nvarchar(255) not null,
+                          e18 nvarchar,
+                          e19 bytes not null,
+                          e20 bytes(1023),
+                          e21 varbytes(4096) not null,
+                          e22 varbytes(254)
+) ATTRIBUTES (code1 int2,code2 int,code3 int8,flag BOOL,val1 float,val2 float8,location VARCHAR,color VARCHAR(65536),name BYTES(10),state BYTES(1023),tall VARBYTES,screen VARBYTES(65536));
+CREATE TABLE
+> CREATE TABLE
+    ts_db.sbt1 USING ts_db.st TAGS (100,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely')
+    ts_db.sbt2 USING ts_db.st1 TAGS (2, 20, 30, false, 1.5, 2.8, 'Beijing', 'Blue', 'Bob', 'Bad', '170cm', 'Dell', '2', 'Male', '2', 'Teacher')
+    ts_db.sbt3 USING ts_db.st2(code1, code2, code3, flag) TAGS (3, 30, 40, true)
+    ts_db.sbt4 USING ts_db.st3(code1) TAGS (4)
+    ts_db.sbt5 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (5, 50, 60, false, 2.5, 5.6, 'Chengdu', 'Yellow', 'David', 'Middle', '190cm', 'HP')
+    ts_db.sbt6 USING ts_db.st TAGS (6, 60, 70, true, 1.6, 3.2, 'Hangzhou', 'Pink', 'E', 'Great', '165cm', 'Asus', '26', 'Female', '2025', 'Engineer')
+    ts_db.sbt7 USING ts_db.st1 TAGS (7, 70, 80, false, 1.7, 3.5, 'Nanjing', 'Purple', 'Frank', 'Poor', '175cm', 'Huawei', '28', 'Male', '2026', 'Manager')
+    ts_db.sbt8 USING ts_db.st2(code1, code2, code3, flag) TAGS (8, 80, 90, true)
+    ts_db.sbt9 USING ts_db.st3(code1) TAGS (9)
+    ts_db.sbt10 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (10, 100, 110, false, 2.6, 5.9, 'Wuhan', 'Brown', 'Grace', 'High', '185cm', 'Toshiba')
+    ts_db.sbt11 USING ts_db.st TAGS (11, 110, 120, true, 1.1, 2.2, 'Xiamen', 'Black', 'Henry', 'Low', '155cm', 'Samsung', '30', 'Male', '2027', 'Analyst')
+    ts_db.sbt12 USING ts_db.st1 TAGS (12, 120, 130, false, 1.3, 2.6, 'Qingdao', 'White', 'Ivy', 'Excellent', '195cm', 'Xiaomi', '32', 'Female', '2028', 'Director')
+    ts_db.sbt13 USING ts_db.st2(code1, code2, code3, flag) TAGS (13, 130, 140, true)
+    ts_db.sbt14 USING ts_db.st3(code1) TAGS (14)
+    ts_db.sbt15 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (15, 150, 160, false, 2.7, 5.4, 'Suzhou', 'Grey', 'Jack', 'Medium', '145cm', 'Acer')
+    ts_db.sbt16 USING ts_db.st TAGS (16, 160, 170, true, 1.4, 2.8, 'Fuzhou', 'Orange', 'Kitty', 'Bad', '135cm', 'LG', '34', 'Female', '2029', 'Consultant')
+    ts_db.sbt17 USING ts_db.st1 TAGS (17, 170, 180, false, 1.7, 3.4, 'Chongqing', 'Cyan', 'Liam', 'Good', '125cm', 'Sony', '36', 'Male', '2030', 'Developer')
+    ts_db.sbt18 USING ts_db.st2(code1, code2, code3, flag) TAGS (18, 180, 190, true)
+    ts_db.sbt19 USING ts_db.st3(code1) TAGS (19)
+    ts_db.sbt20 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (20, 200, 210, false, 2.8, 5.2, 'Guangzhou', 'Pink', 'Molly', 'High', '115cm', 'Lenovo')
+    ts_db.sbt21 USING ts_db.st TAGS (21, 210, 220, true, 1.5, 2.9, 'Tianjin', 'Lime', 'Nancy', 'Middle', '105cm', 'Panasonic', '38', 'Female', '2031', 'CEO')
+    ts_db.sbt22 USING ts_db.st1 TAGS (22, 220, 230, false, 1.6, 3.1, 'Wuxi', 'Olive', 'Oscar', 'Low', '95cm', 'Sharp', '40', 'Male', '2032', 'CFO')
+    ts_db.sbt23 USING ts_db.st2(code1, code2, code3, flag) TAGS (23, 230, 240, true)
+    ts_db.sbt24 USING ts_db.st3(code1) TAGS (24)
+    ts_db.sbt25 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (25, 250, 260, false, 2.5, 5.5, 'Ningbo', 'Teal', 'Peter', 'Bad', '85cm', 'Apple')
+    ts_db.sbt26 USING ts_db.st TAGS (26, 260, 270, true, 1.6, 3.3, 'Jinan', 'Indigo', 'Queen', 'Excellent', '75cm', 'HTC', '42', 'Female', '2033', 'CTO')
+    ts_db.sbt27 USING ts_db.st1 TAGS (27, 270, 280, false, 1.7, 3.7, 'Kunming', 'Violet', 'Robert', 'Good', '65cm', 'Fujitsu', '44', 'Male', '2034', 'COO')
+    ts_db.sbt28 USING ts_db.st2(code1, code2, code3, flag) TAGS (28, 280, 290, true)
+    ts_db.sbt29 USING ts_db.st3(code1) TAGS (29)
+    ts_db.sbt30 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (30, 300, 310, false, 2.6, 5.8, 'Dalian', 'Tan', 'Sue', 'Poor', '55cm', 'Dell');
+  created | failed | skipped
+----------+--------+----------
+       30 |      0 |       0
+(1 row)
+> show tables;
+  table_name |   table_type
+-------------+-----------------
+  sbt1       | INSTANCE TABLE
+  sbt10      | INSTANCE TABLE
+  sbt11      | INSTANCE TABLE
+  sbt12      | INSTANCE TABLE
+  sbt13      | INSTANCE TABLE
+  sbt14      | INSTANCE TABLE
+  sbt15      | INSTANCE TABLE
+  sbt16      | INSTANCE TABLE
+  sbt17      | INSTANCE TABLE
+  sbt18      | INSTANCE TABLE
+  sbt19      | INSTANCE TABLE
+  sbt2       | INSTANCE TABLE
+  sbt20      | INSTANCE TABLE
+  sbt21      | INSTANCE TABLE
+  sbt22      | INSTANCE TABLE
+  sbt23      | INSTANCE TABLE
+  sbt24      | INSTANCE TABLE
+  sbt25      | INSTANCE TABLE
+  sbt26      | INSTANCE TABLE
+  sbt27      | INSTANCE TABLE
+  sbt28      | INSTANCE TABLE
+  sbt29      | INSTANCE TABLE
+  sbt3       | INSTANCE TABLE
+  sbt30      | INSTANCE TABLE
+  sbt4       | INSTANCE TABLE
+  sbt5       | INSTANCE TABLE
+  sbt6       | INSTANCE TABLE
+  sbt7       | INSTANCE TABLE
+  sbt8       | INSTANCE TABLE
+  sbt9       | INSTANCE TABLE
+  st         | TEMPLATE TABLE
+  st1        | TEMPLATE TABLE
+  st2        | TEMPLATE TABLE
+  st3        | TEMPLATE TABLE
+  st4        | TEMPLATE TABLE
+(35 rows)
+> CREATE TABLE
+    ts_db.sbt1 USING ts_db.st TAGS (100,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely')
+    ts_db.sbt2 USING ts_db.st1 TAGS (2, 20, 30, false, 1.5, 2.8, 'Beijing', 'Blue', 'Bob', 'Bad', '170cm', 'Dell', '2', 'Male', '2', 'Teacher')
+    ts_db.sbt3 USING ts_db.st2(code1, code2, code3, flag) TAGS (3, 30, 40, true)
+    ts_db.sbt4 USING ts_db.st3(code1) TAGS (4)
+    ts_db.sbt5 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (5, 50, 60, false, 2.5, 5.6, 'Chengdu', 'Yellow', 'David', 'Middle', '190cm', 'HP')
+    ts_db.sbt6 USING ts_db.st TAGS (6, 60, 70, true, 1.6, 3.2, 'Hangzhou', 'Pink', 'E', 'Great', '165cm', 'Asus', '26', 'Female', '2025', 'Engineer')
+    ts_db.sbt7 USING ts_db.st1 TAGS (7, 70, 80, false, 1.7, 3.5, 'Nanjing', 'Purple', 'Frank', 'Poor', '175cm', 'Huawei', '28', 'Male', '2026', 'Manager')
+    ts_db.sbt8 USING ts_db.st2(code1, code2, code3, flag) TAGS (8, 80, 90, true)
+    ts_db.sbt9 USING ts_db.st3(code1) TAGS (9)
+    ts_db.sbt10 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (10, 100, 110, false, 2.6, 5.9, 'Wuhan', 'Brown', 'Grace', 'High', '185cm', 'Toshiba')
+    ts_db.sbt11 USING ts_db.st TAGS (11, 110, 120, true, 1.1, 2.2, 'Xiamen', 'Black', 'Henry', 'Low', '155cm', 'Samsung', '30', 'Male', '2027', 'Analyst')
+    ts_db.sbt12 USING ts_db.st1 TAGS (12, 120, 130, false, 1.3, 2.6, 'Qingdao', 'White', 'Ivy', 'Excellent', '195cm', 'Xiaomi', '32', 'Female', '2028', 'Director')
+    ts_db.sbt13 USING ts_db.st2(code1, code2, code3, flag) TAGS (13, 130, 140, true)
+    ts_db.sbt14 USING ts_db.st3(code1) TAGS (14)
+    ts_db.sbt15 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (15, 150, 160, false, 2.7, 5.4, 'Suzhou', 'Grey', 'Jack', 'Medium', '145cm', 'Acer')
+    ts_db.sbt16 USING ts_db.st TAGS (16, 160, 170, true, 1.4, 2.8, 'Fuzhou', 'Orange', 'Kitty', 'Bad', '135cm', 'LG', '34', 'Female', '2029', 'Consultant')
+    ts_db.sbt17 USING ts_db.st1 TAGS (17, 170, 180, false, 1.7, 3.4, 'Chongqing', 'Cyan', 'Liam', 'Good', '125cm', 'Sony', '36', 'Male', '2030', 'Developer')
+    ts_db.sbt18 USING ts_db.st2(code1, code2, code3, flag) TAGS (18, 180, 190, true)
+    ts_db.sbt19 USING ts_db.st3(code1) TAGS (19)
+    ts_db.sbt20 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (20, 200, 210, false, 2.8, 5.2, 'Guangzhou', 'Pink', 'Molly', 'High', '115cm', 'Lenovo')
+    ts_db.sbt21 USING ts_db.st TAGS (21, 210, 220, true, 1.5, 2.9, 'Tianjin', 'Lime', 'Nancy', 'Middle', '105cm', 'Panasonic', '38', 'Female', '2031', 'CEO')
+    ts_db.sbt22 USING ts_db.st1 TAGS (22, 220, 230, false, 1.6, 3.1, 'Wuxi', 'Olive', 'Oscar', 'Low', '95cm', 'Sharp', '40', 'Male', '2032', 'CFO')
+    ts_db.sbt23 USING ts_db.st2(code1, code2, code3, flag) TAGS (23, 230, 240, true)
+    ts_db.sbt24 USING ts_db.st3(code1) TAGS (24)
+    ts_db.sbt25 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (25, 250, 260, false, 2.5, 5.5, 'Ningbo', 'Teal', 'Peter', 'Bad', '85cm', 'Apple')
+    ts_db.sbt26 USING ts_db.st TAGS (26, 260, 270, true, 1.6, 3.3, 'Jinan', 'Indigo', 'Queen', 'Excellent', '75cm', 'HTC', '42', 'Female', '2033', 'CTO')
+    ts_db.sbt27 USING ts_db.st1 TAGS (27, 270, 280, false, 1.7, 3.7, 'Kunming', 'Violet', 'Robert', 'Good', '65cm', 'Fujitsu', '44', 'Male', '2034', 'COO')
+    ts_db.sbt28 USING ts_db.st2(code1, code2, code3, flag) TAGS (28, 280, 290, true)
+    ts_db.sbt29 USING ts_db.st3(code1) TAGS (29)
+    ts_db.sbt30 USING ts_db.st4(code1, code2, code3, flag, val1, val2, location, color, name, state, tall, screen) TAGS (30, 300, 310, false, 2.6, 5.8, 'Dalian', 'Tan', 'Sue', 'Poor', '55cm', 'Dell');
+  created | failed | skipped
+----------+--------+----------
+        0 |      0 |      30
+(1 row)
+> show tables;
+  table_name |   table_type
+-------------+-----------------
+  sbt1       | INSTANCE TABLE
+  sbt10      | INSTANCE TABLE
+  sbt11      | INSTANCE TABLE
+  sbt12      | INSTANCE TABLE
+  sbt13      | INSTANCE TABLE
+  sbt14      | INSTANCE TABLE
+  sbt15      | INSTANCE TABLE
+  sbt16      | INSTANCE TABLE
+  sbt17      | INSTANCE TABLE
+  sbt18      | INSTANCE TABLE
+  sbt19      | INSTANCE TABLE
+  sbt2       | INSTANCE TABLE
+  sbt20      | INSTANCE TABLE
+  sbt21      | INSTANCE TABLE
+  sbt22      | INSTANCE TABLE
+  sbt23      | INSTANCE TABLE
+  sbt24      | INSTANCE TABLE
+  sbt25      | INSTANCE TABLE
+  sbt26      | INSTANCE TABLE
+  sbt27      | INSTANCE TABLE
+  sbt28      | INSTANCE TABLE
+  sbt29      | INSTANCE TABLE
+  sbt3       | INSTANCE TABLE
+  sbt30      | INSTANCE TABLE
+  sbt4       | INSTANCE TABLE
+  sbt5       | INSTANCE TABLE
+  sbt6       | INSTANCE TABLE
+  sbt7       | INSTANCE TABLE
+  sbt8       | INSTANCE TABLE
+  sbt9       | INSTANCE TABLE
+  st         | TEMPLATE TABLE
+  st1        | TEMPLATE TABLE
+  st2        | TEMPLATE TABLE
+  st3        | TEMPLATE TABLE
+  st4        | TEMPLATE TABLE
+(35 rows)
+> drop database ts_db;
+DROP DATABASE

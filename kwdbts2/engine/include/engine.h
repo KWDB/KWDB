@@ -27,6 +27,7 @@
 #include "cm_kwdb_context.h"
 #include "ts_table.h"
 #include "st_logged_entity_group.h"
+#include "ts_table_schema_manager.h"
 
 using namespace kwdbts; // NOLINT
 const TSStatus kTsSuccess = {NULL, 0};
@@ -113,6 +114,12 @@ struct TSEngine {
   virtual KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                              bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
                              uint32_t version = 0) = 0;
+
+
+  virtual KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+                                 std::shared_ptr<TsTableSchemaManager>& schema) {
+    return KStatus::FAIL;
+  }
 
   /**
   * @brief get meta info of ts table
@@ -344,6 +351,25 @@ struct TSEngine {
     return KStatus::FAIL;
   }
 
+  virtual KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                                uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
+                                int32_t* row_num) {
+    return FAIL;
+  }
+
+  virtual KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                                 TSSlice* data, int32_t* row_num) {
+    return FAIL;
+  }
+
+  virtual KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
+    return FAIL;
+  }
+
+  virtual KStatus BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
+    return FAIL;
+  }
+
   /**
  * @brief  calculate pushdown
  * @param[in] req
@@ -351,7 +377,7 @@ struct TSEngine {
  *
  * @return KStatus
  */
-  virtual KStatus Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) = 0;
+  virtual KStatus Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp);
 
   /**
   * @brief Flush wal to disk.
@@ -478,6 +504,7 @@ struct TSEngine {
 
   virtual KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) = 0;
 
+  virtual KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) = 0;
   /**
     * @brief Modify a column type of the time series table
     *
@@ -528,6 +555,9 @@ struct TSEngine {
    * @param capacity
    */
   virtual void AlterTableCacheCapacity(int capacity) = 0;
+
+ protected:
+  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };
 
 namespace kwdbts {
@@ -620,7 +650,6 @@ class TSEngineImpl : public TSEngine {
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
                               const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
 
-  KStatus Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) override;
 
   KStatus FlushBuffer(kwdbContext_p ctx) override;
 
@@ -658,6 +687,10 @@ class TSEngineImpl : public TSEngine {
                      TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override;
+
+  KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) override {
+    return SUCCESS;
+  }
 
   KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
                           TSSlice new_column, TSSlice origin_column,
@@ -716,10 +749,12 @@ class TSEngineImpl : public TSEngine {
 
   int IsSingleNode();
 
+  static KStatus parseMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
+                          std::vector<TagInfo>& tag_schema);
+
  private:
   string ts_store_path_;
   EngineOptions options_;
-  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
   KLatch* tables_lock_;
 
   // store all snapshot objects of this storage engine.
@@ -732,9 +767,6 @@ class TSEngineImpl : public TSEngine {
   WALMgr* wal_sys_{nullptr};
   TSxMgr* tsx_manager_sys_{nullptr};
   std::map<uint64_t, uint64_t> range_indexes_map_{};
-
-  KStatus parseMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
-                          std::vector<TagInfo>& tag_schema);
 
   // insert snapshot object into map snapshots_, and allocate snaphost id for this object.
   uint64_t insertToSnapshots(TsTableEntitiesSnapshot* snapshot);
@@ -770,7 +802,7 @@ class TSEngineImpl : public TSEngine {
     switch (mode) {
     case WALMode::OFF:
       return "None WAL";
-    case WALMode::ON:
+    case WALMode::FLUSH:
       return "WAL without sync";
     case WALMode::SYNC:
       return " WAL with sync";
@@ -829,8 +861,6 @@ class AggCalculator {
   void UndoAgg(void* min_base, void* max_base, void* sum_base, void* count_base);
 
  private:
-  int cmp(void* l, void* r);
-
   bool isnull(size_t row);
 
   bool isDeleted(char* delete_flags, size_t row);
@@ -905,5 +935,35 @@ class VarColAggCalculator {
   int32_t size_;
   uint16_t count_;
 };
+
+template<class T>
+bool AddAggInteger(T& a, T b) {
+  T c;
+  if (__builtin_add_overflow(a, b, &c)) {
+    return true;
+  }
+  a = c;
+  return false;
+}
+
+template<class T1, class T2>
+bool AddAggInteger(T1& a, T2 b) {
+  T1 c;
+  if (__builtin_add_overflow(a, b, &c)) {
+    return true;
+  }
+  a = c;
+  return false;
+}
+
+template<class T1, class T2>
+void AddAggFloat(T1& a, T2 b) {
+  a = a + b;
+}
+
+template<class T>
+void SubAgg(T& a, T b) {
+  a = a - b;
+}
 
 }  //  namespace kwdbts

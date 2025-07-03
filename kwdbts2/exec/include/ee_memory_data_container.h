@@ -21,7 +21,6 @@
 
 #include "kwdb_type.h"
 #include "ee_data_chunk.h"
-// #include "rocksdb/db.h"
 #include "ee_pb_plan.pb.h"
 
 namespace kwdbts {

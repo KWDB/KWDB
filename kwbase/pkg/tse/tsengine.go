@@ -24,7 +24,7 @@
 package tse
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -90,6 +90,9 @@ const (
 	// Day is one day to hours
 	Day = 24 * Hour
 )
+
+// KwEngineVersion indicates which verson storage engine to use
+var KwEngineVersion = envutil.EnvOrDefaultString("KW_ENGINE_VERSION", "1")
 
 // TsPayloadSizeLimit is the max size of per payload.
 var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
@@ -266,6 +269,7 @@ type TsEngine struct {
 	tdb     *C.TSEngine
 	opened  bool
 	openCh  chan struct{}
+	Version string
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -333,11 +337,18 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 	},
 )
 
+// TsWALLevel indicates the WAL level
+var TsWALLevel = settings.RegisterPublicIntSetting(
+	"ts.wal.wal_level",
+	"ts WAL level, default 2(flush)",
+	2,
+)
+
 // TsWALCheckpointInterval indicates the wal checkpoint interval of TsEngine
 var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
 	"ts WAL checkpoint interval in TsEngine",
-	time.Minute,
+	2*time.Minute,
 )
 
 // SQLTimeseriesTrace set trace for timeseries.
@@ -383,6 +394,7 @@ func NewTsEngine(
 		stopper: stopper,
 		cfg:     cfg,
 		openCh:  make(chan struct{}),
+		Version: KwEngineVersion,
 	}
 
 	return r, nil
@@ -441,6 +453,9 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		Trace_on_off_list:         goToTSSlice([]byte(traceLevel)),
 	}
 
+	cEngineVersion := C.CString(r.Version)
+	defer C.free(unsafe.Pointer(cEngineVersion))
+
 	if len(rangeIndex) == 0 {
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
@@ -454,6 +469,7 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				engine_version:    cEngineVersion,
 			},
 			nil,
 			C.uint64_t(0))
@@ -481,6 +497,7 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				engine_version:    cEngineVersion,
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
@@ -625,6 +642,16 @@ func (r *TsEngine) DropNormalTagIndex(
 	return nil
 }
 
+// AlterLifetime alter lifetime interval for this table.
+func (r *TsEngine) AlterLifetime(tableID uint64, lifeTime uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterLifetime(r.tdb, C.TSTableID(tableID), C.uint64_t(lifeTime))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to set table lifetime")
+	}
+	return nil
+}
+
 // AlterPartitionInterval alter partition interval for ts table.
 func (r *TsEngine) AlterPartitionInterval(tableID uint64, partitionInterval uint64) error {
 	r.checkOrWaitForOpen()
@@ -725,8 +752,14 @@ func (r *TsEngine) PutData(
 	var affect EntitiesAffect
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
-	status := C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-		&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	var status C.TSStatus
+	if r.Version == "2" {
+		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	} else {
+		status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}
@@ -1470,6 +1503,11 @@ func (r *TsEngine) DeleteData(
 
 	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
 	for i := 0; i < len(tsSpans); i++ {
+		// todo(liangbo01) ts span invaild, ignore it.
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
 		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
 		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
 	}

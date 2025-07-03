@@ -200,7 +200,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	if p.ExecCfg().StartMode != StartSingleNode {
 		p.EvalContext().StartDistributeMode = true
 	}
-
+	p.EvalContext().Kwengineversion = p.Kwengineversion
 	opc := &p.optPlanningCtx
 	opc.reset()
 

@@ -290,7 +290,7 @@ func BuildInputForTSInsert(
 	}
 
 	// For insert in distributed cluster mode, the line format payload needs to be constructed.
-	if evalCtx.StartDistributeMode {
+	if evalCtx.StartDistributeMode || evalCtx.Kwengineversion == "2" {
 		return BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
 	}
 	// partition input data based on primary tag values
@@ -841,7 +841,32 @@ func (ts *TsPayload) FillColData(
 		case types.T_nchar:
 			copy(ts.payload[offset:], *v)
 
-		case oid.T_varchar, types.T_nvarchar:
+		case oid.T_varchar:
+			if IsPrimaryTagCol {
+				copy(ts.payload[offset:], *v)
+			} else {
+				//copy len
+				dataOffset := 0
+				if IsTagCol {
+					dataOffset = independentOffset - ts.header.otherTagBitmapOffset
+				} else {
+					dataOffset = independentOffset - columnBitmapOffset
+				}
+				binary.LittleEndian.PutUint32(ts.payload[offset:], uint32(dataOffset))
+				addSize := len(*v) + VarDataLenSize + 1 // \0
+				if independentOffset+addSize > len(ts.payload) {
+					// grow payload size
+					newPayload := make([]byte, len(ts.payload)+addSize)
+					copy(newPayload, ts.payload)
+					ts.payload = newPayload
+				}
+				// next var column offset
+				binary.LittleEndian.PutUint16(ts.payload[independentOffset:], uint16(len(*v)+1)) // \0
+				copy(ts.payload[independentOffset+VarDataLenSize:], *v)
+				independentOffset += addSize
+			}
+
+		case types.T_nvarchar:
 			if IsPrimaryTagCol {
 				copy(ts.payload[offset:], *v)
 			} else {
@@ -1084,44 +1109,74 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tableID), hashPoints)
-		groupRowBytes := make([][]byte, len(priTagRowIdx))
-		groupRowTime := make([]int64, len(priTagRowIdx))
-		// TsRowPutRequest need min and max timestamp.
-		minTimestamp := int64(math.MaxInt64)
-		maxTimeStamp := int64(math.MinInt64)
-		valueSize := int32(0)
-		for i, idx := range priTagRowIdx {
-			groupRowBytes[i] = rowBytes[idx]
-			groupRowTime[i] = rowTimestamps[idx]
-			if rowTimestamps[idx] > maxTimeStamp {
-				maxTimeStamp = rowTimestamps[idx]
+		if !evalCtx.StartSinglenode {
+			groupRowBytes := make([][]byte, len(priTagRowIdx))
+			groupRowTime := make([]int64, len(priTagRowIdx))
+			// TsRowPutRequest need min and max timestamp.
+			minTimestamp := int64(math.MaxInt64)
+			maxTimeStamp := int64(math.MinInt64)
+			valueSize := int32(0)
+			for i, idx := range priTagRowIdx {
+				groupRowBytes[i] = rowBytes[idx]
+				groupRowTime[i] = rowTimestamps[idx]
+				if rowTimestamps[idx] > maxTimeStamp {
+					maxTimeStamp = rowTimestamps[idx]
+				}
+				if rowTimestamps[idx] < minTimestamp {
+					minTimestamp = rowTimestamps[idx]
+				}
+				valueSize += int32(len(groupRowBytes[i]))
 			}
-			if rowTimestamps[idx] < minTimestamp {
-				minTimestamp = rowTimestamps[idx]
+			var startKey roachpb.Key
+			var endKey roachpb.Key
+			if pArgs.RowType == OnlyTag {
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			} else {
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
 			}
-			valueSize += int32(len(groupRowBytes[i]))
-		}
-		var startKey roachpb.Key
-		var endKey roachpb.Key
-		if pArgs.RowType == OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupRowBytes,
+				RowTimestamps: groupRowTime,
+				StartKey:      startKey,
+				EndKey:        endKey,
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			}
+			count++
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
+				rowNum++
+			}
+
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			}
+			count++
 		}
-		allPayloads[count] = &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(len(priTagRowIdx)),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupRowBytes,
-			RowTimestamps: groupRowTime,
-			StartKey:      startKey,
-			EndKey:        endKey,
-			ValueSize:     valueSize,
-			HashNum:       hashNum,
-		}
-		count++
 	}
 	for id, err := range rowIDMapError {
 		if err != nil {
@@ -1476,46 +1531,76 @@ func BuildRowBytesForTsInsert(
 		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tableID), hashPoints)
-		groupRowBytes := make([][]byte, len(priTagRowIdx))
-		groupRowTime := make([]int64, len(priTagRowIdx))
-		// TsRowPutRequest need min and max timestamp.
-		minTimestamp := int64(math.MaxInt64)
-		maxTimeStamp := int64(math.MinInt64)
-		valueSize := int32(0)
-		for i, idx := range priTagRowIdx {
-			groupRowBytes[i] = rowBytes[idx]
-			groupRowTime[i] = rowTimestamps[idx]
-			if rowTimestamps[idx] > maxTimeStamp {
-				maxTimeStamp = rowTimestamps[idx]
+		if evalCtx.StartDistributeMode {
+			groupRowBytes := make([][]byte, len(priTagRowIdx))
+			groupRowTime := make([]int64, len(priTagRowIdx))
+			// TsRowPutRequest need min and max timestamp.
+			minTimestamp := int64(math.MaxInt64)
+			maxTimeStamp := int64(math.MinInt64)
+			valueSize := int32(0)
+			for i, idx := range priTagRowIdx {
+				groupRowBytes[i] = rowBytes[idx]
+				groupRowTime[i] = rowTimestamps[idx]
+				if rowTimestamps[idx] > maxTimeStamp {
+					maxTimeStamp = rowTimestamps[idx]
+				}
+				if rowTimestamps[idx] < minTimestamp {
+					minTimestamp = rowTimestamps[idx]
+				}
+				valueSize += int32(len(groupRowBytes[i]))
+				//fmt.Printf("-------rowBytes------\n")
+				//fmt.Printf("row[%d]:%v\n", i, groupRowBytes[i])
 			}
-			if rowTimestamps[idx] < minTimestamp {
-				minTimestamp = rowTimestamps[idx]
+			var startKey roachpb.Key
+			var endKey roachpb.Key
+			if pArgs.RowType == OnlyTag {
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			} else {
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
 			}
-			valueSize += int32(len(groupRowBytes[i]))
-			//fmt.Printf("-------rowBytes------\n")
-			//fmt.Printf("row[%d]:%v\n", i, groupRowBytes[i])
-		}
-		var startKey roachpb.Key
-		var endKey roachpb.Key
-		if pArgs.RowType == OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupRowBytes,
+				RowTimestamps: groupRowTime,
+				StartKey:      startKey,
+				EndKey:        endKey,
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			}
+			count++
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
+				rowNum++
+			}
+
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			}
+			count++
 		}
-		allPayloads[count] = &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(len(priTagRowIdx)),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupRowBytes,
-			RowTimestamps: groupRowTime,
-			StartKey:      startKey,
-			EndKey:        endKey,
-			ValueSize:     valueSize,
-			HashNum:       hashNum,
-		}
-		count++
 	}
 	payloadNodeMap := make(map[int]*sqlbase.PayloadForDistTSInsert)
 	payloadNodeMap[int(evalCtx.NodeID)] = &sqlbase.PayloadForDistTSInsert{
@@ -1597,29 +1682,40 @@ func BuildPreparePayloadForTsInsert(
 	binary.LittleEndian.PutUint32(payload[offset:], uint32(rowNum))
 	offset += RowNumSize
 
-	if evalCtx.StartSinglenode {
-		if pArgs.DataColNum == 0 {
-			// without data column
-			payload[offset] = byte(2)
-		} else if pArgs.AllTagNum == 0 {
-			// only data column
-			payload[offset] = byte(1)
-		} else {
-			// both tag And data
-			payload[offset] = byte(0)
-		}
-	} else {
-		switch pArgs.RowType {
-		case BothTagAndData:
-			payload[offset] = RowType[BothTagAndData]
-		case OnlyData:
-			payload[offset] = RowType[OnlyData]
-		case OnlyTag:
-			payload[offset] = RowType[OnlyTag]
-		default:
-			payload[offset] = RowType[BothTagAndData]
-		}
+	switch pArgs.RowType {
+	case BothTagAndData:
+		payload[offset] = RowType[BothTagAndData]
+	case OnlyData:
+		payload[offset] = RowType[OnlyData]
+	case OnlyTag:
+		payload[offset] = RowType[OnlyTag]
+	default:
+		payload[offset] = RowType[BothTagAndData]
 	}
+
+	// if evalCtx.StartSinglenode {
+	// 	if pArgs.DataColNum == 0 {
+	// 		// without data column
+	// 		payload[offset] = byte(2)
+	// 	} else if pArgs.AllTagNum == 0 {
+	// 		// only data column
+	// 		payload[offset] = byte(1)
+	// 	} else {
+	// 		// both tag And data
+	// 		payload[offset] = byte(0)
+	// 	}
+	// } else {
+	// 	switch pArgs.RowType {
+	// 	case BothTagAndData:
+	// 		payload[offset] = RowType[BothTagAndData]
+	// 	case OnlyData:
+	// 		payload[offset] = RowType[OnlyData]
+	// 	case OnlyTag:
+	// 		payload[offset] = RowType[OnlyTag]
+	// 	default:
+	// 		payload[offset] = RowType[BothTagAndData]
+	// 	}
+	// }
 	offset++
 
 	// primaryTag len

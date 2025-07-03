@@ -1,0 +1,14 @@
+> CREATE FUNCTION test21(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function test21()
+    s1 = "\\"
+    return s1, ""
+end'
+END;
+ERROR: The number of test21 function parameters does not match
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)

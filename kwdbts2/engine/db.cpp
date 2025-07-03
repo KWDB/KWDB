@@ -24,6 +24,8 @@
 #include "sys_utils.h"
 #include "ee_mempool.h"
 #include "st_tier.h"
+#include "ts_engine.h"
+
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
 #endif
@@ -33,6 +35,7 @@ DedupRule g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
 std::shared_mutex g_settings_mutex;
 bool g_engine_initialized = false;
 bool g_go_start_service = true;
+int g_engine_version{1};
 TSEngine* g_engine_ = nullptr;
 
 std::atomic<bool> g_is_vacuuming{false};
@@ -125,13 +128,24 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
     }
   }
 
-  InitCompressInfo();
-
   TSEngine* ts_engine;
-  s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
-  if (s == KStatus::FAIL) {
-    return ToTsStatus("OpenTSEngine Internal Error!");
+  if (strcmp(options.engine_version, "2") == 0) {
+    g_engine_version = 2;
+    auto engine = new TSEngineV2Impl(opts);
+    auto s = engine->Init(ctx);
+    if (s != KStatus::SUCCESS) {
+      return ToTsStatus("open TSEngineV2Impl Error!");
+    }
+    LOG_INFO("TSEngineV2Impl created success.");
+    ts_engine = engine;
+  } else {
+    InitCompressInfo();
+    s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
+    if (s == KStatus::FAIL) {
+      return ToTsStatus("OpenTSEngine Internal Error!");
+    }
   }
+
   *engine = ts_engine;
   g_engine_ = ts_engine;
   g_engine_initialized = true;
@@ -186,75 +200,6 @@ TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, T
   return kTsSuccess;
 }
 
-TSStatus TSGetRangeGroups(TSEngine* engine, TSTableID table_id, RangeGroups *range_groups) {
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-
-  if (range_groups == nullptr) {
-    return ToTsStatus("RangeGroups is nullptr!");
-  }
-  s = engine->GetRangeGroups(ctx_p, table_id, range_groups);
-  return kTsSuccess;
-}
-
-TSStatus TSUpdateRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroups range_groups) {
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  for (int i = 0; i < range_groups.len; ++i) {
-    LOG_INFO("table %lu, update rangeGroup %lu to %s", table_id, range_groups.ranges[i].range_group_id,
-      range_groups.ranges[i].typ == 0 ? "leader" : "follower");
-  }
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-
-  std::vector<RangeGroup> ranges(range_groups.ranges, range_groups.ranges + range_groups.len);
-  for (int i = 0; i < ranges.size(); i++) {
-    s = engine->UpdateRangeGroup(ctx_p, table_id, ranges[i]);
-    if (s != KStatus::SUCCESS) {
-        LOG_INFO("table %lu, update rangeGroup %lu to %s,error!!!!!!!!!!!!!!!!",
-                  table_id, range_groups.ranges[i].range_group_id,
-                  range_groups.ranges[i].typ == 0 ? "leader" : "follower");
-        // TODO(fyx): tmp ignore no exist RangeGroup Update Error
-      return ToTsStatus("UpdateRangeGroup Error!");
-    }
-  }
-  return kTsSuccess;
-}
-
-TSStatus TSCreateRangeGroup(TSEngine* engine, TSTableID table_id, TSSlice schema, RangeGroups range_groups) {
-  KWDB_DURATION(StStatistics::Get().create_group);
-  kwdbContext_t context;
-  LOG_INFO("table %lu, create rangeGroup %lu to %s", table_id, range_groups.ranges[0].range_group_id,
-            range_groups.ranges[0].typ == 0 ? "leader" : "follower")
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-
-  roachpb::CreateTsTable meta;
-  // parse from schema protobuf
-  if (!meta.ParseFromArray(schema.data, schema.len)) {
-    return ToTsStatus("ParseFromArray Internal Error!");
-  }
-  std::vector<RangeGroup> ranges(range_groups.ranges, range_groups.ranges + range_groups.len);
-  for (int i = 0; i < ranges.size(); i++) {
-    s = engine->CreateRangeGroup(ctx_p, table_id, &meta, ranges[i]);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("table %lu, create rangeGroupFailedAAAAAAAAA %lu to %s", table_id, range_groups.ranges[0].range_group_id,
-                range_groups.ranges[0].typ == 0 ? "leader" : "follower")
-      return ToTsStatus("CreateRangeGroup Error!");
-    }
-  }
-  return kTsSuccess;
-}
-
 TSStatus TSIsTsTableExist(TSEngine* engine, TSTableID table_id, bool* find) {
   *find = KFALSE;
   kwdbContext_t context;
@@ -303,6 +248,9 @@ TSStatus TSDropResidualTsTable(TSEngine* engine) {
 }
 
 TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts) {
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -328,6 +276,9 @@ TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts)
 }
 
 TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id) {
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -355,6 +306,9 @@ TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID ta
 }
 
 TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_version) {
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   bool expected = false;
   if (!g_is_vacuuming.compare_exchange_strong(expected, true)) {
     LOG_INFO("The engine is vacuuming, ignore vacuum request");
@@ -383,6 +337,9 @@ TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_versi
 }
 
 TSStatus TSMigrateTsTable(TSEngine* engine, TSTableID table_id) {
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   if (TsTier::GetInstance().TierEnabled()) {
     bool expected = false;
     if (!g_is_migrating.compare_exchange_strong(expected, true)) {
@@ -714,14 +671,19 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
   } else if ("ts.dedup.rule" == key) {
     if ("override" == value) {
       g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
     } else if ("merge" == value) {
       g_dedup_rule = kwdbts::DedupRule::MERGE;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::MERGE;
     } else if ("keep" == value) {
       g_dedup_rule = kwdbts::DedupRule::KEEP;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
     } else if ("reject" == value) {
       g_dedup_rule = kwdbts::DedupRule::REJECT;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::REJECT;
     } else if ("discard" == value) {
       g_dedup_rule = kwdbts::DedupRule::DISCARD;
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::DISCARD;
     }
   } else if ("ts.mount.max_limit" == key) {
     g_max_mount_cnt_ = atoi(value.c_str());
@@ -852,6 +814,10 @@ void TSSetClusterSetting(TSSlice key, TSSlice value) {
   } else {
     iter->second = value_set;
   }
+  kwdbContext_p ctx;
+  if (g_engine_ != nullptr) {
+    g_engine_->UpdateSetting(ctx);
+  }
   return;
 }
 
@@ -881,6 +847,9 @@ TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp en
 }
 
 TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* row_size) {
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -903,6 +872,9 @@ TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* ro
 // Query the total amount of data within the range (an approximate value is sufficient)
 TSStatus TSGetDataVolume(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
                         KwTsSpan ts_span, uint64_t* volume) {
+  if (g_engine_version == 2) {
+    return kTsSuccess;
+  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -1014,30 +986,39 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetTsTable Error!");
   }
-  TSSlice payload;
-  for (size_t i = 0; i < payload_num; i++) {
-    s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
-    if (s != KStatus::SUCCESS) {
-      uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
-      if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
-        LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
-        return ToTsStatus("CheckAndAddSchemaVersion Error!");
+  if (g_engine_version == 1) {
+    for (size_t i = 0; i < payload_num; i++) {
+      TSSlice payload;
+      s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
+      if (s != KStatus::SUCCESS) {
+        uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
+        if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
+          LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
+          return ToTsStatus("CheckAndAddSchemaVersion Error!");
+        }
+        if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
+          LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
+          return ToTsStatus("ConvertRowTypePayload Error!");
+        }
       }
-      if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
-        LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
-        return ToTsStatus("ConvertRowTypePayload Error!");
+      Defer defer([&](){ free(payload.data); });
+      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
+                           inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+      if (s != KStatus::SUCCESS) {
+        std::ostringstream ss;
+        ss << tmp_range_group_id;
+        return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
       }
     }
+  } else {
     // todo(liangbo01) current interface dedup result no support multi-payload insert.
-    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
+    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
                         inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
     if (s != KStatus::SUCCESS) {
-      free(payload.data);
       std::ostringstream ss;
       ss << tmp_range_group_id;
       return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
     }
-    free(payload.data);
   }
   return kTsSuccess;
 }
@@ -1198,6 +1179,64 @@ TSStatus TSDeleteSnapshot(TSEngine* engine, TSTableID table_id, uint64_t snapsho
   return kTsSuccess;
 }
 
+TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, int32_t* row_num) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->ReadBatchData(ctx, table_id, table_version, begin_hash, end_hash, ts_span, job_id, data, row_num);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("ReadBatchData Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                          TSSlice* data, int32_t* row_num) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->WriteBatchData(ctx, table_id, table_version, job_id, data, row_num);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("WriteBatchData Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->CancelBatchJob(ctx, job_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("CancelBatchJob Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->BatchJobFinish(ctx, job_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("BatchJobFinish Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
 TSStatus TSClose(TSEngine* engine) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
@@ -1326,6 +1365,20 @@ TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t
   s = engine->AlterPartitionInterval(ctx_p, table_id, partition_interval);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("AlterPartitionInterval Error!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t life_time) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->AlterLifetime(ctx_p, table_id, life_time);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("AlterLifetime Error!");
   }
   return kTsSuccess;
 }

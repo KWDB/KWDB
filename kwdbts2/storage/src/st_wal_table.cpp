@@ -89,7 +89,7 @@ LoggedTsEntityGroup::LoggedTsEntityGroup(kwdbContext_p ctx, MMapRootTableManager
   wal_manager_ = KNEW WALMgr(db_path, table_id, range.range_group_id, opt);
   tsx_manager_ = KNEW TSxMgr(wal_manager_);
   optimistic_read_lsn_ = wal_manager_->FetchCurrentLSN();
-  wal_manager_->SetCheckpointObject(this);
+//  wal_manager_->SetCheckpointObject(this);
   logged_mutex_ = new LoggedTsEntityGroupLatch(LATCH_ID_LOGGED_TSSUBENTITY_GROUP_MUTEX);
 }
 
@@ -529,7 +529,8 @@ KStatus LoggedTsEntityGroup::Recover(kwdbContext_p ctx, const std::map<uint64_t,
     }
   }};
 
-  s = wal_manager_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn);
+  std::vector<uint64_t> ignore;
+  s = wal_manager_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn, ignore);
   if (s == FAIL && !redo_logs.empty()) {
     Return(s)
   }
@@ -581,7 +582,7 @@ KStatus LoggedTsEntityGroup::applyWal(kwdbContext_p ctx, LogEntry* wal_log,
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
+      assert(t_type != WALTableType::DATA_V2);
       if (t_type == WALTableType::DATA) {
         auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
         p_tag = log->getPrimaryTag();
@@ -693,7 +694,8 @@ KStatus LoggedTsEntityGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bo
   }
 
   std::vector<LogEntry*> wal_logs;
-  s = wal_manager_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  s = wal_manager_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   if (s == FAIL && !wal_logs.empty()) {
     Return(s)
   }
@@ -737,7 +739,7 @@ KStatus LoggedTsEntityGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
       WALTableType t_type = del_log->getTableType();
       std::string p_tag;
-
+      assert(t_type != WALTableType::DATA_V2);
       if (t_type == WALTableType::DATA) {
         auto log = reinterpret_cast<DeleteLogMetricsEntry*>(del_log);
         p_tag = log->getPrimaryTag();

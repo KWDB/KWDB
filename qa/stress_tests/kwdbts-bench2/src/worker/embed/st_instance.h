@@ -32,6 +32,10 @@ TsTable* CreateTable(kwdbts::kwdbContext_p ctx, roachpb::CreateTsTable* meta,
 void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,
                     int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload);
 
+void genRowBasedPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,
+ TSTableID table_id, uint32_t version,
+ int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload);
+
 bool checkColValue(const std::vector<AttributeInfo>& data_schema, const ResultSet& res, int ret_cnt, int batch_offset);
 
 class StInstance {
@@ -64,6 +68,10 @@ class StInstance {
   kwdbts::kwdbContext_p GetContext() { return g_contet_p; }
 
   TSEngine* GetTSEngine() { return ts_engine_; }
+
+  bool IsV2() {
+    return params_.engine_version == "2";
+  }
 
   vector<roachpb::CreateTsTable>& tableMetas() { return table_metas; };
 

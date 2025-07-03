@@ -68,6 +68,9 @@ bool ChangeSumType(DATATYPE type, void* base, void** new_base) {
   return true;
 }
 
+TsStorageIterator::TsStorageIterator() {
+}
+
 TsStorageIterator::TsStorageIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id,
                                      uint32_t subgroup_id, vector<uint32_t>& entity_ids,
                                      std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
@@ -90,7 +93,9 @@ TsStorageIterator::~TsStorageIterator() {
     delete segment_iter_;
     segment_iter_ = nullptr;
   }
-  entity_group_->DropUnlock();
+  if (entity_group_) {
+    entity_group_->DropUnlock();
+  }
 }
 
 void TsStorageIterator::fetchBlockItems(k_uint32 entity_id) {
@@ -2296,6 +2301,9 @@ TsOffsetIterator::~TsOffsetIterator() {
 KStatus TsOffsetIterator::Init(bool is_reversed) {
   GetTerminationTime();
   is_reversed_ = is_reversed;
+  comparator_.is_reversed = is_reversed_;
+  decltype(p_times_) t_map(comparator_);
+  p_times_.swap(t_map);
   auto sub_grp_mgr = entity_group_->GetSubEntityGroupManager();
   if (sub_grp_mgr == nullptr) {
     LOG_ERROR("can not found sub entitygroup manager for entitygroup [%lu].", entity_group_id_);

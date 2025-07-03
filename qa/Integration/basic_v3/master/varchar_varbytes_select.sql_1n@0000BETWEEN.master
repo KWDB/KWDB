@@ -1,0 +1,74 @@
+> SELECT e1 FROM test_SELECT_col.t1 WHERE e1 BETWEEN 10000 AND 30000 order by k_timestamp;
+   e1
+---------
+  20002
+  20002
+(2 rows)
+> SELECT e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19,e20,e21,e22,code1,code2,code3,flag,val1,val2,location,color,name,state,tall,screen,age,sex,year,type FROM test_SELECT_col.t1 WHERE e5 BETWEEN 200.00 AND 500.00 order by k_timestamp;
+    e1   |     e2      |          e3          |       e4        |     e5     |  e6  |            e7             |                  e8                  |                  e9                  |                  e10                   | e11 |                 e12                  | e13 |                 e14                  |                 e15                  |                                             e16                                              |                 e17                  |                 e18                  | e19  |                                  e20                                   |                                  e21                                   |                                  e22                                   | code1 | code2 | code3 | flag  | val1 | val2 | location | color  | name |             state              |   tall   |    screen    | age  |    sex     | year |      type
+---------+-------------+----------------------+-----------------+------------+------+---------------------------+--------------------------------------+--------------------------------------+----------------------------------------+-----+--------------------------------------+-----+--------------------------------------+--------------------------------------+----------------------------------------------------------------------------------------------+--------------------------------------+--------------------------------------+------+------------------------------------------------------------------------+------------------------------------------------------------------------+------------------------------------------------------------------------+-------+-------+-------+-------+------+------+----------+--------+------+--------------------------------+----------+--------------+------+------------+------+------------------
+   20002 |     2000003 |         -30000000003 |    22845.869141 | 200.123456 | true | 2020-01-01 12:00:00+00:00 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1   | t   | test时间精度通用查询测试！！！@TEST1 | 中  | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \xaa | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 |   300 |   400 |   100 | false |  400 |  300 | tianjin  | yellow | \x28 | \x616973616965626979617a686f75 | \x313833 | \x736d616c6c |    3 | 社会性别男 | 7    | matureandgentle
+   32767 |  2147483647 |  9223372036854775807 |     9845.870117 | 200.123456 | true | 2020-01-01 12:00:00+00:00 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1   | t   | test时间精度通用查询测试！！！@TEST1 | 中  | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \xaa | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 |   500 | NULL  |  NULL | false | NULL | NULL | NULL     | red    | NULL | NULL                           | NULL     | NULL         | NULL | NULL       | NULL | NULL
+  -32768 | -2147483648 | -9223372036854775808 | 9.842323456e+09 | 200.123456 | true | 2020-01-01 12:00:00+00:00 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1   | t   | test时间精度通用查询测试！！！@TEST1 | 中  | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \xaa | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 |   600 | NULL  |  NULL | false | NULL | NULL | NULL     | red    | NULL | NULL                           | NULL     | NULL         | NULL | NULL       | NULL | NULL
+   32050 | NULL        |                 4000 |     9845.870117 | 200.123456 | true | 2020-01-01 12:00:00+00:00 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1\0 | t   | test时间精度通用查询测试！！！@TEST1 | 中  | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161 | test时间精度通用查询测试！！！@TEST1 | test时间精度通用查询测试！！！@TEST1 | \xaa | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 |   700 | NULL  |  NULL | false | NULL | NULL | NULL     | red    | NULL | NULL                           | NULL     | NULL         | NULL | NULL       | NULL | NULL
+(4 rows)
+> SELECT e8 FROM test_SELECT_col.t1 WHERE e8 BETWEEN '\0test时间精度通用查询！！！@TEST1\0\0\0\0' AND 'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;---BUG
+                   e8
+----------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  \\
+  \\
+  \\\\
+  \\\\
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(11 rows)
+> SELECT e9 FROM test_SELECT_col.t1 WHERE e9 BETWEEN '\0test时间精度通用查询！！！@TEST1\0\0\0' AND '\0test时间精度通用查询！！！@TEST1\0\0\0' order by k_timestamp;---BUG
+                     e9
+--------------------------------------------
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+(1 row)
+> SELECT e13 FROM test_SELECT_col.t1 WHERE e13 BETWEEN '\ ' AND '中\0' order by k_timestamp;---BUG
+  e13
+-------
+  中
+  中
+  中
+  中
+  中
+  中
+  中
+  中
+(8 rows)
+> SELECT e13 FROM test_SELECT_col.t1 WHERE e13 BETWEEN '' AND '' order by k_timestamp;
+  e13
+-------
+
+(1 row)
+> SELECT e13 FROM test_SELECT_col.t1 WHERE e13<='' order by k_timestamp;
+  e13
+-------
+
+(1 row)
+> SELECT e19 FROM test_SELECT_col.t1 WHERE e19 BETWEEN b'\x00' AND b'\x62' order by k_timestamp;
+  e19
+--------
+  \x30
+  \x20
+  \x30
+  \x30
+  \x30
+  \x30
+  \x30
+  \x30
+  \x30
+  \x62
+(10 rows)
+> SELECT e20 FROM test_SELECT_col.t1 WHERE e20 BETWEEN b'\x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95' AND b'\x000000000000000' order by k_timestamp;
+  e20
+-------
+(0 rows)

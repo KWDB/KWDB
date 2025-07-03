@@ -51,6 +51,7 @@ class TestDB : public ::testing::Test {
   void OpenDB() {
     TSSlice s_path{kDbPath.data(), kDbPath.size()};
     opts_.lg_opts.Dir = s_path;
+    opts_.engine_version = "1";
     TSStatus s = TSOpen(&ts_db_, s_path, opts_, nullptr, 1);
     ASSERT_EQ(s.data, nullptr);
     free(s.data);

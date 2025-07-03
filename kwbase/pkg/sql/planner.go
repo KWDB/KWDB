@@ -226,6 +226,8 @@ type planner struct {
 
 	// TsInScopeFlag is true if there is a TS table in query
 	TsInScopeFlag bool
+
+	Kwengineversion string
 }
 
 // ExecutorConfig implements Planner interface.

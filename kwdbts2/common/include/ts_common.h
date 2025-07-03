@@ -37,6 +37,9 @@ class MMapSegmentTable;
 
 extern uint32_t k_per_null_bitmap_size;
 
+inline constexpr int kStringLenLen = sizeof(uint16_t);
+inline constexpr int kEndCharacterLen = sizeof(char);
+
 template <class T>
 class Defer {
  public:
@@ -85,6 +88,14 @@ enum class VacuumStatus {
   CANCEL,
   FINISH,
   FAILED
+};
+
+enum class DedupRule {
+  KEEP = 0,      // not deduplicate
+  OVERRIDE = 1,  // deduplicate by row
+  REJECT = 2,    // reject duplicate rows
+  DISCARD = 3,   // ignore duplicate rows
+  MERGE = 4,     // duplicate by column
 };
 
 enum SortOrder {
@@ -273,10 +284,10 @@ struct VarTagBatch : public Batch {
   }
 
   int writeDataExcludeLen(uint32_t row_idx, void* data, uint16_t var_len) {
-    if (next_record_ptr_ + var_len + MMapStringColumn::kStringLenLen + MMapStringColumn::kEndCharacterLen > var_end_) {
+    if (next_record_ptr_ + var_len + kStringLenLen + kEndCharacterLen > var_end_) {
       size_t total_realloc_size = std::max(2 * total_size_, (uint32_t)var_len +
-                                                            MMapStringColumn::kStringLenLen +
-                                                            MMapStringColumn::kEndCharacterLen);
+                                                            kStringLenLen +
+                                                            kEndCharacterLen);
       var_data_ = reinterpret_cast<char*>(std::malloc(total_realloc_size));
       if (nullptr == var_data_) {
         LOG_ERROR("VarTagBatch out of memory. total size: %u extend size: %lu", total_size_, total_realloc_size);
@@ -289,14 +300,14 @@ struct VarTagBatch : public Batch {
     }
     var_data_ptrs_[row_idx] = next_record_ptr_;
 
-    *reinterpret_cast<uint16_t*>(next_record_ptr_) = var_len + MMapStringColumn::kEndCharacterLen;
-    next_record_ptr_ += MMapStringColumn::kStringLenLen;
+    *reinterpret_cast<uint16_t*>(next_record_ptr_) = var_len + kEndCharacterLen;
+    next_record_ptr_ += kStringLenLen;
 
     memcpy(next_record_ptr_, data, var_len);
     next_record_ptr_ += var_len;
 
     *next_record_ptr_ = 0x00;
-    next_record_ptr_ += MMapStringColumn::kEndCharacterLen;
+    next_record_ptr_ += kEndCharacterLen;
     return 0;
   }
 
@@ -486,6 +497,63 @@ inline timestamp64 intersectLength(timestamp64 start1, timestamp64 end1, timesta
   // Otherwise, the intersection length is the difference between minEnd and maxStart
   return min_end - max_start;
 }
+// compare two values
+inline int cmp(void* l, void* r, int32_t type, int32_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+    case DATATYPE::BOOL:
+    case DATATYPE::BINARY: {
+      k_int32 ret = memcmp(l, r, size);
+      return ret;
+    }
+    case DATATYPE::INT16: {
+      k_int16 lv = *(static_cast<k_int16*>(l));
+      k_int16 rv = *(static_cast<k_int16*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP: {
+      k_int32 lv = *(static_cast<k_int32*>(l));
+      k_int32 rv = *(static_cast<k_int32*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO: {
+      k_int64 lv = *(static_cast<k_int64*>(l));
+      k_int64 rv = *(static_cast<k_int64*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::TIMESTAMP64_LSN:
+    case DATATYPE::TIMESTAMP64_LSN_MICRO:
+    case DATATYPE::TIMESTAMP64_LSN_NANO: {
+      timestamp64 lv = static_cast<TimeStamp64LSN*>(l)->ts64;
+      timestamp64 rv = static_cast<TimeStamp64LSN*>(r)->ts64;
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::FLOAT: {
+      float lv = *(static_cast<float*>(l));
+      float rv = *(static_cast<float*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::DOUBLE: {
+      double lv = *(static_cast<double*>(l));
+      double rv = *(static_cast<double*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::STRING: {
+      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size);
+      return ret;
+    }
+      break;
+    default:
+      break;
+  }
+  return false;
+}
 
 // [start, end] cross with spans
 inline bool isTimestampInSpans(const std::vector<KwTsSpan>& spans,
@@ -509,7 +577,7 @@ inline bool isTimestampWithinSpans(const std::vector<KwTsSpan>& spans,
   return false;
 }
 
-inline bool CheckIfTsInSpan(timestamp64 ts, std::vector<KwTsSpan>& ts_spans) {
+inline bool CheckIfTsInSpan(timestamp64 ts, const std::vector<KwTsSpan>& ts_spans) {
   for (auto& ts_span : ts_spans) {
     if (ts >= ts_span.begin && ts <= ts_span.end) {
       return true;

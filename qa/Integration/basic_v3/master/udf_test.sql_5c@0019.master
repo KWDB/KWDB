@@ -1,0 +1,3 @@
+> drop function testt;
+ERROR: unknown function 'testt' when dropping function
+SQLSTATE: 42883

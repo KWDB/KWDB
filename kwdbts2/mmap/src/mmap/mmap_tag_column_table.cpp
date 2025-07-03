@@ -134,7 +134,7 @@ int TagColumn::getColumnValue(size_t row,  void *data) const {
     size_t loc = *reinterpret_cast<size_t*>(rowAddrNoNullBitmap(row));
     char *rec_ptr = m_str_file_->getStringAddr(loc);
     uint16_t len = *reinterpret_cast<uint16_t*>(rec_ptr);
-    memcpy(data, rec_ptr + MMapStringColumn::kStringLenLen, len);
+    memcpy(data, rec_ptr + kStringLenLen, len);
   } else {
     memcpy(data, rowAddrNoNullBitmap(row), m_attr_.m_size);
   }
@@ -1120,7 +1120,7 @@ kwdbts::Batch* MMapTagColumnTable::GetTagBatchRecordWithNoConvert(size_t start_r
   } else {
     // var tag data
     uint32_t var_total_len = std::max((m_cols_[col]->attributeInfo().m_length / 2 + 
-                                       MMapStringColumn::kStringLenLen) * data_count,
+                                       kStringLenLen) * data_count,
                                        k_default_block_size);
     var_data = reinterpret_cast<char*>(std::malloc(var_total_len));
     memset(var_data, 0x00, var_total_len);
@@ -1151,7 +1151,7 @@ kwdbts::Batch* MMapTagColumnTable::GetTagBatchRecordWithNoConvert(size_t start_r
         m_cols_[col]->varRdLock();
         char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
         uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
-        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + MMapStringColumn::kStringLenLen);
+        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + kStringLenLen);
         m_cols_[col]->varUnLock();
       }
     }  // end for
@@ -1226,9 +1226,9 @@ kwdbts::Batch* MMapTagColumnTable::convertToFixedLen(size_t start_row, size_t en
         char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_offset);
         uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
         if (old_data_type == DATATYPE::VARSTRING) {
-          var_len -= MMapStringColumn::kEndCharacterLen;
+          var_len -= kEndCharacterLen;
         }
-        var_data_ptr += MMapStringColumn::kStringLenLen;
+        var_data_ptr += kStringLenLen;
         if (convertStrToFixed(var_data_ptr, new_data_type, batch->getRowAddr(row_idx), var_len, err_info) < 0) {
           LOG_WARN("convert [%lu] value failed. %s", row, err_info.errmsg.c_str());
           err_info.errcode = 0;
@@ -1264,7 +1264,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
 
   uint32_t row_count = end_row - start_row;
   uint32_t var_total_len = std::max((m_cols_[col]->attributeInfo().m_length / 2 + 
-                                       MMapStringColumn::kStringLenLen) * row_count,
+                                       kStringLenLen) * row_count,
                                        k_default_block_size);
   char* var_data = reinterpret_cast<char*>(std::malloc(var_total_len));
   memset(var_data, 0x00, var_total_len);
@@ -1290,7 +1290,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
         err_info.errcode = 0;
         return nullptr;
       }
-      char dest_data[result_schema.m_length + MMapStringColumn::kStringLenLen + 1] = {0x00};
+      char dest_data[result_schema.m_length + kStringLenLen + 1] = {0x00};
       uint32_t row_idx = 0;
       int data_len = 0;
       char* rec_ptr = nullptr;
@@ -1335,7 +1335,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
           m_cols_[col]->varRdLock();
           char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
           uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
-          var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + MMapStringColumn::kStringLenLen);
+          var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + kStringLenLen);
           m_cols_[col]->varUnLock();
         }
       }  // end for
@@ -1360,7 +1360,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
         m_cols_[col]->varRdLock();
         char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
         uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
-        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + MMapStringColumn::kStringLenLen);
+        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + kStringLenLen);
         m_cols_[col]->varUnLock();
       }
     }  // end for

@@ -1,0 +1,54 @@
+> select  
+  (select vol_c from public.t_electmeter limit 1 offset 10)
+     as c0, 
+  case when (case when cast(null as "timetz") != cast(null as "time") then cast(null as "timetz") else cast(null as "timetz") end
+           != pg_catalog.current_time()) 
+      or (subq_1.c0 is NULL) then 81 else 81 end
+     as c1, 
+  subq_1.c0 as c2, 
+  cast(nullif(subq_1.c0,
+    subq_1.c0) as "varchar") as c3, 
+  3 as c4, 
+  subq_1.c0 as c5, 
+  subq_1.c0 as c6
+from 
+  (select  
+        (select dist_pos from public.t_cnc limit 1 offset 4)
+           as c0
+      from 
+        public.t_cnc as ref_0
+          right join public.t_cnc as ref_1
+          on (ref_0.brand = ref_1.cnc_sn ),
+        lateral (select  
+              ref_2.powerl_b as c0, 
+              ref_0.cur_tool_len as c1, 
+              ref_0.sp_name as c2
+            from 
+              public.t_electmeter as ref_2
+            where cast(null as _timestamptz) = cast(null as _timestamptz)
+            limit 132) as subq_0
+      where pg_catalog.array_cat(
+          cast(case when ref_0.k_timestamp > cast(null as date) then cast(null as _date) else cast(null as _date) end
+             as _date),
+          cast(cast(null as _date) as _date)) <= cast(coalesce(cast(null as _date),
+          pg_catalog.array_replace(
+            cast(cast(null as _date) as _date),
+            cast(cast(null as date) as date),
+            cast(cast(null as date) as date))) as _date)
+      limit 185) as subq_1
+where case when (cast(coalesce(cast(coalesce(cast(null as _varbit),
+            cast(null as _varbit)) as _varbit),
+          cast(null as _varbit)) as _varbit) >= pg_catalog.array_replace(
+          cast(cast(null as _varbit) as _varbit),
+          cast(cast(null as "varbit") as "varbit"),
+          cast(cast(null as "varbit") as "varbit"))) 
+      or ((cast(null as "timestamp") >= case when true then cast(null as "timestamptz") else cast(null as "timestamptz") end
+            ) 
+        and ((((true) 
+              or (cast(null as _varbit) IS NOT DISTINCT FROM cast(null as _varbit))) 
+            or (subq_1.c0 is NULL)) 
+          and (subq_1.c0 is NULL))) then pg_catalog.current_time() else pg_catalog.current_time() end
+     = pg_catalog.localtime();
+  c0 | c1 | c2 | c3 | c4 | c5 | c6
+-----+----+----+----+----+----+-----
+(0 rows)

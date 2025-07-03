@@ -1046,16 +1046,11 @@ TsEntityGroup::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColu
       break;
     case roachpb::VARCHAR:
       attr_info.type = DATATYPE::VARSTRING;
-      attr_info.max_len = col.storage_len() - 1;  // because varchar len will +1 when store
+      attr_info.max_len = col.storage_len();
       break;
     case roachpb::NVARCHAR:
     case roachpb::VARBINARY:
       attr_info.type = DATATYPE::VARBINARY;
-      attr_info.max_len = col.storage_len();
-      break;
-    case roachpb::SDECHAR:
-    case roachpb::SDEVARCHAR:
-      attr_info.type = DATATYPE::STRING;
       attr_info.max_len = col.storage_len();
       break;
     default:
@@ -1131,14 +1126,10 @@ TsEntityGroup::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr
       break;
     case DATATYPE::VARSTRING:
       col.set_storage_type(roachpb::VARCHAR);
-      col.set_storage_len(attr_info.max_len + 1);  // varchar(len) + 1
+      col.set_storage_len(attr_info.max_len);
       break;
     case DATATYPE::VARBINARY:
       col.set_storage_type(roachpb::VARBINARY);
-      col.set_storage_len(attr_info.max_len);
-      break;
-    case DATATYPE::STRING:
-      col.set_storage_type(roachpb::SDECHAR);
       col.set_storage_len(attr_info.max_len);
       break;
     case DATATYPE::INVALID:
@@ -1221,9 +1212,6 @@ TsEntityGroup::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roa
     case DATATYPE::VARBINARY:
       col.set_storage_type(roachpb::VARBINARY);
       break;
-    case DATATYPE::STRING:
-      col.set_storage_type(roachpb::SDECHAR);
-      break;
     case DATATYPE::INVALID:
     default:
       return KStatus::FAIL;
@@ -1281,6 +1269,10 @@ MMapRootTableManager* TsTable::OpenMMapRootTableManager(string& db_path, string&
   return tmp_bt_manager;
 }
 
+TsTable::TsTable() {
+  is_dropped_.store(false);
+}
+
 TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id)
     : db_path_(db_path), table_id_(table_id) {
   entity_bt_manager_ = nullptr;
@@ -1316,6 +1308,12 @@ TsTable::~TsTable() {
     snapshot_manage_mtx_ = nullptr;
   }
 }
+
+TsTableImpl::TsTableImpl(kwdbContext_p ctx, const std::string &db_path,
+                         const KTableKey &table_id)
+    : TsTable(ctx, db_path, table_id) {}
+
+TsTableImpl::~TsTableImpl() = default;
 
 // Check that the directory name is a numeric
 bool IsNumber(struct dirent* dir) {
@@ -1449,7 +1447,7 @@ KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& ta
   size_t data_len = 0;
   char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
   if (error != nullptr) {
-    LOG_ERROR(error);
+    LOG_ERROR("%s", error);
     return KStatus::FAIL;
   }
   roachpb::CreateTsTable meta;
@@ -2583,7 +2581,7 @@ KStatus TsTable::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityRe
                                                                 iter, entity_groups_.begin()->second,
                                                                 offset, limit, reverse);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("cannot create offset iterator for entitygroup[%lu], subgroup[%u]");
+    LOG_ERROR("cannot create offset iterator for entitygroup[%lu], subgroup", entity_groups_.begin()->first);
     return s;
   }
 
@@ -2824,7 +2822,7 @@ KStatus TsTable::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultInd
 
 KStatus TsTable::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 const std::vector<uint32_t> hps,
-                                TagIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version) {
   std::vector<EntityGroupTagIterator*> eg_tag_iters;
   EntityGroupTagIterator* eg_tag_iter = nullptr;
 
@@ -2906,6 +2904,9 @@ KStatus TsTable::TSxClean(kwdbContext_p ctx) {
 KStatus TsTable::SyncTagTsVersion(uint32_t cur_version, uint32_t new_version) {
   for (auto& entity_group : entity_groups_) {
     if (entity_group.second->SyncTagVersion(cur_version, new_version) < 0) {
+      LOG_ERROR("Entity group sync tag version failed,"
+                "table id: %lu, entity group: %lu, cur_version: %d, new_version: %d",
+                table_id_, entity_group.first, cur_version, new_version);
       return FAIL;
     }
   }
@@ -2916,6 +2917,8 @@ KStatus TsTable::AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_
                                      const std::vector<roachpb::NTagIndexInfo>& idx_info) {
   for (auto& entity_group : entity_groups_) {
     if (entity_group.second->AddTagSchemaVersion(schema, new_version, idx_info) < 0) {
+      LOG_ERROR("Entity group add tag schema version failed, table id: %lu, entity group: %lu, new_version: %d",
+          table_id_, entity_group.first, new_version);
       return FAIL;
     }
   }
@@ -3009,6 +3012,7 @@ KStatus TsTable::AlterTableCol(kwdbContext_p ctx, AlterType alter_type, const At
       break;
     }
     default:
+      msg = "Alter type: " + to_string(alter_type) + " is not supported.";
       return KStatus::FAIL;
   }
   s = entity_bt_manager_->CreateRootTable(schema, new_version, err_info, cur_version);
@@ -3388,13 +3392,13 @@ uint32_t TsTable::GetCurrentTableVersion() {
 KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
                                       const uint32_t cur_version, const uint32_t new_version,
                                       const std::vector<uint32_t/* tag column id*/>& tags) {
-  LOG_INFO("CreateNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (auto& entity_group : entity_groups_) {
     if (!entity_group.second->CreateNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
-      LOG_ERROR("Failed to create normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+      LOG_ERROR("Failed to create normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
       return FAIL;
     }
   }
@@ -3403,7 +3407,7 @@ KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transact
     LOG_ERROR("Update table version error");
     return s;
   }
-  LOG_INFO("CreateNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("CreateNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -3411,17 +3415,17 @@ KStatus TsTable::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transact
 KStatus TsTable::createNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
                                       const uint32_t cur_version, const uint32_t new_version,
                                       const std::vector<uint32_t/* tag column id*/>& tags) {
-    LOG_INFO("snapshot create Normal Tag Index start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+    LOG_INFO("snapshot create Normal Tag Index start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
     RW_LATCH_S_LOCK(entity_groups_mtx_);
     Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
     for (auto& entity_group : entity_groups_) {
         if (!entity_group.second->createNormalTagIndex(ctx, transaction_id, index_id, cur_version, new_version, tags)) {
-            LOG_ERROR("Failed to create normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+            LOG_ERROR("Failed to create normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
             return FAIL;
         }
     }
-    LOG_INFO("CreateNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+    LOG_INFO("CreateNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
     return SUCCESS;
 }
@@ -3448,13 +3452,13 @@ std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsTable::GetAllNTagIndex
 
 KStatus TsTable::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                     const uint32_t new_version, const uint64_t index_id) {
-  LOG_INFO("DropNormalTagIndex start, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
   RW_LATCH_S_LOCK(entity_groups_mtx_);
   Defer defer([&]() { RW_LATCH_UNLOCK(entity_groups_mtx_); });
   for (auto& entity_group : entity_groups_) {
     if (!entity_group.second->DropNormalTagIndex(ctx, transaction_id, cur_version, new_version, index_id)) {
-        LOG_ERROR("Failed to drop normal tag index, table id:%d, index id:%d.", this->table_id_, index_id);
+        LOG_ERROR("Failed to drop normal tag index, table id:%lu, index id:%lu.", this->table_id_, index_id);
         return FAIL;
     }
   }
@@ -3463,7 +3467,7 @@ KStatus TsTable::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transactio
     LOG_ERROR("Update table version error");
     return s;
   }
-  LOG_INFO("DropNormalTagIndex success, table id:%d, index id:%d, cur_version:%d, new_version:%d.",
+  LOG_INFO("DropNormalTagIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -3569,7 +3573,7 @@ std::vector<std::pair<uint32_t, std::vector<uint32_t>>> TsEntityGroup::GetAllNTa
 
 KStatus TsEntityGroup::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                           const uint32_t new_version, const uint64_t index_id) {
-  LOG_INFO("DropNormalTagIndex index_id:%d, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  LOG_INFO("DropNormalTagIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
   RW_LATCH_S_LOCK(drop_mutex_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   ErrorInfo errorInfo;

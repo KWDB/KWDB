@@ -65,7 +65,7 @@ class TestTsEntityGroup : public TestBigTableInstance {
   }
 
   void CreateTable(roachpb::CreateTsTable* meta, const std::vector<RangeGroup>& range_groups) {
-    table_ = new TsTable(ctx_, kDbPath, 10086);
+    table_ = new TsTableImpl(ctx_, kDbPath, 10086);
     std::unordered_map<uint64_t, int8_t> ranges;
     KStatus s = table_->Init(ctx_, ranges);
     s = table_->DropAll(ctx_);

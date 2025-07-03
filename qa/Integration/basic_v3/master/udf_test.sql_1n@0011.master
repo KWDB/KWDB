@@ -1,0 +1,34 @@
+> CREATE FUNCTION time_add_hour(timestamp_str )
+    RETURNs timestamp
+    LANGUAGE LUA
+BEGIN
+'function time_add_hour(timestamp_str)
+    local new_time = timestamp_str + 3600
+    return new_time
+end'
+END;
+ERROR: at or near ")": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION time_add_hour(timestamp_str )
+                                            ^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION time_add_hour(timestamp_str timestamp)
+    RETURNs timestamp
+    LANGUAGE LUA
+BEGIN
+function time_add_hour(timestamp_str)
+    local new_time = timestamp_str + 3600
+    return new_time
+end
+END;
+ERROR: at or near "function": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION time_add_hour(timestamp_str timestamp)
+    RETURNs timestamp
+    LANGUAGE LUA
+BEGIN
+function time_add_hour(timestamp_str)
+^
+HINT: try \h CREATE FUNCTION
