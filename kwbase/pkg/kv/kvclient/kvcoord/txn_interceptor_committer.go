@@ -42,6 +42,47 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 	true,
 )
 
+//var TestTxnScenario = settings.RegisterStringSetting(
+//	"sql.test_txn.scenario",
+//	"txn test scenario",
+//	"0:0:0",
+//)
+//
+//type txnTestScenario struct {
+//	phase   int
+//	nodeID  int
+//	errType int
+//}
+//
+//func ExtractTxnTestScenario(s string) ([]txnTestScenario, error) {
+//	res := make([]txnTestScenario, 0)
+//	scenarios := strings.Split(s, ";")
+//	for _, val := range scenarios {
+//		tmp := strings.Split(val, ":")
+//		if len(tmp) != 3 {
+//			return nil, fmt.Errorf("invalid txn test scenario: %s", val)
+//		}
+//		phase, err := strconv.Atoi(tmp[0])
+//		if err != nil {
+//			return nil, err
+//		}
+//		nodeID, err := strconv.Atoi(tmp[1])
+//		if err != nil {
+//			return nil, err
+//		}
+//		errType, err := strconv.Atoi(tmp[2])
+//		if err != nil {
+//			return nil, err
+//		}
+//		res = append(res, txnTestScenario{
+//			phase,
+//			nodeID,
+//			errType,
+//		})
+//	}
+//	return res, nil
+//}
+
 // txnCommitter is a txnInterceptor that concerns itself with committing and
 // rolling back transactions. It intercepts EndTxn requests and coordinates
 // their execution. This is accomplished either by issuing them directly with
@@ -543,6 +584,8 @@ type tsTxnCommitter struct {
 	txn     *kv.Txn
 	tsTxn   roachpb.TsTransaction
 	ranges  *roachpb.Spans
+	setting *cluster.Settings
+	NodeID  roachpb.NodeID
 }
 
 // SendLocked implements the lockedSender interface.
@@ -550,14 +593,20 @@ func (tc *tsTxnCommitter) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 	br, pErr := tc.wrapped.Send(ctx, ba)
-	exist, record, err := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
-	if !exist || err != nil {
-		// todo:
+	//if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 2); err != nil {
+	//	return nil, roachpb.NewError(err)
+	//}
+	_, record, err := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
+	if err != nil {
+		return nil, pErr
 	}
 	if pErr != nil {
 		pErr = tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
+		//if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 3); err != nil {
+		//	return nil, roachpb.NewError(err)
+		//}
 		if pErr != nil {
-			// todo:
+			return nil, pErr
 		}
 		record.Status = roachpb.ABORTED
 		if err := tc.txn.DB().WriteTxnRecord(ctx, record); err != nil {
@@ -566,8 +615,11 @@ func (tc *tsTxnCommitter) SendLocked(
 		return nil, pErr
 	}
 	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, *tc.ranges, 0)
+	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 4); err != nil {
+		return nil, roachpb.NewError(err)
+	}
 	if pErr != nil {
-		// todo:
+		return nil, pErr
 	}
 	record.ID = tc.tsTxn.ID
 	record.Status = roachpb.COMMITTED
@@ -580,6 +632,7 @@ func (tc *tsTxnCommitter) SendLocked(
 
 func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
+	ba.TsTransaction = &txn
 	for _, span := range spans {
 		ba.Add(&roachpb.TsRollbackRequest{
 			RequestHeader: roachpb.RequestHeader{
@@ -602,6 +655,7 @@ func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.T
 
 func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
+	ba.TsTransaction = &txn
 	for _, span := range spans {
 		ba.Add(&roachpb.TsCommitRequest{
 			RequestHeader: roachpb.RequestHeader{

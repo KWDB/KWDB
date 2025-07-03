@@ -577,7 +577,7 @@ TSStatus TSCreateCheckpointForTable(TSEngine* engine, TSTableID table_id) {
 }
 
 TSStatus TSMtrBegin(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                    uint64_t range_id, uint64_t index, uint64_t* mtr_id, const char* tsx_id) {
+                    uint64_t range_id, uint64_t index, uint64_t* mtr_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -591,7 +591,7 @@ TSStatus TSMtrBegin(TSEngine* engine, TSTableID table_id, uint64_t range_group_i
   return kTsSuccess;
 }
 
-TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
+TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -605,8 +605,7 @@ TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_
   return kTsSuccess;
 }
 
-TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
-                       const char* tsx_id) {
+TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);

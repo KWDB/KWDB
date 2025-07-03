@@ -2282,6 +2282,8 @@ message Header {
 
   bool should_log_logical_op = 17 ;
 
+  TsTransaction ts_transaction = 18 ;
+
   reserved 7, 12, 14;
 }
 

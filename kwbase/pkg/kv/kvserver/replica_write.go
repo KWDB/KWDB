@@ -266,6 +266,24 @@ func (r *Replica) executeWriteTSBatch(
 	ctx context.Context, ba *roachpb.BatchRequest, st storagepb.LeaseStatus, g *concurrency.Guard,
 ) (br *roachpb.BatchResponse, _ *concurrency.Guard, pErr *roachpb.Error) {
 	startTime := timeutil.Now()
+	//if ba.TsTransaction != nil {
+	//	if ba.Requests != nil {
+	//		switch ba.Requests[0].GetInner().(type) {
+	//		case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
+	//			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 5); err != nil {
+	//				return nil, g, roachpb.NewError(err)
+	//			}
+	//		case *roachpb.TsCommitRequest:
+	//			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 6); err != nil {
+	//				return nil, g, roachpb.NewError(err)
+	//			}
+	//		case *roachpb.TsRollbackRequest:
+	//			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 7); err != nil {
+	//				return nil, g, roachpb.NewError(err)
+	//			}
+	//		}
+	//	}
+	//}
 
 	// Even though we're not a read-only operation by definition, we have to
 	// take out a read lock on readOnlyCmdMu while performing any reads during
@@ -321,8 +339,8 @@ func (r *Replica) executeWriteTSBatch(
 		br = &roachpb.BatchResponse{}
 		br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
 		tableID, rangeGroupID, tsTxnID, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
-		if err == nil && tsTxnID != 0 {
-			err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID)
+		if err == nil && tsTxnID != 0 && ba.TsTransaction == nil {
+			err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
 		}
 		r.readOnlyCmdMu.RUnlock()
 		if err != nil {

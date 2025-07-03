@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -42,8 +43,8 @@ import (
 
 // TsSender is a Sender to send TS requests to TS DB
 type TsSender struct {
-	tsEngine *tse.TsEngine
-
+	tsEngine         *tse.TsEngine
+	wrapped          kv.Sender
 	isSingleNode     bool
 	rpcContext       *rpc.Context
 	gossip           *gossip.Gossip
@@ -54,7 +55,9 @@ type TsSender struct {
 		tsTxnHeartbeater
 		tsTxnCommitter
 	}
-	txn roachpb.Transaction
+	txn     roachpb.Transaction
+	setting *cluster.Settings
+	NodeID  roachpb.NodeID
 }
 
 // TsDBConfig is config for building TsSender
@@ -66,6 +69,8 @@ type TsDBConfig struct {
 	Gossip       *gossip.Gossip
 	Stopper      *stop.Stopper
 	IsSingleNode bool
+	Setting      *cluster.Settings
+	NodeID       roachpb.NodeID
 }
 
 var _ kv.Sender = &TsSender{}
@@ -144,7 +149,7 @@ func (s *TsSender) Send(
 			}
 		}
 		if putPayload != nil {
-			dedupRes, entitiesAffect, err := s.tsEngine.PutData(1, putPayload, 0, true)
+			dedupRes, entitiesAffect, err := s.tsEngine.PutData(1, putPayload, 0, true, nil)
 			if err != nil {
 				// todo need to process dedupResult
 				return nil, &roachpb.Error{Message: err.Error()}
@@ -182,7 +187,9 @@ func (s *TsSender) Send(
 	}
 
 	setConsistency()
-	//ba.Txn = s.txn.Clone()
+	if !TsTxnAtomicityEnabled.Get(&s.setting.SV) {
+		return s.wrapped.Send(ctx, ba)
+	}
 	return s.interceptorStack[0].SendLocked(ctx, ba)
 }
 
@@ -200,20 +207,27 @@ func NewDB(cfg TsDBConfig) *DB {
 		kdb: cfg.KvDB,
 		tss: &TsSender{
 			tsEngine:     cfg.TsEngine,
+			wrapped:      cfg.Sender,
 			rpcContext:   cfg.RPCContext,
 			gossip:       cfg.Gossip,
 			stopper:      cfg.Stopper,
 			isSingleNode: cfg.IsSingleNode,
+			setting:      cfg.Setting,
+			NodeID:       cfg.NodeID,
 		},
 	}
 	tsDB.tss.interceptorAlloc.tsTxnCommitter = tsTxnCommitter{
 		wrapped: cfg.Sender,
+		setting: cfg.Setting,
+		NodeID:  cfg.NodeID,
 	}
 	tsDB.tss.interceptorAlloc.tsTxnHeartbeater = tsTxnHeartbeater{
 		wrapped:      &tsDB.tss.interceptorAlloc.tsTxnCommitter,
 		loopInterval: base.DefaultTxnHeartbeatInterval,
 		stopper:      cfg.Stopper,
 		clock:        cfg.KvDB.Clock(),
+		setting:      cfg.Setting,
+		NodeID:       cfg.NodeID,
 	}
 	tsDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.Locker = &sync.RWMutex{}
 	tsDB.tss.interceptorStack = []lockedSender{&tsDB.tss.interceptorAlloc.tsTxnHeartbeater, &tsDB.tss.interceptorAlloc.tsTxnCommitter}

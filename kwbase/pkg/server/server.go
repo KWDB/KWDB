@@ -1903,6 +1903,8 @@ func (s *Server) Start(ctx context.Context) error {
 				Gossip:       s.gossip,
 				Stopper:      s.stopper,
 				IsSingleNode: GetSingleNodeModeFlag(s.cfg.ModeFlag),
+				Setting:      s.ClusterSettings(),
+				NodeID:       s.NodeID(),
 			}
 			s.tseDB = kvcoord.NewDB(tsDBCfg)
 			// s.node.storeCfg.TseDB = s.tseDB

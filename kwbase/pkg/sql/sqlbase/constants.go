@@ -231,7 +231,8 @@ const (
 	PgCatalogStatAllIndexesTableID
 	CrdbInternalKWDBSchedulesTableID
 	CrdbInternalKWDBFunctionsTableID
-	MinVirtualID = CrdbInternalKWDBFunctionsTableID
+	CrdbInternalTSTransactionRecordID
+	MinVirtualID = CrdbInternalTSTransactionRecordID
 )
 
 const (
