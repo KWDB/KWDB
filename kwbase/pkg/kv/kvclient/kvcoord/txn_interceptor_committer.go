@@ -615,9 +615,9 @@ func (tc *tsTxnCommitter) SendLocked(
 		return nil, pErr
 	}
 	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, *tc.ranges, 0)
-	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 4); err != nil {
-		return nil, roachpb.NewError(err)
-	}
+	//if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 4); err != nil {
+	//	return nil, roachpb.NewError(err)
+	//}
 	if pErr != nil {
 		return nil, pErr
 	}
