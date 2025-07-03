@@ -143,6 +143,10 @@ func (cp *readImportDataProcessor) Push(ctx context.Context, res []byte) error {
 	return nil
 }
 
+func (cp *readImportDataProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return nil, nil
+}
+
 func (cp *readImportDataProcessor) IsShortCircuitForPgEncode() bool {
 	return false
 }

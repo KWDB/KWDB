@@ -938,24 +938,24 @@ func (mb *mutationBuilder) parseDefaultOrComputedExpr(colID opt.ColumnID) tree.E
 
 // CheckMixedTableRefWithTs check if there is other type of tables referenced in ts context
 // OutParam: type of table
-func (mb *mutationBuilder) CheckMixedTableRefWithTs() {
+func (b *Builder) CheckMixedTableRefWithTs() {
 	hasRelational := false
 	hasTS := false
-	rTableName := ""
-	tsTableName := ""
-	for _, tbl := range mb.b.factory.Metadata().AllTables() {
-		if tbl.Table.GetTableType() == tree.RelationalTable {
+	var rTableName, tsTableName string
+	for _, tbl := range b.factory.Metadata().AllTables() {
+		if tbl.Table.GetTableType() == tree.RelationalTable && !hasRelational {
 			hasRelational = true
 			rTableName = string(tbl.Table.Name())
 		}
-		if tbl.Table.GetTableType() != tree.RelationalTable {
+		if tbl.Table.GetTableType() != tree.RelationalTable && !hasTS {
 			hasTS = true
 			tsTableName = string(tbl.Table.Name())
 		}
-	}
-	if hasRelational && hasTS {
-		panic(pgerror.Newf(pgcode.Warning,
-			"Mixed DML of time series and relational tables is NOT supported, relational table :%v, time series table: %v", rTableName, tsTableName))
+		if hasRelational && hasTS {
+			panic(pgerror.Newf(pgcode.Warning,
+				"Mixed DML of time series and relational tables is NOT supported, relational table: %v, time-series table: %v",
+				rTableName, tsTableName))
+		}
 	}
 }
 
@@ -987,7 +987,7 @@ func findNotNullIndexCol(index cat.Index) int {
 // clause needs to provide values for result rows for a downstream plan.
 func resultsNeeded(r tree.ReturningClause) bool {
 	switch t := r.(type) {
-	case *tree.ReturningExprs:
+	case *tree.ReturningExprs, *tree.ReturningIntoClause:
 		return true
 	case *tree.ReturningNothing, *tree.NoReturningClause:
 		return false

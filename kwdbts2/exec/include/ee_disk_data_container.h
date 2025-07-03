@@ -99,7 +99,7 @@ class DiskDataContainer : public DataContainer, public ISortableChunk {
 
   KStatus Init() override;
 
-  void Sort() override;
+  KStatus Sort() override;
 
   KStatus Append(DataChunkPtr& chunk);
   k_uint32 Count() override { return count_; }

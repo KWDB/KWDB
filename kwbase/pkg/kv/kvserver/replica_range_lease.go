@@ -77,7 +77,11 @@ import (
 
 var leaseStatusLogLimiter = log.Every(5 * time.Second)
 
+const transferRangeMetaIDMax roachpb.RangeID = 10
+
 const tsMaxNewLeaseHolderLackRaftLog uint64 = 100
+
+const metaMaxNewLeaseHolderLackRaftLog uint64 = 10
 
 // leaseRequestHandle is a handle to an asynchronous lease request.
 type leaseRequestHandle struct {
@@ -267,7 +271,7 @@ func (p *pendingLeaseRequest) InitOrJoinRequest(
 		}
 		reqLease.Epoch = liveness.Epoch
 	}
-
+	reqLease.CheckLeaseFlag = p.repl.checkLeaseOK(ctx, reqLease)
 	if transfer {
 		// Generate TransferLeaseRequest
 		leaseReq = &roachpb.TransferLeaseRequest{
@@ -630,6 +634,7 @@ func (r *Replica) leaseStatus(
 	} else {
 		status.State = storagepb.LeaseState_EXPIRED
 	}
+	log.VEventf(context.TODO(), 5, "r %+v, lease status ,expiration is %+v, stasis is %+v, timestamp is %+v, status is %+v, min is %+v", r, expiration, stasis, timestamp, status, minProposedTS)
 	return status
 }
 
@@ -1189,4 +1194,36 @@ func (r *Replica) redirectOnOrAcquireLease(
 			return storagepb.LeaseStatus{}, pErr
 		}
 	}
+}
+
+// checkLeaseOK give such rules, that who can be leaseholder.
+func (r *Replica) checkLeaseOK(ctx context.Context, reqLease roachpb.Lease) bool {
+	if (r.isTsLocked() || r.RangeID <= transferRangeMetaIDMax) && r.mu.leaderID != reqLease.Replica.ReplicaID {
+		var leaderReplica roachpb.ReplicaDescriptor
+		for _, internalReplica := range r.mu.state.Desc.InternalReplicas {
+			if internalReplica.ReplicaID == r.mu.leaderID {
+				leaderReplica = internalReplica
+			}
+		}
+		leaderResp, err := r.collectStatusFromReplica(ctx, leaderReplica)
+		if err != nil {
+			log.Warningf(ctx, "lease check failed, ignore it. err is +%v, leader replica info is %+v.", err, leaderReplica)
+			return true
+		}
+		leaseResp, err := r.collectStatusFromReplica(ctx, reqLease.Replica)
+		if err != nil {
+			log.Warningf(ctx, "lease check failed, ignore it. err is +%v, lease replica info is %+v.", err, reqLease.Replica)
+			return true
+		}
+		// replica not allow leaseholder far away
+		if r.isTsLocked() && leaseResp.ReplicaStatus.ApplyIndex+tsMaxNewLeaseHolderLackRaftLog < leaderResp.ReplicaStatus.ApplyIndex {
+			log.Warningf(ctx, "replica is leader %+v, lease %+v , leaseIndex %+v, leaderIndex %+v", leaderReplica, reqLease.Replica, leaseResp.ReplicaStatus.ApplyIndex, leaderResp.ReplicaStatus.ApplyIndex)
+			return false
+		} else if leaseResp.ReplicaStatus.ApplyIndex+metaMaxNewLeaseHolderLackRaftLog < leaderResp.ReplicaStatus.ApplyIndex {
+			log.Warningf(ctx, "replica is leader %+v, lease %+v , leaseIndex %+v, leaderIndex %+v", leaderReplica, reqLease.Replica, leaseResp.ReplicaStatus.ApplyIndex, leaderResp.ReplicaStatus.ApplyIndex)
+			return false
+		}
+	}
+	log.VEventf(ctx, 5, "replica is transfer ok, status is %+v ,replica id is %s, r leader id is %s, r last update is %s", reqLease, r.mu.replicaID, r.mu.leaderID, r.mu.lastUpdateTimes)
+	return true
 }

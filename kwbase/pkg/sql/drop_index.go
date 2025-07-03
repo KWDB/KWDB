@@ -422,11 +422,17 @@ func (p *planner) dropIndexByName(
 			if err != nil {
 				return err
 			}
-			viewDesc, err := p.getViewDescForCascade(
+			viewDesc, skipped, err := p.getViewDescForCascade(
 				ctx, "index", idx.Name, tableDesc.ParentID, tableRef.ID, behavior,
 			)
 			if err != nil {
 				return err
+			}
+			if skipped {
+				// In the table whose index is being removed, filter out all back-references
+				// that refer to the view that's being removed.
+				tableDesc.DependedOnBy = removeMatchingReferences(tableDesc.DependedOnBy, tableRef.ID)
+				continue
 			}
 			viewJobDesc := fmt.Sprintf("removing view %q dependent on index %q which is being dropped",
 				viewDesc.Name, idx.Name)

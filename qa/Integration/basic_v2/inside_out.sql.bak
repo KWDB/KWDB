@@ -473,7 +473,7 @@ order BY
     s.device_no,
     t.index_name,
     r.obj_name;
-set cluster setting ts.sql.query_opt_mode=11110;
+set cluster setting ts.sql.query_opt_mode=DEFAULT;
 use defaultdb;
 drop database runba cascade;
 drop database runba_tra cascade;

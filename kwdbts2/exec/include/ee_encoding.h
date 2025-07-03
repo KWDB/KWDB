@@ -141,13 +141,29 @@ struct KWDuration {
       n += snprintf(buf + n, sz - n, "%ld %s", days,
                     days > 1 || days < -1 ? "days " : "day ");
     }
-    if (time_t sec = nanos / 1000000000) {
-      tm ts{};
-      gmtime_r(&sec, &ts);
-      n += strftime(buf + n, sz - n, "%T", &ts);
+
+    k_int64 total_sec = nanos / 1000000000;
+
+    k_int64 seconds_after_decimal = std::abs(nanos % 1000000000);
+
+    if (nanos < 0) {
+      n += snprintf(buf + n, sz - n, "-");
     }
-    if (time_t m = nanos % 1000000) {
-      n += snprintf(buf + n, sz - n, ".%03ld", m);
+    k_int64 abs_sec = std::abs(total_sec);
+    k_int64 hours = abs_sec / 3600;
+    k_int64 minutes = (abs_sec % 3600) / 60;
+    k_int64 seconds = abs_sec % 60;
+    n +=
+        snprintf(buf + n, sz - n, "%02ld:%02ld:%02ld", hours, minutes, seconds);
+
+    if (seconds_after_decimal != 0) {
+      int digits = 9;
+      while (seconds_after_decimal % 10 == 0) {
+        seconds_after_decimal /= 10;
+        digits--;
+      }
+
+      n += snprintf(buf + n, sz - n, ".%0*ld", digits, seconds_after_decimal);
     }
 
     return n;

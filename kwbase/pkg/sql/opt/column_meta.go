@@ -88,6 +88,12 @@ type ColumnMeta struct {
 
 	// TSType property of time series column(0: normal col; 1: tag col 2: primary tag)
 	TSType int
+
+	// IsDeclaredInsideProcedure indicates whether this column is declared in a stored procedure.
+	IsDeclaredInsideProcedure bool
+	// RealIdx is only used when IsDeclaredInsideProcedure is true, which indicates the index of
+	// variables declared inside a procedure(starts from zero)
+	RealIdx int
 }
 
 // IsNormalCol identify this column as a normal column

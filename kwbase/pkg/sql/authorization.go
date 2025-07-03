@@ -27,6 +27,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"math/bits"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -139,6 +140,22 @@ func (p *planner) CheckPrivilege(
 	return pgerror.Newf(pgcode.InsufficientPrivilege,
 		"user %s does not have %s privilege on %s %s",
 		user, privilege, typeName, descriptor.GetName())
+}
+
+// CheckPrivilegeBitmap check if desc has privileges in privilege map
+func CheckPrivilegeBitmap(
+	ctx context.Context, p *planner, desc sqlbase.DescriptorProto, PrivilegeBitmap uint32,
+) error {
+	for privs := PrivilegeBitmap; privs != 0; {
+		priv := privilege.Kind(bits.TrailingZeros32(privs))
+		if priv != 0 {
+			if err := p.CheckPrivilege(ctx, desc, priv); err != nil {
+				return err
+			}
+		}
+		privs &= ^(1 << priv)
+	}
+	return nil
 }
 
 // CheckAnyPrivilege implements the AuthorizationAccessor interface.

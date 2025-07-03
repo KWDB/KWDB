@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -112,6 +113,18 @@ func newNoopProcessor(
 	}
 
 	return n, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (n *noopProcessor) InitProcessorProcedure(txn *kv.Txn) {
+	if n.EvalCtx.IsProcedure {
+		if n.FlowCtx != nil {
+			n.FlowCtx.Txn = txn
+		}
+		n.Closed = false
+		n.State = execinfra.StateRunning
+		n.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

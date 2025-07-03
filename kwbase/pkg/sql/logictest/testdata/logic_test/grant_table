@@ -27,457 +27,459 @@ a              public              readwrite  ALL
 a              public              root       ALL
 
 # Show that by default GRANT is restricted to the current database
-query TTTTT colnames
+query TTTTTT colnames
 SHOW GRANTS
 ----
-database_name  schema_name         table_name                         grantee  privilege_type
-test           information_schema  NULL                               admin    ALL
-test           information_schema  NULL                               root     ALL
-test           information_schema  administrable_role_authorizations  public   SELECT
-test           information_schema  applicable_roles                   public   SELECT
-test           information_schema  check_constraints                  public   SELECT
-test           information_schema  column_privileges                  public   SELECT
-test           information_schema  columns                            public   SELECT
-test           information_schema  constraint_column_usage            public   SELECT
-test           information_schema  enabled_roles                      public   SELECT
-test           information_schema  key_column_usage                   public   SELECT
-test           information_schema  parameters                         public   SELECT
-test           information_schema  referential_constraints            public   SELECT
-test           information_schema  role_table_grants                  public   SELECT
-test           information_schema  routines                           public   SELECT
-test           information_schema  schema_privileges                  public   SELECT
-test           information_schema  schemata                           public   SELECT
-test           information_schema  sequences                          public   SELECT
-test           information_schema  statistics                         public   SELECT
-test           information_schema  table_constraints                  public   SELECT
-test           information_schema  table_privileges                   public   SELECT
-test           information_schema  tables                             public   SELECT
-test           information_schema  user_privileges                    public   SELECT
-test           information_schema  views                              public   SELECT
-test           kwdb_internal       NULL                               admin    ALL
-test           kwdb_internal       NULL                               root     ALL
-test           kwdb_internal       audit_policies                     public   SELECT
-test           kwdb_internal       backward_dependencies              public   SELECT
-test           kwdb_internal       builtin_functions                  public   SELECT
-test           kwdb_internal       cluster_queries                    public   SELECT
-test           kwdb_internal       cluster_sessions                   public   SELECT
-test           kwdb_internal       cluster_settings                   public   SELECT
-test           kwdb_internal       cluster_transactions               public   SELECT
-test           kwdb_internal       create_statements                  public   SELECT
-test           kwdb_internal       feature_usage                      public   SELECT
-test           kwdb_internal       forward_dependencies               public   SELECT
-test           kwdb_internal       gossip_alerts                      public   SELECT
-test           kwdb_internal       gossip_liveness                    public   SELECT
-test           kwdb_internal       gossip_network                     public   SELECT
-test           kwdb_internal       gossip_nodes                       public   SELECT
-test           kwdb_internal       index_columns                      public   SELECT
-test           kwdb_internal       jobs                               public   SELECT
-test           kwdb_internal       kv_node_status                     public   SELECT
-test           kwdb_internal       kv_store_status                    public   SELECT
-test           kwdb_internal       kwdb_attributes                    public   SELECT
-test           kwdb_internal       kwdb_functions                     public   SELECT
-test           kwdb_internal       kwdb_object_create_statement       public   SELECT
-test           kwdb_internal       kwdb_retention                     public   SELECT
-test           kwdb_internal       kwdb_schedules                     public   SELECT
-test           kwdb_internal       kwdb_tse_info                      public   SELECT
-test           kwdb_internal       leases                             public   SELECT
-test           kwdb_internal       node_build_info                    public   SELECT
-test           kwdb_internal       node_metrics                       public   SELECT
-test           kwdb_internal       node_queries                       public   SELECT
-test           kwdb_internal       node_runtime_info                  public   SELECT
-test           kwdb_internal       node_sessions                      public   SELECT
-test           kwdb_internal       node_statement_statistics          public   SELECT
-test           kwdb_internal       node_transactions                  public   SELECT
-test           kwdb_internal       node_txn_stats                     public   SELECT
-test           kwdb_internal       partitions                         public   SELECT
-test           kwdb_internal       predefined_comments                public   SELECT
-test           kwdb_internal       ranges                             public   SELECT
-test           kwdb_internal       ranges_no_leases                   public   SELECT
-test           kwdb_internal       schema_changes                     public   SELECT
-test           kwdb_internal       session_trace                      public   SELECT
-test           kwdb_internal       session_variables                  public   SELECT
-test           kwdb_internal       table_columns                      public   SELECT
-test           kwdb_internal       table_indexes                      public   SELECT
-test           kwdb_internal       tables                             public   SELECT
-test           kwdb_internal       zones                              public   SELECT
-test           pg_catalog          NULL                               admin    ALL
-test           pg_catalog          NULL                               root     ALL
-test           pg_catalog          pg_am                              public   SELECT
-test           pg_catalog          pg_attrdef                         public   SELECT
-test           pg_catalog          pg_attribute                       public   SELECT
-test           pg_catalog          pg_auth_members                    public   SELECT
-test           pg_catalog          pg_authid                          public   SELECT
-test           pg_catalog          pg_available_extensions            public   SELECT
-test           pg_catalog          pg_cast                            public   SELECT
-test           pg_catalog          pg_class                           public   SELECT
-test           pg_catalog          pg_collation                       public   SELECT
-test           pg_catalog          pg_constraint                      public   SELECT
-test           pg_catalog          pg_conversion                      public   SELECT
-test           pg_catalog          pg_database                        public   SELECT
-test           pg_catalog          pg_default_acl                     public   SELECT
-test           pg_catalog          pg_depend                          public   SELECT
-test           pg_catalog          pg_description                     public   SELECT
-test           pg_catalog          pg_enum                            public   SELECT
-test           pg_catalog          pg_extension                       public   SELECT
-test           pg_catalog          pg_foreign_data_wrapper            public   SELECT
-test           pg_catalog          pg_foreign_server                  public   SELECT
-test           pg_catalog          pg_foreign_table                   public   SELECT
-test           pg_catalog          pg_index                           public   SELECT
-test           pg_catalog          pg_indexes                         public   SELECT
-test           pg_catalog          pg_inherits                        public   SELECT
-test           pg_catalog          pg_language                        public   SELECT
-test           pg_catalog          pg_locks                           public   SELECT
-test           pg_catalog          pg_matviews                        public   SELECT
-test           pg_catalog          pg_namespace                       public   SELECT
-test           pg_catalog          pg_operator                        public   SELECT
-test           pg_catalog          pg_prepared_statements             public   SELECT
-test           pg_catalog          pg_prepared_xacts                  public   SELECT
-test           pg_catalog          pg_proc                            public   SELECT
-test           pg_catalog          pg_range                           public   SELECT
-test           pg_catalog          pg_rewrite                         public   SELECT
-test           pg_catalog          pg_roles                           public   SELECT
-test           pg_catalog          pg_seclabel                        public   SELECT
-test           pg_catalog          pg_seclabels                       public   SELECT
-test           pg_catalog          pg_sequence                        public   SELECT
-test           pg_catalog          pg_settings                        public   SELECT
-test           pg_catalog          pg_shdepend                        public   SELECT
-test           pg_catalog          pg_shdescription                   public   SELECT
-test           pg_catalog          pg_shseclabel                      public   SELECT
-test           pg_catalog          pg_stat_activity                   public   SELECT
-test           pg_catalog          pg_stat_all_indexes                public   SELECT
-test           pg_catalog          pg_tables                          public   SELECT
-test           pg_catalog          pg_tablespace                      public   SELECT
-test           pg_catalog          pg_trigger                         public   SELECT
-test           pg_catalog          pg_type                            public   SELECT
-test           pg_catalog          pg_user                            public   SELECT
-test           pg_catalog          pg_user_mapping                    public   SELECT
-test           pg_catalog          pg_views                           public   SELECT
-test           public              NULL                               admin    ALL
-test           public              NULL                               root     ALL
+database_name  schema_name         table_name                         procedure_name  grantee  privilege_type
+test           information_schema  NULL                               NULL            admin    ALL
+test           information_schema  NULL                               NULL            root     ALL
+test           information_schema  administrable_role_authorizations  NULL            public   SELECT
+test           information_schema  applicable_roles                   NULL            public   SELECT
+test           information_schema  check_constraints                  NULL            public   SELECT
+test           information_schema  column_privileges                  NULL            public   SELECT
+test           information_schema  columns                            NULL            public   SELECT
+test           information_schema  constraint_column_usage            NULL            public   SELECT
+test           information_schema  enabled_roles                      NULL            public   SELECT
+test           information_schema  key_column_usage                   NULL            public   SELECT
+test           information_schema  parameters                         NULL            public   SELECT
+test           information_schema  procedure_privileges               NULL            public   SELECT
+test           information_schema  referential_constraints            NULL            public   SELECT
+test           information_schema  role_table_grants                  NULL            public   SELECT
+test           information_schema  routines                           NULL            public   SELECT
+test           information_schema  schema_privileges                  NULL            public   SELECT
+test           information_schema  schemata                           NULL            public   SELECT
+test           information_schema  sequences                          NULL            public   SELECT
+test           information_schema  statistics                         NULL            public   SELECT
+test           information_schema  table_constraints                  NULL            public   SELECT
+test           information_schema  table_privileges                   NULL            public   SELECT
+test           information_schema  tables                             NULL            public   SELECT
+test           information_schema  user_privileges                    NULL            public   SELECT
+test           information_schema  views                              NULL            public   SELECT
+test           kwdb_internal       NULL                               NULL            admin    ALL
+test           kwdb_internal       NULL                               NULL            root     ALL
+test           kwdb_internal       audit_policies                     NULL            public   SELECT
+test           kwdb_internal       backward_dependencies              NULL            public   SELECT
+test           kwdb_internal       builtin_functions                  NULL            public   SELECT
+test           kwdb_internal       cluster_queries                    NULL            public   SELECT
+test           kwdb_internal       cluster_sessions                   NULL            public   SELECT
+test           kwdb_internal       cluster_settings                   NULL            public   SELECT
+test           kwdb_internal       cluster_transactions               NULL            public   SELECT
+test           kwdb_internal       create_statements                  NULL            public   SELECT
+test           kwdb_internal       feature_usage                      NULL            public   SELECT
+test           kwdb_internal       forward_dependencies               NULL            public   SELECT
+test           kwdb_internal       gossip_alerts                      NULL            public   SELECT
+test           kwdb_internal       gossip_liveness                    NULL            public   SELECT
+test           kwdb_internal       gossip_network                     NULL            public   SELECT
+test           kwdb_internal       gossip_nodes                       NULL            public   SELECT
+test           kwdb_internal       index_columns                      NULL            public   SELECT
+test           kwdb_internal       jobs                               NULL            public   SELECT
+test           kwdb_internal       kv_node_status                     NULL            public   SELECT
+test           kwdb_internal       kv_store_status                    NULL            public   SELECT
+test           kwdb_internal       kwdb_attributes                    NULL            public   SELECT
+test           kwdb_internal       kwdb_functions                     NULL            public   SELECT
+test           kwdb_internal       kwdb_object_create_statement       NULL            public   SELECT
+test           kwdb_internal       kwdb_procedures                    NULL            public   SELECT
+test           kwdb_internal       kwdb_retention                     NULL            public   SELECT
+test           kwdb_internal       kwdb_schedules                     NULL            public   SELECT
+test           kwdb_internal       kwdb_tse_info                      NULL            public   SELECT
+test           kwdb_internal       leases                             NULL            public   SELECT
+test           kwdb_internal       node_build_info                    NULL            public   SELECT
+test           kwdb_internal       node_metrics                       NULL            public   SELECT
+test           kwdb_internal       node_queries                       NULL            public   SELECT
+test           kwdb_internal       node_runtime_info                  NULL            public   SELECT
+test           kwdb_internal       node_sessions                      NULL            public   SELECT
+test           kwdb_internal       node_statement_statistics          NULL            public   SELECT
+test           kwdb_internal       node_transactions                  NULL            public   SELECT
+test           kwdb_internal       node_txn_stats                     NULL            public   SELECT
+test           kwdb_internal       partitions                         NULL            public   SELECT
+test           kwdb_internal       predefined_comments                NULL            public   SELECT
+test           kwdb_internal       ranges                             NULL            public   SELECT
+test           kwdb_internal       ranges_no_leases                   NULL            public   SELECT
+test           kwdb_internal       schema_changes                     NULL            public   SELECT
+test           kwdb_internal       session_trace                      NULL            public   SELECT
+test           kwdb_internal       session_variables                  NULL            public   SELECT
+test           kwdb_internal       table_columns                      NULL            public   SELECT
+test           kwdb_internal       table_indexes                      NULL            public   SELECT
+test           kwdb_internal       tables                             NULL            public   SELECT
+test           kwdb_internal       zones                              NULL            public   SELECT
+test           pg_catalog          NULL                               NULL            admin    ALL
+test           pg_catalog          NULL                               NULL            root     ALL
+test           pg_catalog          pg_am                              NULL            public   SELECT
+test           pg_catalog          pg_attrdef                         NULL            public   SELECT
+test           pg_catalog          pg_attribute                       NULL            public   SELECT
+test           pg_catalog          pg_auth_members                    NULL            public   SELECT
+test           pg_catalog          pg_authid                          NULL            public   SELECT
+test           pg_catalog          pg_available_extensions            NULL            public   SELECT
+test           pg_catalog          pg_cast                            NULL            public   SELECT
+test           pg_catalog          pg_class                           NULL            public   SELECT
+test           pg_catalog          pg_collation                       NULL            public   SELECT
+test           pg_catalog          pg_constraint                      NULL            public   SELECT
+test           pg_catalog          pg_conversion                      NULL            public   SELECT
+test           pg_catalog          pg_database                        NULL            public   SELECT
+test           pg_catalog          pg_default_acl                     NULL            public   SELECT
+test           pg_catalog          pg_depend                          NULL            public   SELECT
+test           pg_catalog          pg_description                     NULL            public   SELECT
+test           pg_catalog          pg_enum                            NULL            public   SELECT
+test           pg_catalog          pg_extension                       NULL            public   SELECT
+test           pg_catalog          pg_foreign_data_wrapper            NULL            public   SELECT
+test           pg_catalog          pg_foreign_server                  NULL            public   SELECT
+test           pg_catalog          pg_foreign_table                   NULL            public   SELECT
+test           pg_catalog          pg_index                           NULL            public   SELECT
+test           pg_catalog          pg_indexes                         NULL            public   SELECT
+test           pg_catalog          pg_inherits                        NULL            public   SELECT
+test           pg_catalog          pg_language                        NULL            public   SELECT
+test           pg_catalog          pg_locks                           NULL            public   SELECT
+test           pg_catalog          pg_matviews                        NULL            public   SELECT
+test           pg_catalog          pg_namespace                       NULL            public   SELECT
+test           pg_catalog          pg_operator                        NULL            public   SELECT
+test           pg_catalog          pg_prepared_statements             NULL            public   SELECT
+test           pg_catalog          pg_prepared_xacts                  NULL            public   SELECT
+test           pg_catalog          pg_proc                            NULL            public   SELECT
+test           pg_catalog          pg_range                           NULL            public   SELECT
+test           pg_catalog          pg_rewrite                         NULL            public   SELECT
+test           pg_catalog          pg_roles                           NULL            public   SELECT
+test           pg_catalog          pg_seclabel                        NULL            public   SELECT
+test           pg_catalog          pg_seclabels                       NULL            public   SELECT
+test           pg_catalog          pg_sequence                        NULL            public   SELECT
+test           pg_catalog          pg_settings                        NULL            public   SELECT
+test           pg_catalog          pg_shdepend                        NULL            public   SELECT
+test           pg_catalog          pg_shdescription                   NULL            public   SELECT
+test           pg_catalog          pg_shseclabel                      NULL            public   SELECT
+test           pg_catalog          pg_stat_activity                   NULL            public   SELECT
+test           pg_catalog          pg_stat_all_indexes                NULL            public   SELECT
+test           pg_catalog          pg_tables                          NULL            public   SELECT
+test           pg_catalog          pg_tablespace                      NULL            public   SELECT
+test           pg_catalog          pg_trigger                         NULL            public   SELECT
+test           pg_catalog          pg_type                            NULL            public   SELECT
+test           pg_catalog          pg_user                            NULL            public   SELECT
+test           pg_catalog          pg_user_mapping                    NULL            public   SELECT
+test           pg_catalog          pg_views                           NULL            public   SELECT
+test           public              NULL                               NULL            admin    ALL
+test           public              NULL                               NULL            root     ALL
 
-query TTTTT colnames
+query TTTTTT colnames
 SHOW GRANTS FOR root
 ----
-database_name  schema_name         table_name  grantee  privilege_type
-test           information_schema  NULL        root     ALL
-test           kwdb_internal       NULL        root     ALL
-test           pg_catalog          NULL        root     ALL
-test           public              NULL        root     ALL
+database_name  schema_name         table_name  procedure_name  grantee  privilege_type
+test           information_schema  NULL        NULL            root     ALL
+test           kwdb_internal       NULL        NULL            root     ALL
+test           pg_catalog          NULL        NULL            root     ALL
+test           public              NULL        NULL            root     ALL
 
 # With no database set, we show the grants everywhere
 statement ok
 SET DATABASE = ''
 
-query TTTTT colnames,rowsort
+query TTTTTT colnames,rowsort
 SELECT * FROM [SHOW GRANTS]
  WHERE schema_name NOT IN ('kwdb_internal', 'pg_catalog', 'information_schema')
 ORDER BY 1,2,3
 ----
-database_name  schema_name  table_name                       grantee    privilege_type
-a              public       NULL                             root       ALL
-a              public       NULL                             admin      ALL
-a              public       NULL                             readwrite  ALL
-defaultdb      public       NULL                             admin      ALL
-defaultdb      public       NULL                             root       ALL
-postgres       public       NULL                             root       ALL
-postgres       public       NULL                             admin      ALL
-system         public       NULL                             root       GRANT
-system         public       NULL                             root       SELECT
-system         public       NULL                             admin      GRANT
-system         public       NULL                             admin      SELECT
-system         public       audits                           root       INSERT
-system         public       audits                           admin      SELECT
-system         public       audits                           admin      INSERT
-system         public       audits                           admin      GRANT
-system         public       audits                           root       GRANT
-system         public       audits                           admin      UPDATE
-system         public       audits                           root       DELETE
-system         public       audits                           root       UPDATE
-system         public       audits                           root       SELECT
-system         public       audits                           admin      DELETE
-system         public       bo_black_list                    admin      INSERT
-system         public       bo_black_list                    admin      SELECT
-system         public       bo_black_list                    admin      UPDATE
-system         public       bo_black_list                    root       DELETE
-system         public       bo_black_list                    root       GRANT
-system         public       bo_black_list                    root       SELECT
-system         public       bo_black_list                    admin      GRANT
-system         public       bo_black_list                    root       INSERT
-system         public       bo_black_list                    admin      DELETE
-system         public       bo_black_list                    root       UPDATE
-system         public       comments                         admin      UPDATE
-system         public       comments                         root       DELETE
-system         public       comments                         root       SELECT
-system         public       comments                         root       UPDATE
-system         public       comments                         admin      GRANT
-system         public       comments                         public     SELECT
-system         public       comments                         admin      DELETE
-system         public       comments                         root       INSERT
-system         public       comments                         admin      INSERT
-system         public       comments                         admin      SELECT
-system         public       comments                         root       GRANT
-system         public       descriptor                       root       SELECT
-system         public       descriptor                       admin      GRANT
-system         public       descriptor                       admin      SELECT
-system         public       descriptor                       root       GRANT
-system         public       eventlog                         root       DELETE
-system         public       eventlog                         root       UPDATE
-system         public       eventlog                         root       SELECT
-system         public       eventlog                         admin      DELETE
-system         public       eventlog                         root       INSERT
-system         public       eventlog                         admin      INSERT
-system         public       eventlog                         admin      SELECT
-system         public       eventlog                         admin      UPDATE
-system         public       eventlog                         root       GRANT
-system         public       eventlog                         admin      GRANT
-system         public       jobs                             root       UPDATE
-system         public       jobs                             root       SELECT
-system         public       jobs                             root       INSERT
-system         public       jobs                             root       GRANT
-system         public       jobs                             admin      DELETE
-system         public       jobs                             admin      GRANT
-system         public       jobs                             admin      INSERT
-system         public       jobs                             admin      SELECT
-system         public       jobs                             root       DELETE
-system         public       jobs                             admin      UPDATE
-system         public       kwdb_replication_info            admin      DELETE
-system         public       kwdb_replication_info            admin      GRANT
-system         public       kwdb_replication_info            admin      INSERT
-system         public       kwdb_replication_info            root       GRANT
-system         public       kwdb_replication_info            root       INSERT
-system         public       kwdb_replication_info            root       SELECT
-system         public       kwdb_replication_info            root       UPDATE
-system         public       kwdb_replication_info            admin      SELECT
-system         public       kwdb_replication_info            admin      UPDATE
-system         public       kwdb_replication_info            root       DELETE
-system         public       kwdb_ts_table                    admin      GRANT
-system         public       kwdb_ts_table                    root       SELECT
-system         public       kwdb_ts_table                    root       INSERT
-system         public       kwdb_ts_table                    root       GRANT
-system         public       kwdb_ts_table                    root       DELETE
-system         public       kwdb_ts_table                    root       UPDATE
-system         public       kwdb_ts_table                    admin      SELECT
-system         public       kwdb_ts_table                    admin      INSERT
-system         public       kwdb_ts_table                    admin      DELETE
-system         public       kwdb_ts_table                    admin      UPDATE
-system         public       lease                            root       INSERT
-system         public       lease                            root       UPDATE
-system         public       lease                            admin      DELETE
-system         public       lease                            admin      GRANT
-system         public       lease                            admin      INSERT
-system         public       lease                            admin      SELECT
-system         public       lease                            admin      UPDATE
-system         public       lease                            root       DELETE
-system         public       lease                            root       GRANT
-system         public       lease                            root       SELECT
-system         public       locations                        admin      SELECT
-system         public       locations                        root       DELETE
-system         public       locations                        root       GRANT
-system         public       locations                        root       INSERT
-system         public       locations                        root       SELECT
-system         public       locations                        root       UPDATE
-system         public       locations                        admin      GRANT
-system         public       locations                        admin      DELETE
-system         public       locations                        admin      INSERT
-system         public       locations                        admin      UPDATE
-system         public       namespace                        root       SELECT
-system         public       namespace                        root       GRANT
-system         public       namespace                        admin      GRANT
-system         public       namespace                        admin      SELECT
-system         public       namespace2                       root       SELECT
-system         public       namespace2                       admin      SELECT
-system         public       namespace2                       root       GRANT
-system         public       namespace2                       admin      GRANT
-system         public       protected_ts_meta                admin      SELECT
-system         public       protected_ts_meta                admin      GRANT
-system         public       protected_ts_meta                root       GRANT
-system         public       protected_ts_meta                root       SELECT
-system         public       protected_ts_records             root       GRANT
-system         public       protected_ts_records             admin      GRANT
-system         public       protected_ts_records             admin      SELECT
-system         public       protected_ts_records             root       SELECT
-system         public       rangelog                         admin      UPDATE
-system         public       rangelog                         root       GRANT
-system         public       rangelog                         admin      GRANT
-system         public       rangelog                         admin      DELETE
-system         public       rangelog                         root       DELETE
-system         public       rangelog                         root       INSERT
-system         public       rangelog                         root       UPDATE
-system         public       rangelog                         admin      INSERT
-system         public       rangelog                         root       SELECT
-system         public       rangelog                         admin      SELECT
-system         public       replication_constraint_stats     admin      SELECT
-system         public       replication_constraint_stats     admin      INSERT
-system         public       replication_constraint_stats     admin      UPDATE
-system         public       replication_constraint_stats     admin      DELETE
-system         public       replication_constraint_stats     root       DELETE
-system         public       replication_constraint_stats     root       SELECT
-system         public       replication_constraint_stats     root       UPDATE
-system         public       replication_constraint_stats     root       INSERT
-system         public       replication_constraint_stats     root       GRANT
-system         public       replication_constraint_stats     admin      GRANT
-system         public       replication_critical_localities  admin      DELETE
-system         public       replication_critical_localities  root       GRANT
-system         public       replication_critical_localities  root       DELETE
-system         public       replication_critical_localities  admin      UPDATE
-system         public       replication_critical_localities  admin      SELECT
-system         public       replication_critical_localities  admin      GRANT
-system         public       replication_critical_localities  root       UPDATE
-system         public       replication_critical_localities  root       SELECT
-system         public       replication_critical_localities  root       INSERT
-system         public       replication_critical_localities  admin      INSERT
-system         public       replication_stats                root       DELETE
-system         public       replication_stats                root       SELECT
-system         public       replication_stats                root       INSERT
-system         public       replication_stats                root       GRANT
-system         public       replication_stats                admin      UPDATE
-system         public       replication_stats                admin      DELETE
-system         public       replication_stats                admin      GRANT
-system         public       replication_stats                admin      SELECT
-system         public       replication_stats                admin      INSERT
-system         public       replication_stats                root       UPDATE
-system         public       reports_meta                     root       GRANT
-system         public       reports_meta                     admin      DELETE
-system         public       reports_meta                     admin      GRANT
-system         public       reports_meta                     admin      INSERT
-system         public       reports_meta                     root       UPDATE
-system         public       reports_meta                     root       SELECT
-system         public       reports_meta                     root       INSERT
-system         public       reports_meta                     admin      UPDATE
-system         public       reports_meta                     root       DELETE
-system         public       reports_meta                     admin      SELECT
-system         public       role_members                     admin      UPDATE
-system         public       role_members                     admin      DELETE
-system         public       role_members                     admin      GRANT
-system         public       role_members                     root       INSERT
-system         public       role_members                     admin      INSERT
-system         public       role_members                     root       UPDATE
-system         public       role_members                     root       SELECT
-system         public       role_members                     root       DELETE
-system         public       role_members                     root       GRANT
-system         public       role_members                     admin      SELECT
-system         public       role_options                     root       UPDATE
-system         public       role_options                     admin      DELETE
-system         public       role_options                     admin      GRANT
-system         public       role_options                     admin      INSERT
-system         public       role_options                     admin      SELECT
-system         public       role_options                     admin      UPDATE
-system         public       role_options                     root       DELETE
-system         public       role_options                     root       GRANT
-system         public       role_options                     root       INSERT
-system         public       role_options                     root       SELECT
-system         public       scheduled_jobs                   admin      DELETE
-system         public       scheduled_jobs                   root       UPDATE
-system         public       scheduled_jobs                   root       SELECT
-system         public       scheduled_jobs                   root       INSERT
-system         public       scheduled_jobs                   admin      UPDATE
-system         public       scheduled_jobs                   admin      SELECT
-system         public       scheduled_jobs                   admin      INSERT
-system         public       scheduled_jobs                   root       DELETE
-system         public       scheduled_jobs                   admin      GRANT
-system         public       scheduled_jobs                   root       GRANT
-system         public       settings                         admin      UPDATE
-system         public       settings                         root       SELECT
-system         public       settings                         root       INSERT
-system         public       settings                         admin      DELETE
-system         public       settings                         admin      GRANT
-system         public       settings                         root       DELETE
-system         public       settings                         root       GRANT
-system         public       settings                         admin      INSERT
-system         public       settings                         admin      SELECT
-system         public       settings                         root       UPDATE
-system         public       statement_bundle_chunks          admin      INSERT
-system         public       statement_bundle_chunks          admin      DELETE
-system         public       statement_bundle_chunks          admin      SELECT
-system         public       statement_bundle_chunks          admin      UPDATE
-system         public       statement_bundle_chunks          root       UPDATE
-system         public       statement_bundle_chunks          root       DELETE
-system         public       statement_bundle_chunks          root       GRANT
-system         public       statement_bundle_chunks          root       INSERT
-system         public       statement_bundle_chunks          admin      GRANT
-system         public       statement_bundle_chunks          root       SELECT
-system         public       statement_diagnostics            admin      DELETE
-system         public       statement_diagnostics            admin      SELECT
-system         public       statement_diagnostics            admin      GRANT
-system         public       statement_diagnostics            root       UPDATE
-system         public       statement_diagnostics            root       SELECT
-system         public       statement_diagnostics            root       GRANT
-system         public       statement_diagnostics            admin      UPDATE
-system         public       statement_diagnostics            root       DELETE
-system         public       statement_diagnostics            admin      INSERT
-system         public       statement_diagnostics            root       INSERT
-system         public       statement_diagnostics_requests   root       INSERT
-system         public       statement_diagnostics_requests   admin      GRANT
-system         public       statement_diagnostics_requests   root       SELECT
-system         public       statement_diagnostics_requests   admin      INSERT
-system         public       statement_diagnostics_requests   admin      UPDATE
-system         public       statement_diagnostics_requests   root       DELETE
-system         public       statement_diagnostics_requests   root       GRANT
-system         public       statement_diagnostics_requests   admin      SELECT
-system         public       statement_diagnostics_requests   root       UPDATE
-system         public       statement_diagnostics_requests   admin      DELETE
-system         public       table_statistics                 admin      SELECT
-system         public       table_statistics                 admin      GRANT
-system         public       table_statistics                 admin      UPDATE
-system         public       table_statistics                 root       UPDATE
-system         public       table_statistics                 admin      INSERT
-system         public       table_statistics                 root       INSERT
-system         public       table_statistics                 root       GRANT
-system         public       table_statistics                 admin      DELETE
-system         public       table_statistics                 root       DELETE
-system         public       table_statistics                 root       SELECT
-system         public       ui                               admin      DELETE
-system         public       ui                               admin      UPDATE
-system         public       ui                               root       DELETE
-system         public       ui                               root       GRANT
-system         public       ui                               root       INSERT
-system         public       ui                               root       UPDATE
-system         public       ui                               root       SELECT
-system         public       ui                               admin      INSERT
-system         public       ui                               admin      GRANT
-system         public       ui                               admin      SELECT
-system         public       user_defined_function            admin      DELETE
-system         public       user_defined_function            admin      GRANT
-system         public       user_defined_function            root       UPDATE
-system         public       user_defined_function            admin      UPDATE
-system         public       user_defined_function            root       DELETE
-system         public       user_defined_function            root       GRANT
-system         public       user_defined_function            root       INSERT
-system         public       user_defined_function            root       SELECT
-system         public       user_defined_function            admin      SELECT
-system         public       user_defined_function            admin      INSERT
-system         public       users                            root       INSERT
-system         public       users                            root       DELETE
-system         public       users                            admin      DELETE
-system         public       users                            admin      GRANT
-system         public       users                            admin      INSERT
-system         public       users                            admin      SELECT
-system         public       users                            admin      UPDATE
-system         public       users                            root       UPDATE
-system         public       users                            root       SELECT
-system         public       users                            root       GRANT
-system         public       web_sessions                     admin      SELECT
-system         public       web_sessions                     admin      UPDATE
-system         public       web_sessions                     root       DELETE
-system         public       web_sessions                     root       GRANT
-system         public       web_sessions                     root       INSERT
-system         public       web_sessions                     root       SELECT
-system         public       web_sessions                     admin      INSERT
-system         public       web_sessions                     admin      DELETE
-system         public       web_sessions                     admin      GRANT
-system         public       web_sessions                     root       UPDATE
-system         public       zones                            root       UPDATE
-system         public       zones                            root       SELECT
-system         public       zones                            admin      DELETE
-system         public       zones                            admin      GRANT
-system         public       zones                            admin      INSERT
-system         public       zones                            admin      SELECT
-system         public       zones                            admin      UPDATE
-system         public       zones                            root       DELETE
-system         public       zones                            root       INSERT
-system         public       zones                            root       GRANT
-test           public       NULL                             root       ALL
-test           public       NULL                             admin      ALL
+database_name  schema_name  table_name                       procedure_name  grantee    privilege_type
+a              public       NULL                             NULL            admin      ALL
+a              public       NULL                             NULL            readwrite  ALL
+a              public       NULL                             NULL            root       ALL
+defaultdb      public       NULL                             NULL            root       ALL
+defaultdb      public       NULL                             NULL            admin      ALL
+postgres       public       NULL                             NULL            admin      ALL
+postgres       public       NULL                             NULL            root       ALL
+system         public       NULL                             NULL            admin      SELECT
+system         public       NULL                             NULL            admin      GRANT
+system         public       NULL                             NULL            root       SELECT
+system         public       NULL                             NULL            root       GRANT
+system         public       audits                           NULL            root       UPDATE
+system         public       audits                           NULL            root       INSERT
+system         public       audits                           NULL            root       GRANT
+system         public       audits                           NULL            root       DELETE
+system         public       audits                           NULL            admin      UPDATE
+system         public       audits                           NULL            admin      SELECT
+system         public       audits                           NULL            admin      INSERT
+system         public       audits                           NULL            admin      GRANT
+system         public       audits                           NULL            root       SELECT
+system         public       audits                           NULL            admin      DELETE
+system         public       bo_black_list                    NULL            root       UPDATE
+system         public       bo_black_list                    NULL            admin      GRANT
+system         public       bo_black_list                    NULL            admin      INSERT
+system         public       bo_black_list                    NULL            admin      SELECT
+system         public       bo_black_list                    NULL            admin      DELETE
+system         public       bo_black_list                    NULL            root       DELETE
+system         public       bo_black_list                    NULL            root       GRANT
+system         public       bo_black_list                    NULL            root       INSERT
+system         public       bo_black_list                    NULL            admin      UPDATE
+system         public       bo_black_list                    NULL            root       SELECT
+system         public       comments                         NULL            admin      DELETE
+system         public       comments                         NULL            root       UPDATE
+system         public       comments                         NULL            root       SELECT
+system         public       comments                         NULL            root       DELETE
+system         public       comments                         NULL            root       GRANT
+system         public       comments                         NULL            public     SELECT
+system         public       comments                         NULL            admin      UPDATE
+system         public       comments                         NULL            admin      SELECT
+system         public       comments                         NULL            admin      INSERT
+system         public       comments                         NULL            root       INSERT
+system         public       comments                         NULL            admin      GRANT
+system         public       descriptor                       NULL            root       GRANT
+system         public       descriptor                       NULL            root       SELECT
+system         public       descriptor                       NULL            admin      GRANT
+system         public       descriptor                       NULL            admin      SELECT
+system         public       eventlog                         NULL            root       INSERT
+system         public       eventlog                         NULL            root       UPDATE
+system         public       eventlog                         NULL            root       SELECT
+system         public       eventlog                         NULL            admin      SELECT
+system         public       eventlog                         NULL            admin      INSERT
+system         public       eventlog                         NULL            admin      GRANT
+system         public       eventlog                         NULL            admin      DELETE
+system         public       eventlog                         NULL            root       GRANT
+system         public       eventlog                         NULL            root       DELETE
+system         public       eventlog                         NULL            admin      UPDATE
+system         public       jobs                             NULL            admin      UPDATE
+system         public       jobs                             NULL            admin      INSERT
+system         public       jobs                             NULL            admin      GRANT
+system         public       jobs                             NULL            admin      DELETE
+system         public       jobs                             NULL            root       GRANT
+system         public       jobs                             NULL            root       INSERT
+system         public       jobs                             NULL            root       SELECT
+system         public       jobs                             NULL            root       UPDATE
+system         public       jobs                             NULL            admin      SELECT
+system         public       jobs                             NULL            root       DELETE
+system         public       kwdb_replication_info            NULL            admin      INSERT
+system         public       kwdb_replication_info            NULL            admin      GRANT
+system         public       kwdb_replication_info            NULL            root       GRANT
+system         public       kwdb_replication_info            NULL            root       UPDATE
+system         public       kwdb_replication_info            NULL            root       SELECT
+system         public       kwdb_replication_info            NULL            root       INSERT
+system         public       kwdb_replication_info            NULL            admin      DELETE
+system         public       kwdb_replication_info            NULL            root       DELETE
+system         public       kwdb_replication_info            NULL            admin      UPDATE
+system         public       kwdb_replication_info            NULL            admin      SELECT
+system         public       kwdb_ts_table                    NULL            admin      INSERT
+system         public       kwdb_ts_table                    NULL            root       UPDATE
+system         public       kwdb_ts_table                    NULL            root       SELECT
+system         public       kwdb_ts_table                    NULL            admin      DELETE
+system         public       kwdb_ts_table                    NULL            root       INSERT
+system         public       kwdb_ts_table                    NULL            root       GRANT
+system         public       kwdb_ts_table                    NULL            root       DELETE
+system         public       kwdb_ts_table                    NULL            admin      UPDATE
+system         public       kwdb_ts_table                    NULL            admin      SELECT
+system         public       kwdb_ts_table                    NULL            admin      GRANT
+system         public       lease                            NULL            root       INSERT
+system         public       lease                            NULL            admin      DELETE
+system         public       lease                            NULL            admin      GRANT
+system         public       lease                            NULL            root       GRANT
+system         public       lease                            NULL            admin      SELECT
+system         public       lease                            NULL            admin      UPDATE
+system         public       lease                            NULL            admin      INSERT
+system         public       lease                            NULL            root       UPDATE
+system         public       lease                            NULL            root       DELETE
+system         public       lease                            NULL            root       SELECT
+system         public       locations                        NULL            admin      UPDATE
+system         public       locations                        NULL            admin      INSERT
+system         public       locations                        NULL            root       DELETE
+system         public       locations                        NULL            admin      GRANT
+system         public       locations                        NULL            admin      DELETE
+system         public       locations                        NULL            root       GRANT
+system         public       locations                        NULL            admin      SELECT
+system         public       locations                        NULL            root       UPDATE
+system         public       locations                        NULL            root       SELECT
+system         public       locations                        NULL            root       INSERT
+system         public       namespace                        NULL            admin      SELECT
+system         public       namespace                        NULL            root       SELECT
+system         public       namespace                        NULL            admin      GRANT
+system         public       namespace                        NULL            root       GRANT
+system         public       namespace2                       NULL            admin      GRANT
+system         public       namespace2                       NULL            root       GRANT
+system         public       namespace2                       NULL            root       SELECT
+system         public       namespace2                       NULL            admin      SELECT
+system         public       protected_ts_meta                NULL            admin      SELECT
+system         public       protected_ts_meta                NULL            root       SELECT
+system         public       protected_ts_meta                NULL            admin      GRANT
+system         public       protected_ts_meta                NULL            root       GRANT
+system         public       protected_ts_records             NULL            root       GRANT
+system         public       protected_ts_records             NULL            admin      SELECT
+system         public       protected_ts_records             NULL            admin      GRANT
+system         public       protected_ts_records             NULL            root       SELECT
+system         public       rangelog                         NULL            admin      DELETE
+system         public       rangelog                         NULL            root       SELECT
+system         public       rangelog                         NULL            root       INSERT
+system         public       rangelog                         NULL            root       GRANT
+system         public       rangelog                         NULL            root       DELETE
+system         public       rangelog                         NULL            admin      UPDATE
+system         public       rangelog                         NULL            admin      SELECT
+system         public       rangelog                         NULL            admin      INSERT
+system         public       rangelog                         NULL            admin      GRANT
+system         public       rangelog                         NULL            root       UPDATE
+system         public       replication_constraint_stats     NULL            admin      SELECT
+system         public       replication_constraint_stats     NULL            root       INSERT
+system         public       replication_constraint_stats     NULL            root       GRANT
+system         public       replication_constraint_stats     NULL            root       SELECT
+system         public       replication_constraint_stats     NULL            root       DELETE
+system         public       replication_constraint_stats     NULL            root       UPDATE
+system         public       replication_constraint_stats     NULL            admin      UPDATE
+system         public       replication_constraint_stats     NULL            admin      DELETE
+system         public       replication_constraint_stats     NULL            admin      GRANT
+system         public       replication_constraint_stats     NULL            admin      INSERT
+system         public       replication_critical_localities  NULL            admin      UPDATE
+system         public       replication_critical_localities  NULL            root       DELETE
+system         public       replication_critical_localities  NULL            root       GRANT
+system         public       replication_critical_localities  NULL            root       INSERT
+system         public       replication_critical_localities  NULL            admin      SELECT
+system         public       replication_critical_localities  NULL            root       SELECT
+system         public       replication_critical_localities  NULL            root       UPDATE
+system         public       replication_critical_localities  NULL            admin      DELETE
+system         public       replication_critical_localities  NULL            admin      GRANT
+system         public       replication_critical_localities  NULL            admin      INSERT
+system         public       replication_stats                NULL            admin      GRANT
+system         public       replication_stats                NULL            admin      UPDATE
+system         public       replication_stats                NULL            root       GRANT
+system         public       replication_stats                NULL            root       SELECT
+system         public       replication_stats                NULL            root       UPDATE
+system         public       replication_stats                NULL            root       INSERT
+system         public       replication_stats                NULL            admin      SELECT
+system         public       replication_stats                NULL            admin      DELETE
+system         public       replication_stats                NULL            root       DELETE
+system         public       replication_stats                NULL            admin      INSERT
+system         public       reports_meta                     NULL            admin      GRANT
+system         public       reports_meta                     NULL            admin      UPDATE
+system         public       reports_meta                     NULL            root       DELETE
+system         public       reports_meta                     NULL            root       GRANT
+system         public       reports_meta                     NULL            admin      SELECT
+system         public       reports_meta                     NULL            root       SELECT
+system         public       reports_meta                     NULL            root       UPDATE
+system         public       reports_meta                     NULL            admin      DELETE
+system         public       reports_meta                     NULL            admin      INSERT
+system         public       reports_meta                     NULL            root       INSERT
+system         public       role_members                     NULL            root       SELECT
+system         public       role_members                     NULL            root       DELETE
+system         public       role_members                     NULL            admin      DELETE
+system         public       role_members                     NULL            root       INSERT
+system         public       role_members                     NULL            admin      GRANT
+system         public       role_members                     NULL            admin      INSERT
+system         public       role_members                     NULL            root       GRANT
+system         public       role_members                     NULL            admin      UPDATE
+system         public       role_members                     NULL            admin      SELECT
+system         public       role_members                     NULL            root       UPDATE
+system         public       role_options                     NULL            root       DELETE
+system         public       role_options                     NULL            admin      GRANT
+system         public       role_options                     NULL            admin      INSERT
+system         public       role_options                     NULL            admin      SELECT
+system         public       role_options                     NULL            admin      UPDATE
+system         public       role_options                     NULL            root       GRANT
+system         public       role_options                     NULL            root       INSERT
+system         public       role_options                     NULL            admin      DELETE
+system         public       role_options                     NULL            root       UPDATE
+system         public       role_options                     NULL            root       SELECT
+system         public       scheduled_jobs                   NULL            admin      INSERT
+system         public       scheduled_jobs                   NULL            admin      DELETE
+system         public       scheduled_jobs                   NULL            root       GRANT
+system         public       scheduled_jobs                   NULL            root       DELETE
+system         public       scheduled_jobs                   NULL            admin      UPDATE
+system         public       scheduled_jobs                   NULL            root       INSERT
+system         public       scheduled_jobs                   NULL            admin      SELECT
+system         public       scheduled_jobs                   NULL            admin      GRANT
+system         public       scheduled_jobs                   NULL            root       UPDATE
+system         public       scheduled_jobs                   NULL            root       SELECT
+system         public       settings                         NULL            root       UPDATE
+system         public       settings                         NULL            admin      DELETE
+system         public       settings                         NULL            admin      GRANT
+system         public       settings                         NULL            admin      SELECT
+system         public       settings                         NULL            admin      UPDATE
+system         public       settings                         NULL            root       DELETE
+system         public       settings                         NULL            root       GRANT
+system         public       settings                         NULL            admin      INSERT
+system         public       settings                         NULL            root       INSERT
+system         public       settings                         NULL            root       SELECT
+system         public       statement_bundle_chunks          NULL            root       SELECT
+system         public       statement_bundle_chunks          NULL            root       INSERT
+system         public       statement_bundle_chunks          NULL            root       GRANT
+system         public       statement_bundle_chunks          NULL            root       DELETE
+system         public       statement_bundle_chunks          NULL            admin      UPDATE
+system         public       statement_bundle_chunks          NULL            admin      INSERT
+system         public       statement_bundle_chunks          NULL            admin      GRANT
+system         public       statement_bundle_chunks          NULL            root       UPDATE
+system         public       statement_bundle_chunks          NULL            admin      DELETE
+system         public       statement_bundle_chunks          NULL            admin      SELECT
+system         public       statement_diagnostics            NULL            admin      GRANT
+system         public       statement_diagnostics            NULL            admin      INSERT
+system         public       statement_diagnostics            NULL            admin      SELECT
+system         public       statement_diagnostics            NULL            admin      UPDATE
+system         public       statement_diagnostics            NULL            root       DELETE
+system         public       statement_diagnostics            NULL            root       UPDATE
+system         public       statement_diagnostics            NULL            root       INSERT
+system         public       statement_diagnostics            NULL            root       SELECT
+system         public       statement_diagnostics            NULL            admin      DELETE
+system         public       statement_diagnostics            NULL            root       GRANT
+system         public       statement_diagnostics_requests   NULL            admin      SELECT
+system         public       statement_diagnostics_requests   NULL            root       DELETE
+system         public       statement_diagnostics_requests   NULL            root       GRANT
+system         public       statement_diagnostics_requests   NULL            root       INSERT
+system         public       statement_diagnostics_requests   NULL            root       SELECT
+system         public       statement_diagnostics_requests   NULL            root       UPDATE
+system         public       statement_diagnostics_requests   NULL            admin      DELETE
+system         public       statement_diagnostics_requests   NULL            admin      INSERT
+system         public       statement_diagnostics_requests   NULL            admin      GRANT
+system         public       statement_diagnostics_requests   NULL            admin      UPDATE
+system         public       table_statistics                 NULL            root       DELETE
+system         public       table_statistics                 NULL            root       UPDATE
+system         public       table_statistics                 NULL            root       INSERT
+system         public       table_statistics                 NULL            root       GRANT
+system         public       table_statistics                 NULL            admin      UPDATE
+system         public       table_statistics                 NULL            admin      SELECT
+system         public       table_statistics                 NULL            admin      INSERT
+system         public       table_statistics                 NULL            root       SELECT
+system         public       table_statistics                 NULL            admin      DELETE
+system         public       table_statistics                 NULL            admin      GRANT
+system         public       ui                               NULL            admin      INSERT
+system         public       ui                               NULL            admin      DELETE
+system         public       ui                               NULL            root       SELECT
+system         public       ui                               NULL            root       GRANT
+system         public       ui                               NULL            root       DELETE
+system         public       ui                               NULL            admin      UPDATE
+system         public       ui                               NULL            admin      SELECT
+system         public       ui                               NULL            admin      GRANT
+system         public       ui                               NULL            root       INSERT
+system         public       ui                               NULL            root       UPDATE
+system         public       user_defined_routine             NULL            admin      INSERT
+system         public       user_defined_routine             NULL            admin      SELECT
+system         public       user_defined_routine             NULL            root       DELETE
+system         public       user_defined_routine             NULL            root       GRANT
+system         public       user_defined_routine             NULL            root       INSERT
+system         public       user_defined_routine             NULL            root       SELECT
+system         public       user_defined_routine             NULL            root       UPDATE
+system         public       user_defined_routine             NULL            admin      GRANT
+system         public       user_defined_routine             NULL            admin      DELETE
+system         public       user_defined_routine             NULL            admin      UPDATE
+system         public       users                            NULL            root       INSERT
+system         public       users                            NULL            admin      DELETE
+system         public       users                            NULL            admin      INSERT
+system         public       users                            NULL            admin      SELECT
+system         public       users                            NULL            admin      UPDATE
+system         public       users                            NULL            root       DELETE
+system         public       users                            NULL            root       GRANT
+system         public       users                            NULL            admin      GRANT
+system         public       users                            NULL            root       SELECT
+system         public       users                            NULL            root       UPDATE
+system         public       web_sessions                     NULL            root       INSERT
+system         public       web_sessions                     NULL            root       GRANT
+system         public       web_sessions                     NULL            root       DELETE
+system         public       web_sessions                     NULL            root       SELECT
+system         public       web_sessions                     NULL            admin      UPDATE
+system         public       web_sessions                     NULL            admin      DELETE
+system         public       web_sessions                     NULL            admin      INSERT
+system         public       web_sessions                     NULL            admin      GRANT
+system         public       web_sessions                     NULL            admin      SELECT
+system         public       web_sessions                     NULL            root       UPDATE
+system         public       zones                            NULL            root       GRANT
+system         public       zones                            NULL            root       UPDATE
+system         public       zones                            NULL            root       SELECT
+system         public       zones                            NULL            root       INSERT
+system         public       zones                            NULL            admin      SELECT
+system         public       zones                            NULL            admin      GRANT
+system         public       zones                            NULL            root       DELETE
+system         public       zones                            NULL            admin      UPDATE
+system         public       zones                            NULL            admin      INSERT
+system         public       zones                            NULL            admin      DELETE
+test           public       NULL                             NULL            root       ALL
+test           public       NULL                             NULL            admin      ALL
 
 statement error pgcode 42P01 pq: relation "a.t" does not exist
 SHOW GRANTS ON a.t
@@ -542,6 +544,7 @@ SHOW GRANTS ON t
 a  public  t  admin      ALL
 a  public  t  readwrite  CREATE
 a  public  t  readwrite  DROP
+a  public  t  readwrite  EXECUTE
 a  public  t  readwrite  GRANT
 a  public  t  readwrite  SELECT
 a  public  t  readwrite  UPDATE
@@ -549,6 +552,7 @@ a  public  t  readwrite  ZONECONFIG
 a  public  t  root       ALL
 a  public  t  test-user  CREATE
 a  public  t  test-user  DROP
+a  public  t  test-user  EXECUTE
 a  public  t  test-user  GRANT
 a  public  t  test-user  SELECT
 a  public  t  test-user  UPDATE
@@ -559,12 +563,14 @@ SHOW GRANTS ON t FOR readwrite, "test-user"
 ----
 a  public  t  readwrite  CREATE
 a  public  t  readwrite  DROP
+a  public  t  readwrite  EXECUTE
 a  public  t  readwrite  GRANT
 a  public  t  readwrite  SELECT
 a  public  t  readwrite  UPDATE
 a  public  t  readwrite  ZONECONFIG
 a  public  t  test-user  CREATE
 a  public  t  test-user  DROP
+a  public  t  test-user  EXECUTE
 a  public  t  test-user  GRANT
 a  public  t  test-user  SELECT
 a  public  t  test-user  UPDATE
@@ -579,6 +585,7 @@ SHOW GRANTS ON t
 a  public  t  admin      ALL
 a  public  t  readwrite  CREATE
 a  public  t  readwrite  DROP
+a  public  t  readwrite  EXECUTE
 a  public  t  readwrite  GRANT
 a  public  t  readwrite  SELECT
 a  public  t  readwrite  UPDATE
@@ -586,6 +593,7 @@ a  public  t  readwrite  ZONECONFIG
 a  public  t  root       ALL
 a  public  t  test-user  CREATE
 a  public  t  test-user  DROP
+a  public  t  test-user  EXECUTE
 a  public  t  test-user  GRANT
 a  public  t  test-user  UPDATE
 a  public  t  test-user  ZONECONFIG
@@ -595,12 +603,14 @@ SHOW GRANTS ON t FOR readwrite, "test-user"
 ----
 a  public  t  readwrite  CREATE
 a  public  t  readwrite  DROP
+a  public  t  readwrite  EXECUTE
 a  public  t  readwrite  GRANT
 a  public  t  readwrite  SELECT
 a  public  t  readwrite  UPDATE
 a  public  t  readwrite  ZONECONFIG
 a  public  t  test-user  CREATE
 a  public  t  test-user  DROP
+a  public  t  test-user  EXECUTE
 a  public  t  test-user  GRANT
 a  public  t  test-user  UPDATE
 a  public  t  test-user  ZONECONFIG
@@ -665,6 +675,7 @@ SHOW GRANTS ON v
 a  public  v  admin      ALL
 a  public  v  readwrite  CREATE
 a  public  v  readwrite  DROP
+a  public  v  readwrite  EXECUTE
 a  public  v  readwrite  GRANT
 a  public  v  readwrite  SELECT
 a  public  v  readwrite  UPDATE
@@ -672,6 +683,7 @@ a  public  v  readwrite  ZONECONFIG
 a  public  v  root       ALL
 a  public  v  test-user  CREATE
 a  public  v  test-user  DROP
+a  public  v  test-user  EXECUTE
 a  public  v  test-user  GRANT
 a  public  v  test-user  SELECT
 a  public  v  test-user  UPDATE
@@ -682,12 +694,14 @@ SHOW GRANTS ON v FOR readwrite, "test-user"
 ----
 a  public  v  readwrite  CREATE
 a  public  v  readwrite  DROP
+a  public  v  readwrite  EXECUTE
 a  public  v  readwrite  GRANT
 a  public  v  readwrite  SELECT
 a  public  v  readwrite  UPDATE
 a  public  v  readwrite  ZONECONFIG
 a  public  v  test-user  CREATE
 a  public  v  test-user  DROP
+a  public  v  test-user  EXECUTE
 a  public  v  test-user  GRANT
 a  public  v  test-user  SELECT
 a  public  v  test-user  UPDATE
@@ -702,6 +716,7 @@ SHOW GRANTS ON v
 a  public  v  admin      ALL
 a  public  v  readwrite  CREATE
 a  public  v  readwrite  DROP
+a  public  v  readwrite  EXECUTE
 a  public  v  readwrite  GRANT
 a  public  v  readwrite  SELECT
 a  public  v  readwrite  UPDATE
@@ -709,6 +724,7 @@ a  public  v  readwrite  ZONECONFIG
 a  public  v  root       ALL
 a  public  v  test-user  CREATE
 a  public  v  test-user  DROP
+a  public  v  test-user  EXECUTE
 a  public  v  test-user  GRANT
 a  public  v  test-user  UPDATE
 a  public  v  test-user  ZONECONFIG
@@ -718,34 +734,38 @@ SHOW GRANTS ON v FOR readwrite, "test-user"
 ----
 a  public  v  readwrite  CREATE
 a  public  v  readwrite  DROP
+a  public  v  readwrite  EXECUTE
 a  public  v  readwrite  GRANT
 a  public  v  readwrite  SELECT
 a  public  v  readwrite  UPDATE
 a  public  v  readwrite  ZONECONFIG
 a  public  v  test-user  CREATE
 a  public  v  test-user  DROP
+a  public  v  test-user  EXECUTE
 a  public  v  test-user  GRANT
 a  public  v  test-user  UPDATE
 a  public  v  test-user  ZONECONFIG
 
-query TTTTT
+query TTTTTT
 SHOW GRANTS FOR readwrite, "test-user"
 ----
-a  information_schema  NULL  readwrite  ALL
-a  kwdb_internal       NULL  readwrite  ALL
-a  pg_catalog          NULL  readwrite  ALL
-a  public              NULL  readwrite  ALL
-a  public              v     readwrite  CREATE
-a  public              v     readwrite  DROP
-a  public              v     readwrite  GRANT
-a  public              v     readwrite  SELECT
-a  public              v     readwrite  UPDATE
-a  public              v     readwrite  ZONECONFIG
-a  public              v     test-user  CREATE
-a  public              v     test-user  DROP
-a  public              v     test-user  GRANT
-a  public              v     test-user  UPDATE
-a  public              v     test-user  ZONECONFIG
+a  information_schema  NULL  NULL  readwrite  ALL
+a  kwdb_internal       NULL  NULL  readwrite  ALL
+a  pg_catalog          NULL  NULL  readwrite  ALL
+a  public              NULL  NULL  readwrite  ALL
+a  public              v     NULL  readwrite  CREATE
+a  public              v     NULL  readwrite  DROP
+a  public              v     NULL  readwrite  EXECUTE
+a  public              v     NULL  readwrite  GRANT
+a  public              v     NULL  readwrite  SELECT
+a  public              v     NULL  readwrite  UPDATE
+a  public              v     NULL  readwrite  ZONECONFIG
+a  public              v     NULL  test-user  CREATE
+a  public              v     NULL  test-user  DROP
+a  public              v     NULL  test-user  EXECUTE
+a  public              v     NULL  test-user  GRANT
+a  public              v     NULL  test-user  UPDATE
+a  public              v     NULL  test-user  ZONECONFIG
 
 statement ok
 REVOKE ALL ON v FROM readwrite,"test-user"
@@ -760,13 +780,13 @@ query TTTTT
 SHOW GRANTS ON v FOR readwrite, "test-user"
 ----
 
-query TTTTT
+query TTTTTT
 SHOW GRANTS FOR readwrite, "test-user"
 ----
-a  information_schema  NULL  readwrite  ALL
-a  kwdb_internal       NULL  readwrite  ALL
-a  pg_catalog          NULL  readwrite  ALL
-a  public              NULL  readwrite  ALL
+a  information_schema  NULL  NULL  readwrite  ALL
+a  kwdb_internal       NULL  NULL  readwrite  ALL
+a  pg_catalog          NULL  NULL  readwrite  ALL
+a  public              NULL  NULL  readwrite  ALL
 
 # Verify that the DB privileges have not changed.
 query TTTT colnames

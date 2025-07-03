@@ -195,7 +195,9 @@ func TestIsEndOfStatement(t *testing.T) {
 		if isNotEmpty != test.isNotEmpty {
 			t.Errorf("%q: isNotEmpty expected %v, got %v", test.in, test.isNotEmpty, isNotEmpty)
 		}
-		isEnd := isEndOfStatement(lastTok)
+		var c cliState
+		c = setupTestCliState()
+		isEnd := c.isEndOfStatement(lastTok)
 		if isEnd != test.isEnd {
 			t.Errorf("%q: isEnd expected %v, got %v", test.in, test.isEnd, isEnd)
 		}

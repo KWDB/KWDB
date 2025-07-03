@@ -29,9 +29,11 @@ import (
 	"math"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -92,6 +94,9 @@ func (r *RepeatableRowSource) ConsumerDone() {}
 
 // ConsumerClosed is part of the RowSource interface.
 func (r *RepeatableRowSource) ConsumerClosed() {}
+
+// InitProcessorProcedure init processor in procedure
+func (r *RepeatableRowSource) InitProcessorProcedure(txn *kv.Txn) {}
 
 // NewTestMemMonitor creates and starts a new memory monitor to be used in
 // tests.
@@ -187,6 +192,9 @@ func (r *RowDisposer) Push(
 func (r *RowDisposer) PushPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
+
+// AddPGComplete is part of the RowReceiver interface.
+func (r *RowDisposer) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 // ProducerDone is part of the RowReceiver interface.
 func (r *RowDisposer) ProducerDone() {}

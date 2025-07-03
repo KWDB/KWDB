@@ -26,6 +26,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -99,6 +100,9 @@ func newTsTagUpdater(
 	}
 	return tu, nil
 }
+
+// InitProcessorProcedure init processor in procedure
+func (tu *tsTagUpdater) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Start is part of the RowSource interface.
 func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {

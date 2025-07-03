@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -88,6 +89,18 @@ func newOrdinalityProcessor(
 	}
 
 	return o, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (o *ordinalityProcessor) InitProcessorProcedure(txn *kv.Txn) {
+	if o.EvalCtx.IsProcedure {
+		if o.FlowCtx != nil {
+			o.FlowCtx.Txn = txn
+		}
+		o.Closed = false
+		o.State = execinfra.StateRunning
+		o.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

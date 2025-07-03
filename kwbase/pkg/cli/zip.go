@@ -92,6 +92,7 @@ var debugZipTablesPerCluster = []string{
 	"kwdb_internal.kwdb_attributes",
 	"kwdb_internal.kwdb_functions",
 	"kwdb_internal.kwdb_schedules",
+	"kwdb_internal.kwdb_procedures",
 
 	"kwdb_internal.schema_changes",
 	"kwdb_internal.partitions",

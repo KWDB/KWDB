@@ -348,6 +348,12 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 	case *memo.TSDeleteExpr:
 		ep, err = b.buildTSDelete(t)
 
+	case *memo.CallProcedureExpr:
+		ep, err = b.buildCallProcedure(t)
+
+	case *memo.CreateProcedureExpr:
+		ep, err = b.buildCreateProcedure(t)
+
 	case *memo.CreateTableExpr:
 		ep, err = b.buildCreateTable(t)
 
@@ -1627,7 +1633,7 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 
 		eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
 		eb.disableTelemetry = true
-		plan, err := eb.Build()
+		plan, err := eb.Build(true)
 		if err != nil {
 			if errors.IsAssertionFailure(err) {
 				// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
@@ -2920,7 +2926,7 @@ func (b *Builder) buildRecursiveCTE(rec *memo.RecursiveCTEExpr) (execPlan, error
 		innerBld := *innerBldTemplate
 		innerBld.addBuiltWithExpr(rec.WithID, initial.outputCols, bufferRef)
 		var plan execPlan
-		plan, err1 = innerBld.build(rec.Recursive)
+		plan, err1 = innerBld.build(rec.Recursive, true)
 		if err1 != nil {
 			return nil, err1
 		}

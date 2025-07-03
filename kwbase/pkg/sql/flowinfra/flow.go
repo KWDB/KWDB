@@ -100,6 +100,8 @@ type Flow interface {
 	SetFormat(bool)
 	// SetCloses is part of the Flow interface
 	SetCloses(closes int)
+	// SetRunProcedure is part of the Flow interface
+	SetRunProcedure(runProcedure bool)
 	// Start starts the flow. Processors run asynchronously in their own goroutines.
 	// Wait() needs to be called to wait for the flow to finish.
 	// See Run() for a synchronous version.
@@ -117,6 +119,12 @@ type Flow interface {
 	// goroutines are done.
 	// The caller needs to call f.Cleanup().
 	Run(_ context.Context, doneFn func()) error
+
+	// StartProcessor starts all processors and inbox/outbox for cursor
+	StartProcessor(ctx context.Context, doneFn func()) error
+
+	// NextRow gets plan next row data for cursor
+	NextRow() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
 
 	// Wait waits for all the goroutines for this flow to exit. If the context gets
 	// canceled before all goroutines exit, it calls f.cancel().
@@ -190,6 +198,7 @@ type FlowBase struct {
 	AllPush      bool
 	Format       bool
 	isVectorized bool
+	RunProcedure bool
 	closes       int
 
 	// inboundStreams are streams that receive data from other hosts; this map
@@ -291,6 +300,11 @@ func (f *FlowBase) SetCloses(closes int) {
 	f.closes = closes
 }
 
+// SetRunProcedure is part of the Flow interface
+func (f *FlowBase) SetRunProcedure(runProcedure bool) {
+	f.RunProcedure = runProcedure
+}
+
 var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
 	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", false,
 )
@@ -302,7 +316,7 @@ func (f *FlowBase) IsShortCircuitForPgEncode() bool {
 	// f.Format: The flag for service output encoding format, true:FormatBinary, false:FormatText.
 	// The relational operator only has noop, and noop has no filtering conditions or output column pruning.
 	if pgEncodeShortCircuitEnabled.Get(&f.Cfg.Settings.SV) && len(f.processors) <= 1 &&
-		f.AllPush && !f.Format && len(f.TsTableReaders) == 1 && f.processors[0].IsShortCircuitForPgEncode() {
+		f.AllPush && !f.Format && len(f.TsTableReaders) == 1 && f.processors[0].IsShortCircuitForPgEncode() && !f.RunProcedure {
 		return true
 	}
 	return false
@@ -518,7 +532,7 @@ func (f *FlowBase) Start(ctx context.Context, doneFn func()) error {
 			for i := 0; i < len(f.TsTableReaders); i++ {
 				f.waitGroup.Add(1)
 				go func(i int) {
-					f.TsTableReaders[i].RunTS(ctx)
+					f.TsTableReaders[i].(execinfra.Processor).RunTS(ctx)
 					f.waitGroup.Done()
 				}(i)
 			}
@@ -565,9 +579,9 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 		if f.IsShortCircuitForPgEncode() {
 			// Output encoding optimization.
 			var closed int
-			f.TsTableReaders[0].Start(ctx)
+			f.TsTableReaders[0].(execinfra.Processor).Start(ctx)
 			for {
-				rev, code, err := f.TsTableReaders[0].NextPgWire()
+				rev, code, err := f.TsTableReaders[0].(execinfra.Processor).NextPgWire()
 				if err != nil {
 					return err
 				}
@@ -614,7 +628,7 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 			for i := 0; i < len(f.TsTableReaders); i++ {
 				f.waitGroup.Add(1)
 				go func(i int) {
-					f.TsTableReaders[i].RunTS(ctx)
+					f.TsTableReaders[i].(execinfra.Processor).RunTS(ctx)
 					f.waitGroup.Done()
 				}(i)
 				f.startedGoroutines = true
@@ -648,6 +662,91 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 	}
 	f.rowStats = headProc.Run(ctx)
 	return nil
+}
+
+// StartProcessor is part of the Flow interface.
+func (f *FlowBase) StartProcessor(ctx context.Context, doneFn func()) error {
+	if len(f.processors) == 0 {
+		return errors.AssertionFailedf("no processors in flow")
+	}
+
+	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
+	otherProcs := f.processors[:len(f.processors)-1]
+	if f.isTimeSeries {
+		if f.isVectorized {
+			if f.IsLocal() && f.VecIsShortCircuitForPgEncode(ctx) {
+				err := f.VecShortCircuitForPgEncode(ctx)
+				return err
+			}
+		}
+		if f.syncFlowConsumer == nil {
+			return nil
+		}
+
+		if !f.IsLocal() {
+			// Once we call RegisterFlow, the inbound streams become accessible; we must
+			// set up the WaitGroup counter before.
+			// The counter will be further incremented below to account for the
+			// processors.
+			f.waitGroup.Add(len(f.inboundStreams))
+
+			if err := f.flowRegistry.RegisterFlow(
+				ctx, f.ID, f, f.inboundStreams, SettingFlowStreamTimeout.Get(&f.FlowCtx.Cfg.Settings.SV),
+			); err != nil {
+				return err
+			}
+		}
+
+		f.status = FlowRunning
+
+		for _, s := range f.startables {
+			s.Start(ctx, &f.waitGroup, f.ctxCancel)
+		}
+
+		if !f.isVectorized {
+			for i := 0; i < len(f.TsTableReaders); i++ {
+				f.waitGroup.Add(1)
+				go func(i int) {
+					f.TsTableReaders[i].(execinfra.Processor).RunTS(ctx)
+					f.waitGroup.Done()
+				}(i)
+				f.startedGoroutines = true
+			}
+		}
+
+		for i := 0; i < len(otherProcs); i++ {
+			f.waitGroup.Add(1)
+			go func(i int) {
+				otherProcs[i].Run(ctx)
+				f.waitGroup.Done()
+			}(i)
+		}
+
+		//f.ReceiveMessageQueue(ctx)
+		f.startedGoroutines = f.startedGoroutines || len(f.startables) > 0 || len(otherProcs) > 0 || !f.IsLocal()
+		ctx = headProc.Start(ctx)
+		return nil
+	}
+
+	// We'll take care of the last processor in particular.
+	var err error
+	if err = f.startInternal(ctx, otherProcs, doneFn); err != nil {
+		// For sync flows, the error goes to the consumer.
+		if f.syncFlowConsumer != nil {
+			f.syncFlowConsumer.Push(nil /* row */, &execinfrapb.ProducerMetadata{Err: err})
+			f.syncFlowConsumer.ProducerDone()
+			return nil
+		}
+		return err
+	}
+	ctx = headProc.Start(ctx)
+	return nil
+}
+
+// NextRow is part of the Flow interface.
+func (f *FlowBase) NextRow() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
+	return headProc.Next()
 }
 
 // Wait is part of the Flow interface.

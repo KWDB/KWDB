@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -91,6 +92,9 @@ type RowReceiver interface {
 	Push(row sqlbase.EncDatumRow, meta *execinfrapb.ProducerMetadata) ConsumerStatus
 	// PushPGResult sends a pg record to the consumer of this RowReceiver.
 	PushPGResult(ctx context.Context, res []byte) error
+
+	// AddPGComplete adds a pg complete flag.
+	AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int)
 
 	// Types returns the types of the EncDatumRow that this RowReceiver expects
 	// to be pushed.
@@ -178,6 +182,9 @@ type RowSource interface {
 	// ConsumerClosed() must be called; it is a no-op to call these methods after
 	// all the rows were consumed (i.e. after Next() returned an empty row).
 	ConsumerClosed()
+
+	// InitProcessorProcedure init processor in procedure
+	InitProcessorProcedure(txn *kv.Txn)
 }
 
 // RowSourcedProcessor is the union of RowSource and Processor.
@@ -186,6 +193,7 @@ type RowSourcedProcessor interface {
 	Run(context.Context) RowStats
 	RunTS(ctx context.Context)
 	Push(ctx context.Context, res []byte) error
+	Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
 	NextPgWire() (val []byte, code int, err error)
 	IsShortCircuitForPgEncode() bool
 	SupportPgWire() bool
@@ -206,7 +214,7 @@ func Run(ctx context.Context, src RowSource, dst RowReceiver, startTime time.Tim
 			}
 			metaErr := &execinfrapb.ProducerMetadata{Err: err}
 			dst.Push(nil, metaErr)
-			handleConsumerClosed(src, dst, startTime, nil)
+			HandleConsumerClosed(src, dst, startTime, nil)
 			return
 		}
 	}()
@@ -224,7 +232,7 @@ func Run(ctx context.Context, src RowSource, dst RowReceiver, startTime time.Tim
 				dst.AddStats(timeutil.Since(startTime), row != nil)
 				return
 			case ConsumerClosed:
-				handleConsumerClosed(src, dst, startTime, row)
+				HandleConsumerClosed(src, dst, startTime, row)
 				return
 			}
 		}
@@ -235,7 +243,8 @@ func Run(ctx context.Context, src RowSource, dst RowReceiver, startTime time.Tim
 	}
 }
 
-func handleConsumerClosed(
+// HandleConsumerClosed handles consumer status
+func HandleConsumerClosed(
 	src RowSource, dst RowReceiver, startTime time.Time, row sqlbase.EncDatumRow,
 ) {
 	src.ConsumerClosed()
@@ -530,6 +539,9 @@ func (rc *RowChannel) PushPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
 
+// AddPGComplete is part of the RowReceiver interface.
+func (rc *RowChannel) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
+
 // Push is part of the RowReceiver interface.
 func (rc *RowChannel) Push(
 	row sqlbase.EncDatumRow, meta *execinfrapb.ProducerMetadata,
@@ -605,6 +617,9 @@ func (rc *RowChannel) ConsumerClosed() {
 		}
 	}
 }
+
+// InitProcessorProcedure init processor in procedure
+func (rc *RowChannel) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Types is part of the RowReceiver interface.
 func (rc *RowChannel) Types() []types.T {

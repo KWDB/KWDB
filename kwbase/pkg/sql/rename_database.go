@@ -150,6 +150,17 @@ func (n *renameDatabaseNode) startExec(params runParams) error {
 					tbDesc.GetName(), tree.AsString((*tree.Name)(&dbDesc.Name)))
 			}
 			for _, dependedOn := range tbDesc.DependedOnBy {
+				found, procName, err := params.p.GetProcedureNameByID(ctx, dependedOn.ID)
+				if err != nil {
+					return err
+				}
+				if found {
+					err = params.p.TryPurgeProcedureCache(ctx, procName, uint32(dependedOn.ID))
+					if err != nil {
+						return err
+					}
+					continue
+				}
 				dependentDesc, err := sqlbase.GetTableDescFromID(ctx, p.txn, dependedOn.ID)
 				if err != nil {
 					return err

@@ -451,4 +451,4 @@ drop database test_select_last_add cascade;
 drop database pipec_r cascade;
 drop database db_pipec cascade;
 drop database test_rel cascade;
-set cluster setting ts.sql.query_opt_mode = 1110;
+set cluster setting ts.sql.query_opt_mode = DEFAULT;
