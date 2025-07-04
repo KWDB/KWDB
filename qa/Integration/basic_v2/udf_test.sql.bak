@@ -72,7 +72,7 @@ END;
 drop function calculate_growth_rate;
 select calculate_growth_rate(c1,c2) from t1 where k_timestamp >= '2024-1-1 1:00:00' and k_timestamp <= '2024-1-1 5:00:00';
 
-DELETE FROM system.user_defined_function WHERE true;
+DELETE FROM system.user_defined_routine WHERE routine_type = 2;
 use default;
 drop database test cascade;
 
@@ -136,8 +136,7 @@ BEGIN
     return new_time
 end'
 END;
---select system.user_defined_functions
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 SHOW FUNCTIONS;
 SHOW FUNCTION time_add_hour;
 select time_add_hour('2024-01-01 10:00:00',1);
@@ -206,7 +205,7 @@ BEGIN
     return re
 end'
 END;
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 SHOW FUNCTIONS;
 SHOW FUNCTION multiply;
 select multiply(3);
@@ -342,7 +341,7 @@ SELECT square(4);
 SELECT sum_two_ints(3, 5);
 SELECT is_perfect_number(28);
 
-SELECT function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, comments FROM system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 
@@ -425,7 +424,7 @@ END;
 SELECT sum_of_factors(28);
 SELECT fibonacci(10);
 
-SELECT function_name,argument_types,return_type,types_length,function_body,function_type,language,db_name,creator,comments FROM system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION fibonacci;
@@ -505,7 +504,7 @@ END;
 SELECT calculate_circle_area(5);
 SELECT calculate_stddev('1,2,3,4,5');
 
-SELECT function_name,argument_types,return_type,types_length,function_body,function_type,language,db_name,creator,comments FROM system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION calculate_circle_area;
@@ -565,7 +564,7 @@ BEGIN
 end'
 END;
 
-SELECT function_name,argument_types,return_type,types_length,function_body,function_type,language,db_name,creator,comments FROM system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION calculate_distance;
@@ -625,7 +624,7 @@ end
 '
 END;
 
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION check_substring;
@@ -692,7 +691,7 @@ end
 '
 END;
 
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION check_substring;
@@ -759,7 +758,7 @@ end
 '
 END;
 
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION check_substring;
@@ -919,7 +918,7 @@ BEGIN
 end'
 END;
 
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 SHOW FUNCTIONS;
 SHOW FUNCTION m1;
@@ -944,7 +943,7 @@ DROP FUNCTION m7;
 DROP FUNCTION m8;
 DROP FUNCTION m9;
 DROP FUNCTION m10;
-select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
+SELECT name FROM system.user_defined_routine where routine_type = 2;
 
 --testcase0011 test exception
 CREATE FUNCTION time_add_hour(timestamp_str )

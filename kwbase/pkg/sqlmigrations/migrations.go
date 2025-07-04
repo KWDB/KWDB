@@ -337,6 +337,12 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		name:   "drop unused system table",
 		workFn: dropSystemTable,
 	},
+	{
+		name:                "create new system.user_defined_routine table",
+		workFn:              createUDRTable,
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionUDR),
+		newDescriptorIDs:    staticIDs(keys.UDRTableID),
+	},
 }
 
 func staticIDs(ids ...sqlbase.ID) func(ctx context.Context, db db) ([]sqlbase.ID, error) {
@@ -1620,6 +1626,7 @@ func dropSystemTable(ctx context.Context, r runner) error {
 		"ml_training_pipelines",
 		"ml_model_versions",
 		"ml_models",
+		"user_defined_function",
 	}
 	for _, table := range unusedTable {
 		dropStmt := fmt.Sprintf("drop table if exists system.%s", table)
@@ -1871,4 +1878,8 @@ func depublicizeSystemComments(ctx context.Context, r runner) error {
 
 func createScheduledJobsTable(ctx context.Context, r runner) error {
 	return createSystemTable(ctx, r, sqlbase.ScheduledJobsTable)
+}
+
+func createUDRTable(ctx context.Context, r runner) error {
+	return createSystemTable(ctx, r, sqlbase.UDRTable)
 }

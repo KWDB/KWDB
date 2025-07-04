@@ -100,6 +100,7 @@ type Catalog interface {
 	// along with the resolved Database.
 	ResolveDatabase(ctx context.Context, flags Flags, name string) (Database, error)
 
+	ResolveProcCatalog(ctx context.Context, name *tree.TableName, checkPri bool) (bool, *tree.CreateProcedure, error)
 	// ResolveDataSource locates a data source with the given name and returns it
 	// along with the resolved DataSourceName.
 	//

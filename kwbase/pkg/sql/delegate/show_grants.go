@@ -32,13 +32,15 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
 // delegateShowGrants implements SHOW GRANTS which returns grant details for the
 // specified objects and users.
 // Privileges: None.
-//   Notes: postgres does not have a SHOW GRANTS statement.
-//          mysql only returns the user's privileges.
+//
+//	Notes: postgres does not have a SHOW GRANTS statement.
+//	       mysql only returns the user's privileges.
 func (d *delegator) delegateShowGrants(n *tree.ShowGrants) (tree.Statement, error) {
 	var params []string
 
@@ -61,6 +63,13 @@ SELECT table_catalog AS database_name,
        grantee,
        privilege_type
 FROM "".information_schema.table_privileges`
+	const procPrivQuery = `
+SELECT procedure_catalog AS database_name,
+       procedure_schema AS schema_name,
+       procedure_name,
+       grantee,
+       privilege_type
+FROM "".information_schema.procedure_privileges`
 
 	var source bytes.Buffer
 	var cond bytes.Buffer
@@ -124,11 +133,36 @@ FROM "".information_schema.table_privileges`
 				strings.Join(params, ","),
 			)
 		}
-	} else {
-		fmt.Fprint(&source, tablePrivQuery)
+	} else if n.Targets != nil && len(n.Targets.Procedures) > 0 {
+		fmt.Fprint(&source, procPrivQuery)
 		orderBy = "1,2,3,4,5"
+		for _, proc := range n.Targets.Procedures {
+			found, _, err := d.catalog.ResolveProcCatalog(d.ctx, &proc, false)
+			if err != nil {
+				return nil, err
+			}
+			if !found {
+				return nil, sqlbase.NewUndefinedProcedureError(&proc)
+			}
+			catalog := proc.Catalog()
+			schema := proc.Schema()
+			if catalog == "" {
+				catalog = d.catalog.GetCurrentDatabase(d.ctx)
+			}
+			if schema == "" {
+				schema = tree.PublicSchema
+			}
+			params = append(params, fmt.Sprintf("(%s,%s,%s)",
+				lex.EscapeSQLString(catalog),
+				lex.EscapeSQLString(schema),
+				lex.EscapeSQLString(proc.Table())))
+		}
+		fmt.Fprintf(&cond, `WHERE (database_name, schema_name, procedure_name) IN (%s)`, strings.Join(params, ","))
+	} else {
 
 		if n.Targets != nil {
+			fmt.Fprint(&source, tablePrivQuery)
+			orderBy = "1,2,3,4,5"
 			// Get grants of table from information_schema.table_privileges
 			// if the type of target is table.
 			var allTables tree.TableNames
@@ -165,10 +199,23 @@ FROM "".information_schema.table_privileges`
 				fmt.Fprintf(&cond, `WHERE (database_name, schema_name, table_name) IN (%s)`, strings.Join(params, ","))
 			}
 		} else {
+			fmt.Fprint(&source, `
+SELECT table_catalog AS database_name,
+       table_schema AS schema_name,
+       table_name,
+       NULL::STRING AS procedure_name,
+       grantee,
+       privilege_type
+FROM "".information_schema.table_privileges`)
+			orderBy = "1,2,3,4,5,6"
 			// No target: only look at tables and schemas in the current database.
 			source.WriteString(` UNION ALL ` +
-				`SELECT database_name, schema_name, NULL::STRING AS table_name, grantee, privilege_type FROM (`)
+				`SELECT database_name, schema_name, NULL::STRING AS table_name, NULL::STRING AS procedure_name, grantee, privilege_type FROM (`)
 			source.WriteString(dbPrivQuery)
+			source.WriteByte(')')
+			source.WriteString(` UNION ALL ` +
+				`SELECT database_name, schema_name, NULL::STRING AS table_name, procedure_name, grantee, privilege_type FROM (`)
+			source.WriteString(procPrivQuery)
 			source.WriteByte(')')
 			// If the current database is set, restrict the command to it.
 			if currDB := d.evalCtx.SessionData.Database; currDB != "" {

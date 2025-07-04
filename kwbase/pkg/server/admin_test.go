@@ -554,7 +554,7 @@ func TestRangeCount_MissingTwoRanges(t *testing.T) {
 	// TODO(arul): We're missing 2 ranges after moving system.namespace out from
 	//  the gossip range -- where are they?
 	// we drop unused system table so that change 2 to 11
-	expectedMissingRangeCount := int64(17)
+	expectedMissingRangeCount := int64(18)
 	assert.Equal(t,
 		totalRangeCount,
 		nonTableRangeCount+systemTableRangeCount+expectedMissingRangeCount)

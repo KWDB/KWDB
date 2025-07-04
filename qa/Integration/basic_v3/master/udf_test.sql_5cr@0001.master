@@ -25,24 +25,11 @@ BEGIN
 end'
 END;
 CREATE FUNCTION
-> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
-        function_name       | argument_types | return_type | types_length |                                         function_body                                         | function_type | language |  db_name  | creator | version | comments
-----------------------------+----------------+-------------+--------------+-----------------------------------------------------------------------------------------------+---------------+----------+-----------+---------+---------+-----------
-  time_add_hour             | {0,5}          | {0}         | {0,0,0}      | function time_add_hour(input_time, hours_to_add)                                              |             1 | LUA      | defaultdb | root    | 1.0     |
-                            |                |             |              |     local new_time = input_time + (hours_to_add * 3600)                                       |               |          |           |         |         |
-                            |                |             |              |     return new_time                                                                           |               |          |           |         |         |
-                            |                |             |              | end                                                                                           |               |          |           |         |         |
-  time_difference_to_string | {0,0}          | {10}        | {0,0,100}    | function time_difference_to_string(start_time, end_time)                                      |             1 | LUA      | defaultdb | root    | 1.0     |
-                            |                |             |              |     local difference = math.abs(end_time - start_time)                                        |               |          |           |         |         |
-                            |                |             |              |                                                                                               |               |          |           |         |         |
-                            |                |             |              |     local days = math.floor(difference / (60 * 60 * 24))                                      |               |          |           |         |         |
-                            |                |             |              |     local hours = math.floor((difference % (60 * 60 * 24)) / (60 * 60))                       |               |          |           |         |         |
-                            |                |             |              |     local minutes = math.floor((difference % (60 * 60)) / 60)                                 |               |          |           |         |         |
-                            |                |             |              |     local seconds = difference % 60                                                           |               |          |           |         |         |
-                            |                |             |              |                                                                                               |               |          |           |         |         |
-                            |                |             |              |     local result = days .. "天 " .. hours .. "小时 " .. minutes .. "分钟 " .. seconds .. "秒" |               |          |           |         |         |
-                            |                |             |              |     return result                                                                             |               |          |           |         |         |
-                            |                |             |              | end                                                                                           |               |          |           |         |         |
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+            name
+-----------------------------
+  time_add_hour
+  time_difference_to_string
 (2 rows)
 > SHOW FUNCTIONS;
         function_name

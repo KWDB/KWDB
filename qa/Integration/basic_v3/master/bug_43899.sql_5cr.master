@@ -208,7 +208,7 @@ GROUP BY si.workarea_name,
                                              | table                 | workarea_info@workarea_name_index
                                              | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd /"work_area_2"-/"work_area_2"/PrefixEnd /"work_area_3"-/"work_area_3"/PrefixEnd
 (84 rows)
-> set cluster setting ts.sql.query_opt_mode=01110;
+> set cluster setting ts.sql.query_opt_mode=DEFAULT;
 SET CLUSTER SETTING
 > drop DATABASE db_pipec cascade;
 DROP DATABASE

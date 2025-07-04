@@ -588,7 +588,7 @@ func (h *harness) runUsingAPI(tb testing.TB, bmType BenchmarkType, usePrepared b
 	root := execMemo.RootExpr()
 	execFactory := stubFactory{}
 	eb := execbuilder.New(&execFactory, execMemo, nil /* catalog */, root, &h.evalCtx)
-	if _, err = eb.Build(); err != nil {
+	if _, err = eb.Build(true); err != nil {
 		tb.Fatalf("%v", err)
 	}
 }

@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"math"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -916,5 +917,17 @@ func (h *batchLookupJoiner) Child(nth int, verbose bool) execinfra.OpNode {
 		panic("right input to batchLookupJoiner is not an execinfra.OpNode")
 	default:
 		panic(fmt.Sprintf("invalid index %d", nth))
+	}
+}
+
+// InitProcessorProcedure init processor in procedure
+func (h *batchLookupJoiner) InitProcessorProcedure(txn *kv.Txn) {
+	if h.EvalCtx.IsProcedure {
+		if h.FlowCtx != nil {
+			h.FlowCtx.Txn = txn
+		}
+		h.Closed = false
+		h.State = execinfra.StateRunning
+		h.Out.SetRowIdx(0)
 	}
 }

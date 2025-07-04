@@ -38,6 +38,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -429,6 +430,9 @@ func (ttr *TsTableReader) ConsumerClosed() {
 	ttr.cleanup(ttr.PbCtx())
 	ttr.InternalClose()
 }
+
+// InitProcessorProcedure init processor in procedure
+func (ttr *TsTableReader) InitProcessorProcedure(txn *kv.Txn) {}
 
 // outputStatsToTrace outputs the collected tableReader stats to the trace. Will
 // fail silently if the tableReader is not collecting stats.

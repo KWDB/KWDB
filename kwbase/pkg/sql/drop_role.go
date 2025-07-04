@@ -150,6 +150,23 @@ func (n *DropRoleNode) startExec(params runParams) error {
 		}
 	}
 
+	// Then check all the procedures.
+	procs, err := GetAllProcDesc(params.ctx, params.p.txn)
+	if err != nil {
+		return err
+	}
+	for _, proc := range procs {
+		for _, u := range proc.Privileges.Users {
+			if _, ok := userNames[u.User]; ok {
+				if f.Len() > 0 {
+					f.WriteString(", ")
+				}
+				f.FormatNameP(&proc.Name)
+				break
+			}
+		}
+	}
+
 	// Was there any object depending on that user?
 	if f.Len() > 0 {
 		fnl := tree.NewFmtCtx(tree.FmtSimple)

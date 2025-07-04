@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -123,6 +124,18 @@ func newMergeJoiner(
 	}
 
 	return m, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (m *mergeJoiner) InitProcessorProcedure(txn *kv.Txn) {
+	if m.EvalCtx.IsProcedure {
+		if m.FlowCtx != nil {
+			m.FlowCtx.Txn = txn
+		}
+		m.Closed = false
+		m.State = execinfra.StateRunning
+		m.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

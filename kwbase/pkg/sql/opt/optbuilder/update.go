@@ -115,6 +115,8 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 
 	var mb mutationBuilder
 	mb.init(b, "update", tab, alias)
+	// Verify whether the time-series table and relational table are mixed in the time-series query
+	b.CheckMixedTableRefWithTs()
 
 	// Build the input expression that selects the rows that will be updated:
 	//
@@ -133,13 +135,21 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 
 	// Build the final update statement, including any returned expressions.
 	if resultsNeeded(upd.Returning) {
-		mb.buildUpdate(*upd.Returning.(*tree.ReturningExprs))
+		var returning tree.ReturningExprs
+		switch t := upd.Returning.(type) {
+		case *tree.ReturningExprs:
+			returning = *t
+		case *tree.ReturningIntoClause:
+			if b.insideProcDef {
+				returning = t.SelectClause
+			} else {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+			}
+		}
+		mb.buildUpdate(returning)
 	} else {
 		mb.buildUpdate(nil /* returning */)
 	}
-
-	// Verify whether the time-series table and relational table are mixed in the time-series query
-	mb.CheckMixedTableRefWithTs()
 
 	return mb.outScope
 }
@@ -411,6 +421,8 @@ func (b *Builder) buildTSUpdate(
 	}
 	// get table metadata
 	id := b.factory.Metadata().AddTable(table, &alias)
+	// Verify whether the time-series table and relational table are mixed in the time-series query
+	b.CheckMixedTableRefWithTs()
 	colCount := table.ColumnCount()
 	tagCols := make([]*sqlbase.ColumnDescriptor, 0)
 	colMap := make(map[int]int, 0)
@@ -583,6 +595,8 @@ func addPrimaryTagExpr(left, right tree.Expr, exprs map[int]tree.Datum, meta *op
 			} else {
 				exprs[id] = d
 			}
+		} else if c, ok := right.(*scopeColumn); ok && c.isDeclared {
+			panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
 		} else {
 			return false
 		}
@@ -599,6 +613,8 @@ func addPrimaryTagExpr(left, right tree.Expr, exprs map[int]tree.Datum, meta *op
 				} else {
 					exprs[id] = d
 				}
+			} else if c, ok := left.(*scopeColumn); ok && c.isDeclared {
+				panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
 			} else {
 				return false
 			}

@@ -75,6 +75,7 @@ const (
 	VersionTimePrecision
 	Version20_1
 	VersionMaterializedViews
+	VersionUDR
 
 	// Add new versions here (step one of two).
 )
@@ -480,6 +481,10 @@ var versionsSingleton = keyedVersions([]keyedVersion{
 	{
 		Key:     VersionMaterializedViews,
 		Version: roachpb.Version{Major: 20, Minor: 1, Unstable: 1},
+	},
+	{
+		Key:     VersionUDR,
+		Version: roachpb.Version{Major: 20, Minor: 1, Unstable: 2},
 	},
 
 	// Add new versions here (step two of two).

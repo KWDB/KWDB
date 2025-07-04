@@ -91,6 +91,11 @@ func (s *subquery) isMultiRow() bool {
 
 // Walk is part of the tree.Expr interface.
 func (s *subquery) Walk(v tree.Visitor) tree.Expr {
+	if s, ok := v.(*scope); ok {
+		if s.builder.isConditionContainsSubquery {
+			panic(pgerror.New(pgcode.FeatureNotSupported, "Subquery inside condition expression is not supported"))
+		}
+	}
 	return s
 }
 

@@ -145,7 +145,7 @@ class DataContainer : public IChunk {
   /**
    * @brief Sort all rows in the container
    */
-  virtual void Sort() = 0;
+  virtual KStatus Sort() = 0;
 
   /**
    * @brief Read data in datachunk and append all rows into row container

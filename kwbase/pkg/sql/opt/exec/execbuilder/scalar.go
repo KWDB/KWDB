@@ -151,6 +151,12 @@ func (b *Builder) buildVariable(
 func (b *Builder) indexedVar(
 	ctx *buildScalarCtx, md *opt.Metadata, colID opt.ColumnID,
 ) tree.TypedExpr {
+	col := md.ColumnMeta(colID)
+	if col.IsDeclaredInsideProcedure {
+		indexVal := tree.NewTypedOrdinalReference(col.RealIdx, col.Type)
+		indexVal.IsDeclare = col.IsDeclaredInsideProcedure
+		return indexVal
+	}
 
 	idx, ok := ctx.ivarMap.Get(int(colID))
 	if !ok {

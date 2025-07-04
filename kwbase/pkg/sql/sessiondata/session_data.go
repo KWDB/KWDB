@@ -158,6 +158,8 @@ type SessionData struct {
 
 	// UserDefinedVars stores variables defined by user
 	UserDefinedVars map[string]interface{}
+
+	RowCount int
 }
 
 // DataConversionConfig contains the parameters that influence

@@ -108,11 +108,6 @@ KStatus MMapRootTableManager::CreateRootTable(vector<AttributeInfo>& schema, uin
     LOG_INFO("Creating root table that already exists.");
     return KStatus::SUCCESS;
   }
-  if (cur_table_version_ >= table_version) {
-    LOG_ERROR("cannot create low version table: current version[%d], create version[%d]",
-              cur_table_version_, table_version)
-    return FAIL;
-  }
   for (auto& attr: schema) {
     attr.version = table_version;
   }

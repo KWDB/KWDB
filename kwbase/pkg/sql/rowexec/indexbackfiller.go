@@ -57,6 +57,10 @@ func (ib *indexBackfiller) Push(ctx context.Context, res []byte) error {
 	return nil
 }
 
+func (ib *indexBackfiller) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return nil, nil
+}
+
 func (ib *indexBackfiller) IsShortCircuitForPgEncode() bool {
 	return false
 }

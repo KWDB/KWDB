@@ -179,9 +179,20 @@ func NewUndefinedRelationError(name tree.NodeFormatter) error {
 		"relation %q does not exist", tree.ErrString(name))
 }
 
+// NewUndefinedProcedureError creates an error that represents a missing procedure.
+func NewUndefinedProcedureError(name tree.NodeFormatter) error {
+	return pgerror.Newf(pgcode.UndefinedObject,
+		"procedure %q does not exist", tree.ErrString(name))
+}
+
 // NewUndefinedColumnError creates an error that represents a missing database column.
 func NewUndefinedColumnError(name string) error {
 	return pgerror.Newf(pgcode.UndefinedColumn, "column %q does not exist", name)
+}
+
+// NewUndefinedVarColumnError creates an error that represents a missing variable column.
+func NewUndefinedVarColumnError(name string) error {
+	return pgerror.Newf(pgcode.UndefinedColumn, "variable %q does not exist", name)
 }
 
 // NewDatabaseAlreadyExistsError creates an error for a preexisting database.
