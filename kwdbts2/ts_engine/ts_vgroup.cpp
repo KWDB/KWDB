@@ -734,7 +734,7 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
       if (insert_log->getTableType() == WALTableType::DATA) {
         auto log = reinterpret_cast<InsertLogMetricsEntry*>(wal_log);
         p_tag = log->getPrimaryTag();
-        return redoPut(ctx, p_tag, log->getLSN(), log->getPayload());
+        return redoPut(ctx, log->getLSN(), log->getPayload());
       } else {
         auto log = reinterpret_cast<InsertLogTagsEntry*>(wal_log);
         return redoPutTag(ctx, log->getLSN(), log->getPayload());
@@ -907,12 +907,21 @@ KStatus TsVGroup::getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSli
 }
 
 KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
-  TsRawPayload p{payload};
-  auto table_id = p.GetTableID();
-  TSSlice primary_key = p.GetPrimaryTag();
-  auto tbl_version = p.GetTableVersion();
+  TsRawPayload tmp_p{payload};
+  auto table_id = tmp_p.GetTableID();
+  TSSlice primary_key = tmp_p.GetPrimaryTag();
+  auto tbl_version = tmp_p.GetTableVersion();
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaMgr failed.");
+    return s;
+  }
+  std::vector<AttributeInfo> metric_schema;
+  tb_schema_mgr->GetColumnsExcludeDropped(metric_schema, tbl_version);
+  TsRawPayload p(payload, metric_schema);
   TSEntityID entity_id;
-  auto s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
+  s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("undoPut failed.");
     return s;
@@ -930,16 +939,6 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
       return s;
     }
   }
-  return KStatus::SUCCESS;
-}
-// todo(liangbo01)  delete this function after below finished.
-KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
-                   const std::vector<DelRowSpan>& rows) {
-  return KStatus::SUCCESS;
-}
-// todo(liangbo01)  delete this function after below finished.
-KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
- const vector<DelRowSpan>& rows) {
   return KStatus::SUCCESS;
 }
 
@@ -1016,54 +1015,6 @@ KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::strin
 KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn, uint32_t group_id,
                                 uint32_t entity_id, TSSlice& tags) {
   return KStatus::SUCCESS;
-}
-
-/**
- * redoPut redo a put operation. This function is utilized during log recovery to redo a put
- * operation.
- *
- * @param ctx The context of the operation.
- * @param primary_tag The primary tag associated with the data being operated on.
- * @param log_lsn The log sequence number indicating the position in the log of this operation.
- * @param payload The actual data payload being put into the database, provided as a slice.
- *
- * @return KStatus The status of the operation, indicating success or failure.
- */
-KStatus TsVGroup::redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p{payload};
-  auto table_id = p.GetTableID();
-  TSSlice primary_key = p.GetPrimaryTag();
-  auto tbl_version = p.GetTableVersion();
-  bool new_tag;
-  uint32_t vgroup_id;
-  TSEntityID entity_id;
-
-  auto s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  if (new_tag) {
-    LOG_WARN("cannot find tag info for this parimary key.");
-    return KStatus::SUCCESS;
-  }
-  assert(vgroup_id == GetVGroupID());
-  uint8_t payload_data_flag = p.GetRowType();
-  if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    std::list<TSMemSegRowData> rows;
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("failed putdata.");
-      return s;
-    }
-    s = makeSurePartitionExist(table_id, rows);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("makeSurePartitionExist Failed.")
-      return FAIL;
-    }
-  } else {
-    LOG_WARN("no data need inserted.");
-  }
-  return s;
 }
 
 KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
