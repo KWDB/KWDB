@@ -687,7 +687,9 @@ func (r *Replica) stageTsBatchRequest(
 				var entitiesAffect tse.EntitiesAffect
 				payload = append(payload, req.Value.RawBytes)
 				if payload != nil {
+					var tsTransactionID []byte
 					if ba.TsTransaction != nil {
+						tsTransactionID = append(tsTransactionID, ba.TsTransaction.ID.GetBytes()...)
 						tsTxnID = 0
 						_, tableID, err = keys.DecodeTablePrefix(req.Key)
 						if err != nil {
@@ -697,7 +699,7 @@ func (r *Replica) stageTsBatchRequest(
 							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
-					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutData(1, payload, tsTxnID, true, req.TsTransaction.ID.GetBytes()); err != nil {
+					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutData(1, payload, tsTxnID, true, tsTransactionID); err != nil {
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 							if errRollback != nil {
@@ -733,7 +735,9 @@ func (r *Replica) stageTsBatchRequest(
 				var dedupResult tse.DedupResult
 				var entitiesAffect tse.EntitiesAffect
 				if req.Values != nil {
+					var tsTransactionID []byte
 					if ba.TsTransaction != nil {
+						tsTransactionID = append(tsTransactionID, ba.TsTransaction.ID.GetBytes()...)
 						tsTxnID = 0
 						_, tableID, err = keys.DecodeTablePrefix(req.Key)
 						if err != nil {
@@ -743,7 +747,7 @@ func (r *Replica) stageTsBatchRequest(
 							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
-					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL, req.TsTransaction.ID.GetBytes()); err != nil {
+					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL, tsTransactionID); err != nil {
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 							if errRollback != nil {
