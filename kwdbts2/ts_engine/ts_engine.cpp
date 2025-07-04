@@ -655,6 +655,9 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   if (s == FAIL) {
     Return(s);
   }
+  if (tsx_id != nullptr && mtr_id == 0) {
+    return SUCCESS;
+  }
 
   // for range
   for (auto vgrp : vgroups_) {
