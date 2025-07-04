@@ -11,26 +11,38 @@
 
 #pragma once
 
-#include <list>
 #include <memory>
-#include <stdexcept>
 #include <vector>
+#include <list>
 
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-#include "ts_bitmap.h"
 #include "ts_block.h"
+#include "ts_del_item_manager.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
 class TsSegmentBase;
-// conditions used for flitering blockitem data.
+// conditions used for flitering data.
+struct TsScanFilterParams {
+  uint32_t db_id;
+  TSTableID table_id;
+  uint32_t vgroup_id;
+  TSEntityID entity_id;
+  DATATYPE  table_ts_type;
+  TS_LSN end_lsn;
+  const std::vector<KwTsSpan>& ts_spans_;
+};
+
+// conditions used for filtering blockitem data.
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
-  const std::vector<KwTsSpan>& ts_spans_;
+  std::vector<STScanRange> spans_;
 };
 
 // base class for data segment
@@ -38,11 +50,38 @@ class TsSegmentBase {
  public:
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                std::list<TsBlockSpan>* spans) = 0;
+                                std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                uint32_t scan_version) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }
 
   virtual ~TsSegmentBase() {}
 };
+
+inline bool IsTsLsnInSpans(timestamp64 ts, TS_LSN lsn, const std::vector<STScanRange>& spans) {
+  for (auto& span : spans) {
+    if (ts >= span.ts_span.begin && ts <= span.ts_span.end &&
+        lsn >= span.lsn_span.begin && lsn <= span.lsn_span.end) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool IsLsnInSpan(const STScanRange& span, TS_LSN lsn) {
+  return (span.lsn_span.begin >= lsn && lsn <= span.lsn_span.end);
+}
+
+inline bool IsTsLsnSpanCrossSpans(const std::vector<STScanRange>& spans,
+                                KwTsSpan ts_span, KwLSNSpan lsn_span) {
+  for (auto& span : spans) {
+    if (ts_span.begin <= span.ts_span.end && ts_span.end >= span.ts_span.begin &&
+        lsn_span.begin <= span.lsn_span.end && lsn_span.end >= span.lsn_span.begin) {
+      return true;
+    }
+  }
+  return false;
+}
 
 }  // namespace kwdbts

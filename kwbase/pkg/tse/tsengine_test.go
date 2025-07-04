@@ -69,7 +69,9 @@ type TestCol struct {
 	cLen  uint64
 }
 
-func makeTestObjectTable(tName string, tableID uint64, columns []TestCol) sqlbase.CreateTsTable {
+func makeTestObjectTable(
+	tName string, tableID uint64, columns []TestCol, hashNum uint64,
+) sqlbase.CreateTsTable {
 	var kColDescs []sqlbase.KWDBKTSColumn
 	var KColumnsID []uint32
 
@@ -100,6 +102,7 @@ func makeTestObjectTable(tName string, tableID uint64, columns []TestCol) sqlbas
 		TableName:    tableName.String(),
 		Sde:          false,
 		TsVersion:    1,
+		HashNum:      hashNum,
 	}
 
 	return sqlbase.CreateTsTable{
@@ -134,18 +137,19 @@ func TestTSPut(t *testing.T) {
 
 	// create table
 	tableID := uint64(1001)
+	hashNum := 2000
 
 	tsCols := []TestCol{
 		{"k_time", sqlbase.DataType_TIMESTAMP, 8},
 		{"col1", sqlbase.DataType_INT, 4},
 		{"col2", sqlbase.DataType_DOUBLE, 8},
 	}
-	tsTable := makeTestObjectTable("table1", tableID, tsCols)
+	tsTable := makeTestObjectTable("table1", tableID, tsCols, uint64(hashNum))
 	meta, _ := protoutil.Marshal(&tsTable)
 	rangeGroups := []api.RangeGroup{
 		{101, api.ReplicaType_Follower},
 	}
-	err = tsDB.CreateTsTable(tableID, meta, rangeGroups)
+	err = tsDB.CreateTsTable(tableID, uint64(hashNum), meta, rangeGroups)
 	if err != nil {
 		panic(err)
 	}

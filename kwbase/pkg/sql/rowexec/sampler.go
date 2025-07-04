@@ -227,6 +227,10 @@ func (s *samplerProcessor) pushTrailingMeta(ctx context.Context) {
 	execinfra.SendTraceData(ctx, s.Out.Output())
 }
 
+func (s *samplerProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return nil, nil
+}
+
 // Run is part of the Processor interface.
 func (s *samplerProcessor) Run(ctx context.Context) execinfra.RowStats {
 	s.input.Start(ctx)

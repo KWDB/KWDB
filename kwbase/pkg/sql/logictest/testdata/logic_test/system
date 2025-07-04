@@ -39,7 +39,7 @@ statement_diagnostics            BASE TABLE
 statement_diagnostics_requests   BASE TABLE
 table_statistics                 BASE TABLE
 ui                               BASE TABLE
-user_defined_function            BASE TABLE
+user_defined_routine             BASE TABLE
 users                            BASE TABLE
 web_sessions                     BASE TABLE
 zones                            BASE TABLE
@@ -77,9 +77,9 @@ SELECT id FROM system.descriptor
 42
 46
 47
-55
 56
 57
+58
 75
 76
 77
@@ -438,16 +438,16 @@ system  public  ui                               root    GRANT
 system  public  ui                               root    INSERT
 system  public  ui                               root    SELECT
 system  public  ui                               root    UPDATE
-system  public  user_defined_function            admin   DELETE
-system  public  user_defined_function            admin   GRANT
-system  public  user_defined_function            admin   INSERT
-system  public  user_defined_function            admin   SELECT
-system  public  user_defined_function            admin   UPDATE
-system  public  user_defined_function            root    DELETE
-system  public  user_defined_function            root    GRANT
-system  public  user_defined_function            root    INSERT
-system  public  user_defined_function            root    SELECT
-system  public  user_defined_function            root    UPDATE
+system  public  user_defined_routine             admin   DELETE
+system  public  user_defined_routine             admin   GRANT
+system  public  user_defined_routine             admin   INSERT
+system  public  user_defined_routine             admin   SELECT
+system  public  user_defined_routine             admin   UPDATE
+system  public  user_defined_routine             root    DELETE
+system  public  user_defined_routine             root    GRANT
+system  public  user_defined_routine             root    INSERT
+system  public  user_defined_routine             root    SELECT
+system  public  user_defined_routine             root    UPDATE
 system  public  users                            admin   DELETE
 system  public  users                            admin   GRANT
 system  public  users                            admin   INSERT

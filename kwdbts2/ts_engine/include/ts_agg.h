@@ -34,19 +34,34 @@ class AggCalculatorV2 {
     }
   }
 
-  bool CalcAllAgg(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
+  AggCalculatorV2(void* pre_agg, DATATYPE type, int32_t size, int32_t count) :
+      pre_agg_(pre_agg), type_(type), size_(size), count_(count) {
+    if (type_ == DATATYPE::TIMESTAMP64_LSN) {
+      size_ = 8;
+    }
+    if (is_overflow_) {
+      sum_type_ = (DATATYPE)DOUBLE;
+      sum_size_ = sizeof(double);
+    } else {
+      sum_type_ = type_;
+      sum_size_ = getSumSize(type_);
+    }
+  }
+
+  bool CalcAggForFlush(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
   KStatus MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx, bool& is_overflow);
 
+  KStatus MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype agg_type, bool& is_overflow);
+
  private:
-  int cmp(void* l, void* r);
   void InitSumValue(void* ptr);
   void InitAggData(TSSlice& agg_data);
   bool isnull(size_t row);
 
  private:
   void* mem_;
+  void* pre_agg_;
   TsBitmap* bitmap_ = nullptr;
-  // size_t first_row_;
   DATATYPE type_;
   int32_t size_;
   uint16_t count_;
@@ -60,12 +75,18 @@ class VarColAggCalculatorV2 {
   explicit VarColAggCalculatorV2(const std::vector<string>& var_rows) : var_rows_(var_rows) {
   }
 
-  void CalcAllAgg(string& max, string& min, uint64_t& count);
+  VarColAggCalculatorV2(void* pre_agg, DATATYPE type, int32_t count) :
+      pre_agg_(pre_agg), type_(type), count_(count) {  }
+
+  void CalcAggForFlush(string& max, string& min, uint64_t& count);
   void MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type);
+  KStatus MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype agg_type);
 
  private:
   std::vector<string> var_rows_;
   DATATYPE type_;
+  void* pre_agg_;
+  uint16_t count_;
 };
 
 

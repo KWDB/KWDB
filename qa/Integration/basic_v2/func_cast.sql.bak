@@ -113,3 +113,82 @@ select ktn::char, ktzn::char, ktn::nchar, ktzn::nchar,ktn::char(10), ktzn::char(
 
 
 drop database ts_db cascade;
+
+--- test cast to int
+select '127'::int1;
+select '128'::int1;
+select '-128'::int1;
+select '-129'::int1;
+select '32767'::int2;
+select '32768'::int2;
+select '-32768'::int2;
+select '-32769'::int2;
+select '2147483647'::int4;
+select '2147483648'::int4;
+select '-2147483648'::int4;
+select '-2147483649'::int4;
+select '9223372036854775807'::int8;
+select '9223372036854775808'::int8;
+select '-9223372036854775808'::int8;
+select '-9223372036854775809'::int8;
+
+--- test cast to bit
+select 123::bit;
+select 123::bit(5);
+select 123::bit(10);
+select '1010'::bit(2);
+select '1010'::bit(5);
+select '1010'::bit(10);
+select '1010'::varbit(2);
+select '1010'::varbit(10);
+select string'1010'::bit(2);
+select string'1010'::bit(5);
+select string'1010'::bit(10);
+select string'1010'::varbit(2);
+select string'1010'::varbit(10);
+
+--- test cast to bool
+select 123::bool;
+select 1::bool;
+select 0::bool;
+
+--- test cast to float
+select timestamp'2025-04-29 12:12:12'::float;
+select timestamp'1970-01-01 00:00:12'::float;
+select timestamp'1970-01-01 00:00:00.001'::float;
+select interval'1day'::float;
+select interval'1s'::float;
+
+--- test cast to string
+select 'abc'::string(2);
+select 'hello'::string(20);
+
+--- test cast to bytes
+select 'abc'::bytes;
+select 'abc'::varbytes;
+select 'abc'::varbytes(2);
+select 'hello'::varbytes(4);
+
+--- test cast to date
+select 1::date;
+select 123::date;
+select timestamp'2025-04-29 12:12:12'::date;
+select timestamp'1970-01-01 00:00:12'::date;
+select timestamp'1970-01-01 00:00:00.001'::date;
+
+--- test cast to time
+select timestamp'2025-04-29 12:12:12'::time;
+select timestamp'1970-01-01 00:00:12'::time;
+select timestamp'1970-01-01 00:00:00.001'::time;
+select interval'1day'::time;
+select interval'1s'::time;
+select interval'1hour'::time;
+select interval'1month2day3hour4s'::time;
+
+--- test cast to timestamp
+select int64'9223372036854775807'::timestamp;
+select int64'-9223372036854775808'::timestamp;
+
+--- test cast to timestamptz
+select int64'9223372036854775807'::timestamptz;
+select int64'-9223372036854775808'::timestamptz;

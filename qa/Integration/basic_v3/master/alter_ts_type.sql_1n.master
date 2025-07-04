@@ -926,6 +926,11 @@ ALTER TABLE
   2022-06-06 10:10:07+00:00 | NULL | NULL |  6 | NULL
   2022-06-06 10:10:08+00:00 | NULL | NULL |  6 | NULL
 (6 rows)
+> select count(e1),max(e1),min(e1),avg(e1),sum(e1),first(e1),last(e1),first_row(e1),last_row(e1) from test_alter.t17;
+  count | max | min | avg | sum | first | last | first_row | last_row
+--------+-----+-----+-----+-----+-------+------+-----------+-----------
+      2 | 200 | 100 | 150 | 300 |   100 |  200 |       100 |     NULL
+(1 row)
 > CREATE TABLE test_alter.ts_t1 (
   k_timestamp TIMESTAMPTZ NOT NULL,
   e1 INT2 NULL,

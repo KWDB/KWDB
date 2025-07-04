@@ -142,7 +142,7 @@ func (d *dropCascadeState) dropAllCollectedObjects(ctx context.Context, p *plann
 			err = p.dropSequenceImpl(ctx, desc, false /* queueJob */, "", tree.DropCascade)
 		} else {
 			// TODO(knz): The names of dependent dropped tables should be qualified here.
-			cascadedObjects, err = p.dropTableImpl(ctx, desc, false /* droppingParent */, "")
+			cascadedObjects, err = p.dropTableImpl(ctx, desc, false /* droppingParent */, "", tree.DropCascade)
 		}
 		if err != nil {
 			return err

@@ -52,6 +52,8 @@ const (
 	OnTenant = "on_tenant"
 	// OnPortal is used when a GRANT/REVOKE is happening on a portal.
 	OnPortal = "on_portal"
+	// OnProcedure is used when a GRANT/REVOKE is happening on a procedure.
+	OnProcedure = "on_procedure"
 
 	iamRoles = "iam.roles"
 )

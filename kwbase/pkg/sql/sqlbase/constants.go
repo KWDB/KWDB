@@ -42,35 +42,43 @@ var AdminRole = "admin"
 // It can be granted privileges, implicitly granting them to all users (current and future).
 var PublicRole = "public"
 
-// TimestampCol is the series timestamp
-const TimestampCol = "k_timestamp"
+const (
+	// TimestampCol is the series timestamp
+	TimestampCol = "k_timestamp"
 
-// ValidCol stands for VALID column name in TS.
-const ValidCol = "valid"
+	// ValidCol stands for VALID column name in TS.
+	ValidCol = "valid"
 
-// FirstAgg is the function name of first agg function.
-const FirstAgg = "first"
+	// FirstAgg is the function name of first agg function.
+	FirstAgg = "first"
 
-// FirstTSAgg is the function name of firstts agg function.
-const FirstTSAgg = "firstts"
+	// FirstTSAgg is the function name of firstts agg function.
+	FirstTSAgg = "firstts"
 
-// FirstRowAgg is the function name of first row agg function.
-const FirstRowAgg = "first_row"
+	// FirstRowAgg is the function name of first row agg function.
+	FirstRowAgg = "first_row"
 
-// FirstRowTSAgg is the function name of first row ts agg function.
-const FirstRowTSAgg = "first_row_ts"
+	// FirstRowTSAgg is the function name of first row ts agg function.
+	FirstRowTSAgg = "first_row_ts"
 
-// LastAgg is the function name of last agg function.
-const LastAgg = "last"
+	// LastAgg is the function name of last agg function.
+	LastAgg = "last"
 
-// LastRowAgg is the function name of last row agg function.
-const LastRowAgg = "last_row"
+	// LastRowAgg is the function name of last row agg function.
+	LastRowAgg = "last_row"
 
-// LastTSAgg is the function name of lastts agg function.
-const LastTSAgg = "lastts"
+	// LastTSAgg is the function name of lastts agg function.
+	LastTSAgg = "lastts"
 
-// LastRowTSAgg is the function name of last row ts agg function.
-const LastRowTSAgg = "last_row_ts"
+	// LastRowTSAgg is the function name of last row ts agg function.
+	LastRowTSAgg = "last_row_ts"
+
+	// MinAgg is the function name of min agg function.
+	MinAgg = "min"
+
+	// MaxAgg is the function name of max agg function.
+	MaxAgg = "max"
+)
 
 // ReportableAppNamePrefix indicates that the application name can be
 // reported in telemetry without scrubbing. (Note this only applies to
@@ -100,6 +108,15 @@ type UserDefinedFunctionType int32
 const (
 	DefinedFunction    UserDefinedFunctionType = 1
 	DefinedAggregation UserDefinedFunctionType = 2
+)
+
+// RoutineType is user defined routine type: procedure or function
+type RoutineType int
+
+// User Defined Routine type
+const (
+	Procedure RoutineType = iota + 1
+	Function
 )
 
 // Oid for virtual database and table.
@@ -170,6 +187,7 @@ const (
 	InformationSchemaTablesTableID
 	InformationSchemaViewsTableID
 	InformationSchemaUserPrivilegesID
+	InformationSchemaProcedurePrivilegesID
 	PgCatalogID
 	PgCatalogAmTableID
 	PgCatalogAttrDefTableID
@@ -223,7 +241,8 @@ const (
 	PgCatalogStatAllIndexesTableID
 	CrdbInternalKWDBSchedulesTableID
 	CrdbInternalKWDBFunctionsTableID
-	MinVirtualID = CrdbInternalKWDBFunctionsTableID
+	KwdbInternalKWDBProceduresTableID
+	MinVirtualID = KwdbInternalKWDBProceduresTableID
 )
 
 const (

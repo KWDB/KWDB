@@ -22,6 +22,15 @@
 #include "ts_blkspan_type_convert.h"
 
 namespace kwdbts {
+
+class TsBlockSpan;
+
+struct AggCandidate {
+  int64_t ts;
+  int row_idx;
+  shared_ptr<TsBlockSpan> blk_span{nullptr};
+};
+
 class TsBlock {
  public:
   virtual ~TsBlock() {}
@@ -41,20 +50,36 @@ class TsBlock {
 
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
-  virtual KStatus GetAggResult(uint32_t begin_row_idx, uint32_t row_num, uint32_t blk_col_idx,
-                               const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                               const Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
+  virtual KStatus GetCompressData(TSSlice* data, int32_t* row_num) = 0;
 
-  virtual KStatus GetFirstAndLastInfo(uint32_t begin_row_idx, uint32_t row_num, uint32_t col_id,
-                                      const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                                      Sumfunctype agg_type, int64_t* out_ts, int* out_row_idx);
+  virtual KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) = 0;
+
+  /*
+  * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
+  */
+  virtual bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num);
+  virtual KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
+  virtual KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
+  virtual KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max);
+  virtual KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min);
+  virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
+  virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
+  KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
+                                                const std::vector<AttributeInfo>& schema,
+                                                std::vector<k_uint32>& first_col_idxs,
+                                                std::vector<k_uint32>& last_col_idxs,
+                                                std::vector<AggCandidate>& candidates);
 };
 
 struct TsBlockSpan {
  private:
   std::shared_ptr<TsBlock> block_ = nullptr;
+  uint32_t vgroup_id_ = 0;
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
+  bool has_pre_agg_{false};
+
+ public:
   TSBlkDataTypeConvert convert_;
 
   friend TSBlkDataTypeConvert;
@@ -62,11 +87,18 @@ struct TsBlockSpan {
  public:
   TsBlockSpan() = default;
 
-  TsBlockSpan(TSTableID table_id, uint32_t table_version, TSEntityID entity_id,
-              std::shared_ptr<TsBlock> block, int start, int nrow);
+  TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+              uint32_t scan_version);
+
+  TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+              uint32_t scan_version = 0);
 
   bool operator<(const TsBlockSpan& other) const;
+  void operator=(TsBlockSpan& other) = delete;
 
+  uint32_t GetVGroupID() const;
   TSEntityID GetEntityID() const;
   int GetRowNum() const;
   int GetStartRow() const;
@@ -74,30 +106,54 @@ struct TsBlockSpan {
   TSTableID GetTableID() const;
   uint32_t GetTableVersion() const;
   timestamp64 GetTS(uint32_t row_idx) const;
+  timestamp64 GetFirstTS() const;
+  timestamp64 GetLastTS() const;
   uint64_t* GetLSNAddr(int row_idx) const;
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
+  bool IsColExist(uint32_t scan_idx);
+  bool IsColNotNull(uint32_t scan_idx);
+  bool IsSameType(uint32_t scan_idx);
+  bool IsVarLenType(uint32_t scan_idx);
+  int32_t GetColSize(uint32_t scan_idx);
+  int32_t GetColType(uint32_t scan_idx);
+  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
+
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema, const AttributeInfo& dest_type,
-                             char** value, TsBitmap& bitmap);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& dest_type, DataFlags& flag, TSSlice& data);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
 
-  KStatus GetAggResult(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-    const AttributeInfo& dest_type, Sumfunctype agg_type, TSSlice& agg_data, bool& is_overflow);
+  KStatus GetCount(uint32_t scan_idx, uint32_t& count);
+  KStatus GetSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
+  KStatus GetMax(uint32_t scan_idx, void* &pre_max);
+  KStatus GetMin(uint32_t scan_idx, void* &pre_min);
+  KStatus GetVarMax(uint32_t scan_idx, TSSlice& pre_max);
+  KStatus GetVarMin(uint32_t scan_idx, TSSlice& pre_min);
 
-  KStatus GetFirstAndLastInfo(uint32_t blk_col_idx, const std::vector<AttributeInfo>& schema,
-                              const AttributeInfo& dest_type, Sumfunctype agg_type, int64_t* out_ts,
-                              int* out_row_idx);
+  bool HasPreAgg();
+  KStatus GetPreCount(uint32_t scan_idx, uint16_t& count);
+  KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
+  KStatus GetPreMax(uint32_t scan_idx, void* &pre_max);
+  KStatus GetPreMin(uint32_t scan_idx, void* &pre_min);
+  KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max);
+  KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min);
 
-  void SplitFront(int row_num, TsBlockSpan* front_span);
+  KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
+                                                const std::vector<AttributeInfo>& schema,
+                                                std::vector<k_uint32>& first_col_idxs,
+                                                std::vector<k_uint32>& last_col_idxs,
+                                                std::vector<AggCandidate>& candidates);
 
-  void SplitBack(int row_num, TsBlockSpan* back_span);
+  void SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span);
 
-  void Truncate(int row_num);
+  void SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span);
+
+  void TrimBack(int row_num);
+
+  void TrimFront(int row_num);
 
   void Clear();
 };

@@ -212,8 +212,10 @@ INSERT 20
                               | distributed  | true
                               | vectorized   | false
   render                      |              |
+   │                          | engine type  | time series
    │                          | twa          | twa
    └── sort                   |              |
+        │                     | engine type  | time series
         │                     | order        | +ptagid
         └── group             |              |
              │                | engine type  | time series
@@ -225,7 +227,7 @@ INSERT 20
                               | ts-table     | sensor_data
                               | ordered type | order scan
                               | access mode  | tableTableMeta
-(16 rows)
+(18 rows)
 > select round(twa(ts, temperature2),3) from sensor_data group by ptagID order by ptagID;
   round
 ---------
@@ -1063,6 +1065,28 @@ INSERT 1
   NaN
   NaN
 (7 rows)
+> create table test_twa_elapsed.tb2(k_timestamp timestamptz not null,id int not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096),e23 timestamp(6),e24 timestamp(9),e25 timestamptz(6),e26 timestamptz(9)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128),t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t1,t8);
+ERROR: relation "tb2" already exists
+SQLSTATE: 42P07
+> insert into test_twa_elapsed.tb2 values('1980-02-10 01:48:11.029+00:00',1,'2016-07-17 20:12:00.12+00:00',-100,1000,10000,100000.111,111110.101011,true,'a', 'a r3', 'a', 'test数据库语法查询测试！！！@TEST7-8', null, '数据库语法查询测试！！！@TEST7-8   ',null, 'a255{}', '查询测试！！！@TEST7-8','e','es1023_0', null, b'\xbb\xee\xff', null,null,'2001-01-26 12:16:16.161111','2029-10-18 21:21:33.211','2010-10-20 11:13:56.113','2008-10-06 22:20:22.566',7,null,1000,true,10.1011,100.123455,'a','test数据库语法查询测试！！！@TEST7-18','e','a',null,'test查询测试！！！@TEST7-18 ','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_twa_elapsed.tb2 values('1980-02-10 01:48:22.501+00:00',2,'1970-01-01 01:16:05.476+00:00',500,5000,60000,500000.505555,5000000.505055,false,'b','test数据库语法查询测 ','n','语法查询测试！！！@TEST7-8  ',null,null,'测试测试 ','@烟小白吖  ','abc255测试1()&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb','2011-01-23 03:36:16.161111','2029-10-20 10:20:58.986','2008-09-19 14:14:27.113','2018-08-18 18:18:22.188',-100,-500,-5000,true,-50.123123,500.578578,'c','test数据库查询测试！！！@TEST7-18  ','g','abc','test数据库语法查询测试！！！@TEST7-18','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_twa_elapsed.tb2 values('2001-12-09 09:48:12.899',3,'2008-06-15 07:00:00',-300,3000,30000,300000.30312,3000000.3030303,false,'c', '\a r3', 'a', 'test数据库语法查询测试！','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,'2011-08-21 23:16:16.885556','2001-07-20 05:55:45.117','2019-09-27 07:21:37.517','2008-09-30 11:11:12.168',6,300,3000,false,-33.123456,100.111111,'b','\TEST1 ','f','test数据库语法查询测试！！！@TEST7-18','5555 5','  bdbd','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> insert into test_twa_elapsed.tb2 values('2001-11-22 10:48:12.899',4,'2008-06-10 17:04:15.183',600,-6000,60000,600000.606666,6000000.606066,false,'c','test数据库语法查询测试！！！@TEST7-8 ','n','类型测试1()  ',null,null,'255测试1cdf~# ','@烟小白吖  ','abc255测试1()&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb','2015-08-21 08:46:26.885556','2001-07-27 15:35:55.517','2025-10-21 09:51:30.477','2030-03-20 03:20:20.668',6,800,8000,false,-20.123,800.578578,'d','test测试！！！@烟小白吖  ','d','ddd','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_twa_elapsed.tb2 values('2001-10-10 11:48:12.899',5,'2008-06-10 16:16:15.183',700,7000,70000,700000.707777,7000000.707077,true,'d','test数据库语法查询测试！！！@TEST7-8 ','d','类型测试1()  ',null,null,'255测试1cdf~# ','@烟小白吖  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb','2015-08-21 22:22:26.885556','2001-07-27 05:15:35.517','2025-09-21 11:21:21.112','2030-03-27 11:11:12.168',7,-200,2000,false,-10.123,500.578578,'c','test测试！！！@烟小白吖  ','g','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> select * from (select twa(k_timestamp,sign(t6)) as val from (select time_bucket_gapfill(e24,'500weeks') as tb,k_timestamp,t6 from test_twa_elapsed.tb2 group by tb,t6,k_timestamp order by tb,t6,k_timestamp) group by t6,k_timestamp order by val);
+  val
+-------
+    1
+    1
+    1
+    1
+    1
+(5 rows)
 > drop database sensors cascade;
 DROP DATABASE
 > drop database sensors_r cascade;

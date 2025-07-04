@@ -45,9 +45,10 @@ type Grant struct {
 // TargetList represents a list of targets.
 // Only one field may be non-nil.
 type TargetList struct {
-	Databases NameList
-	Schemas   NameList
-	Tables    TablePatterns
+	Databases  NameList
+	Schemas    NameList
+	Tables     TablePatterns
+	Procedures TableNames
 
 	// ForRoles and Roles are used internally in the parser and not used
 	// in the AST. Therefore they do not participate in pretty-printing,
@@ -64,9 +65,12 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 	} else if tl.Schemas != nil {
 		ctx.WriteString("SCHEMA ")
 		ctx.FormatNode(&tl.Schemas)
-	} else {
+	} else if tl.Tables != nil {
 		ctx.WriteString("TABLE ")
 		ctx.FormatNode(&tl.Tables)
+	} else {
+		ctx.WriteString("PROCEDURE ")
+		ctx.FormatNode(&tl.Procedures)
 	}
 }
 

@@ -288,17 +288,11 @@ SQLSTATE: 22023
   2023-05-31 11:00:00+00:00
 (2 rows)
 > select time::smallint from test_ts.ts_table;
-      time
------------------
-  1685527200000
-  1685530800000
-(2 rows)
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
 > select time::int from test_ts.ts_table;
-      time
------------------
-  1685527200000
-  1685530800000
-(2 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select time::bigint from test_ts.ts_table;
       time
 -----------------
@@ -308,8 +302,8 @@ SQLSTATE: 22023
 > select time::float from test_ts.ts_table;
       time
 -----------------
-  1.6855272e+09
-  1.6855308e+09
+  1.6855272e+12
+  1.6855308e+12
 (2 rows)
 > select time::bool from test_ts.ts_table;
 ERROR: invalid cast: timestamptz(3) -> bool
@@ -564,8 +558,11 @@ SQLSTATE: 22003
   2000000
 (2 rows)
 > select e3::timestamp from test_ts.ts_table;
-ERROR: int 100000000000000000 is out of range, should be between -9223372036854 and 9223372036854
-SQLSTATE: 01000
+               e3
+--------------------------------
+  3170843-11-07 09:46:40+00:00
+  6339717-09-13 19:33:20+00:00
+(2 rows)
 > select e3::smallint from test_ts.ts_table;
 ERROR: value is out of range for type int2
 SQLSTATE: 22003
@@ -654,17 +651,11 @@ SQLSTATE: 22003
 ERROR: invalid cast: float -> timestamp
 SQLSTATE: 42846
 > select e4::smallint from test_ts.ts_table;
-          e4
-----------------------
-  100000000000000000
-  200000000000000000
-(2 rows)
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
 > select e4::int from test_ts.ts_table;
-          e4
-----------------------
-  100000000000000000
-  200000000000000000
-(2 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select e4::bigint from test_ts.ts_table;
           e4
 ----------------------
@@ -1025,9 +1016,8 @@ SQLSTATE: 01000
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
   power | lpad
 --------+-------
@@ -1091,9 +1081,8 @@ SQLSTATE: 01000
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' order by e4 desc limit 1 offset 1;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' order by e4 desc limit 1 offset 1;
   power | lpad
 --------+-------
@@ -3478,9 +3467,8 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
   power | lpad
 --------+-------
@@ -3548,9 +3536,8 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' order by e4 desc limit 1 offset 1;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' order by e4 desc limit 1 offset 1;
   power | lpad
 --------+-------
@@ -6067,20 +6054,22 @@ SET CLUSTER SETTING
                     | use statistic       | true
 (15 rows)
 > explain select count(e1+e2) from test_ts.ts_table;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  group                  |             |
-   │                     | aggregate 0 | count(e1 + e2)
-   │                     | scalar      |
-   └── render            |             |
-        │                | e1 + e2     | e1 + e2
-        └── synchronizer |             |
-             └── ts scan |             |
-                         | ts-table    | ts_table
-                         | access mode | metaTable
-(11 rows)
+        tree        |      field       |  description
+--------------------+------------------+-----------------
+                    | distributed      | true
+                    | vectorized       | false
+  group             |                  |
+   │                | engine type      | time series
+   │                | aggregate 0      | count(e1 + e2)
+   │                | scalar           |
+   │                | addSynchronizer  | true
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | e1 + e2          | e1 + e2
+        └── ts scan |                  |
+                    | ts-table         | ts_table
+                    | access mode      | metaTable
+(13 rows)
 > select count(localtime()) from test_ts.ts_table;
   count
 ---------
@@ -6488,12 +6477,13 @@ CREATE TABLE
         │                     | count         | 1000
         │                     | useSorterScan | true
         └── sort              |               |
+             │                | engine type   | time series
              │                | order         | -ts
              └── synchronizer |               |
                   └── ts scan |               |
                               | ts-table      | stbl_raw
                               | access mode   | tableTableMeta
-(21 rows)
+(22 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1001;
              tree             |    field     |  description
 ------------------------------+--------------+-----------------
@@ -6512,12 +6502,13 @@ CREATE TABLE
         │                     | engine type  | time series
         │                     | count        | 1001
         └── sort              |              |
+             │                | engine type  | time series
              │                | order        | -ts
              └── synchronizer |              |
                   └── ts scan |              |
                               | ts-table     | stbl_raw
                               | access mode  | tableTableMeta
-(20 rows)
+(21 rows)
 > show max_push_limit_number;
   max_push_limit_number
 -------------------------
@@ -6544,12 +6535,13 @@ SET
         │                     | count         | 1100
         │                     | useSorterScan | true
         └── sort              |               |
+             │                | engine type   | time series
              │                | order         | -ts
              └── synchronizer |               |
                   └── ts scan |               |
                               | ts-table      | stbl_raw
                               | access mode   | tableTableMeta
-(21 rows)
+(22 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1101;
              tree             |    field     |  description
 ------------------------------+--------------+-----------------
@@ -6568,12 +6560,13 @@ SET
         │                     | engine type  | time series
         │                     | count        | 1101
         └── sort              |              |
+             │                | engine type  | time series
              │                | order        | -ts
              └── synchronizer |              |
                   └── ts scan |              |
                               | ts-table     | stbl_raw
                               | access mode  | tableTableMeta
-(20 rows)
+(21 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 1080;
         tree        |       field       |  description
 --------------------+-------------------+-----------------

@@ -912,7 +912,7 @@ order BY
   area_name | device_name | device_no | index_name | obj_name | value_count | avg_value | max_value | min_value
 ------------+-------------+-----------+------------+----------+-------------+-----------+-----------+------------
 (0 rows)
-> set cluster setting ts.sql.query_opt_mode=11110;
+> set cluster setting ts.sql.query_opt_mode=DEFAULT;
 SET CLUSTER SETTING
 > use defaultdb;
 SET

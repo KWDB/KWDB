@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"math"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
@@ -307,11 +308,22 @@ func newSortAllProcessor(
 	return proc, nil
 }
 
+// InitProcessorProcedure init processor in procedure
+func (s *sortAllProcessor) InitProcessorProcedure(txn *kv.Txn) {
+	if s.EvalCtx.IsProcedure {
+		if s.FlowCtx != nil {
+			s.FlowCtx.Txn = txn
+		}
+		s.Closed = false
+		s.State = execinfra.StateRunning
+		s.Out.SetRowIdx(0)
+	}
+}
+
 // Start is part of the RowSource interface.
 func (s *sortAllProcessor) Start(ctx context.Context) context.Context {
 	s.input.Start(ctx)
 	ctx = s.StartInternal(ctx, sortAllProcName)
-
 	valid, err := s.fill()
 	if !valid || err != nil {
 		s.MoveToDraining(err)
@@ -423,6 +435,18 @@ func newSortTopKProcessor(
 		return nil, err
 	}
 	return proc, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (s *sortTopKProcessor) InitProcessorProcedure(txn *kv.Txn) {
+	if s.EvalCtx.IsProcedure {
+		if s.FlowCtx != nil {
+			s.FlowCtx.Txn = txn
+		}
+		s.Closed = false
+		s.State = execinfra.StateRunning
+		s.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.
@@ -612,6 +636,18 @@ func (s *sortChunksProcessor) fill() (bool, error) {
 	s.rows.Sort(ctx)
 
 	return true, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (s *sortChunksProcessor) InitProcessorProcedure(txn *kv.Txn) {
+	if s.EvalCtx.IsProcedure {
+		if s.FlowCtx != nil {
+			s.FlowCtx.Txn = txn
+		}
+		s.Closed = false
+		s.State = execinfra.StateRunning
+		s.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

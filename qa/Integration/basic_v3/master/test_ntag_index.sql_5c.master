@@ -2862,6 +2862,31 @@ CREATE INDEX
 --------------------------------+----+-------+-------+----------+----------+----------+------------+------------+----------+-----------+------------+----------+-----------+--------------+-------------+---------------+--------------+-------+--------
   2024-10-21 01:30:00.123+00:00 |  1 |  1006 |  1006 |        2 |        4 |        8 |        1.1 |        1.1 |   true   | cn        | ncn        | c        | n         | vcn          | vc          | \x76626e      | \x62         |     3 |     5
 (1 row)
+> create table test_ntag_hash.t4(k_timestamp timestamptz not null,
+                              e1 int2  not null,
+                              e2 int
+) ATTRIBUTES (code0 int2 not null,code1 int2, code2 int4, code3 int8, code4 int8 ,code5 int8, val1 float4,val2 float8, location VARCHAR, color VARCHAR(128) not null,age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code0);
+CREATE TABLE
+> INSERT INTO test_ntag_hash.t4 VALUES('2024-2-21 16:32:33.823',20002,1000002,  900,100,200,300,400,500,100.0,200.0,'beijing','red','2','社会性别女','1','cuteandlovely');
+INSERT 1
+> select * from test_ntag_hash.t4;
+           k_timestamp          |  e1   |   e2    | code0 | code1 | code2 | code3 | code4 | code5 | val1 | val2 | location | color | age |    sex     | year |     type
+--------------------------------+-------+---------+-------+-------+-------+-------+-------+-------+------+------+----------+-------+-----+------------+------+----------------
+  2024-02-21 16:32:33.823+00:00 | 20002 | 1000002 |   900 |   100 |   200 |   300 |   400 |   500 |  100 |  200 | beijing  | red   |   2 | 社会性别女 | 1    | cuteandlovely
+(1 row)
+> delete from test_ntag_hash.t4 where code0 = 900;
+DELETE 1
+> select * from test_ntag_hash.t4;
+  k_timestamp | e1 | e2 | code0 | code1 | code2 | code3 | code4 | code5 | val1 | val2 | location | color | age | sex | year | type
+--------------+----+----+-------+-------+-------+-------+-------+-------+------+------+----------+-------+-----+-----+------+-------
+(0 rows)
+> select * from [show tag values from test_ntag_hash.t1];
+ERROR: relation "test_ntag_hash.t1" does not exist
+SQLSTATE: 42P01
+> select * from test_ntag_hash.t4 where code0 = 900;
+  k_timestamp | e1 | e2 | code0 | code1 | code2 | code3 | code4 | code5 | val1 | val2 | location | color | age | sex | year | type
+--------------+----+----+-------+-------+-------+-------+-------+-------+------+------+----------+-------+-----+-----+------+-------
+(0 rows)
 > use defaultdb;
 SET
 > drop database test_ntag_hash cascade;

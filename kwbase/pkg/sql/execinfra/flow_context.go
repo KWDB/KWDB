@@ -83,7 +83,7 @@ type FlowCtx struct {
 	NoopInputNums uint32
 
 	// Distributed temporal query
-	TsTableReaders []Processor
+	TsTableReaders []TSReader
 
 	// batchlookup join input
 	// only pass the data chunk formed by batchlookupjoiner to tse for multiple model processing
@@ -99,6 +99,10 @@ type FlowCtx struct {
 	// used only to jump out of the waiting loop in BLJ operator
 	// when tse returns an error.
 	TsHandleBreak bool
+}
+
+// TSReader save ts table reader operator of row_base or vector_base
+type TSReader interface {
 }
 
 // NewEvalCtx returns a modifiable copy of the FlowCtx's EvalContext.

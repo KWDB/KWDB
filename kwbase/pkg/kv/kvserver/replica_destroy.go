@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/apply"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
@@ -231,7 +232,11 @@ func (r *Replica) destroyRaftMuLocked(ctx context.Context, nextReplicaID roachpb
 		exist, _ := r.store.TsEngine.TSIsTsTableExist(uint64(desc.TableId))
 		log.VEventf(ctx, 3, "TsEngine.TSIsTsTableExist r%v, %v, %v", desc.RangeID, desc.TableId, exist)
 		if exist {
-			tableID, beginHash, endHash, startTs, endTs, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey)
+			hashNum := desc.HashNum
+			if hashNum == 0 {
+				hashNum = api.HashParamV2
+			}
+			tableID, beginHash, endHash, startTs, endTs, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTSRangeKey failed: %v", err)
 			} else {

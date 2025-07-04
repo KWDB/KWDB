@@ -369,3 +369,73 @@ select time_bucket_gapfill(k_timestamp,3600) as a,interpolate(sum(t3),'prev') fr
 select time_bucket_gapfill(k_timestamp,21600) as a,interpolate(avg(e4),'next') from test_timebucket_gapfill_rel.tb3 group by a order by a;
 select time_bucket_gapfill(k_timestamp,604800) as a,interpolate(count(t6),'linear') from test_timebucket_gapfill_rel.tb3 group by a order by a;
 DROP database test_timebucket_gapfill_rel cascade;
+
+
+
+create ts database test;
+use test;
+CREATE TABLE lingshou_station (
+    ts TIMESTAMPTZ NOT NULL,
+    value FLOAT8 NULL,
+    load_time TIMESTAMP NULL) TAGS (
+        equipment_code_id INT4,
+        capture_tag_id INT4 NOT NULL ) PRIMARY TAGS(capture_tag_id) retentions 0day activetime 1day partition interval 10day;
+
+insert into  lingshou_station  values ('2025-01-22 03:16:41.343+00:00',0.0,'2025-01-22 11:14:06+00:00',8,620),
+('2025-01-22 03:46:41.343+00:00',0.0,'2025-01-22 11:42:32+00:00',8,620),
+('2025-01-22 05:16:41.343+00:00',0.0,'2025-01-22 13:12:32+00:00',8,620),
+('2025-01-22 08:01:41.343+00:00',0.0,'2025-01-22 15:57:31+00:00',8,620),
+('2025-01-22 09:01:41.343+00:00',0.0,'2025-01-22 16:57:32+00:00',8,620),
+('2025-01-22 10:46:41.343+00:00',0.0,'2025-01-22 18:42:31+00:00',8,620),
+('2025-01-22 11:31:41.343+00:00',0.0,'2025-01-22 19:27:31+00:00',8,620),
+('2025-01-22 11:46:41.343+00:00',0.0,'2025-01-22 19:42:31+00:00',8,620),
+('2025-01-22 12:46:41.343+00:00',0.0,'2025-01-22 20:42:31+00:00',8,620),
+('2025-01-22 13:01:41.343+00:00',0.0,'2025-01-22 20:57:31+00:00',8,620),
+('2025-01-22 13:46:41.343+00:00',0.0,'2025-01-22 21:42:31+00:00',8,620),
+('2025-01-22 15:01:41.343+00:00',0.0,'2025-01-22 22:57:31+00:00',8,620),
+('2025-01-22 16:01:41.343+00:00',0.0,'2025-01-22 23:57:31+00:00',8,620),
+('2025-01-22 16:16:41.343+00:00',0.0,'2025-01-23 00:12:31+00:00',8,620),
+('2025-01-22 16:46:41.343+00:00',0.0,'2025-01-23 00:42:31+00:00',8,620),
+('2025-01-22 17:16:41.343+00:00',0.0,'2025-01-23 01:12:31+00:00',8,620),
+('2025-01-22 19:46:41.343+00:00',0.0,'2025-01-23 03:42:31+00:00',8,620),
+('2025-01-22 20:01:41.343+00:00',0.0,'2025-01-23 03:57:31+00:00',8,620),
+('2025-01-22 20:31:41.343+00:00',0.0,'2025-01-23 04:27:31+00:00',8,620),
+('2025-01-22 21:01:41.343+00:00',0.0,'2025-01-23 04:57:31+00:00',8,620),
+('2025-01-22 21:31:41.343+00:00',0.0,'2025-01-23 05:27:31+00:00',8,620),
+('2025-01-22 23:46:41.343+00:00',0.0,'2025-01-23 07:42:31+00:00',8,620);
+
+CREATE TABLE lingshou_station_10m_test (
+    ts TIMESTAMPTZ(3) NOT NULL,
+    avg_value FLOAT8 NULL,
+    std_value FLOAT8 NULL,
+    load_time TIMESTAMP(3) NULL) TAGS (
+        equipment_code_id INT4,
+        capture_tag_id INT4 NOT NULL ) PRIMARY TAGS(capture_tag_id) retentions 0day activetime 1day partition interval 10day;
+
+
+insert into lingshou_station_10m_test SELECT
+time_bucket_gapfill(ts, '1m') AS time,
+interpolate(avg(value), PREV) AS avg_value,
+COALESCE(stddev_samp(value), 0) AS std,
+current_timestamp,
+equipment_code_id,
+capture_tag_id
+FROM lingshou_station
+WHERE ts >= '2025-01-22 00:00:00' AND ts < '2025-01-23 00:00:00'
+GROUP BY time, equipment_code_id, capture_tag_id;
+
+select count(*) from (
+SELECT
+time_bucket_gapfill(ts, '1m') AS time,
+interpolate(avg(value), PREV) AS avg_value,
+COALESCE(stddev_samp(value), 0) AS std,
+current_timestamp,
+equipment_code_id,
+capture_tag_id
+FROM  lingshou_station
+WHERE ts >= '2025-01-22 00:00:00' AND ts < '2025-01-23 00:00:00'
+GROUP BY time, equipment_code_id, capture_tag_id );
+
+select count(*) from lingshou_station_10m_test ;
+
+drop database test cascade;

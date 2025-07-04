@@ -96,7 +96,7 @@ descriptor_id  descriptor_name  index_id  dependedonby_id  dependedonby_type  de
 78             test_kv          NULL      79               fk                 NULL                   NULL               NULL
 78             test_kv          NULL      80               fk                 NULL                   NULL               NULL
 78             test_kv          NULL      81               fk                 NULL                   NULL               NULL
-78             test_kv          NULL      84               view               0                      NULL               Columns: [1 2 3]
+78             test_kv          NULL      84               view               0                      NULL               Columns: [2]
 78             test_kv          1         82               interleave         1                      NULL               SharedPrefixLen: 0
 78             test_kv          1         83               interleave         2                      NULL               SharedPrefixLen: 0
 84             test_v1          NULL      85               view               0                      NULL               Columns: [1]
@@ -116,7 +116,7 @@ query ITIITITT colnames
 SELECT * FROM kwdb_internal.forward_dependencies WHERE descriptor_name LIKE 'moretest_%' ORDER BY descriptor_id, index_id, dependedonby_type, dependedonby_id, dependedonby_index_id
 ----
 descriptor_id  descriptor_name  index_id  dependedonby_id  dependedonby_type  dependedonby_index_id  dependedonby_name  dependedonby_details
-86             moretest_t       NULL      87               view               0                      NULL               Columns: [1 2 3]
+86             moretest_t       NULL      87               view               0                      NULL               Columns: [2]
 
 # Check sequence dependencies.
 

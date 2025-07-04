@@ -163,6 +163,7 @@ class TestTsBLockItemMaxNoCore : public TestBigTableInstance {
     roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
     table->set_ts_table_id(table_id_);
     table->set_table_name("table_" + std::to_string(table_id_));
+    table->set_hash_num(g_testcase_hash_num);
     meta->set_allocated_ts_table(table);
 
     for (int i = 0; i < clumn_num; i++) {
@@ -244,7 +245,7 @@ TEST_F(TestTsBLockItemMaxNoCore, mulitiInsert) {
   TsStorageIterator* iter1;
   auto ts_type = table_->GetRootTableManager()->GetTsColDataType();
   ASSERT_EQ(entity_group_leader_->GetIterator(ctx_, entity_id_list[0].subGroupId, {entity_id_list[0].entityId}, ts_spans, ts_type,
-    scan_cols, scan_cols, scan_agg_types, 1, &iter1, entity_group_leader_, {}, false, false), KStatus::SUCCESS);
+    scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, entity_group_leader_, {}, false, false), KStatus::SUCCESS);
   int iter_count = GetIterRows(iter1, scan_cols.size());
   EXPECT_TRUE(iter_count % batch_count == 0);
   delete iter1;

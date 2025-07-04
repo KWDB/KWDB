@@ -64,6 +64,7 @@ type setZoneConfigNode struct {
 	yamlConfig    tree.TypedExpr
 	options       map[tree.Name]optionValue
 	setDefault    bool
+	rebalance     bool
 
 	run setZoneConfigRun
 }
@@ -199,6 +200,7 @@ func (p *planner) SetZoneConfig(ctx context.Context, n *tree.SetZoneConfig) (pla
 		yamlConfig:    yamlConfig,
 		options:       options,
 		setDefault:    n.SetDefault,
+		rebalance:     n.Rebalance,
 	}, nil
 }
 
@@ -365,6 +367,14 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 	table, err := params.p.resolveTableForZone(params.ctx, &n.zoneSpecifier)
 	if err != nil {
 		return err
+	}
+	if n.rebalance {
+		err = BalanceReplica(params.ctx, params.p.txn, params.ExecCfg(), params.p.Tables(),
+			&n.zoneSpecifier, table, params.p.User(), params.p.stmt.String())
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
 	if n.zoneSpecifier.TargetsPartition() && len(n.zoneSpecifier.TableOrIndex.Index) == 0 && !n.allIndexes {
@@ -654,19 +664,26 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 					completeZone = zonepb.NewZoneConfig()
 				}
 				partDesc := index.FindPartitionByName(partition)
-				var hashPoints []int32
+				var hashPointsList, hashPointRange []int32
 				if partDesc.HashPoint != nil {
 					for _, part := range partDesc.HashPoint {
 						if part.Name == partition {
-							hashPoints = part.HashPoints
+							if part.HashPoints != nil {
+								hashPointsList = part.HashPoints
+							} else if part.ToPoint-part.FromPoint > 0 {
+								hashPointRange = []int32{part.FromPoint, part.ToPoint}
+							}
+							newZone.Rebalance = true
+							finalZone.Rebalance = true
 						}
 					}
 				}
 				completeZone.SetSubzone(zonepb.Subzone{
-					IndexID:       uint32(index.ID),
-					PartitionName: partition,
-					HashPoints:    hashPoints,
-					Config:        newZone,
+					IndexID:         uint32(index.ID),
+					PartitionName:   partition,
+					HashPointsList:  hashPointsList,
+					HashPointsRange: hashPointRange,
+					Config:          newZone,
 				})
 
 				// The partial zone might just be empty. If so,
@@ -676,10 +693,11 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 				}
 
 				partialZone.SetSubzone(zonepb.Subzone{
-					IndexID:       uint32(index.ID),
-					PartitionName: partition,
-					HashPoints:    hashPoints,
-					Config:        finalZone,
+					IndexID:         uint32(index.ID),
+					PartitionName:   partition,
+					HashPointsList:  hashPointsList,
+					HashPointsRange: hashPointRange,
+					Config:          finalZone,
 				})
 			}
 

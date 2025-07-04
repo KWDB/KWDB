@@ -118,7 +118,7 @@ TEST_F(TestEngineRangeVolume, TwoColumns) {
 
   // one entity data volume
   uint64_t primary_key = start_ts;
-  uint64_t tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+  uint64_t tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
   s = ts_table->GetDataVolume(ctx_, tag_hash, tag_hash, {INT64_MIN, INT64_MAX}, &volume_range);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(volume_range, row_num * 18);
@@ -161,7 +161,7 @@ TEST_F(TestEngineRangeVolume, OneColumnHalf) {
   ASSERT_EQ(volume_range, row_num * paritition_num * 16);
 
   uint64_t primary_key = 100;
-  uint64_t tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+  uint64_t tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
   timestamp64 half_ts;
   s = ts_table->GetDataVolumeHalfTS(ctx_, tag_hash, tag_hash, {INT64_MIN, INT64_MAX}, &half_ts);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -215,7 +215,7 @@ TEST_F(TestEngineRangeVolume, OneColumnHalfDiffPartition) {
   ASSERT_EQ(volume_range, total_rows * 16);
 
   uint64_t primary_key = 100;
-  uint64_t tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+  uint64_t tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
   timestamp64 half_ts;
   s = ts_table->GetDataVolumeHalfTS(ctx_, tag_hash, tag_hash, {INT64_MIN, INT64_MAX}, &half_ts);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -377,7 +377,7 @@ TEST_F(TestEngineRangeVolume, OneColumnHalfOnePartition) {
   ASSERT_EQ(volume_range, total_rows * 16);
 
   uint64_t primary_key = 100;
-  uint64_t tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+  uint64_t tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
   timestamp64 half_ts;
   s = ts_table->GetDataVolumeHalfTS(ctx_, tag_hash, tag_hash, {INT64_MIN, INT64_MAX}, &half_ts);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -430,7 +430,7 @@ TEST_F(TestEngineRangeVolume, ThreePartitionsHalfTs) {
   // first partition entity start_ts
   for (size_t i = 0; i < row_nums_per_partition.size(); i++) {
     uint64_t primary_key = start_ts + i * iot_interval_ * 1000;
-    uint64_t tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+    uint64_t tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
     timestamp64 half_ts;
     s = ts_table->GetDataVolumeHalfTS(ctx_, tag_hash, tag_hash, {INT64_MIN, INT64_MAX}, &half_ts);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -460,7 +460,7 @@ TEST_F(TestEngineRangeVolume, ThreePartitionsHalfTsSameHash) {
   uint64_t tag_hash = 0;
   while (hash_index < 3) {
     uint64_t primary_key = start_ts + i * iot_interval_ * 1000;
-    uint64_t cur_tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+    uint64_t cur_tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
     if (hash_index == 0) {
       tag_hash = cur_tag_hash;
       hash_index++;
@@ -507,7 +507,7 @@ TEST_F(TestEngineRangeVolume, ThreePartitionsHalfTsSameHash) {
   // three entity with same hash.
   for (size_t i = 0; i < row_nums_per_partition.size(); i++) {
     uint64_t primary_key = start_ts + partition_index[i] * iot_interval_ * 1000;
-    uint64_t tag_hash = TsTable::GetConsistentHashId((char*)(&primary_key), 8);
+    uint64_t tag_hash = GetConsistentHashId((char*)(&primary_key), 8, g_testcase_hash_num);
     timestamp64 half_ts;
     s = ts_table->GetDataVolumeHalfTS(ctx_, tag_hash, tag_hash, {INT64_MIN, INT64_MAX}, &half_ts);
     ASSERT_EQ(s, KStatus::SUCCESS);

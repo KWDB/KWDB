@@ -94,6 +94,9 @@ type tsScanNode struct {
 	// ts table id
 	TableMetaID opt.TableID
 
+	// hash num
+	hashNum uint64
+
 	// estimatedRowCount is the estimated number of rows that this tsScanNode will
 	// output. When there are no statistics to make the estimation, it will be
 	// set to zero.
@@ -137,6 +140,8 @@ func (n *tsScanNode) Close(context.Context) {
 	*n = tsScanNode{}
 	tsScanNodePool.Put(n)
 }
+
+func (n *tsScanNode) SkipClose() bool { return true }
 
 func (n *tsScanNode) Next(params runParams) (bool, error) {
 	panic("scanNode can't be run in local mode")

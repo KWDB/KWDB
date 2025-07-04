@@ -63,6 +63,7 @@ const (
 	alterKwdbDropColumn
 	alterKwdbAlterColumnType
 	alterKwdbAlterPartitionInterval
+	alterKwdbAlterRetentions
 	compress
 	deleteExpiredData
 	alterCompressInterval
@@ -247,6 +248,10 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 		KColumnsID = append(KColumnsID, uint32(col.ID))
 	}
 	tableName := tree.Name(d.SNTable.Name)
+	hashNum := d.SNTable.TsTable.HashNum
+	if hashNum == 0 {
+		hashNum = api.HashParamV2
+	}
 	kObjectTable := sqlbase.KWDBTsTable{
 		TsTableId:         uint64(d.SNTable.ID),
 		DatabaseId:        uint32(d.SNTable.ParentID),
@@ -259,6 +264,7 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 		Sde:               d.SNTable.TsTable.Sde,
 		PartitionInterval: d.SNTable.TsTable.PartitionInterval,
 		TsVersion:         uint32(d.SNTable.TsTable.GetTsVersion()),
+		HashNum:           hashNum,
 	}
 
 	nTagIndexInfos := make([]sqlbase.NTagIndexInfo, len(d.SNTable.Indexes))
@@ -338,6 +344,14 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				d.SNTable.ID,
 				d.SNTable.TsTable.PartitionInterval,
 				d.SNTable.TsTable.PartitionIntervalInput,
+				syncErr,
+			)
+		case alterKwdbAlterRetentions:
+			updateErr = p.handleAlterRetentions(
+				ctx,
+				d.SNTable.ID,
+				d.SNTable.TsTable.Lifetime,
+				d.SNTable.TsTable.Downsampling,
 				syncErr,
 			)
 		case alterKwdbSetTagValue:
@@ -435,6 +449,26 @@ func (p *planner) handleAlterPartitionInterval(
 	return updateDescErr
 }
 
+// handleAlterRetentions restore time-series table metadata is available,
+// and the time-series engine completes setting the Retentions.
+func (p *planner) handleAlterRetentions(
+	ctx context.Context, tableID sqlbase.ID, lifeTime uint64, downsampling []string, syncErr error,
+) error {
+	_, updateDescErr := p.ExecCfg().LeaseManager.Publish(
+		ctx,
+		tableID,
+		func(tableDesc *sqlbase.MutableTableDescriptor) error {
+			tableDesc.State = sqlbase.TableDescriptor_PUBLIC
+			if syncErr == nil {
+				tableDesc.TsTable.Lifetime = lifeTime
+				tableDesc.TsTable.Downsampling = downsampling
+			}
+			return nil
+		},
+		func(txn *kv.Txn) error { return nil })
+	return updateDescErr
+}
+
 // handleDropTsDatabase processes metadata based on the result of AE execution.
 // If AE drops all the tables in this database success, delete corresponding metadata.
 // If AE fails, rollback the metadata.
@@ -487,7 +521,7 @@ func (p *planner) handleDropTsDatabase(
 			})
 			descriptorIDs = append(descriptorIDs, desc.ID)
 			jobDesc := "handle drop table " + desc.Name
-			if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc); err != nil {
+			if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
 				return err
 			}
 		}
@@ -572,7 +606,7 @@ func (p *planner) handleDropTsTable(
 		}
 		// execute without error, then delete corresponding metadata
 		jobDesc := "handle drop table " + tableDesc.Name
-		if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc); err != nil {
+		if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
 			return err
 		}
 		// Queue a new job.
@@ -785,7 +819,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID
 		var retErr error
-		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()))
+		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()), d.SNTable.TsTable.HashNum)
 		if retErr != nil {
 			return retErr
 		}
@@ -802,12 +836,12 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
-	case alterKwdbAlterPartitionInterval:
+	case alterKwdbAlterPartitionInterval, alterKwdbAlterRetentions:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d, current tsVersion: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID
 		var retErr error
-		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()))
+		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()), d.SNTable.TsTable.HashNum)
 		if retErr != nil {
 			return retErr
 		}
@@ -821,7 +855,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		}
 		log.Infof(ctx, "%s, jobID: %d, waitForOneVersion finished", opType, sw.job.ID())
 		log.Infof(ctx, "%s, jobID: %d, checkReplica start", opType, sw.job.ID())
-		if err := sw.checkReplica(ctx, d.SNTable.ID); err != nil {
+		if err := sw.checkReplica(ctx, d.SNTable.ID, d.SNTable.TsTable.HashNum); err != nil {
 			return err
 		}
 		log.Infof(ctx, "%s, jobID: %d, checkReplica finished", opType, sw.job.ID())
@@ -833,7 +867,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID())
 		var nodeList []roachpb.NodeID
 		var retErr error
-		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()))
+		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()), d.SNTable.TsTable.HashNum)
 		if retErr != nil {
 			return retErr
 		}
@@ -860,13 +894,14 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			Payload:       d.CTable.CTable.Payloads[0],
 			RowNum:        1,
 			PrimaryTagKey: d.CTable.CTable.PrimaryKeys[0],
+			HashNum:       d.SNTable.TsTable.HashNum,
 		}}
 		*tsIns = tsInsertNode{
 			nodeIDs:             []roachpb.NodeID{roachpb.NodeID(d.CTable.CTable.NodeIDs[0])},
 			allNodePayloadInfos: [][]*sqlbase.SinglePayloadInfo{payInfo},
 		}
 		newPlanNode = tsIns
-	case compress, deleteExpiredData, autonomy, vacuum:
+	case compress, deleteExpiredData, autonomy, vacuum, count:
 		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
 		if d.Type == vacuum {
 			if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
@@ -1015,7 +1050,9 @@ func (sw *TSSchemaChangeWorker) sendTsTxn(
 	}
 }
 
-func (sw *TSSchemaChangeWorker) checkReplica(ctx context.Context, tableID sqlbase.ID) error {
+func (sw *TSSchemaChangeWorker) checkReplica(
+	ctx context.Context, tableID sqlbase.ID, hashNum uint64,
+) error {
 	// if isComplete is false after check replica status 30 times, return error.
 	for r := retry.StartWithCtx(ctx, retry.Options{
 		InitialBackoff: 20 * time.Millisecond,
@@ -1024,8 +1061,8 @@ func (sw *TSSchemaChangeWorker) checkReplica(ctx context.Context, tableID sqlbas
 		MaxRetries:     30,
 	}); r.Next(); {
 		isComplete := true
-		startKey := sqlbase.MakeTsHashPointKey(tableID, 0)
-		endKey := sqlbase.MakeTsHashPointKey(tableID, api.HashParam)
+		startKey := sqlbase.MakeTsHashPointKey(tableID, 0, hashNum)
+		endKey := sqlbase.MakeTsHashPointKey(tableID, api.HashParam, hashNum)
 		if sw.p.ExecCfg().StartMode == StartMultiReplica {
 			isComplete, _ = sw.db.AdminReplicaStatusConsistent(ctx, startKey, endKey)
 		}
@@ -1064,6 +1101,8 @@ func getDDLOpType(op int32) string {
 		return "alter column type"
 	case alterKwdbAlterPartitionInterval:
 		return "alter partition interval"
+	case alterKwdbAlterRetentions:
+		return "alter retentions"
 	case compress:
 		return "compress"
 	case compressAll:

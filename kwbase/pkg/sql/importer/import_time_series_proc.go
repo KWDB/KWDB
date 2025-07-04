@@ -170,6 +170,7 @@ type timeSeriesImportInfo struct {
 	pArgs          execbuilder.PayloadArgs
 	dbID           sqlbase.ID
 	tbID           sqlbase.ID
+	hashNum        uint64
 	txn            *kv.Txn
 
 	// infos generate for fast import, and flags control for batch wait
@@ -319,6 +320,7 @@ func initPrettyColsAndComputeColumnSize(
 	// }
 	dbID := spec.Table.Desc.ParentID
 	tbID := spec.Table.Desc.ID
+	hashNum := spec.Table.Desc.TsTable.HashNum
 	pTagToWorkerID := make(map[string]int64)
 	datumsCh := make([]chan datumsInfo, parallelNums)
 	for i := 0; i < int(parallelNums); i++ {
@@ -335,7 +337,7 @@ func initPrettyColsAndComputeColumnSize(
 	}
 	t := &timeSeriesImportInfo{prettyCols: pArgs.PrettyCols, pArgs: pArgs, columns: columns, colIndexs: colIndexs,
 		autoShrink: autoShrink, logColumnID: logColumnID, batchSize: batchSize, fileSplitInfos: fileSplitInfos,
-		parallelNums: parallelNums, dbID: dbID, tbID: tbID, flowCtx: flowCtx,
+		parallelNums: parallelNums, dbID: dbID, tbID: tbID, hashNum: hashNum, flowCtx: flowCtx,
 		datumsCh: datumsCh, txn: txn, primaryTagCols: primaryTagCols,
 		OptimizedDispatch: spec.OptimizedDispatch, writeWAL: spec.WriteWAL}
 	t.mu.pTagToWorkerID = pTagToWorkerID
@@ -827,6 +829,7 @@ func (t *timeSeriesImportInfo) ingest(
 			Timestamps:   val.RowTimestamps,
 			ValueSize:    val.ValueSize,
 			CloseWAL:     !t.writeWAL,
+			HashNum:      t.hashNum,
 		})
 		err = t.flowCtx.Cfg.TseDB.Run(ctx, ba)
 		if err != nil {
@@ -1066,7 +1069,7 @@ func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartSingleNode(
 		RowNum:         uint32(rowNum),
 	})
 
-	return tsPayload.BuildRowsPayloadByDatums(InputDatums, rowNum, t.prettyCols, t.colIndexs, true)
+	return tsPayload.BuildRowsPayloadByDatums(InputDatums, rowNum, t.prettyCols, t.colIndexs, true, t.hashNum)
 }
 
 // BuildPayloadForTsImportStartDistributeMode construct payload of for StartDistributeMode import ts table.
@@ -1084,5 +1087,5 @@ func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartDistributeMode(
 		RowNum:         uint32(rowNum),
 	})
 
-	return tsPayload.BuildRowBytesForTsImport(evalCtx, txn, InputDatums, rowNum, t.prettyCols, t.colIndexs, t.pArgs, uint32(t.dbID), uint32(t.tbID), true)
+	return tsPayload.BuildRowBytesForTsImport(evalCtx, txn, InputDatums, rowNum, t.prettyCols, t.colIndexs, t.pArgs, uint32(t.dbID), uint32(t.tbID), t.hashNum, true)
 }

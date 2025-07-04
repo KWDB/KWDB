@@ -32,6 +32,7 @@ kv_store_status               SYSTEM VIEW
 kwdb_attributes               SYSTEM VIEW
 kwdb_functions                SYSTEM VIEW
 kwdb_object_create_statement  SYSTEM VIEW
+kwdb_procedures               SYSTEM VIEW
 kwdb_retention                SYSTEM VIEW
 kwdb_schedules                SYSTEM VIEW
 kwdb_tse_info                 SYSTEM VIEW

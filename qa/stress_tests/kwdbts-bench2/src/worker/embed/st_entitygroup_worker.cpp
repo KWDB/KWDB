@@ -101,7 +101,7 @@ KBStatus TSEntityGroupWriteWorkerWithScan::do_work(KTimestamp  new_ts) {
     vector<uint32_t> entity_ids = {entityIdList[0].entityId};
     auto ts_type = st_inst_->GetTable()->GetRootTableManager()->GetTsColDataType();
     s = entity_group_->GetIterator(ctx, entityIdList[0].subGroupId, entity_ids,
-                                   ts_spans, ts_type, scan_cols, scan_cols, scan_agg_types, 1, &iter1, entity_group_,
+                                   ts_spans, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, entity_group_,
                                    {}, false, false);
     assert(s == KStatus::SUCCESS);
     int total_rows = 0;
@@ -180,7 +180,7 @@ KBStatus TSEntityGroupScanWorker::do_work(KTimestamp  new_ts) {
     vector<uint32_t> entity_ids = {entityIdList[0].entityId};
     auto ts_type = st_inst_->GetTable()->GetRootTableManager()->GetTsColDataType();
     s = entity_group_->GetIterator(ctx, entityIdList[0].subGroupId, entity_ids,
-                                   ts_spans, ts_type, scan_cols, scan_cols, scan_agg_types, 1, &iter1, entity_group_,
+                                   ts_spans, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, entity_group_,
                                     {}, false, false);
     assert(s == KStatus::SUCCESS);
     int total_rows = 0;

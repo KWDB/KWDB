@@ -251,6 +251,23 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
             }
             break;
           }
+          case WALTableType::DATA_V2 : {
+            auto wal_log =  reinterpret_cast<DeleteLogMetricsEntryV2 *>(log);
+            size_t log_len = DeleteLogMetricsEntryV2::fixed_length + (wal_log->range_size_) * sizeof(KwTsSpan) +
+                    wal_log->p_tag_len_;
+            auto del_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, wal_log->getXID(),
+                                                            wal_log->getVGroupID(), wal_log->getOldLSN(),
+                                                            WALTableType::DATA_V2, wal_log->table_id_,
+                                                            wal_log->p_tag_len_, wal_log->range_size_,
+                                                            wal_log->encoded_primary_tags_, wal_log->ts_spans_);
+            s = writeWALInternal(ctx, del_log, log_len, current_lsn);
+            delete []del_log;
+            if (s == KStatus::FAIL) {
+              LOG_ERROR("Failed to writeWALInternal.")
+              return s;
+            }
+            break;
+          }
           case WALTableType::TAG : {
             auto wal_log =  reinterpret_cast<DeleteLogTagsEntry *>(log);
             size_t log_len = DeleteLogTagsEntry::fixed_length + wal_log->tag_len_ + wal_log->p_tag_len_;
@@ -506,7 +523,7 @@ KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 
 KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
                                       const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans,
-                                      uint64_t vgrp_id) {
+                                      uint64_t vgrp_id, TS_LSN* entry_lsn) {
   auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA,
                                                    primary_tag.length(), 0, 0, row_spans.size(), primary_tag.data(),
                                                    row_spans.data());
@@ -515,8 +532,31 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
     return KStatus::FAIL;
   }
   size_t log_len = DeleteLogMetricsEntry::fixed_length + row_spans.size() * sizeof(DelRowSpan) + primary_tag.length();
-  KStatus status = WriteWAL(ctx, wal_log, log_len);
+  TS_LSN cur_lsn;
+  KStatus status = WriteWAL(ctx, wal_log, log_len, cur_lsn);
+  if (entry_lsn != nullptr) {
+    *entry_lsn = cur_lsn;
+  }
 
+  delete[] wal_log;
+  return status;
+}
+
+KStatus WALMgr::WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTableID table_id, const string& primary_tag,
+                                      const std::vector<KwTsSpan>& ts_spans,
+                                      uint64_t vgrp_id, TS_LSN* entry_lsn) {
+  auto* wal_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA_V2, table_id,
+                  primary_tag.length(), ts_spans.size(), primary_tag.data(), ts_spans.data());
+  if (wal_log == nullptr) {
+    LOG_ERROR("Failed to construct WAL, insufficient memory")
+    return KStatus::FAIL;
+  }
+  size_t log_len = DeleteLogMetricsEntryV2::fixed_length + ts_spans.size() * sizeof(KwTsSpan) + primary_tag.length();
+  TS_LSN cur_lsn;
+  KStatus status = WriteWAL(ctx, wal_log, log_len, cur_lsn);
+  if (entry_lsn != nullptr) {
+    *entry_lsn = cur_lsn;
+  }
   delete[] wal_log;
   return status;
 }
@@ -814,7 +854,18 @@ KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   memcpy(buf, &meta_, size);
   meta_file_.seekg(0, std::ios::beg);
   meta_file_.write(buf, size);
-  meta_file_.sync();
+  if (opt_->wal_level == WALMode::SYNC) {
+    auto helper = [](std::filebuf *fb) -> int {
+      class Helper : public std::filebuf {
+       public:
+        int handle() { return _M_file.fd(); }
+      };
+      return static_cast<Helper*>(fb)->handle();
+    };
+    fsync(helper(meta_file_.rdbuf()));
+  } else {
+    meta_file_.sync();
+  }
   delete[] buf;
 
   return SUCCESS;

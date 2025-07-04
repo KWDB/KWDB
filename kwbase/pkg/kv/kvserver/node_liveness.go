@@ -378,7 +378,19 @@ func (nl *NodeLiveness) SetUpgrading(
 
 	if isMPPMode {
 		for _, NodeID := range allNodes {
-			connect := checkNodeStatus(ctx, sfg, NodeID)
+			retryOpts := retry.Options{
+				InitialBackoff: 50 * time.Millisecond,
+				MaxBackoff:     time.Second,
+				MaxRetries:     5,
+				Multiplier:     2,
+			}
+			var connect = false
+			for r := retry.Start(retryOpts); r.Next(); {
+				connect = checkNodeStatus(ctx, sfg, NodeID)
+				if connect {
+					break
+				}
+			}
 			if !connect {
 				return fmt.Errorf("cluster has node unreachable. Can not connect to node %d ", NodeID)
 			}
@@ -559,7 +571,7 @@ func (nl *NodeLiveness) IsLive(nodeID roachpb.NodeID) (bool, error) {
 
 // checkNodeStatus check node connect is ok, avoid node heartbeat suspended
 func checkNodeStatus(ctx context.Context, sfg StoreConfig, nodeID roachpb.NodeID) bool {
-	err := sfg.NodeDialer.ConnHealth(nodeID, rpc.SystemClass)
+	err := sfg.NodeDialer.ConnHealthTryDial(nodeID, rpc.SystemClass)
 	if err != nil {
 		log.Errorf(ctx, "check Node Status error, error is :%v", err)
 		return false

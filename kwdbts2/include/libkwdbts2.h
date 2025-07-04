@@ -212,12 +212,6 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options, AppliedRangeI
 
 TSStatus TSCreateTsTable(TSEngine* engine, TSTableID tableId, TSSlice meta, RangeGroups range_groups);
 
-TSStatus TSGetRangeGroups(TSEngine* engine, TSTableID table_id, RangeGroups *range_groups);
-
-TSStatus TSUpdateRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroups range_groups);
-
-TSStatus TSCreateRangeGroup(TSEngine* engine, TSTableID table_id, TSSlice schema, RangeGroups range_groups);
-
 TSStatus TSDropTsTable(TSEngine* engine, TSTableID tableId);
 
 TSStatus TSDropResidualTsTable(TSEngine* engine);
@@ -421,6 +415,16 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
  */
 TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id);
 
+TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, int32_t* row_num);
+
+TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                          TSSlice* data, int32_t* row_num);
+
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id);
+
+TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id);
+
 /**
  * @brief Delete snapshot object
  * @param[in] table_id id of the time series table
@@ -445,6 +449,8 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
                            TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version);
 
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
+
+TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
 
 void UpdateTsTraceConfig(TSSlice cfg);
 /**

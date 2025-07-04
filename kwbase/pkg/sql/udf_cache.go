@@ -52,6 +52,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/cache"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -334,10 +335,10 @@ func (uc *UDFCache) DeleteUDF(ctx context.Context, udfName string) {
 	tree.ConcurrentFunDefs.DeleteFunc(udfName)
 	const deleteUdfQuery = `
 	   Delete 
-	   FROM system.user_defined_function
-	   WHERE function_name = $1
+	   FROM system.user_defined_routine
+	   WHERE name = $1 and routine_type = $2
 	 `
-	_, err := uc.SQLExecutor.Query(ctx, "Delete-udf", nil /* txn */, deleteUdfQuery, udfName)
+	_, err := uc.SQLExecutor.Query(ctx, "Delete-udf", nil /* txn */, deleteUdfQuery, udfName, sqlbase.Function)
 	if err != nil {
 		log.Errorf(context.Background(), "delete udf(%s) error: %v", udfName, err)
 		return
@@ -349,18 +350,13 @@ func (uc *UDFCache) getUdfFromDB(
 	ctx context.Context, udfName string,
 ) (*tree.FunctionDefinition, error) {
 	const getUdfQuery = `
-	 SELECT 
-   function_name, 
-   argument_types,
-   return_type,
-   types_length,
-   function_body
-	 FROM system.user_defined_function
-	 WHERE function_name = $1
+	 SELECT descriptor
+	 FROM system.user_defined_routine
+	 WHERE name = $1 and routine_type = $2
 	 LIMIT 1
 	 `
 
-	rows, err := uc.SQLExecutor.Query(ctx, "Get-udf", nil /* txn */, getUdfQuery, udfName)
+	rows, err := uc.SQLExecutor.Query(ctx, "Get-udf", nil /* txn */, getUdfQuery, udfName, sqlbase.Function)
 	if err != nil {
 		return nil, err
 	}
@@ -400,14 +396,10 @@ func GossipUdfDeleted(g *gossip.Gossip, udfName string) error {
 func (uc *UDFCache) LoadUDF(ctx context.Context, stopper *stop.Stopper) error {
 	stopper.RunWorker(context.Background(), func(ctx context.Context) {
 		const loadUdfQuery = `
-    SELECT 
-        function_name, 
-        argument_types, 
-        return_type, 
-        types_length, 
-        function_body
-    FROM system.user_defined_function
-    `
+	    SELECT descriptor
+	    FROM system.user_defined_routine
+	    WHERE routine_type = $2
+	 `
 
 		rows, err := uc.SQLExecutor.Query(ctx, "Load-udf", nil /* txn */, loadUdfQuery)
 		if err != nil {

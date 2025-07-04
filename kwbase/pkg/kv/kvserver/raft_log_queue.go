@@ -62,7 +62,7 @@ const (
 	RaftLogQueueTsStaleSize = 1 << 29
 	// Allow a limited number of Raft log truncations to be processed
 	// concurrently.
-	raftLogQueueConcurrency = 4
+	raftLogQueueConcurrency = 10
 	// While a snapshot is in flight, we won't truncate past the snapshot's log
 	// index. This behavior is extended to a grace period after the snapshot is
 	// marked as completed as it is applied at the receiver only a little later,

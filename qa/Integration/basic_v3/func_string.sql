@@ -1,8 +1,8 @@
 create ts database ts_db;
 
 create table ts_db.t1 (kt timestamptz not null, s1 varchar(8) not null,s2 char(8),s3 varbytes(8)) tags (t1 int2 not null) primary tags(t1);
-insert into ts_db.t1 values (now(), 'var', ' 你好2' , 'E''\\x01' , 1);
-insert into ts_db.t1 values (now(), 'var', '\U' , 'E''\\x02' ,1);
+insert into ts_db.t1 values (1681111110000, 'var', ' 你好2' , 'E''\\x01' , 1);
+insert into ts_db.t1 values (1681111110001, 'var', '\U' , 'E''\\x02' ,1);
 
 select ltrim(s2,'你 ') from ts_db.t1;
 select ltrim(s2,'\U你asdasdadasd\u ') from ts_db.t1;

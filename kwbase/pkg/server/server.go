@@ -971,7 +971,8 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		QueryCache:                 querycache.New(s.cfg.SQLQueryCacheSize),
 		ProtectedTimestampProvider: s.protectedtsProvider,
 
-		GCJobNotifier: gcJobNotifier,
+		GCJobNotifier:  gcJobNotifier,
+		ProcedureCache: sql.New(ctx, s.cfg.ProcedureCacheSize, sql.DefaultProcedureCacheShardNum),
 	}
 
 	execCfg.StartMode = sql.ChangeStartMode(s.cfg.StartMode)
@@ -2272,11 +2273,11 @@ func (s *Server) Start(ctx context.Context) error {
 		func() (jobs.ScheduledJobExecutor, error) {
 			return &sql.ScheduledCompressExecutor{}, nil
 		})
-	jobs.RegisterScheduledJobExecutorFactory(
-		sql.RetentionExecutorName,
-		func() (jobs.ScheduledJobExecutor, error) {
-			return &sql.ScheduledRetentionExecutor{}, nil
-		})
+	//jobs.RegisterScheduledJobExecutorFactory(
+	//	sql.RetentionExecutorName,
+	//	func() (jobs.ScheduledJobExecutor, error) {
+	//		return &sql.ScheduledRetentionExecutor{}, nil
+	//	})
 	jobs.RegisterScheduledJobExecutorFactory(
 		sql.SQLExecutorName,
 		func() (jobs.ScheduledJobExecutor, error) {

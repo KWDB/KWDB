@@ -288,17 +288,11 @@ SQLSTATE: 22023
   2023-05-31 11:00:00+00:00
 (2 rows)
 > select time::smallint from test_ts.ts_table;
-      time
------------------
-  1685527200000
-  1685530800000
-(2 rows)
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
 > select time::int from test_ts.ts_table;
-      time
------------------
-  1685527200000
-  1685530800000
-(2 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select time::bigint from test_ts.ts_table;
       time
 -----------------
@@ -308,8 +302,8 @@ SQLSTATE: 22023
 > select time::float from test_ts.ts_table;
       time
 -----------------
-  1.6855272e+09
-  1.6855308e+09
+  1.6855272e+12
+  1.6855308e+12
 (2 rows)
 > select time::bool from test_ts.ts_table;
 ERROR: invalid cast: timestamptz(3) -> bool
@@ -564,8 +558,11 @@ SQLSTATE: 22003
   2000000
 (2 rows)
 > select e3::timestamp from test_ts.ts_table;
-ERROR: int 100000000000000000 is out of range, should be between -9223372036854 and 9223372036854
-SQLSTATE: 01000
+               e3
+--------------------------------
+  3170843-11-07 09:46:40+00:00
+  6339717-09-13 19:33:20+00:00
+(2 rows)
 > select e3::smallint from test_ts.ts_table;
 ERROR: value is out of range for type int2
 SQLSTATE: 22003
@@ -654,17 +651,11 @@ SQLSTATE: 22003
 ERROR: invalid cast: float -> timestamp
 SQLSTATE: 42846
 > select e4::smallint from test_ts.ts_table;
-          e4
-----------------------
-  100000000000000000
-  200000000000000000
-(2 rows)
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
 > select e4::int from test_ts.ts_table;
-          e4
-----------------------
-  100000000000000000
-  200000000000000000
-(2 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select e4::bigint from test_ts.ts_table;
           e4
 ----------------------
@@ -1025,9 +1016,8 @@ SQLSTATE: 01000
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
   power | lpad
 --------+-------
@@ -1091,9 +1081,8 @@ SQLSTATE: 01000
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' order by e4 desc limit 1 offset 1;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select col4,col6 from test.test1 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' order by e4 desc limit 1 offset 1;
   power | lpad
 --------+-------
@@ -3478,9 +3467,8 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' group by t.e4, t.e6 having t.e4 < 3000000 or t.e6 like '%tes' order by e4, e6;
   power | lpad
 --------+-------
@@ -3548,9 +3536,8 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select floor(e4), lower(e6) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as int) < 3000 and upper(e6)='TEST_TS1' order by e4 desc limit 1 offset 1;
-  floor | lower
---------+--------
-(0 rows)
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
 > select power(e4, 2), lpad(e6, 1) from (select e4,e6 from test_ts.ts_table union (select e4,e6 from test_ts.ts_table2 union select e4,e6 from test_ts.ts_table)) as t where cast(e4 as bigint) < 3000 and rpad(e6, 1)='tes' order by e4 desc limit 1 offset 1;
   power | lpad
 --------+-------
@@ -6067,20 +6054,22 @@ SET CLUSTER SETTING
                     | use statistic       | true
 (15 rows)
 > explain select count(e1+e2) from test_ts.ts_table;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  group                  |             |
-   │                     | aggregate 0 | count(e1 + e2)
-   │                     | scalar      |
-   └── render            |             |
-        │                | e1 + e2     | e1 + e2
-        └── synchronizer |             |
-             └── ts scan |             |
-                         | ts-table    | ts_table
-                         | access mode | metaTable
-(11 rows)
+        tree        |      field       |  description
+--------------------+------------------+-----------------
+                    | distributed      | true
+                    | vectorized       | false
+  group             |                  |
+   │                | engine type      | time series
+   │                | aggregate 0      | count(e1 + e2)
+   │                | scalar           |
+   │                | addSynchronizer  | true
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | e1 + e2          | e1 + e2
+        └── ts scan |                  |
+                    | ts-table         | ts_table
+                    | access mode      | metaTable
+(13 rows)
 > select count(localtime()) from test_ts.ts_table;
   count
 ---------
@@ -6253,65 +6242,65 @@ CREATE TABLE
   c0
 ------
 (0 rows)
-> WITH 
-jennifer_0 AS (select  
+> WITH
+jennifer_0 AS (select
     cast(coalesce(subq_0.c10,
-      subq_0.c14) as "varchar") as c0, 
-    subq_0.c4 as c1, 
+      subq_0.c14) as "varchar") as c0,
+    subq_0.c4 as c1,
     subq_0.c12 as c2
-  from 
-    (select  
-          ref_0.cnc_sn as c0, 
-          ref_0.cnc_use_mem as c1, 
-          ref_0.cnc_sn as c2, 
-          ref_0.prog_seq_num as c3, 
-          ref_0.mprog_num as c4, 
-          ref_0.cnc_unuse_mem as c5, 
-          ref_0.parts_count as c6, 
-          ref_0.op_group as c7, 
-          ref_0.axis_path as c8, 
-          ref_0.k_timestamp as c9, 
-          ref_0.alarm_content as c10, 
-          33 as c11, 
-          8 as c12, 
-          ref_0.cnc_status as c13, 
-          ref_0.sp_name as c14, 
-          ref_0.device_state as c15, 
-          2 as c16, 
-          ref_0.cur_tool_z_len_val as c17, 
+  from
+    (select
+          ref_0.cnc_sn as c0,
+          ref_0.cnc_use_mem as c1,
+          ref_0.cnc_sn as c2,
+          ref_0.prog_seq_num as c3,
+          ref_0.mprog_num as c4,
+          ref_0.cnc_unuse_mem as c5,
+          ref_0.parts_count as c6,
+          ref_0.op_group as c7,
+          ref_0.axis_path as c8,
+          ref_0.k_timestamp as c9,
+          ref_0.alarm_content as c10,
+          33 as c11,
+          8 as c12,
+          ref_0.cnc_status as c13,
+          ref_0.sp_name as c14,
+          ref_0.device_state as c15,
+          2 as c16,
+          ref_0.cur_tool_z_len_val as c17,
           ref_0.rel_pos as c18
-        from 
+        from
           public.t_cnc as ref_0
         where cast(null as "timetz") IS DISTINCT FROM case when true then cast(null as "timetz") else cast(null as "timetz") end
             ) as subq_0
-  where ((subq_0.c9 = pg_catalog.transaction_timestamp()) 
+  where ((subq_0.c9 = pg_catalog.transaction_timestamp())
       and (cast(nullif(pg_catalog.kwdb_internal.completed_migrations(),
-          pg_catalog.kwdb_internal.completed_migrations()) as _text) > cast(null as _text))) 
+          pg_catalog.kwdb_internal.completed_migrations()) as _text) > cast(null as _text)))
     and (cast(coalesce(pg_catalog.uuid_v4(),
         cast(null as bytea)) as bytea) IS NOT DISTINCT FROM case when EXISTS (
-          select  
-              subq_1.c0 as c0, 
-              subq_1.c0 as c1, 
-              subq_0.c10 as c2, 
-              97 as c3, 
-              subq_0.c0 as c4, 
-              subq_0.c17 as c5, 
+          select
+              subq_1.c0 as c0,
+              subq_1.c0 as c1,
+              subq_0.c10 as c2,
+              97 as c3,
+              subq_0.c0 as c4,
+              subq_0.c17 as c5,
               subq_1.c5 as c6
-            from 
-              (select  
-                    ref_1.rallenergy_b as c0, 
-                    ref_1.allrenergy2 as c1, 
-                    subq_0.c2 as c2, 
-                    ref_1.powerl_b as c3, 
-                    ref_1.pallenergy_b as c4, 
-                    subq_0.c3 as c5, 
-                    subq_0.c8 as c6, 
+            from
+              (select
+                    ref_1.rallenergy_b as c0,
+                    ref_1.allrenergy2 as c1,
+                    subq_0.c2 as c2,
+                    ref_1.powerl_b as c3,
+                    ref_1.pallenergy_b as c4,
+                    subq_0.c3 as c5,
+                    subq_0.c8 as c6,
                     ref_1.machine_code as c7
-                  from 
+                  from
                     public.t_electmeter as ref_1
                   where false
                   limit 177) as subq_1
-            where (cast(null as "numeric") > cast(null as int8)) 
+            where (cast(null as "numeric") > cast(null as int8))
               and (cast(null as oid) IS DISTINCT FROM cast(null as oid))) then case when false then case when cast(null as date) = cast(null as date) then cast(null as bytea) else cast(null as bytea) end
              else case when cast(null as date) = cast(null as date) then cast(null as bytea) else cast(null as bytea) end
              end
@@ -6320,22 +6309,22 @@ jennifer_0 AS (select
              end
            end
         ))
-select  
-    subq_3.c1 as c0, 
-    subq_3.c2 as c1, 
-    subq_3.c1 as c2, 
-    subq_3.c3 as c3, 
+select
+    subq_3.c1 as c0,
+    subq_3.c2 as c1,
+    subq_3.c1 as c2,
+    subq_3.c3 as c3,
     subq_3.c3 as c4
-  from 
-    (select  
-          subq_2.c0 as c0, 
-          subq_2.c0 as c1, 
-          subq_2.c0 as c2, 
+  from
+    (select
+          subq_2.c0 as c0,
+          subq_2.c0 as c1,
+          subq_2.c0 as c2,
           subq_2.c0 as c3
-        from 
-          (select  
+        from
+          (select
                 ref_2.axis_unit as c0
-              from 
+              from
                 public.t_cnc as ref_2
               where ref_2.machine_code is NULL) as subq_2
         where true
@@ -6355,18 +6344,18 @@ select
          end
        IS NOT DISTINCT FROM pg_catalog.timezone(
       cast(case when EXISTS (
-          select  
-              subq_4.c0 as c0, 
-              subq_3.c0 as c1, 
+          select
+              subq_4.c0 as c0,
+              subq_3.c0 as c1,
               subq_3.c1 as c2
-            from 
-              (select  
+            from
+              (select
                     subq_3.c3 as c0
-                  from 
+                  from
                     jennifer_0 as ref_3
                   where cast(null as _timestamp) != cast(null as _timestamp)
                   limit 75) as subq_4
-            where (cast(null as _time) IS DISTINCT FROM cast(null as _time)) 
+            where (cast(null as _time) IS DISTINCT FROM cast(null as _time))
               or (false)
             limit 76) then cast(nullif(cast(null as "timestamptz"),
           pg_catalog.localtimestamp()) as "timestamptz") else cast(nullif(cast(null as "timestamptz"),
@@ -6443,12 +6432,13 @@ CREATE TABLE
              │                     | count         | 1000
              │                     | useSorterScan | true
              └── sort              |               |
+                  │                | engine type   | time series
                   │                | order         | -ts
                   └── synchronizer |               |
                        └── ts scan |               |
                                    | ts-table      | stbl_raw
                                    | access mode   | tableTableMeta
-(24 rows)
+(25 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 981;
                 tree               |    field     |  description
 -----------------------------------+--------------+-----------------
@@ -6470,12 +6460,13 @@ CREATE TABLE
              │                     | engine type  | time series
              │                     | count        | 1001
              └── sort              |              |
+                  │                | engine type  | time series
                   │                | order        | -ts
                   └── synchronizer |              |
                        └── ts scan |              |
                                    | ts-table     | stbl_raw
                                    | access mode  | tableTableMeta
-(23 rows)
+(24 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1000;
              tree             |     field     |  description
 ------------------------------+---------------+-----------------
@@ -6495,12 +6486,13 @@ CREATE TABLE
         │                     | count         | 1000
         │                     | useSorterScan | true
         └── sort              |               |
+             │                | engine type   | time series
              │                | order         | -ts
              └── synchronizer |               |
                   └── ts scan |               |
                               | ts-table      | stbl_raw
                               | access mode   | tableTableMeta
-(21 rows)
+(22 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1001;
              tree             |    field     |  description
 ------------------------------+--------------+-----------------
@@ -6519,12 +6511,13 @@ CREATE TABLE
         │                     | engine type  | time series
         │                     | count        | 1001
         └── sort              |              |
+             │                | engine type  | time series
              │                | order        | -ts
              └── synchronizer |              |
                   └── ts scan |              |
                               | ts-table     | stbl_raw
                               | access mode  | tableTableMeta
-(20 rows)
+(21 rows)
 > show max_push_limit_number;
   max_push_limit_number
 -------------------------
@@ -6551,12 +6544,13 @@ SET
         │                     | count         | 1100
         │                     | useSorterScan | true
         └── sort              |               |
+             │                | engine type   | time series
              │                | order         | -ts
              └── synchronizer |               |
                   └── ts scan |               |
                               | ts-table      | stbl_raw
                               | access mode   | tableTableMeta
-(21 rows)
+(22 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 1101;
              tree             |    field     |  description
 ------------------------------+--------------+-----------------
@@ -6575,12 +6569,13 @@ SET
         │                     | engine type  | time series
         │                     | count        | 1101
         └── sort              |              |
+             │                | engine type  | time series
              │                | order        | -ts
              └── synchronizer |              |
                   └── ts scan |              |
                               | ts-table     | stbl_raw
                               | access mode  | tableTableMeta
-(20 rows)
+(21 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 1080;
                 tree               |     field     |  description
 -----------------------------------+---------------+-----------------
@@ -6603,12 +6598,13 @@ SET
              │                     | count         | 1100
              │                     | useSorterScan | true
              └── sort              |               |
+                  │                | engine type   | time series
                   │                | order         | -ts
                   └── synchronizer |               |
                        └── ts scan |               |
                                    | ts-table      | stbl_raw
                                    | access mode   | tableTableMeta
-(24 rows)
+(25 rows)
 > EXPLAIN SELECT ts as timestamp,* FROM stbl_raw order by ts desc LIMIT 20 offset 1081;
                 tree               |    field     |  description
 -----------------------------------+--------------+-----------------
@@ -6630,12 +6626,13 @@ SET
              │                     | engine type  | time series
              │                     | count        | 1101
              └── sort              |              |
+                  │                | engine type  | time series
                   │                | order        | -ts
                   └── synchronizer |              |
                        └── ts scan |              |
                                    | ts-table     | stbl_raw
                                    | access mode  | tableTableMeta
-(23 rows)
+(24 rows)
 > reset max_push_limit_number;
 SET
 > use defaultdb;

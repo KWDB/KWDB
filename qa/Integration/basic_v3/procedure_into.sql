@@ -1,0 +1,392 @@
+drop database if exists procedure_into_db;
+create database procedure_into_db;
+use procedure_into_db;
+
+CREATE TABLE products (
+                          product_id INT PRIMARY KEY,
+                          name VARCHAR(100) NOT NULL,
+                          price NUMERIC(10, 2) NOT NULL,
+                          description TEXT,
+                          category VARCHAR(50),
+                          supplier_id INT,
+                          stock INT DEFAULT 0,
+                          avg_rating NUMERIC(3, 1),
+                          rating_count INT DEFAULT 0,
+                          created_at TIMESTAMP(3),
+                          updated_at TIMESTAMP(3),
+                          expiry_date DATE,
+                          promotion_discount NUMERIC(5, 2),
+                          promotion_start DATE,
+                          promotion_end DATE,
+                          is_seasonal BOOLEAN DEFAULT FALSE,
+                          days_on_sale INT,
+                          estimated_depletion_date DATE,
+                          last_stock_check TIMESTAMP(3),
+                          metadata JSONB,
+                          product_tags TEXT[]
+);
+
+CREATE TABLE suppliers (
+                           supplier_id INT PRIMARY KEY,
+                           name VARCHAR(100) NOT NULL,
+                           contact_email VARCHAR(100),
+                           phone VARCHAR(20),
+                           address TEXT
+);
+
+CREATE TABLE product_reviews (
+                                 review_id INT PRIMARY KEY,
+                                 product_id INT NOT NULL REFERENCES products(product_id),
+                                 review_text TEXT,
+                                 rating NUMERIC(2, 1) NOT NULL,
+                                 review_date TIMESTAMP(3)
+);
+
+CREATE TABLE product_inventory (
+                                   inventory_id INT PRIMARY KEY,
+                                   product_id INT NOT NULL REFERENCES products(product_id),
+                                   stock INT NOT NULL DEFAULT 0,
+                                   last_updated TIMESTAMP(3)
+);
+
+CREATE TABLE orders (
+                        order_id INT PRIMARY KEY,
+                        customer_id INT NOT NULL,
+                        order_date TIMESTAMP(3),
+                        total_amount NUMERIC(10, 2) NOT NULL,
+                        status VARCHAR(20)
+);
+
+CREATE TABLE product_price_history (
+                                       history_id INT PRIMARY KEY,
+                                       product_id INT NOT NULL REFERENCES products(product_id),
+                                       old_price NUMERIC(10, 2) NOT NULL,
+                                       new_price NUMERIC(10, 2) NOT NULL,
+                                       change_date TIMESTAMP(3)
+);
+
+CREATE TABLE supplier_notifications (
+                                        notification_id INT PRIMARY KEY,
+                                        supplier_id INT NOT NULL REFERENCES suppliers(supplier_id),
+                                        product_id INT NOT NULL REFERENCES products(product_id),
+                                        notification_type VARCHAR(50) NOT NULL,
+                                        message TEXT,
+                                        sent_at TIMESTAMP(3),
+                                        is_read BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE sales (
+                       sale_id INT PRIMARY KEY,
+                       product_id INT NOT NULL REFERENCES products(product_id),
+                       quantity INT NOT NULL,
+                       sale_date TIMESTAMP(3)
+);
+
+CREATE TABLE operation_log (
+                               log_id INT PRIMARY KEY,
+                               operation VARCHAR(100) NOT NULL,
+                               product_id INT,
+                               status VARCHAR(20) NOT NULL,
+                               new_value TEXT,
+                               error_message TEXT,
+                               operation_time TIMESTAMP(3)
+);
+
+INSERT INTO suppliers (supplier_id, name, contact_email, phone, address) VALUES
+                                                                (1, 'ABC Electronics', 'contact@abcelectronics.com', '+1 (123) 456-7890', '123 Tech St, San Francisco, CA'),
+                                                                (2, 'Fashion Inc.', 'info@fashioninc.com', '+1 (456) 789-0123', '456 Style Ave, New York, NY'),
+                                                                (3, 'Home Goods Co.', 'sales@homegoodsco.com', '+1 (789) 012-3456', '789 Comfort Rd, Chicago, IL'),
+                                                                (4, 'Sports World', 'support@sportsworld.com', '+1 (234) 567-8901', '234 Athletic Dr, Miami, FL'),
+                                                                (5, 'Food Supplies', 'orders@foodsupplies.com', '+1 (567) 890-1234', '567 Fresh Ln, Houston, TX');
+
+INSERT INTO products (product_id, name, price, description, category, supplier_id, stock, avg_rating, rating_count, created_at, metadata, product_tags) VALUES
+                                                                                                                                        (1,'Smartphone', 799.99, 'High-end smartphone with 128GB storage', 'Electronics', 1, 100, 4.8, 25, '2025-01-15', '{"brand": "TechGiant", "model": "Pro Max", "color": "Black"}', '{"phone","smartphone","electronics"}'),
+                                                                                                                                        (2,'Laptop', 1299.99, '15.6" Ultra-thin laptop', 'Electronics', 1, 50, 4.7, 18, '2025-02-20', '{"brand": "TechGiant", "model": "UltraBook", "ram": "16GB"}', '{"laptop","computer","electronics"}'),
+                                                                                                                                        (3,'T-Shirt', 29.99, 'Cotton t-shirt, various colors', 'Clothing', 2, 200, 4.5, 32, '2025-03-10', '{"brand": "FashionNow", "size": "M-L", "material": "Cotton"}', '{"tshirt","clothing","fashion"}'),
+                                                                                                                                        (4,'Desk Lamp', 49.99, 'Adjustable LED desk lamp', 'Home', 3, 75, 4.6, 15, '2025-04-05', '{"brand": "HomeComfort", "color": "White", "power": "10W"}', '{"lamp","home","lighting"}'),
+                                                                                                                                        (5,'Running Shoes', 129.99, 'Lightweight running shoes', 'Sports', 4, 90, 4.9, 42, '2025-05-01', '{"brand": "AthleticPro", "size": "US 8-12", "color": "Blue"}', '{"shoes","sports","running"}'),
+                                                                                                                                        (6,'Chocolate Bar', 3.99, 'Dark chocolate with nuts', 'Food', 5, 300, 4.4, 28, '2025-05-05', '{"brand": "SweetTreats", "weight": "100g", "flavor": "Dark"}', '{"food","chocolate","snacks"}'),
+                                                                                                                                        (7,'Wireless Headphones', 199.99, 'Noise-canceling headphones', 'Electronics', 1, 60, 4.7, 31, '2025-01-22', '{"brand": "SoundMaster", "battery": "30h", "color": "Silver"}', '{"headphones","audio","electronics"}'),
+                                                                                                                                        (8,'Jeans', 59.99, 'Slim-fit jeans', 'Clothing', 2, 120, 4.3, 24, '2025-02-28', '{"brand": "FashionNow", "size": "30-34", "color": "Blue"}', '{"jeans","clothing","fashion"}'),
+                                                                                                                                        (9,'Coffee Maker', 89.99, 'Automatic drip coffee maker', 'Home', 3, 40, 4.5, 19, '2025-03-18', '{"brand": "BrewMaster", "capacity": "12 cups", "color": "Black"}', '{"coffeemaker","home","kitchen"}'),
+                                                                                                                                        (10,'Tennis Racket', 149.99, 'Professional tennis racket', 'Sports', 4, 55, 4.8, 27, '2025-04-25', '{"brand": "AthleticPro", "weight": "300g", "headsize": "100sq.in"}', '{"tennis","sports","racket"}');
+
+INSERT INTO product_inventory (inventory_id, product_id, stock) VALUES
+                                                      (1,1, 100), (2,2, 50), (3,3, 200), (4,4, 75), (5,5, 90),
+                                                      (6,6, 300), (7,7, 60), (8,8, 120), (9,9, 40), (10,10, 55);
+
+INSERT INTO product_reviews (review_id, product_id, review_text, rating) VALUES
+                                                                  (1, 1, 'Great phone with amazing camera!', 5.0),
+                                                                  (2, 1, 'Battery life could be better', 4.0),
+                                                                  (3, 2, 'Super fast and lightweight', 5.0),
+                                                                  (4, 3, 'Comfortable fit, good quality', 4.5),
+                                                                  (5, 4, 'Perfect brightness adjustment', 4.7),
+                                                                  (6, 5, 'Very comfortable for long runs', 5.0),
+                                                                  (7, 6, 'Delicious chocolate, high quality', 4.2),
+                                                                  (8, 7, 'Noise cancellation works great', 4.9),
+                                                                  (9, 8, 'Fits perfectly, stylish', 4.3),
+                                                                  (10, 9, 'Makes great coffee, easy to use', 4.6);
+
+INSERT INTO orders (order_id, customer_id, order_date, total_amount, status) VALUES
+                                                                       (1, 101, '2025-04-10', 999.98, 'Completed'),
+                                                                       (2, 102, '2025-04-15', 1329.98, 'Completed'),
+                                                                       (3, 103, '2025-04-20', 38.97, 'Completed'),
+                                                                       (4, 104, '2025-04-25', 119.98, 'Processing'),
+                                                                       (5, 105, '2025-05-01', 259.98, 'Shipped');
+
+INSERT INTO product_price_history (history_id, product_id, old_price, new_price) VALUES
+                                                                         (1,1, 849.99, 799.99),
+                                                                         (2,2, 1349.99, 1299.99),
+                                                                         (3,3, 34.99, 29.99),
+                                                                         (4,4, 54.99, 49.99),
+                                                                         (5,5, 139.99, 129.99);
+
+INSERT INTO supplier_notifications (notification_id, supplier_id, product_id, notification_type, message) VALUES
+                                                                                             (1, 1, 1, '价格更新', '产品 Smartphone 价格已从 $849.99 调整为 $799.99'),
+                                                                                             (2, 1, 2, '价格更新', '产品 Laptop 价格已从 $1349.99 调整为 $1299.99'),
+                                                                                             (3, 2, 3, '价格更新', '产品 T-Shirt 价格已从 $34.99 调整为 $29.99');
+
+INSERT INTO sales (sale_id, product_id, quantity) VALUES
+                                             (1, 1, 5), (2, 2, 3), (3, 3, 10), (4, 4, 2), (5, 5, 7),
+                                             (6, 6, 25), (7, 7, 4), (8, 8, 6), (9, 9, 3), (10, 10, 2);
+
+CREATE PROCEDURE p_update_price_single(in_prod_id INT, in_price NUMERIC) BEGIN DECLARE v_old_price NUMERIC; DECLARE v_new_price NUMERIC; DECLARE v_updated_at TIMESTAMP(3); SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; UPDATE products SET price = in_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id RETURNING price, updated_at INTO v_new_price, v_updated_at; SELECT v_old_price, v_new_price, v_updated_at; END;
+
+CREATE PROCEDURE p_insert_product(in_name TEXT, in_price NUMERIC, in_category TEXT) BEGIN DECLARE v_new_id INT; DECLARE v_created_at TIMESTAMP(3); INSERT INTO products (product_id, name, price, category, created_at) VALUES (11, in_name, in_price, in_category, '2025-05-20 16:30:30.555') RETURNING product_id, created_at INTO v_new_id, v_created_at; SELECT v_new_id, in_name, in_price, v_created_at; END;
+
+CREATE PROCEDURE p_delete_product(in_prod_id INT) BEGIN DECLARE v_deleted_count INT; DELETE FROM products WHERE product_id = in_prod_id RETURNING product_id INTO v_deleted_count; SELECT COUNT(*) AS deleted_count FROM products WHERE product_id = in_prod_id; END;
+
+CREATE PROCEDURE p_batch_update_price(in_category TEXT, in_price_increase_percent NUMERIC) BEGIN DECLARE v_updated_rows INT; UPDATE products SET price = price * (1 + in_price_increase_percent/100), updated_at = '2025-05-20 16:30:30.555' WHERE category = in_category RETURNING product_id INTO v_updated_rows; SELECT COUNT(*) AS updated_rows FROM products WHERE category = in_category; END;
+
+CREATE PROCEDURE p_get_discounted_price(in_prod_id INT, in_discount_percent NUMERIC) BEGIN DECLARE v_original_price NUMERIC; DECLARE v_discounted_price NUMERIC; SELECT price INTO v_original_price FROM products WHERE product_id = in_prod_id; SET v_discounted_price = v_original_price * (1 - in_discount_percent/100); SELECT v_original_price, v_discounted_price, in_discount_percent; END;
+
+CREATE PROCEDURE p_update_stock(in_prod_id INT, in_quantity_change INT) BEGIN DECLARE v_old_stock INT; DECLARE v_new_stock INT; SELECT stock INTO v_old_stock FROM products WHERE product_id = in_prod_id; SET v_new_stock = v_old_stock + in_quantity_change; UPDATE products SET stock = v_new_stock, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_stock, v_new_stock, in_quantity_change; END;
+
+CREATE PROCEDURE p_insert_product_with_category(in_name TEXT, in_price NUMERIC, in_category_id INT) BEGIN DECLARE v_new_id INT; DECLARE v_created_at TIMESTAMP(3); INSERT INTO products (product_id, name, price, created_at) VALUES (12, in_name, in_price, '2025-05-20 16:30:30.555') RETURNING product_id, created_at INTO v_new_id, v_created_at; SELECT v_new_id, in_name, in_price, in_category_id, v_created_at; END;
+
+CREATE PROCEDURE p_delete_expired_products(in_expiry_date TIMESTAMP) BEGIN DECLARE v_deleted_count INT; DELETE FROM products WHERE expiry_date < in_expiry_date::DATE RETURNING product_id INTO v_deleted_count; SELECT v_deleted_count, in_expiry_date; END;
+
+CREATE PROCEDURE p_calculate_tax(in_prod_id INT, in_tax_rate NUMERIC) BEGIN DECLARE v_price NUMERIC; DECLARE v_tax_amount NUMERIC; DECLARE v_total_price NUMERIC; SELECT price INTO v_price FROM products WHERE product_id = in_prod_id; SET v_tax_amount = v_price * in_tax_rate; SET v_total_price = v_price + v_tax_amount; SELECT v_price, in_tax_rate, v_tax_amount, v_total_price; END;
+
+CREATE PROCEDURE p_update_product_status(in_prod_id INT, in_status TEXT) BEGIN DECLARE v_old_status TEXT; DECLARE v_updated_at TIMESTAMP(3);SELECT status INTO v_old_status FROM operation_log WHERE product_id = in_prod_id; UPDATE operation_log SET status = in_status, operation_time = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id RETURNING operation_time INTO v_updated_at; SELECT v_old_status, in_status, v_updated_at; END;
+
+CREATE PROCEDURE p_update_price_to_null(in_prod_id INT) BEGIN DECLARE v_old_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; UPDATE products SET price = 888, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, '价格已设为NULL' AS action;END;
+
+CREATE PROCEDURE p_insert_with_defaults(in_name TEXT, in_category TEXT) BEGIN DECLARE v_new_id INT; DECLARE v_created_at TIMESTAMP(3);  INSERT INTO products (product_id, name, category, price, created_at) VALUES (13, in_name, in_category, 999, '2025-05-20 16:30:30.555') RETURNING product_id, created_at INTO v_new_id, v_created_at; SELECT v_new_id, in_name, in_category, '使用默认价格' AS price_info; END;
+
+CREATE PROCEDURE p_safe_update_price(in_prod_id INT, in_new_price NUMERIC) BEGIN DECLARE v_old_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; IF in_new_price IS NOT NULL THEN UPDATE products SET price = in_new_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; ENDIF; SELECT v_old_price, in_new_price, CASE WHEN in_new_price IS NULL THEN '未更新价格' ELSE '价格已更新' END AS status; END;
+
+CREATE PROCEDURE p_get_price_with_default(in_prod_id INT, in_default_price NUMERIC) BEGIN DECLARE v_price NUMERIC; SELECT COALESCE(price, in_default_price) INTO v_price FROM products WHERE product_id = in_prod_id; SELECT v_price, in_default_price; END;
+
+CREATE PROCEDURE p_insert_with_nulls(in_name TEXT, in_price NUMERIC) BEGIN DECLARE v_new_id INT; INSERT INTO products (product_id, name, price, description, category) VALUES (14, in_name, in_price, NULL, NULL) RETURNING product_id INTO v_new_id; SELECT v_new_id, in_name, in_price, 'NULL描述和分类' AS info; END;
+
+CREATE PROCEDURE p_update_multiple_nulls(in_prod_id INT)BEGIN DECLARE v_old_price NUMERIC; DECLARE v_old_description TEXT; SELECT price, description INTO v_old_price, v_old_description FROM products WHERE product_id = in_prod_id; UPDATE products SET price = 666, description = NULL, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, v_old_description, '价格和描述已设为NULL' AS action; END;
+
+CREATE PROCEDURE p_insert_with_conditional_default(in_name TEXT, in_price NUMERIC) BEGIN DECLARE v_new_id INT; DECLARE v_final_price NUMERIC; IF in_price IS NULL THEN SET v_final_price = 9.99; ELSE SET v_final_price = in_price; ENDIF; INSERT INTO products (product_id, name, price) VALUES (15, in_name, v_final_price) RETURNING product_id INTO v_new_id; SELECT v_new_id, in_name, v_final_price; END;
+
+CREATE PROCEDURE p_safe_select(in_prod_id INT) BEGIN DECLARE v_price NUMERIC; DECLARE v_name TEXT; SELECT price, name INTO v_price, v_name FROM products WHERE product_id = in_prod_id; SELECT v_price, v_name; END;
+
+CREATE PROCEDURE p_update_price_to_zero(in_prod_id INT) BEGIN DECLARE v_old_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; UPDATE products SET price = 0, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, '价格已设为0' AS action; END;
+
+CREATE PROCEDURE p_insert_with_default_date(in_name TEXT, in_price NUMERIC) BEGIN DECLARE v_new_id INT; DECLARE v_created_at TIMESTAMP(3); INSERT INTO products (product_id, name, price, created_at) VALUES (16, in_name, in_price, DEFAULT) RETURNING product_id, created_at INTO v_new_id, v_created_at; SELECT v_new_id, in_name, in_price, v_created_at; END;
+
+CREATE PROCEDURE p_update_price_from_string(in_prod_id INT, in_price_text TEXT) BEGIN DECLARE v_old_price NUMERIC; DECLARE v_new_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; SET v_new_price = CAST(in_price_text AS NUMERIC); UPDATE products SET price = v_new_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, v_new_price, in_price_text; END;
+
+CREATE PROCEDURE p_increase_price_by_percent(in_prod_id INT, in_percent NUMERIC) BEGIN DECLARE v_old_price NUMERIC; DECLARE v_new_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; SET v_new_price = v_old_price * (1 + in_percent/100); UPDATE products SET price = v_new_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, v_new_price, in_percent; END;
+
+CREATE PROCEDURE p_insert_with_formatted_date(in_name TEXT, in_price NUMERIC, in_expiry_date TEXT)BEGIN DECLARE v_new_id INT; DECLARE v_parsed_date TIMESTAMP; SET v_parsed_date = in_expiry_date::TIMESTAMP; INSERT INTO products (product_id, name, price, expiry_date) VALUES (17, in_name, in_price, v_parsed_date::DATE) RETURNING product_id INTO v_new_id; SELECT v_new_id, in_name, in_price, v_parsed_date; END;
+
+CREATE PROCEDURE p_update_description(in_prod_id INT, in_additional_text TEXT) BEGIN DECLARE v_old_description TEXT; DECLARE v_new_description TEXT; SELECT description INTO v_old_description FROM products WHERE product_id = in_prod_id; SET v_new_description = v_old_description || ' ' || in_additional_text; UPDATE products SET description = v_new_description, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_description, v_new_description, in_additional_text; END;
+
+CREATE PROCEDURE p_calculate_discounted_price(in_prod_id INT, in_discount_percent NUMERIC) BEGIN DECLARE v_old_price NUMERIC; DECLARE v_discounted_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; SET v_discounted_price = v_old_price * (1 - in_discount_percent/100); UPDATE products SET price = v_discounted_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, v_discounted_price, in_discount_percent; END;
+
+CREATE PROCEDURE p_insert_with_json(in_name TEXT, in_price NUMERIC, in_json_text TEXT)BEGIN DECLARE v_new_id INT; DECLARE v_json_data STRING; SET v_json_data = CAST(in_json_text AS STRING); INSERT INTO products (product_id, name, price, metadata) VALUES (18, in_name, in_price, v_json_data::JSONB) RETURNING product_id INTO v_new_id; SELECT v_new_id, in_name, in_price, v_json_data; END;
+
+CREATE PROCEDURE p_calculate_value(in_prod_id INT) BEGIN DECLARE v_price NUMERIC; DECLARE v_stock INT; DECLARE v_total_value NUMERIC; SELECT price, stock INTO v_price, v_stock FROM products WHERE product_id = in_prod_id; SET v_total_value = v_price * v_stock; SELECT v_price, v_stock, v_total_value; END;
+
+CREATE PROCEDURE p_check_expiry(in_prod_id INT, in_check_date STRING) BEGIN DECLARE v_expiry_date TIMESTAMP; DECLARE v_check_date_parsed TIMESTAMP; DECLARE v_is_expired INT; SELECT expiry_date::TIMESTAMP INTO v_expiry_date FROM products WHERE product_id = in_prod_id; SET v_check_date_parsed = in_check_date::TIMESTAMP; SET v_is_expired = (v_expiry_date < v_check_date_parsed)::INT; SELECT v_expiry_date, v_check_date_parsed, v_is_expired; END;
+
+CREATE PROCEDURE p_format_price_as_currency(in_prod_id INT)BEGIN DECLARE v_price NUMERIC; DECLARE v_currency_text TEXT; SELECT price INTO v_price FROM products WHERE product_id = in_prod_id; SET v_currency_text = v_price::TEXT; SELECT v_price, v_currency_text; END;
+
+CREATE PROCEDURE p_update_category_by_price(in_prod_id INT)BEGIN DECLARE v_price NUMERIC; DECLARE v_old_category TEXT; DECLARE v_new_category TEXT; SELECT price, category INTO v_price, v_old_category FROM products WHERE product_id = in_prod_id; IF v_price > 100 THEN SET v_new_category = '高端产品'; ELSIF v_price > 50 THEN SET v_new_category = '中端产品'; ELSE SET v_new_category = '经济型产品'; ENDIF; UPDATE products SET category = v_new_category, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_price, v_old_category, v_new_category; END;
+
+CREATE PROCEDURE p_insert_if_not_exists(in_name TEXT, in_price NUMERIC)BEGIN DECLARE v_count INT; DECLARE v_new_id INT; SELECT COUNT(*) INTO v_count FROM products WHERE name = in_name; IF v_count = 0 THEN INSERT INTO products (product_id, name, price) VALUES (19, in_name, in_price) RETURNING product_id INTO v_new_id; SELECT v_new_id, in_name, in_price, '已插入' AS status; ELSE SELECT NULL, in_name, NULL, '产品已存在' AS status; ENDIF; END;
+
+CREATE PROCEDURE p_delete_if_expired(in_prod_id INT)BEGIN DECLARE v_expiry_date TIMESTAMP; DECLARE v_deleted INT; SELECT expiry_date::TIMESTAMP INTO v_expiry_date FROM products WHERE product_id = in_prod_id; IF v_expiry_date < '2025-05-20'::DATE THEN DELETE FROM products WHERE product_id = in_prod_id; SET v_deleted = 1; ELSE SET v_deleted = 0; ENDIF; SELECT v_expiry_date, v_deleted; END;
+
+CREATE PROCEDURE p_conditional_update(in_prod_id INT, in_price NUMERIC, in_stock INT)BEGIN DECLARE v_old_price NUMERIC; DECLARE v_old_stock INT; SELECT price, stock INTO v_old_price, v_old_stock FROM products WHERE product_id = in_prod_id; IF in_price IS NOT NULL THEN UPDATE products SET price = in_price WHERE product_id = in_prod_id; ENDIF; IF in_stock IS NOT NULL THEN UPDATE products SET stock = in_stock WHERE product_id = in_prod_id; ENDIF; UPDATE products SET updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, v_old_stock, in_price, in_stock; END;
+
+CREATE PROCEDURE p_find_by_json_value(in_key TEXT, in_value TEXT) BEGIN DECLARE v_matching_products INT; SELECT COUNT(*) INTO v_matching_products FROM products WHERE metadata @> jsonb_build_object(in_key, in_value); SELECT in_key, in_value, v_matching_products; END;
+
+CREATE PROCEDURE p_insert_product_with_supplier(in_name TEXT, in_price NUMERIC, in_supplier_id INT) BEGIN DECLARE v_new_id INT; INSERT INTO products (product_id, name, price, supplier_id) VALUES (20, in_name, in_price, in_supplier_id) RETURNING product_id INTO v_new_id; SELECT v_new_id, in_name, in_price, in_supplier_id; END;
+
+CREATE PROCEDURE p_update_with_history(in_prod_id INT, in_new_price NUMERIC) BEGIN DECLARE v_old_price NUMERIC; SELECT price INTO v_old_price FROM products WHERE product_id = in_prod_id; INSERT INTO product_price_history (history_id, product_id, old_price, new_price, change_date) VALUES (6, in_prod_id, v_old_price, in_new_price, '2025-05-20 16:30:30.555'); UPDATE products SET price = in_new_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_price, in_new_price; END;
+
+CREATE PROCEDURE p_calculate_avg_rating(in_prod_id INT)BEGIN DECLARE v_avg_rating NUMERIC; SELECT AVG(rating) INTO v_avg_rating FROM product_reviews WHERE product_id = in_prod_id; UPDATE products SET avg_rating = v_avg_rating, rating_count = (SELECT COUNT(*) FROM product_reviews WHERE product_id = in_prod_id) WHERE product_id = in_prod_id; SELECT in_prod_id, v_avg_rating; END;
+
+CREATE PROCEDURE p_update_product_notify_supplier(in_prod_id INT,in_new_price NUMERIC) BEGIN DECLARE v_supplier_id INT; DECLARE v_supplier_email TEXT; SELECT supplier_id INTO v_supplier_id FROM products WHERE product_id = in_prod_id; SELECT contact_email INTO v_supplier_email FROM suppliers WHERE supplier_id = v_supplier_id; UPDATE products SET price = in_new_price, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; INSERT INTO supplier_notifications (notification_id, supplier_id, product_id, notification_type, message, sent_at) VALUES (4, v_supplier_id, in_prod_id, '价格更新', '产品价格已更新', '2025-05-20 16:30:30.555'); SELECT in_prod_id, in_new_price, v_supplier_id, v_supplier_email;END;
+
+CREATE PROCEDURE p_update_expiry_date(in_prod_id INT, in_days_to_add INT) BEGIN DECLARE v_old_expiry TIMESTAMP; DECLARE v_new_expiry TIMESTAMP; SELECT expiry_date::TIMESTAMP INTO v_old_expiry FROM products WHERE product_id = in_prod_id; SET v_new_expiry = v_old_expiry + in_days_to_add::INTERVAL; UPDATE products SET expiry_date = v_new_expiry::DATE, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; SELECT v_old_expiry, v_new_expiry, in_days_to_add; END;
+
+CREATE PROCEDURE p_calculate_days_on_sale(in_prod_id INT)BEGIN DECLARE v_created_date TIMESTAMP; DECLARE v_days_on_sale INT; SELECT created_at::TIMESTAMP INTO v_created_date FROM products WHERE product_id = in_prod_id; SET v_days_on_sale = ('2025-05-20 16:30:30.555' - v_created_date)::INT; UPDATE products SET days_on_sale = v_days_on_sale WHERE product_id = in_prod_id; SELECT in_prod_id, v_created_date, v_days_on_sale; END;
+
+CREATE PROCEDURE p_update_seasonal_flag(in_prod_id INT)BEGIN DECLARE v_current_month INT; DECLARE v_is_seasonal INT; DECLARE is_seasonal_new INT; DECLARE updated_at_new TIMESTAMP; SET v_current_month = EXTRACT(MONTH FROM '2025-05-20'::DATE)::INT; IF v_current_month IN (12, 1, 2) THEN SET v_is_seasonal = 1; ELSIF v_current_month IN (6, 7, 8) THEN SET v_is_seasonal = 1; ELSE SET v_is_seasonal = 0; ENDIF; UPDATE products SET is_seasonal = v_is_seasonal::BOOL, updated_at = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id RETURNING is_seasonal::INT, updated_at INTO is_seasonal_new, updated_at_new; SELECT in_prod_id, v_current_month, v_is_seasonal, is_seasonal_new, updated_at_new; END;
+
+CREATE PROCEDURE p_update_last_stock_check(in_prod_id INT) BEGIN DECLARE last_stock_check_new TIMESTAMP; UPDATE products SET last_stock_check = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id RETURNING last_stock_check INTO last_stock_check_new; SELECT in_prod_id, '2025-05-20 16:30:30.555' AS last_checked, last_stock_check_new; END;
+
+CREATE PROCEDURE p_sell_product(in_prod_id INT, in_quantity INT)BEGIN DECLARE v_current_stock INT; DECLARE v_new_stock INT; START TRANSACTION; SELECT stock INTO v_current_stock FROM product_inventory WHERE product_id = in_prod_id; IF v_current_stock >= in_quantity THEN SET v_new_stock = v_current_stock - in_quantity; UPDATE product_inventory SET stock = v_new_stock, last_updated = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; INSERT INTO sales (sale_id, product_id, quantity, sale_date) VALUES (100, in_prod_id, in_quantity, '2025-05-20 16:30:30.555'); COMMIT; SELECT '销售成功' AS status, v_current_stock, v_new_stock, in_quantity; ELSE ROLLBACK; SELECT '库存不足' AS status, v_current_stock, in_quantity; ENDIF; END;
+
+CALL p_update_price_single(1, 849.99);
+
+CALL p_insert_product('Wireless Charger', 39.99, 'Electronics');
+
+CALL p_delete_product(10);
+
+CALL p_batch_update_price('Electronics', 5.0);
+
+CALL p_get_discounted_price(1, 10.0);
+
+CALL p_update_stock(1, -5);
+
+CALL p_insert_product_with_category('Bluetooth Speaker', 129.99, 1);
+
+CALL p_delete_expired_products('2025-01-01');
+
+CALL p_calculate_tax(1, 0.08);
+
+CALL p_update_product_status(1, 'On Sale');
+
+CALL p_update_price_to_null(1);
+
+CALL p_insert_with_defaults('Basic T-Shirt', 'Clothing');
+
+CALL p_safe_update_price(1, NULL);
+CALL p_safe_update_price(1, 899.99);
+
+CALL p_get_price_with_default(1, 999.99);
+
+CALL p_insert_with_nulls('Generic Product', 19.99);
+
+CALL p_update_multiple_nulls(1);
+
+CALL p_insert_with_conditional_default('Premium Product', NULL);
+
+CALL p_safe_select(1);
+CALL p_safe_select(999);
+
+CALL p_update_price_to_zero(1);
+
+CALL p_insert_with_default_date('Seasonal Item', 49.99);
+
+CALL p_update_price_from_string(1, '899.99');
+
+CALL p_increase_price_by_percent(1, 10.0);
+
+CALL p_insert_with_formatted_date('Expiring Product', 9.99, '2025-12-31');
+
+CALL p_update_description(1, 'Now with improved features');
+
+CALL p_calculate_discounted_price(1, 20.0);
+
+CALL p_insert_with_json('Smart Watch', 199.99, '{"brand": "TechGiant", "color": "Black"}');
+
+CALL p_calculate_value(1);
+
+INSERT INTO products (product_id, name, price, description, category, supplier_id, stock, avg_rating, rating_count, created_at, expiry_date, metadata, product_tags) VALUES (100,'Tennis Racket', 149.99, 'Professional tennis racket', 'Sports', 4, 55, 4.8, 27, '2025-04-25', '2025-04-25', '{"brand": "AthleticPro", "weight": "300g", "headsize": "100sq.in"}', '{"tennis","sports","racket"}');
+CALL p_check_expiry(100, '2025-12-31');
+
+CALL p_format_price_as_currency(1);
+
+CALL p_update_category_by_price(1);
+
+CALL p_insert_if_not_exists('Smartphone', 799.99);
+CALL p_insert_if_not_exists('Tablet', 499.99);
+
+CALL p_delete_if_expired(100);
+
+CALL p_conditional_update(1, 999.99, NULL);
+CALL p_conditional_update(1, NULL, 100);
+
+CALL p_find_by_json_value('brand', 'TechGiant');
+
+CALL p_insert_product_with_supplier('Fitness Tracker', 79.99, 1);
+
+CALL p_update_with_history(1, 949.99);
+
+CALL p_calculate_avg_rating(1);
+
+CALL p_update_product_notify_supplier(1, 999.99);
+
+CALL p_update_expiry_date(1, 30);
+
+CALL p_calculate_days_on_sale(1);
+
+CALL p_update_seasonal_flag(1);
+
+CALL p_update_last_stock_check(1);
+
+CALL p_sell_product(1, 5);
+DROP PROCEDURE p_update_price_single;
+DROP PROCEDURE p_insert_product;
+DROP PROCEDURE p_delete_product;
+DROP PROCEDURE p_batch_update_price;
+DROP PROCEDURE p_get_discounted_price;
+DROP PROCEDURE p_update_stock;
+DROP PROCEDURE p_insert_product_with_category;
+DROP PROCEDURE p_delete_expired_products;
+DROP PROCEDURE p_calculate_tax;
+DROP PROCEDURE p_update_product_status;
+DROP PROCEDURE p_update_price_to_null;
+DROP PROCEDURE p_insert_with_defaults;
+DROP PROCEDURE p_safe_update_price;
+DROP PROCEDURE p_get_price_with_default;
+DROP PROCEDURE p_insert_with_nulls;
+DROP PROCEDURE p_update_multiple_nulls;
+DROP PROCEDURE p_insert_with_conditional_default;
+DROP PROCEDURE p_safe_select;
+DROP PROCEDURE p_update_price_to_zero;
+DROP PROCEDURE p_insert_with_default_date;
+DROP PROCEDURE p_update_price_from_string;
+DROP PROCEDURE p_increase_price_by_percent;
+DROP PROCEDURE p_insert_with_formatted_date;
+DROP PROCEDURE p_update_description;
+DROP PROCEDURE p_calculate_discounted_price;
+DROP PROCEDURE p_insert_with_json;
+DROP PROCEDURE p_calculate_value;
+DROP PROCEDURE p_check_expiry;
+DROP PROCEDURE p_format_price_as_currency;
+DROP PROCEDURE p_update_category_by_price;
+DROP PROCEDURE p_insert_if_not_exists;
+DROP PROCEDURE p_delete_if_expired;
+DROP PROCEDURE p_conditional_update;
+DROP PROCEDURE p_find_by_json_value;
+DROP PROCEDURE p_insert_product_with_supplier;
+DROP PROCEDURE p_update_with_history;
+DROP PROCEDURE p_calculate_avg_rating;
+DROP PROCEDURE p_update_product_notify_supplier;
+DROP PROCEDURE p_update_expiry_date;
+DROP PROCEDURE p_calculate_days_on_sale;
+DROP PROCEDURE p_update_seasonal_flag;
+DROP PROCEDURE p_update_last_stock_check;
+DROP PROCEDURE p_sell_product;
+
+drop database procedure_into_db cascade;
+
+--- procedure privilege
+create database procedure_privilege_db;
+create user u1;
+show grants on database procedure_privilege_db;
+create procedure procedure_privilege_db.proc_privilege_1() begin select 1; end;
+show grants on procedure proc_privilege_1;
+show grants on procedure procedure_privilege_db.proc_privilege_1;
+show grants on procedure procedure_privilege_db.public.proc_privilege_1;
+create procedure proc_privilege_1() begin select 1; end;
+show grants on procedure proc_privilege_1;
+grant create on procedure procedure_privilege_db.proc_privilege_1 to u1;
+show grants on procedure procedure_privilege_db.proc_privilege_1;
+drop user u1;
+
+drop procedure proc_privilege_1;
+drop procedure procedure_privilege_db.proc_privilege_1;
+drop user u1;
+drop database procedure_privilege_db cascade;

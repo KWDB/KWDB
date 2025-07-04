@@ -47,6 +47,8 @@ using namespace kwdbts;
 
 #define DIR_SEP "/"
 
+static const k_uint32 g_testcase_hash_num = 2000;
+
 int IsDbNameValid(const string& db) {
   if (db.size() > MAX_DATABASE_NAME_LEN)  // can`t longer than 63
     return KWELENLIMIT;
@@ -324,6 +326,7 @@ void ConstructRoachpbTableWithTypes(roachpb::CreateTsTable* meta, KTableKey tabl
   roachpb::KWDBTsTable* table = new roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
   table->set_table_name("tbl_" + std::to_string(table_id));
+  table->set_database_id(1);
   table->set_partition_interval(86400);
   table->set_ts_version(1);
   meta->set_allocated_ts_table(table);
@@ -425,7 +428,7 @@ class PayloadBuilder {
 }  // namespace kwtest
 
 void make_hashpoint(std::vector<k_uint32> *hps) {
-  for (uint32_t i=0; i<HASHPOINT_RANGE; i++) {
+  for (uint32_t i=0; i< g_testcase_hash_num; i++) {
     hps->push_back(i);
   }
 }

@@ -207,6 +207,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.orderedType = private.OrderedScanType
 	tsScan.ScanAggArray = private.ScanAggs
 	tsScan.TableMetaID = private.Table
+	tsScan.hashNum = table.GetTSHashNum()
 	tsScan.estimatedRowCount = uint64(rowCount)
 
 	// bind tag filter and primary filter to tsScanNode.
@@ -725,6 +726,9 @@ func (ef *execFactory) ConstructGroupBy(
 
 func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo) error {
 	inputCols := planColumns(n.plan)
+	n.groupWindowExtend = make([]int32, 2)
+	n.groupWindowExtend[0] = -1
+	n.groupWindowExtend[1] = -1
 	for i := range aggregations {
 		agg := &aggregations[i]
 		builtin := agg.Builtin
@@ -738,7 +742,14 @@ func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo
 		aggFn := func(evalCtx *tree.EvalContext, arguments tree.Datums) tree.AggregateFunc {
 			return builtin.AggregateFunc(params, evalCtx, arguments)
 		}
-
+		if agg.IsExend {
+			switch agg.FuncName {
+			case sqlbase.FirstAgg:
+				n.groupWindowExtend[0] = int32(renderIdxs[0])
+			case sqlbase.LastAgg:
+				n.groupWindowExtend[1] = int32(renderIdxs[0])
+			}
+		}
 		f := n.newAggregateFuncHolder(
 			agg.FuncName,
 			agg.ResultType,
@@ -1584,6 +1595,7 @@ func (ef *execFactory) ConstructTSInsert(
 func (ef *execFactory) ConstructTSDelete(
 	nodeIDs []roachpb.NodeID,
 	tblID uint64,
+	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
 	primaryTagKey, primaryTagValues [][]byte,
@@ -1592,6 +1604,7 @@ func (ef *execFactory) ConstructTSDelete(
 	tsDel := tsDeleteNodePool.Get().(*tsDeleteNode)
 	tsDel.nodeIDs = nodeIDs
 	tsDel.tableID = tblID
+	tsDel.hashNum = hashNum
 	tsDel.delTyp = delTyp
 	tsDel.primaryTagKey = primaryTagKey
 	tsDel.primaryTagValue = primaryTagValues
@@ -2116,6 +2129,147 @@ func (ef *execFactory) ConstructCreateTable(
 	return nd, nil
 }
 
+func (ef *execFactory) ConstructCreateProcedure(
+	cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps,
+) (exec.Node, error) {
+	planDeps := make(planDependencies, len(deps))
+	for _, d := range deps {
+		desc, err := getDescForDataSource(d.DataSource)
+		if err != nil {
+			return nil, err
+		}
+		// following objects do not support view
+		if desc.TableDescriptor.IsReplTable || desc.TableDescriptor.IsView() ||
+			desc.TableDescriptor.IsMaterializedView || desc.TableDescriptor.IsSequence() ||
+			desc.TableDescriptor.Temporary {
+			return nil, errors.Errorf("Object %s do not support procedure", desc.TableDescriptor.Name)
+		}
+		var ref sqlbase.TableDescriptor_Reference
+		if d.SpecificIndex {
+			idx := d.DataSource.(cat.Table).Index(d.Index)
+			ref.IndexID = idx.(*optIndex).desc.ID
+		}
+		if !d.ColumnOrdinals.Empty() {
+			ref.ColumnIDs = make([]sqlbase.ColumnID, 0, d.ColumnOrdinals.Len())
+			d.ColumnOrdinals.ForEach(func(ord int) {
+				ref.ColumnIDs = append(ref.ColumnIDs, desc.Columns[ord].ID)
+			})
+		}
+		entry := planDeps[desc.ID]
+		entry.desc = desc
+		entry.deps = append(entry.deps, ref)
+		planDeps[desc.ID] = entry
+	}
+	scID := schema.(*optSchema).schema.ID
+
+	nd := &createProcedureNode{n: cp, dbDesc: schema.(*optSchema).database, scID: scID, planDeps: planDeps}
+	return nd, nil
+}
+
+// buildInstruction recursively translates procCommand to Instruction
+func (ef *execFactory) buildInstruction(
+	pc memo.ProcCommand, scalarFn exec.BuildScalarFn,
+) (Instruction, error) {
+	switch t := pc.(type) {
+	case *memo.ArrayCommand:
+		var array ArrayIns
+		for i := range t.Bodys {
+			ins, err := ef.buildInstruction(t.Bodys[i], scalarFn)
+			if err != nil {
+				return nil, err
+			}
+			array.childs = append(array.childs, ins)
+		}
+		return &array, nil
+	case *memo.BlockCommand:
+		var blockIns BlockIns
+		for i := range t.Body.Bodys {
+			ins, err := ef.buildInstruction(t.Body.Bodys[i], scalarFn)
+			if err != nil {
+				return nil, err
+			}
+			blockIns.childs = append(blockIns.childs, ins)
+		}
+		blockIns.labelName = t.Label
+		return &blockIns, nil
+	case *memo.IfCommand:
+		tmp, err := scalarFn(t.Cond)
+		if err != nil {
+			return nil, err
+		}
+		result, err2 := ef.buildInstruction(t.Then, scalarFn)
+		if err2 != nil {
+			return nil, err2
+		}
+		return NewCaseWhenIns(tmp, true, result), nil
+	case *memo.OpenCursorCommand:
+		ins := NewOpenCursorIns(t.Name)
+		return ins, nil
+	case *memo.FetchCursorCommand:
+		ins := NewFetchCursorIns(t.Name, t.DstVar)
+		return ins, nil
+	case *memo.CloseCursorCommand:
+		ins := NewCloseCursorIns(t.Name)
+		return ins, nil
+	case *memo.DeclareVarCommand:
+		ins := NewSetIns(string(t.Col.Name), t.Col.Typ, t.Col.Default)
+		return ins, nil
+	case *memo.DeclCursorCommand:
+		var cur Cursor
+		stmtCommand := t.Body.(*memo.StmtCommand)
+		cur.rootExpr = stmtCommand.Body
+		cur.pr = stmtCommand.PhysicalProp
+		cur.stmt = stmtCommand.Name
+		cur.typ = stmtCommand.Typ
+		ins := NewSetCursorIns(string(t.Name), cur)
+		return ins, nil
+	case *memo.DeclHandlerCommand:
+		insChild, err := ef.buildInstruction(t.Block, scalarFn)
+		if err != nil {
+			return nil, err
+		}
+		return NewSetHandlerIns(t.HandlerFor, insChild, t.HandlerOp), nil
+	case *memo.WhileCommand:
+		var bodyIns BlockIns
+		for i := range t.Then {
+			ins, err := ef.buildInstruction(t.Then[i], scalarFn)
+			if err != nil {
+				return nil, err
+			}
+			bodyIns.childs = append(bodyIns.childs, ins)
+		}
+
+		return NewLoopIns(t.Label, NewCaseWhenIns(t.Cond, false, &bodyIns)), nil
+	case *memo.StmtCommand:
+		return NewStmtIns(t.Name, t.Body, t.Typ, t.PhysicalProp), nil
+	case *memo.ProcedureTxnCommand:
+		ins := NewTransactionIns(t.TxnType)
+		return ins, nil
+	case *memo.IntoCommand:
+		stmt := *NewStmtIns(t.Name, t.Body, tree.Rows, t.PhysicalProp)
+		ins := NewIntoIns(stmt, t.Idx)
+		return ins, nil
+	case *memo.LeaveCommand:
+		return &LeaveIns{labelName: t.Label}, nil
+	}
+	return nil, nil
+}
+
+func (ef *execFactory) ConstructCallProcedure(
+	procName string,
+	procCall string,
+	procComms memo.ProcComms,
+	fn exec.ProcedurePlanFn,
+	scalarFn exec.BuildScalarFn,
+) (exec.Node, error) {
+	ins, err := ef.buildInstruction(procComms, scalarFn)
+	if err != nil {
+		return nil, err
+	}
+	nd := &callProcedureNode{procName: procName, procCall: procCall, ins: ins, fn: fn}
+	return nd, nil
+}
+
 func (ef *execFactory) ConstructCreateTables(
 	input exec.Node, schemas map[string]cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {
@@ -2394,7 +2548,13 @@ func makeScanColumnsConfig(table cat.Table, cols exec.ColumnOrdinalSet) scanColu
 // MakeTSSpans make TSSpans and assign it to tsScanNode.
 func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight bool) {
 	out := new(constraint.Constraint)
-	if tn, ok := n.(*tsScanNode); ok {
+	switch tn := n.(type) {
+	case *synchronizerNode:
+		if tsScan, ok := tn.plan.(*tsScanNode); ok {
+			return ef.MakeTSSpans(e, tsScan, m)
+		}
+		return false
+	case *tsScanNode:
 		tabID := m.Metadata().GetTableIDByObjectID(tn.Table.ID())
 		tight := ef.MakeTSSpansForExpr(e, out, tabID)
 		typ := tn.Table.Column(0).DatumType()
@@ -2407,8 +2567,9 @@ func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight
 		tn.tsSpans = out.TransformSpansToTsSpans(precision)
 		tn.tsSpansPre = precision
 		return tight
+	default:
+		return false
 	}
-	return false
 }
 
 // MakeTSSpansForExpr make TSSpans from expr.
@@ -2424,7 +2585,11 @@ func (ef *execFactory) MakeTSSpansForExpr(
 			unconstrained(out)
 			return true
 		case 1:
-			return ef.MakeTSSpansForExpr((*t)[0].Condition, out, tblID)
+			allFilterChangeToSpan := ef.MakeTSSpansForExpr((*t)[0].Condition, out, tblID)
+			if allFilterChangeToSpan && t != nil {
+				*t = nil
+			}
+			return allFilterChangeToSpan
 		default:
 			return ef.makeTSSpansForAnd(t, out, tblID)
 		}
@@ -3112,6 +3277,10 @@ func (ef *execFactory) ProcessBljLeftColumns(
 		return ef.ProcessBljLeftColumns(n.rows, mem)
 	case *updateNode:
 		return ef.ProcessBljLeftColumns(n.source, mem)
+	case *scanBufferNode:
+		return ef.ProcessBljLeftColumns(n.buffer, mem)
+	default:
+		return nil, true
 	}
 
 	varPos := 0

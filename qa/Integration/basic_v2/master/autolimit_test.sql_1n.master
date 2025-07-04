@@ -193,6 +193,7 @@ SET CLUSTER SETTING
    │         │                     | engine type  | time series
    │         │                     | count        | 10
    │         └── sort              |              |
+   │              │                | engine type  | time series
    │              │                | order        | +e1
    │              └── synchronizer |              |
    │                   └── ts scan |              |
@@ -206,7 +207,7 @@ SET CLUSTER SETTING
                                    | table        | test1@primary
                                    | spans        | LIMITED SCAN
                                    | limit        | 1
-(23 rows)
+(24 rows)
 > explain select * from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1 group by col1 having col1 < 2000 limit 1) order by e1;
              tree             |         field         |            description
 ------------------------------+-----------------------+-------------------------------------

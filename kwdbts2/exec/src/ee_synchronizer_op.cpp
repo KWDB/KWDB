@@ -34,9 +34,12 @@ KStatus SynchronizerOperator::PushData(DataChunkPtr &chunk, bool &reduce_dop, bo
         reduce_dop = true;
       }
     }
-    not_fill_cv_.wait(unique_lock, [this]() -> bool {
-      return ((data_queue_.size() < max_queue_size_) || is_tp_stop_);
-    });
+    if (data_queue_.size() >= max_queue_size_) {
+      not_fill_cv_.wait_for(unique_lock, std::chrono::milliseconds(100));
+      if (data_queue_.size() >= max_queue_size_) {
+        KStatus::FAIL;
+      }
+    }
     data_queue_.push_back(std::move(chunk));
   } catch (std::exception &e) {
     LOG_ERROR("PushResult() error: %s\n", e.what());

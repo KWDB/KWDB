@@ -669,6 +669,9 @@ type PlanningCtx struct {
 	// hasBatchLookUpJoin is set to true if the query has batchLookUpJoin node.
 	hasBatchLookUpJoin bool
 
+	// useQueryShortCircuit is set to true if the query can use query short circuit.
+	useQueryShortCircuit bool
+
 	planner *planner
 	// ignoreClose, when set to true, will prevent the closing of the planner's
 	// current plan. Only the top-level query needs to close it, but everything
@@ -912,10 +915,10 @@ func (h *distSQLNodeHealth) check(ctx context.Context, nodeID roachpb.NodeID) er
 
 // PartitionTSSpansByPrimaryTagValue gets SpanPartitions
 func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
-	planCtx *PlanningCtx, tableID uint64, primaryTagValues ...[]byte,
+	planCtx *PlanningCtx, tableID uint64, hashNum uint64, primaryTagValues ...[]byte,
 ) ([]SpanPartition, error) {
 	var spans roachpb.Spans
-	points, err := api.GetHashPointByPrimaryTag(primaryTagValues...)
+	points, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagValues...)
 	if err != nil {
 		return nil, err
 	}
@@ -923,8 +926,8 @@ func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
 	for _, point := range points {
 		if _, ok := hashIDMap[point]; !ok {
 			span := roachpb.Span{
-				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), math.MinInt64),
-				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), math.MaxInt64),
+				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), math.MinInt64, hashNum),
+				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), math.MaxInt64, hashNum),
 			}
 			spans = append(spans, span)
 			hashIDMap[point] = struct{}{}
@@ -935,12 +938,12 @@ func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
 
 // PartitionTSSpansByTableID gets PartitionTSSpans by TableID
 func (dsp *DistSQLPlanner) PartitionTSSpansByTableID(
-	planCtx *PlanningCtx, tableID uint64,
+	planCtx *PlanningCtx, tableID uint64, hashNum uint64,
 ) ([]SpanPartition, error) {
 	var spans roachpb.Spans
 	span := roachpb.Span{
-		Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, math.MinInt64),
-		EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(api.HashParamV2-1), math.MaxInt64),
+		Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, math.MinInt64, hashNum),
+		EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), hashNum-1, math.MaxInt64, hashNum),
 	}
 	spans = append(spans, span)
 	return dsp.partitionTSSpans(planCtx, spans)
@@ -2517,6 +2520,7 @@ func createTsInsertNodeForDistributeMode(n *tsInsertNode) (PhysicalPlan, error) 
 				StartKey:   n.allNodePayloadInfos[i][j].StartKey,
 				EndKey:     n.allNodePayloadInfos[i][j].EndKey,
 				ValueSize:  n.allNodePayloadInfos[i][j].ValueSize,
+				HashNum:    n.allNodePayloadInfos[i][j].HashNum,
 			}
 			tsInsert.AllPayload[j] = payloadForDistributeMode
 		}
@@ -2552,6 +2556,7 @@ func (dsp *DistSQLPlanner) createTSDelete(
 		var tsDelete = &execinfrapb.TsDeleteProSpec{
 			TsOperator:     execinfrapb.OperatorType(n.delTyp),
 			TableId:        n.tableID,
+			HashNum:        n.hashNum,
 			PrimaryTagKeys: n.primaryTagKey,
 			PrimaryTags:    n.primaryTagValue,
 			Spans:          n.spans,
@@ -2714,6 +2719,7 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			var tsCreate = &execinfrapb.TsCreateTableProSpec{}
 			tsCreate.Meta = meta
 			tsCreate.TsTableID = uint64(n.d.SNTable.ID)
+			tsCreate.HashNum = n.d.SNTable.TsTable.HashNum
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsCreate: tsCreate}
 			p.TsOperator = execinfrapb.OperatorType_TsCreateTable
 		//case dropKwdbTsTable, dropKwdbInsTable, dropKwdbTsDatabase:
@@ -2818,6 +2824,13 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterPartitionInterval
 			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
 			tsAlter.PartitionInterval = n.d.SNTable.TsTable.PartitionInterval
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
+			p.TsOperator = tsAlter.TsOperator
+		case alterKwdbAlterRetentions:
+			var tsAlter = &execinfrapb.TsAlterProSpec{}
+			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterRetentions
+			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
+			tsAlter.Retentions = n.d.SNTable.TsTable.Lifetime
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
 			p.TsOperator = tsAlter.TsOperator
 		case alterCompressInterval:
@@ -3028,20 +3041,24 @@ func dealWithLocal(aggCtx *AggregationContext) error {
 	// func int8 8bit, distinct 1bit,
 	for i, localFunc := range aggCtx.DistAggInfo.LocalStage {
 		localAgg := execinfrapb.AggregatorSpec_Aggregation{
-			Func: localFunc, FilterColIdx: aggCtx.InputAgg.FilterColIdx,
+			Func: localFunc.Fn, FilterColIdx: aggCtx.InputAgg.FilterColIdx,
 		}
 
-		if localFunc == execinfrapb.AggregatorSpec_ANY_NOT_NULL {
+		if localFunc.Fn == execinfrapb.AggregatorSpec_ANY_NOT_NULL {
 			constColIndex := len(aggCtx.InputAgg.ColIdx) - 1
 			localAgg.ColIdx = []uint32{aggCtx.InputAgg.ColIdx[constColIndex]}
 			aggCtx.InputAgg.ColIdx = localAgg.ColIdx
+		} else if aggCtx.InputAgg.Func == execinfrapb.AggregatorSpec_MIN_EXTEND || aggCtx.InputAgg.Func == execinfrapb.AggregatorSpec_MAX_EXTEND {
+			for _, v := range localFunc.LocalIdxs {
+				localAgg.ColIdx = append(localAgg.ColIdx, aggCtx.InputAgg.ColIdx[v])
+			}
 		} else {
 			localAgg.ColIdx = aggCtx.InputAgg.ColIdx
 		}
 		localAgg.Arguments = aggCtx.InputAgg.Arguments
 		localAgg.TimestampConstant = aggCtx.InputAgg.TimestampConstant
 
-		key := aggHashElement{funcID: int8(localFunc), distinct: localAgg.Distinct, filterColIdx: aggCtx.InputAgg.FilterColIdx, colCount: int8(len(localAgg.ColIdx)), argumentsCount: int8(len(localAgg.Arguments))}
+		key := aggHashElement{funcID: int8(localFunc.Fn), distinct: localAgg.Distinct, filterColIdx: aggCtx.InputAgg.FilterColIdx, colCount: int8(len(localAgg.ColIdx)), argumentsCount: int8(len(localAgg.Arguments))}
 		if key.colCount > 3 {
 			return errors.Errorf("aggregate param column id len more than three")
 		}
@@ -3069,7 +3086,7 @@ func dealWithLocal(aggCtx *AggregationContext) error {
 				argTypes = append(argTypes, aggregationsColumnType)
 			}
 
-			_, outputType, err := execinfrapb.GetAggregateInfo(localFunc, argTypes...)
+			_, outputType, err := execinfrapb.GetAggregateInfo(localFunc.Fn, argTypes...)
 			if err != nil {
 				return err
 			}
@@ -3900,14 +3917,14 @@ func getAggFuncAndType(
 
 			if ti, ok1 := argument.(*tree.DTimestampTZ); ok1 {
 				switch precision {
-				case 3:
+				case 0, 3:
 					aggs[i].TimestampConstant[j] = ti.UnixMilli()
 				case 6:
 					aggs[i].TimestampConstant[j] = ti.UnixMicro()
 				case 9:
 					aggs[i].TimestampConstant[j] = ti.UnixNano()
 				default:
-					return aggs, aggColTyps, false, pgerror.Newf(pgcode.Warning, "unknown timestamp precision %d when exec %s function", precision, funcStr)
+					return aggs, aggColTyps, false, pgerror.Newf(pgcode.Warning, "failed to parse %s aggregate argument during the execution stage: invalid timestamp precision %d", funcStr, precision)
 				}
 			}
 
@@ -4380,6 +4397,12 @@ func (dsp *DistSQLPlanner) addAggregators(
 	if n.groupWindowID >= 0 {
 		finalAggsSpec.GroupWindowId = n.groupWindowID
 		finalAggsSpec.Group_WindowTscolid = n.groupWindowTSColID
+		for _, function := range n.funcs {
+			if function.funcName == optbuilder.Gapfill && n.reqOrdering == nil {
+				return errors.Errorf("%s must use ordered", optbuilder.Gapfill)
+			}
+		}
+		finalAggsSpec.Group_WindowId = append(finalAggsSpec.Group_WindowId, n.groupWindowExtend...)
 	}
 	if n.optType.WithSumInt() {
 		// the flag is used to make the sum_int return 0.
@@ -4890,6 +4913,7 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 	}
 
 	addOutPutType := true
+
 	if plan.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		pruneFinalAgg := n.optType.PruneFinalAggOpt()
 		addSynchronizer := n.addSynchronizer
@@ -5321,21 +5345,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 				// add output types
 				plan.AddTSOutputType(false)
 				kwdbordering := execinfrapb.GetTSColMappedSpecOrdering(plan.PlanToStreamColMap)
-				plan.AddTSNoGroupingStage(
-					execinfrapb.TSProcessorCoreUnion{
-						Sorter: &execinfrapb.SorterSpec{
-							OutputOrdering:   kwdbordering,
-							OrderingMatchLen: 0,
-						},
-					},
-					execinfrapb.TSPostProcessSpec{},
-					plan.ResultTypes,
-					kwdbordering,
-				)
-
-				// add output types
-				plan.AddTSOutputType(false)
-
 				plan.AddTSNoGroupingStage(
 					execinfrapb.TSProcessorCoreUnion{
 						Sorter: &execinfrapb.SorterSpec{
@@ -6725,6 +6734,11 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		Type: execinfrapb.StreamEndpointType_SYNC_RESPONSE,
 	})
 
+	// When query short circuiting is available, do not use vector calculation.
+	if plan.AllProcessorsExecInTSEngine && !planCtx.ExtendedEvalCtx.SessionData.OutFormats {
+		planCtx.useQueryShortCircuit = true
+	}
+
 	// Assign processor IDs.
 	for i := range plan.Processors {
 		if plan.Processors[i].ExecInTSEngine {
@@ -6873,10 +6887,10 @@ func (dsp *DistSQLPlanner) getSpans(
 			offset += int(col.TsCol.StorageLen)
 		}
 		// get partitions through PartitionTSSpansByPrimaryTagValue()
-		partitions, err = dsp.PartitionTSSpansByPrimaryTagValue(planCtx, uint64(n.Table.ID()), payloads...)
+		partitions, err = dsp.PartitionTSSpansByPrimaryTagValue(planCtx, uint64(n.Table.ID()), n.hashNum, payloads...)
 	} else {
 		// get partitions through PartitionTSSpansByTableID()
-		partitions, err = dsp.PartitionTSSpansByTableID(planCtx, uint64(n.Table.ID()))
+		partitions, err = dsp.PartitionTSSpansByTableID(planCtx, uint64(n.Table.ID()), n.hashNum)
 	}
 	if err != nil {
 		return nil, false, err
@@ -6892,7 +6906,7 @@ func constructRangeSpans(
 	partitions []SpanPartition, n *tsScanNode,
 ) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, bool, error) {
 	rangeSpans := make(map[roachpb.NodeID][]execinfrapb.HashpointSpan, len(partitions))
-
+	hashNum := n.hashNum
 	pTagAllNotSplit := true
 	//The number of partitions is equal to the number of nodes.
 	log.VEventf(context.TODO(), 3, "dist sql range partitions : +%v ", partitions)
@@ -6904,11 +6918,11 @@ func constructRangeSpans(
 		hashPointMap := make(map[uint32][]execinfrapb.TsSpan)
 		// parse Key and endKey, then construct TsSpan.
 		for k1 := range partitions[k].Spans {
-			_, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].Key, true)
+			_, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].Key, true, uint64(hashNum))
 			if err != nil {
 				return nil, false, err
 			}
-			_, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].EndKey, false)
+			_, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].EndKey, false, uint64(hashNum))
 			if err != nil {
 				return nil, false, err
 			}

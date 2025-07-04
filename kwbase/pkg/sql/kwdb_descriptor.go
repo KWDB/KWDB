@@ -184,9 +184,14 @@ const (
 
 // InitWhiteList Inits BoWhiteList  Limit Order by Having Group by Select list Where
 var InitWhiteList = []sqlbase.WhiteList{
-	{"+", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
-	{"+", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"+", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"+", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"+", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	// There is an accuracy issue with the operation of floating-point numbers, so we will not push it down for now
 	// e.g. 0.1-20=18.899999999999999
@@ -198,7 +203,16 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"+", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_timestamp)}, PosAll, true, TypeConstAndColumn},
 	{"+", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_timestamp)}, PosAll, true, TypeConstAndColumn},
 	{"+", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_timestamptz)}, PosAll, true, TypeConstAndColumn},
+
+	{"-", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"-", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"-", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	//{"-", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	//{"-", 2, []uint32{uint32(oid.T_float4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	//{"-", 2, []uint32{uint32(oid.T_float4), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -207,6 +221,11 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"-", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_timestamp)}, PosAll, true, TypeConstAndColumn},
 	{"-", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_timestamptz)}, PosAll, true, TypeConstAndColumn},
 	{"-", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_timestamp)}, PosAll, true, TypeConstAndColumn},
+
+	{"*", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"*", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"*", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"*", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"*", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	//{"*", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	//{"*", 2, []uint32{uint32(oid.T_float4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -214,6 +233,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	//{"*", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
 	// In kwbase, the return type of the int type division operation is decimal, and the return type of the int type division operation is int.
 	// Since there is no decimal type, the division operation is not pushed down
+
 	{"/", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"/", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"/", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -240,6 +260,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"/", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"/", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"/", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
+
 	{"//", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"//", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"//", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -266,6 +287,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"//", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"//", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"//", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
+
 	{"#", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"#", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"#", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -292,6 +314,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"#", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"#", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"#", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
+
 	{"^", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"^", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"^", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -318,6 +341,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"^", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"^", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"^", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
+
 	{"|", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"|", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"|", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -344,6 +368,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"|", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"|", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_float8)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"|", 2, []uint32{uint32(oid.T_numeric), uint32(oid.T_numeric)}, PosWhereAndProject, true, TypeConstAndColumn},
+
 	{"&", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"&", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"&", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -375,9 +400,35 @@ var InitWhiteList = []sqlbase.WhiteList{
 	//{"|", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	//{"&", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	//{"^", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"%", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"%", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+
+	{"<<", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"<<", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{"<<", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+
+	{">>", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{">>", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int4)}, PosWhereAndProject, true, TypeConstAndColumn},
+	{">>", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_int8)}, PosWhereAndProject, true, TypeConstAndColumn},
 
 	{"=", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_timestamp)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"=", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_timestamptz)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -844,6 +895,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"!=", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_varchar)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"!=", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nchar)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"!=", 2, []uint32{uint32(types.T_nvarchar), uint32(types.T_nvarchar)}, PosWhereAndProject, true, TypeConstAndColumn},
+
 	{"IN", 0, []uint32{}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"IN", 1, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_timestamptz)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"IN", 1, []uint32{uint32(oid.T_int2)}, PosWhereAndProject, true, TypeConstAndColumn},
@@ -1295,6 +1347,8 @@ var InitWhiteList = []sqlbase.WhiteList{
 	//{"subtime", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_timestamptz)}, PosWhere, true, TypeConstAndColumn},
 	//{"subtime", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_int4)}, PosWhere, true, TypeConstAndColumn},
 	//{"subtime", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_bpchar)}, PosWhere, true, TypeConstAndColumn},
+	{"time_window_end", 1, []uint32{uint32(oid.T_timestamptz)}, PosProject, true, TypALL},
+	{"time_window_start", 1, []uint32{uint32(oid.T_timestamptz)}, PosProject, true, TypALL},
 
 	// math builtin
 	{"ceil", 1, []uint32{uint32(oid.T_int2)}, PosAll, true, TypeConstAndColumn},
@@ -3177,11 +3231,11 @@ type ScheduleDetail struct {
 
 // Schedules all currently supported schedules
 var Schedules = map[string]ScheduleDetail{
-	ScheduleRetention: {
-		Name:     ScheduleRetention,
-		Executor: RetentionExecutorName,
-		CronExpr: "@hourly",
-	},
+	//ScheduleRetention: {
+	//	Name:     ScheduleRetention,
+	//	Executor: RetentionExecutorName,
+	//	CronExpr: "@hourly",
+	//},
 	ScheduleCompress: {
 		Name:     ScheduleCompress,
 		Executor: CompressExecutorName,

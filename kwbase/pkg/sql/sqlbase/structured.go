@@ -399,6 +399,35 @@ func GetTableDescFromID(
 	return table, nil
 }
 
+// GetProcedureDescByName gets procedure descriptor by procedure name
+func GetProcedureDescByName(
+	ctx context.Context, name string, txn *kv.Txn, ifExists bool,
+) (*ProcedureDescriptor, error) {
+	k := MakeKWDBMetadataKeyString(UDRTable, []string{name})
+	rows, err := GetKWDBMetadataRows(ctx, txn, k, UDRTable)
+	if err != nil {
+		return nil, err
+	}
+	var desc ProcedureDescriptor
+	if rows != nil {
+		routineType := int(tree.MustBeDInt(rows[0][3]))
+		name := string(tree.MustBeDString(rows[0][0]))
+		if routineType != int(Procedure) {
+			return nil, pgerror.Newf(pgcode.WrongObjectType, "%s is not a procedure", name)
+		}
+		val := tree.MustBeDBytes(rows[0][1])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", k)
+		}
+	} else {
+		if !ifExists {
+			return nil, pgerror.Newf(pgcode.UndefinedObject, "procedure %s not found", name)
+		}
+	}
+	return &desc, nil
+}
+
 // GetTsTableDescFromID gets tableDescriptor by ID.If table is instance table
 // return template table descriptor and instance table type .
 func GetTsTableDescFromID(
@@ -4599,6 +4628,7 @@ type SinglePayloadInfo struct {
 	StartKey      []byte
 	EndKey        []byte
 	ValueSize     int32
+	HashNum       uint64
 }
 
 // Count counts the row numbers in p.RowNums.
@@ -4656,4 +4686,41 @@ func TagValueToString(d tree.Datum) string {
 		res = val.String()
 	}
 	return res
+}
+
+// SetID implements the DescriptorProto interface.
+func (desc *ProcedureDescriptor) SetID(id ID) {
+	desc.ID = id
+}
+
+// TypeName returns the plain type of this descriptor.
+func (desc *ProcedureDescriptor) TypeName() string {
+	return "procedure"
+}
+
+// SetName implements the DescriptorProto interface.
+func (desc *ProcedureDescriptor) SetName(name string) {
+	desc.Name = name
+}
+
+// GetAuditMode is part of the DescriptorProto interface.
+// This is a stub until per-database auditing is enabled.
+func (desc *ProcedureDescriptor) GetAuditMode() TableDescriptor_AuditMode {
+	return TableDescriptor_DISABLED
+}
+
+// Validate validates that the procedure descriptor is well formed.
+// Checks include validate the procedure name, and verifying that there
+// is at least one read and write user.
+func (desc *ProcedureDescriptor) Validate() error {
+	if err := validateName(desc.Name, "descriptor"); err != nil {
+		return err
+	}
+	if desc.ID == 0 {
+		return fmt.Errorf("invalid procedure ID %d", desc.ID)
+	}
+	desc.Privileges.MaybeFixPrivileges(desc.GetID())
+
+	// Validate the privilege descriptor.
+	return desc.Privileges.Validate(desc.GetID())
 }

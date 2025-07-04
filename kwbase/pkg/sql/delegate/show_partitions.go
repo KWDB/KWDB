@@ -32,7 +32,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"github.com/cockroachdb/errors"
 )
@@ -49,11 +48,6 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 		if err != nil {
 			return nil, err
 		}
-		if ds, ok := dataSource.(cat.Table); ok {
-			if ds.GetTableType() != tree.RelationalTable {
-				return nil, sqlbase.TSUnsupportedError("show partitions")
-			}
-		}
 		if err := d.catalog.CheckAnyPrivilege(d.ctx, dataSource); err != nil {
 			return nil, err
 		}
@@ -69,7 +63,7 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 			partitions.parent_name AS parent_partition,
 			partitions.column_names,
 			concat(tables.name, '@', table_indexes.index_name) AS index_name,
-			coalesce(partitions.list_value, partitions.range_value) as partition_value,
+			coalesce(partitions.list_value, partitions.range_value,partitions.hash_value) as partition_value,
 			replace(regexp_extract(partition_lookup.raw_config_sql, 'CONFIGURE ZONE USING\n((?s:.)*)'), e'\t', '') as zone_config,
 			replace(regexp_extract(zones.full_config_sql, 'CONFIGURE ZONE USING\n((?s:.)*)'), e'\t', '') as full_zone_config
 		FROM
@@ -105,7 +99,7 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 			partitions.parent_name AS parent_partition,
 			partitions.column_names,
 			concat(tables.name, '@', table_indexes.index_name) AS index_name,
-			coalesce(partitions.list_value, partitions.range_value) as partition_value,
+			coalesce(partitions.list_value, partitions.range_value,partitions.hash_value) as partition_value,
 			replace(regexp_extract(partition_lookup.raw_config_sql, 'CONFIGURE ZONE USING\n((?s:.)*)'), e'\t', '') as zone_config,
 			replace(regexp_extract(zones.full_config_sql, 'CONFIGURE ZONE USING\n((?s:.)*)'), e'\t', '') as full_zone_config
 		FROM
@@ -165,7 +159,7 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 		partitions.parent_name AS parent_partition,
 		partitions.column_names,
 		concat(tables.name, '@', table_indexes.index_name) AS index_name,
-		coalesce(partitions.list_value, partitions.range_value) as partition_value,
+		coalesce(partitions.list_value, partitions.range_value,partitions.hash_value) as partition_value,
 		replace(regexp_extract(partition_lookup.raw_config_sql, 'CONFIGURE ZONE USING\n((?s:.)*)'), e'\t', '') as zone_config,
 		replace(regexp_extract(zones.full_config_sql, 'CONFIGURE ZONE USING\n((?s:.)*)'), e'\t', '') as full_zone_config
 	FROM

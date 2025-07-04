@@ -15,7 +15,7 @@ namespace kwdbts {
 
 static inline bool __isVarType(int type) { return ((type == VARSTRING) || (type == VARBINARY)); }
 
-TsRawPayloadRowParser::TsRawPayloadRowParser(const std::vector<AttributeInfo>& data_schema)
+TsRawPayloadRowParser::TsRawPayloadRowParser(std::vector<AttributeInfo> data_schema)
     : schema_(data_schema) {
   auto bitmap_len = (schema_.size() + 7) / 8;
   int cur_offset = bitmap_len;
@@ -57,17 +57,20 @@ TsRawPayload::TsRawPayload(const TSSlice& raw, const std::vector<AttributeInfo>&
   assert(tag_datas_.len <= payload_.len);
 
   char* mem = tag_datas_.data + tag_datas_.len;
-  auto metric_datas_len = KUint32(mem);
-  mem += 4;
-  auto count = GetRowCount();
-  row_data_.reserve(count);
-  for (size_t i = 0; i < count; i++) {
-    auto row_size = KUint32(mem);
+  if (GetRowType() != DataTagFlag::TAG_ONLY) {
+    auto metric_datas_len = KUint32(mem);
     mem += 4;
-    row_data_.push_back({mem, row_size});
-    mem += row_size;
+    assert(metric_datas_len == payload_.len - (mem - payload_.data));
+    auto count = GetRowCount();
+    row_data_.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+      auto row_size = KUint32(mem);
+      mem += 4;
+      row_data_.push_back({mem, row_size});
+      mem += row_size;
+    }
+    assert(mem - payload_.data == payload_.len);
   }
-  assert(mem - payload_.data == payload_.len);
   can_parse_ = !metric_schema_.empty();
 }
 

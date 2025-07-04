@@ -358,6 +358,12 @@ DatumPtr DataChunk::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
   return data_ + col_offset + sizeof(k_uint16);
 }
 
+DatumPtr DataChunk::GetVarData(k_uint32 col, k_uint16& len) {
+  k_uint32 col_offset = current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
+  std::memcpy(&len, data_ + col_offset, sizeof(k_uint16));
+  return data_ + col_offset + sizeof(k_uint16);
+}
+
 DatumPtr DataChunk::GetData(k_uint32 col) {
   return data_ + current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
 }
@@ -802,7 +808,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
     Return(FAIL);
   }
 
-  for (k_uint16 col = 0; col < col_num_; ++col) {
+  for (k_uint32 col = 0; col < col_num_; ++col) {
     if (IsNull(row, col)) {
       // write a negative value to indicate that the column is NULL
       if (ee_sendint(info, -1, 4) != SUCCESS) {
@@ -840,14 +846,12 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         DatumPtr raw = GetData(row, col, val_len);
         std::string val_str = std::string{static_cast<char*>(raw), val_len};
 
-        std::string val = std::string{static_cast<char*>(raw)};
-        k_int32 len = ValueEncoding::EncodeComputeLenString(0, val.size());
         // write the length of col value
-        if (ee_sendint(info, val.length(), 4) != SUCCESS) {
+        if (ee_sendint(info, val_str.length(), 4) != SUCCESS) {
           Return(FAIL);
         }
         // write string
-        if (ee_appendBinaryStringInfo(info, val.c_str(), val.length()) != SUCCESS) {
+        if (ee_appendBinaryStringInfo(info, val_str.c_str(), val_str.length()) != SUCCESS) {
           Return(FAIL);
         }
       } break;
@@ -913,7 +917,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         }
       } break;
       case KWDBTypeFamily::FloatFamily: {
-        k_char buf[30] = {0};
+        k_char buf[50] = {0};
         k_int32 n = 0;
 
         DatumPtr raw = GetData(row, col);
@@ -928,16 +932,17 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
           n = snprintf(buf, sizeof(buf), "%.17g", d);
         }
 
-        // write the length of column value
-        if (ee_sendint(info, n, 4) != SUCCESS) {
-          Return(FAIL);
-        }
         if (std::isnan(d)) {
           buf[0] = 'N';
           buf[1] = 'a';
           buf[2] = 'N';
           n = 3;
         }
+        // write the length of column value
+        if (ee_sendint(info, n, 4) != SUCCESS) {
+          Return(FAIL);
+        }
+
         // write string format
         if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
           Return(FAIL);
@@ -1121,7 +1126,6 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       break;
     }
-
     for (k_int32 i = 0; i < col_num_; ++i) {
       ColInfo[i].fixed_len_     = col_info_[i].fixed_storage_len;
       ColInfo[i].return_type_   = col_info_[i].return_type;
@@ -1133,6 +1137,13 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
                 ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
         k_int32 *offset = static_cast<k_int32 *>(malloc((count_ + 1) * sizeof(k_int32)));
         if (nullptr == offset) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           SafeFreePointer(ColInfo);
           SafeFreePointer(ColData);
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
@@ -1154,6 +1165,13 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
         ColData[i].offset_ = offset;
         char *ptr = static_cast<char*>(malloc(total_len));
         if (nullptr == ptr) {
+          for (k_int32 j = 0; j < i; ++j) {
+            if (ColInfo[i].return_type_ == KWDBTypeFamily::StringFamily ||
+                ColInfo[i].return_type_ == KWDBTypeFamily::BytesFamily) {
+                SafeFreePointer(ColData[i].data_ptr_);
+                SafeFreePointer(ColData[i].offset_);
+            }
+          }
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
           SafeFreePointer(ColInfo);
           SafeFreePointer(ColData);

@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
@@ -40,6 +41,7 @@ type tsCreateTable struct {
 
 	meta    []byte
 	tableID uint64
+	hashNum uint64
 
 	notFirst             bool
 	createTaTableSuccess bool
@@ -58,7 +60,7 @@ func newCreateTsTable(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*tsCreateTable, error) {
-	tct := &tsCreateTable{tableID: tst.TsTableID, meta: tst.Meta}
+	tct := &tsCreateTable{tableID: tst.TsTableID, hashNum: tst.HashNum, meta: tst.Meta}
 	if err := tct.Init(
 		tct,
 		post,
@@ -81,6 +83,9 @@ func newCreateTsTable(
 	return tct, nil
 }
 
+// InitProcessorProcedure init processor in procedure
+func (tct *tsCreateTable) InitProcessorProcedure(txn *kv.Txn) {}
+
 // Start is part of the RowSource interface.
 func (tct *tsCreateTable) Start(ctx context.Context) context.Context {
 	ctx = tct.StartInternal(ctx, tsCreateTableProcName)
@@ -100,7 +105,7 @@ func (tct *tsCreateTable) Start(ctx context.Context) context.Context {
 
 	log.Infof(ctx, "tct.tableID:", tct.tableID, "rangeGroups:", rangeGroups, "nodeID", tct.FlowCtx.Cfg.NodeID.Get())
 	if len(rangeGroups) != 0 {
-		if err := tct.FlowCtx.Cfg.TsEngine.CreateTsTable(tct.tableID, tct.meta, rangeGroups); err != nil {
+		if err := tct.FlowCtx.Cfg.TsEngine.CreateTsTable(tct.tableID, tct.hashNum, tct.meta, rangeGroups); err != nil {
 			tct.createTaTableSuccess = false
 			tct.err = err
 			return ctx

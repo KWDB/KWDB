@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/txnwait"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -57,7 +58,11 @@ func (r *Replica) Send(
 	// TsRequest processing logic
 	if r.isTsRequest(ctx, &ba) {
 		if !r.isTs() {
-			reqTableID, _, _, err := sqlbase.DecodeTsRangeKey(ba.Requests[0].GetInner().Header().Key, true)
+			hashNum := r.Desc().HashNum
+			if hashNum == 0 {
+				hashNum = api.HashParamV2
+			}
+			reqTableID, _, _, err := sqlbase.DecodeTsRangeKey(ba.Requests[0].GetInner().Header().Key, true, hashNum)
 			if err == nil && reqTableID == uint64(r.Desc().TableId) {
 				if errGetTable := r.DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 					table, _, errGet := sqlbase.GetTsTableDescFromID(ctx, txn, sqlbase.ID(reqTableID))
@@ -76,7 +81,7 @@ func (r *Replica) Send(
 			log.Warningf(ctx, "%+v receive ts request when still be default range", r.Desc())
 			return nil, roachpb.NewError(&roachpb.DefaultReplicaReceiveTSRequestError{})
 		}
-		log.VEventf(ctx, 3, "replica : +%v", r)
+		log.VEventf(ctx, 3, "replica : %+v", r)
 		return r.sendTS(ctx, &ba)
 	}
 	return r.sendWithRangeID(ctx, r.RangeID, &ba)

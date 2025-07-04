@@ -1,5 +1,7 @@
 > set cluster setting sql.query_cache.enabled=true;
 SET CLUSTER SETTING
+> set cluster setting ts.sql.query_opt_mode= 1110;
+SET CLUSTER SETTING
 > drop database if EXISTS test;
 DROP DATABASE
 > drop database if EXISTS test_ts;
@@ -99,12 +101,13 @@ INSERT 2
              │                     | engine type | time series
              │                     | count       | 2
              └── sort              |             |
+                  │                | engine type | time series
                   │                | order       | -e1
                   └── synchronizer |             |
                        └── ts scan |             |
                                    | ts-table    | ts_table
                                    | access mode | metaTable
-(17 rows)
+(18 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.ts_table order by attr2 desc limit 1 offset 1;
                 tree               |    field    |  description
 -----------------------------------+-------------+-----------------
@@ -120,12 +123,13 @@ INSERT 2
              │                     | engine type | time series
              │                     | count       | 2
              └── sort              |             |
+                  │                | engine type | time series
                   │                | order       | -attr2
                   └── synchronizer |             |
                        └── ts scan |             |
                                    | ts-table    | ts_table
                                    | access mode | tableTableMeta
-(17 rows)
+(18 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.ts_table where e3 < 300000000000000000;
         tree        |    field    |       description
 --------------------+-------------+--------------------------
@@ -393,12 +397,13 @@ INSERT 2
                             │                     | engine type | time series
                             │                     | count       | 2
                             └── sort              |             |
+                                 │                | engine type | time series
                                  │                | order       | -e3
                                  └── synchronizer |             |
                                       └── ts scan |             |
                                                   | ts-table    | ts_table2
                                                   | access mode | metaTable
-(28 rows)
+(29 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) group by e2 having e2 < 3000000 order by e2;
                        tree                       |       field        | description
 --------------------------------------------------+--------------------+---------------
@@ -572,12 +577,13 @@ INSERT 2
                        │                     | engine type  | time series
                        │                     | count        | 11
                        └── sort              |              |
+                            │                | engine type  | time series
                             │                | order        | -e3
                             └── synchronizer |              |
                                  └── ts scan |              |
                                              | ts-table     | ts_table2
                                              | access mode  | metaTable
-(29 rows)
+(30 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) in ( select e4 from test_ts.ts_table2 ) from test_ts.ts_table order by e3 desc limit 10 offset 1;
                   tree                  |    field     |                 description
 ----------------------------------------+--------------+-----------------------------------------------
@@ -594,6 +600,7 @@ INSERT 2
    │              │                     | engine type  | time series
    │              │                     | count        | 11
    │              └── sort              |              |
+   │                   │                | engine type  | time series
    │                   │                | order        | -e3
    │                   └── synchronizer |              |
    │                        └── ts scan |              |
@@ -607,7 +614,7 @@ INSERT 2
              └── ts scan                |              |
                                         | ts-table     | ts_table2
                                         | access mode  | metaTable
-(26 rows)
+(27 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
                 tree               |    field    | description
 -----------------------------------+-------------+--------------
@@ -1214,13 +1221,14 @@ INSERT 2
         │                     | engine type | time series
         │                     | count       | 1
         └── sort              |             |
+             │                | engine type | time series
              │                | order       | -e1
              └── synchronizer |             |
                   └── ts scan |             |
                               | ts-table    | ts_table
                               | access mode | metaTable
                               | filter      | "time" < '2023-12-31 23:00:00+00:00'
-(15 rows)
+(16 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from ts_table where time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h) order by attr1 desc limit 1;
              tree             |    field    |             description
 ------------------------------+-------------+---------------------------------------
@@ -1233,13 +1241,14 @@ INSERT 2
         │                     | engine type | time series
         │                     | count       | 1
         └── sort              |             |
+             │                | engine type | time series
              │                | order       | -attr1
              └── synchronizer |             |
                   └── ts scan |             |
                               | ts-table    | ts_table
                               | access mode | tableTableMeta
                               | filter      | "time" < '2023-12-31 23:00:00+00:00'
-(15 rows)
+(16 rows)
 > explain select e1 from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 where time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h)) order by e2;
                   tree                  |       field        |             description
 ----------------------------------------+--------------------+---------------------------------------
@@ -1449,12 +1458,13 @@ INSERT 2
              │                     | engine type | time series
              │                     | count       | 2
              └── sort              |             |
+                  │                | engine type | time series
                   │                | order       | -e1
                   └── synchronizer |             |
                        └── ts scan |             |
                                    | ts-table    | ts_table
                                    | access mode | metaTable
-(17 rows)
+(18 rows)
 > explain select extract('year', localtimestamp()) from test_ts.ts_table order by attr2 desc limit 1 offset 1;
                 tree               |    field    |  description
 -----------------------------------+-------------+-----------------
@@ -1470,12 +1480,13 @@ INSERT 2
              │                     | engine type | time series
              │                     | count       | 2
              └── sort              |             |
+                  │                | engine type | time series
                   │                | order       | -attr2
                   └── synchronizer |             |
                        └── ts scan |             |
                                    | ts-table    | ts_table
                                    | access mode | tableTableMeta
-(17 rows)
+(18 rows)
 > explain select extract('year', localtimestamp()) from test_ts.ts_table where time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h);
         tree        |    field    |             description
 --------------------+-------------+---------------------------------------
@@ -1709,12 +1720,13 @@ INSERT 2
                             │                     | engine type | time series
                             │                     | count       | 2
                             └── sort              |             |
+                                 │                | engine type | time series
                                  │                | order       | -e3
                                  └── synchronizer |             |
                                       └── ts scan |             |
                                                   | ts-table    | ts_table2
                                                   | access mode | metaTable
-(28 rows)
+(29 rows)
 > explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) group by e2 having e2 < 3000000 order by e2;
                        tree                       |       field        | description
 --------------------------------------------------+--------------------+---------------
@@ -1997,12 +2009,13 @@ INSERT 2
                        │                     | engine type  | time series
                        │                     | count        | 11
                        └── sort              |              |
+                            │                | engine type  | time series
                             │                | order        | -e3
                             └── synchronizer |              |
                                  └── ts scan |              |
                                              | ts-table     | ts_table2
                                              | access mode  | metaTable
-(29 rows)
+(30 rows)
 > explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 ) from test_ts.ts_table order by e3 desc limit 10 offset 1;
                   tree                  |    field     |                   description
 ----------------------------------------+--------------+--------------------------------------------------
@@ -2019,6 +2032,7 @@ INSERT 2
    │              │                     | engine type  | time series
    │              │                     | count        | 11
    │              └── sort              |              |
+   │                   │                | engine type  | time series
    │                   │                | order        | -e3
    │                   └── synchronizer |              |
    │                        └── ts scan |              |
@@ -2032,7 +2046,7 @@ INSERT 2
              └── ts scan                |              |
                                         | ts-table     | ts_table2
                                         | access mode  | metaTable
-(26 rows)
+(27 rows)
 > explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 ), case e2 when 1000000 then 10 when 2000000 then 20 end from test_ts.ts_table order by e3 desc limit 1 offset 1;
                   tree                  |    field     |                      description
 ----------------------------------------+--------------+--------------------------------------------------------
@@ -2050,6 +2064,7 @@ INSERT 2
    │              │                     | engine type  | time series
    │              │                     | count        | 2
    │              └── sort              |              |
+   │                   │                | engine type  | time series
    │                   │                | order        | -e3
    │                   └── synchronizer |              |
    │                        └── ts scan |              |
@@ -2063,7 +2078,7 @@ INSERT 2
              └── ts scan                |              |
                                         | ts-table     | ts_table2
                                         | access mode  | metaTable
-(27 rows)
+(28 rows)
 > explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
                 tree               |    field    | description
 -----------------------------------+-------------+--------------
@@ -2777,12 +2792,13 @@ INSERT 2
                        │                     | engine type                                    | time series
                        │                     | count                                          | 11
                        └── sort              |                                                |
+                            │                | engine type                                    | time series
                             │                | order                                          | -e3
                             └── synchronizer |                                                |
                                  └── ts scan |                                                |
                                              | ts-table                                       | ts_table2
                                              | access mode                                    | metaTable
-(36 rows)
+(37 rows)
 > explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
                   tree                  |                     field                      |                     description
 ----------------------------------------+------------------------------------------------+------------------------------------------------------
@@ -3024,6 +3040,8 @@ INSERT 2
                                    | access mode                                    | metaTable
                                    | filter                                         | e1 = 1000
 (21 rows)
+> set cluster setting ts.sql.query_opt_mode= DEFAULT;
+SET CLUSTER SETTING
 > CREATE ts DATABASE test_select_join;
 CREATE TS DATABASE
 > CREATE TABLE test_select_join.t1(

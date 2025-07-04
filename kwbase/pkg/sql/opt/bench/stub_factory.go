@@ -314,6 +314,7 @@ func (f *stubFactory) ConstructTSInsert(
 func (f *stubFactory) ConstructTSDelete(
 	nodeIDs []roachpb.NodeID,
 	tblID uint64,
+	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
 	primaryTagKey, primaryTagValues [][]byte,
@@ -407,6 +408,28 @@ func (f *stubFactory) ConstructDeleteRange(
 	indexConstraint *constraint.Constraint,
 	maxReturnedKeys int,
 	allowAutoCommit bool,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructCreateProcedure(
+	cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructCallProcedure(
+	procName string,
+	procCall string,
+	procComm memo.ProcComms,
+	fn exec.ProcedurePlanFn,
+	scalarFn exec.BuildScalarFn,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructProcIf(
+	command memo.IfCommand, fn func(expr *memo.RelExpr) (exec.Plan, exec.Node, error),
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }

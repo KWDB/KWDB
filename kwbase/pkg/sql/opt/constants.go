@@ -60,6 +60,9 @@ const (
 
 	// HasFirst is set when query includes last
 	HasFirst = 1 << 5
+
+	// NotPruneGapFill is set to avoid dead loops caused by unprune timebucketgapfill col.
+	NotPruneGapFill = 1 << 6
 )
 
 // AutoLimitQuantity is quantity of autolimit
@@ -83,12 +86,13 @@ var TSParallelDegree = settings.RegisterPublicIntSetting(
 // each indicating the optimization switch at the corresponding position.
 // - 1 indicating on
 // - 0 indicating off
-// The four optimization items are, in order from left to right:
-// -- 1. Multi-predicate sequential optimization
-// -- 2. Scalar quantum query optimization
-// -- 3. inside-out push down aggregation optimization
-// -- 4. inside-out push down time_bucket optimization
-// -- 5. reduce explore cross join
+// The four optimization items are, in order from left to right:(new high bit add before )
+// -- Enable procedure cache
+// -- reduce explore cross join
+// -- Multi-predicate sequential optimization
+// -- Scalar quantum query optimization
+// -- inside-out push down aggregation optimization
+// -- inside-out push down time_bucket optimization
 //
 // For example:
 // If you want to turn on
@@ -98,14 +102,14 @@ var TSParallelDegree = settings.RegisterPublicIntSetting(
 // such as:
 // "set cluster setting ts.sql.query_opt_mode = 1010"
 //
-// default value: 11110
+// default value: 111110
 // turn on the first three optimizations.
 var TSQueryOptMode = settings.RegisterPublicIntSetting(
 	"ts.sql.query_opt_mode", "ts query optimize mode", DefaultQueryOptMode,
 )
 
 // DefaultQueryOptMode is the default value of TSQueryOptMode
-const DefaultQueryOptMode = 11110
+const DefaultQueryOptMode = 111110
 
 // CheckOptMode checks whether the query opt mode is enabled.
 //
@@ -139,6 +143,9 @@ const (
 
 	// OutsideInUseCBO indicates that use CBO in the outside-in case.
 	OutsideInUseCBO = 1 << 4
+
+	// EnableProcedureCache indicates use procedure cache.
+	EnableProcedureCache = 1 << 5
 )
 
 // TSOrderedTable ts get ordered table data
@@ -239,6 +246,13 @@ const (
 	UseStatistic = 1 << 4
 	// PruneTSFinalAgg represents prune ae engine final agg
 	PruneTSFinalAgg = 1 << 5
+
+	// ApplyInsideOut is setted when the GroupByExpr or ScalarGroupByExpr is
+	// contruct in inside-out case, use for adjust output rows.
+	ApplyInsideOut = 1 << 6
+
+	// ApplyOutsideIn is setted when the sql can apply outside-in.
+	ApplyOutsideIn = 1 << 7
 )
 
 // TimeBucketOpt return true if has TimeBucketPushAgg opt
@@ -274,6 +288,21 @@ func (v GroupOptType) WithSumInt() bool {
 // UseStatisticOpt return true that has UseStatistic opt
 func (v GroupOptType) UseStatisticOpt() bool {
 	return v&UseStatistic > 0
+}
+
+// CanApplyInsideOut return true in the case can use inside-out.
+func (v GroupOptType) CanApplyInsideOut() bool {
+	return v&ApplyInsideOut > 0
+}
+
+// CanApplyOutsideIn return true in the case can use ouside-in.
+func (v GroupOptType) CanApplyOutsideIn() bool {
+	return v&ApplyOutsideIn > 0
+}
+
+// ResetApplyOutsideIn return true in the case can use ouside-in.
+func (v GroupOptType) ResetApplyOutsideIn() {
+	v &^= ApplyOutsideIn
 }
 
 // String return opt all type name

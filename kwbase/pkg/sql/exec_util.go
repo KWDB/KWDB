@@ -686,6 +686,9 @@ type ExecutorConfig struct {
 
 	// UDFCache is user defined functions
 	UDFCache *UDFCache
+
+	// ProcedureCache is the cache of procedures.
+	ProcedureCache *ProcedureCache
 }
 
 // Three modes of activation
@@ -2272,11 +2275,6 @@ func ChangeStartMode(cmdName string) int {
 // SetPushLimitNumber set PushLimitNumber
 func (m *sessionDataMutator) SetMaxPushLimitNumber(val int64) {
 	m.data.MaxPushLimitNumber = val
-}
-
-// CanPushSorter set CanPushSorter
-func (m *sessionDataMutator) SetCanPushSorter(val bool) {
-	m.data.CanPushSorter = val
 }
 
 // SetNeedControlIndideOut set NeedControlIndideOut of sessionData.

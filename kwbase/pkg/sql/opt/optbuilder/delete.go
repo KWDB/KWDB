@@ -72,10 +72,13 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 
 	var mb mutationBuilder
 	mb.init(b, "delete", tab, alias)
+	// check if there's other type of table referenced
+	b.CheckMixedTableRefWithTs()
 	// template does not support delete operation
 	if tab.GetTableType() == tree.TemplateTable {
 		panic(sqlbase.TemplateUnsupportedError("delete"))
 	} else if tab.GetTableType() == tree.InstanceTable || tab.GetTableType() == tree.TimeseriesTable {
+		hashNum := tab.GetTSHashNum()
 		_, ok := del.Returning.(*tree.NoReturningClause)
 		// time series and instance does not support operator except filter
 		if del.OrderBy != nil || del.Limit != nil || !ok || del.With != nil {
@@ -86,10 +89,9 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 				if err != nil {
 					panic(err)
 				}
-
-				return b.buildTSDelete(inScope, tab, del, alias, cn.InstTableID)
+				return b.buildTSDelete(inScope, tab, del, alias, cn.InstTableID, int(hashNum))
 			}
-			return b.buildTSDelete(inScope, tab, del, alias, sqlbase.ID(tab.ID()))
+			return b.buildTSDelete(inScope, tab, del, alias, sqlbase.ID(tab.ID()), int(hashNum))
 		}
 	}
 
@@ -104,13 +106,21 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 
 	// Build the final delete statement, including any returned expressions.
 	if resultsNeeded(del.Returning) {
-		mb.buildDelete(*del.Returning.(*tree.ReturningExprs))
+		var returning tree.ReturningExprs
+		switch t := del.Returning.(type) {
+		case *tree.ReturningExprs:
+			returning = *t
+		case *tree.ReturningIntoClause:
+			if b.insideProcDef {
+				returning = t.SelectClause
+			} else {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+			}
+		}
+		mb.buildDelete(returning)
 	} else {
 		mb.buildDelete(nil /* returning */)
 	}
-
-	// check if there's other type of table referenced
-	mb.CheckMixedTableRefWithTs()
 
 	return mb.outScope
 }
@@ -161,12 +171,6 @@ func checkDeleteFilter(expr tree.Expr) error {
 	return nil
 }
 
-// lowerLimitOfTimestamp is the lower boundary of ts delete
-const lowerLimitOfTimestamp = tree.TsMinTimestamp - 1
-
-// TsMaxTimestamp is the upper boundary of ts delete
-const upperLimitOfTimestamp = tree.TsMaxTimestamp + 1
-
 const (
 	// TsDeleteData means delete data
 	TsDeleteData = 3
@@ -174,14 +178,39 @@ const (
 	TsDeleteEntities = 4
 )
 
+// getLimitOfTimestampWithPrecision return the minimum and maximum timestamp values for the given precision
+func getLimitOfTimestampWithPrecision(precision int64) (int64, int64) {
+	switch precision {
+	case 3:
+		return tree.TsMinMilliTimestamp - 1, tree.TsMaxMilliTimestamp + 1
+	case 6:
+		return tree.TsMinMicroTimestamp - 1, tree.TsMaxMicroTimestamp + 1
+	default:
+		return tree.TsMinNanoTimestamp - 1, tree.TsMaxNanoTimestamp + 1
+	}
+}
+
 // buildTSDelete build delete outScope of time-series table
 // input: inScope, table, delete, TableName, table ID
 // output: outScope
 // build delete outScope of time-series table through table and delete message
 func (b *Builder) buildTSDelete(
-	inScope *scope, table cat.Table, del *tree.Delete, alias tree.TableName, tblID sqlbase.ID,
+	inScope *scope,
+	table cat.Table,
+	del *tree.Delete,
+	alias tree.TableName,
+	tblID sqlbase.ID,
+	hashNum int,
 ) (outScope *scope) {
 	id := b.factory.Metadata().AddTable(table, &alias)
+	tsType := table.Column(0).DatumType()
+	var precision int64
+	if !tsType.InternalType.TimePrecisionIsSet && tsType.InternalType.Precision == 0 {
+		precision = 3
+	} else {
+		precision = int64(tsType.Precision())
+	}
+	lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 	b.DisableMemoReuse = true
 	var spans []opt.TsSpan
 	if del.Where == nil {
@@ -195,6 +224,7 @@ func (b *Builder) buildTSDelete(
 				DeleteType: int(execinfrapb.OperatorType_TsDeleteMultiEntitiesData),
 				ID:         opt.TableID(tblID),
 				STable:     id,
+				HashNum:    hashNum,
 				Spans:      spans,
 			})
 		return outScope
@@ -242,18 +272,12 @@ func (b *Builder) buildTSDelete(
 		includeMutations,
 		inScope,
 	)
-	var hasTypeHints bool
-	for i := range b.semaCtx.Placeholders.TypeHints {
-		if b.semaCtx.Placeholders.TypeHints[i] != nil {
-			hasTypeHints = true
-			b.semaCtx.Placeholders.TypeHints[i] = nil
-		}
-	}
+
 	// resolve filter expr to get scope column and it's column id
 	texpr := inScope.resolveType(del.Where.Expr, types.Bool)
 	meta := b.factory.Metadata()
 	// check if filter supported
-	spans = checkTSDeleteFilter(b.evalCtx, inScope, texpr, exprs, &filterTyp, primaryTagIDs, meta, spans)
+	spans = checkTSDeleteFilter(b.evalCtx, inScope, texpr, exprs, &filterTyp, primaryTagIDs, meta, spans, precision)
 	if filterTyp == unsupportedType {
 		panic(sqlbase.UnsupportedDeleteConditionError("unsupported binary operator or mismatching tag filter"))
 	}
@@ -272,6 +296,7 @@ func (b *Builder) buildTSDelete(
 				DeleteType: int(execinfrapb.OperatorType_TsDeleteMultiEntitiesData),
 				ID:         opt.TableID(tblID),
 				STable:     id,
+				HashNum:    hashNum,
 				Spans:      spans,
 			})
 		return outScope
@@ -291,9 +316,6 @@ func (b *Builder) buildTSDelete(
 	}
 	for colID, expr := range exprs {
 		if v, ok := expr.(*tree.Placeholder); ok {
-			if hasTypeHints {
-				b.semaCtx.Placeholders.TypeHints[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
-			}
 			b.semaCtx.Placeholders.Types[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
 		}
 	}
@@ -317,10 +339,12 @@ func (b *Builder) buildTSDelete(
 	outScope.expr = b.factory.ConstructTSDelete(
 		&memo.TSDeletePrivate{
 			InputRows:  filters,
+			ActualRows: make(opt.RowsValue, len(filters)),
 			ColsMap:    colMap,
 			DeleteType: delTyp,
 			ID:         opt.TableID(tblID),
 			STable:     id,
+			HashNum:    hashNum,
 			Spans:      spans,
 		})
 	return outScope
@@ -354,6 +378,7 @@ func checkTSDeleteFilter(
 	primaryTagIDs map[int]struct{},
 	meta *opt.Metadata,
 	spans []opt.TsSpan,
+	precision int64,
 ) []opt.TsSpan {
 	if *typ == unsupportedType {
 		return nil
@@ -361,14 +386,14 @@ func checkTSDeleteFilter(
 
 	switch f := filter.(type) {
 	case *tree.AndExpr:
-		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, exprs, typ, primaryTagIDs, meta, nil)
-		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, exprs, typ, primaryTagIDs, meta, nil)
+		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, exprs, typ, primaryTagIDs, meta, nil, precision)
+		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, exprs, typ, primaryTagIDs, meta, nil, precision)
 		spans = mergeAndSpans(leftSpans, rightSpans, spans)
 	case *tree.OrExpr:
 		leftPri, rightPri := make(map[int]tree.Expr), make(map[int]tree.Expr)
-		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, rightPri, typ, primaryTagIDs, meta, nil)
+		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, rightPri, typ, primaryTagIDs, meta, nil, precision)
 		right := checkPTagIsComplete(rightPri, primaryTagIDs)
-		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, leftPri, typ, primaryTagIDs, meta, nil)
+		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, leftPri, typ, primaryTagIDs, meta, nil, precision)
 		left := checkPTagIsComplete(leftPri, primaryTagIDs)
 		if (*typ == onlyTag || *typ == tagAndTS) && right && left {
 			for key, value := range leftPri {
@@ -399,9 +424,23 @@ func checkTSDeleteFilter(
 			}
 			f.Right = exp
 		}
-		spans = checkComExpr(evalCtx, f.Left, f.Right, exprs, typ, primaryTagIDs, f.Operator, meta, spans)
+		if col, ok := f.Left.(*scopeColumn); ok && col.isDeclared {
+			indexVal := tree.NewTypedOrdinalReference(col.realIdx, col.typ)
+			indexVal.IsDeclare = true
+			name := tree.MakeUnresolvedName(string(col.name))
+			indexVal.SetColFormat(&name)
+			f.Left = indexVal
+		}
+		if col, ok := f.Right.(*scopeColumn); ok && col.isDeclared {
+			indexVal := tree.NewTypedOrdinalReference(col.realIdx, col.typ)
+			indexVal.IsDeclare = true
+			name := tree.MakeUnresolvedName(string(col.name))
+			indexVal.SetColFormat(&name)
+			f.Right = indexVal
+		}
+		spans = checkComExpr(evalCtx, f.Left, f.Right, exprs, typ, primaryTagIDs, f.Operator, meta, spans, precision)
 	case *tree.DBool:
-		spans = handleDBool(f, spans, typ)
+		spans = handleDBool(f, spans, typ, precision)
 	default:
 		*typ = unsupportedType
 		return nil
@@ -444,7 +483,8 @@ func mergeOrSpans(leftSpans, rightSpans, spans []opt.TsSpan) []opt.TsSpan {
 }
 
 // handleDBool handle spans when filter type is bool
-func handleDBool(f *tree.DBool, spans []opt.TsSpan, typ *filterType) []opt.TsSpan {
+func handleDBool(f *tree.DBool, spans []opt.TsSpan, typ *filterType, precision int64) []opt.TsSpan {
+	lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 	if *typ == onlyTag {
 		*typ = tagAndTS
 	}
@@ -475,9 +515,44 @@ func handlePrimaryTagColumn(
 		}
 		checkFilterType(id, typ, primaryTagIDs)
 		exprs[id] = datum
+	} else if idxVal, ok := expr.(*tree.IndexedVar); ok {
+		if val, ok := exprs[id]; ok {
+			if idxVal1, ok := val.(*tree.IndexedVar); !ok || ok && (idxVal1.Idx != idxVal.Idx) {
+				*typ = unsupportedType
+			}
+		}
+		checkFilterType(id, typ, primaryTagIDs)
+		exprs[id] = idxVal
 	} else {
 		*typ = unsupportedType
 	}
+}
+
+// getTimeWithPrecision return the time corresponding to different precision and whether it exceeds the precision
+func getTimeWithPrecision(time *tree.DTimestampTZ, precision int64) (bool, int64) {
+	nanosecond := time.Time.Nanosecond()
+	second := time.Time.Unix()
+	var prec int64
+	switch precision {
+	case 3:
+		prec = 1e3
+	case 6:
+		prec = 1e6
+	default:
+		prec = 1e9
+	}
+	var res int64
+	res = second*prec + int64(nanosecond)/(1e9/prec)
+	low, up := getLimitOfTimestampWithPrecision(precision)
+	// determine whether the given timestamp exceeds the time range corresponding to the precision
+	if second < low/prec || (second == low/prec && nanosecond < int(low-low/prec)) {
+		res = low
+	} else if second > up/prec || (second == up/prec && nanosecond > int(up-up/prec)) {
+		res = up
+	} else {
+		res = second*prec + int64(nanosecond)/(1e9/prec)
+	}
+	return int64(nanosecond)%(1e9/prec) != 0, res
 }
 
 // checkComExpr resolve comparison expr and get durition and primary tag values
@@ -491,6 +566,7 @@ func checkComExpr(
 	op tree.ComparisonOperator,
 	meta *opt.Metadata,
 	spans []opt.TsSpan,
+	precision int64,
 ) []opt.TsSpan {
 	if *typ == unsupportedType {
 		return nil
@@ -498,6 +574,15 @@ func checkComExpr(
 
 	leftScopeCol, leftIsScopeCol := left.(*scopeColumn)
 	rightScopeCol, rightIsScopeCol := right.(*scopeColumn)
+	var leftIsDeclareCol, rightIsDeclareCol bool
+	leftIdx, ok1 := left.(*tree.IndexedVar)
+	if ok1 {
+		leftIsDeclareCol = true
+	}
+	rightIdx, ok2 := right.(*tree.IndexedVar)
+	if ok2 {
+		rightIsDeclareCol = true
+	}
 
 	if leftIsScopeCol && !rightIsScopeCol {
 		// id in expr is column's logical id, need to get column's physical id
@@ -505,47 +590,63 @@ func checkComExpr(
 		index := t.ColumnOrdinal(leftScopeCol.id)
 		id := meta.Table(t).Column(index).ColID()
 		if id == tsColumnID {
+			if rightIsDeclareCol {
+				// The ts column of the time-series does not support Declare col
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "declared variable \"%s\" cannot be used on column \"%s\"",
+					rightIdx.GetColName().String(), leftScopeCol.name))
+			}
+			lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 			if timeSpan, ok := right.(*tree.Placeholder); ok {
 				v := tree.UnwrapDatum(evalCtx, timeSpan)
 				right = v
 			}
 			switch rightExp := right.(type) {
 			case *tree.DTimestampTZ:
-				time := rightExp.UnixMilli()
+				isExceed, time := getTimeWithPrecision(rightExp, precision)
+				time1 := rightExp.UnixMilli()
+				_ = time1
 				var start, end int64
 				switch op {
 				case tree.GT:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						start = time + 1
 					}
 					end = upperLimitOfTimestamp
 				case tree.GE:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
-						start = time
+						if isExceed {
+							start = time + 1
+						} else {
+							start = time
+						}
 					}
 					end = upperLimitOfTimestamp
 				case tree.EQ:
 					start, end = time, time
 				case tree.LE:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						end = time
 					}
 				case tree.LT:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
-						end = time - 1
+						if isExceed {
+							end = time
+						} else {
+							end = time - 1
+						}
 					}
 				case tree.NE:
-					if time < lowerLimitOfTimestamp || time > upperLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp || time >= upperLimitOfTimestamp || isExceed {
 						start, end = lowerLimitOfTimestamp, upperLimitOfTimestamp
 					} else {
 						spans = append(spans, opt.TsSpan{
@@ -563,7 +664,7 @@ func checkComExpr(
 					End:   end,
 				})
 			case *tree.Tuple:
-				resolveTupleSpanForDelete(evalCtx, rightExp.Exprs, op, &spans, typ)
+				resolveTupleSpanForDelete(evalCtx, rightExp.Exprs, op, &spans, typ, precision)
 			}
 			if *typ == onlyTag {
 				*typ = tagAndTS
@@ -576,25 +677,35 @@ func checkComExpr(
 		t := meta.ColumnMeta(rightScopeCol.id).Table
 		id := t.ColumnOrdinal(rightScopeCol.id) + 1
 		if id == tsColumnID {
+			if leftIsDeclareCol {
+				// The ts column of the time-series does not support Declare col
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "declared variable \"%s\" cannot be used on column \"%s\"",
+					leftIdx.GetColName().String(), rightScopeCol.name))
+			}
+			lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 			if timeSpan, ok := left.(*tree.Placeholder); ok {
 				v := tree.UnwrapDatum(evalCtx, timeSpan)
 				left = v
 			}
 			switch leftExp := left.(type) {
 			case *tree.DTimestampTZ:
-				time := leftExp.UnixMilli()
+				isExceed, time := getTimeWithPrecision(leftExp, precision)
 				var start, end int64
 				switch op {
 				case tree.GT:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
-						end = time - 1
+						if isExceed {
+							end = time
+						} else {
+							end = time - 1
+						}
 					}
 				case tree.GE:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						end = time
@@ -602,21 +713,25 @@ func checkComExpr(
 				case tree.EQ:
 					start, end = time, time
 				case tree.LE:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
-						start = time
+						if isExceed {
+							start = time + 1
+						} else {
+							start = time
+						}
 					}
 					end = upperLimitOfTimestamp
 				case tree.LT:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						start = time + 1
 					}
 					end = upperLimitOfTimestamp
 				case tree.NE:
-					if time < lowerLimitOfTimestamp || time > upperLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp || time >= upperLimitOfTimestamp || isExceed {
 						start, end = lowerLimitOfTimestamp, upperLimitOfTimestamp
 					} else {
 						spans = append(spans, opt.TsSpan{
@@ -634,7 +749,7 @@ func checkComExpr(
 					End:   end,
 				})
 			case *tree.Tuple:
-				resolveTupleSpanForDelete(evalCtx, leftExp.Exprs, op, &spans, typ)
+				resolveTupleSpanForDelete(evalCtx, leftExp.Exprs, op, &spans, typ, precision)
 			}
 			if *typ == onlyTag {
 				*typ = tagAndTS
@@ -738,18 +853,25 @@ func resolveTupleSpanForDelete(
 	op tree.ComparisonOperator,
 	spans *[]opt.TsSpan,
 	typ *filterType,
+	precision int64,
 ) {
+	lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 	var timeArray []int64
+	timeMap := make(map[int64]bool)
 	for _, exp := range exprs {
 		if timeSpan, ok := exp.(*tree.Placeholder); ok {
 			v := tree.UnwrapDatum(evalCtx, timeSpan)
 			exp = v
 		}
 		if datum, ok := exp.(*tree.DTimestampTZ); ok {
-			time := datum.UnixMilli()
+			isExceed, time := getTimeWithPrecision(datum, precision)
 			if time > lowerLimitOfTimestamp && time < upperLimitOfTimestamp {
-				timeArray = append(timeArray, datum.UnixMilli())
+				if exceed, ok := timeMap[time]; !ok || (ok && exceed && !isExceed) {
+					timeMap[time] = isExceed
+				}
+				timeArray = append(timeArray, time)
 			} else {
+				timeMap[lowerLimitOfTimestamp] = false
 				timeArray = append(timeArray, lowerLimitOfTimestamp)
 			}
 		}
@@ -761,6 +883,9 @@ func resolveTupleSpanForDelete(
 	switch op {
 	case tree.In:
 		for _, time := range timeArray {
+			if timeMap[time] {
+				continue
+			}
 			*spans = append(*spans, opt.TsSpan{
 				Start: time,
 				End:   time,
@@ -768,6 +893,9 @@ func resolveTupleSpanForDelete(
 		}
 	case tree.NotIn:
 		for i, time := range timeArray {
+			if timeMap[time] {
+				continue
+			}
 			if i == 0 {
 				*spans = append(*spans, opt.TsSpan{
 					Start: lowerLimitOfTimestamp,

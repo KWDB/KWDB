@@ -26,14 +26,17 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -61,34 +64,43 @@ func (n *createFunctionNode) startExec(params runParams) error {
 	}
 
 	rows := make([]tree.Datums, 0)
-	db := params.extendedEvalCtx.SessionData.Database
+	creator := params.p.sessionDataMutator.data.User
 	funcName := strings.ToLower(string(n.n.FunctionName))
-	argTypes, returnTypes, typeLens, err := n.getTypesAndLength()
+
+	// assign unique id
+	id, err := GenerateUniqueDescID(params.ctx, params.p.ExecCfg().DB)
 	if err != nil {
 		return err
 	}
-	funcBody := n.n.FuncBody
-	funcType := sqlbase.DefinedFunction
-	language := "LUA"
-	creator := params.p.sessionDataMutator.data.User
-	version := "1.0"
+
+	// Generate funcDesc
+	desc, err := n.makeFuncDesc(params.SessionData())
+	if err != nil {
+		return err
+	}
+	descValue, err := protoutil.Marshal(&desc)
+	if err != nil {
+		return err
+	}
+
+	var ext []byte
 	row := tree.Datums{
-		tree.NewDString(funcName),
-		argTypes,
-		returnTypes,
-		typeLens,
-		tree.NewDString(funcBody),
-		tree.NewDInt(tree.DInt(funcType)),
-		tree.NewDString(language),
-		tree.NewDString(db),
+		tree.NewDString(string(n.n.FunctionName)),
+		tree.NewDInt(0),
+		tree.NewDInt(0),
+		tree.NewDBytes(tree.DBytes(descValue)),
+		tree.NewDInt(tree.DInt(id)),
+		tree.NewDInt(tree.DInt(sqlbase.Function)),
 		tree.NewDString(creator),
 		tree.MakeDTimestamp(timeutil.Now(), time.Second),
-		tree.NewDString(version),
-		tree.NewDString(""),
+		tree.MakeDTimestamp(timeutil.Now(), time.Second),
+		tree.NewDInt(tree.DInt(1)),
+		tree.DBoolTrue,
+		tree.NewDBytes(tree.DBytes(ext)),
 	}
 	rows = append(rows, row)
-	// system.user_defined_function
-	if err := WriteKWDBDesc(params.ctx, params.p.txn, sqlbase.DefinedFunctionTable, rows, false); err != nil {
+	// system.user_defined_routine
+	if err := WriteKWDBDesc(params.ctx, params.p.txn, sqlbase.UDRTable, rows, false); err != nil {
 		return err
 	}
 	if err := params.p.txn.Commit(params.ctx); err != nil {
@@ -117,6 +129,39 @@ func (n *createFunctionNode) startExec(params runParams) error {
 	return nil
 }
 
+// makeFuncDesc constructs and returns a new funcDescriptor
+func (n *createFunctionNode) makeFuncDesc(
+	sessionData *sessiondata.SessionData,
+) (sqlbase.FunctionDescriptor, error) {
+	argTypes, returnTypes, typeLens, err := n.getTypesAndLength()
+	if err != nil {
+		return sqlbase.FunctionDescriptor{}, err
+	}
+	encodeArgTypes := make([]uint32, len(argTypes.Array))
+	encodeReturnTypes := make([]uint32, len(returnTypes.Array))
+	encodeTypeLens := make([]uint32, len(typeLens.Array))
+	for i, v := range argTypes.Array {
+		encodeArgTypes[i] = uint32(*v.(*tree.DInt))
+	}
+	for i, v := range returnTypes.Array {
+		encodeReturnTypes[i] = uint32(*v.(*tree.DInt))
+	}
+	for i, v := range typeLens.Array {
+		encodeTypeLens[i] = uint32(*v.(*tree.DInt))
+	}
+
+	return sqlbase.FunctionDescriptor{
+		Name:          strings.ToLower(string(n.n.FunctionName)),
+		ArgumentTypes: encodeArgTypes,
+		ReturnType:    encodeReturnTypes,
+		TypesLength:   encodeTypeLens,
+		FunctionBody:  n.n.FuncBody,
+		FunctionType:  uint32(sqlbase.DefinedFunction),
+		Language:      "LUA",
+		DbName:        sessionData.Database,
+	}, nil
+}
+
 // CheckUdf is used to check whether the parameters, return type, function body
 // are legal
 func (n *createFunctionNode) CheckUdf(params runParams) error {
@@ -143,14 +188,13 @@ func (n *createFunctionNode) CheckUdfName(params runParams) error {
 	}
 	// check if there is already a function with the same name
 	// by looking up the system table.
-	defFuncKey := sqlbase.MakeKWDBMetadataKeyString(sqlbase.DefinedFunctionTable, []string{funcName})
-	row, err1 := sqlbase.GetKWDBMetadataRow(params.ctx, params.p.txn, defFuncKey, sqlbase.DefinedFunctionTable)
-	if err1 != nil {
-		if !IsObjectCannotFoundError(err1) {
-			return err1
-		}
+	query := fmt.Sprintf("SELECT name from system.user_defined_routine WHERE name = '%s' and routine_type = %d", funcName, sqlbase.Function)
+	rows, err := params.p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(params.ctx, "get-functions", params.p.txn, query)
+	if err != nil {
+		return err
 	}
-	if len(row) != 0 {
+
+	if len(rows) != 0 {
 		return pgerror.Newf(pgcode.DuplicateObject, "function named '%s' already exists. Please choose a different name", funcName)
 	}
 	// check if there is already a function with the same name

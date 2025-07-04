@@ -614,7 +614,7 @@ CREATE TABLE pg_catalog.pg_available_extensions (
 	name NAME,
 	default_version TEXT,
 	installed_version TEXT,
-	comment TEXT
+	"comment" TEXT
 )`,
 	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// We support no extensions.
@@ -1302,7 +1302,7 @@ func getComments(ctx context.Context, p *planner) ([]tree.Datums, error) {
 		p.EvalContext().Txn,
 		`SELECT COALESCE(pc.object_id, sc.object_id) AS object_id,
               COALESCE(pc.sub_id, sc.sub_id) AS sub_id,
-              COALESCE(pc.comment, sc.comment) AS comment,
+              COALESCE(pc."COMMENT", sc."comment") AS comment,
               COALESCE(pc.type, sc.type) AS type
          FROM (SELECT * FROM system.comments) AS sc
     FULL JOIN (SELECT * FROM kwdb_internal.predefined_comments) AS pc
@@ -1344,7 +1344,7 @@ CREATE TABLE pg_catalog.pg_description (
 			case keys.DatabaseCommentType:
 				// Database comments are exported in pg_shdescription.
 				continue
-			case keys.ColumnCommentType, keys.TableCommentType:
+			case keys.ColumnCommentType, keys.TableCommentType, keys.UDRCommentType:
 				objID = tree.NewDOid(tree.MustBeDInt(objID))
 				classOid = tree.NewDOid(sqlbase.PgCatalogClassTableID)
 			case keys.IndexCommentType:

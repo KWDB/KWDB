@@ -3082,6 +3082,11 @@ func (c *CustomFuncs) CanApplyOutsideIn(left, right memo.RelExpr, on memo.Filter
 
 	// on filter can not be orExpr, and operator can only be =,<,<=,>,>=,
 	// and child of operator must be relational column and tag column
+	// on filter can not empty
+	if len(on) == 0 {
+		c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
+		return false
+	}
 	for _, jp := range on {
 		if _, ok := jp.Condition.(*memo.OrExpr); ok {
 			c.e.mem.ClearFlag(opt.CanApplyOutsideIn)
@@ -3522,7 +3527,9 @@ func PushAggIntoJoinTSEngineNode(
 		}
 	})
 
-	newExpr := f.ConstructGroupBy(tsEngineTable, optHelper.Aggs, &memo.GroupingPrivate{GroupingCols: optHelper.Grouping, IsInsideOut: true})
+	newPrivate := &memo.GroupingPrivate{GroupingCols: optHelper.Grouping}
+	newPrivate.OptFlags |= opt.ApplyInsideOut
+	newExpr := f.ConstructGroupBy(tsEngineTable, optHelper.Aggs, newPrivate)
 	if p, ok := newExpr.Child(0).(*memo.ProjectExpr); ok {
 		p.IsInsideOut = true
 	}

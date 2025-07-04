@@ -126,6 +126,14 @@ func (tc *Catalog) ResolveDatabase(
 	return &tc.testDatabase, nil
 }
 
+// ResolveProcCatalog is part of the cat.Catalog interface.
+func (tc *Catalog) ResolveProcCatalog(
+	_ context.Context, _ *tree.TableName, _ bool,
+) (bool, *tree.CreateProcedure, error) {
+	//return sqlbase.ProcedureDescriptor{}, nil
+	return false, nil, nil
+}
+
 // ReleaseTables is part of the cat.Catalog interface.
 func (tc *Catalog) ReleaseTables(_ context.Context) {}
 
@@ -788,6 +796,11 @@ func (tt *Table) GetTableType() tree.TableType {
 
 // GetTSVersion return ts_version.
 func (tt *Table) GetTSVersion() uint32 {
+	return 0
+}
+
+// GetTSHashNum return ts_hash_num.
+func (tt *Table) GetTSHashNum() uint64 {
 	return 0
 }
 

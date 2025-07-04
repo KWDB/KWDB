@@ -32,6 +32,7 @@ import (
 	"context"
 	"sync/atomic"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -292,6 +293,9 @@ func (s *orderedSynchronizer) drainSources() {
 	}
 }
 
+// InitProcessorProcedure init processor in procedure
+func (s *orderedSynchronizer) InitProcessorProcedure(txn *kv.Txn) {}
+
 // Start is part of the RowSource interface.
 func (s *orderedSynchronizer) Start(ctx context.Context) context.Context {
 	for _, src := range s.sources {
@@ -435,6 +439,9 @@ type serialUnorderedSynchronizer struct {
 func (s *serialUnorderedSynchronizer) OutputTypes() []types.T {
 	return s.types
 }
+
+// InitProcessorProcedure init processor in procedure
+func (s *serialUnorderedSynchronizer) InitProcessorProcedure(txn *kv.Txn) {}
 
 func (s *serialUnorderedSynchronizer) Start(ctx context.Context) context.Context {
 	s.srcInx = 0

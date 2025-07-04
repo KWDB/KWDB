@@ -149,9 +149,19 @@ func (p *planner) canRemoveDependentViewGeneric(
 	ref sqlbase.TableDescriptor_Reference,
 	behavior tree.DropBehavior,
 ) error {
-	viewDesc, err := p.getViewDescForCascade(ctx, typeName, objName, parentID, ref.ID, behavior)
+	found, _, err := p.GetProcedureNameByID(ctx, ref.ID)
 	if err != nil {
 		return err
+	}
+	if found {
+		return nil
+	}
+	viewDesc, skipped, err := p.getViewDescForCascade(ctx, typeName, objName, parentID, ref.ID, behavior)
+	if err != nil {
+		return err
+	}
+	if skipped {
+		return nil
 	}
 	if err := p.CheckPrivilege(ctx, viewDesc, privilege.DROP); err != nil {
 		return err
@@ -214,11 +224,14 @@ func (p *planner) dropViewImpl(
 
 	if behavior == tree.DropCascade {
 		for _, ref := range viewDesc.DependedOnBy {
-			dependentDesc, err := p.getViewDescForCascade(
+			dependentDesc, skipped, err := p.getViewDescForCascade(
 				ctx, viewDesc.TypeName(), viewDesc.Name, viewDesc.ParentID, ref.ID, behavior,
 			)
 			if err != nil {
 				return cascadeDroppedViews, err
+			}
+			if skipped {
+				continue
 			}
 			// TODO (lucy): Have more consistent/informative names for dependent jobs.
 			cascadedViews, err := p.dropViewImpl(ctx, dependentDesc, queueJob, "dropping dependent view", behavior)
@@ -243,11 +256,32 @@ func (p *planner) getViewDescForCascade(
 	objName string,
 	parentID, viewID sqlbase.ID,
 	behavior tree.DropBehavior,
-) (*sqlbase.MutableTableDescriptor, error) {
+) (*sqlbase.MutableTableDescriptor, bool, error) {
+	found, procName, err := p.GetProcedureNameByID(ctx, viewID)
+	if err != nil {
+		return nil, false, err
+	}
+	if found {
+		if behavior != tree.DropCascade {
+			msg := fmt.Sprintf("cannot drop %s %q because procedure %q depends on it",
+				typeName, objName, tree.ErrString(&procName))
+			hint := fmt.Sprintf("you can drop %s instead.", tree.ErrString(&procName))
+			return nil, false, sqlbase.NewDependentObjectErrorWithHint(msg, hint)
+		}
+		if err := p.TryPurgeProcedureCache(ctx, procName, uint32(viewID)); err != nil {
+			return nil, false, err
+		}
+		return nil, true, nil
+	}
 	viewDesc, err := p.Tables().getMutableTableVersionByID(ctx, viewID, p.txn)
 	if err != nil {
-		log.Warningf(ctx, "unable to retrieve descriptor for view %d: %v", viewID, err)
-		return nil, errors.Wrapf(err, "error resolving dependent view ID %d", viewID)
+		if err == sqlbase.ErrDescriptorNotFound {
+			// TODO: Perhaps it is necessary to add state to the procedure metadata
+			// to avoid the error of "descriptor not found" when depend on multiple tables
+			// and then dropping database.
+			return nil, true, nil
+		}
+		return nil, false, err
 	}
 	if behavior != tree.DropCascade {
 		viewName := viewDesc.Name
@@ -257,13 +291,13 @@ func (p *planner) getViewDescForCascade(
 			if err != nil {
 				log.Warningf(ctx, "unable to retrieve qualified name of view %d: %v", viewID, err)
 				msg := fmt.Sprintf("cannot drop %s %q because a view depends on it", typeName, objName)
-				return nil, sqlbase.NewDependentObjectError(msg)
+				return nil, false, sqlbase.NewDependentObjectError(msg)
 			}
 		}
 		msg := fmt.Sprintf("cannot drop %s %q because view %q depends on it",
 			typeName, objName, viewName)
 		hint := fmt.Sprintf("you can drop %s instead.", viewName)
-		return nil, sqlbase.NewDependentObjectErrorWithHint(msg, hint)
+		return nil, false, sqlbase.NewDependentObjectErrorWithHint(msg, hint)
 	}
-	return viewDesc, nil
+	return viewDesc, false, nil
 }

@@ -337,6 +337,13 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 	},
 )
 
+// TsWALLevel indicates the WAL level
+var TsWALLevel = settings.RegisterPublicIntSetting(
+	"ts.wal.wal_level",
+	"ts WAL level, default 2(flush)",
+	2,
+)
+
 // TsWALCheckpointInterval indicates the wal checkpoint interval of TsEngine
 var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
@@ -506,7 +513,9 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 }
 
 // CreateTsTable create ts table
-func (r *TsEngine) CreateTsTable(tableID uint64, meta []byte, rangeGroups []api.RangeGroup) error {
+func (r *TsEngine) CreateTsTable(
+	tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup,
+) error {
 	r.checkOrWaitForOpen()
 	nRange := len(rangeGroups)
 	cRanges := make([]C.RangeGroup, nRange)
@@ -629,6 +638,16 @@ func (r *TsEngine) DropNormalTagIndex(
 	status := C.TSDropNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), (*C.char)(unsafe.Pointer(&transactionID[0])), C.uint32_t(curVersion), C.uint32_t(newVersion))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not DropNormalTagIndex")
+	}
+	return nil
+}
+
+// AlterLifetime alter lifetime interval for this table.
+func (r *TsEngine) AlterLifetime(tableID uint64, lifeTime uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterLifetime(r.tdb, C.TSTableID(tableID), C.uint64_t(lifeTime))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to set table lifetime")
 	}
 	return nil
 }
@@ -986,7 +1005,10 @@ func (r *TsEngine) tsExecute(
 	}
 	var retInfo C.QueryInfo
 	retInfo.value = nil
-	C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	if retErr := statusToError(status); retErr != nil {
+		// log.Errorf(context.TODO(), "failed to execute query")
+	}
 	fet := tsQueryInfo.Fetcher
 	tsRespInfo.Fetcher = fet
 	tsRespInfo.ID = int(retInfo.id)
@@ -1062,7 +1084,10 @@ func (r *TsEngine) tsVectorizedExecute(
 	}
 	var retInfo C.QueryInfo
 	retInfo.value = nil
-	C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	if retErr := statusToError(status); retErr != nil {
+		// log.Errorf(context.TODO(), "failed to execute query")
+	}
 	fet := tsQueryInfo.Fetcher
 	tsRespInfo.Fetcher = fet
 	tsRespInfo.ID = int(retInfo.id)
@@ -1478,6 +1503,11 @@ func (r *TsEngine) DeleteData(
 
 	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
 	for i := 0; i < len(tsSpans); i++ {
+		// todo(liangbo01) ts span invaild, ignore it.
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
 		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
 		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
 	}
@@ -1527,6 +1557,7 @@ func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
 
 // CountTsTable count calculate table
 func (r *TsEngine) CountTsTable(tableID uint64) error {
+	r.checkOrWaitForOpen()
 	status := C.TSCountTsTable(r.tdb, C.TSTableID(tableID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to count ts table")

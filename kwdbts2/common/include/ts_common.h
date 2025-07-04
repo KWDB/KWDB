@@ -32,6 +32,7 @@
 #include "mmap/mmap_string_column.h"
 #include "bitmap_utils.h"
 
+class BlockItem;
 class MMapSegmentTable;
 
 extern uint32_t k_per_null_bitmap_size;
@@ -58,7 +59,7 @@ typedef uint64_t TS_LSN;  // LSN number used for WAL logs
 struct DelRowSpan {
   timestamp64 partition_ts;   // Partition timestamp
   uint16_t blockitem_id;      // partition block item id
-  char delete_flags[128] = {
+  char delete_flags[(1000 + 7) / 8] = {
       0};  // Which rows in the data block were deleted when DeleteData() was recorded, with a bit of 1 for the deleted rows
 }__attribute__((packed));
 
@@ -125,6 +126,7 @@ struct Batch {
   void* bitmap = nullptr;
   k_uint32 count = 0;
   k_uint32 offset = 0;
+  BlockItem* block_item = nullptr;
   // Holding smart pointers to avoid switching between segments in use
   std::shared_ptr<MMapSegmentTable> segment_table = nullptr;
 
@@ -495,6 +497,63 @@ inline timestamp64 intersectLength(timestamp64 start1, timestamp64 end1, timesta
   // Otherwise, the intersection length is the difference between minEnd and maxStart
   return min_end - max_start;
 }
+// compare two values
+inline int cmp(void* l, void* r, int32_t type, int32_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+    case DATATYPE::BOOL:
+    case DATATYPE::BINARY: {
+      k_int32 ret = memcmp(l, r, size);
+      return ret;
+    }
+    case DATATYPE::INT16: {
+      k_int16 lv = *(static_cast<k_int16*>(l));
+      k_int16 rv = *(static_cast<k_int16*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP: {
+      k_int32 lv = *(static_cast<k_int32*>(l));
+      k_int32 rv = *(static_cast<k_int32*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO: {
+      k_int64 lv = *(static_cast<k_int64*>(l));
+      k_int64 rv = *(static_cast<k_int64*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::TIMESTAMP64_LSN:
+    case DATATYPE::TIMESTAMP64_LSN_MICRO:
+    case DATATYPE::TIMESTAMP64_LSN_NANO: {
+      timestamp64 lv = static_cast<TimeStamp64LSN*>(l)->ts64;
+      timestamp64 rv = static_cast<TimeStamp64LSN*>(r)->ts64;
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::FLOAT: {
+      float lv = *(static_cast<float*>(l));
+      float rv = *(static_cast<float*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::DOUBLE: {
+      double lv = *(static_cast<double*>(l));
+      double rv = *(static_cast<double*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::STRING: {
+      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size);
+      return ret;
+    }
+      break;
+    default:
+      break;
+  }
+  return false;
+}
 
 // [start, end] cross with spans
 inline bool isTimestampInSpans(const std::vector<KwTsSpan>& spans,
@@ -636,7 +695,9 @@ enum Sumfunctype {
   FIRST_ROW = 34,
   FIRSTROWTS = 35,
   ELAPSED = 36,
-  TWA = 37
+  TWA = 37,
+  MIN_EXTEND = 38,
+  MAX_EXTEND = 39
 };
 
 enum WindowFunc {
@@ -1144,6 +1205,18 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
       break;
   }
   return ts * precision;
+}
+
+inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
+  const uint32_t offset_basis = 2166136261;  // 32位offset basis
+  const uint32_t prime = 16777619;
+  uint32_t hash_val = offset_basis;
+  for (int i = 0; i < length; i++) {
+    unsigned char b = data[i];
+    hash_val *= prime;
+    hash_val ^= b;
+  }
+  return hash_val % hash_num;
 }
 
 }  //  namespace kwdbts

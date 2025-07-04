@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -261,6 +262,18 @@ func newWindower(
 	}
 
 	return w, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (w *windower) InitProcessorProcedure(txn *kv.Txn) {
+	if w.EvalCtx.IsProcedure {
+		if w.FlowCtx != nil {
+			w.FlowCtx.Txn = txn
+		}
+		w.Closed = false
+		w.State = execinfra.StateRunning
+		w.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

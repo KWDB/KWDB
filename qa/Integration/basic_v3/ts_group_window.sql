@@ -64,4 +64,22 @@ select first(ts) as _wstart,last(ts) as _wend, avg(b) from tsdb.t1 group by time
 -- error
 select first(ts) as _wstart,last(ts) as _wend, avg(b) from tsdb.t1 group by time_window(ts, '1d', '1w');
 
+-- time_window
+select first(ts) as _wstart,last(ts) as _wend, ts, max(b) from tsdb.t1 group by time_window(ts, '1w', '1d');
+select first(ts) as _wstart,last(ts) as _wend, ts, max(b) from tsdb.t1 group by time_window(ts, '1y', '1d');
+select first(ts) as _wstart,last(ts) as _wend, ts, max(b) from tsdb.t1 group by time_window(ts, '1y', '1w');
+select first(ts) as _wstart,last(ts) as _wend, ts, max(b) from tsdb.t1 group by time_window(ts, '2y', '1w');
+select first(ts) as _wstart,last(ts) as _wend, ts, max(b) from tsdb.t1 group by time_window(ts, '1mons', '1w');
+-- error
+select first(ts) as _wstart,last(ts) as _wend, ts, max(b) from tsdb.t1 group by time_window(ts, '1d', '1w');
+
+-- time_window
+select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '1w', '1d');
+select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '1y', '1d');
+select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '1y', '1w');
+select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '2y', '1w');
+select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '1mons', '1w');
+-- error
+select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '1d', '1w');
+
 drop database tsdb cascade;

@@ -176,7 +176,6 @@ type Memo struct {
 	tsOrderedScan              bool
 	tsQueryOptMode             int64
 	maxPushLimitNumber         int64
-	tsCanPushSorterToTsEngine  bool
 	insideOutRowRatio          float64
 
 	// curID is the highest currently in-use scalar expression ID.
@@ -195,9 +194,6 @@ type Memo struct {
 	// CheckHelper used to check if the expr can execute in ts engine.
 	CheckHelper TSCheckHelper
 
-	// ts engine white list map
-	TSWhiteListMap *sqlbase.WhiteListMap
-
 	// tsDop represents degree of parallelism control parallelism in time series engine
 	tsDop uint32
 
@@ -206,6 +202,9 @@ type Memo struct {
 
 	// MultimodelHelper helps assist in setting configurations for multiple model processing.
 	MultimodelHelper MultimodelHelper
+
+	// ProcCacheHelper is a helper for procedure cache.
+	ProcCacheHelper ProcedureCacheHelper
 }
 
 // QueryTypeEnum represents the type of a query, whether it is a multi-model query
@@ -262,6 +261,15 @@ func (m *TSCheckHelper) init() {
 	m.PushHelper.MetaMap = make(MetaInfoMap)
 	m.GroupHint = keys.NoGroupHint
 	m.onlyOnePTagValue = false
+}
+
+// ProcedureCacheHelper is a helper for procedure cache.
+type ProcedureCacheHelper struct {
+	// ExecViaProcedureCache represents current plan tree from procedure cache.
+	ExecViaProcedureCache bool
+
+	// ProcedureStmtType indicates that return type of the statement.
+	ProcedureStmtType tree.StatementType
 }
 
 // MultimodelHelper is a helper struct designed to assist in setting
@@ -517,9 +525,7 @@ func (m *Memo) Init(evalCtx *tree.EvalContext) {
 	m.saveTablesPrefix = evalCtx.SessionData.SaveTablesPrefix
 	m.insertFastPath = evalCtx.SessionData.InsertFastPath
 	m.maxPushLimitNumber = evalCtx.SessionData.MaxPushLimitNumber
-	m.tsCanPushSorterToTsEngine = evalCtx.SessionData.CanPushSorter
 	m.insideOutRowRatio = evalCtx.SessionData.InsideOutRowRatio
-
 	if evalCtx.Settings != nil {
 		m.tsOrderedScan = opt.TSOrderedTable.Get(&evalCtx.Settings.SV)
 		m.tsCanPushAllProcessor = opt.PushdownAll.Get(&evalCtx.Settings.SV)
@@ -613,6 +619,26 @@ func (m *Memo) RootExpr() opt.Expr {
 	return m.rootExpr
 }
 
+// ReplaceProcedureParam replace input param for procCommand
+func (m *Memo) ReplaceProcedureParam(
+	ctx *tree.SemaContext, inputs tree.Exprs, cachedInputs []sqlbase.ProcParam,
+) error {
+	blockCommand := m.rootExpr.(*CallProcedureExpr).ProcComm.(*BlockCommand)
+	var paramTypedExpr tree.TypedExpr
+	for i := range cachedInputs {
+		param := cachedInputs[i]
+		var err error
+		if paramTypedExpr, err = sqlbase.SanitizeVarFreeExpr(
+			inputs[i], &param.Type, "DEFAULT", ctx, true /* allowImpure */, false, param.Name,
+		); err != nil {
+			return err
+		}
+		blockCommand.Body.Bodys[i].(*DeclareVarCommand).Col.Default = paramTypedExpr
+	}
+
+	return nil
+}
+
 // RootProps returns the physical properties required of the root memo group,
 // previously set via a call to SetRoot.
 func (m *Memo) RootProps() *physical.Required {
@@ -690,8 +716,7 @@ func (m *Memo) IsStale(
 		m.tsQueryOptMode != opt.TSQueryOptMode.Get(&evalCtx.Settings.SV) ||
 		m.tsForcePushGroupToTSEngine == stats.AutomaticTsStatisticsClusterMode.Get(&evalCtx.Settings.SV) ||
 		m.maxPushLimitNumber != evalCtx.SessionData.MaxPushLimitNumber ||
-		m.insideOutRowRatio != evalCtx.SessionData.InsideOutRowRatio ||
-		m.tsCanPushSorterToTsEngine != evalCtx.SessionData.CanPushSorter {
+		m.insideOutRowRatio != evalCtx.SessionData.InsideOutRowRatio {
 		return true, nil
 	}
 
@@ -1061,49 +1086,111 @@ func (m *Memo) addOrderedColumn(src *bestProps) {
 	}
 }
 
+func (m *Memo) addOrderInGroupWindow(source *GroupByExpr, input RelExpr) {
+	// set sortExpr to input of project if group window function not exec in ts engine.
+	// sort columns are ptag(if group cols contain ptag) and tsCol.
+	if proj, ok1 := input.(*ProjectExpr); ok1 && m.CheckFlag(opt.GroupWindowUseOrderScan) {
+		sortExpr1 := &SortExpr{Input: proj.Input}
+		provided := sortExpr1.ProvidedPhysical()
+		if source.GroupingCols.Len() > 1 {
+			source.GroupingCols.ForEach(func(colID opt.ColumnID) {
+				if m.Metadata().ColumnMeta(colID).IsPrimaryTag() {
+					provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(colID, false))
+				}
+			})
+		}
+		provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(opt.ColumnID(TsColID), false))
+		proj.Input = sortExpr1
+		source.Input = proj
+	}
+}
+
+// addOrder find the groupByExpr from the memo tree and add the orderByExpr.
+func (m *Memo) addOrder(expr opt.Expr) {
+	if source, ok := expr.(*GroupByExpr); ok {
+		m.addOrderInGroupWindow(source, source.Input)
+		return
+	}
+
+	for i := 0; i < expr.ChildCount(); i++ {
+		m.addOrder(expr.Child(i))
+	}
+}
+
+// AddOrderWithGroupWindow if we use group window function, we need to explicitly add orderByExpr.
+func (m *Memo) AddOrderWithGroupWindow(src RelExpr) {
+	if !m.CheckFlag(opt.IncludeTSTable) || !m.CheckFlag(opt.GroupWindowUseOrderScan) {
+		return
+	}
+	m.addOrder(src)
+}
+
 // IsTsColsJoinPredicate checks if a single join predicate satisfies the condition
 // where both columns on the left and right sides are time series columns.
 // for multiple model processing
 func (m *Memo) IsTsColsJoinPredicate(jp FiltersItem) bool {
 	md := m.Metadata()
-	var tsTypeLeft, tsTypeRight int
-
-	getTsType := func(expr opt.Expr) int {
-		switch e := expr.(type) {
-		case *VariableExpr:
-			colID := e.Col
-			if md.ColumnMeta(colID).Table != 0 {
-				return md.ColumnMeta(colID).TSType
-			}
-			return opt.ColNormal
-		case *MultExpr:
-			for i := 0; i < 2; i++ {
-				if varExpr, ok := e.Child(i).(*VariableExpr); ok {
-					colID := varExpr.Col
-					if md.ColumnMeta(colID).Table != 0 {
-						return md.ColumnMeta(colID).TSType
-					}
-					return opt.ColNormal
-				}
-			}
-		}
-		return opt.ColNormal
-	}
 
 	switch expr := jp.Condition.(type) {
 	case *EqExpr, *LtExpr, *LeExpr, *GtExpr, *GeExpr, *LikeExpr:
-		tsTypeLeft = getTsType(expr.Child(0))
-		tsTypeRight = getTsType(expr.Child(1))
+		existTSColNormalLeft, existTSColLeft := checkJoinFilter(expr.Child(0), md)
+		existTSColNormalRight, existTSColRight := checkJoinFilter(expr.Child(1), md)
+
+		// can not join on TSColNormal.
+		if existTSColNormalLeft || existTSColNormalRight {
+			m.MultimodelHelper.ResetReasons[JoinOnTSMetricsColumn] = struct{}{}
+			return true
+		}
+
+		// can not join on both TSCols.
+		if existTSColLeft && existTSColRight {
+			m.MultimodelHelper.ResetReasons[JoinBetweenTimeSeriesTables] = struct{}{}
+			return true
+		}
+	default:
+		// can not join on TSColNormal.
+		if existTSColNormal, _ := checkJoinFilter(jp.Condition, md); existTSColNormal {
+			m.MultimodelHelper.ResetReasons[JoinOnTSMetricsColumn] = struct{}{}
+			return true
+		}
+		if expr.ChildCount() == 2 {
+			_, existTSColLeft := checkJoinFilter(expr.Child(0), md)
+			_, existTSColRight := checkJoinFilter(expr.Child(1), md)
+
+			// can not join on both TSCols.
+			if existTSColLeft && existTSColRight {
+				m.MultimodelHelper.ResetReasons[JoinBetweenTimeSeriesTables] = struct{}{}
+				return true
+			}
+		}
 	}
 
-	if tsTypeLeft == opt.TSColNormal || tsTypeRight == opt.TSColNormal {
-		m.MultimodelHelper.ResetReasons[JoinOnTSMetricsColumn] = struct{}{}
-		return true
-	} else if tsTypeLeft > opt.ColNormal && tsTypeRight > opt.ColNormal {
-		m.MultimodelHelper.ResetReasons[JoinBetweenTimeSeriesTables] = struct{}{}
-		return true
-	}
 	return false
+}
+
+// checkJoinFilter check if the child of on filter exist TSColNormal or TSCol.
+func checkJoinFilter(expr opt.Expr, md *opt.Metadata) (existTSColNormal, existTSCol bool) {
+	if e, ok := expr.(*VariableExpr); ok {
+		colID := e.Col
+		if md.ColumnMeta(colID).Table != 0 {
+			if md.ColumnMeta(colID).TSType == opt.TSColNormal {
+				return true, true
+			}
+			if md.ColumnMeta(colID).TSType > opt.ColNormal {
+				return false, true
+			}
+		}
+	} else {
+		for i := 0; i < expr.ChildCount(); i++ {
+			existTSColNormal, existTSCol = checkJoinFilter(expr.Child(i), md)
+			if existTSColNormal {
+				return true, true
+			} else if existTSCol {
+				return false, true
+			}
+		}
+	}
+	return false, false
 }
 
 // checkOptPruneFinalAgg checkout can prune final agg for single node mode
@@ -1217,17 +1304,6 @@ func setOrderedForce(expr *TSScanExpr) {
 	expr.OrderedScanType = opt.ForceOrderedScan
 }
 
-// check sorter can push to ts engine.
-// if tsCanPushSorterToTsEngine is true,
-// rowCount of sorter less than maxPushLimitNumber,
-// sorter can push to ts engine
-func (m *Memo) checkSorterCanPushToTsEngine(sort *SortExpr) bool {
-	if m.tsCanPushSorterToTsEngine && int64(sort.Relational().Stats.RowCount) <= m.maxPushLimitNumber {
-		return true
-	}
-	return false
-}
-
 // dealWithOrderBy set engine and add flag for the child of order by
 // when it's child can exec in ts engine.
 // sort is memo.SortExpr of memo tree.
@@ -1236,10 +1312,7 @@ func (m *Memo) checkSorterCanPushToTsEngine(sort *SortExpr) bool {
 // props is not nil when there is a OrderGroupBy.
 func (m *Memo) dealWithOrderBy(sort *SortExpr, ret *CrossEngCheckResults, props *bestProps) {
 	if ret.execInTSEngine {
-		if m.checkSorterCanPushToTsEngine(sort) {
-			sort.SetEngineTS()
-		}
-
+		sort.SetEngineTS()
 		addSynchronize(&ret.hasAddSynchronizer, sort.Input)
 	}
 	// OrderGroupBy case, reset bestProps of (memo.GroupByExpr or memo.DistinctOnExpr)
@@ -1365,6 +1438,7 @@ func (m *Memo) selectExprFillStatistic(selectExpr *SelectExpr, gp *GroupingPriva
 //     2: It's a const column.
 func (m *Memo) isTsColumnOrConst(src opt.ScalarExpr) uint32 {
 	switch source := src.(type) {
+
 	case *VariableExpr:
 		tblID := m.Metadata().ColumnMeta(source.Col).Table
 		if tblID != 0 {
@@ -1431,7 +1505,7 @@ func (m *Memo) checkAggStatisticUsable(aggs []AggregationsItem) bool {
 	for i := range aggs {
 		switch aggs[i].Agg.(type) {
 		case *SumExpr, *MinExpr, *MaxExpr, *CountExpr, *FirstExpr, *FirstTimeStampExpr, *FirstRowExpr, *AvgExpr,
-			*FirstRowTimeStampExpr, *LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr, *CountRowsExpr, *ConstAggExpr:
+			*FirstRowTimeStampExpr, *LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr, *CountRowsExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
 		default:
 			return false
 		}
@@ -1541,7 +1615,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		return retTmp.disableExecInTSEngine()
 	case *GroupByExpr:
 		input := source.Input
-		if source.IsInsideOut {
+		if source.OptFlags.CanApplyInsideOut() {
 			m.SetFlag(opt.IsApplyMultiOpt)
 		}
 		sortExpr, ok := (*src).Child(0).(*SortExpr)
@@ -1573,22 +1647,9 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 			addSortExprForTwaFunc(source, sortExpr, ok)
 		}
 
-		// set sortExpr to input of project if group window function not exec in ts engine.
-		// sort columns are ptag(if group cols contain ptag) and tsCol.
-		if proj, ok1 := input.(*ProjectExpr); ok1 && !retAgg.commonRet.execInTSEngine &&
-			m.CheckFlag(opt.GroupWindowUseOrderScan) {
-			sortExpr1 := &SortExpr{Input: proj.Input}
-			provided := sortExpr1.ProvidedPhysical()
-			if source.GroupingCols.Len() > 1 {
-				source.GroupingCols.ForEach(func(colID opt.ColumnID) {
-					if m.Metadata().ColumnMeta(colID).IsPrimaryTag() {
-						provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(colID, false))
-					}
-				})
-			}
-			provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(opt.ColumnID(TsColID), false))
-			proj.Input = sortExpr1
-			source.Input = proj
+		// if we use group window function and plan not push to AE, we should add orderExpr.
+		if !retAgg.commonRet.execInTSEngine {
+			m.addOrderInGroupWindow(source, input)
 		}
 
 		if source.OptFlags.PruneFinalAggOpt() {
@@ -2061,7 +2122,7 @@ func checkParallelAgg(expr opt.Expr) (bool, bool) {
 	switch t := expr.(type) {
 	case *MaxExpr, *MinExpr, *SumExpr, *AvgExpr, *CountExpr, *CountRowsExpr,
 		*FirstExpr, *FirstRowExpr, *FirstTimeStampExpr, *FirstRowTimeStampExpr,
-		*LastExpr, *LastRowExpr, *LastTimeStampExpr, *LastRowTimeStampExpr, *ConstAggExpr:
+		*LastExpr, *LastRowExpr, *LastTimeStampExpr, *LastRowTimeStampExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
 		return true, false
 	case *AggDistinctExpr:
 		ok, _ := checkParallelAgg(t.Input)
@@ -2531,25 +2592,27 @@ func addSortExprForTwaFunc(source RelExpr, sortExpr *SortExpr, hasSortExpr bool)
 			} else if src, ok := source.(*ScalarGroupByExpr); ok {
 				newSortExpr.Input = src.Input
 			}
-			provided = newSortExpr.ProvidedPhysical()
+			provided = newSortExpr.Input.ProvidedPhysical()
 		}
 
+		tsOrdered := false
 		// Add the columns associated with TWA functions to the ordering.
 		tsColSet.ForEach(func(i opt.ColumnID) {
-			alreadyExists := false
 			for _, orderingCol := range provided.Ordering {
 				if opt.ColumnID(orderingCol) == i {
-					alreadyExists = true
+					tsOrdered = true
 					break
 				}
 			}
-			if !alreadyExists {
+			if hasSortExpr {
 				provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(i, false))
+			} else {
+				newSortExpr.ProvidedPhysical().Ordering = append(newSortExpr.ProvidedPhysical().Ordering, opt.MakeOrderingColumn(i, false))
 			}
 		})
 
 		// If hasSortExpr is false, update the source input with the new sort expression.
-		if !hasSortExpr {
+		if !hasSortExpr && !tsOrdered {
 			if src, ok := source.(*GroupByExpr); ok {
 				src.Input = newSortExpr
 			} else if src, ok := source.(*ScalarGroupByExpr); ok {
@@ -2608,7 +2671,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 			if element, ok := proj.Element.(opt.Expr); ok {
 				if execInTSEngine, _ := CheckExprCanExecInTSEngine(element, ExprPosProjList,
 					m.GetWhiteList().CheckWhiteListParam, false, false); !execInTSEngine {
-					gp.CanApplyOutsideIn = false
+					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}
 			}
@@ -2619,7 +2682,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 	gp.GroupingCols.ForEach(func(col opt.ColumnID) {
 		if !CheckDataType(m.metadata.ColumnMeta(col).Type) ||
 			!CheckDataLength(m.metadata.ColumnMeta(col).Type) {
-			gp.CanApplyOutsideIn = false
+			gp.OptFlags.ResetApplyOutsideIn()
 			return
 		}
 	})
@@ -2633,17 +2696,17 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 		for i := 0; i < srcExpr.ChildCount(); i++ {
 			if scalarExpr, ok := srcExpr.Child(i).(opt.ScalarExpr); ok {
 				if !CheckDataType(scalarExpr.DataType()) {
-					gp.CanApplyOutsideIn = false
+					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}
 			}
 		}
 		if !m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList) {
-			gp.CanApplyOutsideIn = false
+			gp.OptFlags.ResetApplyOutsideIn()
 			return
 		}
 	}
-	gp.CanApplyOutsideIn = true
+	gp.OptFlags |= opt.ApplyOutsideIn
 	return
 }
 
@@ -2719,8 +2782,9 @@ func (m *Memo) checkGroupingAndAgg(
 
 			// first: check if child of agg can execute in ts engine.
 			// second: check if agg itself can execute in ts engine.
-			if !m.CheckChildExecInTS(srcExpr, hashCode) ||
-				!m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList) {
+			if (!m.CheckChildExecInTS(srcExpr, hashCode) ||
+				!m.CheckHelper.whiteList.CheckWhiteListParam(hashCode, ExprPosProjList)) &&
+				!(srcExpr.Op() == opt.MinExtendOp || srcExpr.Op() == opt.MaxExtendOp) {
 				if !ret.commonRet.hasAddSynchronizer {
 					m.setSynchronizerForChild(input, &ret.commonRet.hasAddSynchronizer)
 				}
@@ -2741,4 +2805,39 @@ func (m *Memo) checkGroupingAndAgg(
 	}
 
 	return ret
+}
+
+// ProcedureCacheIsStale returns true if the memo has been invalidated by changes to any of
+// its dependencies. Once a memo is known to be stale, it must be ejected from
+// any procedure cache  replaced with a recompiled memo that takes into account the changes.
+// IsStale checks the following dependencies:
+//
+//  1. Session setting: current session may have different setting which can change memo.
+//  2. Data source privileges: current user may no longer have access to one or
+//     more data sources.
+func (m *Memo) ProcedureCacheIsStale(
+	ctx context.Context, evalCtx *tree.EvalContext, catalog cat.Catalog,
+) (bool, error) {
+	// Memo is stale if fields from SessionData that can affect planning have
+	// changed.
+	if !m.dataConversion.Equals(&evalCtx.SessionData.DataConversion) ||
+		m.reorderJoinsLimit != evalCtx.SessionData.ReorderJoinsLimit ||
+		m.zigzagJoinEnabled != evalCtx.SessionData.ZigzagJoinEnabled ||
+		m.optimizerFKs != evalCtx.SessionData.OptimizerFKs ||
+		m.safeUpdates != evalCtx.SessionData.SafeUpdates ||
+		m.saveTablesPrefix != evalCtx.SessionData.SaveTablesPrefix ||
+		m.insertFastPath != evalCtx.SessionData.InsertFastPath {
+		return true, nil
+	}
+
+	// Memo is stale if the fingerprint of any object in the memo's metadata has
+	// changed, or if the current user no longer has sufficient privilege to
+	// access the object.
+	if depsUpToDate, err := m.Metadata().CheckDependencies(ctx, catalog); err != nil {
+		return true, err
+	} else if !depsUpToDate {
+		return true, nil
+	}
+
+	return false, nil
 }

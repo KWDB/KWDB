@@ -256,7 +256,7 @@ CREATE TABLE transaction (
     last_update timestamp,
     schedule_date timestamp,
     status int,
-    comment text,
+    "comment" text,
     linked_trans_id bigint,
     c1 text,
     c2 text,

@@ -18,6 +18,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
 // dropFunctionNode represents a drop function node.
@@ -42,11 +43,11 @@ func (n *dropFunctionNode) startExec(params runParams) error {
 	for _, v := range n.n.Names {
 		const getUdfQuery = `
 	   SELECT 
-     function_name
-	   FROM system.user_defined_function
-	   WHERE function_name = $1
+     name
+	   FROM system.user_defined_routine
+	   WHERE name = $1 and routine_type = $2
 	 `
-		rows, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "Get-udf", nil /* txn */, getUdfQuery, v)
+		rows, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "Get-udf", nil /* txn */, getUdfQuery, v, sqlbase.Function)
 		if err != nil {
 			return err
 		}
@@ -87,5 +88,4 @@ func (n *dropFunctionNode) Next(runParams) (bool, error) { return false, nil }
 // Close implements the dropTopicNode interface.
 func (n *dropFunctionNode) Close(context.Context) {}
 
-// Values implements the dropTopicNode interface.
 func (n *dropFunctionNode) Values() tree.Datums { return tree.Datums{} }

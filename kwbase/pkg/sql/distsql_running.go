@@ -332,11 +332,114 @@ func (dsp *DistSQLPlanner) Run(
 	finishedSetupFn func(),
 ) (cleanup func()) {
 	ctx := planCtx.ctx
+	var flow flowinfra.Flow
+	flow, ctx = dsp.GetFlow(planCtx, txn, plan, recv, evalCtx, finishedSetupFn, true)
+	if flow == nil {
+		return func() {}
+	}
 
+	// TODO(radu): this should go through the flow scheduler.
+	if err := flow.Run(ctx, func() {}); err != nil {
+		recv.SetError(err)
+	}
+
+	return dsp.RunClearUp(ctx, planCtx, flow, recv)
+}
+
+// GetFlow get flow spec
+func (dsp *DistSQLPlanner) GetFlow(
+	planCtx *PlanningCtx,
+	txn *kv.Txn,
+	plan *PhysicalPlan,
+	recv *DistSQLReceiver,
+	evalCtx *extendedEvalContext,
+	finishedSetupFn func(),
+	supportVectorizedThreshold bool,
+) (flowinfra.Flow, context.Context) {
+	ctx := planCtx.ctx
 	var (
-		localState     distsql.LocalState
-		leafInputState *roachpb.LeafTxnInputState
+		localState distsql.LocalState
 	)
+
+	leafInputState, err := getStateParam(planCtx, txn, plan, evalCtx, &localState)
+	if err != nil {
+		recv.SetError(err)
+		return nil, ctx
+	}
+
+	if err := planCtx.sanityCheckAddresses(); err != nil {
+		recv.SetError(err)
+		return nil, ctx
+	}
+
+	flows := plan.GenerateFlowSpecs(dsp.nodeDesc.NodeID /* gateway */)
+	if _, ok := flows[dsp.nodeDesc.NodeID]; !ok {
+		recv.SetError(errors.Errorf("expected to find gateway flow"))
+		return nil, ctx
+	}
+
+	if err := savePlanDiagram(planCtx, flows); err != nil {
+		recv.SetError(err)
+		return nil, ctx
+	}
+
+	printLogForPlanDiagram(planCtx, flows)
+
+	log.VEvent(ctx, 1, "running DistSQL plan")
+
+	dsp.distSQLSrv.ServerConfig.Metrics.QueryStart()
+	defer dsp.distSQLSrv.ServerConfig.Metrics.QueryStop()
+
+	recv.outputTypes = plan.ResultTypes
+	recv.resultToStreamColMap = plan.PlanToStreamColMap
+
+	vectorizedThresholdMet := !planCtx.hasBatchLookUpJoin && supportVectorizedThreshold &&
+		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold && !planCtx.useQueryShortCircuit
+
+	if len(flows) == 1 {
+		// We ended up planning everything locally, regardless of whether we
+		// intended to distribute or not.
+		localState.IsLocal = true
+	}
+	ctx, flow, err := dsp.setupFlows(ctx, evalCtx, leafInputState, flows, recv, localState, vectorizedThresholdMet, plan)
+	if err != nil {
+		recv.SetError(err)
+		return flow, ctx
+	}
+	if flow != nil && planCtx.planner != nil && planCtx.planner.stmt != nil {
+		flow.SetRunProcedure(planCtx.planner.stmt.AST.StatOp() == "CALL")
+	}
+	if plan.AllProcessorsExecInTSEngine {
+		flow.SetCloses(plan.Closes)
+	}
+
+	if finishedSetupFn != nil {
+		finishedSetupFn()
+	}
+
+	// Check that flows that were forced to be planned locally also have no concurrency.
+	// This is important, since these flows are forced to use the RootTxn (since
+	// they might have mutations), and the RootTxn does not permit concurrency.
+	// For such flows, we were supposed to have fused everything.
+	if txn != nil && planCtx.isLocal && flow.ConcurrentExecution() && !CheckTSEngine(&flows) {
+		recv.SetError(errors.AssertionFailedf(
+			"unexpected concurrency for a flow that was forced to be planned locally"))
+		return flow, ctx
+	}
+
+	return flow, ctx
+}
+
+// getStateParam get state param
+func getStateParam(
+	planCtx *PlanningCtx,
+	txn *kv.Txn,
+	plan *PhysicalPlan,
+	evalCtx *extendedEvalContext,
+	localState *distsql.LocalState,
+) (*roachpb.LeafTxnInputState, error) {
+	var leafInputState *roachpb.LeafTxnInputState
+	ctx := planCtx.ctx
 	// NB: putting part of evalCtx in localState means it might be mutated down
 	// the line.
 	localState.EvalContext = &evalCtx.EvalContext
@@ -349,8 +452,7 @@ func (dsp *DistSQLPlanner) Run(
 		tis, err := txn.GetLeafTxnInputStateOrRejectClient(ctx)
 		if err != nil {
 			log.Infof(ctx, "%s: %s", clientRejectedMsg, err)
-			recv.SetError(err)
-			return func() {}
+			return leafInputState, err
 		}
 		leafInputState = &tis
 	} else if planCtx.isLocal && !plan.IsDistInTS() {
@@ -362,23 +464,16 @@ func (dsp *DistSQLPlanner) Run(
 		tis, err := txn.GetLeafTxnInputStateOrRejectClient(ctx)
 		if err != nil {
 			log.Infof(ctx, "%s: %s", clientRejectedMsg, err)
-			recv.SetError(err)
-			return func() {}
+			return leafInputState, err
 		}
 		leafInputState = &tis
 	}
 
-	if err := planCtx.sanityCheckAddresses(); err != nil {
-		recv.SetError(err)
-		return func() {}
-	}
+	return leafInputState, nil
+}
 
-	flows := plan.GenerateFlowSpecs(dsp.nodeDesc.NodeID /* gateway */)
-	if _, ok := flows[dsp.nodeDesc.NodeID]; !ok {
-		recv.SetError(errors.Errorf("expected to find gateway flow"))
-		return func() {}
-	}
-
+// savePlanDiagram save plan diagram
+func savePlanDiagram(planCtx *PlanningCtx, flows map[roachpb.NodeID]*execinfrapb.FlowSpec) error {
 	if planCtx.saveDiagram != nil {
 		// Local flows might not have the UUID field set. We need it to be set to
 		// distinguish statistics for processors in subqueries vs the main query vs
@@ -390,85 +485,84 @@ func (dsp *DistSQLPlanner) Run(
 				}
 			}
 		}
-		log.VEvent(ctx, 1, "creating plan diagram")
+		log.VEvent(planCtx.ctx, 1, "creating plan diagram")
 		var stmtStr string
 		if planCtx.planner != nil && planCtx.planner.stmt != nil {
 			stmtStr = planCtx.planner.stmt.String()
 		}
-		diagram, err := execinfrapb.GeneratePlanDiagram(
-			stmtStr, flows, planCtx.saveDiagramShowInputTypes,
-		)
+		diagram, err := execinfrapb.GeneratePlanDiagram(stmtStr, flows, planCtx.saveDiagramShowInputTypes)
 		if err != nil {
-			recv.SetError(err)
-			return func() {}
+			return err
 		}
 		planCtx.saveDiagram(diagram)
 	}
 
+	return nil
+}
+
+// printLogForPlanDiagram prints log for plan diagram
+func printLogForPlanDiagram(planCtx *PlanningCtx, flows map[roachpb.NodeID]*execinfrapb.FlowSpec) {
 	if logPlanDiagram {
-		log.VEvent(ctx, 1, "creating plan diagram for logging")
+		log.VEvent(planCtx.ctx, 1, "creating plan diagram for logging")
 		var stmtStr string
 		if planCtx.planner != nil && planCtx.planner.stmt != nil {
 			stmtStr = planCtx.planner.stmt.String()
 		}
 		_, url, err := execinfrapb.GeneratePlanDiagramURL(stmtStr, flows, false /* showInputTypes */)
 		if err != nil {
-			log.Infof(ctx, "Error generating diagram: %s", err)
+			log.Infof(planCtx.ctx, "Error generating diagram: %s", err)
 		} else {
-			log.Infof(ctx, "Plan diagram URL:\n%s", url.Fragment)
+			log.Infof(planCtx.ctx, "Plan diagram URL:\n%s", url.Fragment)
 		}
 	}
+}
 
-	log.VEvent(ctx, 1, "running DistSQL plan")
-
-	dsp.distSQLSrv.ServerConfig.Metrics.QueryStart()
-	defer dsp.distSQLSrv.ServerConfig.Metrics.QueryStop()
-
-	recv.outputTypes = plan.ResultTypes
-	recv.resultToStreamColMap = plan.PlanToStreamColMap
-
-	vectorizedThresholdMet := !planCtx.hasBatchLookUpJoin &&
-		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold
-
-	if len(flows) == 1 {
-		// We ended up planning everything locally, regardless of whether we
-		// intended to distribute or not.
-		localState.IsLocal = true
-	}
-	ctx, flow, err := dsp.setupFlows(ctx, evalCtx, leafInputState, flows, recv, localState, vectorizedThresholdMet, plan)
-	if err != nil {
-		recv.SetError(err)
-		return func() {}
-	}
-	if plan.AllProcessorsExecInTSEngine {
-		flow.SetCloses(plan.Closes)
-	}
-
-	if finishedSetupFn != nil {
-		finishedSetupFn()
-	}
-
-	isTS := false
-	for _, f := range flows {
+// CheckTSEngine checks that whether exists ts engine flow
+func CheckTSEngine(flows *map[roachpb.NodeID]*execinfrapb.FlowSpec) bool {
+	for _, f := range *flows {
 		if f.TsProcessors != nil {
-			isTS = true
+			return true
 		}
 	}
+	return false
+}
 
-	// Check that flows that were forced to be planned locally also have no concurrency.
-	// This is important, since these flows are forced to use the RootTxn (since
-	// they might have mutations), and the RootTxn does not permit concurrency.
-	// For such flows, we were supposed to have fused everything.
-	if txn != nil && planCtx.isLocal && flow.ConcurrentExecution() && !isTS {
-		recv.SetError(errors.AssertionFailedf(
-			"unexpected concurrency for a flow that was forced to be planned locally"))
-		return func() {}
+// Start starts flow
+func (dsp *DistSQLPlanner) Start(
+	planCtx *PlanningCtx,
+	txn *kv.Txn,
+	plan *PhysicalPlan,
+	recv *DistSQLReceiver,
+	evalCtx *extendedEvalContext,
+	finishedSetupFn func(),
+) (flowinfra.Flow, context.Context) {
+	ctx := planCtx.ctx
+	var flow flowinfra.Flow
+	flow, ctx = dsp.GetFlow(planCtx, txn, plan, recv, evalCtx, finishedSetupFn, false)
+	if flow == nil {
+		return nil, ctx
 	}
 
-	// TODO(radu): this should go through the flow scheduler.
-	if err := flow.Run(ctx, func() {}); err != nil {
+	if err := flow.StartProcessor(ctx, func() {}); err != nil {
 		recv.SetError(err)
+		flow.Wait()
+		return nil, ctx
 	}
+
+	return flow, ctx
+}
+
+// NextRow gets next row data
+func (dsp *DistSQLPlanner) NextRow(
+	flow flowinfra.Flow,
+) (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return flow.NextRow()
+}
+
+// RunClearUp for clean up
+func (dsp *DistSQLPlanner) RunClearUp(
+	ctx context.Context, planCtx *PlanningCtx, flow flowinfra.Flow, recv *DistSQLReceiver,
+) func() {
 	dsp.RowStats = flow.GetStats()
 
 	// TODO(yuzefovich): it feels like this closing should happen after
@@ -582,7 +676,10 @@ type rowResultWriter interface {
 	// Note that the caller owns the row slice and might reuse it.
 	AddRow(ctx context.Context, row tree.Datums) error
 	AddPGResult(ctx context.Context, res []byte) error
+	// AddPGComplete adds a pg complete flag.
+	AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int)
 	IncrementRowsAffected(n int)
+	RowsAffected() int
 	SetError(error)
 	Err() error
 }
@@ -621,11 +718,22 @@ func (w *errOnlyResultWriter) AddPGResult(ctx context.Context, res []byte) error
 	panic("AddPGResult not supported by errOnlyResultWriter")
 }
 
+// AddPGComplete implements the rowResultWriter interface.
+func (w *errOnlyResultWriter) AddPGComplete(_ string, _ tree.StatementType, _ int) {
+	panic("AddPGComplete not supported by errOnlyResultWriter")
+}
+
 func (w *errOnlyResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
 	panic("AddRow not supported by errOnlyResultWriter")
 }
 func (w *errOnlyResultWriter) IncrementRowsAffected(n int) {
 	panic("IncrementRowsAffected not supported by errOnlyResultWriter")
+}
+
+// RowsAffected returns either the number of times AddRow was called, or the
+// sum of all n passed into IncrementRowsAffected.
+func (w *errOnlyResultWriter) RowsAffected() int {
+	panic("RowsAffected not supported by errOnlyResultWriter")
 }
 
 var _ execinfra.RowReceiver = &DistSQLReceiver{}
@@ -725,6 +833,11 @@ func (r *DistSQLReceiver) PushPGResult(ctx context.Context, res []byte) error {
 		return err
 	}
 	return nil
+}
+
+// AddPGComplete is part of the RowReceiver interface.
+func (r *DistSQLReceiver) AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int) {
+	r.resultWriter.AddPGComplete(cmd, typ, rowsAffected)
 }
 
 // Push is part of the RowReceiver interface.
@@ -1185,16 +1298,45 @@ func (dsp *DistSQLPlanner) PlanAndRun(
 	recv *DistSQLReceiver,
 	stmt string,
 ) (cleanup func()) {
+	physPlan := dsp.GetPhysPlan(ctx, planCtx, plan, recv, stmt)
+	if physPlan == nil {
+		return func() {}
+	}
+
+	return dsp.Run(planCtx, txn, physPlan, recv, evalCtx, nil /* finishedSetupFn */)
+}
+
+// GetPhysPlan gets physical plan
+func (dsp *DistSQLPlanner) GetPhysPlan(
+	ctx context.Context, planCtx *PlanningCtx, plan planNode, recv *DistSQLReceiver, stmt string,
+) *PhysicalPlan {
 	log.VEventf(ctx, 1, "creating DistSQL plan with isLocal=%v", planCtx.isLocal)
 	physPlan, err := dsp.createPlanForNode(planCtx, plan)
 	if err != nil {
 		recv.SetError(err)
-		return func() {}
+		return nil
 	}
 	dsp.FinalizePlan(planCtx, &physPlan)
 	recv.expectedRowsRead = int64(physPlan.TotalEstimatedScannedRows)
 	physPlan.SQL = stmt
-	return dsp.Run(planCtx, txn, &physPlan, recv, evalCtx, nil /* finishedSetupFn */)
+	return &physPlan
+}
+
+// PlanAndStart for get physical plan and start plan
+func (dsp *DistSQLPlanner) PlanAndStart(
+	ctx context.Context,
+	evalCtx *extendedEvalContext,
+	planCtx *PlanningCtx,
+	txn *kv.Txn,
+	plan planNode,
+	recv *DistSQLReceiver,
+	stmt string,
+) (flowinfra.Flow, context.Context) {
+	physPlan := dsp.GetPhysPlan(ctx, planCtx, plan, recv, stmt)
+	if physPlan == nil {
+		return nil, planCtx.ctx
+	}
+	return dsp.Start(planCtx, txn, physPlan, recv, evalCtx, nil /* finishedSetupFn */)
 }
 
 // PlanAndRunPostqueries returns false if an error was encountered and sets

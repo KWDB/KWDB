@@ -113,6 +113,7 @@ func (t *tsDeleteNode) FastPathResults() (int, bool) {
 type tsDeleteNode struct {
 	nodeIDs         []roachpb.NodeID
 	tableID         uint64
+	hashNum         uint64
 	primaryTagKey   [][]byte
 	primaryTagValue [][]byte
 	delTyp          uint8
@@ -344,6 +345,7 @@ func (n *valuesNode) Close(ctx context.Context) {
 		n.rows.Close(ctx)
 		n.rows = nil
 	}
+	n.nextRow = 0
 }
 
 func newValuesListLenErr(exp, got int) error {

@@ -48,6 +48,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -127,6 +128,9 @@ func newTsInserter(
 	}
 	return tsi, nil
 }
+
+// InitProcessorProcedure init processor in procedure
+func (tri *tsInserter) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Start is part of the RowSource interface.
 func (tri *tsInserter) Start(ctx context.Context) context.Context {
@@ -220,6 +224,7 @@ func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Contex
 				Values:       pl.Row,
 				Timestamps:   pl.TimeStamps,
 				ValueSize:    pl.ValueSize,
+				HashNum:      pl.HashNum,
 			})
 		}
 		insertRowSum += int(tri.rowNums[i])
@@ -460,6 +465,9 @@ func (i *insThreadCount) doneThread() {
 	i.count--
 }
 
+// InitProcessorProcedure init processor in procedure
+func (tis *tsInsertSelecter) InitProcessorProcedure(txn *kv.Txn) {}
+
 // Start eg: insert into ts_table2 select * from ts_table;
 // tis.input is plan of 'select * from ts_table'.
 // 1. execture tis.input to get data, throw error if wrong in executre.
@@ -614,6 +622,7 @@ func (tis *tsInsertSelecter) runTSInsert(
 			uint32(insTable.ID),
 			insTable.TableType == tree.InstanceTable,
 			uint32(insTable.TsTable.TsVersion),
+			insTable.TsTable.HashNum,
 		)
 		if err != nil {
 			return false, 0, err

@@ -169,6 +169,20 @@ func (md *Metadata) SetTblType(t tree.TableType) {
 	md.tableType = int32(t)
 }
 
+// CheckSingleTsTable is for check single ts table
+func (md *Metadata) CheckSingleTsTable() bool {
+	allTables := md.AllTables()
+	if len(allTables) != 1 {
+		return false
+	}
+	for _, tbl := range allTables {
+		if tbl.Table.GetTableType() != tree.TimeseriesTable {
+			return false
+		}
+	}
+	return true
+}
+
 // Init prepares the metadata for use (or reuse).
 func (md *Metadata) Init() {
 	// Clear the metadata objects to release memory (this clearing pattern is
@@ -421,6 +435,14 @@ func (md *Metadata) AddColumn(alias string, typ *types.T) ColumnID {
 
 	md.cols = append(md.cols, ColumnMeta{MetaID: colID, Alias: alias, Type: typ, TSType: tsProp})
 
+	return colID
+}
+
+// AddDeclareColumn assigns a new unique id to a declare column within the query and records
+// its alias and type.
+func (md *Metadata) AddDeclareColumn(alias string, typ *types.T, idx int) ColumnID {
+	colID := ColumnID(len(md.cols) + 1)
+	md.cols = append(md.cols, ColumnMeta{MetaID: colID, Alias: alias, Type: typ, IsDeclaredInsideProcedure: true, RealIdx: idx})
 	return colID
 }
 
@@ -698,4 +720,27 @@ func (md *Metadata) GetTableIDByObjectID(kobjectID cat.StableID) TableID {
 func (md *Metadata) IsSingleRelCol(colID ColumnID) bool {
 	colMeta := md.ColumnMeta(colID)
 	return colMeta.TSType == ColNormal && colMeta.Table != 0
+}
+
+// PlanDeps stores information about data source objects depended on by the
+// procedure, as well as the privileges required to access them.
+type PlanDeps struct {
+	Desc            cat.DataSource
+	PrivilegeBitmap uint32
+}
+
+// GetDeps get all data source objects depended on by the procedure.
+func (md *Metadata) GetDeps(deps map[uint64]*PlanDeps) {
+	for i := range md.deps {
+		tabID := uint64(md.deps[i].ds.PostgresDescriptorID())
+		planDeps := (deps)[tabID]
+		if planDeps != nil {
+			planDeps.PrivilegeBitmap |= uint32(md.deps[i].privileges)
+		} else {
+			planDeps = &PlanDeps{}
+			planDeps.Desc = md.deps[i].ds
+			planDeps.PrivilegeBitmap = uint32(md.deps[i].privileges)
+			(deps)[tabID] = planDeps
+		}
+	}
 }

@@ -137,6 +137,26 @@ CREATE TABLE system.scheduled_jobs (
     )
 )`
 
+	UDRTableSchema = `
+ CREATE TABLE user_defined_routine (
+      name STRING NOT NULL,
+      db_id INT8 NOT NULL,
+      schema_id INT8 NOT NULL,
+      descriptor BYTES NULL,
+      id INT8 NOT NULL,
+      routine_type INT8 NOT NULL,
+      creator STRING NOT NULL,
+      create_time TIMESTAMP NOT NULL,
+      modification_time TIMESTAMP NOT NULL,
+      version INT8 NOT NULL,
+      enabled BOOL NOT NULL,
+      ext BYTES NULL,
+      CONSTRAINT "primary" PRIMARY KEY (db_id ASC, schema_id ASC, name ASC),
+      UNIQUE INDEX id_idx (id ASC),
+      FAMILY "primary" (db_id, schema_id, name),
+      FAMILY others (descriptor, id, routine_type, creator, create_time, modification_time, version, enabled, ext)
+);`
+
 	// Zone settings per DB/Table.
 	ZonesTableSchema = `
 CREATE TABLE system.zones (
@@ -282,7 +302,7 @@ CREATE TABLE system.comments (
    type      INT8 NOT NULL,    -- type of object, to distinguish between db, table, column and others
    object_id INT8 NOT NULL,    -- object ID, this will be usually db/table desc ID
    sub_id    INT8 NOT NULL,    -- sub ID for column or indexes inside table, 0 for pure table
-   comment   STRING NOT NULL, -- the comment
+   "comment" STRING NOT NULL, -- the comment
    PRIMARY KEY (type, object_id, sub_id)
 );`
 
@@ -392,6 +412,7 @@ var SystemAllowedPrivileges = map[ID]privilege.List{
 	keys.LeaseTableID:         privilege.ReadWriteData,
 	keys.EventLogTableID:      privilege.ReadWriteData,
 	keys.ScheduledJobsTableID: privilege.ReadWriteData,
+	keys.UDRTableID:           privilege.ReadWriteData,
 	keys.RangeEventTableID:    privilege.ReadWriteData,
 	keys.UITableID:            privilege.ReadWriteData,
 	// IMPORTANT: CREATE|DROP|ALL privileges should always be denied or database
@@ -433,7 +454,6 @@ var SystemAllowedPrivileges = map[ID]privilege.List{
 	keys.MLJobsTableID:              {privilege.DROP},
 	keys.MLPrivilegesTableID:        {privilege.DROP},
 	keys.KWDBShowJobsTableID:        {privilege.DROP},
-	keys.DefinedFunctionTableID:     privilege.ReadWriteData,
 }
 
 // Helpers used to make some of the TableDescriptor literals below more concise.
@@ -1720,41 +1740,6 @@ var (
 		NextMutationID: 1,
 	}
 
-	// DefinedFunctionTable is user defined function table.
-	// table id: 55
-	DefinedFunctionTable = TableDescriptor{
-		Name:                    "user_defined_function",
-		ID:                      keys.DefinedFunctionTableID,
-		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.DefinedFunctionTableID]),
-		ParentID:                keys.SystemDatabaseID,
-		UnexposedParentSchemaID: keys.PublicSchemaID,
-		Version:                 1,
-		Columns: []ColumnDescriptor{
-			{Name: "function_name", ID: 1, Type: *types.String},
-			{Name: "argument_types", ID: 2, Type: *types.IntArray},
-			{Name: "return_type", ID: 3, Type: *types.IntArray},
-			{Name: "types_length", ID: 4, Type: *types.IntArray},
-			{Name: "function_body", ID: 5, Type: *types.String},
-			{Name: "function_type", ID: 6, Type: *types.Int},
-			{Name: "language", ID: 7, Type: *types.String},
-			{Name: "db_name", ID: 8, Type: *types.String},
-			{Name: "creator", ID: 9, Type: *types.String},
-			{Name: "create_time", ID: 10, Type: *types.Timestamp},
-			{Name: "version", ID: 11, Type: *types.String},
-			{Name: "comments", ID: 12, Type: *types.String},
-		},
-		NextColumnID: 13,
-		Families: []ColumnFamilyDescriptor{
-			{Name: "primary", ID: 0, ColumnNames: []string{"function_name"}, ColumnIDs: []ColumnID{1}},
-			{Name: "fam_2_id", ID: 1, ColumnNames: []string{"argument_types", "return_type", "types_length", "function_body", "function_type", "language", "db_name", "creator", "create_time", "version", "comments"}, ColumnIDs: []ColumnID{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
-		},
-		NextFamilyID:   2,
-		PrimaryIndex:   pk("function_name"),
-		NextIndexID:    2,
-		FormatVersion:  InterleavedFormatVersion,
-		NextMutationID: 1,
-	}
-
 	// AuditsTable is the descriptor for the audits table.
 	AuditsTable = TableDescriptor{
 		Name:                    "audits",
@@ -1794,6 +1779,63 @@ var (
 		FormatVersion:  InterleavedFormatVersion,
 		NextMutationID: 1,
 	}
+
+	// UDRTable is the descriptor for the proc_descriptor table.
+	UDRTable = TableDescriptor{
+		Name:                    "user_defined_routine",
+		ID:                      keys.UDRTableID,
+		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.UDRTableID]),
+		ParentID:                keys.SystemDatabaseID,
+		UnexposedParentSchemaID: keys.PublicSchemaID,
+		Version:                 1,
+		Columns: []ColumnDescriptor{
+			{Name: "name", ID: 1, Type: *types.String},
+			{Name: "db_id", ID: 2, Type: *types.Int},
+			{Name: "schema_id", ID: 3, Type: *types.Int},
+			{Name: "descriptor", ID: 4, Type: *types.Bytes, Nullable: true},
+			{Name: "id", ID: 5, Type: *types.Int},
+			{Name: "routine_type", ID: 6, Type: *types.Int},
+			{Name: "creator", ID: 7, Type: *types.String},
+			{Name: "create_time", ID: 8, Type: *types.Timestamp},
+			{Name: "modification_time", ID: 9, Type: *types.Timestamp},
+			{Name: "version", ID: 10, Type: *types.Int},
+			{Name: "enabled", ID: 11, Type: *types.Bool},
+			{Name: "ext", ID: 12, Type: *types.Bytes, Nullable: true},
+		},
+		NextColumnID: 13,
+		Families: []ColumnFamilyDescriptor{
+			// The id of the first col fam is hardcoded in keys.MakeDescMetadataKey().
+			{Name: "primary", ID: 0, ColumnNames: []string{"db_id", "schema_id", "name"}, ColumnIDs: []ColumnID{2, 3, 1}},
+			{Name: "others", ID: 1,
+				ColumnNames: []string{"descriptor", "id", "routine_type", "creator", "create_time", "modification_time", "version", "enabled", "ext"},
+				ColumnIDs:   []ColumnID{4, 5, 6, 7, 8, 9, 10, 11, 12}},
+		},
+		PrimaryIndex: IndexDescriptor{
+			Name:             "primary",
+			ID:               1,
+			Unique:           true,
+			ColumnNames:      []string{"db_id", "schema_id", "name"},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC, IndexDescriptor_ASC, IndexDescriptor_ASC},
+			ColumnIDs:        []ColumnID{2, 3, 1},
+			Version:          SecondaryIndexFamilyFormatVersion,
+		},
+		Indexes: []IndexDescriptor{
+			{
+				ColumnNames:      []string{"id"},
+				ID:               2,
+				Unique:           true,
+				ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+				ColumnIDs:        []ColumnID{5},
+				ExtraColumnIDs:   []ColumnID{2, 3, 1},
+				Version:          SecondaryIndexFamilyFormatVersion,
+				Name:             "id_idx",
+			},
+		},
+		NextFamilyID:   2,
+		NextIndexID:    3,
+		FormatVersion:  InterleavedFormatVersion,
+		NextMutationID: 1,
+	}
 )
 
 // Create a kv pair for the zone config for the given key and config value.
@@ -1820,6 +1862,7 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(keys.SystemDatabaseID, &DeprecatedNamespaceTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &NamespaceTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &DescriptorTable)
+	target.AddDescriptor(keys.SystemDatabaseID, &UDRTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &UsersTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &ZonesTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &SettingsTable)
@@ -1857,7 +1900,6 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(keys.SystemDatabaseID, &KWDBReplicationInfoTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &AuditsTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &BoBlackListTable)
-	target.AddDescriptor(keys.SystemDatabaseID, &DefinedFunctionTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &KWDBTsTableTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &ScheduledJobsTable)
 }

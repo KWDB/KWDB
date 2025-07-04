@@ -161,7 +161,10 @@ class FieldFuncCountWindow : public FieldFunc {
 
   k_int64 ValInt() override;
   Field *field_to_copy() override { return new FieldFuncCountWindow(*this); }
-
+  void reset() {
+    // change ptag, need to reset current_count
+    current_count_ = 0;
+  }
   k_int32 *GetCurrentCount() { return &current_count_; }
   k_int32 GetParams(k_int32 *count_val, k_int32 *sliding_val) {
     *count_val = count_val_;
@@ -176,6 +179,62 @@ class FieldFuncCountWindow : public FieldFunc {
   k_int32 current_count_{0};
   k_int32 group_id_{0};
   bool    is_sliding_{false};
+};
+
+class FieldFuncTimeWindowStart : public FieldFunc {
+ public:
+  // TIME_WINDOW_START(ts)
+  explicit FieldFuncTimeWindowStart(Field *a) : FieldFunc(a) {
+    type_ = FIELD_FUNC;
+    sql_type_ = a->get_sql_type();
+    if (a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_MICRO ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_NANO) {
+      storage_type_ = roachpb::DataType::TIMESTAMPTZ;
+    } else {
+      storage_type_ = roachpb::DataType::TIMESTAMP;
+    }
+    storage_len_ = a->get_storage_length();
+    set_allow_null(false);
+  }
+
+  k_int64 ValInt() override { return val_; }
+  enum Functype functype() override { return WINDOW_GROUP_FUNC; }
+
+  Field *field_to_copy() override {
+    return new FieldFuncTimeWindowStart(*this);
+  }
+
+ public:
+  k_int64 val_{0};
+};
+
+
+class FieldFuncTimeWindowEnd : public FieldFunc {
+ public:
+  // TIME_WINDOW_END(ts)
+  explicit FieldFuncTimeWindowEnd(Field *a) : FieldFunc(a) {
+    type_ = FIELD_FUNC;
+    sql_type_ = a->get_sql_type();
+    if (a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_MICRO ||
+        a->get_storage_type() == roachpb::DataType::TIMESTAMPTZ_NANO) {
+      storage_type_ = roachpb::DataType::TIMESTAMPTZ;
+    } else {
+      storage_type_ = roachpb::DataType::TIMESTAMP;
+    }
+    storage_len_ = a->get_storage_length();
+    set_allow_null(false);
+  }
+
+  k_int64 ValInt() override { return val_; }
+
+  enum Functype functype() override { return WINDOW_GROUP_FUNC; }
+
+  Field *field_to_copy() override { return new FieldFuncTimeWindowEnd(*this); }
+
+ public:
+  k_int64 val_{0};
 };
 
 class FieldFuncTimeWindow : public FieldFunc {

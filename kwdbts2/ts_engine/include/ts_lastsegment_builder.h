@@ -19,12 +19,13 @@
 #include "libkwdbts2.h"
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_payload.h"
 
 namespace kwdbts {
 class TsLastSegmentBuilder {
-  std::unique_ptr<TsFile> last_segment_;
+  std::unique_ptr<TsAppendOnlyFile> last_segment_;
 
   struct BlockInfo;
   class MetricBlockBuilder;  // Helper for build DataBlock
@@ -48,15 +49,26 @@ class TsLastSegmentBuilder {
 
   size_t nblock_ = 0;
   struct EntityPayload {
-    TS_LSN seq_no;
+    TS_LSN lsn;
     TSEntityID entity_id;
     TSSlice metric;
+
+    inline bool IsSameEntityAndTs(std::unique_ptr<TsRawPayloadRowParser>& parser, const EntityPayload& rhs) const {
+      timestamp64 ts_lhs = parser->GetTimestamp(metric);
+      timestamp64 ts_rhs = parser->GetTimestamp(rhs.metric);
+      return entity_id == rhs.entity_id && ts_lhs == ts_rhs;
+    }
   };
   struct EntityColData {
-    TS_LSN seq_no;
+    TS_LSN lsn;
     TSEntityID entity_id;
     std::vector<TSSlice> col_data;
     std::vector<DataFlags> data_flags;
+    inline bool IsSameEntityAndTs(const EntityColData& rhs) const {
+      timestamp64 ts_lhs = DecodeFixed64(col_data[0].data);
+      timestamp64 ts_rhs = DecodeFixed64(rhs.col_data[0].data);
+      return entity_id == rhs.entity_id && ts_lhs == ts_rhs;
+    }
   };
 
   struct PayloadBuffer {
@@ -71,7 +83,8 @@ class TsLastSegmentBuilder {
     bool Compare(const EntityPayload& lhs, const EntityPayload& rhs) const {
       auto ts_lhs = parser->GetTimestamp(lhs.metric);
       auto ts_rhs = parser->GetTimestamp(rhs.metric);
-      return lhs.entity_id < rhs.entity_id || (lhs.entity_id == rhs.entity_id && ts_lhs < ts_rhs);
+      return lhs.entity_id < rhs.entity_id || (lhs.entity_id == rhs.entity_id && ts_lhs < ts_rhs) ||
+             (lhs.entity_id == rhs.entity_id && ts_lhs == ts_rhs && lhs.lsn < rhs.lsn);
     }
     void push_back(const EntityPayload& v) {
       assert(buffer.empty() || buffer.back().entity_id <= v.entity_id);
@@ -125,7 +138,7 @@ class TsLastSegmentBuilder {
   KStatus FlushColDataBuffer();
 
  public:
-  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsFile>&& last_segment,
+  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsAppendOnlyFile>&& last_segment,
                        uint32_t file_number)
       : last_segment_(std::move(last_segment)),
         data_block_builder_(std::make_unique<MetricBlockBuilder>(schema_mgr)),
@@ -193,7 +206,7 @@ class TsLastSegmentBuilder::InfoHandle {
 
  public:
   size_t RecordBlock(size_t block_length, const BlockInfo& info);
-  KStatus WriteInfo(TsFile*);
+  KStatus WriteInfo(TsAppendOnlyFile*);
 };
 
 class TsLastSegmentBuilder::IndexHandle {
@@ -205,7 +218,7 @@ class TsLastSegmentBuilder::IndexHandle {
  public:
   void RecordBlockInfo(size_t info_length, const BlockInfo& info);
   void ApplyInfoBlockOffset(size_t offset);
-  KStatus WriteIndex(TsFile*);
+  KStatus WriteIndex(TsAppendOnlyFile*);
 };
 class TsLastSegmentBuilder::MetricBlockBuilder {
  private:
@@ -283,6 +296,12 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   void Reserve(size_t nrow) {
     data_buffer_.reserve(nrow * dsize_);
     bitmap_.Reset(has_bitmap_ ? nrow : 0);
+  }
+  void Truncate() {
+    if (bitmap_.GetCount() != row_cnt_) {
+      data_buffer_.resize(row_cnt_ * dsize_);
+      bitmap_.Truncate(row_cnt_);
+    }
   }
   TSSlice GetData() { return TSSlice{data_buffer_.data(), data_buffer_.size()}; }
 

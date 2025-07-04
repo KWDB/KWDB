@@ -27,11 +27,11 @@ namespace kwdbts {
 
 class TsRawPayloadRowParser {
  private:
-  const std::vector<AttributeInfo>& schema_;
+  const std::vector<AttributeInfo> schema_;
   std::vector<int> col_offset_;
 
  public:
-  explicit TsRawPayloadRowParser(const std::vector<AttributeInfo>& data_schema);
+  explicit TsRawPayloadRowParser(std::vector<AttributeInfo> data_schema);
   ~TsRawPayloadRowParser() {}
 
   bool IsColNull(const TSSlice& row_data, int col_id) {
@@ -153,14 +153,18 @@ class TsRawPayload {
     return row_data_[row];
   }
 
-  TSSlice GetData() const {
-    auto tmp = GetTags();
-    tmp.data += tmp.len;
-    assert(tmp.data - payload_.data + 4 < payload_.len);
-    tmp.len = *reinterpret_cast<const uint32_t *>(tmp.data);
-    tmp.data += sizeof(uint32_t);
-    assert(tmp.len <= payload_.len);
-    return tmp;
+  TSSlice GetData() {
+    if (GetRowType() != TAG_ONLY) {
+      auto tmp = GetTags();
+      tmp.data += tmp.len;
+      assert(tmp.data - payload_.data + 4 < payload_.len);
+      tmp.len = *reinterpret_cast<const uint32_t *>(tmp.data);
+      tmp.data += sizeof(uint32_t);
+      assert(tmp.len <= payload_.len);
+      return tmp;
+    } else {
+      return {nullptr, 0};
+    }
   }
   TSSlice GetPayload() {
     return payload_;

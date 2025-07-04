@@ -348,6 +348,12 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 	case *memo.TSDeleteExpr:
 		ep, err = b.buildTSDelete(t)
 
+	case *memo.CallProcedureExpr:
+		ep, err = b.buildCallProcedure(t)
+
+	case *memo.CreateProcedureExpr:
+		ep, err = b.buildCreateProcedure(t)
+
 	case *memo.CreateTableExpr:
 		ep, err = b.buildCreateTable(t)
 
@@ -1178,7 +1184,6 @@ func (b *Builder) buildSelect(sel *memo.SelectExpr) (execPlan, bool, error) {
 		}
 
 		// construct leave filter node
-		b.factory.MakeTSSpans(&leaveFilter, input.root, b.mem)
 		filter, err = b.buildScalar(&ctx, &leaveFilter)
 		if err != nil {
 			return execPlan{}, false, err
@@ -1628,7 +1633,7 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 
 		eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
 		eb.disableTelemetry = true
-		plan, err := eb.Build()
+		plan, err := eb.Build(true)
 		if err != nil {
 			if errors.IsAssertionFailure(err) {
 				// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
@@ -2162,7 +2167,7 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 	private := groupBy.Private().(*memo.GroupingPrivate)
 
 	// case: outside-in use cbo ande agg can execute in ts engine.
-	if opt.CheckOptMode(opt.TSQueryOptMode.Get(&b.evalCtx.Settings.SV), opt.OutsideInUseCBO) && private.CanApplyOutsideIn {
+	if opt.CheckOptMode(opt.TSQueryOptMode.Get(&b.evalCtx.Settings.SV), opt.OutsideInUseCBO) && private.OptFlags.CanApplyOutsideIn() {
 		blj = b.factory.UpdateGroupInput(&input.root)
 	}
 
@@ -2185,6 +2190,14 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 		}
 		ep.outputCols.Set(int(aggregations[i].Col), outColIndex)
 		outColIndex++
+		if aggregations[i].Agg.Op() == opt.LastOp || aggregations[i].Agg.Op() == opt.FirstOp {
+			switch t := aggregations[i].Agg.(type) {
+			case *memo.FirstExpr:
+				aggInfos[i].IsExend = t.IsExtend
+			case *memo.LastExpr:
+				aggInfos[i].IsExend = t.IsExtend
+			}
+		}
 		// When it comes to ImputationOp,
 		// the subsequent plan will extract the aggregation function in the Imputation as the output column,
 		// so the output column of the subsequent aggregation function should be skipped by+2.
@@ -2913,7 +2926,7 @@ func (b *Builder) buildRecursiveCTE(rec *memo.RecursiveCTEExpr) (execPlan, error
 		innerBld := *innerBldTemplate
 		innerBld.addBuiltWithExpr(rec.WithID, initial.outputCols, bufferRef)
 		var plan execPlan
-		plan, err1 = innerBld.build(rec.Recursive)
+		plan, err1 = innerBld.build(rec.Recursive, true)
 		if err1 != nil {
 			return nil, err1
 		}

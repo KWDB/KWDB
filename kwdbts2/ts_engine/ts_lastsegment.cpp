@@ -29,6 +29,7 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
+#include "mmap/mmap_entity_block_meta.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"
@@ -36,9 +37,7 @@
 #include "ts_compressor.h"
 #include "ts_compressor_impl.h"
 #include "ts_io.h"
-#include "ts_lastsegment_manager.h"
 #include "ts_segment.h"
-#include "utils/big_table_utils.h"
 namespace kwdbts {
 
 int TsLastSegment::kNRowPerBlock = 4096;
@@ -58,7 +57,7 @@ static void ParseBlockInfo(TSSlice data, TsLastSegmentBlockInfo* info) {
   assert(data.len == 0);
 }
 
-static KStatus LoadBlockInfo(TsFile* file, const TsLastSegmentBlockIndex& index,
+static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockIndex& index,
                              TsLastSegmentBlockInfo* info) {
   assert(info != nullptr);
   TSSlice result;
@@ -71,7 +70,7 @@ static KStatus LoadBlockInfo(TsFile* file, const TsLastSegmentBlockIndex& index,
   return SUCCESS;
 }
 
-static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
+static KStatus ReadColumnBitmap(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                 std::unique_ptr<TsBitmap>* bitmap) {
   size_t offset = info.block_offset + info.col_infos[col_id].offset;
   size_t len = info.col_infos[col_id].bitmap_len;
@@ -84,12 +83,13 @@ static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info
   }
 
   bitmap->reset();
+  char* ptr = result.data;
   if (has_bitmap) {
-    BitmapCompAlg alg = static_cast<BitmapCompAlg>(buf[0]);
+    BitmapCompAlg alg = static_cast<BitmapCompAlg>(ptr[0]);
     switch (alg) {
       case BitmapCompAlg::kPlain: {
         size_t len = info.col_infos[col_id].bitmap_len - 1;
-        *bitmap = std::make_unique<TsBitmap>(TSSlice{buf.get() + 1, len}, info.nrow);
+        *bitmap = std::make_unique<TsBitmap>(TSSlice{ptr + 1, len}, info.nrow);
         break;
       }
       case BitmapCompAlg::kCompressed:
@@ -101,16 +101,20 @@ static KStatus ReadColumnBitmap(TsFile* file, const TsLastSegmentBlockInfo& info
   return SUCCESS;
 }
 
-static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info, int col_id,
+static KStatus ReadColumnBlock(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info, int col_id,
                                std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {
   bitmap->reset();
-  ReadColumnBitmap(file, info, col_id, bitmap);
+  auto s = ReadColumnBitmap(file, info, col_id, bitmap);
+  if (s == FAIL) {
+    LOG_ERROR("cannot read column bitmap");
+    return s;
+  }
   size_t offset = info.block_offset + info.col_infos[col_id].offset;
   offset += info.col_infos[col_id].bitmap_len;
   size_t len = info.col_infos[col_id].data_len;
   TSSlice result;
   auto buf = std::make_unique<char[]>(len);
-  auto s = file->Read(offset, len, &result, buf.get());
+  s = file->Read(offset, len, &result, buf.get());
   if (s == FAIL) {
     return FAIL;
   }
@@ -118,10 +122,13 @@ static KStatus ReadColumnBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
   // Metric
   const auto& mgr = CompressorManager::GetInstance();
   bool ok = mgr.DecompressData(result, bitmap->get(), info.nrow, col_data);
+  if (!ok) {
+    LOG_ERROR("cannot decompress data");
+  }
   return ok ? SUCCESS : FAIL;
 }
 
-static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info,
+static KStatus ReadVarcharBlock(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info,
                                 std::string* out) {
   bool has_varchar = info.var_offset != 0;
   if (!has_varchar) {
@@ -135,7 +142,8 @@ static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info
 
   assert(len > 0);
   file->Read(offset, len, &result, buf.get());
-  GenCompAlg type = static_cast<GenCompAlg>(buf[0]);
+  char *ptr = result.data;
+  GenCompAlg type = static_cast<GenCompAlg>(ptr[0]);
   RemovePrefix(&result, 1);
   int ok = true;
   switch (type) {
@@ -157,109 +165,18 @@ static KStatus ReadVarcharBlock(TsFile* file, const TsLastSegmentBlockInfo& info
 KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
   TSSlice result;
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
-  file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
+  auto s =
+      file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
+  if (s == FAIL) {
+    return s;
+  }
+  // important, Read function may not fill the buffer;
+  *footer = *reinterpret_cast<TsLastSegmentFooter*>(result.data);
   if (result.len != sizeof(TsLastSegmentFooter) || footer->magic_number != FOOTER_MAGIC) {
     LOG_ERROR("last segment[%s] GetFooter failed.", file_->GetFilePath().c_str());
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
-}
-
-std::string TsLastSegmentManager::LastSegmentFileName(uint32_t file_number) const {
-  char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "last.ver-%012u", file_number);
-  auto filename = dir_path_ / buffer;
-  return filename;
-}
-
-KStatus TsLastSegmentManager::NewLastSegmentFile(std::unique_ptr<TsFile>* last_segment,
-                                                 uint32_t* file_number) {
-  *file_number = current_file_number_.fetch_add(1, std::memory_order_relaxed);
-  auto filename = LastSegmentFileName(*file_number);
-  *last_segment = std::make_unique<TsMMapFile>(filename, false /*read_only*/);
-  return KStatus::SUCCESS;
-}
-
-KStatus TsLastSegmentManager::OpenLastSegmentFile(uint32_t file_number,
-                                                  std::shared_ptr<TsLastSegment>* lastsegment) {
-  // 1. find from cache.
-  {
-    std::shared_lock lk{s_mutex_};
-    auto it = last_segments_.find(file_number);
-    if (it != last_segments_.end()) {
-      // found, assign and return
-      *lastsegment = it->second;
-      return SUCCESS;
-    }
-  }
-
-  // 2. open from disk.
-  auto file = TsLastSegment::Create(file_number, LastSegmentFileName(file_number));
-  auto s = file->Open();
-  if (s == FAIL) {
-    LOG_ERROR("can not open file %s", LastSegmentFileName(file_number).c_str());
-    return FAIL;
-  }
-  {
-    std::unique_lock lk{s_mutex_};
-    // find again before insert
-    auto it = last_segments_.find(file_number);
-    if (it != last_segments_.end()) {
-      *lastsegment = it->second;
-      return SUCCESS;
-    }
-
-    // now we can really insert it to cache
-    *lastsegment = file;
-    auto [iter, ok] = last_segments_.insert_or_assign(file_number, std::move(file));
-    assert(ok);
-  }
-  n_lastsegment_.fetch_add(1, std::memory_order_relaxed);
-  return SUCCESS;
-}
-
-// TODO(zzr) get last segments from VersionManager, this method must be atomic
-void TsLastSegmentManager::GetCompactLastSegments(
-    std::vector<std::shared_ptr<TsLastSegment>>& result) {
-  {
-    std::shared_lock lk{s_mutex_};
-    size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
-    result.reserve(compact_num);
-    auto it = last_segments_.begin();
-    for (int i = 0; i < compact_num; ++i, ++it) {
-      result.push_back(it->second);
-    }
-  }
-}
-
-std::vector<std::shared_ptr<TsLastSegment>> TsLastSegmentManager::GetAllLastSegments() const {
-  std::shared_lock lk{s_mutex_};
-  std::vector<std::shared_ptr<TsLastSegment>> result;
-  result.reserve(last_segments_.size());
-  for (auto i : last_segments_) {
-    result.push_back(i.second);
-  }
-  return result;
-}
-
-bool TsLastSegmentManager::NeedCompact() {
-  return n_lastsegment_.load(std::memory_order_relaxed) > EngineOptions::max_last_segment_num;
-}
-
-void TsLastSegmentManager::ClearLastSegments(uint32_t ver) {
-  {
-    std::unique_lock lk{s_mutex_};
-    for (auto it = last_segments_.begin(); it != last_segments_.end();) {
-      assert(it->first == it->second->GetVersion());
-      if (it->second->GetVersion() <= ver) {
-        it->second->MarkDelete();
-        it = last_segments_.erase(it);
-        n_lastsegment_.fetch_sub(1, std::memory_order_relaxed);
-      } else {
-        ++it;
-      }
-    }
-  }
 }
 
 KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indices) {
@@ -448,13 +365,28 @@ class TsLastBlock : public TsBlock {
   timestamp64 GetTS(int row_num) override {
     assert(block_info_.ncol > 2);
     auto ts = GetTimestamps();
+    if (ts == nullptr) {
+      return INVALID_TS;
+    }
     return ts[row_num];
   }
 
   uint64_t* GetLSNAddr(int row_num) override {
     assert(block_info_.ncol > 2);
     auto seq_nos = GetSeqNos();
+    if (seq_nos == nullptr) {
+      LOG_ERROR("cannot get lsn addr");
+      return nullptr;
+    }
     return const_cast<uint64_t*>(&seq_nos[row_num]);
+  }
+
+  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
+  }
+
+  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
+    return KStatus::SUCCESS;
   }
 
   int GetBlockID() const { return block_id_; }
@@ -503,6 +435,7 @@ class TsLastBlock : public TsBlock {
       auto s =
           ReadColumnBlock(lastsegment_->file_.get(), block_info_, actual_colid, &data, &bitmap);
       if (s == FAIL) {
+        LOG_ERROR("cannot read column block %d", actual_colid);
         return FAIL;
       }
       column_cache_->PutData(actual_colid, std::move(data));
@@ -524,21 +457,33 @@ class TsLastBlock : public TsBlock {
     return SUCCESS;
   }
   const TSEntityID* GetEntities() {
-    LoadAllDataToCache(0);
+    auto s = LoadAllDataToCache(0);
+    if (s == FAIL) {
+      LOG_ERROR("cannot load entitiy column");
+      return nullptr;
+    }
     const std::string& data = *column_cache_->GetColumnBlock(0)->data;
     const TSEntityID* entities = reinterpret_cast<const TSEntityID*>(data.data());
     return entities;
   }
 
   const uint64_t* GetSeqNos() {
-    LoadAllDataToCache(1);
+    auto s = LoadAllDataToCache(1);
+    if (s == FAIL) {
+      LOG_ERROR("cannot load lsn column");
+      return nullptr;
+    }
     const std::string& data = *column_cache_->GetColumnBlock(1)->data;
     const uint64_t* seq_nos = reinterpret_cast<const uint64_t*>(data.data());
     return seq_nos;
   }
 
   const timestamp64* GetTimestamps() {
-    LoadAllDataToCache(2);
+    auto s = LoadAllDataToCache(2);
+    if (s == FAIL) {
+      LOG_ERROR("cannot load timestamp column");
+      return nullptr;
+    }
     const std::string& data = *column_cache_->GetColumnBlock(2)->data;
     const timestamp64* ts = reinterpret_cast<const timestamp64*>(data.data());
     return ts;
@@ -584,14 +529,14 @@ int FindLowerBound(const Element_& target, const TSEntityID* entities, const tim
   return r;
 }
 
-KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
+KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     TsEngineSchemaManager* schema_mgr) {
   std::vector<TsLastSegmentBlockIndex> block_indices;
   auto s = GetAllBlockIndex(&block_indices);
   if (s == FAIL) {
     return FAIL;
   }
 
-  spans->clear();
   for (int idx = 0; idx < block_indices.size(); ++idx) {
     TsLastSegmentBlockInfo info;
     s = LoadBlockInfo(file_.get(), block_indices[idx], &info);
@@ -604,14 +549,26 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
     // split current block to several span;
     int prev_end = 0;
     auto entities = block->GetEntities();
+    if (entities == nullptr) {
+      LOG_ERROR("cannot load entity column");
+    }
     auto ts = block->GetTimestamps();
+    if (ts == nullptr) {
+      LOG_ERROR("cannot load timestamp column");
+    }
+    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = {nullptr};
+    s = schema_mgr->GetTableSchemaMgr(block->GetTableId(), tbl_schema_mgr);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("get table schema manager failed. table id: %lu", block->GetTableId());
+      return s;
+    }
     while (prev_end < info.nrow) {
       int start = prev_end;
       auto current_entity = entities[start];
       auto upper_bound =
           FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
-      spans->emplace_back(block->GetTableId(), block->GetTableVersion(), current_entity, block,
-                          start, upper_bound - start);
+      block_spans.emplace_back(
+          make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start, tbl_schema_mgr, 0));
       prev_end = upper_bound;
     }
   }
@@ -619,9 +576,14 @@ KStatus TsLastSegment::GetBlockSpans(std::list<TsBlockSpan>* spans) {
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<TsBlockSpan>* spans) {
+                                     std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                     uint32_t scan_version) {
+  if (!MayExistEntity(filter.entity_id)) {
+    return SUCCESS;
+  }
   // spans->clear();
-  if (filter.ts_spans_.empty()) {
+  if (filter.spans_.empty()) {
     return SUCCESS;
   }
   std::vector<TsLastSegmentBlockIndex> block_indices;
@@ -631,7 +593,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   }
 
   TSEntityID entity_id = filter.entity_id;
-  const std::vector<KwTsSpan>& ts_spans = filter.ts_spans_;
   int block_idx = 0;
   int span_idx = 0;
   for (; block_idx < block_indices.size(); ++block_idx) {
@@ -656,55 +617,52 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       // no need to read following blocks
       break;
     }
-    std::shared_ptr<TsLastBlock> block = nullptr;
-    while (span_idx < ts_spans.size()) {
-      const KwTsSpan& current_span = ts_spans[span_idx];
-      if (current_span.end < cur_block.min_ts) {
-        ++span_idx;
+    // todo(liangbo)  store lsn info.
+    if (!IsTsLsnSpanCrossSpans(filter.spans_, {cur_block.min_ts, cur_block.max_ts}, {0, UINT64_MAX})) {
+      continue;
+    }
+    // todo(zhangzirui)  code review.
+    TsLastSegmentBlockInfo info;
+    s = LoadBlockInfo(file_.get(), cur_block, &info);
+    if (s == FAIL) {
+      return FAIL;
+    }
+    auto block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx,
+                                          block_indices[block_idx], info);
+
+    auto row_num = block->GetRowNum();
+    auto ts = block->GetTimestamps();
+    auto lsn = block->GetSeqNos();
+    auto entities = block->GetEntities();
+    int start_idx = 0;
+    int end_idx = 0;
+    bool match_found = false;
+    for (size_t i = 0; i < row_num; i++) {
+      if (entities[i] > entity_id) {
+        end_idx = i;
+        break;
+      }
+      if (entities[i] != entity_id) {
         continue;
       }
-      if (current_span.begin > cur_block.max_ts) {
-        break;
-      }
-      if (block == nullptr) {
-        TsLastSegmentBlockInfo info;
-        s = LoadBlockInfo(file_.get(), cur_block, &info);
-        if (s == FAIL) {
-          return FAIL;
+      if (IsTsLsnInSpans(ts[i], lsn[i], filter.spans_)) {
+        if (!match_found) {
+          start_idx = i;
+          match_found = true;
         }
-        block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx,
-                                              block_indices[block_idx], info);
-      }
-      auto entities = block->GetEntities();
-      auto ts = block->GetTimestamps();
-      const TsLastSegmentBlockInfo& info = block->block_info_;
-      int start = FindLowerBound({entity_id, current_span.begin}, entities, ts, 0, info.nrow);
-
-      if (start >= info.nrow || entities[start] != entity_id) {
-        // The entity cannot be found within this block. At this stage, we already know that
-        // cur_block.max_entity_id >= entity_id >= cur_block.min_entity_id. If the entity with this
-        // entity_id is not present in the current block, it cannot be present in the subsequent
-        // block either. Otherwise, we would reach the conclusion that entity_id >=
-        // next_block.min_entity_id >= cur_block.max_entity_id >= entity_id. In other words,
-        // next_block.min_entity_id would be equal to cur_block.max_entity_id. Given that the
-        // minimum and maximum entity_ids definitely exist within their corresponding blocks, this
-        // would conflict with the previous conclusion. Therefore, if the entity cannot be found in
-        // the current block, we can simply terminate the search.
-        return SUCCESS;
-      }
-      int end = FindUpperBound({entity_id, current_span.end}, entities, ts, start, info.nrow);
-      if (end - start > 0) {
-        spans->emplace_back(block->GetTableId(), block->GetTableVersion(), entity_id, block, start,
-                            end - start);
-      }
-
-      if (end == info.nrow) {
-        // We reach the end of current block
-        break;
       } else {
-        // we reach the end of the span, just move to the next span
-        ++span_idx;
+        if (match_found) {
+          match_found = false;
+          block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx, i - start_idx,
+                                                            tbl_schema_mgr, scan_version));
+        }
       }
+    }
+    if (match_found) {
+      match_found = false;
+      block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
+                                end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
+                                tbl_schema_mgr, scan_version));
     }
   }
 

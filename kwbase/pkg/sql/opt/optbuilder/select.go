@@ -189,6 +189,11 @@ func (b *Builder) buildDataSource(
 		return outScope
 
 	case *tree.StatementSource:
+		if b.insideProcDef {
+			panic(unimplemented.New("Stored Procedures",
+				"statement source (square bracket syntax) within Stored Procedure"))
+		}
+
 		// This is the special '[ ... ]' syntax. We treat this as syntactic sugar
 		// for a top-level CTE, so it cannot refer to anything in the input scope.
 		// See #41078.
@@ -603,8 +608,11 @@ func (b *Builder) buildScan(
 
 		if b.trackViewDeps {
 			dep := opt.ViewDep{DataSource: tab}
-			for i := 0; i < colCount; i++ {
-				dep.ColumnOrdinals.Add(getOrdinal(i))
+			dep.ColumnIDToOrd = make(map[opt.ColumnID]int)
+			// We will track the ColumnID to Ord mapping so Ords can be added
+			// when a column is referenced.
+			for i, col := range outScope.cols {
+				dep.ColumnIDToOrd[col.id] = getOrdinal(i)
 			}
 			if private.Flags.ForceIndex {
 				dep.SpecificIndex = true
@@ -736,6 +744,9 @@ func (b *Builder) buildWithOrdinality(colName string, inScope *scope) (outScope 
 func (b *Builder) buildCTEs(with *tree.With, inScope *scope) (outScope *scope) {
 	if with == nil {
 		return inScope
+	}
+	if b.insideProcDef {
+		panic(unimplemented.New("Stored Procedures", "CTE usage inside a Stored Procedure"))
 	}
 
 	outScope = inScope.push()
@@ -1124,6 +1135,11 @@ func (b *Builder) buildSelectClause(
 		b.addInstanceTablePTag(sel)
 		b.InstanceTabNames = nil
 	}
+
+	if b.factory.Metadata().CheckSingleTsTable() {
+		fromScope.setAggExtendFlag(isSingleTsTable)
+	}
+
 	b.processWindowDefs(sel, fromScope)
 	b.buildWhere(sel.Where, fromScope)
 

@@ -30,6 +30,7 @@
 
 #include "data_type.h"
 #include "ee_field_common.h"
+#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
@@ -208,7 +209,7 @@ static inline const char *TypedDecodeVarint(const char *ptr, const char *limit, 
 
 template <class T>
 bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
-  if (count < 2) {
+  if (count <= 2) {
     return false;
   }
   assert(data.len == count * stride);
@@ -241,7 +242,11 @@ bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string 
 
 template <class T>
 bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
-  out->reserve(stride * count);
+  if (count <= 2) {
+    return false;
+  }
+  out->resize(stride * count);
+  T *outdata = reinterpret_cast<T *>(out->data());
   using utype = std::make_unsigned_t<T>;
   utype v;
   const char *limit = data.data + data.len;
@@ -250,7 +255,7 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
     return false;
   }
   T ts = DecodeZigZag(v);
-  TypedPutFixed(out, ts);
+  outdata[0] = ts;
 
   ptr = TypedDecodeVarint(ptr, limit, &v);
   if (ptr == nullptr) {
@@ -258,7 +263,7 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
   }
   T delta = DecodeZigZag(v);
   ts += delta;
-  TypedPutFixed(out, ts);
+  outdata[1] = ts;
   for (int i = 2; i < count; ++i) {
     ptr = TypedDecodeVarint(ptr, limit, &v);
     if (ptr == nullptr) {
@@ -267,7 +272,7 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
     T dod = DecodeZigZag(v);
     delta += dod;
     ts += delta;
-    TypedPutFixed(out, ts);
+    outdata[i] = ts;
   }
   return true;
 }
@@ -535,16 +540,18 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
   if (data.len % 8 != 0) {
     return false;
   }
-  out->reserve(sizeof(T) * count);
+  out->resize(sizeof(T) * count);
+  T *outdata = reinterpret_cast<T *>(out->data());
+  uint64_t idx = 0;
   const char *cursor = data.data;
-  while (cursor < data.data + data.len) {
+  while (cursor < data.data + data.len && idx < count) {
     uint64_t batch = *reinterpret_cast<const uint64_t *>(cursor);
     int selector = (batch) >> 60;
     batch &= (1ULL << 60) - 1;
     if (selector <= 1) {
       T val = Restore<T>(batch, 60);
       for (int i = 0; i < GROUPSIZE[selector]; ++i) {
-        out->append(reinterpret_cast<char *>(&val), sizeof(val));
+        outdata[idx++] = val;
       }
     } else {
       batch >>= 60 % GROUPSIZE[selector];
@@ -552,7 +559,7 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
       for (int i = 0; i < GROUPSIZE[selector]; ++i) {
         assert(shift >= 0);
         T val = Restore<T>(batch >> shift, ITEMWIDTH[selector]);
-        out->append(reinterpret_cast<char *>(&val), sizeof(val));
+        outdata[idx++] = val;
         shift -= ITEMWIDTH[selector];
       }
       assert(shift + ITEMWIDTH[selector] == 0);
@@ -727,9 +734,30 @@ bool CompressorManager::CompressData(TSSlice input, const TsBitmap *bitmap, uint
   return true;
 }
 
+bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
+                                        GenCompAlg alg) const {
+  assert(sizeof(alg) == sizeof(uint16_t));
+  output->clear();
+  PutFixed16(output, static_cast<uint16_t>(alg));
+  auto it = general_compressor_.find(alg);
+  if (it == general_compressor_.end()) {
+    // no compression
+    output->append(input.data, input.len);
+    return true;
+  }
+  std::string tmp;
+  bool ok = it->second->Compress(input, &tmp);
+  if (!ok) {
+    return false;
+  }
+  output->append(tmp);
+  return true;
+}
+
 bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
                                        std::string *output) const {
   if (input.len < 4) {
+    LOG_ERROR("Invalid input length, too short");
     return false;
   }
   uint16_t v;
@@ -738,6 +766,7 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, ui
   GetFixed16(&input, &v);
   GenCompAlg second = static_cast<GenCompAlg>(v);
   if (first >= TsCompAlg::TS_COMP_ALG_LAST || second >= GenCompAlg::GEN_COMP_ALG_LAST) {
+    LOG_ERROR("Invalid algorithm id");
     return false;
   }
   if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {
@@ -746,6 +775,29 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, ui
   }
   auto compressor = GetCompressor(first, second);
   return compressor.Decompress(input, bitmap, count, output);
+}
+
+bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) const {
+  if (input.len < 2) {
+    return false;
+  }
+  uint16_t v;
+  GetFixed16(&input, &v);
+  GenCompAlg alg = static_cast<GenCompAlg>(v);
+  if (alg >= GenCompAlg::GEN_COMP_ALG_LAST) {
+    return false;
+  }
+
+  if (alg == GenCompAlg::kPlain) {
+    output->assign(input.data, input.len);
+    return true;
+  }
+
+  auto it = general_compressor_.find(alg);
+  assert(it != general_compressor_.end());
+  std::string tmp;
+  output->clear();
+  return it->second->Decompress(input, output);
 }
 
 }  // namespace kwdbts

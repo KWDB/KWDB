@@ -126,11 +126,13 @@ func (p *planner) renameColumn(
 	if err != nil {
 		return false, err
 	}
+	typName := "column"
 	if isTag {
 		if !col.IsTagCol() {
 			return false, pgerror.Newf(pgcode.WrongObjectType,
 				"%q is not a tag", col.Name)
 		}
+		typName = "tag"
 	} else {
 		if col.IsTagCol() {
 			return false, pgerror.Newf(pgcode.WrongObjectType,
@@ -149,7 +151,7 @@ func (p *planner) renameColumn(
 		}
 		if found {
 			return false, p.dependentViewRenameError(
-				ctx, "column", oldName.String(), tableDesc.ParentID, tableRef.ID)
+				ctx, typName, oldName.String(), tableDesc.ParentID, tableRef.ID)
 		}
 	}
 	if *oldName == *newName {

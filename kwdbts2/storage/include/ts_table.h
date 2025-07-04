@@ -115,7 +115,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema, uint32_t ts_version = 1,
-                         uint64_t partition_interval = kwdbts::EngineOptions::iot_interval);
+                         uint64_t partition_interval = kwdbts::EngineOptions::iot_interval, uint64_t hash_num = 2000);
 
   /**
    * @brief Create an EntityGroup corresponding to Range
@@ -285,7 +285,7 @@ class TsTable {
   KStatus GetEntityIndexWithRowNum(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                   std::vector<std::pair<int, EntityResultIndex>> &entity_tag);
 
-  KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
+  virtual KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
 
   virtual KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                 const KwTsSpan& ts_span, uint64_t* volume);
@@ -377,8 +377,8 @@ class TsTable {
     */
   virtual KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                                     std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                    std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                                    TsIterator** iter, std::vector<timestamp64> ts_points,
+                                    std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                                    k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                                     bool reverse, bool sorted);
 
   virtual KStatus GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
@@ -387,8 +387,8 @@ class TsTable {
 
   virtual KStatus GetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                               std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                              std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                              TsIterator** iter, std::vector<timestamp64> ts_points,
+                              std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                              k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                               bool reverse, bool sorted, k_uint32 offset = 0, k_uint32 limit = 0);
 
   virtual KStatus GetUnorderedDataInfo(kwdbContext_p ctx, const KwTsSpan ts_span, UnorderedDataStats* stats);
@@ -403,8 +403,8 @@ class TsTable {
     */
   virtual KStatus GetIteratorInOrder(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
                               std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                              std::vector<Sumfunctype> scan_agg_types, k_uint32 table_version,
-                              TsIterator** iter, std::vector<timestamp64> ts_points,
+                              std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                              k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                               bool reverse, bool sorted);
 
   /**
@@ -439,6 +439,11 @@ class TsTable {
   GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
              const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
              uint32_t table_version);
+
+  virtual KStatus GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                         vector<std::pair<uint64_t, uint64_t>>* entity_ids) {
+    return KStatus::SUCCESS;
+  }
 
   /**
    * @brief Create an iterator TsStorageIterator for Tag tables
@@ -535,6 +540,8 @@ class TsTable {
     return entity_bt_manager_;
   }
 
+  virtual uint64_t GetHashNum();
+
   struct SubgroupEntities{
     uint64_t entity_group_id;
     uint32_t subgroup_id;
@@ -548,6 +555,7 @@ class TsTable {
   string db_path_;
   KTableKey table_id_;
   string tbl_sub_path_;
+  uint64_t hash_num_ = 0;
 
 //  MMapTagColumnTable* tag_bt_;
   MMapRootTableManager* entity_bt_manager_{nullptr};
@@ -564,9 +572,9 @@ class TsTable {
   virtual void constructEntityGroup(kwdbContext_p ctx,
                                     const RangeGroup& hash_range,
                                     const string& range_tbl_sub_path,
-                                    std::shared_ptr<TsEntityGroup>* entity_group) {
+                                    std::shared_ptr<TsEntityGroup>* entity_group, uint64_t hash_num) {
     auto t_range = std::make_shared<TsEntityGroup>(ctx, entity_bt_manager_, db_path_, table_id_,
-                                                   hash_range, range_tbl_sub_path);
+                                                   hash_range, range_tbl_sub_path, hash_num);
     *entity_group = std::move(t_range);
   }
 
@@ -577,8 +585,6 @@ class TsTable {
 
  public:
   KStatus GetLastRowEntity(EntityResultIndex& entity_id);
-  // TODO(lfl): 此hash算法和GO层一致，后续修改为此算法
-  static uint32_t GetConsistentHashId(const char* data, size_t length);
 
   static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
@@ -632,7 +638,7 @@ class TsEntityGroup {
   TsEntityGroup() = delete;
 
   explicit TsEntityGroup(kwdbContext_p ctx, MMapRootTableManager*& root_table_manager, const string& db_path,
-                         const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path);
+                         const KTableKey& table_id, const RangeGroup& range, const string& tbl_sub_path, uint64_t hash_num);
 
   virtual ~TsEntityGroup();
 
@@ -860,6 +866,7 @@ class TsEntityGroup {
                               DATATYPE ts_col_type,
                               std::vector<k_uint32> scan_cols,
                               std::vector<k_uint32> ts_scan_cols,
+                              std::vector<k_int32> ts_agg_extend_cols,
                               std::vector<Sumfunctype> scan_agg_types,
                               uint32_t table_version, TsStorageIterator** iter,
                               std::shared_ptr<TsEntityGroup> entity_group,
@@ -1073,6 +1080,7 @@ class TsEntityGroup {
   SubEntityGroupManager* ebt_manager_ = nullptr;
   uint32_t cur_subgroup_id_ = 0;
   TagTable* new_tag_bt_{nullptr};
+  uint64_t hash_num_;
 
   std::atomic_uint64_t optimistic_read_lsn_{0};
 

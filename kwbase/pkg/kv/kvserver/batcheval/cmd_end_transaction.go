@@ -42,6 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
@@ -792,7 +793,11 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 		return 0, errors.Errorf("Can not find TsEngine to compute ts range size.")
 	}
 	startKey, endKey := desc.StartKey, desc.EndKey
-	startTableID, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(startKey, true)
+	hashNum := desc.HashNum
+	if hashNum == 0 {
+		hashNum = api.HashParamV2
+	}
+	startTableID, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
 	if err != nil {
 		return 0, err
 	}
@@ -808,7 +813,7 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 		)
 		return rangeSize, err
 	}
-	_, EndHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(endKey, false)
+	_, EndHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 	if err != nil {
 		return 0, err
 	}

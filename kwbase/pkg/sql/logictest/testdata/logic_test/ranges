@@ -309,10 +309,10 @@ start_key                 start_pretty                   end_key                
 \xac                      /Table/36                      \xb2                      /Table/42                      system         statement_diagnostics            ·           {1}       1
 \xb2                      /Table/42                      \xb6                      /Table/46                      system         kwdb_replication_info            ·           {1}       1
 \xb6                      /Table/46                      \xb7                      /Table/47                      system         bo_black_list                    ·           {1}       1
-\xb7                      /Table/47                      \xbf                      /Table/55                      system         kwdb_ts_table                    ·           {1}       1
-\xbf                      /Table/55                      \xc0                      /Table/56                      system         user_defined_function            ·           {1}       1
+\xb7                      /Table/47                      \xc0                      /Table/56                      system         kwdb_ts_table                    ·           {1}       1
 \xc0                      /Table/56                      \xc1                      /Table/57                      system         eventlog                         ·           {1}       1
-\xc1                      /Table/57                      \xd689                    /Table/78/1                    system         scheduled_jobs                   ·           {1}       1
+\xc1                      /Table/57                      \xc2                      /Table/58                      system         scheduled_jobs                   ·           {1}       1
+\xc2                      /Table/58                      \xd689                    /Table/78/1                    system         user_defined_routine             ·           {1}       1
 \xd689                    /Table/78/1                    \xd68989                  /Table/78/1/1                  test           t                                ·           {1}       1
 \xd68989                  /Table/78/1/1                  \xd6898d89                /Table/78/1/5/1                test           t                                ·           {3,4}     3
 \xd6898d89                /Table/78/1/5/1                \xd6898d8a                /Table/78/1/5/2                test           t                                ·           {1,2,3}   1
@@ -370,10 +370,10 @@ start_key                 start_pretty                   end_key                
 \xac                      /Table/36                      \xb2                      /Table/42                      system         statement_diagnostics            ·           {1}       1
 \xb2                      /Table/42                      \xb6                      /Table/46                      system         kwdb_replication_info            ·           {1}       1
 \xb6                      /Table/46                      \xb7                      /Table/47                      system         bo_black_list                    ·           {1}       1
-\xb7                      /Table/47                      \xbf                      /Table/55                      system         kwdb_ts_table                    ·           {1}       1
-\xbf                      /Table/55                      \xc0                      /Table/56                      system         user_defined_function            ·           {1}       1
+\xb7                      /Table/47                      \xc0                      /Table/56                      system         kwdb_ts_table                    ·           {1}       1
 \xc0                      /Table/56                      \xc1                      /Table/57                      system         eventlog                         ·           {1}       1
-\xc1                      /Table/57                      \xd689                    /Table/78/1                    system         scheduled_jobs                   ·           {1}       1
+\xc1                      /Table/57                      \xc2                      /Table/58                      system         scheduled_jobs                   ·           {1}       1
+\xc2                      /Table/58                      \xd689                    /Table/78/1                    system         user_defined_routine             ·           {1}       1
 \xd689                    /Table/78/1                    \xd68989                  /Table/78/1/1                  test           t                                ·           {1}       1
 \xd68989                  /Table/78/1/1                  \xd6898d89                /Table/78/1/5/1                test           t                                ·           {3,4}     3
 \xd6898d89                /Table/78/1/5/1                \xd6898d8a                /Table/78/1/5/2                test           t                                ·           {1,2,3}   1

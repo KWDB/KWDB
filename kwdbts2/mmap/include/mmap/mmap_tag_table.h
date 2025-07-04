@@ -92,6 +92,7 @@ class TagTable {
   int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id);
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
+  int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
 
   /**
   * @brief Query tag through the index of the primary tag and normal tag.
@@ -156,15 +157,15 @@ class TagTable {
 		    const TSSlice& primary_tag);
   int InsertForRedo(uint32_t group_id, uint32_t entity_id,
 		    kwdbts::Payload &payload);
-  int DeleteForUndo(uint32_t group_id, uint32_t entity_id,
+  int DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
 		    const TSSlice& primary_tag, const TSSlice& tag_pack);
 
   int DeleteForRedo(uint32_t group_id, uint32_t entity_id,
 		    const TSSlice& primary_tag, TSSlice& tags);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
-  int UpdateForUndo(uint32_t group_id, uint32_t entity_id, const TSSlice& primary_tag,
-                    const TSSlice& old_tag);
+  int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
+                    const TSSlice& primary_tag, const TSSlice& old_tag);
 
   int UndoCreateHashIndex(uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version, ErrorInfo& err_info);
 

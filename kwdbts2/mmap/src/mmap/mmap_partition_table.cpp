@@ -1274,6 +1274,7 @@ void TsTimePartition::ScheduledCompress(timestamp64 compress_ts_p, uint32_t& com
         // Compress segment data
         LOG_INFO("MMapSegmentTable[%s] compress start", segment_tbl->GetPath().c_str());
         segment_tbl->setSegmentStatus(ImmuSegment);
+        segment_tbl->sync(MS_SYNC);
         bool ok = compress(db_path_, tbl_sub_path_, std::to_string(segment_tbl->segment_id()),
                            g_mk_squashfs_option.processors_scheduled, err_info);
         if (!ok) {
@@ -1722,7 +1723,12 @@ int TsTimePartition::RedoDelete(uint32_t entity_id, kwdbts::TS_LSN lsn,
   for (auto row_span : *rows) {
     // Retrieve the block item based on its ID
     BlockItem* block_item = GetBlockItem(row_span.blockitem_id);
-    for (int i = 0; i < 128; ++i) {
+    if (block_item == nullptr) {
+      LOG_ERROR("GetBlockItem error: block item is nullptr, entity id[%u], block id[%u]",
+                entity_id, row_span.blockitem_id)
+      continue;
+    }
+    for (int i = 0; i < BLOCK_ITEM_BITMAP_SIZE; ++i) {
       // Iterate through each bit in the delete flags
       if (row_span.delete_flags[i] == 0) {
         continue;
@@ -2850,6 +2856,8 @@ bool TsTimePartition::IsSegmentsBusy(const std::vector<BLOCK_ID>& segment_ids) {
 }
 
 KStatus TsTimePartition::Count() {
+  rdLock();
+  Defer defer{[&]() { unLock(); }};
   std::vector<uint32_t> entities = meta_manager_.getEntities();
   for (auto entity_id: entities) {
     TsHashLatch* entity_item_latch = GetEntityItemLatch();

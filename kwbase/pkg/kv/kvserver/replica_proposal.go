@@ -46,6 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
@@ -784,7 +785,11 @@ func (r *Replica) evaluateProposalTS(
 
 	calculateMS := true
 	if ms.TsPerRowSize == 0 {
-		tableID, _, _, err := sqlbase.DecodeTsRangeKey(r.startKey(), true)
+		hashNum := r.Desc().HashNum
+		if hashNum == 0 {
+			hashNum = api.HashParamV2
+		}
+		tableID, _, _, err := sqlbase.DecodeTsRangeKey(r.startKey(), true, hashNum)
 		if err != nil {
 			calculateMS = false
 		}

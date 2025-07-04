@@ -9,14 +9,16 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "ts_engine_schema_manager.h"
-
-#include <ts_hyperloglog.h>
+#include <iostream>
+#include <filesystem>
+#include <memory>
+#include <regex>
 
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "ts_table_schema_manager.h"
 #include "sys_utils.h"
+#include "ts_engine_schema_manager.h"
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
@@ -49,7 +51,6 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db
       return KStatus::SUCCESS;
     }
   }
-
   wrLock();
   Defer defer([&]() { unLock(); });
   auto it = table_schema_mgrs_.find(table_id);
@@ -151,6 +152,41 @@ KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID
     table_schema_mgrs_[tbl_id] = std::move(schema_mgr);
   }
   return KStatus::FAIL;
+}
+
+bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
+  auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
+  if (schema_mgr->IsSchemaDirsExist()) {
+    return true;
+  }
+  return false;
+}
+
+KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
+  // scan all directory.
+  std::error_code ec;
+  std::filesystem::directory_iterator dir_iter{root_path_, ec};
+  std::unordered_map<TSTableID, int> table_scan_times;
+  if (ec.value() != 0) {
+    LOG_ERROR("GetTableList failed, reason: %s", ec.message().c_str());
+    return KStatus::FAIL;
+  }
+  for (const auto& it : dir_iter) {
+    std::string fname = it.path().filename();
+    auto split_pos = fname.find("_");
+    if (split_pos == std::string::npos) {
+      continue;
+    }
+    TSTableID tbl_id = std::stol(fname.substr(split_pos + 1));
+    table_scan_times[tbl_id] += 1;
+  }
+  for (auto kv : table_scan_times) {
+    if (kv.second != 2) {
+      LOG_WARN("table[%lu] just has %d directory.", kv.first, kv.second);
+    }
+    table_ids->push_back(kv.first);
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {

@@ -279,7 +279,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
-    LOG_ERROR("Tag table version[%u] doesnot exist.", payload.GetTableVersion());
+    LOG_ERROR("Tag table id[%d] version[%u] doesnot exist.", this->m_table_id, payload.GetTableVersion());
     return -1;
   }
   TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;
@@ -348,6 +348,24 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 
 // update tag record
 int TagTable::UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
+  // 1. delete
+  TSSlice tmp_primary_tag = payload.GetPrimaryTag();
+  if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info) < 0) {
+    err_info.errmsg = "delete tag data failed";
+    LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
+    return err_info.errcode;
+  }
+
+  // 2. insert
+  if ((err_info.errcode = this->InsertTagRecord(payload, sub_group_id, entity_id)) < 0 ) {
+    err_info.errmsg = "insert tag data fail";
+    return err_info.errcode;
+  }
+  return 0;
+}
+
+// update tag record
+int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
   // 1. delete
   TSSlice tmp_primary_tag = payload.GetPrimaryTag();
   if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info) < 0) {
@@ -1689,7 +1707,7 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id,
 
 }
 
-int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id,
+int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
 		    const TSSlice& primary_tag, const TSSlice& tag_pack) {
     // 1. search primary tag
   auto ret = m_index_->get(primary_tag.data, primary_tag.len);
@@ -1755,7 +1773,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id,
     LOG_ERROR("primary tag's tag partition table [%u] does not exist.", tag_partition_version);
     return -1;
   }
-  uint32_t tag_hash_point = TsTable::GetConsistentHashId(primary_tag.data, primary_tag.len);
+  uint32_t tag_hash_point = GetConsistentHashId(primary_tag.data, primary_tag.len, hash_num);
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, tag_pack.data, tag_pack.len);
 
@@ -1923,8 +1941,8 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id,
   return InsertTagRecord(payload, group_id, entity_id);
 }
 
-int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, const TSSlice& primary_tag,
-                    const TSSlice& old_tag) {
+int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
+                    const TSSlice& primary_tag, const TSSlice& old_tag) {
   int rc = 0;
   ErrorInfo err_info;
   // 1. check
@@ -1949,7 +1967,7 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, const TSSlice
   if (rc < 0) {
     return rc;
   }
-  uint32_t tag_hash_point = TsTable::GetConsistentHashId(primary_tag.data, primary_tag.len);
+  uint32_t tag_hash_point = GetConsistentHashId(primary_tag.data, primary_tag.len, hash_num);
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, old_tag.data, old_tag.len);
   size_t row_no = 0;

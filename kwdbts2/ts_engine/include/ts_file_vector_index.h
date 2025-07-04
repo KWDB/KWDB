@@ -25,6 +25,7 @@ class FileWithIndex {
  public:
   virtual uint64_t AllocateAssigned(size_t size, uint8_t fill_number) = 0;
   virtual char* GetAddrForOffset(uint64_t offset, uint32_t reading_bytes) = 0;
+  virtual ~FileWithIndex() {}
 };
 
 /**
@@ -44,15 +45,23 @@ class VectorIndexForFile {
     uint64_t start_id;
     uint64_t end_id;
   };
-  FileWithIndex* file_;
-  uint64_t start_offset_;
+  FileWithIndex* file_{nullptr};
+  uint64_t* start_offset_{nullptr};
   std::vector<IndexLevelInfo> level_;
   std::mutex mutex_;
 
  public:
-  explicit VectorIndexForFile(FileWithIndex* file, uint64_t offset = INVALID_POSITION) :
-    file_(file), start_offset_(offset) {
+  VectorIndexForFile() {}
+
+  KStatus Init(FileWithIndex* file, uint64_t* offset) {
+    file_ = file;
+    start_offset_ = offset;
     initLevelInfo();
+    return KStatus::SUCCESS;
+  }
+
+  void Reset() {
+    *start_offset_ = INVALID_POSITION;
   }
 
   void initLevelInfo() {
@@ -99,24 +108,24 @@ class VectorIndexForFile {
   }
 
   T* GetIndexObject(uint32_t obj_idx, bool create_if_noexist) {
-    if (start_offset_ == INVALID_POSITION) {
+    if (*start_offset_ == INVALID_POSITION) {
       if (!create_if_noexist) {
         return nullptr;
       }
       mutex_.lock();
       Defer defer([&]() { mutex_.unlock(); });
-      if (start_offset_ == INVALID_POSITION) {
+      if (*start_offset_ == INVALID_POSITION) {
         auto offset = file_->AllocateAssigned(sizeof(uint64_t) * NUM_PER_INDEX_BLOCK, 0);
         if (offset == INVALID_POSITION) {
           LOG_ERROR("allocate space for node from file failed.[%lu]", sizeof(uint64_t) * NUM_PER_INDEX_BLOCK);
           return INVALID_POSITION;
         }
-        start_offset_ = offset;
+        *start_offset_ = offset;
       }
     }
     for (size_t i = 0; i < INDIRECT_INDEX_LEVEL_MAX; i++) {
       if (level_[i].end_id >= obj_idx) {
-        auto level_offset_in_file = start_offset_ + level_[i].offset_in_first_node;
+        auto level_offset_in_file = *start_offset_ + level_[i].offset_in_first_node;
         auto level_idx = obj_idx - level_[i].start_id;
         uint32_t num_per_position = pow(NUM_PER_INDEX_BLOCK, level_[i].level);
         char* next_level_node;

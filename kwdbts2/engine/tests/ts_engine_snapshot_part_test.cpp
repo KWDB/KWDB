@@ -94,7 +94,7 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshot) {
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter1;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter1, tbl_range, {}, false, false),KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;
@@ -119,15 +119,15 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshot) {
   free(snapshot_data.data);
   snapshot_data.data = nullptr;
   snapshot_data.len = 0;
+
   s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
   ASSERT_EQ(s, KStatus::SUCCESS);
   pl_header = SnapshotPayloadData::ParseData(snapshot_data);
   ASSERT_EQ(pl_header.sn, 2);
   ASSERT_EQ(pl_header.type, TsSnapshotDataType::PAYLOAD_COL_BASED_DATA);
   ASSERT_GT(snapshot_data.len, 10);
-  Payload pl_snapshot(data_schema, actual_cols, pl_header.data_part);
-  ASSERT_EQ(pl_snapshot.GetRowCount(), row_num);
-  CheckgenSomePayloadData(ctx_, &pl_snapshot, start_ts, data_schema);
+  Payload pl_snapshot1(data_schema, actual_cols, pl_header.data_part);
+  ASSERT_EQ(pl_snapshot1.GetRowCount(), 0);
 
   free(snapshot_data.data);
   snapshot_data.data = nullptr;
@@ -137,11 +137,25 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshot) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   pl_header = SnapshotPayloadData::ParseData(snapshot_data);
   ASSERT_EQ(pl_header.sn, 3);
+  ASSERT_EQ(pl_header.type, TsSnapshotDataType::PAYLOAD_COL_BASED_DATA);
+  ASSERT_GT(snapshot_data.len, 10);
+  Payload pl_snapshot2(data_schema, actual_cols, pl_header.data_part);
+  ASSERT_EQ(pl_snapshot2.GetRowCount(), row_num);
+  CheckgenSomePayloadData(ctx_, &pl_snapshot2, start_ts, data_schema);
+
+  free(snapshot_data.data);
+  snapshot_data.data = nullptr;
+  snapshot_data.len = 0;
+
+  s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  pl_header = SnapshotPayloadData::ParseData(snapshot_data);
+  ASSERT_EQ(pl_header.sn, 4);
   ASSERT_EQ(pl_header.type, TsSnapshotDataType::STORAGE_SCHEMA);
   free(snapshot_data.data);
   snapshot_data.data = nullptr;
   snapshot_data.len = 0;
-  
+
   s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(snapshot_data.len, 0);
@@ -172,7 +186,7 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshotWithPartitions) {
   s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
   ASSERT_EQ(s, KStatus::SUCCESS);
   k_uint32 p_len = 0;
-  for (size_t i = 0; i < partition_num; i++) {  
+  for (size_t i = 0; i < partition_num; i++) {
     char* data_value = GenSomePayloadData(ctx_, row_num, p_len, start_ts + i * iot_interval_ * 1000, &meta);
     TSSlice payload{data_value, p_len};
     s = tbl_range->PutData(ctx_, payload);
@@ -203,6 +217,10 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshotWithPartitions) {
     ts_table->GetDataSchemaExcludeDropped(ctx_, &data_schema);
     std::vector<uint32_t> actual_cols;
     Payload pl_snapshot(data_schema, actual_cols, p_data.data_part);
+    if (0 == pl_snapshot.GetRowCount()) {
+      free(snapshot_data.data);
+      continue;
+    }
     ASSERT_EQ(pl_snapshot.GetRowCount(), snapshot_payload_rows_num);
     CheckgenSomePayloadData(ctx_, &pl_snapshot, start_ts + times * iot_interval_ * 1000, data_schema);
     times++;
@@ -233,7 +251,7 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshotWithMuchRows) {
   s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
   ASSERT_EQ(s, KStatus::SUCCESS);
   k_uint32 p_len = 0;
-  for (size_t i = 0; i < batch_times; i++) {  
+  for (size_t i = 0; i < batch_times; i++) {
     char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts + i * batch_num * 10, &meta);
     TSSlice payload{data_value, p_len};
     s = tbl_range->PutData(ctx_, payload);
@@ -263,6 +281,10 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshotWithMuchRows) {
     ts_table->GetDataSchemaExcludeDropped(ctx_, &data_schema);
     std::vector<uint32_t> actual_cols;
     Payload pl_snapshot(data_schema, actual_cols, p_data.data_part);
+    if (0 == pl_snapshot.GetRowCount()) {
+      free(snapshot_data.data);
+      continue;
+    }
     ASSERT_EQ(pl_snapshot.GetRowCount(), std::min(left_rows, snapshot_payload_rows_num));
     CheckgenSomePayloadData(ctx_, &pl_snapshot, start_ts + (total_rows - left_rows) * 10, data_schema);
     free(snapshot_data.data);
@@ -322,6 +344,10 @@ TEST_F(TestEngineSnapshotTable, ConsumeSnapshotPayload) {
     ts_table->GetDataSchemaExcludeDropped(ctx_, &data_schema);
     std::vector<uint32_t> actual_cols;
     Payload pl_snapshot(data_schema, actual_cols, p_data.data_part);
+    if (0 == pl_snapshot.GetRowCount()) {
+      free(snapshot_data.data);
+      continue;
+    }
     ASSERT_EQ(pl_snapshot.GetRowCount(), std::min(left_rows, snapshot_payload_rows_num));
     CheckgenSomePayloadData(ctx_, &pl_snapshot, start_ts + (total_rows - left_rows) * 10, data_schema);
     free(snapshot_data.data);

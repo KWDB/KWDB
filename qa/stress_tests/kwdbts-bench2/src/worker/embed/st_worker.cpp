@@ -78,7 +78,7 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     } else {
       genPayloadData(tag_schema, data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
     }
-    
+
     KWDB_DURATION(_row_prepare_time);
   }
 
@@ -208,8 +208,8 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     EntityResultIndex e_idx{1, entity_index, 1};
     TsIterator* iter;
     ctx->ts_engine = st_inst_->GetTSEngine();
-    auto stat = tablev2->GetNormalIterator(ctx, {e_idx}, ts_spans, scan_cols, scan_agg_types, tbl_version, &iter, {}, false, false);
-    s = dump_zstatus("GetIterator", ctx, stat);
+    auto status = tablev2->GetNormalIterator(ctx, {e_idx}, ts_spans, scan_cols, {}, scan_agg_types, tbl_version, &iter, {}, false, false);
+    s = dump_zstatus("GetIterator", ctx, status);
     if (s.isNotOK()) {
       return s;
     }
@@ -218,8 +218,8 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     uint32_t count = 0;
     bool is_finished = false;
     do {
-      stat = iter->Next(&res, &count);
-      s = dump_zstatus("IteratorNext", ctx, stat);
+      status = iter->Next(&res, &count);
+      s = dump_zstatus("IteratorNext", ctx, status);
       if (s.isNotOK()) {
         return s;
       }
@@ -239,7 +239,7 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     vector<uint32_t> entity_ids = {entity_index};
     SubGroupID group_id = 1;
     TsStorageIterator* iter;
-    stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, ts_type, scan_cols, scan_cols, scan_agg_types, 1, &iter, tbl_range,
+    stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
                         {}, false, false);
     s = dump_zstatus("GetIterator", ctx, stat);
     if (s.isNotOK()) {

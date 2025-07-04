@@ -308,6 +308,8 @@ func (b *Builder) constructGroupBy(
 	ordering opt.Ordering,
 	timeBucketGapFillColID opt.ColumnID,
 	groupWindowID opt.ColumnID,
+	canApplyAggExtend bool,
+	aggExHelper *aggExtendHelper,
 ) memo.RelExpr {
 	aggs := make(memo.AggregationsExpr, 0, len(aggCols))
 
@@ -326,8 +328,19 @@ func (b *Builder) constructGroupBy(
 		}
 	}
 
-	private := memo.GroupingPrivate{GroupingCols: groupingColSet}
+	if canApplyAggExtend {
+		aggExHelper.extendColSet.ForEach(func(col opt.ColumnID) {
+			if aggExHelper.maxCount == 1 {
+				maxEx := b.factory.ConstructMaxExtend(b.factory.ConstructVariable(aggExHelper.minOrMaxColID), b.factory.ConstructVariable(col))
+				aggs = append(aggs, b.factory.ConstructAggregationsItem(maxEx, col))
+			} else if aggExHelper.minCount == 1 {
+				minEx := b.factory.ConstructMinExtend(b.factory.ConstructVariable(aggExHelper.minOrMaxColID), b.factory.ConstructVariable(col))
+				aggs = append(aggs, b.factory.ConstructAggregationsItem(minEx, col))
+			}
+		})
+	}
 
+	private := memo.GroupingPrivate{GroupingCols: groupingColSet}
 	// The ordering of the GROUP BY is inherited from the input. This ordering is
 	// only useful for intra-group ordering (for order-sensitive aggregations like
 	// ARRAY_AGG). So we add the grouping columns as optional columns.
@@ -569,12 +582,20 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 		g.aggInScope.copyOrdering(fromScope)
 	}
 
+	// construct projection cols.
+	b.dealTimeWindowWithFirstOrLast(fromScope, &aggCols)
+
 	// Construct the pre-projection, which renders the grouping columns and the
 	// aggregate arguments, as well as any additional order by columns.
-	b.constructProjectForScope(fromScope, g.aggInScope)
+	if fromScope.CanApplyAggExtend(&groupingColSet) {
+		// construct pre-projection when the SQL can apply agg extend.
+		g.aggInScope.expr = b.constructProjectInAggExtend(fromScope.expr, append(g.aggInScope.cols, g.aggInScope.extraCols...), fromScope.AggExHelper.extendColSet)
+	} else {
+		b.constructProjectForScope(fromScope, g.aggInScope)
+	}
 
 	g.aggOutScope.expr = b.constructGroupBy(g.aggInScope.expr, groupingColSet, aggCols,
-		g.aggInScope.ordering, timeBucketGapFillColID, groupWindowID)
+		g.aggInScope.ordering, timeBucketGapFillColID, groupWindowID, fromScope.CanApplyAggExtend(&groupingColSet), &fromScope.AggExHelper)
 	if len(aggFuncs) != 0 {
 		if g, ok := g.aggOutScope.expr.(*memo.ScalarGroupByExpr); ok {
 			g.GroupingPrivate.Func = aggFuncs
@@ -921,13 +942,20 @@ func (b *Builder) buildAggregateFunction(
 
 	for i, pexpr := range f.Exprs {
 		info.args[i] = b.buildAggArg(pexpr.(tree.TypedExpr), &info, tempScope, fromScope)
-		if f.Func.FunctionName() == Interpolate {
+		funcName := f.Func.FunctionName()
+		if funcName == Interpolate {
 			if c, ok := f.Exprs[i].(*scopeColumn); ok {
 				if v, ok := info.args[i].(*memo.VariableExpr); ok {
 					v.Typ = c.typ
 				}
 			}
 		}
+		if funcName == sqlbase.FirstAgg || funcName == sqlbase.LastAgg {
+			if i > 0 {
+				continue
+			}
+		}
+		fromScope.checkAggExtend(funcName, info.args[i])
 	}
 
 	// If we have a filter, add it to tempScope after all the arguments. We'll
@@ -1214,4 +1242,114 @@ func canUseConstOptimize(j int, scalar opt.ScalarExpr, funcName string) bool {
 		}
 	}
 	return false
+}
+
+// constructProjectionCol constructs the AST of "time_window_start" or "time_window_end",
+// constructs scopeColumn, and then add them to aggInScope.cols.
+// alias is the name of "time_window_start" or "time_window_end"
+// paramColName is the name of param of "time_window_start" or "time_window_end
+// aggCols are all aggs.
+// colSlice records the projection cols.
+func (b *Builder) constructProjectionCol(
+	fromScope *scope, alias, paramColName, op string, aggCols *[]scopeColumn,
+) {
+	// construct AST.
+	e := &tree.FuncExpr{Func: tree.WrapFunction(alias), Exprs: tree.Exprs{&tree.UnresolvedName{NumParts: 1, Parts: tree.NameParts{paramColName}}}}
+
+	// construct scopeColumn and memo function expr , then add it to metadata.
+	texpr := fromScope.resolveType(e, types.Any)
+	col := scopeColumn{
+		name: tree.Name(alias),
+		typ:  texpr.ResolvedType(),
+		expr: texpr,
+	}
+	if f, ok := texpr.(*tree.FuncExpr); ok {
+		def, err := f.Func.Resolve(b.semaCtx.SearchPath)
+		if err != nil {
+			panic(err)
+		}
+		args := make(memo.ScalarListExpr, 1)
+		args[0] = b.factory.ConstructVariable(1)
+
+		// the time accuracy of the function needs to be consistent with the column.
+		col.typ = args[0].DataType()
+
+		// Construct a private FuncOpDef that refers to a resolved function overload.
+		out := b.factory.ConstructFunction(args, &memo.FunctionPrivate{
+			Name:       def.Name,
+			Typ:        col.typ,
+			Properties: &def.FunctionProperties,
+			Overload:   f.ResolvedOverload(),
+		})
+		b.populateSynthesizedColumn(&col, out, fromScope.ScopeTSProp)
+	}
+
+	// change id of param of first or last agg
+	// eg: first(ts) -> first(time_window_start), last(ts) -> last(time_window_end)
+	for i := 0; i < len(*aggCols); i++ {
+		if (*aggCols)[i].name.String() == op {
+			switch op {
+			case sqlbase.LastAgg:
+				if last, ok := (*aggCols)[i].scalar.(*memo.LastExpr); ok {
+					if checkTimestampCol(b, last.Input) {
+						last.Input = b.factory.ConstructVariable(col.id)
+						last.IsExtend = true
+					}
+				}
+			case sqlbase.FirstAgg:
+				if first, ok := (*aggCols)[i].scalar.(*memo.FirstExpr); ok {
+					if checkTimestampCol(b, first.Input) {
+						first.Input = b.factory.ConstructVariable(col.id)
+						first.IsExtend = true
+					}
+				}
+			}
+
+		}
+	}
+	fromScope.groupby.aggInScope.cols = append(fromScope.groupby.aggInScope.cols, col)
+}
+
+// checkTimestampCol check if the expr e is timestamp col.
+func checkTimestampCol(b *Builder, e opt.ScalarExpr) bool {
+	if v, ok := e.(*memo.VariableExpr); ok {
+		// get table id base on logicl col id.
+		tbl := b.factory.Metadata().ColumnMeta(v.Col).Table
+		// get the id of first column of table.
+		if tbl.ColumnID(0) == v.Col {
+			return true
+		}
+	}
+	return false
+}
+
+// dealTimeWindowWithFirstOrLast constructs projection cols when the time_window() is
+// used with first(ts) or last(ts).
+// aggCols are all aggs.
+// colSlice records the projection cols.
+func (b *Builder) dealTimeWindowWithFirstOrLast(fromScope *scope, aggCols *[]scopeColumn) {
+	paramColName := b.factory.Memo().Metadata().ColumnMeta(1).Alias
+
+	// if exist time_window() and first(ts) or last(ts), need to add
+	// time_window_start() or time_window_end to projection, and then
+	// change id of param of first or last agg, more details in constructProjectionCol.
+	existTimeWindow := false
+	for key := range fromScope.groupby.groupStrs {
+		if strings.Contains(key, "time_window(") {
+			existTimeWindow = true
+		}
+	}
+
+	// construct projection cols and add them to fromScope.groupby.aggInScope.cols
+	// when use time_window() with first(ts) of last(ts).
+	if existTimeWindow {
+		if fromScope.checkAggExtendFlag(existFirstTS) {
+			fromScope.setAggExtendFlag(timeWindowWithFirstLast)
+			b.constructProjectionCol(fromScope, "time_window_start", paramColName, sqlbase.FirstAgg, aggCols)
+		}
+		if fromScope.checkAggExtendFlag(existLastTS) {
+			fromScope.setAggExtendFlag(timeWindowWithFirstLast)
+			b.constructProjectionCol(fromScope, "time_window_end", paramColName, sqlbase.LastAgg, aggCols)
+		}
+	}
 }

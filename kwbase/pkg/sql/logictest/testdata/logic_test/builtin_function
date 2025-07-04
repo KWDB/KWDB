@@ -2506,7 +2506,7 @@ NULL
 query T
 SELECT kwdb_internal.get_zone_config(kwdb_internal.get_namespace_id(0, 'root_test'))::string
 ----
-\x2805500158016000
+\x28055001580160006800
 
 query T
 SELECT kwdb_internal.get_zone_config(kwdb_internal.get_namespace_id(kwdb_internal.get_namespace_id(0, 'root_test'), 't'))::string
@@ -2556,7 +2556,7 @@ SELECT kwdb_internal.get_namespace_id(kwdb_internal.get_namespace_id(0, 'root_te
 query T
 SELECT kwdb_internal.get_zone_config(kwdb_internal.get_namespace_id(0, 'root_test'))::string
 ----
-\x2805500158016000
+\x28055001580160006800
 
 query T
 SELECT kwdb_internal.get_zone_config(kwdb_internal.get_namespace_id(kwdb_internal.get_namespace_id(0, 'root_test'), 't'))::string

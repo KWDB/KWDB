@@ -24,10 +24,9 @@
 #include "kwdb_type.h"
 #include "me_metadata.pb.h"
 #include "ee_pb_plan.pb.h"
+#include "ee_global.h"
 
-class BigTable;
 
-struct AttributeInfo;
 
 namespace kwdbts {
 
@@ -50,6 +49,7 @@ typedef std::unique_ptr<DataChunk> DataChunkPtr;
 struct ColumnInfo {
   k_uint32 storage_len;
   k_uint32 fixed_storage_len{0};
+  k_uint16 max_string_len{0};
   roachpb::DataType storage_type;
   KWDBTypeFamily return_type;
   bool is_string{false};
@@ -145,13 +145,13 @@ class DataContainer : public IChunk {
   /**
    * @brief Sort all rows in the container
    */
-  virtual void Sort() = 0;
+  virtual KStatus Sort() = 0;
 
   /**
    * @brief Read data in datachunk and append all rows into row container
    * @param[in] chunk datachunk unique_ptr
    */
-  virtual KStatus Append(DataChunk* chunk) = 0;
+  virtual KStatus Append(DataChunkPtr& chunk) = 0;
 
   /**
    * @brief Read all data from a datachunk queue and append into row container
@@ -159,10 +159,19 @@ class DataContainer : public IChunk {
    */
   virtual KStatus Append(std::queue<DataChunkPtr>& buffer) = 0;
 
+  virtual EEIteratorErrCode NextChunk(DataChunkPtr& data_chunk) {return EEIteratorErrCode::EE_ERROR;}
 
   void SetMaxOutputRows(k_uint32 limit) { max_output_rows_ = limit; }
 
+  void SetLimitOffset(k_uint32 limit, k_uint32 offset) {
+    limit_ = limit;
+    offset_ = offset;
+    max_output_rows_ = limit + offset;
+  }
+
   k_uint32 max_output_rows_{UINT32_MAX};
+  k_uint32 limit_{UINT32_MAX};
+  k_uint32 offset_{0};
 };
 
 struct ColumnOrderInfo {

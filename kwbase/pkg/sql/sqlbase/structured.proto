@@ -302,7 +302,11 @@ message PartitioningDescriptor {
     // Name is the partition name.
     optional string name = 1 [(gogoproto.nullable) = false];
     // HashPoints is the the HashPointPartition con
-    repeated int32 HashPoints = 2;
+    repeated int32 hash_points = 2;
+    // FromPoint is the lower bound of this hash partition.
+    optional int32 from_point = 3 [(gogoproto.nullable) = false];
+    // ToPoint is the upper bound of this hash partition.
+    optional int32 to_point = 4 [(gogoproto.nullable) = false];
   }
 
   // NumColumns is how large of a prefix of the columns in an index are used in
@@ -316,6 +320,7 @@ message PartitioningDescriptor {
   repeated List list = 2 [(gogoproto.nullable) = false];
   repeated Range range = 3 [(gogoproto.nullable) = false];
   repeated HashPoint hash_point = 4 [(gogoproto.nullable) = false];
+  optional bool is_hash = 5 [(gogoproto.nullable) = false];
 }
 
 // IndexDescriptor describes an index (primary or secondary).
@@ -605,6 +610,54 @@ message DescriptorMutation {
 
   // Indicates that this mutation is a rollback.
   optional bool rollback = 7 [(gogoproto.nullable) = false];
+}
+
+message FunctionDescriptor {
+  option (gogoproto.equal) = true;
+  // Needed for the descriptorProto interface.
+  option (gogoproto.goproto_getters) = true;
+
+  optional string name = 1 [(gogoproto.nullable) = false];
+  repeated uint32 argument_types = 2;
+  repeated uint32 return_type = 3;
+  repeated uint32 types_length = 4;
+  optional string function_body = 5 [(gogoproto.nullable) = false];
+  optional uint32 function_type = 6 [(gogoproto.nullable) = false];
+  optional string language = 7 [(gogoproto.nullable) = false];
+  optional string db_name = 8 [(gogoproto.nullable) = false];
+}
+
+message ProcedureDescriptor {
+  option (gogoproto.equal) = true;
+  // Needed for the descriptorProto interface.
+  option (gogoproto.goproto_getters) = true;
+
+  optional string name = 1 [(gogoproto.nullable) = false];
+  optional uint32 db_id = 2 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "DbID", (gogoproto.casttype) = "ID"];
+  optional uint32 schema_id = 3 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "SchemaID", (gogoproto.casttype) = "ID"];
+  optional uint32 id = 4 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "ID", (gogoproto.casttype) = "ID"];
+  repeated ProcParam  parameters = 5  [(gogoproto.nullable) = false];
+  optional string procBody = 6 [(gogoproto.nullable) = false];
+  repeated uint32 dependsOn = 7 [(gogoproto.customname) = "DependsOn",
+    (gogoproto.casttype) = "ID"];
+  optional string language = 8 [(gogoproto.nullable) = false];
+  optional PrivilegeDescriptor privileges = 9;
+}
+
+message ProcParam {
+  option (gogoproto.equal) = true;
+  enum ParamDirection {
+    // Input
+    InDirection = 0;
+    // Output
+    OutDirection = 1;
+  }
+  optional ParamDirection direction = 1 [(gogoproto.nullable) = false];
+  optional string name = 2 [(gogoproto.nullable) = false];
+  optional bytes type = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
 // A TableDescriptor represents a table or view and is stored in a
@@ -1084,6 +1137,7 @@ message TSTable {
   // next_ts_version is used to ensure that tsVersion are not reused.
   optional uint32 next_ts_version = 18 [(gogoproto.nullable) = false,
     (gogoproto.customname) = "NextTsVersion", (gogoproto.casttype) = "DescriptorVersion"];
+  optional uint64 hash_num = 19 [(gogoproto.nullable) = false];
 }
 
 // SchemaDescriptor represents a physical schema and is stored in a structured

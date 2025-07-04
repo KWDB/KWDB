@@ -120,7 +120,7 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   case WALMode::OFF:
     table = std::make_shared<TsTableImpl>(ctx, options_.db_path, table_id);
     break;
-  case WALMode::ON:
+  case WALMode::FLUSH:
   case WALMode::SYNC:
   {
     s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
@@ -176,7 +176,11 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   if (meta->ts_table().has_partition_interval()) {
     partition_interval = meta->ts_table().partition_interval();
   }
-  s = table->Create(ctx, metric_schema, ts_version, partition_interval);
+  uint64_t hash_num = 2000;
+  if (meta->ts_table().has_hash_num()) {
+    hash_num = meta->ts_table().hash_num();
+  }
+  s = table->Create(ctx, metric_schema, ts_version, partition_interval, hash_num);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -326,7 +330,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
         case WALMode::OFF:
           table = std::make_shared<TsTableImpl>(ctx, options_.db_path, table_id);
           break;
-        case WALMode::ON:
+        case WALMode::FLUSH:
         case WALMode::SYNC:
           table = std::make_shared<LoggedTsTable>(ctx, options_.db_path, table_id, &options_);
           break;
@@ -428,6 +432,7 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, 
   ts_table->set_ts_table_id(table_id);
   ts_table->set_ts_version(cur_table_version);
   ts_table->set_partition_interval(table->GetPartitionInterval());
+  ts_table->set_hash_num(table->GetHashNum());
 
   // Get table data schema.
   std::vector<AttributeInfo> data_schema;
@@ -1457,6 +1462,7 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey& table_id, ch
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
     err_msg = "Table does not exist";
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1474,11 +1480,14 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey& table_id, ch
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
   s = table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Add column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1491,6 +1500,7 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey& table_id, c
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1507,11 +1517,15 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey& table_id, c
   // Write Alter DDL into WAL, which type is DROP_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s == KStatus::FAIL) {
+    err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
   s = table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Drop column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1553,6 +1567,7 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1562,6 +1577,8 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   // Write Alter DDL into WAL, which type is ALTER_COLUMN_TYPE.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s == KStatus::FAIL) {
+    err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
@@ -1573,6 +1590,8 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   }
   s = table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1661,57 +1680,6 @@ KStatus TSEngineImpl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
   return KStatus::SUCCESS;
 }
 
-int AggCalculator::cmp(void* l, void* r) {
-  switch (type_) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
-    case DATATYPE::BINARY: {
-      k_int32 ret = memcmp(l, r, size_);
-      return ret;
-    }
-    case DATATYPE::INT16: {
-      k_int32 ret = (*(static_cast<k_int16*>(l))) - (*(static_cast<k_int16*>(r)));
-      return ret;
-    }
-    case DATATYPE::INT32:
-    case DATATYPE::TIMESTAMP: {
-      k_int64 diff = (*(static_cast<k_int32*>(l))) - (*(static_cast<k_int32*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::INT64:
-    case DATATYPE::TIMESTAMP64:
-    case DATATYPE::TIMESTAMP64_MICRO:
-    case DATATYPE::TIMESTAMP64_NANO: {
-      double diff = (*(static_cast<k_int64*>(l))) - (*(static_cast<k_int64*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::TIMESTAMP64_LSN:
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-    case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      double diff = (*(static_cast<TimeStamp64LSN*>(l))).ts64 - (*(static_cast<TimeStamp64LSN*>(r))).ts64;
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::FLOAT: {
-      double diff = (*(static_cast<float*>(l))) - (*(static_cast<float*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::DOUBLE: {
-      double diff = (*(static_cast<double*>(l))) - (*(static_cast<double*>(r)));
-      return diff >= 0 ? (diff > 0 ? 1 : 0) : -1;
-    }
-    case DATATYPE::STRING: {
-      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size_);
-      return ret;
-    }
-      break;
-    default:
-      break;
-  }
-  return false;
-}
-
 bool AggCalculator::isnull(size_t row) {
   if (!bitmap_) {
     return false;
@@ -1737,11 +1705,11 @@ void* AggCalculator::GetMax(void* base, bool need_to_new) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
   }
-  if (base && cmp(base, max) > 0) {
+  if (base && cmp(base, max, type_, size_) > 0) {
     max = base;
   }
   if (need_to_new && max) {
@@ -1759,11 +1727,11 @@ void* AggCalculator::GetMin(void* base, bool need_to_new) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
   }
-  if (base && cmp(base, min) < 0) {
+  if (base && cmp(base, min, type_, size_) < 0) {
     min = base;
   }
   if (need_to_new && min) {
@@ -1921,10 +1889,10 @@ bool AggCalculator::CalAllAgg(void* min_base, void* max_base, void* sum_base, vo
     }
 
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
     if (isSumType(type_)) {
@@ -2003,7 +1971,8 @@ bool VarColAggCalculator::isDeleted(char* delete_flags, size_t row) {
   return static_cast<char*>(delete_flags)[byte] & bit;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMax(bool base_changed, std::shared_ptr<void> base) {
+  base_changed = true;
   void* max = nullptr;
   for (int i = 0; i < count_; ++i) {
     if (isnull(first_row_ + i)) {
@@ -2015,6 +1984,7 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
     }
   }
   if (base && cmp(base.get(), max) > 0) {
+    base_changed = false;
     max = base.get();
   }
 
@@ -2025,7 +1995,8 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(std::shared_ptr<void> base) {
   return ptr;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMin(std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMin(bool base_changed, std::shared_ptr<void> base) {
+  base_changed = true;
   void* min = nullptr;
   for (int i = 0; i < count_; i++) {
     if (isnull(first_row_ + i)) {
@@ -2037,6 +2008,7 @@ std::shared_ptr<void> VarColAggCalculator::GetMin(std::shared_ptr<void> base) {
     }
   }
   if (base && cmp(base.get(), min) < 0) {
+    base_changed = false;
     min = base.get();
   }
   uint16_t len = *(reinterpret_cast<uint16_t*>(min));

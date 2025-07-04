@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
@@ -536,9 +537,9 @@ func (b *replicaAppBatch) migrateReplicatedResult(ctx context.Context, cmd *repl
 
 // CreateSnapshotForRead use CGO TsEngine create ts snapshot
 func (r *Replica) CreateSnapshotForRead(
-	ctx context.Context, startKey []byte, endKey []byte,
+	ctx context.Context, startKey []byte, endKey []byte, hashNum uint64,
 ) (uint64, error) {
-	tableID, startPoint, endPoint, startTs, endTs, err := sqlbase.DecodeTSRangeKey(startKey, endKey)
+	tableID, startPoint, endPoint, startTs, endTs, err := sqlbase.DecodeTSRangeKey(startKey, endKey, hashNum)
 	if err != nil {
 		log.Errorf(ctx, "CreateSnapshotForRead failed: %v", err)
 		return 0, err
@@ -750,11 +751,15 @@ func (r *Replica) stageTsBatchRequest(
 			{
 				var delCnt uint64
 				var ts1, ts2 int64
-				_, _, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true)
+				hashNum := r.mu.state.Desc.HashNum
+				if hashNum == 0 {
+					hashNum = api.HashParamV2
+				}
+				_, _, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
-				_, _, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false)
+				_, _, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
@@ -824,11 +829,15 @@ func (r *Replica) stageTsBatchRequest(
 				var delCnt uint64
 				var beginHash, endHash uint64
 				var ts1, ts2 int64
-				tableID, beginHash, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true)
+				hashNum := r.mu.state.Desc.HashNum
+				if hashNum == 0 {
+					hashNum = api.HashParamV2
+				}
+				tableID, beginHash, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
-				_, endHash, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false)
+				_, endHash, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
@@ -1184,7 +1193,11 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 		exist, _ := r.store.TsEngine.TSIsTsTableExist(uint64(desc.TableId))
 		log.VEventf(ctx, 3, "TsEngine.TSIsTsTableExist r%v, %v, %v", desc.RangeID, desc.TableId, exist)
 		if exist {
-			tableID, beginHash, endHash, startTs, endTs, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey)
+			hashNum := desc.HashNum
+			if hashNum == 0 {
+				hashNum = api.HashParamV2
+			}
+			tableID, beginHash, endHash, startTs, endTs, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTSRangeKey failed: %v", err)
 			} else {

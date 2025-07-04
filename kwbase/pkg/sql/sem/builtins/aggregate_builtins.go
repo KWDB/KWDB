@@ -294,6 +294,97 @@ var aggregates = map[string]builtinDefinition{
 				[]*types.T{t, types.TimestampTZ}, tree.IdentityReturnType(0), newLastrowAggregate, info,
 			)
 		}),
+	"min_extend": collectOverloads(aggProps(), types.Scalar,
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Int}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Bool}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Char}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Float}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.VarBytes}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.TimestampTZ}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Timestamp}, tree.IdentityReturnType(1), newMinExtendAggregate, info,
+			)
+		},
+	),
+
+	"max_extend": collectOverloads(aggProps(), types.Scalar,
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Int}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Bool}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Char}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Float}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.VarBytes}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.TimestampTZ}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+		func(t *types.T) tree.Overload {
+			info := "Identifies the minimum selected value."
+			return makeAggOverloadWithReturnType(
+				[]*types.T{t, types.Timestamp}, tree.IdentityReturnType(1), newMaxExtendAggregate, info,
+			)
+		},
+	),
 	"matching": makeBuiltin(aggProps(),
 		makeAggOverload(
 			[]*types.T{types.Int, types.Int, types.Decimal, types.Decimal, types.Int},
@@ -742,6 +833,8 @@ const sizeOfImputationAggregate = int64(unsafe.Sizeof(ImputationAggregate{}))
 const sizeOfTimestamptzBucketAggregate = int64(unsafe.Sizeof(TimestamptzBucketAggregate{}))
 const sizeOfElapsedAggregate = int64(unsafe.Sizeof(ElapsedAggregate{}))
 const sizeOfTwaAggregate = int64(unsafe.Sizeof(TwaAggregate{}))
+const sizeOfMaxExtendAggregate = int64(unsafe.Sizeof(MaxExtendAggregate{}))
+const sizeOfMinExtendAggregate = int64(unsafe.Sizeof(MinExtendAggregate{}))
 
 // singleDatumAggregateBase is a utility struct that helps aggregate builtins
 // that store a single datum internally track their memory usage related to
@@ -4448,4 +4541,206 @@ func twaGetArea(sKey, eKey int64, sVal, eVal float64) float64 {
 	// Convert result to float64
 	res, _ := result.Float64()
 	return res
+}
+
+// MaxExtendAggregate keeps track of the largest value passed to Add.
+type MaxExtendAggregate struct {
+	singleDatumAggregateBase
+
+	max               tree.Datum
+	result            tree.Datum
+	evalCtx           *tree.EvalContext
+	variableDatumSize bool
+}
+
+func newMaxExtendAggregate(
+	params []*types.T, evalCtx *tree.EvalContext, _ tree.Datums,
+) tree.AggregateFunc {
+	_, variable := tree.DatumTypeSize(params[0])
+	// If the datum type has a variable size, the memory account will be
+	// updated accordingly on every change to the current "max" value, but if
+	// it has a fixed size, the memory account will be updated only on the
+	// first non-null datum.
+	return &MaxExtendAggregate{
+		singleDatumAggregateBase: makeSingleDatumAggregateBase(evalCtx),
+		evalCtx:                  evalCtx,
+		variableDatumSize:        variable,
+	}
+}
+
+// Add sets the max to the larger of the current max or the passed datum.
+func (a *MaxExtendAggregate) Add(
+	ctx context.Context, Datum tree.Datum, others ...tree.Datum,
+) error {
+	if Datum == tree.DNull {
+		return nil
+	}
+	if a.max == nil {
+		if err := a.updateMemoryUsage(ctx, int64(Datum.Size())); err != nil {
+			return err
+		}
+		a.max = Datum
+
+		result := newResult(others)
+		if result != nil {
+			a.result = result
+		}
+
+		return nil
+	}
+	c := a.max.Compare(a.evalCtx, Datum)
+	if c < 0 {
+		a.max = Datum
+		var result tree.Datum
+		if len(others) == 1 {
+			result = others[0]
+		} else if len(others) > 1 {
+			panic(fmt.Sprintf("too many other datums passed in, expected < 2, got %d", len(others)))
+		}
+		if result != nil {
+			a.result = result
+		}
+		if a.variableDatumSize {
+			if err := a.updateMemoryUsage(ctx, int64(Datum.Size())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Result returns the largest value passed to Add.
+func (a *MaxExtendAggregate) Result() (tree.Datum, error) {
+	if a.result == nil {
+		return tree.DNull, nil
+	}
+	return a.result, nil
+}
+
+// Reset implements tree.AggregateFunc interface.
+func (a *MaxExtendAggregate) Reset(ctx context.Context) {
+	a.max = nil
+	a.result = nil
+	a.reset(ctx)
+}
+
+// Close is part of the tree.AggregateFunc interface.
+func (a *MaxExtendAggregate) Close(ctx context.Context) {
+	a.close(ctx)
+}
+
+// Size is part of the tree.AggregateFunc interface.
+func (a *MaxExtendAggregate) Size() int64 {
+	return sizeOfMaxExtendAggregate
+}
+
+// AggHandling is part of the tree.AggregateFunc interface.
+func (a *MaxExtendAggregate) AggHandling() {
+	// do nothing
+}
+
+// MinExtendAggregate keeps track of the largest value passed to Add.
+type MinExtendAggregate struct {
+	singleDatumAggregateBase
+
+	min               tree.Datum
+	result            tree.Datum
+	evalCtx           *tree.EvalContext
+	variableDatumSize bool
+}
+
+func newMinExtendAggregate(
+	params []*types.T, evalCtx *tree.EvalContext, _ tree.Datums,
+) tree.AggregateFunc {
+	_, variable := tree.DatumTypeSize(params[0])
+	// If the datum type has a variable size, the memory account will be
+	// updated accordingly on every change to the current "min" value, but if
+	// it has a fixed size, the memory account will be updated only on the
+	// first non-null datum.
+	return &MinExtendAggregate{
+		singleDatumAggregateBase: makeSingleDatumAggregateBase(evalCtx),
+		evalCtx:                  evalCtx,
+		variableDatumSize:        variable,
+	}
+}
+
+// Add sets the Min to the larger of the current Min or the passed datum.
+func (a *MinExtendAggregate) Add(
+	ctx context.Context, Datum tree.Datum, others ...tree.Datum,
+) error {
+	if Datum == tree.DNull {
+		return nil
+	}
+	if a.min == nil {
+		if err := a.updateMemoryUsage(ctx, int64(Datum.Size())); err != nil {
+			return err
+		}
+		a.min = Datum
+
+		result := newResult(others)
+		if result != nil {
+			a.result = result
+		}
+
+		return nil
+	}
+	c := a.min.Compare(a.evalCtx, Datum)
+	if c > 0 {
+		a.min = Datum
+		var result tree.Datum
+		if len(others) == 1 {
+			result = others[0]
+		} else if len(others) > 1 {
+			panic(fmt.Sprintf("too many other datums passed in, expected < 2, got %d", len(others)))
+		}
+		if result != nil {
+			a.result = result
+		}
+		if a.variableDatumSize {
+			if err := a.updateMemoryUsage(ctx, int64(Datum.Size())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Result returns the largest value passed to Add.
+func (a *MinExtendAggregate) Result() (tree.Datum, error) {
+	if a.result == nil {
+		return tree.DNull, nil
+	}
+	return a.result, nil
+}
+
+// Reset implements tree.AggregateFunc interface.
+func (a *MinExtendAggregate) Reset(ctx context.Context) {
+	a.min = nil
+	a.result = nil
+	a.reset(ctx)
+}
+
+// Close is part of the tree.AggregateFunc interface.
+func (a *MinExtendAggregate) Close(ctx context.Context) {
+	a.close(ctx)
+}
+
+// Size is part of the tree.AggregateFunc interface.
+func (a *MinExtendAggregate) Size() int64 {
+	return sizeOfMinExtendAggregate
+}
+
+// AggHandling is part of the tree.AggregateFunc interface.
+func (a *MinExtendAggregate) AggHandling() {
+	// do nothing
+}
+
+func newResult(others []tree.Datum) tree.Datum {
+	var result tree.Datum
+	if len(others) == 1 {
+		result = others[0]
+	} else if len(others) > 1 {
+		panic(fmt.Sprintf("too many other datums passed in, expected < 2, got %d", len(others)))
+	}
+	return result
 }

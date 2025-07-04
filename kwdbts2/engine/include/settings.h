@@ -15,18 +15,18 @@
 #include <vector>
 #include "libkwdbts2.h"
 #include "ts_common.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
 #define ENV_KW_HOME                 "KW_HOME"
 #define ENV_CLUSTER_CONFIG_HOME     "KW_CLUSTER_HOME"
 #define ENV_KW_IOT_INTERVAL         "KW_IOT_INTERVAL"
-#define HASHPOINT_RANGE             2000
 
 enum WALMode : uint8_t {
   OFF = 0,
-  ON = 1,
-  SYNC = 2,
+  SYNC = 1,
+  FLUSH = 2,
   BYRL = 3    // by raft log
 };
 
@@ -43,8 +43,8 @@ struct EngineOptions {
   static void init();
 
   std::string db_path;
-  // WAL work level: 0:off, 1:on, 2:sync, default is sync.
-  uint8_t wal_level = WALMode::SYNC;
+  // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
+  uint8_t wal_level = WALMode::FLUSH;
   // WAL file size, default is 64Mb
   uint16_t wal_file_size = 64;
   uint16_t wal_file_in_group = 1;
@@ -96,6 +96,8 @@ struct EngineOptions {
   static uint32_t max_compact_num;
   static size_t max_rows_per_block;
   static size_t min_rows_per_block;
+
+  TsIOEnv* io_env = &TsMMapIOEnv::GetInstance();
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 

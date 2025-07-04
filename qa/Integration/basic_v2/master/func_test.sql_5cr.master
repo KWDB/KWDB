@@ -65,3 +65,28 @@ as text),cast(cast(null as "timestamp") as "timestamp")) from test_function_3.t1
 (1 row)
 > drop database test_function_3 cascade;
 DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> create table db1.tb(ts timestamp not null,a int)tags(t1 int not null)primary tags(t1);
+CREATE TABLE
+> insert into db1.tb values(now(),1,1);
+INSERT 1
+> create database db;
+CREATE DATABASE
+> create table db.tb(a int);
+CREATE TABLE
+> insert into db.tb values(1);
+INSERT 1
+> select current_timestamp(999);
+ERROR: current_timestamp(): precision 999 out of range
+SQLSTATE: 22003
+> select current_timestamp(999) from db1.tb;
+ERROR: current_timestamp(): precision 999 out of range
+SQLSTATE: 22003
+> select current_timestamp(999) from db.tb;
+ERROR: current_timestamp(): precision 999 out of range
+SQLSTATE: 22003
+> drop database db1 cascade;
+DROP DATABASE
+> drop database db cascade;
+DROP DATABASE

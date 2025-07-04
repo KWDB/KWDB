@@ -149,9 +149,6 @@ type SessionData struct {
 	// MaxPushLimitNumber if number of limit shall not exceed it, limit can push to tsScan
 	MaxPushLimitNumber int64
 
-	// CanPushSorter if set true, can push sorter to ts engine
-	CanPushSorter bool
-
 	// InsideOutRowRatio use for control output rows of groupby in inside out case.
 	InsideOutRowRatio float64
 
@@ -161,6 +158,8 @@ type SessionData struct {
 
 	// UserDefinedVars stores variables defined by user
 	UserDefinedVars map[string]interface{}
+
+	RowCount int
 }
 
 // DataConversionConfig contains the parameters that influence

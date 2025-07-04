@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -42,6 +43,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
+	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -221,6 +224,256 @@ func (oc *optCatalog) ReleaseTables(ctx context.Context) {
 func (oc *optCatalog) ResetTxn(ctx context.Context) {
 	newTxn := kv.NewTxn(ctx, oc.planner.execCfg.DB, oc.planner.execCfg.NodeID.Get())
 	*oc.planner.txn = *newTxn
+}
+
+func (oc *optCatalog) ResolveProcCatalog(
+	ctx context.Context, t *tree.TableName, checkPri bool,
+) (bool, *tree.CreateProcedure, error) {
+	found, desc, err := ResolveProcedureObject(ctx, oc.planner, t)
+	if err != nil {
+		return false, nil, err
+	}
+	if !found {
+		return false, nil, nil
+	}
+	if checkPri {
+		if err := oc.planner.CheckPrivilege(ctx, desc, privilege.EXECUTE); err != nil {
+			return false, nil, err
+		}
+	}
+	var params []*tree.ProcedureParameter
+	for i := range desc.Parameters {
+		param := &tree.ProcedureParameter{
+			Name:      tree.Name(desc.Parameters[i].Name),
+			Type:      &desc.Parameters[i].Type,
+			Direction: tree.InDirection,
+		}
+		params = append(params, param)
+	}
+	var res = tree.CreateProcedure{
+		Name:       *t,
+		Parameters: params,
+		BodyStr:    desc.ProcBody,
+		ProcID:     int32(desc.ID),
+		DBID:       int32(desc.DbID),
+		SchemaID:   int32(desc.SchemaID),
+	}
+	return true, &res, nil
+}
+
+// ResolveProcedureObject  resolves Procedure Object
+func ResolveProcedureObject(
+	ctx context.Context, p SchemaResolver, t *ObjectName,
+) (bool, *sqlbase.ProcedureDescriptor, error) {
+	curDb := p.CurrentDatabase()
+	if t.ExplicitSchema {
+		// pg_temp can be used as an alias for the current sessions temporary schema.
+		// We must perform this resolution before looking up the object. This
+		// resolution only succeeds if the session already has a temporary schema.
+		scName, err := p.CurrentSearchPath().MaybeResolveTemporarySchema(t.Schema())
+		if err != nil {
+			return false, nil, err
+		}
+		if t.ExplicitCatalog {
+			// Already 3 parts: nothing to search. Delegate to the resolver.
+			objMeta, err := GetProcedureMeta(ctx, p.Txn(), t.Catalog(), scName, t.Table())
+			if objMeta != nil || err != nil {
+				t.SchemaName = tree.Name(scName)
+				return objMeta != nil, objMeta, err
+			}
+		} else {
+			// Two parts: D.T.
+			// Try to use the current database, and be satisfied if it's sufficient to find the object.
+			//
+			// Note: we test this even if curDb == "", because CockroachDB
+			// supports querying virtual schemas even when the current
+			// database is not set. For example, `select * from
+			// pg_catalog.pg_tables` is meant to show all tables across all
+			// databases when there is no current database set.
+			if objMeta, err := GetProcedureMeta(ctx, p.Txn(), curDb, scName, t.Table()); objMeta != nil {
+				if err == nil {
+					t.CatalogName = tree.Name(curDb)
+				}
+				return objMeta != nil, objMeta, err
+			}
+			// No luck so far. Compatibility with CockroachDB v1.1: try D.public.T instead.
+			if objMeta, err := GetProcedureMeta(ctx, p.Txn(), t.Schema(), tree.PublicSchema, t.Table()); objMeta != nil || err != nil {
+				if err == nil {
+					t.CatalogName = t.SchemaName
+					t.SchemaName = tree.PublicSchemaName
+					t.ExplicitCatalog = true
+				}
+				return objMeta != nil, objMeta, err
+			}
+		}
+		// Welp, really haven't found anything.
+		return false, nil, nil
+	}
+
+	// This is a naked procedure name. Use the search path.
+	iter := p.CurrentSearchPath().Iter()
+	for next, ok := iter.Next(); ok; next, ok = iter.Next() {
+		if objMeta, err := GetProcedureMeta(ctx, p.Txn(), curDb, next, t.Table()); objMeta != nil || err != nil {
+			if err == nil {
+				t.CatalogName = tree.Name(curDb)
+				t.SchemaName = tree.Name(next)
+			}
+			return objMeta != nil, objMeta, err
+		}
+	}
+	return false, nil, nil
+}
+
+// ResolveAndCheckProcPrivilege resolves procedure and check privilege of procedure
+func ResolveAndCheckProcPrivilege(
+	ctx context.Context, p *planner, t *ObjectName, pri privilege.Kind,
+) error {
+	found, desc, err := ResolveProcedureObject(ctx, p, t)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return sqlbase.NewUndefinedProcedureError(t)
+	}
+	if err := p.CheckPrivilege(ctx, desc, pri); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetProcedureMeta gets Procedure Metadata
+func GetProcedureMeta(
+	ctx context.Context, txn *kv.Txn, dbName, scName, procName string,
+) (*sqlbase.ProcedureDescriptor, error) {
+	dbID, err := getDatabaseID(ctx, txn, dbName, true)
+	if err != nil {
+		return nil, err
+	}
+	found, scID, err := resolveSchemaID(ctx, txn, dbID, scName)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, nil
+	}
+
+	k := keys.MakeTablePrefix(uint32(sqlbase.UDRTable.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(sqlbase.UDRTable.PrimaryIndex.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(dbID))
+	k = encoding.EncodeUvarintAscending(k, uint64(scID))
+	k = encoding.EncodeStringAscending(k, procName)
+
+	rows, err := sqlbase.GetKWDBMetadataRows(ctx, txn, k, sqlbase.UDRTable)
+	if err != nil {
+		return nil, err
+	}
+	var desc sqlbase.ProcedureDescriptor
+	if rows != nil {
+		routineType := int(tree.MustBeDInt(rows[0][5]))
+		name := string(tree.MustBeDString(rows[0][2]))
+		if routineType != int(sqlbase.Procedure) {
+			return nil, pgerror.Newf(pgcode.WrongObjectType, "%s is not a procedure", name)
+		}
+		val := tree.MustBeDBytes(rows[0][3])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", k)
+		}
+	} else {
+		return nil, nil
+	}
+	return &desc, nil
+}
+
+// GetAllProcDescByParentID gets Procedure descriptor by dbID and schemaID
+func GetAllProcDescByParentID(
+	ctx context.Context, txn *kv.Txn, dbID, scID sqlbase.ID,
+) ([]sqlbase.ProcedureDescriptor, error) {
+
+	k := keys.MakeTablePrefix(uint32(sqlbase.UDRTable.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(sqlbase.UDRTable.PrimaryIndex.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(dbID))
+	k = encoding.EncodeUvarintAscending(k, uint64(scID))
+
+	rows, err := sqlbase.GetKWDBMetadataRows(ctx, txn, k, sqlbase.UDRTable)
+	if err != nil {
+		return nil, err
+	}
+	var descs []sqlbase.ProcedureDescriptor
+	for i := range rows {
+		var desc sqlbase.ProcedureDescriptor
+		val := tree.MustBeDBytes(rows[i][3])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", k)
+		}
+		descs = append(descs, desc)
+	}
+	return descs, nil
+}
+
+// GetAllProcDesc gets Procedure descriptor
+func GetAllProcDesc(ctx context.Context, txn *kv.Txn) ([]sqlbase.ProcedureDescriptor, error) {
+
+	k := keys.MakeTablePrefix(uint32(sqlbase.UDRTable.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(sqlbase.UDRTable.PrimaryIndex.ID))
+
+	rows, err := sqlbase.GetKWDBMetadataRows(ctx, txn, k, sqlbase.UDRTable)
+	if err != nil {
+		return nil, err
+	}
+	var descs []sqlbase.ProcedureDescriptor
+	for i := range rows {
+		var desc sqlbase.ProcedureDescriptor
+		val := tree.MustBeDBytes(rows[i][3])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", k)
+		}
+		descs = append(descs, desc)
+	}
+	return descs, nil
+}
+
+// UpdateProcedureMeta updates procedure descriptor with new descriptor
+func UpdateProcedureMeta(
+	ctx context.Context, txn *kv.Txn, procedure *sqlbase.ProcedureDescriptor,
+) error {
+	k := keys.MakeTablePrefix(uint32(sqlbase.UDRTable.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(sqlbase.UDRTable.PrimaryIndex.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(procedure.DbID))
+	k = encoding.EncodeUvarintAscending(k, uint64(procedure.SchemaID))
+	k = encoding.EncodeStringAscending(k, procedure.Name)
+
+	rows, err := sqlbase.GetKWDBMetadataRows(ctx, txn, k, sqlbase.UDRTable)
+	if err != nil {
+		return err
+	}
+	var desc sqlbase.ProcedureDescriptor
+	if rows != nil {
+		routineType := int(tree.MustBeDInt(rows[0][5]))
+		name := string(tree.MustBeDString(rows[0][2]))
+		if routineType != int(sqlbase.Procedure) {
+			return pgerror.Newf(pgcode.WrongObjectType, "%s is not a procedure", name)
+		}
+		val := tree.MustBeDBytes(rows[0][3])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", k)
+		}
+		descValue, err := protoutil.Marshal(procedure)
+		if err != nil {
+			return err
+		}
+		// update new descriptor
+		rows[0][3] = tree.NewDBytes(tree.DBytes(descValue))
+		// build correct rows
+		rows[0][0], rows[0][1], rows[0][2] = rows[0][2], rows[0][0], rows[0][1]
+		if err := WriteKWDBDesc(ctx, txn, sqlbase.UDRTable, rows, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ResolveDatabase is part of the cat.Catalog interface.
@@ -641,6 +894,14 @@ func (ot *optTable) GetTableType() tree.TableType {
 // GetTSVersion return ts_version.
 func (ot *optTable) GetTSVersion() uint32 {
 	return uint32(ot.desc.TsTable.TsVersion)
+}
+
+// GetTSHashNum return ts_hash_num.
+func (ot *optTable) GetTSHashNum() uint64 {
+	if ot.desc.TsTable.HashNum == 0 {
+		return api.HashParamV2
+	}
+	return ot.desc.TsTable.HashNum
 }
 
 // SetTableName set table name.
@@ -1413,6 +1674,14 @@ func (ot *optVirtualTable) GetTableType() tree.TableType {
 // GetTSVersion return ts_version.
 func (ot *optVirtualTable) GetTSVersion() uint32 {
 	return uint32(ot.desc.TsTable.TsVersion)
+}
+
+// GetTSHashNum return ts_hash_num.
+func (ot *optVirtualTable) GetTSHashNum() uint64 {
+	if ot.desc.TsTable.HashNum == 0 {
+		return api.HashParamV2
+	}
+	return ot.desc.TsTable.HashNum
 }
 
 // SetTableName set table name.
