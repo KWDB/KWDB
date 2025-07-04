@@ -157,6 +157,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
       // In the concurrency scenario, after the storage has deleted the column,
       // kwsql sends query again
       LOG_ERROR("GetIterator Error : TsTable no column %d", col);
+      s = FAIL;
       return KStatus::FAIL;
     }
     ts_scan_cols.emplace_back(actual_cols[col]);
@@ -173,6 +174,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   for (auto& vgroup_iter : vgroup_ids) {
     if (vgroup_iter.first >= EngineOptions::vgroup_max_num) {
       LOG_ERROR("Invalid vgroup id.[%u]", vgroup_iter.first);
+      s = FAIL;
       return s;
     }
     vgroup = (*ts_vgroups)[vgroup_iter.first];
