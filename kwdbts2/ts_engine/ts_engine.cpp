@@ -101,12 +101,19 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
 
   vgroups_.clear();
-  for (size_t i = 0; i < EngineOptions::vgroup_max_num; i++) {
-    auto vgroup = std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
+  for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
+    auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
     }
+    uint32_t entity_id;
+    s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
+    if (s != KStatus::SUCCESS)
+    {
+      LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
+    }
+    vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
 

@@ -38,7 +38,7 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
                    TsEngineSchemaManager* schema_mgr, bool enable_compact_thread)
     : vgroup_id_(vgroup_id), schema_mgr_(schema_mgr), partitions_latch_(RWLATCH_ID_VGROUP_PARTITIONS_RWLOCK),
       mem_segment_mgr_(this), path_(engine_options.db_path + "/" + GetFileName()),
-      entity_counter_(0), engine_options_(engine_options),
+      max_entity_id_(0), engine_options_(engine_options),
       enable_compact_thread_(enable_compact_thread) {
   initCompactThread();
 }
@@ -46,11 +46,6 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id,
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  if (config_file_ != nullptr) {
-    config_file_->sync(MS_SYNC);
-    delete config_file_;
-    config_file_ = nullptr;
-  }
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
@@ -61,26 +56,6 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   if (res == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize WAL manager")
     return res;
-  }
-
-  config_file_ = new MMapFile();
-  string cf_file_path = path_.string() + "/vg_config";
-  int flag = MMAP_CREAT_EXCL;
-  bool exist = false;
-  if (IsExists(cf_file_path)) {
-    flag = MMAP_OPEN_NORECURSIVE;
-    exist = true;
-  }
-  int error_code = config_file_->open(cf_file_path, flag);
-  if (error_code < 0) {
-    LOG_ERROR("Open config file failed, error code: %d, path: %s", error_code, cf_file_path.c_str());
-    return KStatus::FAIL;
-  }
-  if (!exist) {
-    config_file_->resize(4096);
-    entity_counter_ = 0;
-  } else {
-    entity_counter_ = KUint32(config_file_->memAddr());
   }
 
   // recover partitions
@@ -148,21 +123,20 @@ std::string TsVGroup::GetFileName() const {
   return buffer;
 }
 
-uint32_t TsVGroup::AllocateEntityID() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  uint64_t new_id = entity_counter_ + 1;
-  if (saveToFile(new_id) == 0) {
-    entity_counter_ = new_id;
-    return new_id;
-  } else {
-    throw std::runtime_error("Failed to persist the new ID to file");
-  }
-  return 0;
+TSEntityID TsVGroup::AllocateEntityID() {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  return ++max_entity_id_;
+
 }
 
-uint32_t TsVGroup::GetMaxEntityID() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return entity_counter_;
+TSEntityID TsVGroup::GetMaxEntityID() const {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  return max_entity_id_;
+}
+
+void TsVGroup::InitEntityID(TSEntityID entity_id) {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  max_entity_id_ = entity_id;
 }
 
 KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload) {
@@ -319,14 +293,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
     s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn);
   }
   return s;
-}
-
-
-int TsVGroup::saveToFile(uint32_t new_id) const {
-  uint32_t entity_id = new_id;
-  memcpy(reinterpret_cast<char*>(config_file_->memAddr()), &entity_id, sizeof(entity_id));
-  // return config_file_->sync(MS_SYNC);
-  return 0;
 }
 
 void TsVGroup::compactRoutine(void* args) {
