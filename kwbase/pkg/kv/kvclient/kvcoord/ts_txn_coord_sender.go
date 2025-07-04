@@ -220,6 +220,7 @@ func NewDB(cfg TsDBConfig) *DB {
 		wrapped: cfg.Sender,
 		setting: cfg.Setting,
 		NodeID:  cfg.NodeID,
+		clock:   cfg.KvDB.Clock(),
 	}
 	tsDB.tss.interceptorAlloc.tsTxnHeartbeater = tsTxnHeartbeater{
 		wrapped:      &tsDB.tss.interceptorAlloc.tsTxnCommitter,
@@ -252,16 +253,17 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 		}
 	}
 	if b.Txn() != nil {
+		// initialize some fields of TsSender
 		var ranges roachpb.Spans
+		txn := b.Txn().Sender().Transaction()
+		db.tss.txn = txn
+		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
+		db.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
 		db.tss.interceptorAlloc.tsTxnCommitter.ranges = &ranges
-		db.tss.txn = b.Txn().Sender().Transaction()
-		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = b.Txn().ID()
 		db.tss.interceptorAlloc.tsTxnCommitter.tsTxn.ID = b.Txn().ID()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.loopStarted = false
-		db.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
-		txn := b.Txn().Sender().Transaction()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.transaction = txn.Clone()
 	}
 	return kv.SendAndFill(ctx, db.Send, b)

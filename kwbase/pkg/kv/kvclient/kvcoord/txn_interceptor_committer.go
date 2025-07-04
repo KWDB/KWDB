@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
+	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"sync"
@@ -586,6 +587,7 @@ type tsTxnCommitter struct {
 	ranges  *roachpb.Spans
 	setting *cluster.Settings
 	NodeID  roachpb.NodeID
+	clock   *hlc.Clock
 }
 
 // SendLocked implements the lockedSender interface.
@@ -596,10 +598,9 @@ func (tc *tsTxnCommitter) SendLocked(
 	//if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 2); err != nil {
 	//	return nil, roachpb.NewError(err)
 	//}
-	_, record, err := tc.txn.DB().GetTxnRecord(ctx, tc.txn.ID())
-	if err != nil {
-		return nil, pErr
-	}
+	var record roachpb.TsTxnRecord
+	record.ID = tc.tsTxn.ID
+	record.Spans = append(record.Spans, *tc.ranges...)
 	if pErr != nil {
 		pErr = tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
 		//if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 3); err != nil {
@@ -609,7 +610,9 @@ func (tc *tsTxnCommitter) SendLocked(
 			return nil, pErr
 		}
 		record.Status = roachpb.ABORTED
-		if err := tc.txn.DB().WriteTxnRecord(ctx, record); err != nil {
+		record.LastHeartbeat = tc.clock.Now()
+		log.VEventf(ctx, 2, "txn %v rollback success and update ts txn record\n", record.ID)
+		if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
 			return nil, roachpb.NewError(err)
 		}
 		return nil, pErr
@@ -623,7 +626,9 @@ func (tc *tsTxnCommitter) SendLocked(
 	}
 	record.ID = tc.tsTxn.ID
 	record.Status = roachpb.COMMITTED
-	if err := tc.txn.DB().WriteTxnRecord(ctx, record); err != nil {
+	record.LastHeartbeat = tc.clock.Now()
+	log.VEventf(ctx, 2, "txn %v commit success and update ts txn record\n", record.ID)
+	if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
 		return nil, roachpb.NewError(err)
 	}
 
@@ -645,6 +650,7 @@ func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.T
 		})
 	}
 	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+	log.VEventf(ctx, 2, "txn %v attempt to commit %v time\n", txn.ID, retry)
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
@@ -668,6 +674,7 @@ func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn roachpb.TsT
 		})
 	}
 	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+	log.VEventf(ctx, 2, "txn %v attempt to rollback %v time\n", txn.ID, retry)
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
