@@ -86,12 +86,13 @@ var TSParallelDegree = settings.RegisterPublicIntSetting(
 // each indicating the optimization switch at the corresponding position.
 // - 1 indicating on
 // - 0 indicating off
-// The four optimization items are, in order from left to right:
-// -- 1. Multi-predicate sequential optimization
-// -- 2. Scalar quantum query optimization
-// -- 3. inside-out push down aggregation optimization
-// -- 4. inside-out push down time_bucket optimization
-// -- 5. reduce explore cross join
+// The four optimization items are, in order from left to right:(new high bit add before )
+// -- Enable procedure cache
+// -- reduce explore cross join
+// -- Multi-predicate sequential optimization
+// -- Scalar quantum query optimization
+// -- inside-out push down aggregation optimization
+// -- inside-out push down time_bucket optimization
 //
 // For example:
 // If you want to turn on
@@ -101,14 +102,14 @@ var TSParallelDegree = settings.RegisterPublicIntSetting(
 // such as:
 // "set cluster setting ts.sql.query_opt_mode = 1010"
 //
-// default value: 11110
+// default value: 111110
 // turn on the first three optimizations.
 var TSQueryOptMode = settings.RegisterPublicIntSetting(
 	"ts.sql.query_opt_mode", "ts query optimize mode", DefaultQueryOptMode,
 )
 
 // DefaultQueryOptMode is the default value of TSQueryOptMode
-const DefaultQueryOptMode = 11110
+const DefaultQueryOptMode = 111110
 
 // CheckOptMode checks whether the query opt mode is enabled.
 //
@@ -142,6 +143,9 @@ const (
 
 	// OutsideInUseCBO indicates that use CBO in the outside-in case.
 	OutsideInUseCBO = 1 << 4
+
+	// EnableProcedureCache indicates use procedure cache.
+	EnableProcedureCache = 1 << 5
 )
 
 // TSOrderedTable ts get ordered table data

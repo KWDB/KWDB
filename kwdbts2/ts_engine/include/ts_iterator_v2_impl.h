@@ -10,10 +10,12 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <vector>
 #include <list>
 #include <map>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include "ts_common.h"
@@ -52,9 +54,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus Init(bool is_reversed) override;
 
  protected:
-  KStatus ConvertBlockSpanToResultSet(TsBlockSpan& ts_blk_span, ResultSet* res, k_uint32* count);
-  KStatus ScanEntityBlockSpans();
-
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
   /*
    * Update ts_spans_ to reduce the data scanning from storage based on timestamp(ts)
@@ -65,7 +64,6 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
    * Convert block span data to result set which will be returned to execution engine
    * for further process.
    */
-  KStatus ConvertBlockSpanToResultSet(shared_ptr<TsBlockSpan> ts_blk_span, ResultSet* res, k_uint32* count);
   KStatus ScanEntityBlockSpans(timestamp64 ts);
 
   k_int32 cur_entity_index_{-1};
@@ -163,6 +161,102 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   bool only_count_ts_{false};
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
+};
+
+class TsOffsetIteratorV2Impl : public TsIterator {
+ public:
+  TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
+                         std::map<uint32_t, std::vector<EntityID>>& vgroup_ids,
+                         std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
+                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                         uint32_t table_version, uint32_t offset, uint32_t limit) : vgroups_(vgroups),
+                         vgroup_ids_(vgroup_ids), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
+                         kw_scan_cols_(kw_scan_cols), ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
+                         table_version_(table_version), offset_(offset), limit_(limit) {}
+
+  ~TsOffsetIteratorV2Impl() override {}
+
+  KStatus Init(bool is_reversed);
+
+  // not available!!!
+  bool IsDisordered() override {
+    return false;
+  }
+
+  uint32_t GetFilterCount() override {
+    return filter_cnt_;
+  }
+
+  KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS) override;
+
+ private:
+  KStatus ScanPartitionBlockSpans(uint32_t* cnt);
+
+  KStatus divideBlockSpans(timestamp64 begin_ts, timestamp64 end_ts, uint32_t* lower_cnt,
+                           deque<std::shared_ptr<TsBlockSpan>>& lower_block_span);
+  KStatus filterLower(uint32_t* cnt);
+  KStatus filterUpper(uint32_t filter_num, uint32_t* cnt);
+  KStatus filterBlockSpan();
+
+  inline void GetTerminationTime() {
+    switch (ts_col_type_) {
+      case TIMESTAMP64_LSN:
+      case TIMESTAMP64:
+        t_time_ = 10;
+        break;
+      case TIMESTAMP64_LSN_MICRO:
+      case TIMESTAMP64_MICRO:
+        t_time_ = 10000;
+        break;
+      case TIMESTAMP64_LSN_NANO:
+      case TIMESTAMP64_NANO:
+        t_time_ = 10000000;
+        break;
+      default:
+        assert(false);
+        break;
+    }
+  }
+
+ private:
+  uint32_t db_id_;
+  TSTableID table_id_;
+  uint32_t table_version_;
+  // column attributes
+  vector<AttributeInfo> attrs_;
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
+
+  DATATYPE ts_col_type_;
+  bool is_reversed_ = false;
+  // the data time range queried by the iterator
+  std::vector<KwTsSpan> ts_spans_;
+  // column index
+  std::vector<k_uint32> kw_scan_cols_;
+  std::vector<uint32_t> ts_scan_cols_;
+  std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
+
+  std::map<uint32_t, std::vector<EntityID>> vgroup_ids_;
+  std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups_;
+  // map<timestamp, {vgroup_id, TsPartition}>
+  TimestampComparator comparator_;
+  map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>, TimestampComparator> p_times_;
+  map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>>::iterator p_time_it_;
+
+  std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
+  std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;
+  std::deque<std::shared_ptr<TsBlockSpan>> filter_block_spans_;
+
+  int32_t offset_;
+  int32_t limit_;
+  int32_t filter_cnt_ = 0;
+  int32_t queried_cnt = 0;
+  bool filter_end_ = false;
+
+  timestamp t_time_ = 0;
+  int32_t deviation_ = 1000;
+  // todo(liangbo) set lsn parameter.
+  TS_LSN scan_lsn_{UINT64_MAX};
 };
 
 }  //  namespace kwdbts

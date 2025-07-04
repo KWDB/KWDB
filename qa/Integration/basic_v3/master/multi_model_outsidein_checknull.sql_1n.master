@@ -4036,7 +4036,7 @@ DROP DATABASE
 DROP DATABASE
 > delete  from system.table_statistics where name = '_stats_firegases' or name = '_stats_station_info' or name = '_stats_';
 DELETE 29
-> set cluster setting ts.sql.query_opt_mode = 1110;
+> set cluster setting ts.sql.query_opt_mode = DEFAULT;
 SET CLUSTER SETTING
 > set cluster setting sql.stats.tag_automatic_collection.enabled = true;
 SET CLUSTER SETTING

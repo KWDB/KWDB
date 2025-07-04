@@ -83,6 +83,7 @@ class Executer(object):
         'n') else 'cr1' if self.__topology.endswith('cr') else 'c1']
     stmt = ''
     block_comment = False
+    delimiter_tag = False
     for line in stmts.split('\n'):
       if line.lstrip().startswith('/*'):
         block_comment = True
@@ -96,6 +97,28 @@ class Executer(object):
           testmode = line.partition('mode')[2].strip().split(" ")
         if bool(research(r'^--[-\s]*test_?node.*', line)):
           testnode = line.partition('node')[2].strip().split(" ")
+        continue
+      if line.lstrip().startswith('delimiter \\\\'):
+        stmt += line + '\n'
+        delimiter_tag = True
+        continue
+      if line.lstrip().startswith('delimiter ;'):
+        stmt += line + '\n'
+        delimiter_tag = False
+        if self.__topology in testmode:
+          for node in testnode:
+            if not self.__topology_match(node):
+              utils.direct_print(f'node {node} not in {self.__topology}')
+              continue
+            enode = exec_nodes.get(node)
+            if not enode:
+              enode = NodeExecuter(path.join(getenv("DEPLOY_ROOT"), node))
+              exec_nodes.setdefault(node, enode)
+            rc += enode.Execute(stmt)
+          stmt = ''   
+        continue
+      if delimiter_tag:
+        stmt += line + '\n'
         continue
       stmt += line + '\n'
       if bool(research(r'.*;(\s*--.*)?$', line.rstrip())):

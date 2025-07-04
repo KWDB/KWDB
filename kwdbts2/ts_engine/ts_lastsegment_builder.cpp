@@ -163,10 +163,34 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
     data_block_builder_->Add(last_entity_col_data->entity_id, last_entity_col_data->lsn,
                              last_entity_col_data->col_data, last_entity_col_data->data_flags);
     data_block_builder_->Finish();
-    auto s = WriteMetricBlock(data_block_builder_.get());
+    s = WriteMetricBlock(data_block_builder_.get());
     if (s != SUCCESS) return FAIL;
     data_block_builder_->Reset(table_id_, version_);
-  } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {
+  } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
+    EntityColData *last_entity_col_data = nullptr;
+    for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
+      const EntityColData& p = cols_data_buffer_.buffer[idx];
+      --left;
+      if (!last_entity_col_data ||
+          !last_entity_col_data->IsSameEntityAndTs(cols_data_buffer_.buffer[idx])) {
+        data_block_builder_->Add(p.entity_id, p.lsn, p.col_data, p.data_flags);
+        if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
+          data_block_builder_->Finish();
+          s = WriteMetricBlock(data_block_builder_.get());
+          if (s != SUCCESS) return FAIL;
+          data_block_builder_->Reset(table_id_, version_);
+
+          auto reserved_size = std::min<int>(left, kNRowPerBlock);
+          data_block_builder_->Reserve(reserved_size);
+        }
+        last_entity_col_data = &cols_data_buffer_.buffer[idx];
+      }
+    }
+    data_block_builder_->Finish();
+    s = WriteMetricBlock(data_block_builder_.get());
+    if (s != SUCCESS) return FAIL;
+    data_block_builder_->Reset(table_id_, version_);
+  } else {
     for (int idx = 0; idx < cols_data_buffer_.buffer.size(); ++idx) {
       const EntityColData& p = cols_data_buffer_.buffer[idx];
       data_block_builder_->Add(p.entity_id, p.lsn, p.col_data, p.data_flags);
@@ -174,7 +198,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
 
       if ((idx + 1) % kNRowPerBlock == 0 || (idx + 1) == cols_data_buffer_.buffer.size()) {
         data_block_builder_->Finish();
-        auto s = WriteMetricBlock(data_block_builder_.get());
+        s = WriteMetricBlock(data_block_builder_.get());
         if (s != SUCCESS) return FAIL;
         data_block_builder_->Reset(table_id_, version_);
 
@@ -290,16 +314,20 @@ KStatus TsLastSegmentBuilder::Finalize() {
 
   // TODO(zzr) meta block API
   int nmeta = meta_blocks_.size();
-  std::vector<uint64_t> meta_offset(nmeta);
-  std::vector<uint64_t> meta_len(nmeta);
+  std::vector<uint64_t> meta_offset;
+  std::vector<uint64_t> meta_len;
 
   for (int i = 0; i < nmeta; ++i) {
-    meta_offset[i] = last_segment_->GetFileSize();
     std::string serialized;
     meta_blocks_[i]->Serialize(&serialized);
+    if (serialized.empty()) {
+      continue;
+    }
+    meta_offset.push_back(last_segment_->GetFileSize());
     last_segment_->Append(serialized);
-    meta_len[i] = serialized.size();
+    meta_len.push_back(serialized.size());
   }
+  nmeta = meta_offset.size();
   size_t meta_index_offset = last_segment_->GetFileSize();
   std::string meta_idx_data;
   meta_idx_data.reserve(nmeta * 16);

@@ -200,7 +200,10 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
         sort_type_ = EESortType::EE_SORT_DISK;
         auto disk_container = std::make_unique<DiskDataContainer>(
             order_info_, input_col_info_, input_col_num_);
-        disk_container->Init();
+        ret = disk_container->Init();
+        if (ret != SUCCESS) {
+          Return(EEIteratorErrCode::EE_ERROR);
+        }
         if (limit_ > 0) {
           disk_container->SetLimitOffset(limit_, offset_);
         }
@@ -221,7 +224,10 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
         sort_type_ = EESortType::EE_SORT_HEAP;
         auto heap_container = std::make_unique<HeapSortContainer>(
             order_info_, input_col_info_, input_col_num_, limit_ + offset_);
-        heap_container->Init();
+        ret = heap_container->Init();
+        if (ret != SUCCESS) {
+          Return(EEIteratorErrCode::EE_ERROR);
+        }
         heap_container->SetLimitOffset(limit_, offset_);
         while (true) {
           DataChunkPtr mem_chunk;
@@ -250,7 +256,11 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
 
   auto start = std::chrono::high_resolution_clock::now();
   // Sort
-  container_->Sort();
+  ret = container_->Sort();
+  if (ret != SUCCESS) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR, "Sort data failed.");
+    Return(EEIteratorErrCode::EE_ERROR);
+  }
   auto end = std::chrono::high_resolution_clock::now();
   fetcher_.Update(total_count, (end - start).count(), 0, buffer_size, 0, 0);
   Return(code);

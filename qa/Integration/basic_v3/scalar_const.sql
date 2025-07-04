@@ -1,5 +1,5 @@
 set cluster setting sql.query_cache.enabled=true;
-
+set cluster setting ts.sql.query_opt_mode= 1110;
 drop database if EXISTS test;
 drop database if EXISTS test_ts;
 
@@ -199,11 +199,11 @@ explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from tes
 explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from test_ts.ts_table, test_ts.ts_table2;
 explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 group by t1.e1, t2.e1 having t1.e1 > 1000 or t2.e1 < 3000 order by t1.e1;
 
--- cross-mode 
+-- cross-mode
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
 explain select extract('year', localtimestamp()) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
 explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
-
+set cluster setting ts.sql.query_opt_mode= DEFAULT;
 -- ZDP-40972
 CREATE ts DATABASE test_select_join;
 CREATE TABLE test_select_join.t1(

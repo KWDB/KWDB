@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -104,17 +105,18 @@ func RegisterLuaUDFs(datums tree.Datums) (*tree.FunctionDefinition, error) {
 		return nil, nil
 	}
 
-	// Validate the input types.
-	if err := validateDatums(datums); err != nil {
-		return nil, err
+	var desc sqlbase.FunctionDescriptor
+	val := tree.MustBeDBytes(datums[0])
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return nil, pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
 	}
 
 	// Extract datum values.
-	funcName, funcBody := string(*datums[funcNameIndex].(*tree.DString)), string(*datums[funcBodyIndex].(*tree.DString))
-	argumentArray, returnTypeArray := datums[argTypesIndex].(*tree.DArray), datums[returnTypeIndex].(*tree.DArray)
-	argumentTypes, funcReturnType := make([]int32, len(argumentArray.Array)), int32(*returnTypeArray.Array[0].(*tree.DInt))
-	for i, v := range argumentArray.Array {
-		argumentTypes[i] = int32(*v.(*tree.DInt))
+	funcName, funcBody := desc.Name, desc.FunctionBody
+	argumentArray, returnTypeArray := desc.ArgumentTypes, desc.ReturnType
+	argumentTypes, funcReturnType := make([]int32, len(argumentArray)), int32(returnTypeArray[0])
+	for i, v := range argumentArray {
+		argumentTypes[i] = int32(v)
 	}
 
 	// Parsing parameter types

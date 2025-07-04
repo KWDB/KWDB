@@ -72,6 +72,8 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 
 	var mb mutationBuilder
 	mb.init(b, "delete", tab, alias)
+	// check if there's other type of table referenced
+	b.CheckMixedTableRefWithTs()
 	// template does not support delete operation
 	if tab.GetTableType() == tree.TemplateTable {
 		panic(sqlbase.TemplateUnsupportedError("delete"))
@@ -104,13 +106,21 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 
 	// Build the final delete statement, including any returned expressions.
 	if resultsNeeded(del.Returning) {
-		mb.buildDelete(*del.Returning.(*tree.ReturningExprs))
+		var returning tree.ReturningExprs
+		switch t := del.Returning.(type) {
+		case *tree.ReturningExprs:
+			returning = *t
+		case *tree.ReturningIntoClause:
+			if b.insideProcDef {
+				returning = t.SelectClause
+			} else {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+			}
+		}
+		mb.buildDelete(returning)
 	} else {
 		mb.buildDelete(nil /* returning */)
 	}
-
-	// check if there's other type of table referenced
-	mb.CheckMixedTableRefWithTs()
 
 	return mb.outScope
 }
@@ -329,6 +339,7 @@ func (b *Builder) buildTSDelete(
 	outScope.expr = b.factory.ConstructTSDelete(
 		&memo.TSDeletePrivate{
 			InputRows:  filters,
+			ActualRows: make(opt.RowsValue, len(filters)),
 			ColsMap:    colMap,
 			DeleteType: delTyp,
 			ID:         opt.TableID(tblID),
@@ -413,6 +424,20 @@ func checkTSDeleteFilter(
 			}
 			f.Right = exp
 		}
+		if col, ok := f.Left.(*scopeColumn); ok && col.isDeclared {
+			indexVal := tree.NewTypedOrdinalReference(col.realIdx, col.typ)
+			indexVal.IsDeclare = true
+			name := tree.MakeUnresolvedName(string(col.name))
+			indexVal.SetColFormat(&name)
+			f.Left = indexVal
+		}
+		if col, ok := f.Right.(*scopeColumn); ok && col.isDeclared {
+			indexVal := tree.NewTypedOrdinalReference(col.realIdx, col.typ)
+			indexVal.IsDeclare = true
+			name := tree.MakeUnresolvedName(string(col.name))
+			indexVal.SetColFormat(&name)
+			f.Right = indexVal
+		}
 		spans = checkComExpr(evalCtx, f.Left, f.Right, exprs, typ, primaryTagIDs, f.Operator, meta, spans, precision)
 	case *tree.DBool:
 		spans = handleDBool(f, spans, typ, precision)
@@ -490,6 +515,14 @@ func handlePrimaryTagColumn(
 		}
 		checkFilterType(id, typ, primaryTagIDs)
 		exprs[id] = datum
+	} else if idxVal, ok := expr.(*tree.IndexedVar); ok {
+		if val, ok := exprs[id]; ok {
+			if idxVal1, ok := val.(*tree.IndexedVar); !ok || ok && (idxVal1.Idx != idxVal.Idx) {
+				*typ = unsupportedType
+			}
+		}
+		checkFilterType(id, typ, primaryTagIDs)
+		exprs[id] = idxVal
 	} else {
 		*typ = unsupportedType
 	}
@@ -541,6 +574,15 @@ func checkComExpr(
 
 	leftScopeCol, leftIsScopeCol := left.(*scopeColumn)
 	rightScopeCol, rightIsScopeCol := right.(*scopeColumn)
+	var leftIsDeclareCol, rightIsDeclareCol bool
+	leftIdx, ok1 := left.(*tree.IndexedVar)
+	if ok1 {
+		leftIsDeclareCol = true
+	}
+	rightIdx, ok2 := right.(*tree.IndexedVar)
+	if ok2 {
+		rightIsDeclareCol = true
+	}
 
 	if leftIsScopeCol && !rightIsScopeCol {
 		// id in expr is column's logical id, need to get column's physical id
@@ -548,6 +590,11 @@ func checkComExpr(
 		index := t.ColumnOrdinal(leftScopeCol.id)
 		id := meta.Table(t).Column(index).ColID()
 		if id == tsColumnID {
+			if rightIsDeclareCol {
+				// The ts column of the time-series does not support Declare col
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "declared variable \"%s\" cannot be used on column \"%s\"",
+					rightIdx.GetColName().String(), leftScopeCol.name))
+			}
 			lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 			if timeSpan, ok := right.(*tree.Placeholder); ok {
 				v := tree.UnwrapDatum(evalCtx, timeSpan)
@@ -630,6 +677,11 @@ func checkComExpr(
 		t := meta.ColumnMeta(rightScopeCol.id).Table
 		id := t.ColumnOrdinal(rightScopeCol.id) + 1
 		if id == tsColumnID {
+			if leftIsDeclareCol {
+				// The ts column of the time-series does not support Declare col
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "declared variable \"%s\" cannot be used on column \"%s\"",
+					leftIdx.GetColName().String(), rightScopeCol.name))
+			}
 			lowerLimitOfTimestamp, upperLimitOfTimestamp := getLimitOfTimestampWithPrecision(precision)
 			if timeSpan, ok := left.(*tree.Placeholder); ok {
 				v := tree.UnwrapDatum(evalCtx, timeSpan)

@@ -364,6 +364,18 @@ func valuesSpecToEncDatum(
 	return res, nil
 }
 
+// InitProcessorProcedure init processor in procedure
+func (z *zigzagJoiner) InitProcessorProcedure(txn *kv.Txn) {
+	if z.EvalCtx.IsProcedure {
+		if z.FlowCtx != nil {
+			z.FlowCtx.Txn = txn
+		}
+		z.Closed = false
+		z.State = execinfra.StateRunning
+		z.Out.SetRowIdx(0)
+	}
+}
+
 // Start is part of the RowSource interface.
 func (z *zigzagJoiner) Start(ctx context.Context) context.Context {
 	ctx = z.StartInternal(ctx, zigzagJoinerProcName)

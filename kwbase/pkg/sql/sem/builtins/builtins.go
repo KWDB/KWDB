@@ -3720,6 +3720,19 @@ may increase either contention or retry errors, or both.`,
 
 	"jsonb_array_length": makeBuiltin(jsonProps(), jsonArrayLengthImpl),
 
+	// ROW_COUNT function
+	"row_count": makeBuiltin(
+		tree.FunctionProperties{Category: categorySystemInfo},
+		tree.Overload{
+			Types:      tree.ArgTypes{},
+			ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				return tree.NewDInt(tree.DInt(ctx.SessionData.RowCount)), nil
+			},
+			Info: "Returns the row count.",
+		},
+	),
+
 	// Metadata functions.
 
 	// https://www.postgresql.org/docs/10/static/functions-info.html

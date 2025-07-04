@@ -68,10 +68,19 @@ func (b *RowResultWriter) IncrementRowsAffected(n int) {
 	b.rowsAffected += n
 }
 
+// RowsAffected returns either the number of times AddRow was called, or the
+// sum of all n passed into IncrementRowsAffected.
+func (b *RowResultWriter) RowsAffected() int {
+	return b.rowsAffected
+}
+
 // AddPGResult implements the rowResultWriter interface.
 func (b *RowResultWriter) AddPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
+
+// AddPGComplete implements the rowResultWriter interface.
+func (b *RowResultWriter) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 // AddRow implements the rowResultWriter interface.
 func (b *RowResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
@@ -110,9 +119,18 @@ func (c *callbackResultWriter) IncrementRowsAffected(n int) {
 	c.rowsAffected += n
 }
 
+// RowsAffected returns either the number of times AddRow was called, or the
+// sum of all n passed into IncrementRowsAffected.
+func (c *callbackResultWriter) RowsAffected() int {
+	return c.rowsAffected
+}
+
 func (c *callbackResultWriter) AddPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
+
+// AddPGComplete implements the rowResultWriter interface.
+func (c *callbackResultWriter) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 func (c *callbackResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
 	return c.fn(ctx, row)

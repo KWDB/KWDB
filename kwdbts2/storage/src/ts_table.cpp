@@ -1420,10 +1420,6 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
 
 KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
-  if (version == entity_bt_manager_->GetCurrentTableVersion()) {
-    return KStatus::SUCCESS;
-  }
-
   if (entity_bt_manager_->GetRootTable(version, true) != nullptr) {
     int retry = 6;
     while (retry > 0) {
@@ -3065,7 +3061,7 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
     s = entity_bt_manager_->AddRootTable(metric_schema, upper_version, err_info);
   }
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("add new version schema failed for alter table: table id = %lu, new_version = %u, err_msg: %s",
+    LOG_ERROR("add new version schema failed, table id = %lu, new_version = %u, err_msg: %s",
               table_id_, upper_version, err_info.errmsg.c_str());
     return s;
   }

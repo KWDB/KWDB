@@ -73,41 +73,12 @@ CREATE FUNCTION
 ---------------------
                  28
 (1 row)
-> SELECT function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, comments FROM system.user_defined_function;
-    function_name   | argument_types | return_type | types_length |                function_body                | function_type | language |  db_name  | creator | comments
---------------------+----------------+-------------+--------------+---------------------------------------------+---------------+----------+-----------+---------+-----------
-  is_perfect_number | {2}            | {2}         | {0,0}        | function is_perfect_number(num)             |             1 | LUA      | defaultdb | root    |
-                    |                |             |              |     local function find_divisors(n)         |               |          |           |         |
-                    |                |             |              |         local sum = 1                       |               |          |           |         |
-                    |                |             |              |         for i = 2, math.sqrt(n) do          |               |          |           |         |
-                    |                |             |              |             if n % i == 0 then              |               |          |           |         |
-                    |                |             |              |                 sum = sum + i               |               |          |           |         |
-                    |                |             |              |                 if i ~= n / i then          |               |          |           |         |
-                    |                |             |              |                     sum = sum + n / i       |               |          |           |         |
-                    |                |             |              |                 end                         |               |          |           |         |
-                    |                |             |              |             end                             |               |          |           |         |
-                    |                |             |              |         end                                 |               |          |           |         |
-                    |                |             |              |         return sum                          |               |          |           |         |
-                    |                |             |              |     end                                     |               |          |           |         |
-                    |                |             |              |                                             |               |          |           |         |
-                    |                |             |              |                                             |               |          |           |         |
-                    |                |             |              |     local divisors_sum = find_divisors(num) |               |          |           |         |
-                    |                |             |              |                                             |               |          |           |         |
-                    |                |             |              |                                             |               |          |           |         |
-                    |                |             |              |     if num > 1 and divisors_sum == num then |               |          |           |         |
-                    |                |             |              |         return num                          |               |          |           |         |
-                    |                |             |              |     else                                    |               |          |           |         |
-                    |                |             |              |         return nil                          |               |          |           |         |
-                    |                |             |              |     end                                     |               |          |           |         |
-                    |                |             |              | end                                         |               |          |           |         |
-  square            | {2}            | {2}         | {0,0}        | function square(nu_int)                     |             1 | LUA      | defaultdb | root    |
-                    |                |             |              |     local re = nu_int * nu_int              |               |          |           |         |
-                    |                |             |              |     return re                               |               |          |           |         |
-                    |                |             |              | end                                         |               |          |           |         |
-  sum_two_ints      | {2,2}          | {2}         | {0,0,0}      | function sum_two_ints(a, b)                 |             1 | LUA      | defaultdb | root    |
-                    |                |             |              |     local re = a + b                        |               |          |           |         |
-                    |                |             |              |     return re                               |               |          |           |         |
-                    |                |             |              | end                                         |               |          |           |         |
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+        name
+---------------------
+  is_perfect_number
+  square
+  sum_two_ints
 (3 rows)
 > SHOW FUNCTIONS;
     function_name

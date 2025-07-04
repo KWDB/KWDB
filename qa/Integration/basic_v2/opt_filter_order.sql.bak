@@ -597,7 +597,7 @@ explain select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1;
 
 select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1;
 
-set cluster setting ts.sql.query_opt_mode=1110;
+set cluster setting ts.sql.query_opt_mode=DEFAULT;
 
 explain select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1;
 

@@ -284,6 +284,20 @@ func (p *planner) dependentViewRenameError(
 ) error {
 	viewDesc, err := sqlbase.GetTableDescFromID(ctx, p.txn, viewID)
 	if err != nil {
+		if err.Error() == "descriptor not found" {
+			// dependent maybe procedure
+			found, proc, err1 := p.GetProcedureNameByID(ctx, viewID)
+			if err1 != nil {
+				return err1
+			}
+			procName := proc.CatalogName + "." + proc.SchemaName + "." + proc.TableName
+			if found {
+				msg := fmt.Sprintf("cannot rename %s %q because procedure %q depends on it",
+					typeName, objName, procName)
+				hint := fmt.Sprintf("you can drop %s instead.", procName)
+				return sqlbase.NewDependentObjectErrorWithHint(msg, hint)
+			}
+		}
 		return err
 	}
 	viewName := viewDesc.Name

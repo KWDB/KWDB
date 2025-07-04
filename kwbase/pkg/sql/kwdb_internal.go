@@ -50,6 +50,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -124,6 +125,7 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalAuditPoliciesTableID:        kwbaseInternalAuditPoliciesTable,
 		sqlbase.CrdbInternalKWDBAttributeValueTableID:   kwdbInternalKWDBAttributeValueTable,
 		sqlbase.CrdbInternalKWDBFunctionsTableID:        kwdbInternalKWDBFunctionsTable,
+		sqlbase.KwdbInternalKWDBProceduresTableID:       kwdbInternalKWDBProceduresTable,
 		sqlbase.CrdbInternalKWDBSchedulesTableID:        kwdbInternalKWDBSchedulesTable,
 		sqlbase.CrdbInternalKWDBObjectCreateStatementID: kwdbInternalKWDBObjectCreateStatement,
 		sqlbase.CrdbInternalKWDBObjectRetentionID:       kwdbInternalKWDBObjectRetention,
@@ -2648,41 +2650,96 @@ CREATE TABLE kwdb_internal.kwdb_functions (
 )
 `,
 	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		query := `SELECT function_name, argument_types, return_type, function_type, language FROM system.user_defined_function`
+		query := fmt.Sprintf("SELECT descriptor from system.user_defined_routine WHERE routine_type = %d", sqlbase.Function)
 		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-functions", p.txn, query)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			funcName := tree.MustBeDString(row[0])
-			argTypArray := tree.MustBeDArray(row[1]).Array
-			returnTypArray := tree.MustBeDArray(row[2]).Array
-			funcTyp := tree.MustBeDInt(row[3])
-			language := tree.MustBeDString(row[4])
+			if row == nil || len(row) == 0 {
+				continue
+			}
+
+			var desc sqlbase.FunctionDescriptor
+			val := tree.MustBeDBytes(row[0])
+			if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+				return pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
+			}
+
+			funcName := desc.Name
+			argTypArray := desc.ArgumentTypes
+			returnTypArray := desc.ReturnType
+			funcTyp := desc.FunctionType
+			language := desc.Language
 
 			argTypes := getArrayStr(argTypArray)
 			returnTypes := getArrayStr(returnTypArray)
 
 			funcTypStr := ""
-			if funcTyp == tree.DInt(sqlbase.DefinedFunction) {
+			if funcTyp == uint32(sqlbase.DefinedFunction) {
 				funcTypStr = "function"
-			} else if funcTyp == tree.DInt(sqlbase.DefinedAggregation) {
+			} else if funcTyp == uint32(sqlbase.DefinedAggregation) {
 				funcTypStr = "aggregation"
 			} else {
 				funcTypStr = "unknown"
 			}
 
 			if err := addRow(
-				&funcName,                    // function_name
+				tree.NewDString(funcName),    // function_name
 				tree.NewDString(argTypes),    // argument_types
 				tree.NewDString(returnTypes), // return_types
 				tree.NewDString(funcTypStr),  // function_type
-				&language,                    // language
+				tree.NewDString(language),    // language
 			); err != nil {
 				return err
 			}
 		}
 		return nil
+	},
+}
+
+// kwdbInternalKWDBProceduresTable exposes local information about the stored procedures.
+var kwdbInternalKWDBProceduresTable = virtualSchemaTable{
+	comment: "kwdb procedures info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_procedures (
+  procedure_id      INT8 NOT NULL,
+  db_name           STRING NOT NULL,
+  schema_name       STRING NOT NULL,
+  procedure_name    STRING NOT NULL,
+  procedure_body    STRING   
+)
+`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		procDescs, err := GetAllProcDesc(ctx, p.txn)
+		if err != nil {
+			return err
+		}
+		scNames, err := getSchemaNames(ctx, p, dbContext)
+		if err != nil {
+			return err
+		}
+		for i := range procDescs {
+			if procDescs[i].GetDbID() != dbContext.GetID() {
+				continue
+			}
+			scName, ok := scNames[procDescs[i].GetSchemaID()]
+			if !ok {
+				return errors.AssertionFailedf("schema id %d not found", procDescs[i].GetSchemaID())
+			}
+
+			if err := addRow(
+				tree.NewDInt(tree.DInt(int64(procDescs[i].GetID()))), // proc_id
+				tree.NewDString(dbContext.Name),                      // db_name
+				tree.NewDString(scName),                              // schema_name
+				tree.NewDString(procDescs[i].Name),                   // proc_name
+				tree.NewDString(procDescs[i].GetProcBody()),          // proc_body
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+
 	},
 }
 
@@ -2734,18 +2791,15 @@ CREATE TABLE kwdb_internal.kwdb_schedules (
 }
 
 // getArrayStr obtains the string from an array of types.
-// Input:  tree.Datums - array of types, stored with int.
+// Input:  []uint32 - array of types, stored with int.
 // Output: string      - string of concatenated type names.
-func getArrayStr(array tree.Datums) string {
+func getArrayStr(array []uint32) string {
 	res := ""
 	for i, v := range array {
 		if i > 0 {
 			res += ", "
 		}
-		valStr := ""
-		if val, ok := v.(*tree.DInt); ok {
-			valStr = sqlbase.DataType(int(*val)).String()
-		}
+		valStr := sqlbase.DataType(v).String()
 		res += valStr
 	}
 	return res

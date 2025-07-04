@@ -1,0 +1,162 @@
+# Test default procedure-level permissions.
+# Default user is root.
+statement ok
+CREATE DATABASE a
+
+statement ok
+SET DATABASE = a
+
+statement ok
+CREATE TABLE t (k INT PRIMARY KEY, v int)
+
+statement ok
+INSERT INTO t VALUES (1, 1), (2, 2)
+
+statement ok
+CREATE PROCEDURE p() BEGIN SELECT * FROM t;END;
+
+statement ok
+CALL p()
+
+statement ok
+SHOW GRANTS ON PROCEDURE p
+
+statement ok
+CREATE USER bar
+
+statement ok
+GRANT ALL ON PROCEDURE p TO bar
+
+statement ok
+REVOKE ALL ON PROCEDURE p FROM bar
+
+# Switch to a user without any privileges.
+user testuser
+
+# This needs to be repeated since session variables are per client.
+statement ok
+SET DATABASE = a
+
+statement ok
+SHOW GRANTS ON PROCEDURE p
+
+statement error user testuser does not have EXECUTE privilege on procedure p
+CALL p()
+
+statement error user testuser does not have CREATE privilege on database a
+CREATE PROCEDURE p1() BEGIN SELECT * FROM t;END;
+
+user root
+
+statement ok
+CREATE USER testuser1
+
+statement ok
+GRANT EXECUTE ON PROCEDURE p TO testuser
+
+statement ok
+GRANT CREATE ON DATABASE a TO testuser
+
+user testuser
+
+statement error user testuser does not have SELECT privilege on relation t
+CALL p()
+
+statement error user testuser does not have SELECT privilege on relation t
+CREATE PROCEDURE p1() BEGIN SELECT * FROM t;END;
+
+statement error user testuser does not have GRANT privilege on procedure p
+GRANT GRANT ON PROCEDURE p TO testuser1
+
+user root
+
+statement ok
+GRANT SELECT ON TABLE t TO testuser
+
+statement ok
+GRANT GRANT ON PROCEDURE p TO testuser
+
+user testuser
+
+statement ok
+CALL p()
+
+statement ok
+CREATE PROCEDURE p1() BEGIN SELECT * FROM t;END;
+
+statement ok
+GRANT GRANT ON PROCEDURE p TO testuser1
+
+statement ok
+GRANT EXECUTE ON PROCEDURE p TO testuser1
+
+statement ok
+REVOKE GRANT ON PROCEDURE p FROM testuser1
+
+statement ok
+REVOKE EXECUTE ON PROCEDURE p FROM testuser1
+
+statement error user testuser does not have DROP privilege on procedure p
+GRANT DROP ON PROCEDURE p TO testuser1
+
+statement error user testuser does not have DROP privilege on procedure p
+DROP PROCEDURE p
+
+statement error user testuser does not have DROP privilege on procedure p
+DROP PROCEDURE p1
+
+user root
+
+statement ok
+GRANT DROP ON DATABASE a TO testuser
+
+user testuser
+
+statement error user testuser does not have DROP privilege on procedure p
+DROP PROCEDURE p
+
+statement error user testuser does not have DROP privilege on procedure p
+DROP PROCEDURE p1
+
+statement ok
+CREATE PROCEDURE p2() BEGIN SELECT * FROM t;END;
+
+statement ok
+DROP PROCEDURE p2
+
+user root
+
+statement ok
+GRANT SELECT ON DATABASE a TO testuser
+
+statement ok
+GRANT EXECUTE ON DATABASE a TO testuser
+
+statement ok
+CREATE TABLE t1 (k INT PRIMARY KEY, v int)
+
+statement ok
+INSERT INTO t1 VALUES (1, 1), (2, 2)
+
+statement ok
+CREATE PROCEDURE p3() BEGIN SELECT * FROM t;END;
+
+statement ok
+GRANT DROP ON PROCEDURE p TO testuser
+
+statement ok
+GRANT DROP ON PROCEDURE p1 TO testuser
+
+user testuser
+
+statement ok
+DROP PROCEDURE p
+
+statement ok
+DROP PROCEDURE p1
+
+statement ok
+CALL p3()
+
+statement ok
+DROP PROCEDURE p3

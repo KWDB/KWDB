@@ -98,49 +98,19 @@ BEGIN
 end'
 END;
 CREATE FUNCTION
-> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
-  function_name | argument_types | return_type | types_length |         function_body          | function_type | language |  db_name  | creator | version | comments
-----------------+----------------+-------------+--------------+--------------------------------+---------------+----------+-----------+---------+---------+-----------
-  m1            | {1}            | {1}         | {0,0}        | function m1(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m10           | {1}            | {1}         | {0,0}        | function m10(nu_int)           |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m2            | {1}            | {1}         | {0,0}        | function m2(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m3            | {1}            | {1}         | {0,0}        | function m3(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m4            | {1}            | {1}         | {0,0}        | function m4(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m5            | {1}            | {1}         | {0,0}        | function m5(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m6            | {1}            | {1}         | {0,0}        | function m6(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m7            | {1}            | {1}         | {0,0}        | function m7(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m8            | {1}            | {1}         | {0,0}        | function m8(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
-  m9            | {1}            | {1}         | {0,0}        | function m9(nu_int)            |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+  name
+--------
+  m1
+  m10
+  m2
+  m3
+  m4
+  m5
+  m6
+  m7
+  m8
+  m9
 (10 rows)
 > SHOW FUNCTIONS;
   function_name
@@ -226,7 +196,7 @@ DROP FUNCTION
 DROP FUNCTION
 > DROP FUNCTION m10;
 DROP FUNCTION
-> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
-  function_name | argument_types | return_type | types_length | function_body | function_type | language | db_name | creator | version | comments
-----------------+----------------+-------------+--------------+---------------+---------------+----------+---------+---------+---------+-----------
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+  name
+--------
 (0 rows)

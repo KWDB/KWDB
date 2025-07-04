@@ -283,6 +283,41 @@ func (b *Builder) synthesizeColumn(
 	return &scope.cols[len(scope.cols)-1]
 }
 
+func (b *Builder) synthesizeDeclareColumn(
+	scope *scope,
+	alias string,
+	typ *types.T,
+	expr tree.TypedExpr,
+	idx int,
+	isPara bool,
+	overWrite int,
+) *scopeColumn {
+	name := tree.Name(alias)
+	colID := b.factory.Metadata().AddDeclareColumn(alias, typ, idx)
+	if overWrite != -1 {
+		scope.cols[overWrite] = scopeColumn{
+			name:       name,
+			typ:        typ,
+			id:         colID,
+			expr:       expr,
+			isDeclared: true,
+			isPara:     isPara,
+			realIdx:    idx,
+		}
+		return &scope.cols[overWrite]
+	}
+	scope.cols = append(scope.cols, scopeColumn{
+		name:       name,
+		typ:        typ,
+		id:         colID,
+		expr:       expr,
+		isDeclared: true,
+		isPara:     isPara,
+		realIdx:    idx,
+	})
+	return &scope.cols[len(scope.cols)-1]
+}
+
 // populateSynthesizedColumn is similar to synthesizeColumn, but it fills in
 // the given existing column rather than allocating a new one.
 func (b *Builder) populateSynthesizedColumn(
@@ -292,6 +327,10 @@ func (b *Builder) populateSynthesizedColumn(
 	name = string(col.name)
 	if b.PhysType == tree.TS && name == "" {
 		name = col.expr.String()
+	}
+	if col.isDeclared {
+		col.scalar = scalar
+		return
 	}
 
 	colID := b.factory.Metadata().AddTSColumn(name, col.typ, opt.TSColNormal)
@@ -352,10 +391,21 @@ func (b *Builder) addColumn(
 			return nil
 		}
 	} else {
+		isDeclare := false
+		idx := 0
+		var id opt.ColumnID
+		if col, ok := expr.(*scopeColumn); ok {
+			isDeclare = col.isDeclared
+			id = col.id
+			idx = col.realIdx
+		}
 		scope.cols = append(scope.cols, scopeColumn{
-			name: name,
-			typ:  expr.ResolvedType(),
-			expr: expr,
+			name:       name,
+			id:         id,
+			typ:        expr.ResolvedType(),
+			expr:       expr,
+			isDeclared: isDeclare,
+			realIdx:    idx,
 		})
 	}
 	return &scope.cols[len(scope.cols)-1]
@@ -869,7 +919,7 @@ type InstanceTabName struct {
 // If the name does not resolve to a table, then resolveDataSource raises an error.
 func (b *Builder) lookupDataSource(tn *tree.TableName) (cat.DataSource, cat.DataSourceName) {
 	var flags cat.Flags
-	if b.insideViewDef {
+	if b.insideViewDef || b.insideProcDef {
 		// Avoid taking table leases when we're creating a view.
 		flags.AvoidDescriptorCaches = true
 	}
@@ -888,7 +938,7 @@ func (b *Builder) resolveDataSource(
 	tn *tree.TableName, priv privilege.Kind,
 ) (cat.DataSource, cat.DataSourceName) {
 	var flags cat.Flags
-	if b.insideViewDef {
+	if b.insideViewDef || b.insideProcDef {
 		// Avoid taking table leases when we're creating a view.
 		flags.AvoidDescriptorCaches = true
 	}
@@ -914,7 +964,7 @@ func (b *Builder) resolveDataSource(
 // error.
 func (b *Builder) resolveDataSourceRef(ref *tree.TableRef, priv privilege.Kind) cat.DataSource {
 	var flags cat.Flags
-	if b.insideViewDef {
+	if b.insideViewDef || b.insideProcDef {
 		// Avoid taking table leases when we're creating a view.
 		flags.AvoidDescriptorCaches = true
 	}

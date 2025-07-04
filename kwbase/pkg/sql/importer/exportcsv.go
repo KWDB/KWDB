@@ -100,6 +100,10 @@ func (sp *csvWriter) Push(ctx context.Context, res []byte) error {
 	return nil
 }
 
+func (sp *csvWriter) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return nil, nil
+}
+
 func (sp *csvWriter) IsShortCircuitForPgEncode() bool {
 	return false
 }

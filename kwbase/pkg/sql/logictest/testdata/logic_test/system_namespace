@@ -34,7 +34,7 @@ SELECT * FROM system.namespace
 1   29  statement_diagnostics_requests   35
 1   29  table_statistics                 20
 1   29  ui                               14
-1   29  user_defined_function            55
+1   29  user_defined_routine             58
 1   29  users                            4
 1   29  web_sessions                     19
 1   29  zones                            5

@@ -79,7 +79,7 @@ class HeapSortContainer : public DataContainer, public std::enable_shared_from_t
 
   k_int32 NextLine() override;
 
-  void Sort() override;
+  KStatus Sort() override;
 
   KStatus Init() override;
 

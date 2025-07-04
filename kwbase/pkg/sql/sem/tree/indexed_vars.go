@@ -51,6 +51,8 @@ type IndexedVar struct {
 	Idx  int
 	Used bool
 
+	IsDeclare bool
+
 	col NodeFormatter
 
 	typeAnnotation
@@ -66,8 +68,24 @@ func (v *IndexedVar) Walk(_ Visitor) Expr {
 	return v
 }
 
+// SetColFormat sets IndexedVar's col.
+func (v *IndexedVar) SetColFormat(col *UnresolvedName) {
+	v.col = col
+}
+
+// GetColName returns IndexedVar's col name.
+func (v *IndexedVar) GetColName() *UnresolvedName {
+	if name, ok := v.col.(*UnresolvedName); ok {
+		return name
+	}
+	return nil
+}
+
 // TypeCheck is part of the Expr interface.
 func (v *IndexedVar) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, error) {
+	if v.IsDeclare {
+		return v, nil
+	}
 	if ctx.IVarContainer == nil || ctx.IVarContainer == unboundContainer {
 		// A more technically correct message would be to say that the
 		// reference is unbound and thus cannot be typed. However this is
@@ -261,6 +279,9 @@ var _ Visitor = &IndexedVarHelper{}
 // VisitPre implements the Visitor interface.
 func (h *IndexedVarHelper) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
 	if iv, ok := expr.(*IndexedVar); ok {
+		if iv.IsDeclare {
+			return false, expr
+		}
 		return false, h.IndexedVar(iv.Idx)
 	}
 	return true, expr

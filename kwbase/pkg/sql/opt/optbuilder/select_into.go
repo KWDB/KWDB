@@ -24,16 +24,22 @@ import (
 // buildSelectInto builds a SELECT ... INTO ... statement.
 func (b *Builder) buildSelectInto(sel *tree.SelectInto, inScope *scope) (outScope *scope) {
 	emptyScope := b.allocScope()
-	inputScope := b.buildStmt(sel.Values, nil, emptyScope)
-	if len(inputScope.cols) != len(sel.Names) {
+	inputScope := b.buildStmt(sel.SelectClause, nil, emptyScope)
+	if len(inputScope.cols) != len(sel.Targets) {
 		panic(pgerror.Newf(
 			pgcode.Syntax, "The used SELECT statements have a different number of columns",
 		))
 	}
 
 	var vars opt.VarNames
-	for _, name := range sel.Names {
-		varName := strings.ToLower(name.VarName)
+	for _, name := range sel.Targets {
+		if name.DeclareVar != "" {
+			panic(pgerror.Newf(pgcode.Syntax, "invalid user defined var name '%s'", name.DeclareVar))
+		}
+		varName := strings.ToLower(name.Udv.VarName)
+		if varName == "" || (varName != "" && varName[0] != '@') {
+			panic(pgerror.Newf(pgcode.Syntax, "invalid user defined var name '%s'", varName))
+		}
 		vars = append(vars, varName)
 	}
 

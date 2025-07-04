@@ -26,7 +26,7 @@
 #include "ts_table_v2_impl.h"
 
 // V2
-int EngineOptions::vgroup_max_num = 6;
+int EngineOptions::vgroup_max_num = 4;
 DedupRule EngineOptions::g_dedup_rule = DedupRule::OVERRIDE;
 size_t EngineOptions::mem_segment_max_size = 64 << 20;
 int32_t EngineOptions::mem_segment_max_height = 12;
@@ -650,7 +650,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
 //    3) For ALTER operations, roll back to the previous schema version;
 //  4. If the rollback fails, a system log is generated and an error exit is reported.
   if (options_.wal_level == WALMode::OFF) {
-    return KStatus::SUCCESS;
+    Return(KStatus::SUCCESS);
   }
   KStatus s;
 
@@ -658,7 +658,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   auto vgroup = GetVGroupByID(ctx, distrib(gen));
   s = vgroup->MtrRollback(ctx, mtr_id);
   if (s == FAIL) {
-    return s;
+    Return(s);
   }
 
   // for range
@@ -937,13 +937,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   rewrite.clear();
 
   // 5. trig all vgroup flush
-  // for (const auto &vgrp : vgroups_) {
-  //   s = vgrp->Flush();
-  //   if (s == KStatus::FAIL) {
-  //     LOG_ERROR("Failed to flush metric file.")
-  //     return s;
-  //   }
-  // }
+  for (const auto &vgrp : vgroups_) {
+    s = vgrp->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
+  }
 
   // 6.write EndWAL to chk file
   TS_LSN lsn;
