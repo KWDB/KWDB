@@ -279,13 +279,13 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
-    LOG_ERROR("Tag table id[%d] version[%u] doesnot exist.", this->m_table_id, payload.GetTableVersion());
+    LOG_ERROR("Tag table id[%ld] version[%u] doesn't exist.", this->m_table_id, payload.GetTableVersion());
     return -1;
   }
   TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;
   auto tag_partition_table = m_partition_mgr_->GetPartitionTable(tag_partition_version);
   if (nullptr == tag_partition_table) {
-    LOG_ERROR("Tag partition table version[%u] doesnot exist.", tag_partition_version);
+    LOG_ERROR("Tag partition table version[%u] doesn't exist.", tag_partition_version);
     return -1;
   }
 

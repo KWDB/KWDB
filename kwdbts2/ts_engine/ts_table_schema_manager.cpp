@@ -124,6 +124,7 @@ KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type
   if (s == SUCCESS) {
     LOG_INFO("AlterTable succeeded. table_id: %lu alter_type: %hhu cur_version: %u new_version: %u is_general_tag: %d",
            table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
+    cur_version_ = new_version;
   } else {
     LOG_INFO("AlterTable failed. table_id: %lu alter_type: %hhu cur_version: %u new_version: %u is_general_tag: %d",
            table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
@@ -142,6 +143,7 @@ KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_
     LOG_ERROR("UndoAlterTagTable failed. error: %s ", err_info.errmsg.c_str());
     return FAIL;
   }
+  cur_version_ = cur_version;
   return SUCCESS;
 }
 
@@ -275,6 +277,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
       LOG_ERROR("CreateTable add tag new version[%d] failed.", ts_version);
     }
   }
+  cur_version_ = ts_version;
   return SUCCESS;
 }
 
@@ -282,13 +285,12 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
                                               uint32_t new_version, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  if (metric_schemas_.find(new_version) != metric_schemas_.end()) {
+  if (metric_table_->GetMetricsTable(new_version) != nullptr) {
     LOG_INFO("metric schema version %d already exists, table id %lu", new_version, table_id_);
     return SUCCESS;
   }
-  if (cur_metric_version_ >= new_version) {
-    LOG_ERROR("cannot add low version schema: current version[%d], create version[%d]",
-              cur_metric_version_, new_version)
+  if (cur_version_ >= new_version) {
+    LOG_ERROR("cannot add low version schema: current version[%d], create version[%d]", cur_version_, new_version)
     return FAIL;
   }
   for (auto& attr : schema) {
@@ -300,7 +302,8 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
   auto tmp_bt = std::make_shared<MMapMetricsTable>();
   if (tmp_bt->open(bt_path, schema_root_path_, metric_schema_path_, MMAP_CREAT_EXCL, err_info) >= 0
       || err_info.errcode == KWECORR) {
-    tmp_bt->create(schema, new_version, metric_schema_path_, partition_interval_, encoding, err_info, false);
+    tmp_bt->create(schema, new_version, metric_schema_path_, metric_table_->GetPartitionInterval(),
+                    encoding, err_info, false);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] create error : %s", bt_path.c_str(), err_info.errmsg.c_str());
@@ -310,7 +313,7 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
 
   // Copy the metadata of the previous version
   if (cur_version) {
-    auto src_bt = metric_schemas_[cur_version];
+    auto src_bt = metric_table_->GetMetricsTable(cur_version);
     tmp_bt->metaData()->has_data = src_bt->metaData()->has_data;
     tmp_bt->metaData()->actul_size = src_bt->metaData()->actul_size;
     // tmp_bt->metaData()->life_time = src_bt->metaData()->life_time;
@@ -332,14 +335,10 @@ KStatus TsTableSchemaManager::AddMetricSchema(vector<AttributeInfo>& schema, uin
   }
 
   // The current version must already exist.
-  tmp_bt->SetLifeTime(metric_schemas_[cur_version]->GetLifeTime());
+  tmp_bt->SetLifeTime(metric_table_->GetLifeTime());
   tmp_bt->setObjectReady();
   // Save to map cache
-  metric_schemas_.insert({new_version, tmp_bt});
-  cur_metric_schema_ = tmp_bt;
-  // Update the latest version of table and other information
-  cur_metric_version_ = new_version;
-  partition_interval_ = tmp_bt->partitionInterval();
+  metric_table_->AddMetricsTable(new_version, tmp_bt);
   return SUCCESS;
 }
 
@@ -465,83 +464,32 @@ impl_latch_virtual_func(TsTableSchemaManager, &schema_rw_lock_)
 int TsTableSchemaManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  for (auto& root_table : metric_schemas_) {
-    if (root_table.second) {
-      root_table.second->Sync(check_lsn, err_info);
-    }
-  }
+  metric_table_->Sync(check_lsn, err_info);
   return 0;
 }
 
 KStatus TsTableSchemaManager::SetDropped() {
   wrLock();
   Defer defer([&]() { unLock(); });
-  std::vector<std::shared_ptr<MMapMetricsTable>> completed_tables;
-  // Iterate through all versions of the root table, updating the drop flag
-  for (auto& root_table : metric_schemas_) {
-    if (!root_table.second) {
-      ErrorInfo err_info;
-      root_table.second = open(root_table.first, err_info);
-      if (!root_table.second) {
-        LOG_ERROR("root table[%s] set drop failed", IdToSchemaPath(table_id_, root_table.first).c_str());
-        // rollback
-        for (auto completed_table : completed_tables) {
-          completed_table->setNotDropped();
-        }
-        return FAIL;
-      }
-    }
-    root_table.second->setDropped();
-    completed_tables.push_back(root_table.second);
-  }
-  return SUCCESS;
+  return metric_table_->SetDropped();
 }
 
 bool TsTableSchemaManager::IsDropped() {
   rdLock();
   Defer defer([&]() { unLock(); });
-  return cur_metric_schema_->isDropped();
+  return metric_table_->IsDropped();
 }
 
 KStatus TsTableSchemaManager::RemoveAll() {
   wrLock();
   Defer defer([&]() { unLock(); });
-  // Remove all root tables
-  for (auto& root_table : metric_schemas_) {
-    if (!root_table.second) {
-      Remove(schema_root_path_ + IdToSchemaPath(table_id_, root_table.first));
-    } else {
-      root_table.second->remove();
-    }
-  }
-  metric_schemas_.clear();
-  return SUCCESS;
+  return metric_table_->RemoveAll();
 }
 
 KStatus TsTableSchemaManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  auto cur_metric_version = metric_table_->GetCurrentMetricsVersion();
-  if (cur_metric_version == old_version) {
-    return SUCCESS;
-  }
-  if (cur_metric_version == new_version) {
-    // Get the previous version of root table
-    auto bt = getMetricsTable(old_version, false);
-    // Clear the current version of the data
-    metric_schemas_.erase(new_version);
-    cur_metric_schema_->remove();
-    cur_metric_schema_.reset();
-    // Update the latest version information
-    cur_metric_schema_ = bt;
-    cur_metric_version_ = old_version;
-    partition_interval_ = bt->partitionInterval();
-  } else if (cur_metric_version_ < old_version) {
-    LOG_ERROR("incorrect version: current table version is [%u], but roll back to version is [%u]",
-              cur_metric_version_, old_version);
-    return FAIL;
-  }
-  return SUCCESS;
+  return metric_table_->UndoAlterCol(old_version, new_version);
 }
 
 KStatus TsTableSchemaManager::UpdateMetricVersion(uint32_t cur_version, uint32_t new_version) {
@@ -650,13 +598,13 @@ KStatus TsTableSchemaManager::GetColAttrInfo(kwdbContext_p ctx, const roachpb::K
 DATATYPE TsTableSchemaManager::GetTsColDataType() {
   rdLock();
   Defer defer([&]() { unLock(); });
-  return (DATATYPE)(getMetricsTable(cur_metric_version_, false)->getSchemaInfoExcludeDropped()[0].type);
+  return (DATATYPE)(getMetricsTable(cur_version_, false)->getSchemaInfoExcludeDropped()[0].type);
 }
 
 const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_version) {
   rdLock();
   Defer defer([&]() { unLock(); });
-  return KMALLOC_DEBUGGER(table_version, false)->getIdxForValidCols();
+  return getMetricsTable(table_version, false)->getIdxForValidCols();
 }
 
 bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<SchemaVersionConv>* version_conv) {
@@ -706,7 +654,7 @@ KStatus TsTableSchemaManager::DropNormalTagIndex(kwdbContext_p ctx, const uint64
 
 KStatus TsTableSchemaManager::UndoCreateHashIndex(uint32_t index_id, uint32_t cur_version, uint32_t new_version,
                                               ErrorInfo& err_info) {
-  LOG_INFO("UndoCreateHashIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  LOG_INFO("UndoCreateHashIndex index_id:%u, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
   ErrorInfo errorInfo;
   errorInfo.errcode = tag_table_->UndoCreateHashIndex(index_id, cur_version, new_version, errorInfo);
   if (errorInfo.errcode < 0) {
@@ -717,7 +665,7 @@ KStatus TsTableSchemaManager::UndoCreateHashIndex(uint32_t index_id, uint32_t cu
 
 KStatus TsTableSchemaManager::UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t cur_version,
                       uint32_t new_version, ErrorInfo& err_info) {
-  LOG_INFO("UndoDropHashIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
+  LOG_INFO("UndoDropHashIndex index_id:%u, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
   ErrorInfo errorInfo;
   errorInfo.errcode = tag_table_->UndoDropHashIndex(tags, index_id, cur_version, new_version, errorInfo);
   if (errorInfo.errcode < 0) {

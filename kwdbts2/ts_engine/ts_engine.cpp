@@ -113,7 +113,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    uint32_t entity_id;
+    uint32_t entity_id = 0;
     s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
     if (s != KStatus::SUCCESS)
     {
@@ -366,7 +366,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Failed get table id[%d] version id[%d] tag schema.", table_id, tbl_version);
+      LOG_ERROR("Failed get table id[%ld] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
     err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id);

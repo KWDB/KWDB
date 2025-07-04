@@ -18,7 +18,8 @@ namespace kwdbts {
 class MetricsTableVersionManager {
 public:
   MetricsTableVersionManager(const std::string& db_path, const std::string& sub_path, uint64_t table_id) :
-                            db_path_(db_path), tbl_sub_path_(sub_path), table_id_(table_id){}
+                            db_path_(db_path), tbl_sub_path_(sub_path), table_id_(table_id),
+                            schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
 
   ~MetricsTableVersionManager();
 
@@ -49,7 +50,25 @@ public:
 
   uint64_t GetDbID() const;
 
-protected:
+  int rdLock();
+
+  int wrLock();
+
+  int unLock();
+
+  void Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info);
+
+  KStatus SetDropped();
+
+  bool IsDropped();
+
+  KStatus RemoveAll();
+
+  KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
+
+private:
+  std::shared_ptr<MMapMetricsTable> open(uint32_t ts_version, ErrorInfo& err_info);
+
   std::string db_path_;
   std::string tbl_sub_path_;
   uint64_t table_id_{0};
@@ -60,6 +79,7 @@ protected:
   std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_tables_;
   // Partition interval.
   uint64_t partition_interval_;
+  KRWLatch schema_rw_lock_;
 };
 
 } // kwdbts

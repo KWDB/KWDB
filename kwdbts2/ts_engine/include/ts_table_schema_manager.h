@@ -66,6 +66,7 @@ class TsTableSchemaManager {
                         uint32_t cur_version, uint32_t new_version, string& msg);
 
  protected:
+  uint32_t cur_version_{0};
   std::shared_ptr<MetricsTableVersionManager> metric_table_{nullptr};
   std::shared_ptr<TagTable> tag_table_{nullptr};
   std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
@@ -99,7 +100,7 @@ class TsTableSchemaManager {
   void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);
 
   inline uint32_t GetCurrentVersion() {
-    return metric_table_->GetCurrentMetricsVersion();
+    return cur_version_;
   }
 
   TSTableID GetTableId();

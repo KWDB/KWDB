@@ -141,11 +141,100 @@ uint64_t MetricsTableVersionManager::GetPartitionInterval() const {
 }
 
 uint64_t MetricsTableVersionManager::GetDbID() const {
-  if (cur_metric_table_ && cur_metric_schema_->metaData()) {
+  if (cur_metric_table_ && cur_metric_table_->metaData()) {
     return cur_metric_table_->metaData()->db_id;
   } else {
     LOG_ERROR("cur_metric_schema_ is nullptr");
     return 0;
   }
 }
-} // kwdbts
+
+impl_latch_virtual_func(MetricsTableVersionManager, &schema_rw_lock_)
+
+void MetricsTableVersionManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
+  for (auto& root_table : metric_tables_) {
+    if (root_table.second) {
+      root_table.second->Sync(check_lsn, err_info);
+    }
+  }
+}
+
+KStatus MetricsTableVersionManager::SetDropped() {
+  wrLock();
+  Defer defer([&]() { unLock(); });
+  std::vector<std::shared_ptr<MMapMetricsTable>> completed_tables;
+  // Iterate through all versions of the root table, updating the drop flag
+  for (auto& root_table : metric_tables_) {
+    if (!root_table.second) {
+      ErrorInfo err_info;
+      root_table.second = open(root_table.first, err_info);
+      if (!root_table.second) {
+        LOG_ERROR("root table[%s] set drop failed", IdToSchemaPath(table_id_, root_table.first).c_str());
+        // rollback
+        for (auto completed_table : completed_tables) {
+          completed_table->setNotDropped();
+        }
+        return FAIL;
+      }
+    }
+    root_table.second->setDropped();
+    completed_tables.push_back(root_table.second);
+  }
+  return SUCCESS;
+}
+
+bool MetricsTableVersionManager::IsDropped() {
+  rdLock();
+  Defer defer([&]() { unLock(); });
+  return cur_metric_table_->isDropped();
+}
+
+KStatus MetricsTableVersionManager::RemoveAll() {
+  wrLock();
+  Defer defer([&]() { unLock(); });
+  // Remove all root tables
+  for (auto& root_table : metric_tables_) {
+    if (!root_table.second) {
+      Remove(db_path_ + IdToSchemaPath(table_id_, root_table.first));
+    } else {
+      root_table.second->remove();
+    }
+  }
+  metric_tables_.clear();
+  return SUCCESS;
+}
+
+KStatus MetricsTableVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
+  if (cur_metric_version_ == old_version) {
+    return SUCCESS;
+  }
+  if (cur_metric_version_ == new_version) {
+    // Get the previous version of root table
+    auto bt = GetMetricsTable(old_version, false);
+    // Clear the current version of the data
+    metric_tables_.erase(new_version);
+    cur_metric_table_->remove();
+    cur_metric_table_.reset();
+    // Update the latest version information
+    cur_metric_table_ = bt;
+    cur_metric_version_ = old_version;
+    partition_interval_ = bt->partitionInterval();
+  } else if (cur_metric_version_ < old_version) {
+    LOG_ERROR("incorrect version: current table version is [%u], but roll back to version is [%u]",
+              cur_metric_version_, old_version);
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+std::shared_ptr<MMapMetricsTable> MetricsTableVersionManager::open(uint32_t ts_version, ErrorInfo& err_info) {
+  auto tmp_bt = std::make_shared<MMapMetricsTable>();
+  string bt_path = IdToSchemaPath(table_id_, ts_version);
+  tmp_bt->open(bt_path, db_path_, tbl_sub_path_, MMAP_OPEN_NORECURSIVE, err_info);
+  if (err_info.errcode < 0) {
+    LOG_ERROR("root table[%s] open failed: %s", bt_path.c_str(), err_info.errmsg.c_str())
+    return nullptr;
+  }
+  return tmp_bt;
+}
+} // namespace kwdbts
