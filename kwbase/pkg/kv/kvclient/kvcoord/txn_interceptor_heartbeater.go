@@ -459,8 +459,6 @@ type tsTxnHeartbeater struct {
 		loopStarted bool
 
 		loopCancel func()
-
-		finalObservedStatus roachpb.TransactionStatus
 	}
 	ranges  *roachpb.Spans
 	tsTxn   roachpb.TsTransaction
@@ -556,7 +554,7 @@ func (h *tsTxnHeartbeater) startHeartbeatLoopLocked(ctx context.Context) error {
 	hbCtx = opentracing.ContextWithSpan(hbCtx, opentracing.SpanFromContext(ctx))
 	hbCtx, h.mu.loopCancel = context.WithCancel(hbCtx)
 
-	return h.stopper.RunAsyncTask(hbCtx, "kv.TxnCoordSender: heartbeat loop", h.heartbeatLoop)
+	return h.stopper.RunAsyncTask(hbCtx, "kv.TsSender: ts heartbeat loop", h.heartbeatLoop)
 }
 
 func (h *tsTxnHeartbeater) cancelHeartbeatLoopLocked() {
@@ -571,9 +569,8 @@ func (h *tsTxnHeartbeater) heartbeatLoopRunningLocked() bool {
 	return h.mu.loopCancel != nil
 }
 
-// heartbeatLoop periodically sends a HeartbeatTxn request to the transaction
-// record, stopping in the event the transaction is aborted or committed after
-// attempting to resolve the intents.
+// heartbeatLoop periodically start recording ts txn record and updating last heartbeat in
+// ts txn record , stopping in the event the transaction is aborted or committed .
 func (h *tsTxnHeartbeater) heartbeatLoop(ctx context.Context) {
 	defer func() {
 		h.mu.Lock()
@@ -614,49 +611,21 @@ func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
 	if ctx.Err() != nil {
 		return false
 	}
-
-	if h.mu.transaction.Status != roachpb.PENDING {
-		log.Fatalf(ctx,
-			"txn committed or aborted but heartbeat loop hasn't been signaled to stop. txn: %s",
-			h.mu.transaction)
-	}
-
-	// Clone the txn in order to put it in the heartbeat request.
-	//txn := h.mu.transaction.Clone()
-	//if txn.Key == nil {
-	//	log.Fatalf(ctx, "attempting to heartbeat txn without anchor key: %v", txn)
-	//}
-
-	// If the txn is no longer pending, ignore the result of the heartbeat
-	// and tear down the heartbeat loop.
 	if h.mu.transaction.Status != roachpb.PENDING {
 		return false
 	}
-
 	record, err := h.heartbeatTsTxn(ctx)
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 	}
-
 	// Tear down the heartbeat loop if the response transaction is finalized.
 	if record != nil && record.Status.IsFinalized() {
-		switch record.Status {
-		case roachpb.COMMITTED:
-			// Shut down the heartbeat loop without doing anything else.
-			// We must have raced with an EndTxn(commit=true).
-		case roachpb.ABORTED:
-			// Roll back the transaction record to clean up intents and
-			// then shut down the heartbeat loop.
-			// h.abortTxnAsyncLocked(ctx)
-		}
-		h.mu.finalObservedStatus = record.Status
 		return false
 	}
 	return true
 }
 
 func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRecord, error) {
-	fmt.Printf("start get txn record, id: %v\n", h.mu.transaction.ID)
 	record := &roachpb.TsTxnRecord{}
 	record.ID = h.mu.transaction.ID
 	record.Status = roachpb.PENDING

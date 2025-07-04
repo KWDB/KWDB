@@ -1586,7 +1586,7 @@ func (db *DB) ScanAndWriteTxnRecord(ctx context.Context, txnRecord *roachpb.TsTx
 	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
 		var newTxn *roachpb.TsTxnRecord
 		key := keys.MakeTxnRecordKey(txnRecord.ID)
-		fmt.Printf("start get txn record, id: %v, now: %v\n", txnRecord.ID, time.Now())
+		log.VEventf(ctx, 2, "get txn record when heartbeat loop, txn id: %v\n", txnRecord.ID)
 		keyValue, err := txn.Get(ctx, key)
 		if err != nil {
 			return err
@@ -1601,6 +1601,7 @@ func (db *DB) ScanAndWriteTxnRecord(ctx context.Context, txnRecord *roachpb.TsTx
 			newTxn = &res
 			newTxn.LastHeartbeat = txnRecord.LastHeartbeat
 		}
+		log.VEventf(ctx, 2, "write txn record when heartbeat loop, txn id: %v, txn status: %v\n", txnRecord.ID, txnRecord.Status)
 		b := Batch{}
 		value, err := newTxn.Marshal()
 		if err != nil {
