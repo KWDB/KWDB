@@ -9,24 +9,25 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <iostream>
+#include "ts_engine_schema_manager.h"
+
 #include <filesystem>
+#include <iostream>
 #include <memory>
 #include <regex>
 
 #include "kwdb_type.h"
 #include "lg_api.h"
-#include "ts_table_schema_manager.h"
 #include "sys_utils.h"
-#include "ts_engine_schema_manager.h"
+#include "ts_table_schema_manager.h"
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 
 namespace kwdbts {
 
-TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
-    root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
+TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path)
+    : root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
   auto exists = IsExists(schema_root_path);
   if (exists == false) {
     ErrorInfo error_info;
@@ -34,12 +35,9 @@ TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
   }
 }
 
-TsEngineSchemaManager::~TsEngineSchemaManager() {
-}
+TsEngineSchemaManager::~TsEngineSchemaManager() {}
 
-KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
-  return KStatus::SUCCESS;
-}
+KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) { return KStatus::SUCCESS; }
 
 KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db_id, const KTableKey& table_id,
                                            roachpb::CreateTsTable* meta) {
@@ -62,7 +60,7 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db
     ts_version = meta->ts_table().ts_version();
   }
 
-  //  TODO(zzr): customize partition interval
+  // TODO(zzr): customize partition interval
   // uint64_t partition_interval = EngineOptions::iot_interval;
   // if (meta->ts_table().has_partition_interval()) {
   //   partition_interval = meta->ts_table().partition_interval();
@@ -191,7 +189,8 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
+KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
+                                                 std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
   rdLock();
   auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
@@ -223,8 +222,8 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_p
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
-                                             uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
+KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key, uint32_t* vgroup_id,
+                                         TSEntityID* entity_id, bool* new_tag) {
   std::shared_ptr<TsTableSchemaManager> tb_schema;
   KStatus s = GetTableSchemaMgr(tbl_id, tb_schema);
   if (s != KStatus::SUCCESS) {
@@ -259,8 +258,8 @@ uint32_t TsEngineSchemaManager::GetDBIDByTableID(TSTableID table_id) {
 }
 
 KStatus TsEngineSchemaManager::AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type,
-                                          roachpb::KWDBKTSColumn *column, uint32_t cur_version,
-                                          uint32_t new_version, string &msg) {
+                                          roachpb::KWDBKTSColumn* column, uint32_t cur_version, uint32_t new_version,
+                                          string& msg) {
   std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
   auto s = GetTableSchemaMgr(table_id, tb_schema_mgr);
   if (s != KStatus::SUCCESS) {
@@ -272,4 +271,3 @@ KStatus TsEngineSchemaManager::AlterTable(kwdbContext_p ctx, const KTableKey& ta
 impl_latch_virtual_func(TsEngineSchemaManager, &mgrs_rw_latch_)
 
 }  //  namespace kwdbts
-

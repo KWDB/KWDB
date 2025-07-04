@@ -38,7 +38,7 @@ class LastSegmentMetaBlockBase {
   virtual void SerializeImpl(std::string* dst) = 0;
 
  public:
-  virtual ~LastSegmentMetaBlockBase(){}
+  virtual ~LastSegmentMetaBlockBase() {}
   virtual std::string GetName() const = 0;
   void Serialize(std::string* dst) {
     dst->clear();

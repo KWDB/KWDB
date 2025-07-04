@@ -131,7 +131,7 @@ KStatus TsDelItemManager::Open() {
 KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item) {
   auto offset = mmap_alloc_.AllocateAssigned(sizeof(IndexNode), INVALID_POSITION);
   auto new_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(offset, sizeof(IndexNode)));
-  if(new_node == nullptr){
+  if (new_node == nullptr) {
     return FAIL;
   }
   new_node->del_item = del_item;

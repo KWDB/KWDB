@@ -1286,8 +1286,7 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
     } else if ((is_reversed_ && max_ts <= min_ts) || (!is_reversed_ && min_ts > mid_ts)) {
       filter_block_spans_.push_back(block_span);
     } else {
-
-      //  TODO(lmz): code review here, is_lower_part is uninitialized. It may cause a bug.
+      // TODO(lmz): code review here, is_lower_part is uninitialized. It may cause a bug.
       //  is_lower_part = true to avoid compile error.
       bool is_lower_part = true;
       int first_row = block_span->GetStartRow(), start_row = block_span->GetStartRow();

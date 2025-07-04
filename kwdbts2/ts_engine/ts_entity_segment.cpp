@@ -581,8 +581,8 @@ KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
   if (col_blk.agg.empty()) {
     return KStatus::SUCCESS;
   }
-  char* pre_agg =col_blk.agg.data();
-  pre_max.len = *reinterpret_cast<uint32_t *>(pre_agg + sizeof(uint16_t));
+  char* pre_agg = col_blk.agg.data();
+  pre_max.len = *reinterpret_cast<uint32_t*>(pre_agg + sizeof(uint16_t));
   pre_max.data = pre_agg + sizeof(uint16_t) + sizeof(uint32_t) * 2;
 
   return KStatus::SUCCESS;
