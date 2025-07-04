@@ -62,16 +62,17 @@ KStatus TSxMgr::MtrBegin(kwdbts::kwdbContext_p ctx, uint64_t range_id, uint64_t 
   char* wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, tsx_id,
                                            range_id, index);
   size_t wal_len = MTRBeginEntry::fixed_length;
-  KStatus s = SUCCESS;
-  if (tsx_id != LogEntry::DEFAULT_TS_TRANS_ID && ts_trans_ids_[tsx_id] == 0) {
+  KStatus s;
+  if (ts_trans_ids_.find(tsx_id) == ts_trans_ids_.end()) {
     s = wal_mgr_->WriteWAL(ctx, wal_log, wal_len, mini_trans_id);
+  } else {
+    delete [] wal_log;
+    return SUCCESS;
   }
 
   if (tsx_id != LogEntry::DEFAULT_TS_TRANS_ID) {
     map_mutex_.lock();
-    if (ts_trans_ids_[tsx_id] == 0) {
-      ts_trans_ids_.emplace(std::make_pair(tsx_id, mini_trans_id));
-    }
+    ts_trans_ids_.emplace(std::make_pair(tsx_id, mini_trans_id));
     map_mutex_.unlock();
   }
   delete[] wal_log;
@@ -81,7 +82,7 @@ KStatus TSxMgr::MtrBegin(kwdbts::kwdbContext_p ctx, uint64_t range_id, uint64_t 
 KStatus TSxMgr::MtrCommit(kwdbts::kwdbContext_p ctx, uint64_t mini_trans_id, const char* tsx_id) {
   if (tsx_id != nullptr) {
     map_mutex_.lock();
-    if (ts_trans_ids_[tsx_id] != 0) {
+    if (ts_trans_ids_.find(tsx_id) != ts_trans_ids_.end()) {
       ts_trans_ids_.erase(tsx_id);
     } else {
       map_mutex_.unlock();
@@ -95,7 +96,7 @@ KStatus TSxMgr::MtrCommit(kwdbts::kwdbContext_p ctx, uint64_t mini_trans_id, con
 KStatus TSxMgr::MtrRollback(kwdbts::kwdbContext_p ctx, uint64_t mini_trans_id, const char* tsx_id) {
   if (tsx_id != nullptr) {
     map_mutex_.lock();
-    if (ts_trans_ids_[tsx_id] != 0) {
+    if (ts_trans_ids_.find(tsx_id) != ts_trans_ids_.end()) {
       ts_trans_ids_.erase(tsx_id);
     } else {
       map_mutex_.unlock();
