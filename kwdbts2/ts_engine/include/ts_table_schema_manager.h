@@ -25,6 +25,7 @@
 #include "ts_common.h"
 #include "mmap/mmap_tag_table.h"
 #include "mmap/mmap_metrics_table.h"
+#include "ts_metrics_table_version_manager.h"
 
 namespace kwdbts {
 class SchemaVersionConv {
@@ -65,14 +66,8 @@ class TsTableSchemaManager {
                         uint32_t cur_version, uint32_t new_version, string& msg);
 
  protected:
-  uint32_t cur_metric_version_{0};
-  // metric schema of current version
-  std::shared_ptr<MMapMetricsTable> cur_metric_schema_;
-  // schemas of all versions
-  std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_schemas_;
+  std::shared_ptr<MetricsTableVersionManager> metric_table_{nullptr};
   std::shared_ptr<TagTable> tag_table_{nullptr};
-  // Partition interval.
-  uint64_t partition_interval_;
   std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
   KRWLatch* ver_conv_rw_lock_{nullptr};
 
@@ -91,6 +86,7 @@ class TsTableSchemaManager {
       schema_rw_lock_(RWLATCH_ID_TABLE_SCHEMA_RWLOCK) {
     metric_schema_path_ = "metric_" + std::to_string(table_id_) + "/";
     tag_schema_path_ = "tag_" + std::to_string(table_id_) + "/";
+    metric_table_ = std::make_shared<MetricsTableVersionManager>(schema_root_path_, metric_schema_path_, table_id_);
     ver_conv_rw_lock_ = new KRWLatch(RWLATCH_ID_VERSION_CONV_RWLOCK);
   }
 
@@ -103,7 +99,7 @@ class TsTableSchemaManager {
   void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);
 
   inline uint32_t GetCurrentVersion() {
-    return cur_metric_version_;
+    return metric_table_->GetCurrentMetricsVersion();
   }
 
   TSTableID GetTableId();
@@ -203,7 +199,13 @@ class TsTableSchemaManager {
   bool IsExistTableVersion(uint32_t version);
 
 private:
-  std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version, bool lock = true);
+  std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version, bool lock = true) {
+    return metric_table_->GetMetricsTable(ts_version, lock);
+  }
+
+  std::shared_ptr<MMapMetricsTable> getCurrentMetricsTable(bool lock = true) {
+    return metric_table_->GetCurrentMetricsTable();
+  }
 };
 
 }  // namespace kwdbts
