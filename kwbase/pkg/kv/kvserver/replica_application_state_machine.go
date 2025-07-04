@@ -695,7 +695,7 @@ func (r *Replica) stageTsBatchRequest(
 						if err != nil {
 							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 						}
-						if _, err := r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
+						if _, err := r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, tsTransactionID /*txnid*/); err != nil {
 							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
@@ -743,7 +743,7 @@ func (r *Replica) stageTsBatchRequest(
 						if err != nil {
 							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 						}
-						if _, err := r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, req.TsTransaction.ID.GetBytes() /*txnid*/); err != nil {
+						if _, err := r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, tsTransactionID /*txnid*/); err != nil {
 							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}

@@ -755,16 +755,20 @@ func (r *TsEngine) PutData(
 	var status C.TSStatus
 	if r.Version == "2" {
 		if transactionID != nil {
+			cstr := C.CString(string(transactionID))
+			defer C.free(unsafe.Pointer(cstr))
 			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), (*C.char)(unsafe.Pointer(&transactionID[0])))
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
 		} else {
 			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
 				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
 		}
 	} else {
 		if transactionID != nil {
+			cstr := C.CString(string(transactionID))
+			defer C.free(unsafe.Pointer(cstr))
 			status = C.TSPutDataExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), (*C.char)(unsafe.Pointer(&transactionID[0])))
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
 		} else {
 			status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
 				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
@@ -867,8 +871,10 @@ func (r *TsEngine) PutRowData(
 	var unorderedAffected C.uint32_t
 	var status C.TSStatus
 	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
 		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), (*C.char)(unsafe.Pointer(&transactionID[0])))
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
 	} else {
 		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
 			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
@@ -1804,8 +1810,10 @@ func (r *TsEngine) MtrBegin(
 	var miniTransID C.uint64_t
 	var status C.TSStatus
 	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
 		status = C.TSMtrBeginExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
-			C.uint64_t(index), &miniTransID, (*C.char)(unsafe.Pointer(&transactionID[0])))
+			C.uint64_t(index), &miniTransID, cstr)
 	} else {
 		status = C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
 			C.uint64_t(index), &miniTransID)
@@ -1821,7 +1829,9 @@ func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID ui
 	r.checkOrWaitForOpen()
 	var status C.TSStatus
 	if transactionID != nil {
-		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), (*C.char)(unsafe.Pointer(&transactionID[0])))
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
 	} else {
 		status = C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
 	}
@@ -1836,7 +1846,9 @@ func (r *TsEngine) MtrRollback(tableID uint64, rangeGroupID uint64, miniTransID 
 	r.checkOrWaitForOpen()
 	var status C.TSStatus
 	if transactionID != nil {
-		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), (*C.char)(unsafe.Pointer(&transactionID[0])))
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
 	} else {
 		status = C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
 	}
