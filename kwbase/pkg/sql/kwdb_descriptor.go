@@ -3293,7 +3293,9 @@ func InitScheduleForKWDB(ctx context.Context, db *kv.DB, ie sqlutil.InternalExec
 }
 
 // InitTsTxnJob creates a handle ts txn job when server start.
-func InitTsTxnJob(ctx context.Context, db *kv.DB, ie sqlutil.InternalExecutor, registry *jobs.Registry) error {
+func InitTsTxnJob(
+	ctx context.Context, db *kv.DB, ie sqlutil.InternalExecutor, registry *jobs.Registry,
+) error {
 	return db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		stmt := `select job_type, status from kwdb_internal.jobs`
 		rows, err := ie.Query(

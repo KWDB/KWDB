@@ -27,6 +27,7 @@ package kvcoord
 
 import (
 	"context"
+
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -38,7 +39,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"sync"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
 
 // TsSender is a Sender to send TS requests to TS DB
@@ -55,7 +57,6 @@ type TsSender struct {
 		tsTxnHeartbeater
 		tsTxnCommitter
 	}
-	txn     roachpb.Transaction
 	setting *cluster.Settings
 	NodeID  roachpb.NodeID
 }
@@ -230,7 +231,7 @@ func NewDB(cfg TsDBConfig) *DB {
 		setting:      cfg.Setting,
 		NodeID:       cfg.NodeID,
 	}
-	tsDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.Locker = &sync.RWMutex{}
+	tsDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.Locker = &syncutil.RWMutex{}
 	tsDB.tss.interceptorStack = []lockedSender{&tsDB.tss.interceptorAlloc.tsTxnHeartbeater, &tsDB.tss.interceptorAlloc.tsTxnCommitter}
 	return &tsDB
 }
@@ -254,17 +255,15 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 	}
 	if b.Txn() != nil {
 		// initialize some fields of TsSender
+		u := uuid.FastMakeV4()
 		var ranges roachpb.Spans
-		txn := b.Txn().Sender().Transaction()
-		db.tss.txn = txn
 		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
 		db.tss.interceptorAlloc.tsTxnCommitter.ranges = &ranges
-		db.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = b.Txn().ID()
-		db.tss.interceptorAlloc.tsTxnCommitter.tsTxn.ID = b.Txn().ID()
+		db.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = u
+		db.tss.interceptorAlloc.tsTxnCommitter.tsTxn.ID = u
 		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.loopStarted = false
-		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.transaction = txn.Clone()
 	}
 	return kv.SendAndFill(ctx, db.Send, b)
 }

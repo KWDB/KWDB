@@ -27,10 +27,10 @@ package kvserver
 import (
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/apply"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
@@ -406,9 +406,10 @@ type replicaAppBatch struct {
 	mutations    int
 	start        time.Time
 
-	tableID      uint64
-	rangeGroupID uint64
-	TSTxnID      uint64
+	tableID        uint64
+	rangeGroupID   uint64
+	TSTxnID        uint64
+	needAutoCommit bool
 }
 
 // Stage implements the apply.Batch interface. The method handles the first
@@ -611,7 +612,7 @@ func (b *replicaAppBatch) stageWriteBatch(ctx context.Context, cmd *replicatedCm
 			if isLocal && cmd.proposal.Local.Reply != nil {
 				responses = cmd.proposal.Local.Reply.Responses
 			}
-			if b.tableID, b.rangeGroupID, b.TSTxnID, err = b.r.stageTsBatchRequest(
+			if b.tableID, b.rangeGroupID, b.TSTxnID, b.needAutoCommit, err = b.r.stageTsBatchRequest(
 				ctx, &reqs, responses, isLocal, &b.state); err != nil {
 				return err
 			}
@@ -638,8 +639,9 @@ func (r *Replica) stageTsBatchRequest(
 	responses []roachpb.ResponseUnion,
 	isLocal bool,
 	replicaState *storagepb.ReplicaState,
-) (tableID, rangeGroupID, tsTxnID uint64, err error) {
+) (tableID, rangeGroupID, tsTxnID uint64, needAutoCommit bool, err error) {
 	var isTsRequest bool
+	needAutoCommit = true
 	for _, union := range ba.Requests {
 		switch union.GetInner().(type) {
 		case *roachpb.TsRowPutRequest,
@@ -660,7 +662,7 @@ func (r *Replica) stageTsBatchRequest(
 		break
 	}
 	if !isTsRequest {
-		return tableID, rangeGroupID, tsTxnID, nil
+		return tableID, rangeGroupID, tsTxnID, needAutoCommit, nil
 	}
 
 	rangeGroupID = 1 // storage only create RangeGroup 1
@@ -672,9 +674,9 @@ func (r *Replica) stageTsBatchRequest(
 		if tsTxnID, err = r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, nil); err != nil {
 			var exist bool
 			if exist, _ = r.store.TsEngine.TSIsTsTableExist(tableID); !exist {
-				return tableID, rangeGroupID, tsTxnID, nil
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, nil
 			}
-			return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin mini-transaction")
+			return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to begin mini-transaction")
 		}
 	}
 
@@ -689,24 +691,25 @@ func (r *Replica) stageTsBatchRequest(
 				if payload != nil {
 					var tsTransactionID []byte
 					if ba.TsTransaction != nil {
+						needAutoCommit = false
 						tsTransactionID = append(tsTransactionID, ba.TsTransaction.ID.GetBytes()...)
 						tsTxnID = 0
 						_, tableID, err = keys.DecodeTablePrefix(req.Key)
 						if err != nil {
-							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 						}
 						if _, err := r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, tsTransactionID /*txnid*/); err != nil {
-							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
+							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutData(1, payload, tsTxnID, true, tsTransactionID); err != nil {
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 							if errRollback != nil {
-								return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+								return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
 							}
 						}
-						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to put data")
+						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to put data")
 					}
 					if isLocal && responses != nil {
 						if req, ok := responses[idx].GetInner().(*roachpb.TsPutResponse); ok {
@@ -737,24 +740,25 @@ func (r *Replica) stageTsBatchRequest(
 				if req.Values != nil {
 					var tsTransactionID []byte
 					if ba.TsTransaction != nil {
+						needAutoCommit = false
 						tsTransactionID = append(tsTransactionID, ba.TsTransaction.ID.GetBytes()...)
 						tsTxnID = 0
 						_, tableID, err = keys.DecodeTablePrefix(req.Key)
 						if err != nil {
-							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 						}
 						if _, err := r.store.TsEngine.MtrBegin(tableID, rangeGroupID, uint64(r.RangeID), raftAppliedIndex, tsTransactionID /*txnid*/); err != nil {
-							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
+							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL, tsTransactionID); err != nil {
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 							if errRollback != nil {
-								return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+								return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
 							}
 						}
-						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to put data")
+						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to put data")
 					}
 					if isLocal && responses != nil {
 						if res, ok := responses[idx].GetInner().(*roachpb.TsRowPutResponse); ok {
@@ -788,11 +792,11 @@ func (r *Replica) stageTsBatchRequest(
 				}
 				_, _, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
-					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
 				_, _, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
-					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get endhash")
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
 				// exclude the EndKey
 				ts2--
@@ -802,9 +806,9 @@ func (r *Replica) stageTsBatchRequest(
 						req.TableId, rangeGroupID, req.PrimaryTags, tsSpans, tsTxnID); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 						if errRollback != nil {
-							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
 						}
-						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to delete data")
+						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to delete data")
 					}
 				}
 				if isLocal && responses != nil {
@@ -823,9 +827,9 @@ func (r *Replica) stageTsBatchRequest(
 				if delCnt, err = r.store.TsEngine.DeleteEntities(req.TableId, rangeGroupID, req.PrimaryTags, false, tsTxnID); err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 					if errRollback != nil {
-						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
 					}
-					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to delete entity")
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to delete entity")
 				}
 				if isLocal && responses != nil {
 					responses[idx] = roachpb.ResponseUnion{
@@ -843,7 +847,7 @@ func (r *Replica) stageTsBatchRequest(
 				var pld [][]byte
 				pld = append(pld, req.Tags)
 				if err = r.store.TsEngine.PutEntity(rangeGroupID, req.TableId, pld, tsTxnID); err != nil {
-					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "failed update tag")
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "failed update tag")
 				}
 				if isLocal && responses != nil {
 					responses[idx] = roachpb.ResponseUnion{
@@ -866,11 +870,11 @@ func (r *Replica) stageTsBatchRequest(
 				}
 				tableID, beginHash, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
-					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
 				_, endHash, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
-					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get endhash")
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
 				var tsSpans []*roachpb.TsSpan
 				if beginHash == endHash {
@@ -885,9 +889,9 @@ func (r *Replica) stageTsBatchRequest(
 					if delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 						if errRollback != nil {
-							return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
 						}
-						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to delete MultiEntities")
+						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to delete MultiEntities")
 					}
 				}
 				if isLocal && responses != nil {
@@ -909,12 +913,13 @@ func (r *Replica) stageTsBatchRequest(
 			}
 
 		case *roachpb.TsCommitRequest:
+			needAutoCommit = false
 			_, tableID, err = keys.DecodeTablePrefix(req.Key)
 			if err != nil {
-				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 			}
 			if err := r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
-				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to commit transaction")
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to commit transaction")
 			}
 			if isLocal && responses != nil {
 				if _, ok := responses[idx].GetInner().(*roachpb.TsCommitResponse); ok {
@@ -927,12 +932,13 @@ func (r *Replica) stageTsBatchRequest(
 				}
 			}
 		case *roachpb.TsRollbackRequest:
+			needAutoCommit = false
 			_, tableID, err = keys.DecodeTablePrefix(req.Key)
 			if err != nil {
-				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 			}
 			if err := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
-				return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
 			}
 			if isLocal && responses != nil {
 				if _, ok := responses[idx].GetInner().(*roachpb.TsRollbackResponse); ok {
@@ -1277,7 +1283,7 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 			}
 		}
 	}
-	if b.TSTxnID != 0 {
+	if b.TSTxnID != 0 && b.needAutoCommit {
 		err := b.r.store.TsEngine.MtrCommit(b.tableID, b.rangeGroupID, b.TSTxnID, nil)
 		if err != nil {
 			return wrapWithNonDeterministicFailure(err, "unable to commit mini-transaction")

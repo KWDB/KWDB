@@ -27,9 +27,9 @@ package kv
 import (
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
@@ -1535,11 +1535,13 @@ func (txn *Txn) SetIsoLevel(isoLevel enginepb.Level) error {
 	return txn.mu.sender.SetIsoLevel(isoLevel)
 }
 
+// WriteTxnRecord writes a ts transaction record under a dedicated key.
+// This function wraps the operation in a transaction to ensure atomicity.
 func (db *DB) WriteTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) error {
 	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
 		key := keys.MakeTxnRecordKey(record.ID)
 		b := Batch{}
-		value, err := record.Marshal()
+		value, err := protoutil.Marshal(record)
 		if err != nil {
 			return err
 		}
@@ -1554,8 +1556,12 @@ func (db *DB) WriteTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) e
 	return nil
 }
 
-// GetTxnRecord 111
-func (db *DB) GetTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb.TsTxnRecord, error) {
+// GetTxnRecord retrieves a ts transaction record by transaction ID.
+// If the record exists, it returns true along with the deserialized record.
+// If the record does not exist, it returns false and a nil record.
+func (db *DB) GetTxnRecord(
+	ctx context.Context, txnID uuid.UUID,
+) (bool, *roachpb.TsTxnRecord, error) {
 	var res roachpb.TsTxnRecord
 	var isExists bool
 	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
@@ -1568,7 +1574,7 @@ func (db *DB) GetTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb
 			return nil
 		}
 		isExists = true
-		err = res.Unmarshal(keyValue.ValueBytes())
+		err = protoutil.Unmarshal(keyValue.ValueBytes(), &res)
 		if err != nil {
 			return err
 		}
@@ -1579,8 +1585,12 @@ func (db *DB) GetTxnRecord(ctx context.Context, txnID uuid.UUID) (bool, *roachpb
 	return isExists, &res, nil
 }
 
-// ScanAndWriteTxnRecord 111
-func (db *DB) ScanAndWriteTxnRecord(ctx context.Context, txnRecord *roachpb.TsTxnRecord) (bool, *roachpb.TsTxnRecord, error) {
+// ScanAndWriteTxnRecord attempts to fetch an existing transaction record by ID,
+// and either creates a new one or updates the heartbeat timestamp of the existing record.
+// It returns the latest version of the transaction record as observed during the read phase.
+func (db *DB) ScanAndWriteTxnRecord(
+	ctx context.Context, txnRecord *roachpb.TsTxnRecord,
+) (bool, *roachpb.TsTxnRecord, error) {
 	var res roachpb.TsTxnRecord
 	var isExists bool
 	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
@@ -1594,7 +1604,7 @@ func (db *DB) ScanAndWriteTxnRecord(ctx context.Context, txnRecord *roachpb.TsTx
 		if !keyValue.Exists() {
 			newTxn = txnRecord
 		} else {
-			err = res.Unmarshal(keyValue.ValueBytes())
+			err = protoutil.Unmarshal(keyValue.ValueBytes(), &res)
 			if err != nil {
 				return err
 			}
@@ -1603,7 +1613,7 @@ func (db *DB) ScanAndWriteTxnRecord(ctx context.Context, txnRecord *roachpb.TsTx
 		}
 		log.VEventf(ctx, 2, "write txn record when heartbeat loop, txn id: %v, txn status: %v\n", txnRecord.ID, txnRecord.Status)
 		b := Batch{}
-		value, err := newTxn.Marshal()
+		value, err := protoutil.Marshal(newTxn)
 		if err != nil {
 			return err
 		}

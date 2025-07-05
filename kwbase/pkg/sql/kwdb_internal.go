@@ -3975,7 +3975,7 @@ CREATE TABLE kwdb_internal.ts_inflight_transactions (
 				continue
 			}
 			var res roachpb.TsTxnRecord
-			if err = res.Unmarshal(keyValue.ValueBytes()); err != nil {
+			if err = protoutil.Unmarshal(keyValue.ValueBytes(), &res); err != nil {
 				return err
 			}
 			txnID := tree.NewDUuid(tree.DUuid{UUID: res.ID})

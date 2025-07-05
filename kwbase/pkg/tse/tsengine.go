@@ -791,7 +791,13 @@ func (r *TsEngine) PutData(
 
 // PutRowData 行存tags值和时序数据写入
 func (r *TsEngine) PutRowData(
-	tableID uint64, headerPrefix []byte, payload [][]byte, size int32, tsTxnID uint64, writeWAL bool, transactionID []byte,
+	tableID uint64,
+	headerPrefix []byte,
+	payload [][]byte,
+	size int32,
+	tsTxnID uint64,
+	writeWAL bool,
+	transactionID []byte,
 ) (DedupResult, EntitiesAffect, error) {
 	if len(payload) == 0 {
 		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
@@ -1825,7 +1831,9 @@ func (r *TsEngine) MtrBegin(
 }
 
 // MtrCommit COMMIT a TS mini-transaction
-func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte) error {
+func (r *TsEngine) MtrCommit(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
 	r.checkOrWaitForOpen()
 	var status C.TSStatus
 	if transactionID != nil {
@@ -1842,7 +1850,9 @@ func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID ui
 }
 
 // MtrRollback ROLLBACK a TS mini-transaction
-func (r *TsEngine) MtrRollback(tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte) error {
+func (r *TsEngine) MtrRollback(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
 	r.checkOrWaitForOpen()
 	var status C.TSStatus
 	if transactionID != nil {

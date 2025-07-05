@@ -26,6 +26,8 @@ package kvcoord
 
 import (
 	"context"
+	"sync"
+
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -34,7 +36,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"sync"
 )
 
 var parallelCommitsEnabled = settings.RegisterBoolSetting(
@@ -617,7 +618,7 @@ func (tc *tsTxnCommitter) SendLocked(
 		}
 		return nil, pErr
 	}
-	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, *tc.ranges, 0)
+	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, record.Spans, 0)
 	//if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 4); err != nil {
 	//	return nil, roachpb.NewError(err)
 	//}
@@ -635,7 +636,9 @@ func (tc *tsTxnCommitter) SendLocked(
 	return br, pErr
 }
 
-func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int) *roachpb.Error {
+func (tc *tsTxnCommitter) sendRollbackRequest(
+	ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int,
+) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
 	ba.TsTransaction = &txn
 	for _, span := range spans {
@@ -654,12 +657,16 @@ func (tc *tsTxnCommitter) sendRollbackRequest(ctx context.Context, txn roachpb.T
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
-		tc.sendRollbackRequest(ctx, txn, spans, retry)
+		if err := tc.sendRollbackRequest(ctx, txn, spans, retry); err != nil {
+			return err
+		}
 	}
-	return pErr
+	return nil
 }
 
-func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int) *roachpb.Error {
+func (tc *tsTxnCommitter) sendCommitRequest(
+	ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int,
+) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
 	ba.TsTransaction = &txn
 	for _, span := range spans {
@@ -678,7 +685,9 @@ func (tc *tsTxnCommitter) sendCommitRequest(ctx context.Context, txn roachpb.TsT
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
-		tc.sendCommitRequest(ctx, txn, spans, retry)
+		if err := tc.sendCommitRequest(ctx, txn, spans, retry); err != nil {
+			return err
+		}
 	}
-	return pErr
+	return nil
 }

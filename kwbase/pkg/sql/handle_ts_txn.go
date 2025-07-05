@@ -16,6 +16,8 @@ package sql
 
 import (
 	"context"
+	"time"
+
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
@@ -23,7 +25,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"time"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 )
 
 // tsTxnResumer implements the jobs.Resumer interface for ts txn
@@ -32,7 +34,9 @@ type tsTxnResumer struct {
 	job *jobs.Job
 }
 
-func (r *tsTxnResumer) Resume(ctx context.Context, phs interface{}, resultsCh chan<- tree.Datums) error {
+func (r *tsTxnResumer) Resume(
+	ctx context.Context, phs interface{}, resultsCh chan<- tree.Datums,
+) error {
 	p := phs.(PlanHookState).(*planner)
 	// handle ts txn record in job, and this job will be always running
 	for timer := time.NewTimer(0); ; {
@@ -63,7 +67,7 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 			continue
 		}
 		var res roachpb.TsTxnRecord
-		if err = res.Unmarshal(keyValue.ValueBytes()); err != nil {
+		if err = protoutil.Unmarshal(keyValue.ValueBytes(), &res); err != nil {
 			return err
 		}
 		tsTran := roachpb.TsTransaction{

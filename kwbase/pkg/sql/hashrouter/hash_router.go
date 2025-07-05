@@ -25,11 +25,11 @@ package hashrouter
 
 import (
 	"context"
-	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"math"
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"

@@ -27,13 +27,13 @@ package kvcoord
 import (
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/kv"
-	"gitee.com/kwbasedb/kwbase/pkg/settings"
-	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"sync"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -438,6 +438,7 @@ func firstLockingIndex(ba *roachpb.BatchRequest) (int, *roachpb.Error) {
 	return -1, nil
 }
 
+// TsTxnAtomicityEnabled is a cluster setting that controls whether ts insert should guarantee atomicity.
 var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
 	"ts.txn.atomicity_enabled",
 	"if enabled, the atomicity of time-series transactions will be guaranteed",
@@ -453,8 +454,6 @@ type tsTxnHeartbeater struct {
 	clock        *hlc.Clock
 	mu           struct {
 		sync.Locker
-
-		transaction *roachpb.Transaction
 
 		loopStarted bool
 
@@ -541,15 +540,7 @@ func (h *tsTxnHeartbeater) startHeartbeatLoopLocked(ctx context.Context) error {
 	}
 	log.VEventf(ctx, 2, "coordinator spawns heartbeat loop")
 	h.mu.loopStarted = true
-	// NB: we can't do this in init() because the txn isn't populated yet then
-	// (it's zero).
-	h.AmbientContext.AddLogTag("txn-hb", h.mu.transaction.Short())
-
-	// Create a new context so that the heartbeat loop doesn't inherit the
-	// caller's cancelation.
-	// We want the loop to run in a span linked to the current one, though, so we
-	// put our span in the new context and expect RunAsyncTask to fork it
-	// immediately.
+	h.AmbientContext.AddLogTag("txn-hb", h.tsTxn.ID)
 	hbCtx := h.AnnotateCtx(context.Background())
 	hbCtx = opentracing.ContextWithSpan(hbCtx, opentracing.SpanFromContext(ctx))
 	hbCtx, h.mu.loopCancel = context.WithCancel(hbCtx)
@@ -611,9 +602,6 @@ func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
 	if ctx.Err() != nil {
 		return false
 	}
-	if h.mu.transaction.Status != roachpb.PENDING {
-		return false
-	}
 	record, err := h.heartbeatTsTxn(ctx)
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
@@ -627,7 +615,7 @@ func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
 
 func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRecord, error) {
 	record := &roachpb.TsTxnRecord{}
-	record.ID = h.mu.transaction.ID
+	record.ID = h.tsTxn.ID
 	record.Status = roachpb.PENDING
 	record.LastHeartbeat = h.clock.Now()
 	record.Spans = append(record.Spans, *h.ranges...)
