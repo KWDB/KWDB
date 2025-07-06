@@ -1612,6 +1612,7 @@ func (db *DB) ScanAndWriteTxnRecord(
 			newTxn.LastHeartbeat = txnRecord.LastHeartbeat
 		}
 		log.VEventf(ctx, 2, "write txn record when heartbeat loop, txn id: %v, txn status: %v\n", txnRecord.ID, txnRecord.Status)
+		fmt.Printf("txn %v heartbeat: %v\n", txnRecord.ID, txnRecord.LastHeartbeat)
 		b := Batch{}
 		value, err := protoutil.Marshal(newTxn)
 		if err != nil {

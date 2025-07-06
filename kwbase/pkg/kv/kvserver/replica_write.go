@@ -27,6 +27,7 @@ package kvserver
 import (
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
@@ -266,24 +267,24 @@ func (r *Replica) executeWriteTSBatch(
 	ctx context.Context, ba *roachpb.BatchRequest, st storagepb.LeaseStatus, g *concurrency.Guard,
 ) (br *roachpb.BatchResponse, _ *concurrency.Guard, pErr *roachpb.Error) {
 	startTime := timeutil.Now()
-	//if ba.TsTransaction != nil {
-	//	if ba.Requests != nil {
-	//		switch ba.Requests[0].GetInner().(type) {
-	//		case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
-	//			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 5); err != nil {
-	//				return nil, g, roachpb.NewError(err)
-	//			}
-	//		case *roachpb.TsCommitRequest:
-	//			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 6); err != nil {
-	//				return nil, g, roachpb.NewError(err)
-	//			}
-	//		case *roachpb.TsRollbackRequest:
-	//			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 7); err != nil {
-	//				return nil, g, roachpb.NewError(err)
-	//			}
-	//		}
-	//	}
-	//}
+	if ba.TsTransaction != nil {
+		if ba.Requests != nil {
+			switch ba.Requests[0].GetInner().(type) {
+			case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
+				if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 8); err != nil {
+					return nil, g, roachpb.NewError(err)
+				}
+			case *roachpb.TsCommitRequest:
+				if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 9); err != nil {
+					return nil, g, roachpb.NewError(err)
+				}
+			case *roachpb.TsRollbackRequest:
+				if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 10); err != nil {
+					return nil, g, roachpb.NewError(err)
+				}
+			}
+		}
+	}
 
 	// Even though we're not a read-only operation by definition, we have to
 	// take out a read lock on readOnlyCmdMu while performing any reads during

@@ -751,6 +751,7 @@ func (r *Replica) stageTsBatchRequest(
 							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
+					fmt.Printf("node %v received TsRowPut request\n", r.NodeID())
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL, tsTransactionID); err != nil {
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
@@ -921,6 +922,7 @@ func (r *Replica) stageTsBatchRequest(
 			if err := r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
 				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to commit transaction")
 			}
+			fmt.Printf("node %v received commit request\n", r.NodeID())
 			if isLocal && responses != nil {
 				if _, ok := responses[idx].GetInner().(*roachpb.TsCommitResponse); ok {
 					continue
@@ -937,9 +939,10 @@ func (r *Replica) stageTsBatchRequest(
 			if err != nil {
 				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 			}
-			if err := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
-				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
-			}
+			//if err := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
+			//	return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
+			//}
+			fmt.Printf("node %v received rollback request\n", r.NodeID())
 			if isLocal && responses != nil {
 				if _, ok := responses[idx].GetInner().(*roachpb.TsRollbackResponse); ok {
 					continue

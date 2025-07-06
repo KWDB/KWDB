@@ -27,6 +27,8 @@ package kvcoord
 import (
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"sync"
 	"time"
 
@@ -468,36 +470,36 @@ type tsTxnHeartbeater struct {
 // setWrapped implements the txnInterceptor interface.
 func (h *tsTxnHeartbeater) setWrapped(wrapped lockedSender) { h.wrapped = wrapped }
 
-//func ErrorOrPanicOnSpecificNode(nodeID int, setting *cluster.Settings, phase int) error {
-//	testScenario := TestTxnScenario.Get(&setting.SV)
-//	res, err := ExtractTxnTestScenario(testScenario)
-//	if err != nil {
-//		return err
-//	}
-//	for _, val := range res {
-//		if val.phase == phase {
-//			if val.nodeID == nodeID {
-//				switch val.errType {
-//				case 1: // error
-//					err = pgerror.Newf(pgcode.Warning, "error happened on node %d", val.nodeID)
-//					return err
-//				case 2: // panic
-//					panic(fmt.Sprintf("txn test scenario panic on Node %d", val.nodeID))
-//				}
-//			}
-//		}
-//	}
-//	return nil
-//}
+func ErrorOrPanicOnSpecificNode(nodeID int, setting *cluster.Settings, phase int) error {
+	testScenario := TestTxnScenario.Get(&setting.SV)
+	res, err := ExtractTxnTestScenario(testScenario)
+	if err != nil {
+		return err
+	}
+	for _, val := range res {
+		if val.phase == phase {
+			if val.nodeID == nodeID {
+				switch val.errType {
+				case 1: // error
+					err = pgerror.Newf(pgcode.Warning, "error happened on node %d\n", val.nodeID)
+					return err
+				case 2: // panic
+					panic(fmt.Sprintf("txn test scenario panic on Node %d\n", val.nodeID))
+				}
+			}
+		}
+	}
+	return nil
+}
 
 // SendLocked is part of the txnInterceptor interface.
 func (h *tsTxnHeartbeater) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 
-	//if err := ErrorOrPanicOnSpecificNode(int(h.NodeID), h.setting, 1); err != nil {
-	//	return nil, roachpb.NewError(err)
-	//}
+	if err := ErrorOrPanicOnSpecificNode(int(h.NodeID), h.setting, 1); err != nil {
+		return nil, roachpb.NewError(err)
+	}
 
 	var notInsert bool
 	var tsTxn roachpb.TsTransaction
