@@ -585,13 +585,14 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 }
 
 type tsTxnCommitter struct {
-	wrapped kv.Sender
-	txn     *kv.Txn
-	tsTxn   roachpb.TsTransaction
-	ranges  *roachpb.Spans
-	setting *cluster.Settings
-	NodeID  roachpb.NodeID
-	clock   *hlc.Clock
+	wrapped  kv.Sender
+	txn      *kv.Txn
+	tsTxn    roachpb.TsTransaction
+	ranges   *roachpb.Spans
+	setting  *cluster.Settings
+	NodeID   roachpb.NodeID
+	clock    *hlc.Clock
+	signalCh chan<- TxnSignal
 }
 
 // SendLocked implements the lockedSender interface.
@@ -606,12 +607,15 @@ func (tc *tsTxnCommitter) SendLocked(
 	record.ID = tc.tsTxn.ID
 	record.Spans = append(record.Spans, *tc.ranges...)
 	if pErr != nil {
-		pErr = tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
+		rollbackErr := tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
 		if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 5); err != nil {
 			return nil, roachpb.NewError(err)
 		}
-		if pErr != nil {
-			return nil, pErr
+		if rollbackErr != nil {
+			select {
+			case tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}:
+			}
+			return nil, rollbackErr
 		}
 		record.Status = roachpb.ABORTED
 		record.LastHeartbeat = tc.clock.Now()
@@ -638,6 +642,9 @@ func (tc *tsTxnCommitter) SendLocked(
 		return nil, roachpb.NewError(err)
 	}
 	if pErr != nil {
+		select {
+		case tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}:
+		}
 		return nil, pErr
 	}
 	record.Status = roachpb.COMMITTED
@@ -678,7 +685,7 @@ func (tc *tsTxnCommitter) sendRollbackRequest(
 			return err
 		}
 	}
-	return nil
+	return pErr
 }
 
 func (tc *tsTxnCommitter) sendCommitRequest(
@@ -706,5 +713,5 @@ func (tc *tsTxnCommitter) sendCommitRequest(
 			return err
 		}
 	}
-	return nil
+	return pErr
 }

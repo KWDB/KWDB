@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"sync"
 	"time"
 
@@ -447,6 +448,11 @@ var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
 	false,
 )
 
+type TxnSignal struct {
+	ID     uuid.UUID // 或 roachpb.TsTransaction.ID 的类型
+	StopHB bool      // true 表示要停止心跳
+}
+
 type tsTxnHeartbeater struct {
 	log.AmbientContext
 	wrapped      lockedSender
@@ -461,10 +467,11 @@ type tsTxnHeartbeater struct {
 
 		loopCancel func()
 	}
-	ranges  *roachpb.Spans
-	tsTxn   roachpb.TsTransaction
-	setting *cluster.Settings
-	NodeID  roachpb.NodeID
+	ranges   *roachpb.Spans
+	tsTxn    roachpb.TsTransaction
+	setting  *cluster.Settings
+	NodeID   roachpb.NodeID
+	signalCh <-chan TxnSignal
 }
 
 // setWrapped implements the txnInterceptor interface.
@@ -585,6 +592,11 @@ func (h *tsTxnHeartbeater) heartbeatLoop(ctx context.Context) {
 			if !h.heartbeat(ctx) {
 				// The heartbeat noticed a finalized transaction,
 				// so shut down the heartbeat loop.
+				return
+			}
+		case sig := <-h.signalCh:
+			if sig.StopHB && sig.ID == h.tsTxn.ID {
+				log.VEventf(ctx, 2, "txn %v received stop signal, stopping heartbeat", sig.ID)
 				return
 			}
 		case <-ctx.Done():
