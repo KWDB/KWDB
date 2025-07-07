@@ -93,6 +93,14 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override;
 
+  KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
+    auto s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_mgr);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    return KStatus::SUCCESS;
+  }
+
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
     // TODO(liumengzhen) check version
@@ -164,6 +172,9 @@ class TSEngineV2Impl : public TSEngine {
   KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override { return KStatus::SUCCESS; }
 
   KStatus Recover(kwdbContext_p ctx) override;
+
+  // get max entity id
+  KStatus GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id);
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      uint64_t range_id, uint64_t index, uint64_t& mtr_id) override;

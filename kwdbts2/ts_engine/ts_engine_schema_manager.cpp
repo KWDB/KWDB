@@ -222,8 +222,17 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key, uint32_t* vgroup_id,
-                                         TSEntityID* entity_id, bool* new_tag) {
+KStatus TsEngineSchemaManager::GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
+  rdLock();
+  for (auto it : table_schema_mgrs_) {
+    tb_schema_mgr.emplace_back(it.second);
+  }
+  unLock();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
+                                             uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
   std::shared_ptr<TsTableSchemaManager> tb_schema;
   KStatus s = GetTableSchemaMgr(tbl_id, tb_schema);
   if (s != KStatus::SUCCESS) {

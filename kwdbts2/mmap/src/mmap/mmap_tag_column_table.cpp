@@ -974,6 +974,23 @@ void MMapTagColumnTable::getEntityIdGroupId(TagTableRowID row, uint32_t& entity_
   return ;
 }
 
+void MMapTagColumnTable::getMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id) {
+  startRead();
+  uint32_t max_entity_id = 0;
+  for (int row = 1; row <= this->size(); row++) {
+    uint32_t group_id;
+    if (isValidRow(row)) {
+      char* rec_ptr = entityIdStoreAddr(row);
+      memcpy(&max_entity_id, rec_ptr, sizeof(uint32_t));
+      memcpy(&group_id, rec_ptr + sizeof(entity_id), sizeof(uint32_t));
+      if (group_id == vgroup_id && max_entity_id > entity_id) {
+        entity_id = max_entity_id;
+      }
+    }
+  }
+  stopRead();
+}
+
 int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::EntityResultIndex>* entityIdList) {
   uint32_t entity_id;
   uint32_t subgroup_id;
