@@ -194,6 +194,14 @@ bool TagTable::hasPrimaryKey(const char* primary_tag_val, int len) {
   return true;
 }
 
+void TagTable::GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id) {
+  std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
+  m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
+  for (auto tag_part_table : tag_part_tables) {
+    tag_part_table.second->getMaxEntityIdByVGroupId(vgroup_id, entity_id);
+  }
+  }
+
 // insert tag record
 int TagTable::InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id) {
   // 1. check version
@@ -271,13 +279,13 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
-    LOG_ERROR("Tag table version[%u] doesnot exist.", payload.GetTableVersion());
+    LOG_ERROR("Tag table id[%ld] version[%u] doesn't exist.", this->m_table_id, payload.GetTableVersion());
     return -1;
   }
   TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;
   auto tag_partition_table = m_partition_mgr_->GetPartitionTable(tag_partition_version);
   if (nullptr == tag_partition_table) {
-    LOG_ERROR("Tag partition table version[%u] doesnot exist.", tag_partition_version);
+    LOG_ERROR("Tag partition table version[%u] doesn't exist.", tag_partition_version);
     return -1;
   }
 

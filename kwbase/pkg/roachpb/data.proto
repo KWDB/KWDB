@@ -677,6 +677,9 @@ message Lease {
   // the same sequence number and two adjacent leases that are not equivalent
   // will have different sequence numbers.
   int64 sequence = 7 [(gogoproto.casttype) = "LeaseSequence"];
+
+  // check lease flag. if true not transfer lease
+  bool check_lease_flag = 8;
 }
 
 // AbortSpanEntry contains information about a transaction which has

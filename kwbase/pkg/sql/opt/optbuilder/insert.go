@@ -203,6 +203,24 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 	if tblTyp == tree.TemplateTable && !opt.CheckTsProperty(b.TSInfo.TSProp, TSPropInsertCreateTable) {
 		panic(pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert into a TEMPLATE table, table name: %v", tab.Name()))
 	}
+	if b.insideProcDef {
+		dep := opt.ViewDep{DataSource: tab}
+		dep.ColumnIDToOrd = make(map[opt.ColumnID]int)
+		if ins.Columns != nil {
+			for i := range ins.Columns {
+				if ord := cat.FindTableColumnByName(tab, ins.Columns[i]); ord != -1 {
+					dep.ColumnOrdinals.Add(ord)
+				}
+			}
+		} else {
+			for ord := 0; ord < tab.ColumnCount(); ord++ {
+				dep.ColumnOrdinals.Add(ord)
+			}
+		}
+		// We will track the ColumnID to Ord mapping so Ords can be added
+		// when a column is referenced.
+		b.viewDeps = append(b.viewDeps, dep)
+	}
 
 	if ins.IsNoSchema {
 		// INSERT NO SCHEMA is a special syntax.
@@ -370,7 +388,16 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 
 	var returning tree.ReturningExprs
 	if resultsNeeded(ins.Returning) {
-		returning = *ins.Returning.(*tree.ReturningExprs)
+		switch t := ins.Returning.(type) {
+		case *tree.ReturningExprs:
+			returning = *t
+		case *tree.ReturningIntoClause:
+			if b.insideProcDef {
+				returning = t.SelectClause
+			} else {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+			}
+		}
 	}
 
 	switch {
@@ -1213,7 +1240,8 @@ func (b *Builder) buildTSInsert(
 	}
 	var rowsValue []tree.Exprs
 	var err error
-	rowsValue, err = checkInputForTSInsert(b.semaCtx, ins, cols, colMap)
+
+	rowsValue, err = b.checkInputForTSInsert(b.semaCtx, inScope, ins, cols, colMap)
 	if err != nil {
 		panic(err)
 	}
@@ -1243,6 +1271,7 @@ func (b *Builder) buildTSInsert(
 	outScope.expr = b.factory.ConstructTSInsert(
 		&memo.TSInsertPrivate{
 			InputRows:       rowsValue,
+			ActualRows:      make(opt.RowsValue, len(rowsValue)),
 			ColsMap:         colMap,
 			STable:          sTableID,
 			NeedCreateTable: opt.CheckTsProperty(b.TSInfo.TSProp, TSPropInsertCreateTable),
@@ -1461,8 +1490,12 @@ func getTSColumnByName(
 // - colMap: the column index of input values
 // Returns:
 // - return Datums
-func checkInputForTSInsert(
-	ctx *tree.SemaContext, ins *tree.Insert, cols []*sqlbase.ColumnDescriptor, colMap map[int]int,
+func (b *Builder) checkInputForTSInsert(
+	ctx *tree.SemaContext,
+	inScope *scope,
+	ins *tree.Insert,
+	cols []*sqlbase.ColumnDescriptor,
+	colMap map[int]int,
 ) ([]tree.Exprs, error) {
 	input, ok := ins.Rows.Select.(*tree.ValuesClause)
 	if !ok {
@@ -1517,7 +1550,26 @@ func checkInputForTSInsert(
 			case *tree.NumVal, *tree.StrVal, tree.DNullExtern:
 				// do nothing
 			case *tree.UnresolvedName:
-				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type relation \"%s\" (column %s)", v.String(), column.Name)
+				found := false
+				for k := range inScope.cols {
+					scopeCol := inScope.cols[k]
+					if v.String() == string(scopeCol.name) && scopeCol.isDeclared {
+						if column.Type.Family() != scopeCol.typ.Family() {
+							return nil, pgerror.Newf(pgcode.DatatypeMismatch,
+								"variable \"%s\" type is %s, does not match the column \"%s\" type: %s",
+								scopeCol.name.String(), scopeCol.typ.SQLString(), column.Name, column.Type.SQLString())
+						}
+						indexVal := tree.NewTypedOrdinalReference(scopeCol.realIdx, scopeCol.typ)
+						indexVal.IsDeclare = true
+						indexVal.SetColFormat(v)
+						inputValues[i][ord] = indexVal
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type relation \"%s\" (column %s)", v.String(), column.Name)
+				}
 			case *tree.BinaryExpr:
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type BinaryOperator")
 			case *tree.UserDefinedVar:

@@ -161,7 +161,10 @@ class FieldFuncCountWindow : public FieldFunc {
 
   k_int64 ValInt() override;
   Field *field_to_copy() override { return new FieldFuncCountWindow(*this); }
-
+  void reset() {
+    // change ptag, need to reset current_count
+    current_count_ = 0;
+  }
   k_int32 *GetCurrentCount() { return &current_count_; }
   k_int32 GetParams(k_int32 *count_val, k_int32 *sliding_val) {
     *count_val = count_val_;

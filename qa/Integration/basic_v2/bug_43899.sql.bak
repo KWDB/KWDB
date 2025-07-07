@@ -110,7 +110,7 @@ explain SELECT si.workarea_name,
                  t.measure_type,
                  timebucket;
 
-set cluster setting ts.sql.query_opt_mode=01110;
+set cluster setting ts.sql.query_opt_mode=DEFAULT;
 drop DATABASE db_pipec cascade;
 drop DATABASE pipec_r cascade;
 set enable_multimodel=on;

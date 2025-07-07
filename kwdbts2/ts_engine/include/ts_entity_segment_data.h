@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
@@ -34,7 +35,7 @@ class TsEntitySegmentBlockFile {
   TsAggAndBlockFileHeader header_;
 
  public:
-  explicit TsEntitySegmentBlockFile(const string& file_path);
+  explicit TsEntitySegmentBlockFile(const string& file_path, size_t filesize);
 
   ~TsEntitySegmentBlockFile();
 
@@ -85,7 +86,7 @@ class TsEntitySegmentAggFile {
   TsAggAndBlockFileHeader header_;
 
  public:
-  explicit TsEntitySegmentAggFile(const string& file_path);
+  explicit TsEntitySegmentAggFile(const string& file_path, size_t filesize);
 
   ~TsEntitySegmentAggFile() {}
 

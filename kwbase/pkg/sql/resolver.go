@@ -505,29 +505,51 @@ func getDescriptorsFromTargetList(
 		return descs, nil
 	}
 
-	if len(targets.Tables) == 0 {
-		return nil, errNoTable
-	}
-	descs := make([]sqlbase.DescriptorProto, 0, len(targets.Tables))
-	for _, tableTarget := range targets.Tables {
-		tableGlob, err := tableTarget.NormalizeTablePattern()
-		if err != nil {
-			return nil, err
+	if targets.Tables != nil {
+		if len(targets.Tables) == 0 {
+			return nil, errNoTable
 		}
-		tableNames, err := expandTableGlob(ctx, p, tableGlob)
-		if err != nil {
-			return nil, err
-		}
-		for i := range tableNames {
-			descriptor, err := ResolveMutableExistingObject(ctx, p, &tableNames[i], true, ResolveAnyDescType)
+		descs := make([]sqlbase.DescriptorProto, 0, len(targets.Tables))
+		for _, tableTarget := range targets.Tables {
+			tableGlob, err := tableTarget.NormalizeTablePattern()
 			if err != nil {
 				return nil, err
 			}
-			if descriptor.TableType == tree.InstanceTable {
-				return nil, pgerror.Newf(pgcode.FeatureNotSupported, "unsupported feature: grant or revoke on %s", descriptor.TypeName())
+			tableNames, err := expandTableGlob(ctx, p, tableGlob)
+			if err != nil {
+				return nil, err
 			}
-			descs = append(descs, descriptor)
+			for i := range tableNames {
+				descriptor, err := ResolveMutableExistingObject(ctx, p, &tableNames[i], true, ResolveAnyDescType)
+				if err != nil {
+					return nil, err
+				}
+				if descriptor.TableType == tree.InstanceTable {
+					return nil, pgerror.Newf(pgcode.FeatureNotSupported, "unsupported feature: grant or revoke on %s", descriptor.TypeName())
+				}
+				descs = append(descs, descriptor)
+			}
 		}
+		if len(descs) == 0 {
+			return nil, errNoMatch
+		}
+		return descs, nil
+	}
+
+	if len(targets.Procedures) == 0 {
+		return nil, errNoProcedure
+	}
+	descs := make([]sqlbase.DescriptorProto, 0, len(targets.Procedures))
+	for _, procedure := range targets.Procedures {
+		found, desc, err := ResolveProcedureObject(ctx, p, &procedure)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, sqlbase.NewUndefinedProcedureError(&procedure)
+		}
+		descs = append(descs, desc)
+
 	}
 	if len(descs) == 0 {
 		return nil, errNoMatch

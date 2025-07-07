@@ -72,6 +72,7 @@ class TsBlock {
 struct TsBlockSpan {
  private:
   std::shared_ptr<TsBlock> block_ = nullptr;
+  uint32_t vgroup_id_ = 0;
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
@@ -88,9 +89,14 @@ struct TsBlockSpan {
               const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
               uint32_t scan_version);
 
+  TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+              uint32_t scan_version = 0);
+
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
 
+  uint32_t GetVGroupID() const;
   TSEntityID GetEntityID() const;
   int GetRowNum() const;
   int GetStartRow() const;
@@ -144,6 +150,8 @@ struct TsBlockSpan {
   void SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span);
 
   void SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span);
+
+  void TrimBack(int row_num);
 
   void TrimFront(int row_num);
 

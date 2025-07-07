@@ -194,9 +194,6 @@ type Memo struct {
 	// CheckHelper used to check if the expr can execute in ts engine.
 	CheckHelper TSCheckHelper
 
-	// ts engine white list map
-	TSWhiteListMap *sqlbase.WhiteListMap
-
 	// tsDop represents degree of parallelism control parallelism in time series engine
 	tsDop uint32
 
@@ -205,6 +202,9 @@ type Memo struct {
 
 	// MultimodelHelper helps assist in setting configurations for multiple model processing.
 	MultimodelHelper MultimodelHelper
+
+	// ProcCacheHelper is a helper for procedure cache.
+	ProcCacheHelper ProcedureCacheHelper
 }
 
 // QueryTypeEnum represents the type of a query, whether it is a multi-model query
@@ -261,6 +261,15 @@ func (m *TSCheckHelper) init() {
 	m.PushHelper.MetaMap = make(MetaInfoMap)
 	m.GroupHint = keys.NoGroupHint
 	m.onlyOnePTagValue = false
+}
+
+// ProcedureCacheHelper is a helper for procedure cache.
+type ProcedureCacheHelper struct {
+	// ExecViaProcedureCache represents current plan tree from procedure cache.
+	ExecViaProcedureCache bool
+
+	// ProcedureStmtType indicates that return type of the statement.
+	ProcedureStmtType tree.StatementType
 }
 
 // MultimodelHelper is a helper struct designed to assist in setting
@@ -608,6 +617,26 @@ func (m *Memo) Metadata() *opt.Metadata {
 // SetRoot.
 func (m *Memo) RootExpr() opt.Expr {
 	return m.rootExpr
+}
+
+// ReplaceProcedureParam replace input param for procCommand
+func (m *Memo) ReplaceProcedureParam(
+	ctx *tree.SemaContext, inputs tree.Exprs, cachedInputs []sqlbase.ProcParam,
+) error {
+	blockCommand := m.rootExpr.(*CallProcedureExpr).ProcComm.(*BlockCommand)
+	var paramTypedExpr tree.TypedExpr
+	for i := range cachedInputs {
+		param := cachedInputs[i]
+		var err error
+		if paramTypedExpr, err = sqlbase.SanitizeVarFreeExpr(
+			inputs[i], &param.Type, "DEFAULT", ctx, true /* allowImpure */, false, param.Name,
+		); err != nil {
+			return err
+		}
+		blockCommand.Body.Bodys[i].(*DeclareVarCommand).Col.Default = paramTypedExpr
+	}
+
+	return nil
 }
 
 // RootProps returns the physical properties required of the root memo group,
@@ -2563,25 +2592,27 @@ func addSortExprForTwaFunc(source RelExpr, sortExpr *SortExpr, hasSortExpr bool)
 			} else if src, ok := source.(*ScalarGroupByExpr); ok {
 				newSortExpr.Input = src.Input
 			}
-			provided = newSortExpr.ProvidedPhysical()
+			provided = newSortExpr.Input.ProvidedPhysical()
 		}
 
+		tsOrdered := false
 		// Add the columns associated with TWA functions to the ordering.
 		tsColSet.ForEach(func(i opt.ColumnID) {
-			alreadyExists := false
 			for _, orderingCol := range provided.Ordering {
 				if opt.ColumnID(orderingCol) == i {
-					alreadyExists = true
+					tsOrdered = true
 					break
 				}
 			}
-			if !alreadyExists {
+			if hasSortExpr {
 				provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(i, false))
+			} else {
+				newSortExpr.ProvidedPhysical().Ordering = append(newSortExpr.ProvidedPhysical().Ordering, opt.MakeOrderingColumn(i, false))
 			}
 		})
 
 		// If hasSortExpr is false, update the source input with the new sort expression.
-		if !hasSortExpr {
+		if !hasSortExpr && !tsOrdered {
 			if src, ok := source.(*GroupByExpr); ok {
 				src.Input = newSortExpr
 			} else if src, ok := source.(*ScalarGroupByExpr); ok {
@@ -2774,4 +2805,39 @@ func (m *Memo) checkGroupingAndAgg(
 	}
 
 	return ret
+}
+
+// ProcedureCacheIsStale returns true if the memo has been invalidated by changes to any of
+// its dependencies. Once a memo is known to be stale, it must be ejected from
+// any procedure cache  replaced with a recompiled memo that takes into account the changes.
+// IsStale checks the following dependencies:
+//
+//  1. Session setting: current session may have different setting which can change memo.
+//  2. Data source privileges: current user may no longer have access to one or
+//     more data sources.
+func (m *Memo) ProcedureCacheIsStale(
+	ctx context.Context, evalCtx *tree.EvalContext, catalog cat.Catalog,
+) (bool, error) {
+	// Memo is stale if fields from SessionData that can affect planning have
+	// changed.
+	if !m.dataConversion.Equals(&evalCtx.SessionData.DataConversion) ||
+		m.reorderJoinsLimit != evalCtx.SessionData.ReorderJoinsLimit ||
+		m.zigzagJoinEnabled != evalCtx.SessionData.ZigzagJoinEnabled ||
+		m.optimizerFKs != evalCtx.SessionData.OptimizerFKs ||
+		m.safeUpdates != evalCtx.SessionData.SafeUpdates ||
+		m.saveTablesPrefix != evalCtx.SessionData.SaveTablesPrefix ||
+		m.insertFastPath != evalCtx.SessionData.InsertFastPath {
+		return true, nil
+	}
+
+	// Memo is stale if the fingerprint of any object in the memo's metadata has
+	// changed, or if the current user no longer has sufficient privilege to
+	// access the object.
+	if depsUpToDate, err := m.Metadata().CheckDependencies(ctx, catalog); err != nil {
+		return true, err
+	} else if !depsUpToDate {
+		return true, nil
+	}
+
+	return false, nil
 }

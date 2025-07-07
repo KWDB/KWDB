@@ -97,7 +97,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   code = TableScanOperator::Start(ctx);
   if (code != EEIteratorErrCode::EE_OK) {
-    return code;
+    Return(code);
   }
 
   auto start = std::chrono::high_resolution_clock::now();
@@ -136,7 +136,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
       code = initContainer(ctx, data_chunk_, tmp_output_col_info_,
                             is_offset_opt_ ? output_col_num_ + 1 : output_col_num_, limit_ + cur_offset_);
       if (code != EEIteratorErrCode::EE_OK) {
-        return code;
+        Return(code);
       }
     }
 
@@ -152,7 +152,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
     code = initContainer(ctx, data_chunk_, tmp_output_col_info_,
                             is_offset_opt_ ? output_col_num_ + 1 : output_col_num_, 1);
     if (code != EEIteratorErrCode::EE_OK) {
-      return code;
+      Return(code);
     }
   }
 

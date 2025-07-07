@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/constraint"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -542,6 +543,9 @@ type Factory interface {
 	ConstructDeleteRange(table cat.Table, needed ColumnOrdinalSet, indexConstraint *constraint.Constraint,
 		maxReturnedKeys int, allowAutoCommit bool) (Node, error)
 
+	ConstructCreateProcedure(cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps) (Node, error)
+	ConstructCallProcedure(procName string, procCall string, procComm memo.ProcComms, fn ProcedurePlanFn, scalarFn BuildScalarFn) (Node, error)
+
 	// ConstructCreateTable returns a node that implements a CREATE TABLE
 	// statement.
 	ConstructCreateTable(input Node, schema cat.Schema, ct *tree.CreateTable) (Node, error)
@@ -802,6 +806,14 @@ type KVOption struct {
 	Value tree.TypedExpr
 }
 
+// LocalVariable saves a local value for procedure
+type LocalVariable struct {
+	// Data saves variable value
+	Data tree.Datum
+	// Typ saves variable type
+	Typ types.T
+}
+
 // InsertFastPathMaxRows is the maximum number of rows for which we can use the
 // insert fast path.
 const InsertFastPathMaxRows = 10000
@@ -810,6 +822,12 @@ const InsertFastPathMaxRows = 10000
 // a row produced from the left side. The plan is guaranteed to produce the
 // rightColumns passed to ConstructApplyJoin (in order).
 type ApplyJoinPlanRightSideFn func(leftRow tree.Datums, listMap *sqlbase.WhiteListMap) (Plan, error)
+
+// ProcedurePlanFn creates a plan for sql
+type ProcedurePlanFn func(expr memo.RelExpr, pr *physical.Required, src []*LocalVariable) (Plan, error)
+
+// BuildScalarFn creates a typedExpr
+type BuildScalarFn func(scalar opt.ScalarExpr) (tree.TypedExpr, error)
 
 // RecursiveCTEIterationFn creates a plan for an iteration of WITH RECURSIVE,
 // given the result of the last iteration (as a Buffer that can be used with

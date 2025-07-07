@@ -122,11 +122,11 @@ EEIteratorErrCode MemRowContainer::NextChunk(DataChunkPtr& data_chunk) {
   return EEIteratorErrCode::EE_ERROR;
 }
 
-void MemRowContainer::Sort() {
+KStatus MemRowContainer::Sort() {
   // selection_ init
   sorted_chunk_ptr_ = std::make_unique<DataChunk>(col_info_, col_num_, count_);
   if (!sorted_chunk_ptr_->Initialize()) {
-    return;
+    return KStatus::FAIL;
   }
   for (auto& chunk : mem_chunk_ptrs_) {
     sorted_chunk_ptr_->Append(chunk.get());
@@ -144,6 +144,7 @@ void MemRowContainer::Sort() {
   // sort
   OrderColumnCompare cmp(this, order_info_);
   std::sort(it_begin, it_end, cmp);
+  return KStatus::SUCCESS;
 }
 
 }  // namespace kwdbts

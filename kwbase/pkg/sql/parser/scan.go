@@ -50,6 +50,7 @@ type scanner struct {
 	pos           int
 	bytesPrealloc []byte
 	shortinsert   Shortinsert
+	isCreateProc  bool
 }
 
 // TokenType is used for tsinsert_direct classification of direct tokens
@@ -137,6 +138,7 @@ func (s *scanner) init(str string) {
 	// Preallocate some buffer space for identifiers etc.
 	s.bytesPrealloc = make([]byte, len(str))
 	s.shortinsert.init()
+	s.isCreateProc = false
 }
 
 // cleanup is used to avoid holding on to memory unnecessarily (for the cases
@@ -207,6 +209,14 @@ func (s *scanner) scan(lval *sqlSymType) {
 	lval.str = s.in[lval.pos:s.pos]
 
 	switch ch {
+	case '\\':
+		switch s.peek() {
+		case '\\': // case \\
+			s.pos++
+			lval.id = DELIMITER_EOF
+			return
+		}
+		return
 	case '$':
 		// placeholder? $[0-9]+
 		if lex.IsDigit(s.peek()) {

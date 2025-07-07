@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -220,6 +221,18 @@ func (tr *scrubTableReader) prettyPrimaryKeyValues(
 	}
 	primaryKeyValues.WriteByte(')')
 	return primaryKeyValues.String()
+}
+
+// InitProcessorProcedure init processor in procedure
+func (tr *scrubTableReader) InitProcessorProcedure(txn *kv.Txn) {
+	if tr.EvalCtx.IsProcedure {
+		if tr.FlowCtx != nil {
+			tr.FlowCtx.Txn = txn
+		}
+		tr.Closed = false
+		tr.State = execinfra.StateRunning
+		tr.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

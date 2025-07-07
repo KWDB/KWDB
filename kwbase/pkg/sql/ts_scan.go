@@ -141,6 +141,8 @@ func (n *tsScanNode) Close(context.Context) {
 	tsScanNodePool.Put(n)
 }
 
+func (n *tsScanNode) SkipClose() bool { return true }
+
 func (n *tsScanNode) Next(params runParams) (bool, error) {
 	panic("scanNode can't be run in local mode")
 }

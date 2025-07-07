@@ -43,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/flowinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -576,6 +577,9 @@ func (mr *mirrorRouter) PushPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
 
+// AddPGComplete is part of the RowReceiver interface.
+func (mr *mirrorRouter) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
+
 // Push is part of the RowReceiver interface.
 func (mr *mirrorRouter) Push(
 	row sqlbase.EncDatumRow, meta *execinfrapb.ProducerMetadata,
@@ -632,6 +636,9 @@ func makeHashRouter(rb routerBase, hashCols []uint32) (router, error) {
 func (hr *hashRouter) PushPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
+
+// AddPGComplete is part of the RowReceiver interface.
+func (hr *hashRouter) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 // Push is part of the RowReceiver interface.
 //
@@ -727,6 +734,9 @@ func makeRangeRouter(
 func (rr *rangeRouter) PushPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
+
+// AddPGComplete is part of the RowReceiver interface.
+func (rr *rangeRouter) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 func (rr *rangeRouter) Push(
 	row sqlbase.EncDatumRow, meta *execinfrapb.ProducerMetadata,

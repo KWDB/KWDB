@@ -49,25 +49,29 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEn
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
       path_(std::filesystem::path(engine_options.db_path) / VGroupDirName(vgroup_id)),
-      entity_counter_(0),
+      max_entity_id_(0),
       engine_options_(engine_options),
-      version_manager_(std::make_unique<TsVersionManager>(engine_options, vgroup_id)),
-      enable_compact_thread_(enable_compact_thread) {
-  initCompactThread();
-}
+      version_manager_(std::make_unique<TsVersionManager>(engine_options.io_env, path_)),
+      enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  if (config_file_ != nullptr) {
-    config_file_->sync(MS_SYNC);
-    delete config_file_;
-    config_file_ = nullptr;
-  }
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
-  MakeDirectory(path_);
+  auto s = engine_options_.io_env->NewDirectory(path_);
+  if (s == FAIL) {
+    LOG_ERROR("Failed to create directory: %s", path_.c_str());
+    return s;
+  }
+
+  s = version_manager_->Recover();
+  if (s == FAIL) {
+    LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+  }
+  initCompactThread();
+
   wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_);
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
   auto res = wal_manager_->Init(ctx);
@@ -75,51 +79,6 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     LOG_ERROR("Failed to initialize WAL manager")
     return res;
   }
-
-  config_file_ = new MMapFile();
-  string cf_file_path = path_.string() + "/vg_config";
-  int flag = MMAP_CREAT_EXCL;
-  bool exist = false;
-  if (IsExists(cf_file_path)) {
-    flag = MMAP_OPEN_NORECURSIVE;
-    exist = true;
-  }
-  int error_code = config_file_->open(cf_file_path, flag);
-  if (error_code < 0) {
-    LOG_ERROR("Open config file failed, error code: %d, path: %s", error_code, cf_file_path.c_str());
-    return KStatus::FAIL;
-  }
-  if (!exist) {
-    config_file_->resize(4096);
-    entity_counter_ = 0;
-  } else {
-    entity_counter_ = KUint32(config_file_->memAddr());
-  }
-
-  version_manager_->Recover();
-
-  // recover partitions
-  // std::error_code ec;
-  // std::filesystem::directory_iterator dir_iter{path_, ec};
-  // if (ec.value() != 0) {
-  //   LOG_ERROR("TsVGroup::Init fail, reason: %s", ec.message().c_str());
-  //   return FAIL;
-  // }
-  // std::regex re("db([0-9]+)-(-?[0-9]+)");
-  // for (const auto& it : dir_iter) {
-  //   std::string fname = it.path().filename();
-  //   std::smatch res;
-  //   bool ok = std::regex_match(fname, res, re);
-  //   if (!ok) {
-  //     continue;
-  //   }
-  //   uint32_t dbid = std::stoi(res.str(1));
-  //   timestamp64 ptime = std::stoll(res.str(2));
-  //   if (partitions_.find(dbid) == partitions_.end()) {
-  //     partitions_[dbid] = std::make_unique<PartitionManager>(this, dbid, interval);
-  //   }
-  //   partitions_[dbid]->Get(ptime, true);
-  // }
 
   return KStatus::SUCCESS;
 }
@@ -129,7 +88,7 @@ KStatus TsVGroup::SetReady() {
   std::list<std::shared_ptr<TsMemSegment>> mems;
   mem_segment_mgr_.GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
-  return version_manager_->ApplyUpdate(update);
+  return version_manager_->ApplyUpdate(&update);
 }
 
 KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta) {
@@ -179,21 +138,20 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
 
 std::filesystem::path TsVGroup::GetPath() const { return path_; }
 
-uint32_t TsVGroup::AllocateEntityID() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  uint64_t new_id = entity_counter_ + 1;
-  if (saveToFile(new_id) == 0) {
-    entity_counter_ = new_id;
-    return new_id;
-  } else {
-    throw std::runtime_error("Failed to persist the new ID to file");
-  }
-  return 0;
+TSEntityID TsVGroup::AllocateEntityID() {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  return ++max_entity_id_;
+
 }
 
-uint32_t TsVGroup::GetMaxEntityID() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return entity_counter_;
+TSEntityID TsVGroup::GetMaxEntityID() const {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  return max_entity_id_;
+}
+
+void TsVGroup::InitEntityID(TSEntityID entity_id) {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  max_entity_id_ = entity_id;
 }
 
 KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload) {
@@ -363,13 +321,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   return s;
 }
 
-int TsVGroup::saveToFile(uint32_t new_id) const {
-  uint32_t entity_id = new_id;
-  memcpy(reinterpret_cast<char*>(config_file_->memAddr()), &entity_id, sizeof(entity_id));
-  // return config_file_->sync(MS_SYNC);
-  return 0;
-}
-
 void TsVGroup::compactRoutine(void* args) {
   while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
     std::unique_lock<std::mutex> lock(cv_mutex_);
@@ -414,7 +365,7 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::Compact(int thread_num) {
+KStatus TsVGroup::Compact() {
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 
@@ -426,54 +377,48 @@ KStatus TsVGroup::Compact(int thread_num) {
 
   // Compact partitions
   TsVersionUpdate update;
-  std::vector<std::thread> workers;
-  for (uint32_t thread_idx = 0; thread_idx < thread_num; thread_idx++) {
-    workers.emplace_back([&, thread_idx]() {
-      for (size_t idx = thread_idx; idx < partitions.size(); idx += thread_num) {
-        const auto& cur_partition = partitions[idx];
+  std::atomic_bool success{true};
+  for (size_t idx = 0; idx < partitions.size(); ++idx) {
+    const auto& cur_partition = partitions[idx];
 
-        // 1. Get all the last segments that need to be compacted.
-        auto last_segments = cur_partition->GetCompactLastSegments();
-        auto entity_segment = cur_partition->GetEntitySegment();
+    // 1. Get all the last segments that need to be compacted.
+    auto last_segments = cur_partition->GetCompactLastSegments();
+    auto entity_segment = cur_partition->GetEntitySegment();
 
-        auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
-        uint64_t new_entity_header_num = version_manager_->NewFileNumber();
+    auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
+    uint64_t new_entity_header_num = version_manager_->NewFileNumber();
 
-        // 2. Build the column block.
-        {
-          TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                         cur_partition->GetPartitionIdentifier(), entity_segment,
-                                         new_entity_header_num, last_segments);
-          KStatus s = builder.Open();
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
-          }
-          s = builder.BuildAndFlush(&update);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
-          }
-        }
-
-        // 3. Set the compacted version.
-        for (auto& last_segment : last_segments) {
-          update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
-        }
-        entity_segment = std::make_shared<TsEntitySegment>(root_path.string(), new_entity_header_num);
-        KStatus s = entity_segment->Open();
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("TsEntitySegment Open failed, root_path=%s, entity_header_num=%lu",
-                    root_path.string().c_str(), new_entity_header_num);
-          return s;
-        }
-        update.SetEntitySegment(cur_partition->GetPartitionIdentifier(), entity_segment);
+    // 2. Build the column block.
+    {
+      TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
+                                     cur_partition->GetPartitionIdentifier(), entity_segment, new_entity_header_num,
+                                     last_segments);
+      KStatus s = builder.Open();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
+        success = false;
+        break;
       }
-    });
+      s = builder.BuildAndFlush(&update);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
+        success = false;
+        break;
+      }
+    }
+
+    // 3. Set the compacted version.
+    for (auto& last_segment : last_segments) {
+      update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
+    }
   }
-  for (auto& worker : workers) {
-    worker.join();
+
+  if (!success) {
+    LOG_ERROR("compact failed.");
+    return FAIL;
   }
   // 4. Update the version.
-  return version_manager_->ApplyUpdate(update);
+  return version_manager_->ApplyUpdate(&update);
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
@@ -540,8 +485,15 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
             flush_success = false;
             return false;
           }
-          new_created_partitions.insert(partition);
           update.PartitionDirCreated(partition->GetPartitionIdentifier());
+          new_created_partitions.insert(partition);
+        }
+
+        // we will record this updation in update and persist it to disk later.
+        if (partition->IsMemoryOnly() && new_created_partitions.find(partition) == new_created_partitions.end()) {
+          LOG_INFO("partition[%ld] is memory only, skip compact.", partition->GetStartTime());
+          update.PartitionDirCreated(partition->GetPartitionIdentifier());
+          new_created_partitions.insert(partition);
         }
 
         auto it = builders.find(partition);
@@ -588,16 +540,13 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
     update.AddLastSegment(k->GetPartitionIdentifier(), v.GetFileNumber());
   }
-  // todo(liangbo01) add all new files into new_file_list.
-  // version_mgr_->ApplyUpdate(update);
-  //  todo(liangbo01) atomic: mem segment delete, and last segments load.
   mem_seg->SetDeleting();
   mem_segment_mgr_.RemoveMemSegment(mem_seg);
   std::list<std::shared_ptr<TsMemSegment>> mems;
   mem_segment_mgr_.GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
 
-  version_manager_->ApplyUpdate(update);
+  version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
 }
 

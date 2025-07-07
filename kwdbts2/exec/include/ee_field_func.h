@@ -359,6 +359,7 @@ class FieldFuncDateTrunc : public FieldFunc {
     if (a->get_field_type() == FIELD_CONSTANT) {
       if (a->is_nullable()) {
         is_null_value_ = true;
+        sql_type_ = roachpb::DataType::NULLVAL;
       } else {
         is_unit_const_ = true;
         unit_ = replaceTimeUnit({a->ValStr().getptr(), a->ValStr().length_});

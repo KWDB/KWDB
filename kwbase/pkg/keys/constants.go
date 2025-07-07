@@ -417,14 +417,15 @@ const (
 	MLJobsTableID              = 51
 	MLPrivilegesTableID        = 52
 	KWDBShowJobsTableID        = 53
-	DefinedFunctionTableID     = 55
 	EventLogTableID            = 56
 	ScheduledJobsTableID       = 57
+	UDRTableID                 = 58
 	// CommentType is type for system.comments
 	DatabaseCommentType = 0
 	TableCommentType    = 1
 	ColumnCommentType   = 2
 	IndexCommentType    = 3
+	UDRCommentType      = 4
 )
 
 // PseudoTableIDs is the list of ids from above that are not real tables (i.e.

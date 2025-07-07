@@ -21,7 +21,7 @@
 #include "ts_table_v2_impl.h"
 
 // V2
-int EngineOptions::vgroup_max_num = 6;
+int EngineOptions::vgroup_max_num = 4;
 DedupRule EngineOptions::g_dedup_rule = DedupRule::OVERRIDE;
 size_t EngineOptions::mem_segment_max_size = 64 << 20;
 int32_t EngineOptions::mem_segment_max_height = 12;
@@ -109,13 +109,19 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
 
   vgroups_.clear();
-  for (size_t i = 0; i < EngineOptions::vgroup_max_num; i++) {
-    auto vgroup =
-        std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
+  for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
+    auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
     }
+    uint32_t entity_id = 0;
+    s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
+    if (s != KStatus::SUCCESS)
+    {
+      LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
+    }
+    vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
 
@@ -344,14 +350,25 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY) {
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
-    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-    KStatus s = GetTableSchemaMgr(ctx, table_id, tb_schema_manager);
+
+    TSSlice primary_key = payload.GetPrimaryTag();
+    auto tbl_version = payload.GetTableVersion();
+    std::shared_ptr<kwdbts::TsTable> ts_table;
+    KStatus s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
+      return s;
+    }
+
+    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+    s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetTableSchemaMgr failed. table id: %lu", table_id);
     }
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed get table id[%ld] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
     err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id);
@@ -507,9 +524,15 @@ KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, 
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
-  return ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Add column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+          table_id, cur_version, new_version, err_msg.c_str());
+  }
+  return s;
 }
 
 KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, TSSlice column,
@@ -534,10 +557,15 @@ KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id,
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
-  return ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta,
-                              cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Drop column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+          table_id, cur_version, new_version, err_msg.c_str());
+  }
+  return s;
 }
 
 KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
@@ -562,10 +590,15 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
-  return ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta,
-                              cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+    table_id, cur_version, new_version, err_msg.c_str());
+  }
+  return s;
 }
 
 KStatus TSEngineV2Impl::AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) {
@@ -624,7 +657,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
 //    3) For ALTER operations, roll back to the previous schema version;
 //  4. If the rollback fails, a system log is generated and an error exit is reported.
   if (options_.wal_level == WALMode::OFF) {
-    return KStatus::SUCCESS;
+    Return(KStatus::SUCCESS);
   }
   KStatus s;
 
@@ -632,7 +665,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   auto vgroup = GetVGroupByID(ctx, distrib(gen));
   s = vgroup->MtrRollback(ctx, mtr_id);
   if (s == FAIL) {
-    return s;
+    Return(s);
   }
 
   // for range
@@ -911,13 +944,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   rewrite.clear();
 
   // 5. trig all vgroup flush
-  // for (const auto &vgrp : vgroups_) {
-  //   s = vgrp->Flush();
-  //   if (s == KStatus::FAIL) {
-  //     LOG_ERROR("Failed to flush metric file.")
-  //     return s;
-  //   }
-  // }
+  for (const auto &vgrp : vgroups_) {
+    s = vgrp->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
+  }
 
   // 6.write EndWAL to chk file
   TS_LSN lsn;
@@ -1568,4 +1601,21 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+  // get max entity id
+  KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
+  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
+  KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get all schema manager failed.");
+  }
+  std::shared_ptr<TagTable> tag_table;
+  for (auto schema_mgr : tb_schema_manager) {
+    s = schema_mgr->GetTagSchema(ctx, &tag_table);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    tag_table->GetMaxEntityIdByVGroupId(vgroup_id, entity_id);
+  }
+  return KStatus::SUCCESS;
+}
 }  // namespace kwdbts

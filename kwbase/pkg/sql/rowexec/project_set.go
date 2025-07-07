@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
@@ -112,6 +113,18 @@ func newProjectSetProcessor(
 		return nil, err
 	}
 	return ps, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (ps *projectSetProcessor) InitProcessorProcedure(txn *kv.Txn) {
+	if ps.EvalCtx.IsProcedure {
+		if ps.FlowCtx != nil {
+			ps.FlowCtx.Txn = txn
+		}
+		ps.Closed = false
+		ps.State = execinfra.StateRunning
+		ps.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

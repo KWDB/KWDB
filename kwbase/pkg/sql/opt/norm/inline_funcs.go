@@ -342,11 +342,14 @@ func (c *CustomFuncs) CanInlineConstVar(f memo.FiltersExpr) bool {
 	// value.
 	var fixedCols opt.ColSet
 	for i := range f {
-		if ok, l, _ := c.extractVarEqualsConst(f[i].Condition); ok {
+		if ok, l, e := c.extractVarEqualsConst(f[i].Condition); ok {
 			colType := c.mem.Metadata().ColumnMeta(l.Col).Type
 			if sqlbase.DatumTypeHasCompositeKeyEncoding(colType) {
 				// TODO(justin): allow inlining if the check we're doing is oblivious
 				// to composite-ness.
+				continue
+			}
+			if !e.Typ.Equivalent(colType) {
 				continue
 			}
 			if !fixedCols.Contains(l.Col) {
@@ -381,6 +384,9 @@ func (c *CustomFuncs) InlineConstVar(f memo.FiltersExpr) memo.FiltersExpr {
 		if ok, v, e := c.extractVarEqualsConst(f[i].Condition); ok {
 			colType := c.mem.Metadata().ColumnMeta(v.Col).Type
 			if sqlbase.DatumTypeHasCompositeKeyEncoding(colType) {
+				continue
+			}
+			if !e.Typ.Equivalent(colType) {
 				continue
 			}
 			if _, ok := vals[v.Col]; !ok {

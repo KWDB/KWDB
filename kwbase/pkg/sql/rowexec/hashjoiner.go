@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -227,6 +228,18 @@ func newHashJoiner(
 	}
 
 	return h, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (h *hashJoiner) InitProcessorProcedure(txn *kv.Txn) {
+	if h.EvalCtx.IsProcedure {
+		if h.FlowCtx != nil {
+			h.FlowCtx.Txn = txn
+		}
+		h.Closed = false
+		h.State = execinfra.StateRunning
+		h.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

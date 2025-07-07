@@ -48,6 +48,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -127,6 +128,9 @@ func newTsInserter(
 	}
 	return tsi, nil
 }
+
+// InitProcessorProcedure init processor in procedure
+func (tri *tsInserter) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Start is part of the RowSource interface.
 func (tri *tsInserter) Start(ctx context.Context) context.Context {
@@ -460,6 +464,9 @@ func (i *insThreadCount) doneThread() {
 	defer i.mu.Unlock()
 	i.count--
 }
+
+// InitProcessorProcedure init processor in procedure
+func (tis *tsInsertSelecter) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Start eg: insert into ts_table2 select * from ts_table;
 // tis.input is plan of 'select * from ts_table'.

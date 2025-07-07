@@ -51,6 +51,10 @@ type scopeColumn struct {
 	// included.
 	hidden bool
 
+	isDeclared bool
+	isPara     bool
+	realIdx    int
+
 	// mutation is true if the column is in the process of being dropped or added
 	// to the table. It should not be visible to variable references.
 	mutation bool
@@ -78,6 +82,16 @@ type scopeColumn struct {
 func (s *scopeColumn) clearName() {
 	s.name = ""
 	s.table = tree.TableName{}
+}
+
+// GetName gets name
+func (s *scopeColumn) GetName() tree.Name {
+	return s.name
+}
+
+// GetType gets type
+func (s *scopeColumn) GetType() *types.T {
+	return s.typ
 }
 
 // getExpr returns the the expression that this column refers to, or the column
@@ -162,3 +176,31 @@ func (s *scopeColumn) Eval(_ *tree.EvalContext) (tree.Datum, error) {
 // Variable is part of the tree.VariableExpr interface. This prevents the
 // column from being evaluated during normalization.
 func (s *scopeColumn) Variable() {}
+
+// ReplaceProcCond replaces the scopeColumn in the procStmt condition with IndexedVar
+type ReplaceProcCond struct{}
+
+// Replace replaces the scopeColumn in the procStmt condition with IndexedVar
+func (d *ReplaceProcCond) Replace(expr tree.Expr) tree.TypedExpr {
+	if v, ok := (expr).(*scopeColumn); ok && v.isDeclared {
+		indexVal := tree.NewTypedOrdinalReference(v.realIdx, v.typ)
+		indexVal.IsDeclare = true
+		return indexVal
+	}
+	return expr.Walk(d).(tree.TypedExpr)
+}
+
+// VisitPre for ReplaceProcCond
+func (d *ReplaceProcCond) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
+	if v, ok := (expr).(*scopeColumn); ok && v.isDeclared {
+		indexVal := tree.NewTypedOrdinalReference(v.realIdx, v.typ)
+		indexVal.IsDeclare = true
+		return false, indexVal
+	}
+	return true, expr
+}
+
+// VisitPost for ReplaceProcCond
+func (d *ReplaceProcCond) VisitPost(expr tree.Expr) (newNode tree.Expr) {
+	return expr
+}

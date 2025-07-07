@@ -8,13 +8,10 @@ BEGIN
 end'
 END;
 CREATE FUNCTION
-> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
-  function_name | argument_types | return_type | types_length |         function_body          | function_type | language |  db_name  | creator | version | comments
-----------------+----------------+-------------+--------------+--------------------------------+---------------+----------+-----------+---------+---------+-----------
-  multiply      | {1}            | {1}         | {0,0}        | function multiply(nu_int)      |             1 | LUA      | defaultdb | root    | 1.0     |
-                |                |             |              |     local re = nu_int + nu_int |               |          |           |         |         |
-                |                |             |              |     return re                  |               |          |           |         |         |
-                |                |             |              | end                            |               |          |           |         |         |
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+    name
+------------
+  multiply
 (1 row)
 > SHOW FUNCTIONS;
   function_name

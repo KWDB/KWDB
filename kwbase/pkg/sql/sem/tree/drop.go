@@ -228,6 +228,23 @@ func (node *DropFunction) Format(ctx *FmtCtx) {
 	}
 }
 
+// DropProcedure represents a DROP Procedure command.
+type DropProcedure struct {
+	Name     TableName
+	IfExists bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropProcedure) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP PROCEDURE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+		ctx.FormatNode(&node.Name)
+	} else {
+		ctx.FormatNode(&node.Name)
+	}
+}
+
 // DropAudit represents a DROP AUDIT statement.
 type DropAudit struct {
 	Names    NameList

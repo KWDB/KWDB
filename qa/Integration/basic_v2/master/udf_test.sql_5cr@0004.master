@@ -43,26 +43,11 @@ CREATE FUNCTION
 -------------
          55
 (1 row)
-> SELECT function_name,argument_types,return_type,types_length,function_body,function_type,language,db_name,creator,comments FROM system.user_defined_function;
-  function_name  | argument_types | return_type | types_length |              function_body               | function_type | language |  db_name  | creator | comments
------------------+----------------+-------------+--------------+------------------------------------------+---------------+----------+-----------+---------+-----------
-  fibonacci      | {3}            | {3}         | {0,0}        | function fibonacci(n)                    |             1 | LUA      | defaultdb | root    |
-                 |                |             |              |     if n <= 1 then return n end          |               |          |           |         |
-                 |                |             |              |     local fib = {0, 1}                   |               |          |           |         |
-                 |                |             |              |     for i = 3, n + 1 do                  |               |          |           |         |
-                 |                |             |              |         fib[i] = fib[i - 1] + fib[i - 2] |               |          |           |         |
-                 |                |             |              |     end                                  |               |          |           |         |
-                 |                |             |              |     return fib[n + 1]                    |               |          |           |         |
-                 |                |             |              | end                                      |               |          |           |         |
-  sum_of_factors | {3}            | {3}         | {0,0}        | function sum_of_factors(num)             |             1 | LUA      | defaultdb | root    |
-                 |                |             |              |     local sum = 1                        |               |          |           |         |
-                 |                |             |              |     for i = 2, num do                    |               |          |           |         |
-                 |                |             |              |         if num % i == 0 then             |               |          |           |         |
-                 |                |             |              |             sum = sum + i                |               |          |           |         |
-                 |                |             |              |         end                              |               |          |           |         |
-                 |                |             |              |     end                                  |               |          |           |         |
-                 |                |             |              |     return sum                           |               |          |           |         |
-                 |                |             |              | end                                      |               |          |           |         |
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+       name
+------------------
+  fibonacci
+  sum_of_factors
 (2 rows)
 > SHOW FUNCTIONS;
   function_name

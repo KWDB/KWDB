@@ -1420,10 +1420,6 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
 
 KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
-  if (version == entity_bt_manager_->GetCurrentTableVersion()) {
-    return KStatus::SUCCESS;
-  }
-
   if (entity_bt_manager_->GetRootTable(version, true) != nullptr) {
     int retry = 6;
     while (retry > 0) {
@@ -2908,6 +2904,9 @@ KStatus TsTable::TSxClean(kwdbContext_p ctx) {
 KStatus TsTable::SyncTagTsVersion(uint32_t cur_version, uint32_t new_version) {
   for (auto& entity_group : entity_groups_) {
     if (entity_group.second->SyncTagVersion(cur_version, new_version) < 0) {
+      LOG_ERROR("Entity group sync tag version failed,"
+                "table id: %lu, entity group: %lu, cur_version: %d, new_version: %d",
+                table_id_, entity_group.first, cur_version, new_version);
       return FAIL;
     }
   }
@@ -2918,6 +2917,8 @@ KStatus TsTable::AddTagSchemaVersion(const std::vector<TagInfo>& schema, uint32_
                                      const std::vector<roachpb::NTagIndexInfo>& idx_info) {
   for (auto& entity_group : entity_groups_) {
     if (entity_group.second->AddTagSchemaVersion(schema, new_version, idx_info) < 0) {
+      LOG_ERROR("Entity group add tag schema version failed, table id: %lu, entity group: %lu, new_version: %d",
+          table_id_, entity_group.first, new_version);
       return FAIL;
     }
   }
@@ -3011,6 +3012,7 @@ KStatus TsTable::AlterTableCol(kwdbContext_p ctx, AlterType alter_type, const At
       break;
     }
     default:
+      msg = "Alter type: " + to_string(alter_type) + " is not supported.";
       return KStatus::FAIL;
   }
   s = entity_bt_manager_->CreateRootTable(schema, new_version, err_info, cur_version);
@@ -3059,7 +3061,7 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
     s = entity_bt_manager_->AddRootTable(metric_schema, upper_version, err_info);
   }
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("add new version schema failed for alter table: table id = %lu, new_version = %u, err_msg: %s",
+    LOG_ERROR("add new version schema failed, table id = %lu, new_version = %u, err_msg: %s",
               table_id_, upper_version, err_info.errmsg.c_str());
     return s;
   }

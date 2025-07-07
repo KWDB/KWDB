@@ -15,6 +15,7 @@
 #include <map>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,11 +47,11 @@ class TsVGroup {
 
   std::filesystem::path path_;
 
-  uint64_t entity_counter_{0};
+  // max entity id of this vgroup
+  uint64_t max_entity_id_{0};
 
-  mutable std::mutex mutex_;
-
-  MMapFile* config_file_{nullptr};
+  // mutex for initialize/allocate/get max_entity_id_
+  mutable std::mutex entity_id_mutex_;
 
   EngineOptions engine_options_;
 
@@ -70,6 +71,9 @@ class TsVGroup {
   std::condition_variable cv_;
   // Mutexes for condition variables
   std::mutex cv_mutex_;
+
+  // Flushing Mutex
+  std::mutex flush_mutex_;
 
  public:
   TsVGroup() = delete;
@@ -92,9 +96,11 @@ class TsVGroup {
 
   std::string GetFileName() const;
 
-  uint32_t AllocateEntityID();
+  TSEntityID AllocateEntityID();
 
-  uint32_t GetMaxEntityID() const;
+  TSEntityID GetMaxEntityID() const;
+
+  void InitEntityID(TSEntityID entity_id);
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
 
@@ -104,6 +110,7 @@ class TsVGroup {
 
   // flush all mem segment data into last segment.
   KStatus Flush() {
+    std::lock_guard lk{flush_mutex_};
     std::shared_ptr<TsMemSegment> imm_segment;
     mem_segment_mgr_.SwitchMemSegment(&imm_segment);
     assert(imm_segment.get() != nullptr);
@@ -114,7 +121,7 @@ class TsVGroup {
     mem_segment_mgr_.GetAllMemSegments(&memsegs);
     update.SetValidMemSegments(memsegs);
 
-    version_manager_->ApplyUpdate(update);
+    version_manager_->ApplyUpdate(&update);
 
     // Flush imm segment.
     KStatus s = FlushImmSegment(imm_segment);
@@ -123,7 +130,7 @@ class TsVGroup {
 
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
-  KStatus Compact(int thread_num = 1);
+  KStatus Compact();
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);
@@ -278,8 +285,6 @@ class TsVGroup {
 
   KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
     const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);
-
-  int saveToFile(uint32_t new_id) const;
 
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 

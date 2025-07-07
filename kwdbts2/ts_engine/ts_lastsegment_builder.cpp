@@ -314,16 +314,20 @@ KStatus TsLastSegmentBuilder::Finalize() {
 
   // TODO(zzr) meta block API
   int nmeta = meta_blocks_.size();
-  std::vector<uint64_t> meta_offset(nmeta);
-  std::vector<uint64_t> meta_len(nmeta);
+  std::vector<uint64_t> meta_offset;
+  std::vector<uint64_t> meta_len;
 
   for (int i = 0; i < nmeta; ++i) {
-    meta_offset[i] = last_segment_->GetFileSize();
     std::string serialized;
     meta_blocks_[i]->Serialize(&serialized);
+    if (serialized.empty()) {
+      continue;
+    }
+    meta_offset.push_back(last_segment_->GetFileSize());
     last_segment_->Append(serialized);
-    meta_len[i] = serialized.size();
+    meta_len.push_back(serialized.size());
   }
+  nmeta = meta_offset.size();
   size_t meta_index_offset = last_segment_->GetFileSize();
   std::string meta_idx_data;
   meta_idx_data.reserve(nmeta * 16);

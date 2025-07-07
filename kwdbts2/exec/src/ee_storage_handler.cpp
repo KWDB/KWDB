@@ -139,7 +139,7 @@ EEIteratorErrCode StorageHandler::TsNextAndFilter(
 EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
-  bool need_reset = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT);
+  bool need_reset = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT || thd->wtyp_ == WindowGroupType::EE_WGT_COUNT);
   while (true) {
     ScanRowBatch* row_batch =
         static_cast<ScanRowBatch *>(thd->GetRowBatch());

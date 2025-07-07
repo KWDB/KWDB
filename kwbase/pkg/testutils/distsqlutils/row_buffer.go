@@ -30,8 +30,10 @@ import (
 	"testing"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -126,9 +128,12 @@ func NewRowBuffer(types []types.T, rows sqlbase.EncDatumRows, hooks RowBufferArg
 }
 
 // PushPGResult is part of the RowReceiver interface.
-func (rb *RowBuffer) PushPGResult(ctx context.Context, res []byte) error {
+func (rb *RowBuffer) PushPGResult(_ context.Context, _ []byte) error {
 	return nil
 }
+
+// AddPGComplete implements the rowResultWriter interface.
+func (rb *RowBuffer) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
 // Push is part of the RowReceiver interface.
 func (rb *RowBuffer) Push(
@@ -240,6 +245,9 @@ func (rb *RowBuffer) ConsumerClosed() {
 		rb.args.OnConsumerClosed(rb)
 	}
 }
+
+// InitProcessorProcedure init processor in procedure
+func (rb *RowBuffer) InitProcessorProcedure(txn *kv.Txn) {}
 
 // NextNoMeta is a version of Next which fails the test if
 // it encounters any metadata.

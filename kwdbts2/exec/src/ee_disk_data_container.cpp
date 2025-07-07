@@ -279,20 +279,20 @@ KStatus DiskDataContainer::UpdateTempCacheChunk() {
   return SUCCESS;
 }
 
-void DiskDataContainer::Sort() {
+KStatus DiskDataContainer::Sort() {
   KStatus ret = KStatus::SUCCESS;
 
   ret = SortAndFlushLastChunk(true);
   if (ret != SUCCESS) {
     LOG_ERROR("SortAndFlushLastChunk Failed : %d", ret);
-    return;
+    return ret;
   }
   write_force_constant_ = true;
   if (read_merge_infos_->batch_chunk_indexs_.size() > 1) {
     ret = divideAndConquerMerge();
     if (ret != SUCCESS) {
       LOG_ERROR("ConquerMerge Failed : %d", ret);
-      return;
+      return ret;
     }
 
     ReloadReadPtr(MAX_CHUNK_BATCH_NUM, 0);
@@ -300,6 +300,7 @@ void DiskDataContainer::Sort() {
   }
 
   sorted_count_ = 0;
+  return KStatus::SUCCESS;
 }
 
 void DiskDataContainer::ReloadReadPtr(

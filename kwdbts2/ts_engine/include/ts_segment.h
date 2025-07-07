@@ -29,16 +29,18 @@ class TsSegmentBase;
 struct TsScanFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
   DATATYPE  table_ts_type;
   TS_LSN end_lsn;
   const std::vector<KwTsSpan>& ts_spans_;
 };
 
-// conditions used for flitering blockitem data.
+// conditions used for filtering blockitem data.
 struct TsBlockItemFilterParams {
   uint32_t db_id;
   TSTableID table_id;
+  uint32_t vgroup_id;
   TSEntityID entity_id;
   std::vector<STScanRange> spans_;
 };
