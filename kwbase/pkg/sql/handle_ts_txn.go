@@ -16,7 +16,6 @@ package sql
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
