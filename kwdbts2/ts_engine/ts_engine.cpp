@@ -112,13 +112,19 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
 
   vgroups_.clear();
-  for (size_t i = 0; i < EngineOptions::vgroup_max_num; i++) {
-    auto vgroup =
-        std::make_unique<TsVGroup>(options_, i + 1, schema_mgr_.get());
+  for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
+    auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
     }
+    uint32_t entity_id = 0;
+    s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
+    if (s != KStatus::SUCCESS)
+    {
+      LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
+    }
+    vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
 
@@ -365,7 +371,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Failed get table id[%d] version id[%d] tag schema.", table_id, tbl_version);
+      LOG_ERROR("Failed get table id[%ld] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
     err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id);
@@ -1756,4 +1762,21 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
 }
 
 
+  // get max entity id
+  KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
+  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
+  KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get all schema manager failed.");
+  }
+  std::shared_ptr<TagTable> tag_table;
+  for (auto schema_mgr : tb_schema_manager) {
+    s = schema_mgr->GetTagSchema(ctx, &tag_table);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    tag_table->GetMaxEntityIdByVGroupId(vgroup_id, entity_id);
+  }
+  return KStatus::SUCCESS;
+}
 }  // namespace kwdbts
