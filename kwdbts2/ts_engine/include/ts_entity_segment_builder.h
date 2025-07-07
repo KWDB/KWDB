@@ -257,11 +257,11 @@ class TsEntitySegmentBuilder {
 
   PartitionIdentifier GetPartitionId() { return partition_id_; }
 
-  KStatus BuildAndFlush(TsVersionUpdate *update);
+  KStatus Compact(TsVersionUpdate *update);
 
-  KStatus Flush(uint32_t entity_id, uint32_t table_version, TSSlice data);
+  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
 
-  KStatus Finish();
+  KStatus WriteBatchFinish(TsVersionUpdate *update);
 };
 
 }  // namespace kwdbts

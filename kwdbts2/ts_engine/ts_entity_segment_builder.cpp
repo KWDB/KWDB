@@ -395,7 +395,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
     if (cur_entity_item_.entity_id != 0) {
       s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append entity item failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
         return s;
       }
     }
@@ -405,13 +405,13 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
         bool is_exist = true;
         s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
         if (s != KStatus::SUCCESS && is_exist) {
-          LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
+          LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
           return s;
         }
       }
       s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append entity item failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
         return s;
       }
     }
@@ -420,7 +420,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_key.entity_id, cur_entity_item_, is_exist);
       if (s != KStatus::SUCCESS && is_exist) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
         return s;
       }
     }
@@ -428,7 +428,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
   block_item.prev_block_id = cur_entity_item_.cur_block_id;
   s = block_item_builder_->AppendBlockItem(block_item);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block item failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block item failed.")
     return s;
   }
   cur_entity_item_.cur_block_id = block_item.block_id;
@@ -448,21 +448,21 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
   TsEntitySegmentBlockItem block_item;
   KStatus s = block->GetCompressData(block_item, data_buffer, agg_buffer);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get block compress data failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block compress data failed.")
     return s;
   }
   s = block_file_builder_->AppendBlock({data_buffer.data(), data_buffer.size()}, &block_item.block_offset);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
     return s;
   }
   s = agg_file_builder_->AppendAggBlock({agg_buffer.data(), agg_buffer.size()}, &block_item.agg_offset);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append agg block failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append agg block failed.")
   }
   s = UpdateEntityItem(entity_key, block_item);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, update entity item failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, update entity item failed.")
   }
   return s;
 }
@@ -490,7 +490,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
+KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
   std::shared_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
@@ -502,7 +502,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
   for (int i = 0; i < last_segments_.size(); ++i) {
     s = last_segments_[i]->GetBlockSpans(block_spans[i], schema_manager_);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get block spans failed.")
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block spans failed.")
       return s;
     }
   }
@@ -515,7 +515,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     if (!block_span || block_span->GetRowNum() == 0) {
       s = iter.Next(block_span, &is_finished);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, iterate last segments failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, iterate last segments failed.")
         return s;
       }
       if (is_finished) {
@@ -529,7 +529,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
         if (block->GetRowNum() >= EngineOptions::min_rows_per_block) {
           s = WriteBlock(entity_key);
           if (s != KStatus::SUCCESS) {
-            LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, write block failed.")
+            LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
             return s;
           }
           block->Clear();
@@ -540,7 +540,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
             std::unique_ptr<TsAppendOnlyFile> last_segment;
             s = NewLastSegmentFile(&last_segment, &file_number);
             if (s != KStatus::SUCCESS) {
-              LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, new last segment failed.")
+              LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
               return s;
             }
             builder = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
@@ -554,7 +554,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
             s = builder->PutColData(entity_key.table_id, entity_key.table_version,
                                     entity_key.entity_id, lsn, metric_value, data_flags);
             if (s != KStatus::SUCCESS) {
-              LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder put failed.")
+              LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
               return s;
             }
           }
@@ -564,7 +564,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
                 entity_key.table_version != cur_entity_key.table_version) {
               s = builder->FlushBuffer();
               if (s != KStatus::SUCCESS) {
-                LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder flush buffer failed.")
+                LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder flush buffer failed.")
                 return s;
               }
               cached_blocks.clear();
@@ -598,14 +598,14 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     bool is_full = false;
     s = block->Append(block_span, is_full);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block failed.")
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
       return s;
     }
     // flush block if full
     if (is_full) {
       s = WriteBlock(entity_key);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, write block failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
         return s;
       }
       block->Clear();
@@ -621,12 +621,12 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
       if (s != KStatus::SUCCESS && is_exist) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, get entity item failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
         return s;
       }
       s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append entity item failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
         return s;
       }
     }
@@ -639,7 +639,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
       std::unique_ptr<TsAppendOnlyFile> last_segment;
       s = NewLastSegmentFile(&last_segment, &file_number);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, new last segment failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
         return s;
       }
       builder = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
@@ -653,7 +653,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
       s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id,
                               lsn, metric_value, data_flags);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder put failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
         return s;
       }
     }
@@ -663,7 +663,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
     s = builder->Finalize();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR(
-        "TsEntitySegmentBuilder::BuildAndFlush failed, TsLastSegmentBuilder finalize failed.")
+        "TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
       return s;
     }
     update->AddLastSegment(partition_id_, builder->GetFileNumber());
@@ -678,7 +678,7 @@ KStatus TsEntitySegmentBuilder::BuildAndFlush(TsVersionUpdate *update) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::Flush(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
+KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
   std::shared_lock lock{mutex_};
   auto it = entity_cur_block_id_.find(entity_id);
   if (it == entity_cur_block_id_.end()) {
@@ -711,7 +711,7 @@ KStatus TsEntitySegmentBuilder::Flush(uint32_t entity_id, uint32_t table_version
                          block_item.block_len};
   KStatus s = block_file_builder_->AppendBlock(data_buffer, &block_item.block_offset);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
     return s;
   }
 
@@ -719,18 +719,18 @@ KStatus TsEntitySegmentBuilder::Flush(uint32_t entity_id, uint32_t table_version
                         block_item.block_len + (n_cols - 1) * sizeof(uint32_t), block_item.agg_len};
   s = agg_file_builder_->AppendAggBlock(agg_buffer, &block_item.agg_offset);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append agg block failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append agg block failed.")
   }
 
   s = block_item_builder_->AppendBlockItem(block_item);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::BuildAndFlush failed, append block item failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block item failed.")
     return s;
   }
   entity_cur_block_id_[entity_id] = block_item.block_id;
 }
 
-KStatus TsEntitySegmentBuilder::Finish() {
+KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   std::shared_lock lock{mutex_};
   // write entity header
   KStatus s = KStatus::SUCCESS;
@@ -779,6 +779,12 @@ KStatus TsEntitySegmentBuilder::Finish() {
       return s;
     }
   }
+  TsVersionUpdate::EntitySegmentVersionInfo info;
+  info.agg_file_size = agg_file_builder_->GetFileSize();
+  info.block_file_size = block_file_builder_->GetFileSize();
+  info.header_b_size = block_item_builder_->GetFileSize();
+  info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 
