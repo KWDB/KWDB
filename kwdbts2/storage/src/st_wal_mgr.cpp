@@ -138,9 +138,11 @@ KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t leng
   meta_.current_lsn = lsn_offset;
 
   // TODO(xy): optimize:if WAL LEVEL=SYNC, don't need sync every log to disk, only sync by FLUSH while COMMIT/ROLLBACK.
-  if (Flush(ctx) == KStatus::FAIL) {
-    LOG_ERROR("Failed to flush the WAL logs on SYNC level, wal length %lu", length)
-    return KStatus::FAIL;
+  if (WALMode(opt_->wal_level) == WALMode::SYNC) {
+    if (Flush(ctx) == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush the WAL logs on SYNC level, wal length %lu", length)
+      return KStatus::FAIL;
+    }
   }
 
 //  if (vg_ != nullptr && NeedCheckpoint()) {
