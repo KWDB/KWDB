@@ -550,6 +550,20 @@ func (node *ShowTables) Format(ctx *FmtCtx) {
 	}
 }
 
+// ShowProcedures represents a SHOW PROCEDURES statement.
+type ShowProcedures struct {
+	TableNamePrefix
+	WithComment bool
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowProcedures) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW PROCEDURES")
+	if node.WithComment {
+		ctx.WriteString(" WITH COMMENT")
+	}
+}
+
 // ShowConstraints represents a SHOW CONSTRAINTS statement.
 type ShowConstraints struct {
 	Table *UnresolvedObjectName
@@ -620,6 +634,17 @@ type ShowCreateDatabase struct {
 func (node *ShowCreateDatabase) Format(ctx *FmtCtx) {
 	ctx.WriteString("SHOW CREATE DATABASE ")
 	ctx.FormatNode(&node.Database)
+}
+
+// ShowCreateProcedure represents a SHOW CREATE PROCEDURE statement.
+type ShowCreateProcedure struct {
+	Name TableName
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowCreateProcedure) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW CREATE PROCEDURE ")
+	ctx.FormatNode(&node.Name)
 }
 
 // ShowSyntax represents a SHOW SYNTAX statement.

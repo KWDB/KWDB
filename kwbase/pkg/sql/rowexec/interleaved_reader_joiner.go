@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -95,6 +96,18 @@ type interleavedReaderJoiner struct {
 	// ancestorTablePos is the corresponding index of the ancestor table in
 	// tables.
 	ancestorTablePos int
+}
+
+// InitProcessorProcedure init processor in procedure
+func (irj *interleavedReaderJoiner) InitProcessorProcedure(txn *kv.Txn) {
+	if irj.EvalCtx.IsProcedure {
+		if irj.FlowCtx != nil {
+			irj.FlowCtx.Txn = txn
+		}
+		irj.Closed = false
+		irj.State = execinfra.StateRunning
+		irj.Out.SetRowIdx(0)
+	}
 }
 
 func (irj *interleavedReaderJoiner) Start(ctx context.Context) context.Context {

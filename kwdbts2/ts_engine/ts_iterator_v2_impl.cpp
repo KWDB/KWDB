@@ -1052,7 +1052,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (pre_max.data) {
           string pre_max_val(pre_max.data, pre_max.len);
           if (agg_data.data) {
-            string current_max({agg_data.data + kStringLenLen, agg_data.len});
+            string current_max({agg_data.data + kStringLenLen, agg_data.len - kStringLenLen});
             if (current_max < pre_max_val) {
               free(agg_data.data);
               agg_data.data = nullptr;
@@ -1116,7 +1116,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (!var_rows.empty()) {
           auto max_it = std::max_element(var_rows.begin(), var_rows.end());
           if (agg_data.data) {
-            string current_max({agg_data.data + kStringLenLen, agg_data.len});
+            string current_max({agg_data.data + kStringLenLen, agg_data.len - kStringLenLen});
             if (current_max < *max_it) {
               free(agg_data.data);
               agg_data.data = nullptr;
@@ -1180,7 +1180,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (pre_min.data) {
           string pre_min_val(pre_min.data, pre_min.len);
           if (agg_data.data) {
-            string current_min({agg_data.data + kStringLenLen, agg_data.len});
+            string current_min({agg_data.data + kStringLenLen, agg_data.len - kStringLenLen});
             if (current_min > pre_min_val) {
               free(agg_data.data);
               agg_data.data = nullptr;
@@ -1244,7 +1244,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (!var_rows.empty()) {
           auto min_it = std::min_element(var_rows.begin(), var_rows.end());
           if (agg_data.data) {
-            string current_min({agg_data.data + kStringLenLen, agg_data.len});
+            string current_min({agg_data.data + kStringLenLen, agg_data.len - kStringLenLen});
             if (current_min > *min_it) {
               free(agg_data.data);
               agg_data.data = nullptr;

@@ -32,6 +32,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
@@ -1235,6 +1236,30 @@ func newOrderedAggregator(
 // Start is part of the RowSource interface.
 func (ag *hashAggregator) Start(ctx context.Context) context.Context {
 	return ag.start(ctx, hashAggregatorProcName)
+}
+
+// InitProcessorProcedure init processor in procedure
+func (ag *hashAggregator) InitProcessorProcedure(txn *kv.Txn) {
+	if ag.EvalCtx.IsProcedure {
+		if ag.FlowCtx != nil {
+			ag.FlowCtx.Txn = txn
+		}
+		ag.Closed = false
+		ag.State = execinfra.StateRunning
+		ag.Out.SetRowIdx(0)
+	}
+}
+
+// InitProcessorProcedure init processor in procedure
+func (ag *orderedAggregator) InitProcessorProcedure(txn *kv.Txn) {
+	if ag.EvalCtx.IsProcedure {
+		if ag.FlowCtx != nil {
+			ag.FlowCtx.Txn = txn
+		}
+		ag.Closed = false
+		ag.State = execinfra.StateRunning
+		ag.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

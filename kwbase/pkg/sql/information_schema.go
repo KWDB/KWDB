@@ -42,6 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/vtable"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -152,6 +153,7 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaTablesTableID:                     informationSchemaTablesTable,
 		sqlbase.InformationSchemaViewsTableID:                      informationSchemaViewsTable,
 		sqlbase.InformationSchemaUserPrivilegesID:                  informationSchemaUserPrivileges,
+		sqlbase.InformationSchemaProcedurePrivilegesID:             informationSchemaProcedurePrivileges,
 	},
 	tableValidator:             validateInformationSchemaTable,
 	validWithNoDatabaseContext: true,
@@ -1975,4 +1977,76 @@ func isTableVisible(table *TableDescriptor, allowAdding bool) bool {
 	return table.State == sqlbase.TableDescriptor_PUBLIC ||
 		(allowAdding && table.State == sqlbase.TableDescriptor_ADD) ||
 		table.State == sqlbase.TableDescriptor_ALTER
+}
+
+func getAllProcedures(ctx context.Context, p *planner) ([]sqlbase.ProcedureDescriptor, error) {
+	query := `SELECT descriptor FROM system.user_defined_routine WHERE routine_type = 1`
+	rows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.Query(
+		ctx, "read-procedures", p.txn, query,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var procs []sqlbase.ProcedureDescriptor
+	for _, row := range rows {
+		var desc sqlbase.ProcedureDescriptor
+		val := tree.MustBeDBytes(row[0])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", val)
+		}
+		procs = append(procs, desc)
+	}
+	return procs, nil
+}
+
+var informationSchemaProcedurePrivileges = virtualSchemaTable{
+	comment: `privileges granted on procedure (incomplete; may contain excess users or roles)`,
+	schema: `
+CREATE TABLE information_schema.procedure_privileges (
+	GRANTEE            STRING NOT NULL,
+	PROCEDURE_CATALOG  STRING NOT NULL,
+	PROCEDURE_SCHEMA   STRING NOT NULL,
+	PROCEDURE_NAME     STRING NOT NULL,
+	PRIVILEGE_TYPE     STRING NOT NULL
+)`,
+	populate: populateProcedurePrivileges,
+}
+
+// populateProcedurePrivileges is used to populate both procedure_privileges and role_procedure_grants.
+func populateProcedurePrivileges(
+	ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+) error {
+	procs, err := getAllProcedures(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, proc := range procs {
+		db, err := getDatabaseDescByID(ctx, p.txn, proc.DbID)
+		if err != nil {
+			return err
+		}
+		sc, err := getSchemaDescByID(ctx, p.txn, proc.SchemaID)
+		if err != nil {
+			return err
+		}
+		dbNameStr := tree.NewDString(db.Name)
+		scNameStr := tree.NewDString(sc.Name)
+		tbNameStr := tree.NewDString(proc.Name)
+
+		for _, u := range proc.Privileges.Show() {
+			for _, priv := range u.Privileges {
+				if err := addRow(
+					tree.NewDString(u.User), // grantee
+					dbNameStr,               // procedure_catalog
+					scNameStr,               // procedure_schema
+					tbNameStr,               // procedure_name
+					tree.NewDString(priv),   // privilege_type
+				); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

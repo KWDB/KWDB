@@ -26,7 +26,7 @@ create-view t.public.v1
  ├── SELECT a FROM t.public.ab
  ├── columns: a:1
  └── dependencies
-      └── ab [columns: (0,1)]
+      └── ab [columns: (0)]
 
 # Test dependency on specific index.
 build
@@ -36,7 +36,7 @@ create-view t.public.v1
  ├── SELECT a FROM t.public.ab@idx
  ├── columns: a:1
  └── dependencies
-      └── ab@idx [columns: (0,1)]
+      └── ab@idx [columns: (0)]
 
 build
 CREATE VIEW v1 AS SELECT a FROM ab@primary
@@ -45,7 +45,7 @@ create-view t.public.v1
  ├── SELECT a FROM t.public.ab@primary
  ├── columns: a:1
  └── dependencies
-      └── ab@primary [columns: (0,1)]
+      └── ab@primary [columns: (0)]
 
 # Test dependency on view.
 exec-ddl
@@ -69,7 +69,7 @@ create-view t.public.v1
  ├── columns: a:1 a:3
  └── dependencies
       ├── av [columns: (0)]
-      └── ab [columns: (0,1)]
+      └── ab [columns: (0)]
 
 # Test that we don't report virtual table dependencies.
 build
@@ -79,7 +79,7 @@ create-view t.public.v1
  ├── SELECT a, table_schema FROM t.public.ab, "".information_schema.columns
  ├── columns: a:1 table_schema:4
  └── dependencies
-      └── ab [columns: (0,1)]
+      └── ab [columns: (0)]
 
 # Test cases with specified column names.
 build
@@ -89,9 +89,9 @@ create-view t.public.v2
  ├── SELECT ab.a FROM t.public.ab, t.public.ab AS ab2, t.public.cd
  ├── columns: x:1
  └── dependencies
-      ├── ab [columns: (0,1)]
-      ├── ab [columns: (0,1)]
-      └── cd [columns: (0,1)]
+      ├── ab [columns: (0)]
+      ├── ab
+      └── cd
 
 build
 CREATE VIEW v3 (x, y) AS SELECT a FROM ab
@@ -120,7 +120,7 @@ create-view t.public.v5
  ├── SELECT a FROM [53 AS t]
  ├── columns: a:1
  └── dependencies
-      └── ab [columns: (0,1)]
+      └── ab [columns: (0)]
 
 # Verify that we only depend on the specified column.
 build

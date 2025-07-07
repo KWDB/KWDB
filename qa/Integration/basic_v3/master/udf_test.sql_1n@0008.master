@@ -18,19 +18,10 @@ end
 '
 END;
 CREATE FUNCTION
-> select function_name, argument_types, return_type, types_length, function_body, function_type, language, db_name, creator, version, comments from system.user_defined_function;
-   function_name  | argument_types | return_type | types_length |                      function_body                      | function_type | language |  db_name  | creator | version | comments
-------------------+----------------+-------------+--------------+---------------------------------------------------------+---------------+----------+-----------+---------+---------+-----------
-  check_substring | {10,10}        | {2}         | {0,0,0}      |                                                         |             1 | LUA      | defaultdb | root    | 1.0     |
-                  |                |             |              | function check_substring(str, substr)                   |               |          |           |         |         |
-                  |                |             |              |     local start_pos, end_pos = string.find(str, substr) |               |          |           |         |         |
-                  |                |             |              |     if start_pos then                                   |               |          |           |         |         |
-                  |                |             |              |         return start_pos                                |               |          |           |         |         |
-                  |                |             |              |     else                                                |               |          |           |         |         |
-                  |                |             |              |         return -1                                       |               |          |           |         |         |
-                  |                |             |              |     end                                                 |               |          |           |         |         |
-                  |                |             |              | end                                                     |               |          |           |         |         |
-                  |                |             |              |                                                         |               |          |           |         |         |
+> SELECT name FROM system.user_defined_routine where routine_type = 2;
+       name
+-------------------
+  check_substring
 (1 row)
 > SHOW FUNCTIONS;
    function_name

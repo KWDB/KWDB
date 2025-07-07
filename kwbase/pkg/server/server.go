@@ -970,7 +970,8 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		QueryCache:                 querycache.New(s.cfg.SQLQueryCacheSize),
 		ProtectedTimestampProvider: s.protectedtsProvider,
 
-		GCJobNotifier: gcJobNotifier,
+		GCJobNotifier:  gcJobNotifier,
+		ProcedureCache: sql.New(ctx, s.cfg.ProcedureCacheSize, sql.DefaultProcedureCacheShardNum),
 	}
 
 	execCfg.StartMode = sql.ChangeStartMode(s.cfg.StartMode)

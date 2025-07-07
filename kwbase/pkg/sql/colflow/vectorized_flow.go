@@ -849,7 +849,7 @@ func (s *vectorizedFlowCreator) setupInput(
 			if tsReader == nil {
 				return nil, nil, errors.Errorf("uncreated ts reader")
 			}
-			flowCtx.TsTableReaders = append(flowCtx.TsTableReaders, tsReader.(execinfra.Processor))
+			flowCtx.TsTableReaders = append(flowCtx.TsTableReaders, tsReader.(colexec.Operator))
 			op = tsReader
 			if s.recordingStats {
 				var err2 error

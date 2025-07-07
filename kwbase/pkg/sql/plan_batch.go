@@ -164,6 +164,9 @@ type rowCountNode struct {
 }
 
 func (r *rowCountNode) startExec(params runParams) error {
+	defer func() {
+		params.extendedEvalCtx.SessionData.RowCount = r.rowCount
+	}()
 	done := false
 	if f, ok := r.source.(planNodeFastPath); ok {
 		r.rowCount, done = f.FastPathResults()

@@ -1454,6 +1454,20 @@ func (b *logicalPropsBuilder) buildMutationProps(mutation RelExpr, rel *props.Re
 	}
 }
 
+func (b *logicalPropsBuilder) buildCreateProcedureProps(
+	cp *CreateProcedureExpr, rel *props.Relational,
+) {
+	BuildSharedProps(cp, &rel.Shared)
+	rel.Cardinality = props.AnyCardinality
+}
+
+func (b *logicalPropsBuilder) buildCallProcedureProps(
+	cp *CallProcedureExpr, rel *props.Relational,
+) {
+	BuildSharedProps(cp, &rel.Shared)
+	rel.Cardinality = props.AnyCardinality
+}
+
 func (b *logicalPropsBuilder) buildCreateTableProps(ct *CreateTableExpr, rel *props.Relational) {
 	b.buildBasicProps(ct, ct.Columns, rel)
 }

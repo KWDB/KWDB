@@ -39,7 +39,7 @@ func TestIsPrivilegeSet(t *testing.T) {
 	var isInSet bool
 	var privList privilege.List = privilege.List{}
 	var bits uint32
-	for pri := privilege.ALL; pri <= privilege.ZONECONFIG; pri++ {
+	for pri := privilege.ALL; pri <= privilege.EXECUTE; pri++ {
 		bits = privList.ToBitField()
 		isInSet = isPrivilegeSet(bits, pri)
 		if isInSet {
@@ -105,7 +105,7 @@ func TestPrivilege(t *testing.T) {
 		{"foo", nil, privilege.List{privilege.SELECT, privilege.INSERT},
 			[]UserPrivilegeString{
 				{AdminRole, []string{"ALL"}},
-				{"foo", []string{"CREATE", "DELETE", "DROP", "GRANT", "UPDATE", "ZONECONFIG"}},
+				{"foo", []string{"CREATE", "DELETE", "DROP", "EXECUTE", "GRANT", "UPDATE", "ZONECONFIG"}},
 				{security.RootUser, []string{"ALL"}},
 			},
 		},
@@ -119,6 +119,18 @@ func TestPrivilege(t *testing.T) {
 		{security.RootUser, nil, privilege.List{privilege.ALL},
 			[]UserPrivilegeString{
 				{AdminRole, []string{"ALL"}},
+			},
+		},
+		{"foo", privilege.List{privilege.EXECUTE}, nil,
+			[]UserPrivilegeString{
+				{AdminRole, []string{"ALL"}},
+				{"foo", []string{"EXECUTE"}},
+			},
+		},
+		{"foo", privilege.List{privilege.CREATE, privilege.EXECUTE}, privilege.List{privilege.EXECUTE},
+			[]UserPrivilegeString{
+				{AdminRole, []string{"ALL"}},
+				{"foo", []string{"CREATE"}},
 			},
 		},
 	}
@@ -179,6 +191,10 @@ func TestCheckPrivilege(t *testing.T) {
 			"foo", privilege.DROP, true},
 		{NewPrivilegeDescriptor("foo", privilege.List{privilege.CREATE, privilege.ALL}),
 			"foo", privilege.DROP, true},
+		{NewPrivilegeDescriptor("foo", privilege.List{privilege.EXECUTE}),
+			"foo", privilege.EXECUTE, true},
+		{NewPrivilegeDescriptor("foo", privilege.List{}),
+			"foo", privilege.EXECUTE, false},
 	}
 
 	for tcNum, tc := range testCases {
@@ -209,6 +225,8 @@ func TestAnyPrivilege(t *testing.T) {
 			"foo", true},
 		{NewPrivilegeDescriptor("foo", privilege.List{privilege.CREATE, privilege.DROP}),
 			"bar", false},
+		{NewPrivilegeDescriptor("foo", privilege.List{privilege.EXECUTE}),
+			"bar", false},
 	}
 
 	for tcNum, tc := range testCases {
@@ -228,6 +246,14 @@ func TestPrivilegeValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptor.Grant("foo", privilege.List{privilege.ALL})
+	if err := descriptor.Validate(id); err != nil {
+		t.Fatal(err)
+	}
+	descriptor.Grant("bar", privilege.List{privilege.EXECUTE})
+	if err := descriptor.Validate(id); err != nil {
+		t.Fatal(err)
+	}
+	descriptor.Revoke("bar", privilege.List{privilege.EXECUTE})
 	if err := descriptor.Validate(id); err != nil {
 		t.Fatal(err)
 	}
@@ -466,6 +492,40 @@ func TestFixPrivileges(t *testing.T) {
 				"bar":             privilege.List{privilege.UPDATE},
 			},
 		},
+		{
+			// Valid requirements for non-system ID.
+			userID,
+			userPrivileges{
+				security.RootUser: userPrivs,
+				AdminRole:         userPrivs,
+				"foo":             privilege.List{privilege.EXECUTE},
+				"bar":             privilege.List{privilege.GRANT},
+				"baz":             privilege.List{privilege.SELECT, privilege.GRANT},
+			},
+			false,
+			userPrivileges{
+				security.RootUser: userPrivs,
+				AdminRole:         userPrivs,
+				"foo":             privilege.List{privilege.EXECUTE},
+				"bar":             privilege.List{privilege.GRANT},
+				"baz":             privilege.List{privilege.SELECT, privilege.GRANT},
+			},
+		},
+		{
+			// All privileges are allowed for non-system ID, but we need super users.
+			userID,
+			userPrivileges{
+				"foo": privilege.List{privilege.ALL},
+				"bar": privilege.List{privilege.EXECUTE},
+			},
+			true,
+			userPrivileges{
+				security.RootUser: privilege.List{privilege.ALL},
+				AdminRole:         privilege.List{privilege.ALL},
+				"foo":             privilege.List{privilege.ALL},
+				"bar":             privilege.List{privilege.EXECUTE},
+			},
+		},
 	}
 
 	for num, testCase := range testCases {
@@ -527,6 +587,10 @@ func TestListFromStrings(t *testing.T) {
 			privileges: privilege.List{privilege.ALL},
 		},
 		{
+			names:      []string{"EXECUTE"},
+			privileges: privilege.List{privilege.EXECUTE},
+		},
+		{
 			names:      []string{"ALL", "GRANT", "SELECT", "INSERT", "UPDATE"},
 			privileges: privilege.List{privilege.ALL, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.UPDATE},
 		},
@@ -541,6 +605,10 @@ func TestListFromStrings(t *testing.T) {
 		{
 			names:      []string{"ALL", "CREATE", "DROP", "GRANT", "SELECT", "INSERT", "DELETE", "UPDATE", "ZONECONFIG"},
 			privileges: privilege.List{privilege.ALL, privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG},
+		},
+		{
+			names:      []string{"ALL", "CREATE", "DROP", "GRANT", "SELECT", "INSERT", "DELETE", "UPDATE", "ZONECONFIG", "EXECUTE"},
+			privileges: privilege.List{privilege.ALL, privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG, privilege.EXECUTE},
 		}}
 
 	for num, testCase := range testCases {
@@ -589,6 +657,10 @@ func TestSortedNames(t *testing.T) {
 			privileges: privilege.List{privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG},
 		},
 		{
+			names:      []string{"CREATE", "DELETE", "DROP", "EXECUTE", "GRANT", "INSERT", "SELECT", "UPDATE", "ZONECONFIG"},
+			privileges: privilege.List{privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG, privilege.EXECUTE},
+		},
+		{
 			names:      []string{"ALL", "CREATE", "DELETE", "DROP", "GRANT", "INSERT", "SELECT", "UPDATE", "ZONECONFIG"},
 			privileges: privilege.List{privilege.ALL, privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG},
 		}}
@@ -629,6 +701,10 @@ func TestSortedString(t *testing.T) {
 		{
 			resultString: "CREATE,DELETE,DROP,GRANT,INSERT,SELECT,UPDATE,ZONECONFIG",
 			privileges:   privilege.List{privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG},
+		},
+		{
+			resultString: "CREATE,DELETE,DROP,EXECUTE,GRANT,INSERT,SELECT,UPDATE,ZONECONFIG",
+			privileges:   privilege.List{privilege.CREATE, privilege.DROP, privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE, privilege.ZONECONFIG, privilege.EXECUTE},
 		},
 		{
 			resultString: "ALL,CREATE,DELETE,DROP,GRANT,INSERT,SELECT,UPDATE,ZONECONFIG",

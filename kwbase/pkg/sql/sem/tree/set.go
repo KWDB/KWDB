@@ -121,19 +121,28 @@ func (node *SetTracing) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Values)
 }
 
-// SelectInto represents a SELECT INTO statement.
+// SelectInto represents a SET or RESET statement.
 type SelectInto struct {
-	Names  UserDefinedVars
-	Values *Select
+	Targets      SelectIntoTargets
+	SelectClause *Select
 }
 
-// UserDefinedVars corresponds to an array of user defined variables in an expression.
+// SelectIntoTargets is an array of SelectIntoTarget
+type SelectIntoTargets []SelectIntoTarget
+
+// SelectIntoTarget represents into target
+type SelectIntoTarget struct {
+	DeclareVar string
+	Udv        UserDefinedVar
+}
+
+// UserDefinedVars corresponds to the name of a column in an expression.
 type UserDefinedVars []UserDefinedVar
 
 // Format implements the NodeFormatter interface.
 func (node *SelectInto) Format(ctx *FmtCtx) {
 	ctx.WriteString("SELECT ")
-	if selClause, ok := node.Values.Select.(*SelectClause); ok {
+	if selClause, ok := node.SelectClause.Select.(*SelectClause); ok {
 		if selClause.Distinct {
 			if selClause.DistinctOn != nil {
 				ctx.FormatNode(&selClause.DistinctOn)
@@ -144,9 +153,12 @@ func (node *SelectInto) Format(ctx *FmtCtx) {
 		}
 		ctx.FormatNode(&selClause.Exprs)
 		ctx.WriteString(" INTO")
-		for i := range node.Names {
+		for i := range node.Targets {
+			if i > 0 {
+				ctx.WriteString(",")
+			}
 			ctx.WriteString(" ")
-			ctx.FormatNode(&node.Names[i])
+			ctx.WriteString(node.Targets[i].DeclareVar)
 		}
 		if len(selClause.From.Tables) > 0 {
 			ctx.WriteByte(' ')
@@ -169,12 +181,12 @@ func (node *SelectInto) Format(ctx *FmtCtx) {
 			ctx.FormatNode(&selClause.Window)
 		}
 	}
-	if len(node.Values.OrderBy) > 0 {
+	if len(node.SelectClause.OrderBy) > 0 {
 		ctx.WriteByte(' ')
-		ctx.FormatNode(&node.Values.OrderBy)
+		ctx.FormatNode(&node.SelectClause.OrderBy)
 	}
-	if node.Values.Limit != nil {
+	if node.SelectClause.Limit != nil {
 		ctx.WriteByte(' ')
-		ctx.FormatNode(node.Values.Limit)
+		ctx.FormatNode(node.SelectClause.Limit)
 	}
 }

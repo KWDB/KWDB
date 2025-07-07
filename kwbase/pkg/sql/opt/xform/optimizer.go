@@ -247,6 +247,7 @@ func (o *Optimizer) Optimize() (_ opt.Expr, err error) {
 		o.mem.DealTSScan(root.(memo.RelExpr))
 		o.mem.AddOrderWithGroupWindow(root.(memo.RelExpr))
 	}
+
 	o.mem.SetRoot(root, rootProps)
 
 	// Validate there are no dangling references.

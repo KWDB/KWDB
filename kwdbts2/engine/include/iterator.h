@@ -683,7 +683,7 @@ class TsTableIterator : public TsIterator {
 struct TimestampComparator {
   bool is_reversed = false;
   TimestampComparator() {}
-  TimestampComparator(bool reversed) : is_reversed(reversed) {}
+  explicit TimestampComparator(bool reversed) : is_reversed(reversed) {}
 
   bool operator()(const timestamp64& a, const timestamp64& b) const {
     return is_reversed ? a > b : a < b;

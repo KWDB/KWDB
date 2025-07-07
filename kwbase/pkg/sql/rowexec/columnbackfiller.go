@@ -50,6 +50,10 @@ func (cb *columnBackfiller) Push(ctx context.Context, res []byte) error {
 	return nil
 }
 
+func (cb *columnBackfiller) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return nil, nil
+}
+
 func (cb *columnBackfiller) NextPgWire() (val []byte, code int, err error) {
 	return nil, 0, nil
 }

@@ -191,6 +191,10 @@ func (s *sampleAggregator) pushTrailingMeta(ctx context.Context) {
 	execinfra.SendTraceData(ctx, s.Out.Output())
 }
 
+func (s *sampleAggregator) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	return nil, nil
+}
+
 // Run is part of the Processor interface.
 func (s *sampleAggregator) Run(ctx context.Context) execinfra.RowStats {
 	s.input.Start(ctx)

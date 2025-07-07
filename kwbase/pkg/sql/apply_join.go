@@ -34,7 +34,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
@@ -275,59 +274,7 @@ func runPlanInsidePlan(
 	params runParams, plan *planTop, rowContainer *rowcontainer.RowContainer,
 ) error {
 	rowResultWriter := NewRowResultWriter(rowContainer)
-	recv := MakeDistSQLReceiver(
-		params.ctx, rowResultWriter, tree.Rows,
-		params.extendedEvalCtx.ExecCfg.RangeDescriptorCache,
-		params.extendedEvalCtx.ExecCfg.LeaseHolderCache,
-		params.p.Txn(),
-		func(ts hlc.Timestamp) {
-			params.extendedEvalCtx.ExecCfg.Clock.Update(ts)
-		},
-		params.p.extendedEvalCtx.Tracing,
-	)
-	defer recv.Release()
-
-	if len(plan.subqueryPlans) > 0 {
-		// curPlan is the outer plan, but *plan is the recompiled inner plan.
-		// we must change curPlan to the inner plan If the inner plan refer to the subqueries(plan.subqueryPlan).
-		// we must replace the curPlan and restore the original state before exiting.
-		newPlan := *params.p
-		newPlan.curPlan = *plan
-		newPlan.extendedEvalCtx.Planner = &newPlan
-		if !params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndRunSubqueries(
-			params.ctx,
-			&newPlan,
-			newPlan.extendedEvalCtx.copy,
-			plan.subqueryPlans,
-			recv,
-			true,
-		) {
-			if err := rowResultWriter.Err(); err != nil {
-				return err
-			}
-			return recv.commErr
-		}
-	}
-
-	// Make a copy of the EvalContext so it can be safely modified.
-	evalCtx := params.p.ExtendedEvalContextCopy()
-	planCtx := params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.newLocalPlanningCtx(params.ctx, evalCtx)
-	// Always plan local.
-	planCtx.isLocal = true
-	plannerCopy := *params.p
-	planCtx.planner = &plannerCopy
-	planCtx.planner.curPlan = *plan
-	planCtx.ExtendedEvalCtx.Planner = &plannerCopy
-	planCtx.stmtType = recv.stmtType
-
-	evalCtx.IsDisplayed = params.extendedEvalCtx.IsDisplayed
-	params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndRun(
-		params.ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, recv, params.p.GetStmt(),
-	)()
-	if recv.commErr != nil {
-		return recv.commErr
-	}
-	return rowResultWriter.err
+	return runPlanImplement(params, plan, rowResultWriter, tree.Rows, true, false)
 }
 
 func (a *applyJoinNode) Values() tree.Datums {

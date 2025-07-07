@@ -1048,6 +1048,8 @@ define TSInsertPrivate {
   # InputRows is the actual value of the input that is going to be inserted.
   # Already sorted in the order defined by the metadata.
   InputRows RowsValue
+  # ActualRows is the actual value of the input when run inside procedure.
+  ActualRows RowsValue
   ColsMap ColsMap
 
   # Table identifies the table to scan. It is an id that can be passed to
@@ -1060,6 +1062,7 @@ define TSInsertPrivate {
   HasPlaceHolder bool
   NeedCreateTable bool
   CT CreateTable
+  RunInsideProcedure bool
 }
 
 # TSUpdate is an expression for UPDATE DATA. Applies only to constant value inserts.
@@ -1095,6 +1098,9 @@ define TSDeletePrivate {
   InputRows RowsValue
   ColsMap ColsMap
 
+  # ActualRows is the actual value of the input when run inside procedure.
+  ActualRows RowsValue
+
   # Table identifies the table to scan. It is an id that can be passed to
   # the Metadata.Table method in order to fetch cat.Table metadata.
   ID TableID
@@ -1105,6 +1111,7 @@ define TSDeletePrivate {
   PayloadSize int
   RowSize int
   Spans TsSpans
+  RunInsideProcedure bool
 }
 
 [Private]

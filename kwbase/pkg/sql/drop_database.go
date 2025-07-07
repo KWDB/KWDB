@@ -49,6 +49,7 @@ type dropDatabaseNode struct {
 	td                 []toDelete
 	schemasToDelete    []*sqlbase.ResolvedSchema
 	allObjectsToDelete []*sqlbase.MutableTableDescriptor
+	delProcs           []sqlbase.ProcedureDescriptor
 }
 
 // DropDatabase drops a database.
@@ -91,6 +92,7 @@ func (p *planner) DropDatabase(ctx context.Context, n *tree.DropDatabase) (planN
 
 	// the names of all objects in the target database
 	var tableNames TableNames
+	procDescs := make([]sqlbase.ProcedureDescriptor, 0)
 	schemasToDelete := make([]*sqlbase.ResolvedSchema, 0, len(schemas))
 	for _, schema := range schemas {
 		_, resSchema, err := p.ResolveUncachedSchemaDescriptor(ctx, dbDesc.ID, schema, true /* required */)
@@ -113,9 +115,14 @@ func (p *planner) DropDatabase(ctx context.Context, n *tree.DropDatabase) (planN
 			return nil, err
 		}
 		tableNames = append(tableNames, toAppend...)
+		procs, err1 := GetAllProcDescByParentID(ctx, p.txn, dbDesc.ID, resSchema.ID)
+		if err1 != nil {
+			return nil, err1
+		}
+		procDescs = append(procDescs, procs...)
 	}
 
-	if len(tableNames) > 0 {
+	if len(tableNames) > 0 || len(procDescs) > 0 {
 		switch n.DropBehavior {
 		case tree.DropRestrict:
 			return nil, pgerror.Newf(pgcode.DependentObjectsStillExist,
@@ -185,6 +192,7 @@ func (p *planner) DropDatabase(ctx context.Context, n *tree.DropDatabase) (planN
 		n:                  n,
 		dbDesc:             dbDesc,
 		td:                 filterImplicitlyDeletedObjects(toDeletes, implicitDeleteMap),
+		delProcs:           procDescs,
 		schemasToDelete:    schemasToDelete,
 		allObjectsToDelete: allObjectsToDelete}, nil
 }
@@ -234,13 +242,19 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 			err = p.dropSequenceImpl(ctx, desc, false /* queueJob */, "", tree.DropCascade)
 		} else {
 			// TODO(knz): dependent dropped table names should be qualified here.
-			cascadedObjects, err = p.dropTableImpl(ctx, desc, false /* queueJob */, "")
+			cascadedObjects, err = p.dropTableImpl(ctx, desc, false /* queueJob */, "", n.n.DropBehavior)
 		}
 		if err != nil {
 			return err
 		}
 		tbNameStrings = append(tbNameStrings, cascadedObjects...)
 		tbNameStrings = append(tbNameStrings, toDel.tn.FQString())
+	}
+	for i := range n.delProcs {
+		procDesc := n.delProcs[i]
+		if err := params.p.dropProcedureImpl(params.ctx, procDesc); err != nil {
+			return err
+		}
 	}
 
 	descKey := sqlbase.MakeDescMetadataKey(n.dbDesc.ID)
@@ -382,6 +396,13 @@ func (p *planner) accumulateCascadingViews(
 	desc *sqlbase.MutableTableDescriptor,
 ) error {
 	for _, ref := range desc.DependedOnBy {
+		found, _, err := p.GetProcedureNameByID(ctx, ref.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			continue
+		}
 		dependentDesc, err := p.Tables().getMutableTableVersionByID(ctx, ref.ID, p.txn)
 		if err != nil {
 			return err

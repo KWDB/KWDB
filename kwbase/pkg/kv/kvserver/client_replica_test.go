@@ -1364,7 +1364,7 @@ func TestLeaseExtensionNotBlockedByRead(t *testing.T) {
 				t.Fatal(err)
 			}
 			leaseReq.PrevLease = curLease
-
+			leaseReq.Lease.CheckLeaseFlag = true
 			_, pErr := kv.SendWrapped(context.Background(), s.DB().NonTransactionalSender(), &leaseReq)
 			if _, ok := pErr.GetDetail().(*roachpb.AmbiguousResultError); ok {
 				log.Infof(context.Background(), "retrying lease after %s", pErr)

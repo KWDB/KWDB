@@ -147,7 +147,8 @@ func (n *createStatsNode) Next(params runParams) (bool, error) {
 }
 
 func (*createStatsNode) Close(context.Context) {}
-func (*createStatsNode) Values() tree.Datums   { return nil }
+
+func (*createStatsNode) Values() tree.Datums { return nil }
 
 // startJob starts a CreateStats job to plan and execute statistics creation.
 func (n *createStatsNode) startJob(ctx context.Context, resultsCh chan<- tree.Datums) error {

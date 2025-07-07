@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -166,6 +167,18 @@ func newDistinct(
 func (d *distinct) Start(ctx context.Context) context.Context {
 	d.input.Start(ctx)
 	return d.StartInternal(ctx, distinctProcName)
+}
+
+// InitProcessorProcedure init processor in procedure
+func (d *sortedDistinct) InitProcessorProcedure(txn *kv.Txn) {
+	if d.EvalCtx.IsProcedure {
+		if d.FlowCtx != nil {
+			d.FlowCtx.Txn = txn
+		}
+		d.Closed = false
+		d.State = execinfra.StateRunning
+		d.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.
@@ -356,6 +369,18 @@ func (d *sortedDistinct) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetad
 func (d *distinct) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
 	d.close()
+}
+
+// InitProcessorProcedure init processor in procedure
+func (d *distinct) InitProcessorProcedure(txn *kv.Txn) {
+	if d.EvalCtx.IsProcedure {
+		if d.FlowCtx != nil {
+			d.FlowCtx.Txn = txn
+		}
+		d.Closed = false
+		d.State = execinfra.StateRunning
+		d.Out.SetRowIdx(0)
+	}
 }
 
 var _ execinfrapb.DistSQLSpanStats = &DistinctStats{}

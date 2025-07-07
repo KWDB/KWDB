@@ -267,7 +267,7 @@ func (b *Builder) analyzeSelectList(
 					}
 
 					aliases, exprs := b.expandStar(e.Expr, inScope, false)
-					if b.insideViewDef {
+					if b.insideViewDef || b.insideProcDef {
 						expanded = true
 						for _, expr := range exprs {
 							switch col := expr.(type) {
@@ -326,7 +326,7 @@ func (b *Builder) analyzeSelectList(
 			alias = Gapfill
 		}
 		b.addColumn(outScope, alias, texpr, false)
-		if b.insideViewDef && !expanded {
+		if (b.insideViewDef || b.insideProcDef) && !expanded {
 			expansions = append(expansions, e)
 		}
 	}
@@ -335,7 +335,7 @@ func (b *Builder) analyzeSelectList(
 			inScope.setAggExtendFlag(existNonAggCol)
 		}
 	}
-	if b.insideViewDef {
+	if b.insideViewDef || b.insideProcDef {
 		*selects = expansions
 	}
 }
@@ -454,6 +454,8 @@ func (b *Builder) finishBuildScalar(
 func (b *Builder) finishBuildScalarRef(
 	col *scopeColumn, inScope, outScope *scope, outCol *scopeColumn, colRefs *opt.ColSet,
 ) (out opt.ScalarExpr) {
+
+	b.trackReferencedColumnForViews(col)
 	// Update the sets of column references and outer columns if needed.
 	if colRefs != nil {
 		colRefs.Add(col.id)

@@ -412,6 +412,28 @@ func (f *stubFactory) ConstructDeleteRange(
 	return struct{}{}, nil
 }
 
+func (f *stubFactory) ConstructCreateProcedure(
+	cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructCallProcedure(
+	procName string,
+	procCall string,
+	procComm memo.ProcComms,
+	fn exec.ProcedurePlanFn,
+	scalarFn exec.BuildScalarFn,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructProcIf(
+	command memo.IfCommand, fn func(expr *memo.RelExpr) (exec.Plan, exec.Node, error),
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
 func (f *stubFactory) ConstructCreateTable(
 	input exec.Node, schema cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {

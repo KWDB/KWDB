@@ -79,6 +79,7 @@ func makeRowSourceToPlanNode(
 }
 
 func (r *rowSourceToPlanNode) startExec(params runParams) error {
+	r.source.InitProcessorProcedure(params.p.Txn())
 	r.source.Start(params.ctx)
 	return nil
 }

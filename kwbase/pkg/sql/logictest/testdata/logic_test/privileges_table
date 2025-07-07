@@ -14,7 +14,7 @@ statement ok
 CREATE TABLE t (k INT PRIMARY KEY, v int)
 
 statement ok
-SELECT * from [55 as num_ref]
+SELECT * from [56 as num_ref]
 
 statement ok
 SHOW GRANTS ON t

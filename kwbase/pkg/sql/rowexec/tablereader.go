@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -159,6 +160,18 @@ func (tr *tableReader) generateTrailingMeta(ctx context.Context) []execinfrapb.P
 	trailingMeta := tr.generateMeta(ctx)
 	tr.InternalClose()
 	return trailingMeta
+}
+
+// InitProcessorProcedure init processor in procedure
+func (tr *tableReader) InitProcessorProcedure(txn *kv.Txn) {
+	if tr.EvalCtx.IsProcedure {
+		if tr.FlowCtx != nil {
+			tr.FlowCtx.Txn = txn
+		}
+		tr.Closed = false
+		tr.State = execinfra.StateRunning
+		tr.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

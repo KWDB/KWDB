@@ -41,15 +41,18 @@ import (
 // - should we have root always allowed and not present in the permissions list?
 // - should we make users case-insensitive?
 // Privileges: GRANT on database/table/view.
-//   Notes: postgres requires the object owner.
-//          mysql requires the "grant option" and the same privileges, and sometimes superuser.
+//
+//	Notes: postgres requires the object owner.
+//	       mysql requires the "grant option" and the same privileges, and sometimes superuser.
 func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 	if n.Targets.Databases != nil {
 		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnDatabase)
 	} else if n.Targets.Schemas != nil {
 		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnSchema)
-	} else {
+	} else if n.Targets.Tables != nil {
 		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnTable)
+	} else {
+		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnProcedure)
 	}
 
 	return &changePrivilegesNode{
@@ -70,15 +73,18 @@ func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 // - should we have root always allowed and not present in the permissions list?
 // - should we make users case-insensitive?
 // Privileges: GRANT on database/table/view.
-//   Notes: postgres requires the object owner.
-//          mysql requires the "grant option" and the same privileges, and sometimes superuser.
+//
+//	Notes: postgres requires the object owner.
+//	       mysql requires the "grant option" and the same privileges, and sometimes superuser.
 func (p *planner) Revoke(ctx context.Context, n *tree.Revoke) (planNode, error) {
 	if n.Targets.Databases != nil {
 		sqltelemetry.IncIAMRevokePrivilegesCounter(sqltelemetry.OnDatabase)
 	} else if n.Targets.Schemas != nil {
 		sqltelemetry.IncIAMRevokePrivilegesCounter(sqltelemetry.OnSchema)
+	} else if n.Targets.Tables != nil {
+		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnTable)
 	} else {
-		sqltelemetry.IncIAMRevokePrivilegesCounter(sqltelemetry.OnTable)
+		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnProcedure)
 	}
 
 	return &changePrivilegesNode{
@@ -193,6 +199,14 @@ func (n *changePrivilegesNode) startExec(params runParams) error {
 				return err
 			}
 			if err := writeDescToBatch(ctx, p.extendedEvalCtx.Tracing.KVTracingEnabled(), p.execCfg.Settings, b, descriptor.GetID(), descriptor); err != nil {
+				return err
+			}
+
+		case *sqlbase.ProcedureDescriptor:
+			if err := d.Validate(); err != nil {
+				return err
+			}
+			if err := UpdateProcedureMeta(ctx, p.txn, d); err != nil {
 				return err
 			}
 		}

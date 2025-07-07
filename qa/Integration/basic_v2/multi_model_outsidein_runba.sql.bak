@@ -2267,6 +2267,6 @@ DROP TABLE runba_tra.testa;
 DROP DATABASE runba_tra;
 DROP DATABASE runba;
 delete from system.table_statistics where name = '_stats_';
-set cluster setting ts.sql.query_opt_mode = 1110;
+set cluster setting ts.sql.query_opt_mode = DEFAULT;
 set cluster setting sql.stats.tag_automatic_collection.enabled = true;
 set cluster setting sql.stats.automatic_collection.enabled = true;
