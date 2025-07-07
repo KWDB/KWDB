@@ -16,6 +16,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
@@ -25,6 +26,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 )
 
@@ -47,7 +50,7 @@ func (r *tsTxnResumer) Resume(
 			// get all ts txn record every minute
 			timer.Reset(time.Minute)
 			if err := p.handleTsTxnRecord(ctx); err != nil {
-				return err
+				log.Error(ctx, err.Error())
 			}
 		}
 	}
@@ -62,6 +65,8 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	txn := p.execCfg.DB.NewTxn(ctx, "ts txn job")
+	p.txn = txn
 	for _, keyValue := range keyValues {
 		if !keyValue.Exists() {
 			continue
@@ -82,6 +87,14 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 				// txn should be roll back
 				ba := roachpb.BatchRequest{}
 				for _, span := range res.Spans {
+					_, tableID, err := keys.DecodeTablePrefix(span.Key)
+					if err != nil {
+						return err
+					}
+					_, err = sqlbase.GetTableDescFromID(ctx, p.txn, sqlbase.ID(tableID))
+					if err != nil {
+						return err
+					}
 					ba.Add(&roachpb.TsRollbackRequest{
 						RequestHeader: roachpb.RequestHeader{
 							Key:    span.Key,
@@ -89,6 +102,7 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 						},
 						TsTransaction: &tsTran,
 					})
+					ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 				}
 				_, pErr := p.ExecCfg().DistSender.Send(ctx, ba)
 				if pErr != nil {
@@ -100,6 +114,14 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 
 				ba := roachpb.BatchRequest{}
 				for _, span := range res.Spans {
+					_, tableID, err := keys.DecodeTablePrefix(span.Key)
+					if err != nil {
+						return err
+					}
+					_, err = sqlbase.GetTableDescFromID(ctx, p.txn, sqlbase.ID(tableID))
+					if err != nil {
+						return err
+					}
 					ba.Add(&roachpb.TsCommitRequest{
 						RequestHeader: roachpb.RequestHeader{
 							Key:    span.Key,
@@ -107,6 +129,7 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 						},
 						TsTransaction: &tsTran,
 					})
+					ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 				}
 				_, pErr := p.ExecCfg().DistSender.Send(ctx, ba)
 				if pErr != nil {
