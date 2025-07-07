@@ -74,6 +74,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   s = version_manager_->Recover();
   if (s == FAIL) {
     LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+    return s;
   }
   initCompactThread();
 
