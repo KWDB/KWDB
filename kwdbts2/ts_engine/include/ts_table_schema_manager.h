@@ -199,7 +199,7 @@ class TsTableSchemaManager {
 
   bool IsExistTableVersion(uint32_t version);
 
-private:
+ private:
   std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version, bool lock = true) {
     return metric_table_->GetMetricsTable(ts_version, lock);
   }

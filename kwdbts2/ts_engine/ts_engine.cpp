@@ -116,8 +116,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     }
     uint32_t entity_id = 0;
     s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
-    if (s != KStatus::SUCCESS)
-    {
+    if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
     }
     vgroup->InitEntityID(entity_id);

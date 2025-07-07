@@ -11,22 +11,29 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "mmap/mmap_metrics_table.h"
 
 namespace kwdbts {
 
 class MetricsTableVersionManager {
-public:
-  MetricsTableVersionManager(const std::string& db_path, const std::string& sub_path, uint64_t table_id) :
-                            db_path_(db_path), tbl_sub_path_(sub_path), table_id_(table_id),
-                            schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
+ public:
+  MetricsTableVersionManager(const std::string& db_path, const std::string& sub_path, uint64_t table_id)
+      : db_path_(db_path),
+        tbl_sub_path_(sub_path),
+        table_id_(table_id),
+        schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
 
   ~MetricsTableVersionManager();
 
   void InitVersions(uint32_t ts_version);
 
   KStatus CreateMetricsTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id, uint32_t ts_version,
-                            int64_t life_time, ErrorInfo& err_info);
+                             int64_t life_time, ErrorInfo& err_info);
 
   void AddMetricsTable(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);
 
@@ -36,11 +43,9 @@ public:
     return GetMetricsTable(cur_metric_version_, lock);
   }
 
-  uint32_t GetCurrentMetricsVersion() const {
-    return cur_metric_version_;
-  }
+  uint32_t GetCurrentMetricsVersion() const { return cur_metric_version_; }
 
-  void GetAllVersions(std::vector<uint32_t> *table_versions);
+  void GetAllVersions(std::vector<uint32_t>* table_versions);
 
   LifeTime GetLifeTime() const;
 
@@ -66,7 +71,7 @@ public:
 
   KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
 
-private:
+ private:
   std::shared_ptr<MMapMetricsTable> open(uint32_t ts_version, ErrorInfo& err_info);
 
   std::string db_path_;
@@ -82,4 +87,4 @@ private:
   KRWLatch schema_rw_lock_;
 };
 
-} // kwdbts
+}  // namespace kwdbts
