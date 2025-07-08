@@ -676,7 +676,6 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       if (wal_log->getXID() == mtr_id && s != FAIL) {
         s = vgrp->rollback(ctx, wal_log);
       }
-      delete wal_log;
     }
   }
   Return(s)
