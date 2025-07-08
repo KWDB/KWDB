@@ -69,6 +69,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   s = version_manager_->Recover();
   if (s == FAIL) {
     LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+    return s;
   }
   initCompactThread();
 
@@ -141,7 +142,6 @@ std::filesystem::path TsVGroup::GetPath() const { return path_; }
 TSEntityID TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock(entity_id_mutex_);
   return ++max_entity_id_;
-
 }
 
 TSEntityID TsVGroup::GetMaxEntityID() const {
