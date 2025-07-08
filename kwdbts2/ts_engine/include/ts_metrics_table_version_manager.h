@@ -11,12 +11,16 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
+#include <memory>
+#include <unordered_map>
 #include "mmap/mmap_metrics_table.h"
 
 namespace kwdbts {
 
 class MetricsTableVersionManager {
-public:
+ public:
   MetricsTableVersionManager(const std::string& db_path, const std::string& sub_path, uint64_t table_id) :
                             db_path_(db_path), tbl_sub_path_(sub_path), table_id_(table_id),
                             schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
@@ -66,7 +70,7 @@ public:
 
   KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
 
-private:
+ private:
   std::shared_ptr<MMapMetricsTable> open(uint32_t ts_version, ErrorInfo& err_info);
 
   std::string db_path_;
@@ -82,4 +86,4 @@ private:
   KRWLatch schema_rw_lock_;
 };
 
-} // kwdbts
+}  // namespace kwdbts

@@ -3246,11 +3246,6 @@ var Schedules = map[string]ScheduleDetail{
 		Executor: VacuumExecutorName,
 		CronExpr: "@hourly",
 	},
-	ScheduleCount: {
-		Name:     ScheduleCount,
-		Executor: CountExecutorName,
-		CronExpr: "*/10 * * * *",
-	},
 }
 
 // InitScheduleForKWDB inits schedules
