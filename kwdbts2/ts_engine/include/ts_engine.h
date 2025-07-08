@@ -37,6 +37,17 @@ extern bool g_go_start_service;
 
 namespace kwdbts {
 
+struct TsRangeImgrationInfo {
+  uint64_t id;    // snapshot ID
+  uint8_t type;   // type , 0: Build snapshot (source side read), 1: write snapshot (target side merge)
+  uint64_t begin_hash;
+  uint64_t end_hash;
+  KwTsSpan ts_span;
+  KTableKey table_id;
+  uint32_t table_version;
+  std::shared_ptr<TsTable> table;
+};
+
 /**
  * @brief TSEngineV2Impl
  */
@@ -47,6 +58,8 @@ class TSEngineV2Impl : public TSEngine {
   int vgroup_max_num_{0};
   EngineOptions options_;
   std::mutex table_mutex_;
+  std::mutex snapshot_mutex_;
+  std::unordered_map<uint64_t, TsRangeImgrationInfo> snapshots_;
   TsLSNFlushManager flush_mgr_;
   std::unique_ptr<WALMgr> wal_mgr_ = nullptr;
   std::map<uint64_t, uint64_t> range_indexes_map_;
@@ -93,6 +106,14 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
                          std::shared_ptr<TsTableSchemaManager>& schema) override;
 
+  KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
+    auto s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_mgr);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    return KStatus::SUCCESS;
+  }
+
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
     // TODO(liumengzhen) check version
@@ -122,27 +143,19 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus ApplyBatchRepr(kwdbContext_p ctx, TSSlice* batch) override { return KStatus::SUCCESS; }
 
+  // range imgration snapshot using interface...............begin................................
   KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
                                  uint64_t begin_hash, uint64_t end_hash,
-                                 const KwTsSpan& ts_span, uint64_t* snapshot_id) override { return KStatus::SUCCESS; }
-
-  KStatus DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) override { return KStatus::SUCCESS; }
-
-  KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) override {
-    return KStatus::SUCCESS;
-  }
-
+                                 const KwTsSpan& ts_span, uint64_t* snapshot_id) override;
+  KStatus DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) override;
+  KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) override;
   KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
                                    uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id) override { return KStatus::SUCCESS; }
-
-  KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) override { return KStatus::SUCCESS; }
-  KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) override { return KStatus::SUCCESS; }
-
+                                   const KwTsSpan& ts_span, uint64_t* snapshot_id);
+  KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) override;
+  KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) override;
+  KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) override;
+  // range imgration snapshot using interface...............end................................
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
                               const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
 
@@ -165,6 +178,9 @@ class TSEngineV2Impl : public TSEngine {
   KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override { return KStatus::SUCCESS; }
 
   KStatus Recover(kwdbContext_p ctx) override;
+
+  // get max entity id
+  KStatus GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id);
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr) override;
@@ -254,6 +270,8 @@ class TSEngineV2Impl : public TSEngine {
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
   KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
+
+  uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
 };
 
 }  //  namespace kwdbts

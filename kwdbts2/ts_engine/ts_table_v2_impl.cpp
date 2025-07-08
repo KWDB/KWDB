@@ -23,8 +23,21 @@ extern bool g_go_start_service;
 
 namespace kwdbts {
 
-TsTableV2Impl::~TsTableV2Impl() = default;
+TsTableV2Impl::~TsTableV2Impl() {
+  if (table_dropped_.load()) {
+    table_schema_mgr_->RemoveAll();
+    // metric data cannot remove now, clear by vacuum.
+  }
+}
 
+void TsTableV2Impl::SetDropped() {
+  table_dropped_.store(true);
+  table_schema_mgr_->SetDropped();
+}
+
+bool TsTableV2Impl::IsDropped() {
+  return table_dropped_.load();
+}
 
 KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, uint16_t* entity_id, uint32_t* inc_unordered_cnt,
@@ -136,7 +149,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
                                    k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                                    bool reverse, bool sorted) {
   auto ts_table_iterator = new TsTableIterator();
-  KStatus s;
+  KStatus s = KStatus::SUCCESS;
   Defer defer{[&]() {
     if (s == FAIL) {
       delete ts_table_iterator;
@@ -192,7 +205,8 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
               scan_agg_types.size(), ts_table_iterator->GetIterNumber());
   (*iter) = ts_table_iterator;
-  return KStatus::SUCCESS;
+  s = KStatus::SUCCESS;
+  return s;
 }
 
 KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
@@ -260,11 +274,8 @@ KStatus TsTableV2Impl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, r
 
 KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
-  if (version == GetCurrentTableVersion()) {
-    return KStatus::SUCCESS;
-  }
-
-  if (table_schema_mgr_->Get(version) != nullptr) {
+  // Check if the version exists instead of checking the current version
+  if (IsExistTableVersion(version)) {
     return KStatus::SUCCESS;
   }
 
@@ -339,10 +350,10 @@ KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
   uint32_t index_id = index_log->getIndexID();
   uint32_t cur_version = index_log->getCurTsVersion();
   uint32_t new_version = index_log->getNewTsVersion();
-  LOG_INFO("UndoCreateHashIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoCreateHashIndex start, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   if (!table_schema_mgr_->UndoCreateHashIndex(index_id, cur_version, new_version, err_info)) {
-    LOG_ERROR("Failed to UndoCreateHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
+    LOG_ERROR("Failed to UndoCreateHashIndex, table id:%lu, index id:%u.", this->table_id_, index_id);
     return FAIL;
   }
   auto s = table_schema_mgr_->UndoAlterCol(cur_version, new_version);
@@ -350,7 +361,7 @@ KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
     LOG_ERROR("RollBack table version error");
     return s;
   }
-  LOG_INFO("UndoCreateHashIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoCreateHashIndex success, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -368,10 +379,10 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
   uint32_t index_id = index_log->getIndexID();
   uint32_t cur_version = index_log->getCurTsVersion();
   uint32_t new_version = index_log->getNewTsVersion();
-  LOG_INFO("UndoDropHashIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoDropHashIndex start, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   if (!table_schema_mgr_->UndoDropHashIndex(tags, index_id, cur_version, new_version, err_info)) {
-    LOG_ERROR("Failed to UndoDropHashIndex, table id:%lu, index id:%lu.", this->table_id_, index_id);
+    LOG_ERROR("Failed to UndoDropHashIndex, table id:%lu, index id:%u.", this->table_id_, index_id);
     return FAIL;
   }
   auto s = table_schema_mgr_->UndoAlterCol(cur_version, new_version);
@@ -379,7 +390,7 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
     LOG_ERROR("RollBack table version error");
     return s;
   }
-  LOG_INFO("UndoDropHashIndex success, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
+  LOG_INFO("UndoDropHashIndex success, table id:%lu, index id:%u, cur_version:%d, new_version:%d.",
            this->table_id_, index_id, cur_version, new_version)
   return SUCCESS;
 }
@@ -520,12 +531,12 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
   s = GetEntityRowCount(ctx, entity_store, {ts_span}, &row_num);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
+      begin_hash, end_hash, ts_span.begin, ts_span.end);
     return s;
   }
   if (row_num == 0) {
     LOG_INFO("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] has no rows left.",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
+      begin_hash, end_hash, ts_span.begin, ts_span.end);
     *half_ts = (ts_span.begin + ts_span.end) / 2;
     return KStatus::SUCCESS;
   }

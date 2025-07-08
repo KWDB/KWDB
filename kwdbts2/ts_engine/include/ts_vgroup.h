@@ -45,11 +45,11 @@ class TsVGroup {
 
   std::filesystem::path path_;
 
-  uint64_t entity_counter_{0};
+  // max entity id of this vgroup
+  uint64_t max_entity_id_{0};
 
-  mutable std::mutex mutex_;
-
-  MMapFile* config_file_{nullptr};
+  // mutex for initialize/allocate/get max_entity_id_
+  mutable std::mutex entity_id_mutex_;
 
   EngineOptions engine_options_;
 
@@ -91,9 +91,11 @@ class TsVGroup {
 
   std::string GetFileName() const;
 
-  uint32_t AllocateEntityID();
+  TSEntityID AllocateEntityID();
 
-  uint32_t GetMaxEntityID() const;
+  TSEntityID GetMaxEntityID() const;
+
+  void InitEntityID(TSEntityID entity_id);
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
 
@@ -252,7 +254,6 @@ class TsVGroup {
     const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);
 
   int saveToFile(uint32_t new_id) const;
-
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);
   // Initialize compact thread.

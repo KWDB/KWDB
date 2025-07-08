@@ -25,6 +25,7 @@ class TsTableV2Impl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<std::shared_ptr<TsVGroup>>& vgroups_;
+  std::atomic_bool table_dropped_;
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
@@ -39,6 +40,9 @@ class TsTableV2Impl : public TsTable {
   uint32_t GetCurrentTableVersion() override {
     return table_schema_mgr_->GetCurrentVersion();
   }
+
+  void SetDropped() override;
+  bool IsDropped() override;
 
   std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
     return table_schema_mgr_;
@@ -88,6 +92,10 @@ class TsTableV2Impl : public TsTable {
                      uint32_t cur_version, uint32_t new_version, string& msg) override;
 
   KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) override;
+
+  bool IsExistTableVersion(uint64_t version) {
+    return table_schema_mgr_->IsExistTableVersion(version);
+  }
 
   LifeTime GetLifeTime() {
     return table_schema_mgr_->GetLifeTime();
