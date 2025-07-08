@@ -268,6 +268,8 @@ class TSEngineV2Impl : public TSEngine {
     return iter->second;
   }
 
+  KStatus Vacuum() override;
+
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 

@@ -279,6 +279,8 @@ class TsVGroup {
    */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false);
 
+  KStatus Vacuum();
+
  private:
   // check partition of rows exist. if not creating it.
   KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);

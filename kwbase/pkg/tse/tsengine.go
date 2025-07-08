@@ -1545,12 +1545,12 @@ func (r *TsEngine) CompressImmediately(ctx context.Context, tableID uint64) erro
 	return nil
 }
 
-// VacuumTsTable vacuum partitions after compress
-func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
+// Vacuum vacuum partitions
+func (r *TsEngine) Vacuum() error {
 	r.checkOrWaitForOpen()
-	status := C.TSVacuumTsTable(r.tdb, C.TSTableID(tableID), C.uint32_t(tsVersion))
+	status := C.TSVacuum(r.tdb)
 	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to vacuum ts table")
+		return errors.Wrap(err, "failed to vacuum ts storage")
 	}
 	return nil
 }

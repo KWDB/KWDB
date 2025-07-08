@@ -60,6 +60,7 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
     return s;
   }
   entity_item = *reinterpret_cast<TsEntityItem *>(result.data);
+  is_exist = true;
   return s;
 }
 
@@ -787,5 +788,4 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
 
   return KStatus::SUCCESS;
 }
-
 }  //  namespace kwdbts

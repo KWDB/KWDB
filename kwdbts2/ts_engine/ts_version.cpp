@@ -403,6 +403,14 @@ std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t
   return it->second;
 }
 
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions() const {
+  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
+  for (const auto &[k, v] : partitions_) {
+      result.push_back(v);
+  }
+  return result;
+}
+
 std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments() const {
   // TODO(zzr): There is room for optimization
   // Maybe we can pre-compute which lastsegments can be compacted, and just return them.
@@ -533,6 +541,18 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   }
   LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
   return KStatus::SUCCESS;
+}
+
+bool TsPartitionVersion::TrySetBusy() {
+  bool expected = false;
+  if (is_compacting_vacuuming->compare_exchange_strong(expected, true)) {
+    return true;
+  }
+  return false;
+}
+
+void TsPartitionVersion::ResetStatus() {
+  is_compacting_vacuuming->store(false);
 }
 
 

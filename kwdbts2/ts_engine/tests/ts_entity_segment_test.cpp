@@ -300,6 +300,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     }
 
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+    vgroup->Vacuum();
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
@@ -315,6 +316,8 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     }
 
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+
+    vgroup->Vacuum();
 
     auto current = vgroup->CurrentVersion();
     auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);

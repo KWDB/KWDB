@@ -1618,4 +1618,13 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TSEngineV2Impl::Vacuum() {
+  for (const auto& vgroup : vgroups_) {
+    vgroup->Vacuum();
+  }
+  return SUCCESS;
+}
+
+
 }  // namespace kwdbts

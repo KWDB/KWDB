@@ -416,6 +416,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
       }
     }
     cur_entity_item_ = {entity_key.entity_id};
+    cur_entity_item_.table_id = entity_key.table_id;
     if (cur_entity_segment_) {
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_key.entity_id, cur_entity_item_, is_exist);
@@ -788,4 +789,46 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   return KStatus::SUCCESS;
 }
 
+TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string &root_path) : root_path_(root_path) {
+  // entity header file
+  std::string entity_header_file_path = root_path + "/" + entity_item_file_name + ".vacuum";
+  entity_item_builder_ =
+      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, 0);
+
+  // block header file
+  std::string block_header_file_path = root_path + "/" + block_item_file_name + ".vacuum";
+  block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+
+  // block data file
+  std::string block_file_path = root_path + "/" + block_data_file_name + ".vacuum";
+  block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
+
+  // block agg file
+  std::string agg_file_path = root_path + "/" + block_agg_file_name + ".vacuum";
+  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
+
+}
+
+KStatus TsEntitySegmentVacuumer::Open() {
+  KStatus s = entity_item_builder_->Open();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Open Entity Item File Failed");
+    return s;
+  }
+  s = block_item_builder_->Open();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Open Block Item File Failed");
+    return s;
+  }
+  s = block_file_builder_->Open();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Open Block File Failed");
+    return s;
+  }
+  s = agg_file_builder_->Open();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Open Agg File Failed");
+  }
+  return s;
+}
 }  //  namespace kwdbts

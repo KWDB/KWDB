@@ -264,4 +264,16 @@ class TsEntitySegmentBuilder {
   KStatus WriteBatchFinish(TsVersionUpdate *update);
 };
 
+class TsEntitySegmentVacuumer {
+ public:
+  explicit TsEntitySegmentVacuumer(const std::string& root_path);
+  KStatus Open();
+
+ private:
+  std::filesystem::path root_path_;
+  std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
+  std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
+  std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
+  std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
+};
 }  // namespace kwdbts

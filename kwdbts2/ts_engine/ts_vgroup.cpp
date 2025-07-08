@@ -1203,4 +1203,66 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::Vacuum() {
+  auto current = version_manager_->Current();
+  auto partitions = current->GetPartitions();
+
+  using PartitionPtr = std::shared_ptr<const TsPartitionVersion>;
+  std::sort(partitions.begin(), partitions.end(), [](const PartitionPtr& left, const PartitionPtr& right) {
+    return left->GetStartTime() < right->GetStartTime();
+  });
+
+  for (const auto& partition : partitions) {
+    auto non_const_partition = std::const_pointer_cast<TsPartitionVersion>(partition);
+    if (!non_const_partition->TrySetBusy()) {
+      continue;
+    }
+    // TODO(zqh): skip this partition if there is no data been deleted
+    auto entity_segment = partition->GetEntitySegment();
+    auto max_entity_id = entity_segment->GetEntityNum();
+    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
+    TsEntitySegmentVacuumer vacuumer(root_path);
+    vacuumer.Open();
+    for (uint32_t i = 1; i <= max_entity_id; i++) {
+      TsEntityItem entity_item;
+      bool found = false;
+      auto s = entity_segment->GetEntityItem(i, entity_item, found);
+      if (s != SUCCESS) {
+        return s;
+      }
+      if (!found || 0 == entity_item.cur_block_id) {
+        continue;
+      }
+      std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+      s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
+      if (s != SUCCESS) {
+        return s;
+      }
+      auto life_time = tb_schema_mgr->GetLifeTime();
+      int64_t start_ts = INT64_MIN;
+      int64_t end_ts = INT64_MAX;
+      if (life_time.ts != 0) {
+        auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+        start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+      }
+      KwTsSpan ts_span = {start_ts, end_ts};
+      std::vector<STScanRange> spans = {{ts_span, {0, UINT64_MAX}}};
+      TsBlockItemFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_, i, spans};
+      std::list<shared_ptr<TsBlockSpan>> block_spans;
+      s = entity_segment->GetBlockSpans(filter, block_spans, tb_schema_mgr, 0);
+      if (s != SUCCESS) {
+        return s;
+      }
+      for (auto& block_span : block_spans) {
+
+      }
+
+    }
+
+    non_const_partition->ResetStatus();
+  }
+
+  return KStatus::SUCCESS;
+}
+
 }  //  namespace kwdbts

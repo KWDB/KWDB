@@ -53,11 +53,14 @@ class TsPartitionVersion {
 
   bool directory_created_ = false;
   bool memory_only_ = true;  // TODO(zzr): remove this field later
+  std::shared_ptr<std::atomic<bool>> is_compacting_vacuuming;
 
   std::shared_ptr<TsDelItemManager> del_info_;
 
   // Only TsVersionManager can create TsPartitionVersion
-  explicit TsPartitionVersion(PartitionIdentifier partition_info) : partition_info_(partition_info) {}
+  explicit TsPartitionVersion(PartitionIdentifier partition_info)
+      : partition_info_(partition_info),
+        is_compacting_vacuuming(std::make_shared<std::atomic<bool>>(false)) {}
 
  public:
   TsPartitionVersion(const TsPartitionVersion &) = default;
@@ -98,9 +101,14 @@ class TsPartitionVersion {
   }
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpan(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-  std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
-  bool skip_last = false, bool skip_entity = false) const;
+                       std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
+                       bool skip_last = false, bool skip_entity = false) const;
+
+  bool TrySetBusy();
+
+  void ResetStatus();
 };
+
 class TsVGroupVersion {
   friend class TsVersionManager;
   friend class TsPartitionVersion;
@@ -117,6 +125,8 @@ class TsVGroupVersion {
 
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
+
+  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions() const;
 };
 
 enum class VersionUpdateType : uint8_t {
