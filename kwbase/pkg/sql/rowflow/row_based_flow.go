@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/flowinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -247,7 +248,7 @@ func (f *rowBasedFlow) makeProcessor(
 	// upstreams, though, which means that copyingRowReceivers are only used on
 	// non-fused processors like the output routers.
 
-	output = &copyingRowReceiver{RowReceiver: output}
+	output = &CopyingRowReceiver{RowReceiver: output}
 
 	outputs := []execinfra.RowReceiver{output}
 	proc, err := rowexec.NewProcessor(
@@ -266,7 +267,7 @@ func (f *rowBasedFlow) makeProcessor(
 
 	// Initialize any routers (the setupRouter case above) and outboxes.
 	types := proc.OutputTypes()
-	rowRecv := output.(*copyingRowReceiver).RowReceiver
+	rowRecv := output.(*CopyingRowReceiver).RowReceiver
 	switch o := rowRecv.(type) {
 	case router:
 		o.init(ctx, &f.FlowCtx, types)
@@ -472,7 +473,8 @@ func (f *rowBasedFlow) Cleanup(ctx context.Context) {
 	f.Release()
 }
 
-type copyingRowReceiver struct {
+// CopyingRowReceiver copy row receiver
+type CopyingRowReceiver struct {
 	execinfra.RowReceiver
 	alloc sqlbase.EncDatumRowAlloc
 	// RowStats record stallTime and number of rows
@@ -480,7 +482,7 @@ type copyingRowReceiver struct {
 }
 
 // AddStats record stallTime and number of rows
-func (r *copyingRowReceiver) AddStats(time time.Duration, isAddRows bool) {
+func (r *CopyingRowReceiver) AddStats(time time.Duration, isAddRows bool) {
 	if isAddRows {
 		r.NumRows++
 	}
@@ -488,17 +490,17 @@ func (r *copyingRowReceiver) AddStats(time time.Duration, isAddRows bool) {
 }
 
 // GetStats get RowStats
-func (r *copyingRowReceiver) GetStats() execinfra.RowStats {
+func (r *CopyingRowReceiver) GetStats() execinfra.RowStats {
 	return r.RowStats
 }
 
 // GetCols is part of the distsql.RowReceiver interface.
-func (r *copyingRowReceiver) GetCols() int {
+func (r *CopyingRowReceiver) GetCols() int {
 	return r.RowReceiver.GetCols()
 }
 
 // Push is part of the distsql.RowReceiver interface.
-func (r *copyingRowReceiver) Push(
+func (r *CopyingRowReceiver) Push(
 	row sqlbase.EncDatumRow, meta *execinfrapb.ProducerMetadata,
 ) execinfra.ConsumerStatus {
 	if row != nil {
@@ -508,10 +510,15 @@ func (r *copyingRowReceiver) Push(
 }
 
 // PushPGResult is part of the RowReceiver interface.
-func (r *copyingRowReceiver) PushPGResult(ctx context.Context, res []byte) error {
+func (r *CopyingRowReceiver) PushPGResult(ctx context.Context, res []byte) error {
 	err := r.RowReceiver.PushPGResult(ctx, res)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+// AddPGComplete implements the rowResultWriter interface.
+func (r *CopyingRowReceiver) AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int) {
+	r.RowReceiver.AddPGComplete(cmd, typ, rowsAffected)
 }

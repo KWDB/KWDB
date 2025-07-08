@@ -28,6 +28,7 @@ import (
 	"context"
 	"sync"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -169,6 +170,18 @@ func newIndexSkipTableReader(
 	}
 
 	return t, nil
+}
+
+// InitProcessorProcedure init processor in procedure
+func (t *indexSkipTableReader) InitProcessorProcedure(txn *kv.Txn) {
+	if t.EvalCtx.IsProcedure {
+		if t.FlowCtx != nil {
+			t.FlowCtx.Txn = txn
+		}
+		t.Closed = false
+		t.State = execinfra.StateRunning
+		t.Out.SetRowIdx(0)
+	}
 }
 
 func (t *indexSkipTableReader) Start(ctx context.Context) context.Context {

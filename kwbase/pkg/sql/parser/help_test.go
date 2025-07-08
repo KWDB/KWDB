@@ -451,6 +451,11 @@ func TestContextualHelp(t *testing.T) {
 		{`EXPORT ??`, `EXPORT`},
 		{`EXPORT INTO CSV 'a' ??`, `EXPORT`},
 		{`EXPORT INTO CSV 'a' FROM SELECT a ??`, `SELECT`},
+		{`ALTER PROCEDURE blah ??`, `ALTER PROCEDURE`},
+		{`CALL ??`, `CALL`},
+		{`CREATE PROCEDURE blah ??`, `CREATE PROCEDURE`},
+		{`DROP PROCEDURE blah ??`, `DROP PROCEDURE`},
+		{`SHOW PROCEDURES ??`, `SHOW PROCEDURES`},
 	}
 
 	// The following checks that the test definition above exercises all

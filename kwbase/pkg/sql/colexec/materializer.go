@@ -30,6 +30,7 @@ import (
 	"fmt"
 
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/execerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -149,6 +150,18 @@ var _ execinfra.OpNode = &Materializer{}
 // ChildCount is part of the exec.OpNode interface.
 func (m *Materializer) ChildCount(verbose bool) int {
 	return 1
+}
+
+// InitProcessorProcedure init processor in procedure
+func (m *Materializer) InitProcessorProcedure(txn *kv.Txn) {
+	if m.EvalCtx.IsProcedure {
+		if m.FlowCtx != nil {
+			m.FlowCtx.Txn = txn
+		}
+		m.Closed = false
+		m.State = execinfra.StateRunning
+		m.Out.SetRowIdx(0)
+	}
 }
 
 // Child is part of the exec.OpNode interface.

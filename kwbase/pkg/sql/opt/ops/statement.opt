@@ -4,6 +4,20 @@
 # Although though many of them have no return result, they are still treated as
 # if they were expressions with a zero row, zero column result.
 
+[Relational, DDL, Mutation]
+define CreateProcedure {
+  Input  RelExpr
+  _ CreateProcedurePrivate
+}
+
+[Private]
+define CreateProcedurePrivate {
+    # Schema is the ID of the catalog schema into which the new procedure goes.
+    Schema SchemaID
+    Syntax CreateProcedure
+    Deps ViewDeps
+}
+
 # CreateTable represents a CREATE TABLE statement.
 [Relational, DDL, Mutation]
 define CreateTable {
@@ -55,6 +69,18 @@ define CreateViewPrivate {
 
     # Deps contains the data source dependencies of the view.
     Deps ViewDeps
+}
+
+[Relational]
+define CallProcedure {
+  _ CallProcedurePrivate
+}
+
+[Private]
+define CallProcedurePrivate {
+    ProcName string
+    ProcCall string
+    ProcComm ProcComms
 }
 
 # Explain returns information about the execution plan of the "input"

@@ -38,6 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
@@ -162,7 +163,8 @@ func (n *dropTableNode) startExec(params runParams) error {
 		//case tree.TemplateTable, tree.TimeseriesTable:
 		//	return params.p.dropTsTable(ctx, toDel.tn.Catalog(), toDel.desc)
 		//}
-		droppedViews, err := params.p.dropTableImpl(ctx, droppedDesc, true /* queueJob */, tree.AsStringWithFQNames(n.n, params.Ann()))
+		droppedViews, err := params.p.dropTableImpl(
+			ctx, droppedDesc, true /* queueJob */, tree.AsStringWithFQNames(n.n, params.Ann()), n.n.DropBehavior)
 		if err != nil {
 			params.p.SetAuditTarget(0, droppedDesc.GetName(), droppedViews)
 			return err
@@ -291,7 +293,11 @@ func (p *planner) removeInterleave(ctx context.Context, ref sqlbase.ForeignKeyRe
 // on it if `cascade` is enabled). It returns a list of view names that were
 // dropped due to `cascade` behavior.
 func (p *planner) dropTableImpl(
-	ctx context.Context, tableDesc *sqlbase.MutableTableDescriptor, queueJob bool, jobDesc string,
+	ctx context.Context,
+	tableDesc *sqlbase.MutableTableDescriptor,
+	queueJob bool,
+	jobDesc string,
+	behavior tree.DropBehavior,
 ) ([]string, error) {
 	var droppedViews []string
 	// Remove foreign key back references from tables that this table has foreign
@@ -347,7 +353,7 @@ func (p *planner) dropTableImpl(
 				continue
 			}
 			err = p.dropSequenceImpl(
-				ctx, seqDesc, queueJob /* queueJob */, jobDesc, tree.DropCascade,
+				ctx, seqDesc, queueJob /* queueJob */, jobDesc, behavior,
 			)
 			if err != nil {
 				return droppedViews, err
@@ -365,11 +371,14 @@ func (p *planner) dropTableImpl(
 	// Drop all views that depend on this table, assuming that we wouldn't have
 	// made it to this point if `cascade` wasn't enabled.
 	for _, ref := range tableDesc.DependedOnBy {
-		viewDesc, err := p.getViewDescForCascade(
-			ctx, tableDesc.TypeName(), tableDesc.Name, tableDesc.ParentID, ref.ID, tree.DropCascade,
+		viewDesc, skipped, err := p.getViewDescForCascade(
+			ctx, tableDesc.TypeName(), tableDesc.Name, tableDesc.ParentID, ref.ID, behavior,
 		)
 		if err != nil {
 			return droppedViews, err
+		}
+		if skipped {
+			continue
 		}
 		// This view is already getting dropped. Don't do it twice.
 		if viewDesc.Dropped() {
@@ -741,6 +750,62 @@ func (p *planner) removeTableComment(
 	}
 
 	return err
+}
+
+// TryPurgeProcedureCache clears the cache and metadata of Procedure.
+func (p *planner) TryPurgeProcedureCache(
+	ctx context.Context, procName tree.TableName, procID uint32,
+) error {
+	p.execCfg.ProcedureCache.Purge(procID)
+	_, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Exec(
+		ctx,
+		"drop procedure",
+		p.Txn(),
+		fmt.Sprintf(
+			`drop procedure %s`,
+			procName.String(),
+		),
+	)
+	return err
+}
+
+// GetProcedureNameByID obtains the procedure's name by ID.
+func (p *planner) GetProcedureNameByID(
+	ctx context.Context, id sqlbase.ID,
+) (bool, tree.TableName, error) {
+	row, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.QueryRow(
+		ctx,
+		"get procedure by ID",
+		p.txn,
+		fmt.Sprintf(
+			`select db_id, schema_id, name FROM %s WHERE id=$1`,
+			UDRTableName,
+		),
+		int64(id),
+	)
+	if err != nil {
+		log.Infof(ctx, "trying to get procedure %d failed: %s", id, err)
+		return false, tree.TableName{}, err
+	}
+
+	if row != nil {
+		dbID := sqlbase.ID(tree.MustBeDInt(row[0]))
+		scID := sqlbase.ID(tree.MustBeDInt(row[1]))
+		name := tree.Name(tree.MustBeDString(row[2]))
+
+		dbDesc, err := getDatabaseDescByID(ctx, p.txn, dbID)
+		if err != nil {
+			return false, tree.TableName{}, err
+		}
+		scDesc, err := getSchemaDescByID(ctx, p.txn, scID)
+		if err != nil {
+			return false, tree.TableName{}, err
+		}
+		procName := tree.MakeTableName(tree.Name(dbDesc.Name), name)
+		procName.SchemaName = tree.Name(scDesc.Name)
+		return true, procName, nil
+	}
+	return false, tree.TableName{}, nil
 }
 
 //func (p *planner) dropTsTable(

@@ -56,6 +56,7 @@ type Processor interface {
 	// RunTS is the main loop of the kwdbprocessor
 	RunTS(ctx context.Context)
 	Push(ctx context.Context, res []byte) error
+	Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
 	NextPgWire() (val []byte, code int, err error)
 	SupportPgWire() bool
 	IsShortCircuitForPgEncode() bool
@@ -103,6 +104,11 @@ type ProcOutputHelper struct {
 	rowIdx uint64
 
 	Gapfill bool
+}
+
+// SetRowIdx set rowIdx
+func (h *ProcOutputHelper) SetRowIdx(idx uint64) {
+	h.rowIdx = idx
 }
 
 // Reset resets this ProcOutputHelper, retaining allocated memory in its slices.
@@ -1008,6 +1014,11 @@ func (pb *ProcessorBase) InternalClose() bool {
 // ConsumerDone is part of the RowSource interface.
 func (pb *ProcessorBase) ConsumerDone() {
 	pb.MoveToDraining(nil /* err */)
+}
+
+// CheckTrailingMetaExist check whether trailingMeta exists.
+func (pb *ProcessorBase) CheckTrailingMetaExist() bool {
+	return len(pb.trailingMeta) > 0
 }
 
 // NewMonitor is a utility function used by processors to create a new

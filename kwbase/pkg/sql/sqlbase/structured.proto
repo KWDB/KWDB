@@ -612,6 +612,54 @@ message DescriptorMutation {
   optional bool rollback = 7 [(gogoproto.nullable) = false];
 }
 
+message FunctionDescriptor {
+  option (gogoproto.equal) = true;
+  // Needed for the descriptorProto interface.
+  option (gogoproto.goproto_getters) = true;
+
+  optional string name = 1 [(gogoproto.nullable) = false];
+  repeated uint32 argument_types = 2;
+  repeated uint32 return_type = 3;
+  repeated uint32 types_length = 4;
+  optional string function_body = 5 [(gogoproto.nullable) = false];
+  optional uint32 function_type = 6 [(gogoproto.nullable) = false];
+  optional string language = 7 [(gogoproto.nullable) = false];
+  optional string db_name = 8 [(gogoproto.nullable) = false];
+}
+
+message ProcedureDescriptor {
+  option (gogoproto.equal) = true;
+  // Needed for the descriptorProto interface.
+  option (gogoproto.goproto_getters) = true;
+
+  optional string name = 1 [(gogoproto.nullable) = false];
+  optional uint32 db_id = 2 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "DbID", (gogoproto.casttype) = "ID"];
+  optional uint32 schema_id = 3 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "SchemaID", (gogoproto.casttype) = "ID"];
+  optional uint32 id = 4 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "ID", (gogoproto.casttype) = "ID"];
+  repeated ProcParam  parameters = 5  [(gogoproto.nullable) = false];
+  optional string procBody = 6 [(gogoproto.nullable) = false];
+  repeated uint32 dependsOn = 7 [(gogoproto.customname) = "DependsOn",
+    (gogoproto.casttype) = "ID"];
+  optional string language = 8 [(gogoproto.nullable) = false];
+  optional PrivilegeDescriptor privileges = 9;
+}
+
+message ProcParam {
+  option (gogoproto.equal) = true;
+  enum ParamDirection {
+    // Input
+    InDirection = 0;
+    // Output
+    OutDirection = 1;
+  }
+  optional ParamDirection direction = 1 [(gogoproto.nullable) = false];
+  optional string name = 2 [(gogoproto.nullable) = false];
+  optional bytes type = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
+}
+
 // A TableDescriptor represents a table or view and is stored in a
 // structured metadata key. The TableDescriptor has a globally-unique ID,
 // while its member {Column,Index}Descriptors have locally-unique IDs.

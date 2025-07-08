@@ -102,6 +102,8 @@ type scope struct {
 	// expr is the SQL node built with this scope.
 	expr memo.RelExpr
 
+	procComm memo.ProcCommand
+
 	// Desired number of columns for subqueries found during name resolution and
 	// type checking. This only applies to the top-level subqueries that are
 	// anchored directly to a relational expression.
@@ -258,6 +260,7 @@ const (
 	exprTypeWhere
 	exprTypeWindowFrameStart
 	exprTypeWindowFrameEnd
+	exprTypeProcedure
 )
 
 // buildType is used to represent the type of the current expression in the
@@ -289,6 +292,7 @@ var exprTypeName = [...]string{
 	exprTypeWhere:             "WHERE",
 	exprTypeWindowFrameStart:  "WINDOW FRAME START",
 	exprTypeWindowFrameEnd:    "WINDOW FRAME END",
+	exprTypeProcedure:         "PROCEDURE",
 }
 
 func (k exprType) String() string {
@@ -803,7 +807,7 @@ func (s *scope) verifyAggregateContext(aggName string) {
 		panic(pgerror.Newf(pgcode.Grouping,
 			"aggregate functions are not allowed in JOIN conditions, illegal function: %v", aggName))
 
-	case exprTypeWhere:
+	case exprTypeWhere, exprTypeProcedure:
 		panic(tree.NewInvalidFunctionUsageError(tree.AggregateClass, s.context.String()))
 	}
 }
@@ -1022,6 +1026,25 @@ func makeUntypedTuple(labels []string, texprs []tree.TypedExpr) *tree.Tuple {
 		exprs[i] = e
 	}
 	return &tree.Tuple{Exprs: exprs, Labels: labels}
+}
+
+type varContainer []tree.Datum
+
+func (d varContainer) Add(datum tree.Datum) { d = append(d, datum) }
+
+func (d varContainer) Value(idx int) tree.Datum { return d[idx] }
+
+func (d varContainer) IndexedVarEval(idx int, ctx *tree.EvalContext) (tree.Datum, error) {
+	return d[idx].Eval(ctx)
+}
+
+func (d varContainer) IndexedVarResolvedType(idx int) *types.T {
+	return d[idx].ResolvedType()
+}
+
+func (d varContainer) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
+	n := tree.Name(fmt.Sprintf("var%d", idx))
+	return &n
 }
 
 // VisitPre is part of the Visitor interface.

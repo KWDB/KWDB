@@ -257,3 +257,13 @@ func (l *lexer) SetHelp(msg HelpMessage) {
 func (l *lexer) populateHelpMsg(msg string) {
 	l.lastError = errors.WithHint(errors.Wrap(l.lastError, "help token in input"), msg)
 }
+
+func checkLoopLabels(start, end string) error {
+	if start == "" && end != "" {
+		return errors.Newf("end label \"%s\" specified for unlabeled block", end)
+	}
+	if end != "" && start != end {
+		return errors.Newf("end label \"%s\" differs from block's label \"%s\"", end, start)
+	}
+	return nil
+}

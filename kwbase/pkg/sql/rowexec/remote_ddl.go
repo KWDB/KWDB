@@ -14,6 +14,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -23,6 +24,18 @@ type remoteDDL struct {
 	execinfra.ProcessorBase
 	ddlString string
 	err       error
+}
+
+// InitProcessorProcedure init processor in procedure
+func (r *remoteDDL) InitProcessorProcedure(txn *kv.Txn) {
+	if r.EvalCtx.IsProcedure {
+		if r.FlowCtx != nil {
+			r.FlowCtx.Txn = txn
+		}
+		r.Closed = false
+		r.State = execinfra.StateRunning
+		r.Out.SetRowIdx(0)
+	}
 }
 
 func (r *remoteDDL) Start(ctx context.Context) context.Context {

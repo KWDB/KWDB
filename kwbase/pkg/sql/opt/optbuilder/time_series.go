@@ -78,6 +78,21 @@ func (b *Builder) buildTimeSeriesScan(
 	// construct memo.ScanExpr.
 	outScope.expr = b.factory.ConstructTSScan(&private)
 
+	getOrdinal := func(i int) int {
+		return i
+	}
+
+	if b.trackViewDeps {
+		dep := opt.ViewDep{DataSource: tab}
+		dep.ColumnIDToOrd = make(map[opt.ColumnID]int)
+		// We will track the ColumnID to Ord mapping so Ords can be added
+		// when a column is referenced.
+		for i, col := range outScope.cols {
+			dep.ColumnIDToOrd[col.id] = getOrdinal(i)
+		}
+		b.viewDeps = append(b.viewDeps, dep)
+	}
+
 	return outScope
 }
 

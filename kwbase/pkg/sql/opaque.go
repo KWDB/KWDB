@@ -77,6 +77,8 @@ func buildOpaque(
 		plan, err = p.CommentOnColumn(ctx, n)
 	case *tree.CommentOnDatabase:
 		plan, err = p.CommentOnDatabase(ctx, n)
+	case *tree.CommentOnProcedure:
+		plan, err = p.CommentOnProcedure(ctx, n)
 	case *tree.CommentOnIndex:
 		plan, err = p.CommentOnIndex(ctx, n)
 	case *tree.CommentOnTable:
@@ -125,6 +127,8 @@ func buildOpaque(
 		plan, err = p.DropTable(ctx, n)
 	case *tree.DropFunction:
 		plan, err = p.DropFunction(ctx, n)
+	case *tree.DropProcedure:
+		plan, err = p.DropProcedure(ctx, n)
 	case *tree.DropView:
 		plan, err = p.DropView(ctx, n)
 	case *tree.DropSequence:
@@ -215,6 +219,7 @@ func init() {
 		&tree.AlterSchedule{},
 		&tree.CommentOnColumn{},
 		&tree.CommentOnDatabase{},
+		&tree.CommentOnProcedure{},
 		&tree.CommentOnIndex{},
 		&tree.CommentOnTable{},
 		&tree.Compress{},
@@ -238,6 +243,7 @@ func init() {
 		&tree.DropRole{},
 		&tree.DropSequence{},
 		&tree.DropFunction{},
+		&tree.DropProcedure{},
 		&tree.DropAudit{},
 		&tree.ImportPortal{},
 		&tree.Grant{},

@@ -131,7 +131,8 @@ class TsVGroup {
     return tsx_manager_->insertMtrID(ts_trans_id, uuid);
   }
 
-  KStatus Compact(int thread_num = 1);
+  KStatus Compact();
+
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);

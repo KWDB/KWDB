@@ -96,6 +96,9 @@ const (
 	defaultSQLPseudoCatalogCacheSize = 128
 
 	configName = "kaiwudb.cfg"
+
+	// Procedure cache occupies 64M.
+	defaultProcedureCacheSize = 64 * 1024 * 1024
 )
 
 var productionSettingsWebpage = fmt.Sprintf(
@@ -328,6 +331,9 @@ type Config struct {
 
 	// Forbid cache coredump for go test, for example TestFuncNull
 	ForbidCatchCoreDump bool
+
+	// ProcedureCacheSize is the memory size (in bytes) of the procedure.
+	ProcedureCacheSize int64
 }
 
 const (
@@ -445,6 +451,7 @@ func MakeConfig(ctx context.Context, st *cluster.Settings) Config {
 		StorageEngine: storage.DefaultStorageEngine,
 		TempStorageConfig: base.TempStorageConfigFromEnv(
 			ctx, st, storeSpec, "" /* parentDir */, base.DefaultTempStorageMaxSizeBytes, 0),
+		ProcedureCacheSize: defaultProcedureCacheSize,
 	}
 	cfg.AmbientCtx.Tracer = st.Tracer
 

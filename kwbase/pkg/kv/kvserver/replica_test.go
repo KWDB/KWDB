@@ -620,6 +620,7 @@ func TestReplicaContains(t *testing.T) {
 func sendLeaseRequest(r *Replica, l *roachpb.Lease) error {
 	ba := roachpb.BatchRequest{}
 	ba.Timestamp = r.store.Clock().Now()
+	l.CheckLeaseFlag = true
 	ba.Add(&roachpb.RequestLeaseRequest{Lease: *l})
 	exLease, _ := r.GetLease()
 	ch, _, _, pErr := r.evalAndPropose(context.TODO(), &ba, allSpansGuard(), &exLease)
@@ -6048,7 +6049,7 @@ func TestRangeStatsComputation(t *testing.T) {
 	// The initial stats contain no lease, but there will be an initial
 	// nontrivial lease requested with the first write below.
 	baseStats.Add(enginepb.MVCCStats{
-		SysBytes: 24,
+		SysBytes: 26,
 	})
 
 	// Our clock might not be set to zero.

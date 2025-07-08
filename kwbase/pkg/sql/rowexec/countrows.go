@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -124,6 +125,18 @@ func (ag *countAggregator) ConsumerDone() {
 
 func (ag *countAggregator) ConsumerClosed() {
 	ag.InternalClose()
+}
+
+// InitProcessorProcedure init processor in procedure
+func (ag *countAggregator) InitProcessorProcedure(txn *kv.Txn) {
+	if ag.EvalCtx.IsProcedure {
+		if ag.FlowCtx != nil {
+			ag.FlowCtx.Txn = txn
+		}
+		ag.Closed = false
+		ag.State = execinfra.StateRunning
+		ag.Out.SetRowIdx(0)
+	}
 }
 
 // outputStatsToTrace outputs the collected distinct stats to the trace. Will

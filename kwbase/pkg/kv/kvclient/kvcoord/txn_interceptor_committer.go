@@ -599,6 +599,9 @@ type tsTxnCommitter struct {
 func (tc *tsTxnCommitter) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	defer func() {
+		tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}
+	}()
 	br, pErr := tc.wrapped.Send(ctx, ba)
 	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 2); err != nil {
 		return nil, roachpb.NewError(err)
@@ -612,9 +615,6 @@ func (tc *tsTxnCommitter) SendLocked(
 			return nil, roachpb.NewError(err)
 		}
 		if rollbackErr != nil {
-			select {
-			case tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}:
-			}
 			return nil, rollbackErr
 		}
 		record.Status = roachpb.ABORTED
@@ -642,9 +642,6 @@ func (tc *tsTxnCommitter) SendLocked(
 		return nil, roachpb.NewError(err)
 	}
 	if pErr != nil {
-		select {
-		case tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}:
-		}
 		return nil, pErr
 	}
 	record.Status = roachpb.COMMITTED

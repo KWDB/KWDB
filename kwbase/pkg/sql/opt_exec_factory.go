@@ -2129,6 +2129,147 @@ func (ef *execFactory) ConstructCreateTable(
 	return nd, nil
 }
 
+func (ef *execFactory) ConstructCreateProcedure(
+	cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps,
+) (exec.Node, error) {
+	planDeps := make(planDependencies, len(deps))
+	for _, d := range deps {
+		desc, err := getDescForDataSource(d.DataSource)
+		if err != nil {
+			return nil, err
+		}
+		// following objects do not support view
+		if desc.TableDescriptor.IsReplTable || desc.TableDescriptor.IsView() ||
+			desc.TableDescriptor.IsMaterializedView || desc.TableDescriptor.IsSequence() ||
+			desc.TableDescriptor.Temporary {
+			return nil, errors.Errorf("Object %s do not support procedure", desc.TableDescriptor.Name)
+		}
+		var ref sqlbase.TableDescriptor_Reference
+		if d.SpecificIndex {
+			idx := d.DataSource.(cat.Table).Index(d.Index)
+			ref.IndexID = idx.(*optIndex).desc.ID
+		}
+		if !d.ColumnOrdinals.Empty() {
+			ref.ColumnIDs = make([]sqlbase.ColumnID, 0, d.ColumnOrdinals.Len())
+			d.ColumnOrdinals.ForEach(func(ord int) {
+				ref.ColumnIDs = append(ref.ColumnIDs, desc.Columns[ord].ID)
+			})
+		}
+		entry := planDeps[desc.ID]
+		entry.desc = desc
+		entry.deps = append(entry.deps, ref)
+		planDeps[desc.ID] = entry
+	}
+	scID := schema.(*optSchema).schema.ID
+
+	nd := &createProcedureNode{n: cp, dbDesc: schema.(*optSchema).database, scID: scID, planDeps: planDeps}
+	return nd, nil
+}
+
+// buildInstruction recursively translates procCommand to Instruction
+func (ef *execFactory) buildInstruction(
+	pc memo.ProcCommand, scalarFn exec.BuildScalarFn,
+) (Instruction, error) {
+	switch t := pc.(type) {
+	case *memo.ArrayCommand:
+		var array ArrayIns
+		for i := range t.Bodys {
+			ins, err := ef.buildInstruction(t.Bodys[i], scalarFn)
+			if err != nil {
+				return nil, err
+			}
+			array.childs = append(array.childs, ins)
+		}
+		return &array, nil
+	case *memo.BlockCommand:
+		var blockIns BlockIns
+		for i := range t.Body.Bodys {
+			ins, err := ef.buildInstruction(t.Body.Bodys[i], scalarFn)
+			if err != nil {
+				return nil, err
+			}
+			blockIns.childs = append(blockIns.childs, ins)
+		}
+		blockIns.labelName = t.Label
+		return &blockIns, nil
+	case *memo.IfCommand:
+		tmp, err := scalarFn(t.Cond)
+		if err != nil {
+			return nil, err
+		}
+		result, err2 := ef.buildInstruction(t.Then, scalarFn)
+		if err2 != nil {
+			return nil, err2
+		}
+		return NewCaseWhenIns(tmp, true, result), nil
+	case *memo.OpenCursorCommand:
+		ins := NewOpenCursorIns(t.Name)
+		return ins, nil
+	case *memo.FetchCursorCommand:
+		ins := NewFetchCursorIns(t.Name, t.DstVar)
+		return ins, nil
+	case *memo.CloseCursorCommand:
+		ins := NewCloseCursorIns(t.Name)
+		return ins, nil
+	case *memo.DeclareVarCommand:
+		ins := NewSetIns(string(t.Col.Name), t.Col.Typ, t.Col.Default)
+		return ins, nil
+	case *memo.DeclCursorCommand:
+		var cur Cursor
+		stmtCommand := t.Body.(*memo.StmtCommand)
+		cur.rootExpr = stmtCommand.Body
+		cur.pr = stmtCommand.PhysicalProp
+		cur.stmt = stmtCommand.Name
+		cur.typ = stmtCommand.Typ
+		ins := NewSetCursorIns(string(t.Name), cur)
+		return ins, nil
+	case *memo.DeclHandlerCommand:
+		insChild, err := ef.buildInstruction(t.Block, scalarFn)
+		if err != nil {
+			return nil, err
+		}
+		return NewSetHandlerIns(t.HandlerFor, insChild, t.HandlerOp), nil
+	case *memo.WhileCommand:
+		var bodyIns BlockIns
+		for i := range t.Then {
+			ins, err := ef.buildInstruction(t.Then[i], scalarFn)
+			if err != nil {
+				return nil, err
+			}
+			bodyIns.childs = append(bodyIns.childs, ins)
+		}
+
+		return NewLoopIns(t.Label, NewCaseWhenIns(t.Cond, false, &bodyIns)), nil
+	case *memo.StmtCommand:
+		return NewStmtIns(t.Name, t.Body, t.Typ, t.PhysicalProp), nil
+	case *memo.ProcedureTxnCommand:
+		ins := NewTransactionIns(t.TxnType)
+		return ins, nil
+	case *memo.IntoCommand:
+		stmt := *NewStmtIns(t.Name, t.Body, tree.Rows, t.PhysicalProp)
+		ins := NewIntoIns(stmt, t.Idx)
+		return ins, nil
+	case *memo.LeaveCommand:
+		return &LeaveIns{labelName: t.Label}, nil
+	}
+	return nil, nil
+}
+
+func (ef *execFactory) ConstructCallProcedure(
+	procName string,
+	procCall string,
+	procComms memo.ProcComms,
+	fn exec.ProcedurePlanFn,
+	scalarFn exec.BuildScalarFn,
+) (exec.Node, error) {
+	ins, err := ef.buildInstruction(procComms, scalarFn)
+	if err != nil {
+		return nil, err
+	}
+	nd := &callProcedureNode{procName: procName, procCall: procCall, ins: ins, fn: fn}
+	return nd, nil
+}
+
 func (ef *execFactory) ConstructCreateTables(
 	input exec.Node, schemas map[string]cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {

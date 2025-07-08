@@ -285,6 +285,14 @@ func (r *Replica) executeWriteTSBatch(
 			}
 		}
 	}
+	if ba.Requests != nil {
+		switch ba.Requests[0].GetInner().(type) {
+		case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
+			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 11); err != nil {
+				return nil, g, roachpb.NewError(err)
+			}
+		}
+	}
 
 	// Even though we're not a read-only operation by definition, we have to
 	// take out a read lock on readOnlyCmdMu while performing any reads during
