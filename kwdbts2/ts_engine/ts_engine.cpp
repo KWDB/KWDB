@@ -120,8 +120,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     }
     uint32_t entity_id = 0;
     s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
-    if (s != KStatus::SUCCESS)
-    {
+    if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
     }
     vgroup->InitEntityID(entity_id);
@@ -147,6 +146,14 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   if (s == KStatus::FAIL) {
     LOG_ERROR("Recover fail.")
     return s;
+  }
+  // TODO(zzr): Recover TsVersion for each VGroup.
+  // After WAL RedoPut, TsVersion should be updated.
+  for (auto vgroup : vgroups_) {
+    auto s = vgroup->SetReady();
+    if (s == FAIL) {
+      return FAIL;
+    }
   }
   return KStatus::SUCCESS;
 }
@@ -1165,6 +1172,7 @@ KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
   }
   batch_data_jobs_.erase(job_id);
   RW_LATCH_UNLOCK(&batch_jobs_lock_);
+  return KStatus::SUCCESS;
 }
 
 // check if table is dropped from rocksdb.
@@ -1189,8 +1197,12 @@ KStatus TSEngineV2Impl::DropResidualTsTable(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineV2Impl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
-  // todo(liangbo01) to implemented.
-  return KStatus::FAIL;
+  std::shared_ptr<TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, false);
+  if (s == KStatus::SUCCESS) {
+    ts_table->SetDropped();
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
@@ -1513,15 +1525,6 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
     }
   }
-
-  // TODO(zzr): Recover TsVersion for each VGroup.
-  // After WAL RedoPut, TsVersion should be updated.
-  for (auto vgroup : vgroups_) {
-    auto s = vgroup->SetReady();
-    if (s == FAIL) {
-      return FAIL;
-    }
-  }
   return KStatus::SUCCESS;
 }
 
@@ -1635,7 +1638,7 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
       return KStatus::FAIL;
     }
   }
-  int32_t row_num;
+  int32_t row_num = 0;
   TSSlice batch_data = {nullptr, 0};
   Defer defer{[&](){
     if (batch_data.data != nullptr) {
@@ -1704,6 +1707,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
     LOG_ERROR("WriteBatchData snapshot [%lu] failed.", snapshot_id);
     return s;
   }
+  return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) {
   TsRangeImgrationInfo ts_snapshot_info;
@@ -1761,9 +1765,8 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
   return KStatus::SUCCESS;
 }
 
-
-  // get max entity id
-  KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
+// get max entity id
+KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
   std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
   KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
   if (s != KStatus::SUCCESS) {

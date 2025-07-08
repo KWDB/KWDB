@@ -25,6 +25,7 @@ class TsTableV2Impl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<std::shared_ptr<TsVGroup>>& vgroups_;
+  std::atomic_bool table_dropped_;
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
@@ -39,6 +40,9 @@ class TsTableV2Impl : public TsTable {
   uint32_t GetCurrentTableVersion() override {
     return table_schema_mgr_->GetCurrentVersion();
   }
+
+  void SetDropped() override;
+  bool IsDropped() override;
 
   std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
     return table_schema_mgr_;

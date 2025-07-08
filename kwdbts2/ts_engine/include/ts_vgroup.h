@@ -245,8 +245,6 @@ class TsVGroup {
     const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);
 
   int saveToFile(uint32_t new_id) const;
-  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
-
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);
   // Initialize compact thread.
