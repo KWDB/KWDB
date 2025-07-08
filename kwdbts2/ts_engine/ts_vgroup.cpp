@@ -141,7 +141,6 @@ std::filesystem::path TsVGroup::GetPath() const { return path_; }
 TSEntityID TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock(entity_id_mutex_);
   return ++max_entity_id_;
-
 }
 
 TSEntityID TsVGroup::GetMaxEntityID() const {

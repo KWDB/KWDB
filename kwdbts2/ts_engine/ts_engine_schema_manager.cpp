@@ -26,7 +26,7 @@ std::mt19937 gen(seed);
 namespace kwdbts {
 
 TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
-    root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
+    schema_root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
   auto exists = IsExists(schema_root_path);
   if (exists == false) {
     ErrorInfo error_info;
@@ -66,18 +66,21 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db
     partition_interval = meta->ts_table().partition_interval();
   }
 
-  string metric_schema_path = root_path_.string() + "/metric_" + std::to_string(table_id);
   ErrorInfo err_info;
+  string table_path = schema_root_path_.string() + std::to_string(table_id) + "/";
+  MakeDirectory(table_path, err_info);
+  string metric_schema_path = table_path + "metric";
   MakeDirectory(metric_schema_path, err_info);
-  string tag_schema_path = root_path_.string() + "/tag_" + std::to_string(table_id);
+  string tag_schema_path = table_path + "tag";
   MakeDirectory(tag_schema_path, err_info);
-  auto tb_schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_.string() + "/", table_id);
-  KStatus s = tb_schema_mgr->CreateTable(ctx, meta, db_id, ts_version, err_info);
+
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
+  KStatus s = tbl_schema_mgr->CreateTable(ctx, meta, db_id, ts_version, err_info);
   if (s != KStatus::SUCCESS) {
     return s;
   }
 
-  table_schema_mgrs_[table_id] = std::move(tb_schema_mgr);
+  table_schema_mgrs_[table_id] = std::move(tbl_schema_mgr);
   return KStatus::SUCCESS;
 }
 
@@ -108,8 +111,8 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
       }
       return KStatus::SUCCESS;
     }
-    auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, table_id);
-    s = schema_mgr->Init(ctx);
+    auto schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
+    s = schema_mgr->Init();
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -139,8 +142,8 @@ KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID
     if (it != table_schema_mgrs_.end()) {
       return it->second->GetMetricSchema(version, metric_schema);
     }
-    auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
-    KStatus s = schema_mgr->Init(ctx);
+    auto schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
+    KStatus s = schema_mgr->Init();
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -155,8 +158,8 @@ KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID
 }
 
 bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
-  auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
-  if (schema_mgr->IsSchemaDirsExist()) {
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_.string(), tbl_id);
+  if (tbl_schema_mgr->IsSchemaDirsExist()) {
     return true;
   }
   return false;
@@ -165,7 +168,7 @@ bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
 KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   // scan all directory.
   std::error_code ec;
-  std::filesystem::directory_iterator dir_iter{root_path_, ec};
+  std::filesystem::directory_iterator dir_iter{schema_root_path_, ec};
   std::unordered_map<TSTableID, int> table_scan_times;
   if (ec.value() != 0) {
     LOG_ERROR("GetTableList failed, reason: %s", ec.message().c_str());
@@ -201,14 +204,8 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_p
       tb_schema_mgr = it->second;
       return KStatus::SUCCESS;
     }
-    auto schema_mgr = std::make_unique<TsTableSchemaManager>(root_path_, tbl_id);
-    kwdbContext_t context;
-    kwdbContext_p ctx_p = &context;
-    KStatus s = InitServerKWDBContext(ctx_p);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    s = schema_mgr->Init(ctx_p);
+    auto schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
+    KStatus s = schema_mgr->Init();
     if (s != KStatus::SUCCESS) {
       return s;
     }
