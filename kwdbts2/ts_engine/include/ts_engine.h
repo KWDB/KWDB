@@ -172,7 +172,7 @@ class TSEngineV2Impl : public TSEngine {
                       uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id) override;
+                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
 
   /**
  * @brief DDL WAL recover.

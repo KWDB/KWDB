@@ -635,7 +635,7 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
 }
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                      uint64_t range_group_id, uint64_t mtr_id) {
+                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log) {
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -649,11 +649,13 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
   KStatus s;
 
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
-  s = vgroup->MtrRollback(ctx, mtr_id);
-  if (s == FAIL) {
-    Return(s);
+  if (skip_log) {
+    std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
+    auto vgroup = GetVGroupByID(ctx, distrib(gen));
+    s = vgroup->MtrRollback(ctx, mtr_id);
+    if (s == FAIL) {
+      Return(s);
+    }
   }
 
   // for range
@@ -1468,7 +1470,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
         auto x_id = log->getXID();
-        if (TSMtrRollback(ctx, 0, 0, x_id) == KStatus::FAIL) return KStatus::FAIL;
+        if (TSMtrRollback(ctx, 0, 0, x_id, true) == KStatus::FAIL) return KStatus::FAIL;
         incomplete.erase(log->getXID());
         break;
       }
