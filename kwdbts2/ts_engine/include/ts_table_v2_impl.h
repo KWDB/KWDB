@@ -25,7 +25,7 @@ class TsTableV2Impl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<std::shared_ptr<TsVGroup>>& vgroups_;
-  std::atomic_bool table_dropped_;
+  std::atomic_bool table_dropped_{false};
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,

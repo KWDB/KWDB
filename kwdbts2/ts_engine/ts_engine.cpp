@@ -1069,6 +1069,7 @@ std::string GetBatchDataKey(TSTableID table_id, uint32_t table_version, uint64_t
 
 std::string GetBatchDataKey(TSTableID table_id, uint32_t table_version) {
   char buffer[64];
+  memset(buffer, 0, 64);
   std::snprintf(buffer, sizeof(buffer), "%lu-%d", table_id, table_version);
   return buffer;
 }
@@ -1115,7 +1116,6 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
   if (job_it != batch_data_jobs_.end()) {
     job_it->second.insert({key, job});
   } else {
-    batch_data_jobs_[job_id] = {};
     batch_data_jobs_[job_id].insert({key, job});
   }
   RW_LATCH_UNLOCK(&batch_jobs_lock_);
@@ -1160,6 +1160,7 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
   }
   batch_data_jobs_.erase(job_id);
   RW_LATCH_UNLOCK(&batch_jobs_lock_);
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
@@ -1576,6 +1577,7 @@ uint64_t TSEngineV2Impl::insertToSnapshotCache(TsRangeImgrationInfo& snapshot) {
     while (snapshots_.find(snapshot_id) != snapshots_.end()) {
       snapshot_id += 1;
     }
+    snapshot.id = snapshot_id;
     snapshots_[snapshot_id] = snapshot;
     snapshot_mutex_.unlock();
   }
@@ -1723,7 +1725,7 @@ KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapsho
       return KStatus::FAIL;
     }
   }
-  auto s = BatchJobFinish(ctx, ts_snapshot_info.id);
+  auto s = BatchJobFinish(ctx, snapshot_id);
   if (s == KStatus::SUCCESS) {
     snapshot_mutex_.lock();
     snapshots_.erase(snapshot_id);
@@ -1745,7 +1747,7 @@ KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapsh
       return KStatus::FAIL;
     }
   }
-  auto s = CancelBatchJob(ctx, ts_snapshot_info.id);
+  auto s = CancelBatchJob(ctx, snapshot_id);
   if (s == KStatus::SUCCESS) {
     snapshot_mutex_.lock();
     snapshots_.erase(snapshot_id);
