@@ -1560,7 +1560,7 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
 }
 
   // get max entity id
-  KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
+KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
   std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
   KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
   if (s != KStatus::SUCCESS) {

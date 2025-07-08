@@ -65,7 +65,7 @@ class TsTableSchemaManager {
   TsTableSchemaManager() = delete;
 
   TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id) {
-    table_path_ = root_path + std::to_string(tbl_id) + "/";
+    table_path_ = root_path + "/" + std::to_string(tbl_id) + "/";
     metric_schema_path_ = "metric/";
     tag_schema_path_ = "tag/";
     ver_conv_rw_lock_ = new KRWLatch(RWLATCH_ID_VERSION_CONV_RWLOCK);

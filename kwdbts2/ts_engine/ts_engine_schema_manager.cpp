@@ -38,6 +38,36 @@ TsEngineSchemaManager::~TsEngineSchemaManager() {
 }
 
 KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
+  // init table schema manager
+  std::regex num_regex("^[0-9]+$");
+  try {
+    if (!filesystem::exists(schema_root_path_)) {
+      LOG_ERROR("Schema directory does not exist: %s.", schema_root_path_.c_str());
+      return KStatus::FAIL;
+    }
+    if (!table_schema_mgrs_.empty()) {
+      LOG_WARN("Table schema managers is not empty before initialized.");
+      table_schema_mgrs_.clear();
+    }
+    for (const auto& table_entry : filesystem::directory_iterator(schema_root_path_)) {
+      if (table_entry.is_directory()) {
+        std::string dir_name = table_entry.path().filename().string();
+        if (std::regex_match(dir_name, num_regex)) {
+          auto table_id = atoi(dir_name.c_str());
+          auto tb_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
+          KStatus s = tb_schema_mgr->Init();
+          if (s != KStatus::SUCCESS) {
+            return s;
+          }
+          table_schema_mgrs_[table_id] = std::move(tb_schema_mgr);
+        }
+      }
+    }
+  } catch (const filesystem::filesystem_error& e) {
+    LOG_ERROR("Filesystem error: %s.", e.what());
+  } catch (const std::exception& e) {
+    LOG_ERROR("Error: %s.", e.what());
+  }
   return KStatus::SUCCESS;
 }
 
@@ -67,7 +97,7 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db
   }
 
   ErrorInfo err_info;
-  string table_path = schema_root_path_.string() + std::to_string(table_id) + "/";
+  string table_path = schema_root_path_.string() + "/" + std::to_string(table_id) + "/";
   MakeDirectory(table_path, err_info);
   string metric_schema_path = table_path + "metric";
   MakeDirectory(metric_schema_path, err_info);

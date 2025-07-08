@@ -66,6 +66,7 @@ KStatus MetricsVersionManager::Init() {
   }
   // Save to map cache
   AddOneVersion(max_table_version, tmp_bt);
+  return KStatus::SUCCESS;
 }
 
 void MetricsVersionManager::InsertNull(uint32_t ts_version) {
