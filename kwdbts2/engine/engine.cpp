@@ -2040,7 +2040,7 @@ bool VarColAggCalculator::isDeleted(char* delete_flags, size_t row) {
   return static_cast<char*>(delete_flags)[byte] & bit;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMax(bool base_changed, std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMax(bool& base_changed, std::shared_ptr<void> base) {
   base_changed = true;
   void* max = nullptr;
   for (int i = 0; i < count_; ++i) {
@@ -2064,7 +2064,7 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(bool base_changed, std::shared
   return ptr;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMin(bool base_changed, std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMin(bool& base_changed, std::shared_ptr<void> base) {
   base_changed = true;
   void* min = nullptr;
   for (int i = 0; i < count_; i++) {
