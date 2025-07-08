@@ -219,33 +219,31 @@ SET
   11.5
 (1 row)
 > explain select max(measure_value) from (select * from db_pipec.t_point where station_sn='d1' limit 10) p,pipec_r.station_info s where p.station_sn=s.station_sn;
-                  tree                  |         field         |         description
-----------------------------------------+-----------------------+------------------------------
-                                        | distributed           | true
-                                        | vectorized            | false
-  group                                 |                       |
-   │                                    | aggregate 0           | max(measure_value)
-   │                                    | scalar                |
-   └── render                           |                       |
-        │                               | measure_value         | measure_value
-        └── lookup-join                 |                       |
-             │                          | table                 | station_info@primary
-             │                          | type                  | inner
-             │                          | equality              | (station_sn) = (station_sn)
-             │                          | equality cols are key |
-             │                          | parallel              |
-             └── limit                  |                       |
-                  │                     | engine type           | time series
-                  │                     | count                 | 10
-                  └── synchronizer      |                       |
-                       └── limit        |                       |
-                            │           | engine type           | time series
-                            │           | count                 | 10
-                            └── ts scan |                       |
-                                        | ts-table              | t_point
-                                        | access mode           | tableTableMeta
-                                        | tag filter[0]         | station_sn = 'd1'
-(24 rows)
+                tree               |         field         |         description
+-----------------------------------+-----------------------+------------------------------
+                                   | distributed           | true
+                                   | vectorized            | false
+  group                            |                       |
+   │                               | aggregate 0           | max(measure_value)
+   │                               | scalar                |
+   └── render                      |                       |
+        │                          | measure_value         | measure_value
+        └── lookup-join            |                       |
+             │                     | table                 | station_info@primary
+             │                     | type                  | inner
+             │                     | equality              | (station_sn) = (station_sn)
+             │                     | equality cols are key |
+             │                     | parallel              |
+             └── limit             |                       |
+                  │                | engine type           | time series
+                  │                | count                 | 10
+                  └── synchronizer |                       |
+                       └── ts scan |                       |
+                                   | ts-table              | t_point
+                                   | access mode           | tableTableMeta
+                                   | limit                 | 10
+                                   | tag filter[0]         | station_sn = 'd1'
+(22 rows)
 > select max(measure_value) from (select measure_value,station_sn from db_pipec.t_point where station_sn='d1' group by sub_com_sn,measure_value,station_sn order by sub_com_sn ) p,pipec_r.station_info s where p.station_sn=s.station_sn;
   max
 --------

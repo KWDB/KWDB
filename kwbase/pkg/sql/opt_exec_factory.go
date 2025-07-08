@@ -151,6 +151,7 @@ func (ef *execFactory) ConstructTSScan(
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 	rowCount float64,
+	hardLimit uint32,
 ) (exec.Node, error) {
 	// Create a tsScanNode.
 	tsScan := ef.planner.TSScan()
@@ -208,6 +209,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.ScanAggArray = private.ScanAggs
 	tsScan.TableMetaID = private.Table
 	tsScan.estimatedRowCount = uint64(rowCount)
+	tsScan.hardLimit = hardLimit
 
 	// bind tag filter and primary filter to tsScanNode.
 	bindFilter := func(filters []tree.TypedExpr, primaryTag bool, tagIndex bool) bool {
@@ -1078,6 +1080,23 @@ func (ef *execFactory) ConstructLimit(
 				}
 			}
 		}
+	}
+	return node, nil
+}
+
+// ConstructHardLimit is part of the exec.Factory interface.
+func (ef *execFactory) ConstructHardLimit(
+	input exec.Node, limit tree.TypedExpr, meta *opt.Metadata,
+) (exec.Node, error) {
+	plan := input.(planNode)
+
+	node := &limitNode{
+		plan:               plan,
+		countExpr:          limit,
+		offsetExpr:         nil,
+		engine:             tree.EngineTypeTimeseries,
+		pushLimitToAggScan: false,
+		canOpt:             false,
 	}
 	return node, nil
 }

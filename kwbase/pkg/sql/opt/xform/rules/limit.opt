@@ -48,3 +48,12 @@
     (Scan (LimitScanPrivate $scanPrivate $limit $ordering))
     $indexJoinPrivate
 )
+
+[GenerateLimitedTSScans, Explore]
+(Limit
+    (TSScan $scanPrivate:* & (IsCanonicalTSScan $scanPrivate))
+    (Const $limit:* & (IsPositiveInt $limit))
+    $ordering:*
+)
+=>
+(GenerateLimitedTSScans $scanPrivate $limit $ordering)
