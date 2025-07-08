@@ -38,6 +38,7 @@ TsEngineSchemaManager::~TsEngineSchemaManager() {
 }
 
 KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
+  wrLock();
   // init table schema manager
   std::regex num_regex("^[0-9]+$");
   try {

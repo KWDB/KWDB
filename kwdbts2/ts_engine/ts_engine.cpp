@@ -105,8 +105,6 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   }
 
   InitExecutor(ctx, options_);
-
-  // TODO(qinlipeng): readdir to init all table schema
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
