@@ -302,4 +302,4 @@ std::shared_ptr<MMapMetricsTable> MetricsVersionManager::open(uint32_t ts_versio
   }
   return tmp_bt;
 }
-}  // namespace kwdbts
+}  //  namespace kwdbts
