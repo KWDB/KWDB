@@ -388,7 +388,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
       LOG_ERROR("Parse schema From String failed.");
       return KStatus::FAIL;
     }
-    CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
+    CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}}, false);  // no need check result.
     table = tables_cache_->Get(table_id);
     if (table == nullptr) {
       LOG_INFO("Unable to get the created table, try to get it again");
