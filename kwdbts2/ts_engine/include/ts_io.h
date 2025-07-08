@@ -27,6 +27,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
@@ -153,11 +154,17 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
  public:
   TsMMapRandomReadFile(const std::string& path, int fd, char* addr, size_t filesize)
       : TsRandomReadFile(path), fd_(fd), mmap_start_(addr), file_size_(filesize), page_size_(getpagesize()) {
-    assert(mmap_start_);
-    assert(file_size_ > 0);
+    assert(fd > 0);
+    if (filesize != 0) {
+      assert(mmap_start_ != nullptr);
+    } else {
+      assert(mmap_start_ == nullptr);
+    }
   }
   ~TsMMapRandomReadFile() {
-    munmap(mmap_start_, file_size_);
+    if (mmap_start_ != nullptr) {
+      munmap(mmap_start_, file_size_);
+    }
     close(fd_);
   }
   KStatus Prefetch(size_t offset, size_t n) override;
@@ -175,10 +182,20 @@ class TsMMapSequentialReadFile : public TsSequentialReadFile {
  public:
   TsMMapSequentialReadFile(const std::string& path, int fd, char* addr, size_t filesize)
       : TsSequentialReadFile(path, filesize), fd_(fd), mmap_start_(addr), page_size_(getpagesize()) {
-    assert(mmap_start_);
-    assert(file_size_ > 0);
+    assert(fd > 0);
+    if (filesize != 0) {
+      assert(mmap_start_ != nullptr);
+    } else {
+      assert(mmap_start_ == nullptr);
+    }
   }
   KStatus Read(size_t n, TSSlice* slice, char* buf) override;
+  ~TsMMapSequentialReadFile() {
+    if (mmap_start_ != nullptr) {
+      munmap(mmap_start_, file_size_);
+    }
+    close(fd_);
+  }
 };
 
 class TsIOEnv {
