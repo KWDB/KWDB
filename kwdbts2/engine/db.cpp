@@ -1396,7 +1396,7 @@ TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id) {
   }
   LOG_DEBUG("count table[%lu] start", table_id);
   std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table);
+  s = engine->GetTsTable(ctx_p, table_id, table, false);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("The current node does not have the table[%lu], skip count", table_id);
     return kTsSuccess;

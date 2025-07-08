@@ -95,7 +95,7 @@ TSEngineImpl::~TSEngineImpl() {
 }
 
 KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-                                    std::vector<RangeGroup> ranges) {
+                                    std::vector<RangeGroup> ranges, bool not_get_table) {
   LOG_INFO("Create TsTable %lu begin.", table_id);
   KStatus s;
 
@@ -117,18 +117,22 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   case WALMode::ON:
   case WALMode::SYNC:
   {
-    s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
-    if (s == FAIL) {
-      return s;
+    if (not_get_table) {
+      s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
+      if (s == FAIL) {
+        return s;
+      }
     }
     table = std::make_shared<LoggedTsTable>(ctx, options_.db_path, table_id, &options_);
   }
     break;
   case WALMode::BYRL:
   {
-    s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
-    if (s == FAIL) {
-      return s;
+    if (not_get_table) {
+      s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
+      if (s == FAIL) {
+        return s;
+      }
     }
     LOG_INFO("create RaftLoggedTsTable %lu", table_id);
     table = std::make_shared<RaftLoggedTsTable>(ctx, options_.db_path, table_id);

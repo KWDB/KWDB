@@ -582,7 +582,8 @@ class TsTable {
 
   static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
-                                                          uint64_t partition_interval, ErrorInfo& err_info);
+                                                          uint64_t partition_interval, ErrorInfo& err_info,
+                                                          uint64_t hash_num = 2000);
 
   static MMapRootTableManager* OpenMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                         ErrorInfo& err_info);

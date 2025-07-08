@@ -86,8 +86,9 @@ struct TSTableFileMetadata {
   // entity hash range
   uint64_t begin_hash;
   uint64_t end_hash;
+  uint64_t hash_num;
 
-  char user_defined[123]; ///< reserved for user-defined meta data information.
+  char user_defined[115]; ///< reserved for user-defined meta data information.
 };
 
 static_assert(sizeof(TSTableFileMetadata) == 664, "wrong size of TSTableFileMetadata, please check compatibility.");
