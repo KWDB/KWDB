@@ -553,7 +553,10 @@ func (h *tsTxnHeartbeater) startHeartbeatLoopLocked(ctx context.Context) error {
 	hbCtx := h.AnnotateCtx(context.Background())
 	hbCtx = opentracing.ContextWithSpan(hbCtx, opentracing.SpanFromContext(ctx))
 	hbCtx, h.mu.loopCancel = context.WithCancel(hbCtx)
-
+	_, err := h.heartbeatTsTxn(ctx)
+	if err != nil {
+		return err
+	}
 	return h.stopper.RunAsyncTask(hbCtx, "kv.TsSender: ts heartbeat loop", h.heartbeatLoop)
 }
 
