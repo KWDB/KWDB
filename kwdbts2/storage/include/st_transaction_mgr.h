@@ -106,6 +106,16 @@ class TSxMgr {
     ts_trans_ids_.insert(std::make_pair(uuid, mini_trans_id));
   }
 
+  bool IsExplict(uint64_t  mini_trans_id) {
+    std::shared_lock<std::shared_mutex> lock(map_mutex_);
+    for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ++it) {
+      if (it->second == mini_trans_id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void eraseMtrID(const uint64_t mini_trans_id) {
     for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ) {
       if (it->second == mini_trans_id) {

@@ -1521,6 +1521,9 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   for (auto& it : incomplete) {
     TS_LSN mtr_id = it.first;
     auto log_entry = it.second;
+    if (vgroup_mtr->IsExplict(mtr_id)) {
+      break;
+    }
     uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
       auto vgroup = GetVGroupByID(ctx, 1);

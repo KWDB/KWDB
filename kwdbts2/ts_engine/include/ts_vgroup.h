@@ -133,6 +133,10 @@ class TsVGroup {
     return tsx_manager_->insertMtrID(ts_trans_id, uuid);
   }
 
+  bool IsExplict(uint64_t mini_trans_id) {
+    return tsx_manager_->IsExplict(mini_trans_id);
+  }
+
   KStatus Compact();
 
 
