@@ -11,6 +11,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include "gtest/gtest.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
@@ -44,7 +45,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
   }
 
   TestEngineSnapshotImgrate() {
-    system(("rm -rf " + db_path + "/*").c_str());
+    [[maybe_unused]] int ok = system(("rm -rf " + db_path + "/*").c_str());
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     opts_.wal_level = 0;
@@ -78,7 +79,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
       delete ts_engine_desc_;
       ts_engine_desc_ = nullptr;
     }
-    system(("rm -rf " + db_path + "/*").c_str());
+    [[maybe_unused]] int ok = system(("rm -rf " + db_path + "/*").c_str());
   }
   
   void InsertData(TSEngineV2Impl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000) {
