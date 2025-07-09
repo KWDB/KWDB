@@ -901,14 +901,8 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			allNodePayloadInfos: [][]*sqlbase.SinglePayloadInfo{payInfo},
 		}
 		newPlanNode = tsIns
-	case compress, deleteExpiredData, autonomy, vacuum, count:
+	case compress, deleteExpiredData, autonomy, count:
 		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
-		if d.Type == vacuum {
-			if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
-				log.Infof(ctx, "%s job skip, jobID: %d", opType, *sw.job.ID())
-				return nil
-			}
-		}
 		var desc []sqlbase.TableDescriptor
 		var allDesc []sqlbase.DescriptorProto
 		nodeList, err := api.GetHealthyNodeIDs(ctx)
@@ -927,7 +921,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		for _, table := range allDesc {
 			tableDesc, ok := table.(*sqlbase.TableDescriptor)
 			// can not compress table if table has mutations
-			if d.Type == compress || d.Type == vacuum {
+			if d.Type == compress {
 				if ok && tableDesc.IsTSTable() && tableDesc.State == sqlbase.TableDescriptor_PUBLIC && len(tableDesc.Mutations) == 0 {
 					desc = append(desc, *tableDesc)
 				}
@@ -941,6 +935,18 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			return nil
 		}
 		newPlanNode = &operateDataNode{d.Type, nodeList, desc}
+	case vacuum:
+		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
+		if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
+			log.Infof(ctx, "%s job skip, jobID: %d", opType, *sw.job.ID())
+			return nil
+		}
+		nodeList, err := api.GetHealthyNodeIDs(ctx)
+		if err != nil {
+			return err
+		}
+		newPlanNode = &operateDataNode{d.Type, nodeList, nil}
+
 	default:
 		return pgerror.Newf(pgcode.FeatureNotSupported, "unsupported feature for now: %s", opType)
 	}
