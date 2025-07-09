@@ -80,6 +80,7 @@ var _ kv.Sender = &TsSender{}
 func (s *TsSender) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	var isTsInsert bool
 	resp := &roachpb.BatchResponse{}
 	if s.isSingleNode {
 		rangeGroupID := uint64(1)
@@ -177,18 +178,20 @@ func (s *TsSender) Send(
 			r := ru.GetInner()
 			switch r.(type) {
 			case *roachpb.TsPutTagRequest,
-				*roachpb.TsDeleteRequest,
+				*roachpb.TsRowPutRequest:
+				isTsInsert = true
+				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+			case *roachpb.TsDeleteRequest,
 				*roachpb.TsDeleteEntityRequest,
 				*roachpb.TsDeleteMultiEntitiesDataRequest,
-				*roachpb.TsTagUpdateRequest,
-				*roachpb.TsRowPutRequest:
+				*roachpb.TsTagUpdateRequest:
 				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 			}
 		}
 	}
 
 	setConsistency()
-	if !TsTxnAtomicityEnabled.Get(&s.setting.SV) {
+	if !TsTxnAtomicityEnabled.Get(&s.setting.SV) || !isTsInsert {
 		return s.wrapped.Send(ctx, ba)
 	}
 	return s.interceptorStack[0].SendLocked(ctx, ba)

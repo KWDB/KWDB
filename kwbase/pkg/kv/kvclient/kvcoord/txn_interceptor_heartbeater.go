@@ -27,9 +27,6 @@ package kvcoord
 import (
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
-	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"sync"
 	"time"
 
@@ -37,10 +34,13 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -448,9 +448,11 @@ var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
 	false,
 )
 
+// TxnSignal is used to notify the heartbeater about transaction status.
+// If StopHB is true and the ID matches, the heartbeater should stop.
 type TxnSignal struct {
-	ID     uuid.UUID // 或 roachpb.TsTransaction.ID 的类型
-	StopHB bool      // true 表示要停止心跳
+	ID     uuid.UUID // Transaction ID for matching
+	StopHB bool      // True if the heartbeat should stop
 }
 
 type tsTxnHeartbeater struct {
@@ -477,6 +479,16 @@ type tsTxnHeartbeater struct {
 // setWrapped implements the txnInterceptor interface.
 func (h *tsTxnHeartbeater) setWrapped(wrapped lockedSender) { h.wrapped = wrapped }
 
+// ErrorOrPanicOnSpecificNode checks if the given node and phase match any
+// configured test scenario. If matched, it either returns an error or panics,
+// based on the scenario's errType.
+//
+// nodeID: ID of the node executing the transaction.
+// setting: Cluster settings containing the scenario config.
+// phase: Transaction phase to match.
+//
+// - errType 1: return a pg error
+// - errType 2: trigger a panic
 func ErrorOrPanicOnSpecificNode(nodeID int, setting *cluster.Settings, phase int) error {
 	testScenario := TestTxnScenario.Get(&setting.SV)
 	res, err := ExtractTxnTestScenario(testScenario)

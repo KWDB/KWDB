@@ -47,20 +47,29 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 	true,
 )
 
+// TestTxnScenario is a cluster setting that specifies test transaction scenarios.
+// The format is a semicolon-separated list of phase:nodeID:errType, e.g., "8:2:1;6:1:1".
 var TestTxnScenario = settings.RegisterStringSetting(
 	"sql.test_txn.scenario",
 	"txn test scenario",
 	"0:0:0",
 )
 
-type txnTestScenario struct {
+// TxnTestScenario represents a simulated transaction error scenario.
+// `phase` indicates the phase of the transaction (e.g., before commit, after write, etc).
+// `nodeID` indicates the node where the error should be simulated.
+// `errType` specifies the type of error to inject(including error and panic).
+type TxnTestScenario struct {
 	phase   int
 	nodeID  int
 	errType int
 }
 
-func ExtractTxnTestScenario(s string) ([]txnTestScenario, error) {
-	res := make([]txnTestScenario, 0)
+// ExtractTxnTestScenario parses the input string into a list of txnTestScenario structs.
+// The input string should be in the format: "phase:nodeID:errType;..."
+// Returns a slice of txnTestScenario or an error if parsing fails.
+func ExtractTxnTestScenario(s string) ([]TxnTestScenario, error) {
+	res := make([]TxnTestScenario, 0)
 	scenarios := strings.Split(s, ";")
 	for _, val := range scenarios {
 		tmp := strings.Split(val, ":")
@@ -79,7 +88,7 @@ func ExtractTxnTestScenario(s string) ([]txnTestScenario, error) {
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, txnTestScenario{
+		res = append(res, TxnTestScenario{
 			phase,
 			nodeID,
 			errType,
@@ -615,6 +624,7 @@ func (tc *tsTxnCommitter) SendLocked(
 			return nil, roachpb.NewError(err)
 		}
 		if rollbackErr != nil {
+			log.Errorf(ctx, "txn %v rollback failed, will be retried in background\n", record.ID)
 			return nil, rollbackErr
 		}
 		record.Status = roachpb.ABORTED
@@ -642,13 +652,15 @@ func (tc *tsTxnCommitter) SendLocked(
 		return nil, roachpb.NewError(err)
 	}
 	if pErr != nil {
-		return nil, pErr
+		log.Errorf(ctx, "txn %v commit failed, will be retried in background\n", record.ID)
+		return br, nil
 	}
 	record.Status = roachpb.COMMITTED
 	record.LastHeartbeat = tc.clock.Now()
 	log.VEventf(ctx, 2, "txn %v commit success and update ts txn record\n", record.ID)
 	if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
-		return nil, roachpb.NewError(err)
+		log.Errorf(ctx, "txn %v update txn record to commit failed, will be retried in background\n", record.ID)
+		return br, nil
 	}
 	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 6); err != nil {
 		return nil, roachpb.NewError(err)

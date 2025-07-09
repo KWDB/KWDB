@@ -27,10 +27,10 @@ package kvserver
 import (
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/closedts/ctpb"
