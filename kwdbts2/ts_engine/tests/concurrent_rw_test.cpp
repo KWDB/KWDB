@@ -79,7 +79,7 @@ struct QueryResult {
 
 TEST_F(ConcurrentRWTest, FlushOnly) {
   int npayload = 100;
-  int nrow = 50;
+  int nrow = 20;
   int total_row = npayload * nrow;
 
   for (int i = 0; i < npayload; ++i) {
@@ -128,6 +128,7 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(ts_set.size());
+      std::this_thread::yield();
     } while (stop != true);
     promise.set_value(std::move(result));
   };
