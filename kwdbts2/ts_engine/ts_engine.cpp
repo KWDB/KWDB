@@ -1076,13 +1076,13 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
     return s;
   }
-  std::queue<std::pair<uint32_t, uint32_t>> vgroup_entity_ids;
-  s = ts_table->GetEntityIdsByHashSpan(ctx, {begin_hash, end_hash}, &vgroup_entity_ids);
+  vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx, {begin_hash, end_hash}, entity_indexes);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot get entity_ids by hash span[%lu, %lu]", begin_hash, end_hash);
     return s;
   }
-  if (vgroup_entity_ids.empty()) {
+  if (entity_indexes.empty()) {
     *row_num = 0;
     return KStatus::SUCCESS;
   }
@@ -1097,7 +1097,7 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
     }
   }
   std::shared_ptr<TsBatchDataWorker> worker = std::make_shared<TsReadBatchDataWorker>(this, table_id, table_version,
-                                                                                      ts_span, job_id, vgroup_entity_ids);
+                                                                                      ts_span, job_id, entity_indexes);
   s = worker->Init(ctx);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Failed to init read batch data worker.");

@@ -31,6 +31,13 @@ namespace kwdbts {
 
 class TsEntitySegmentBuilder;
 
+enum class TsExclusiveStatus{
+  NONE = 0,
+  COMPACTE,
+  WRITE_BATCH,
+  VACUUM,
+};
+
 /**
  * table group used for organizing a series of table(super table of device).
  * in current time vgroup is same as database
@@ -74,6 +81,8 @@ class TsVGroup {
 
   // Flushing Mutex
   std::mutex flush_mutex_;
+
+  std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
 
  public:
   TsVGroup() = delete;
@@ -126,6 +135,18 @@ class TsVGroup {
     // Flush imm segment.
     KStatus s = FlushImmSegment(imm_segment);
     return s;
+  }
+
+  void ResetTsExclusiveStatus() {
+    comp_vacuum_status_.store(TsExclusiveStatus::NONE);
+  }
+
+  bool TrySetTsExclusiveStatus(TsExclusiveStatus desired) {
+    TsExclusiveStatus expected = TsExclusiveStatus::NONE;
+    if (comp_vacuum_status_.compare_exchange_strong(expected, desired)) {
+      return true;
+    }
+    return false;
   }
 
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }

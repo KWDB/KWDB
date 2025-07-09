@@ -366,6 +366,10 @@ void TsVGroup::closeCompactThread() {
 }
 
 KStatus TsVGroup::Compact() {
+  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACTE)) {
+    sleep(1);
+  }
+  Defer defer([this]() { ResetTsExclusiveStatus(); });
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 
@@ -873,6 +877,9 @@ KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice paylo
 
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                                  timestamp64 ts, DATATYPE ts_col_type, TSSlice data) {
+  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::WRITE_BATCH)) {
+    sleep(1);
+  }
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -893,7 +900,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
   {
     std::shared_lock lock{builders_mutex_};
     auto it = write_batch_segment_builders_.find(partition_id);
-    if (it != write_batch_segment_builders_.end()) {
+    if (it == write_batch_segment_builders_.end()) {
       auto entity_segment = partition->GetEntitySegment();
 
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
@@ -901,12 +908,17 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
       builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), partition_id,
                                                          entity_segment, new_entity_header_num);
+      KStatus s = builder->Open();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Open entity segment builder failed.");
+        return s;
+      }
       write_batch_segment_builders_[partition_id] = builder;
     } else {
       builder = it->second;
     }
   }
-  builder->WriteBatch(entity_id, table_version, data);
+  return builder->WriteBatch(entity_id, table_version, data);
 }
 
 KStatus TsVGroup::FinishWriteBatchData() {
@@ -922,6 +934,7 @@ KStatus TsVGroup::FinishWriteBatchData() {
   }
   version_manager_->ApplyUpdate(&update);
   write_batch_segment_builders_.clear();
+  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 

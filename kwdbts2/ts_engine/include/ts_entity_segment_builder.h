@@ -198,7 +198,7 @@ class TsEntitySegmentBuilder {
 
   TsEntityItem cur_entity_item_;
 
-  std::map<uint32_t, uint64_t> entity_cur_block_id_;
+  std::map<uint32_t, TsEntityItem> entity_items_;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,
