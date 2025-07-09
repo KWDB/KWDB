@@ -10,11 +10,13 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
@@ -26,11 +28,11 @@
 #include "kwdb_type.h"
 #include "mmap/mmap_entity_block_meta.h"
 #include "settings.h"
+#include "ts_bitmap.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_segment.h"
-#include "ts_time_partition.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -40,6 +42,12 @@ using MemSegList = std::list<std::shared_ptr<TsMemSegment>>;
 
 class TsVGroupVersion;
 class TsEntitySegment;
+
+enum class PartitionStatus : uint32_t {
+  kNone = 0,
+  kVacuuming,
+};
+
 class TsPartitionVersion {
   friend class TsVersionManager;
   friend class TsVGroupVersion;
@@ -104,9 +112,9 @@ class TsPartitionVersion {
                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
                        bool skip_last = false, bool skip_entity = false) const;
 
-  bool TrySetBusy();
+  bool TrySetBusy() const;
 
-  void ResetStatus();
+  void ResetStatus() const;
 };
 
 class TsVGroupVersion {

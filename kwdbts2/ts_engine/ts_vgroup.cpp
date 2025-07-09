@@ -31,6 +31,7 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "sys_utils.h"
+#include "ts_block.h"
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_filename.h"
@@ -369,30 +370,30 @@ KStatus TsVGroup::Compact() {
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 
-  // Prioritize the latest partition
-  using PartitionPtr = std::shared_ptr<const TsPartitionVersion>;
-  std::sort(partitions.begin(), partitions.end(), [](const PartitionPtr& left, const PartitionPtr& right) {
-    return left->GetStartTime() > right->GetStartTime();
-  });
-
   // Compact partitions
   TsVersionUpdate update;
   std::atomic_bool success{true};
-  for (size_t idx = 0; idx < partitions.size(); ++idx) {
-    const auto& cur_partition = partitions[idx];
+  for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
+    const auto& cur_partition = *it;
 
     // 1. Get all the last segments that need to be compacted.
     auto last_segments = cur_partition->GetCompactLastSegments();
     auto entity_segment = cur_partition->GetEntitySegment();
 
     auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
-    uint64_t new_entity_header_num = version_manager_->NewFileNumber();
+
+    std::list<std::shared_ptr<TsBlockSpan>> all_lastseg_spans;
+    for (const auto& last_segment : last_segments) {
+      std::list<std::shared_ptr<TsBlockSpan>> spans;
+      last_segment->GetBlockSpans(spans, schema_mgr_);
+      all_lastseg_spans.splice(all_lastseg_spans.end(), std::move(spans));
+    }
 
     // 2. Build the column block.
     {
       TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                     cur_partition->GetPartitionIdentifier(), entity_segment, new_entity_header_num,
-                                     last_segments);
+                                     cur_partition->GetPartitionIdentifier(), entity_segment,
+                                     std::move(all_lastseg_spans));
       KStatus s = builder.Open();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
@@ -1205,16 +1206,11 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip)
 
 KStatus TsVGroup::Vacuum() {
   auto current = version_manager_->Current();
-  auto partitions = current->GetPartitions();
+  auto all_partitions = current->GetPartitions();
 
-  using PartitionPtr = std::shared_ptr<const TsPartitionVersion>;
-  std::sort(partitions.begin(), partitions.end(), [](const PartitionPtr& left, const PartitionPtr& right) {
-    return left->GetStartTime() < right->GetStartTime();
-  });
-
-  for (const auto& partition : partitions) {
-    auto non_const_partition = std::const_pointer_cast<TsPartitionVersion>(partition);
-    if (!non_const_partition->TrySetBusy()) {
+  for (auto it = all_partitions.rbegin(); it != all_partitions.rend(); ++it) {
+    const auto& partition = *it;
+    if (!partition->TrySetBusy()) {
       continue;
     }
     // TODO(zqh): skip this partition if there is no data been deleted
@@ -1259,7 +1255,7 @@ KStatus TsVGroup::Vacuum() {
 
     }
 
-    non_const_partition->ResetStatus();
+    partition->ResetStatus();
   }
 
   return KStatus::SUCCESS;

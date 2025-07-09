@@ -543,7 +543,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   return KStatus::SUCCESS;
 }
 
-bool TsPartitionVersion::TrySetBusy() {
+bool TsPartitionVersion::TrySetBusy() const {
   bool expected = false;
   if (is_compacting_vacuuming->compare_exchange_strong(expected, true)) {
     return true;
@@ -551,7 +551,7 @@ bool TsPartitionVersion::TrySetBusy() {
   return false;
 }
 
-void TsPartitionVersion::ResetStatus() {
+void TsPartitionVersion::ResetStatus() const {
   is_compacting_vacuuming->store(false);
 }
 

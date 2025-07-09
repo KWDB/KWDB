@@ -498,17 +498,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
   bool is_finished = false;
   std::unique_ptr<TsLastSegmentBuilder> builder = nullptr;
   // 1. Traverse the last segment data and write the data to the block segment
-  std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;
-  block_spans.resize(last_segments_.size());
-  for (int i = 0; i < last_segments_.size(); ++i) {
-    s = last_segments_[i]->GetBlockSpans(block_spans[i], schema_manager_);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block spans failed.")
-      return s;
-    }
-  }
-  TsBlockSpanSortedIterator iter(block_spans, EngineOptions::g_dedup_rule);
-  block_spans.clear();
+  TsBlockSpanSortedIterator iter(block_spans_, EngineOptions::g_dedup_rule);
   iter.Init();
   TsEntityKey entity_key;
   std::vector<std::shared_ptr<TsEntityBlockBuilder>> cached_blocks;

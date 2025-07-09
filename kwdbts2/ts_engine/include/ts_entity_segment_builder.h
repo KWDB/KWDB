@@ -186,7 +186,7 @@ class TsEntitySegmentBuilder {
 
   PartitionIdentifier partition_id_;
   std::shared_ptr<TsEntitySegment> cur_entity_segment_;
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
+  std::list<std::shared_ptr<TsBlockSpan>> block_spans_;
 
   std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
@@ -203,26 +203,27 @@ class TsEntitySegmentBuilder {
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,
                                   TsVersionManager* version_manager, PartitionIdentifier partition_id,
-                                  std::shared_ptr<TsEntitySegment> entity_segment, uint64_t entity_header_file_num,
-                                  std::vector<std::shared_ptr<TsLastSegment>> last_segments)
+                                  std::shared_ptr<TsEntitySegment> entity_segment,
+                                  std::list<std::shared_ptr<TsBlockSpan>> block_spans)
       : root_path_(root_path),
         schema_manager_(schema_manager),
         version_manager_(version_manager),
         partition_id_(partition_id),
         cur_entity_segment_(entity_segment),
-        last_segments_(last_segments) {
+        block_spans_(std::move(block_spans)) {
+    auto entity_header_file_num = version_manager_->NewFileNumber();
     // entity header file
-    std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_header_file_num);
+    std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_header_file_num);
     entity_item_builder_ =
         std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
     // block header file
-    std::string block_header_file_path = root_path + "/" + block_item_file_name;
+    std::string block_header_file_path = root_path_ / block_item_file_name;
     block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
     // block data file
-    std::string block_file_path = root_path + "/" + block_data_file_name;
+    std::string block_file_path = root_path_ / block_data_file_name;
     block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
     // block agg file
-    std::string agg_file_path = root_path + "/" + block_agg_file_name;
+    std::string agg_file_path = root_path_ / block_agg_file_name;
     agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
   }
 
