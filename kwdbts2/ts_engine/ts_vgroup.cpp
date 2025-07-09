@@ -494,7 +494,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
         // we will record this updation in update and persist it to disk later.
         if (partition->IsMemoryOnly() && new_created_partitions.find(partition) == new_created_partitions.end()) {
-          LOG_INFO("partition[%ld] is memory only, skip compact.", partition->GetStartTime());
           update.PartitionDirCreated(partition->GetPartitionIdentifier());
           new_created_partitions.insert(partition);
         }

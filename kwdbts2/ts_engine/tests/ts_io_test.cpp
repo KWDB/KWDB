@@ -193,7 +193,8 @@ TEST(MMapIOV2, OpenZeroSizeFile) {
   std::string filename = "zero_size_file";
   std::filesystem::remove(filename);
   std::string cmd = "touch " + filename;
-  std::system(cmd.c_str());
+  int ok = std::system(cmd.c_str());
+  ASSERT_EQ(ok, 0);
 
   {
     std::unique_ptr<TsRandomReadFile> rfile;
