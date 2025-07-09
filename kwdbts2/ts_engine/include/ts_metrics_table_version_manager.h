@@ -15,27 +15,37 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
 #include "mmap/mmap_metrics_table.h"
 
 namespace kwdbts {
 
-class MetricsTableVersionManager {
+class MetricsVersionManager {
+  std::string table_path_;
+  std::string tbl_sub_path_;
+  uint64_t table_id_{0};
+  uint32_t cur_metric_version_{0};
+  // metric schema of current version
+  std::shared_ptr<MMapMetricsTable> cur_metric_table_;
+  // schemas of all versions
+  std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_tables_;
+  uint64_t partition_interval_;
+  KRWLatch schema_rw_lock_;
+
  public:
-  MetricsTableVersionManager(const std::string& db_path, const std::string& sub_path, uint64_t table_id)
-      : db_path_(db_path),
-        tbl_sub_path_(sub_path),
-        table_id_(table_id),
-        schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
+  MetricsVersionManager(const std::string& table_path, const std::string& sub_path, uint64_t table_id) :
+                            table_path_(table_path), tbl_sub_path_(sub_path), table_id_(table_id),
+                            schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
 
-  ~MetricsTableVersionManager();
+  ~MetricsVersionManager();
 
-  void InitVersions(uint32_t ts_version);
+  KStatus Init();
 
-  KStatus CreateMetricsTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id, uint32_t ts_version,
-                             int64_t life_time, ErrorInfo& err_info);
+  void InsertNull(uint32_t ts_version);
 
-  void AddMetricsTable(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);
+  KStatus CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id, uint32_t ts_version,
+                      int64_t life_time, ErrorInfo& err_info);
+
+  void AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);
 
   std::shared_ptr<MMapMetricsTable> GetMetricsTable(uint32_t ts_version, bool lock = true);
 
@@ -55,12 +65,6 @@ class MetricsTableVersionManager {
 
   uint64_t GetDbID() const;
 
-  int rdLock();
-
-  int wrLock();
-
-  int unLock();
-
   void Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info);
 
   KStatus SetDropped();
@@ -72,19 +76,13 @@ class MetricsTableVersionManager {
   KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
 
  private:
-  std::shared_ptr<MMapMetricsTable> open(uint32_t ts_version, ErrorInfo& err_info);
+  int rdLock();
 
-  std::string db_path_;
-  std::string tbl_sub_path_;
-  uint64_t table_id_{0};
-  uint32_t cur_metric_version_{0};
-  // metric schema of current version
-  std::shared_ptr<MMapMetricsTable> cur_metric_table_;
-  // schemas of all versions
-  std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_tables_;
-  // Partition interval.
-  uint64_t partition_interval_;
-  KRWLatch schema_rw_lock_;
+  int wrLock();
+
+  int unLock();
+
+  std::shared_ptr<MMapMetricsTable> open(uint32_t ts_version, ErrorInfo& err_info);
 };
 
 }  // namespace kwdbts

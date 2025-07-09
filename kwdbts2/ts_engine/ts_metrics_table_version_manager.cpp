@@ -10,17 +10,68 @@
 // See the Mulan PSL v2 for more details.
 
 #include "include/ts_metrics_table_version_manager.h"
+#include <dirent.h>
 
 namespace kwdbts {
 inline string IdToSchemaPath(const KTableKey& table_id, uint32_t ts_version) {
   return nameToEntityBigTablePath(std::to_string(table_id), s_bt + "_" + std::to_string(ts_version));
 }
 
-MetricsTableVersionManager::~MetricsTableVersionManager() {
+impl_latch_virtual_func(MetricsVersionManager, &schema_rw_lock_)
+
+MetricsVersionManager::~MetricsVersionManager() {
   metric_tables_.clear();
 }
 
-void MetricsTableVersionManager::InitVersions(uint32_t ts_version) {
+KStatus MetricsVersionManager::Init() {
+  uint32_t max_table_version = 0;
+  string real_path = table_path_ + tbl_sub_path_;
+  // load all versions
+  DIR* dir_ptr = opendir(real_path.c_str());
+  if (dir_ptr) {
+    string prefix = std::to_string(table_id_) + s_bt + '_';
+    size_t prefix_len = prefix.length();
+    struct dirent* entry;
+    while ((entry = readdir(dir_ptr)) != nullptr) {
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0
+          || entry->d_name[0] == '_') {
+        continue;
+          }
+      std::string full_path = real_path + entry->d_name;
+      struct stat file_stat{};
+      if (stat(full_path.c_str(), &file_stat) != 0) {
+        LOG_ERROR("stat[%s] failed", full_path.c_str());
+        closedir(dir_ptr);
+        return FAIL;
+      }
+      if (S_ISREG(file_stat.st_mode) &&
+          strncmp(entry->d_name, prefix.c_str(), prefix_len) == 0) {
+        uint32_t ts_version = std::stoi(entry->d_name + prefix_len);
+        InsertNull(ts_version);
+        if (ts_version > max_table_version) {
+          max_table_version = ts_version;
+        }
+      }
+    }
+    closedir(dir_ptr);
+  }
+  // Open only the schema of the latest version.
+  auto tmp_bt = std::make_shared<MMapMetricsTable>();
+  string bt_path = IdToSchemaPath(table_id_, max_table_version);
+  ErrorInfo err_info;
+  tmp_bt->open(bt_path, table_path_, tbl_sub_path_, MMAP_OPEN_NORECURSIVE, err_info);
+  if (err_info.errcode < 0) {
+    LOG_ERROR("schema[%s] open error : %s", bt_path.c_str(), err_info.errmsg.c_str());
+    return FAIL;
+  }
+  // Save to map cache
+  AddOneVersion(max_table_version, tmp_bt);
+  return KStatus::SUCCESS;
+}
+
+void MetricsVersionManager::InsertNull(uint32_t ts_version) {
+  wrLock();
+  Defer defer([&]() { unLock(); });
   auto iter = metric_tables_.find(ts_version);
   if (iter != metric_tables_.end()) {
     iter->second.reset();
@@ -29,13 +80,14 @@ void MetricsTableVersionManager::InitVersions(uint32_t ts_version) {
   metric_tables_.insert({ts_version, nullptr});
 }
 
-KStatus MetricsTableVersionManager::CreateMetricsTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id,
+KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id,
                                                       uint32_t ts_version, int64_t lifetime, ErrorInfo& err_info) {
-  // Create a new version schema
+  wrLock();
+  Defer defer([&]() { unLock(); });
   string bt_path = IdToSchemaPath(table_id_, ts_version);
   int encoding = ENTITY_TABLE | NO_DEFAULT_TABLE;
   auto tmp_bt = std::make_shared<MMapMetricsTable>();
-  if (tmp_bt->open(bt_path, db_path_, tbl_sub_path_, MMAP_CREAT_EXCL, err_info) >= 0
+  if (tmp_bt->open(bt_path, table_path_, tbl_sub_path_, MMAP_CREAT_EXCL, err_info) >= 0
       || err_info.errcode == KWECORR) {
     tmp_bt->create(meta, ts_version, tbl_sub_path_, partition_interval_, encoding, err_info, false);
   }
@@ -76,7 +128,9 @@ KStatus MetricsTableVersionManager::CreateMetricsTable(kwdbContext_p ctx, std::v
   return KStatus::SUCCESS;
 }
 
-void MetricsTableVersionManager::AddMetricsTable(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table) {
+void MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table) {
+  wrLock();
+  Defer defer([&]() { unLock(); });
   auto iter = metric_tables_.find(ts_version);
   if (iter != metric_tables_.end()) {
     iter->second.reset();
@@ -90,7 +144,7 @@ void MetricsTableVersionManager::AddMetricsTable(uint32_t ts_version, std::share
   }
 }
 
-std::shared_ptr<MMapMetricsTable> MetricsTableVersionManager::GetMetricsTable(uint32_t ts_version, bool lock) {
+std::shared_ptr<MMapMetricsTable> MetricsVersionManager::GetMetricsTable(uint32_t ts_version, bool lock) {
   bool need_open = false;
   // Try to get the root table using a read lock
   {
@@ -129,25 +183,27 @@ std::shared_ptr<MMapMetricsTable> MetricsTableVersionManager::GetMetricsTable(ui
   return nullptr;
 }
 
-void MetricsTableVersionManager::GetAllVersions(std::vector<uint32_t> *table_versions) {
+void MetricsVersionManager::GetAllVersions(std::vector<uint32_t> *table_versions) {
+  rdLock();
+  Defer defer([&]() { unLock(); });
   for (auto& version : metric_tables_) {
     table_versions->push_back(version.first);
   }
 }
 
-LifeTime MetricsTableVersionManager::GetLifeTime() const {
+LifeTime MetricsVersionManager::GetLifeTime() const {
   return cur_metric_table_->GetLifeTime();
 }
 
-void MetricsTableVersionManager::SetLifeTime(LifeTime life_time) const {
+void MetricsVersionManager::SetLifeTime(LifeTime life_time) const {
   cur_metric_table_->SetLifeTime(life_time);
 }
 
-uint64_t MetricsTableVersionManager::GetPartitionInterval() const {
+uint64_t MetricsVersionManager::GetPartitionInterval() const {
   return partition_interval_;
 }
 
-uint64_t MetricsTableVersionManager::GetDbID() const {
+uint64_t MetricsVersionManager::GetDbID() const {
   if (cur_metric_table_ && cur_metric_table_->metaData()) {
     return cur_metric_table_->metaData()->db_id;
   } else {
@@ -156,9 +212,9 @@ uint64_t MetricsTableVersionManager::GetDbID() const {
   }
 }
 
-impl_latch_virtual_func(MetricsTableVersionManager, &schema_rw_lock_)
-
-void MetricsTableVersionManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
+void MetricsVersionManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
+  wrLock();
+  Defer defer([&]() { unLock(); });
   for (auto& root_table : metric_tables_) {
     if (root_table.second) {
       root_table.second->Sync(check_lsn, err_info);
@@ -166,7 +222,7 @@ void MetricsTableVersionManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo
   }
 }
 
-KStatus MetricsTableVersionManager::SetDropped() {
+KStatus MetricsVersionManager::SetDropped() {
   wrLock();
   Defer defer([&]() { unLock(); });
   std::vector<std::shared_ptr<MMapMetricsTable>> completed_tables;
@@ -190,19 +246,19 @@ KStatus MetricsTableVersionManager::SetDropped() {
   return SUCCESS;
 }
 
-bool MetricsTableVersionManager::IsDropped() {
+bool MetricsVersionManager::IsDropped() {
   rdLock();
   Defer defer([&]() { unLock(); });
   return cur_metric_table_->isDropped();
 }
 
-KStatus MetricsTableVersionManager::RemoveAll() {
+KStatus MetricsVersionManager::RemoveAll() {
   wrLock();
   Defer defer([&]() { unLock(); });
   // Remove all root tables
   for (auto& root_table : metric_tables_) {
     if (!root_table.second) {
-      Remove(db_path_ + IdToSchemaPath(table_id_, root_table.first));
+      Remove(table_path_ + IdToSchemaPath(table_id_, root_table.first));
     } else {
       root_table.second->remove();
     }
@@ -211,7 +267,9 @@ KStatus MetricsTableVersionManager::RemoveAll() {
   return SUCCESS;
 }
 
-KStatus MetricsTableVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
+KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
+  wrLock();
+  Defer defer([&]() { unLock(); });
   if (cur_metric_version_ == old_version) {
     return SUCCESS;
   }
@@ -234,14 +292,14 @@ KStatus MetricsTableVersionManager::UndoAlterCol(uint32_t old_version, uint32_t 
   return SUCCESS;
 }
 
-std::shared_ptr<MMapMetricsTable> MetricsTableVersionManager::open(uint32_t ts_version, ErrorInfo& err_info) {
+std::shared_ptr<MMapMetricsTable> MetricsVersionManager::open(uint32_t ts_version, ErrorInfo& err_info) {
   auto tmp_bt = std::make_shared<MMapMetricsTable>();
   string bt_path = IdToSchemaPath(table_id_, ts_version);
-  tmp_bt->open(bt_path, db_path_, tbl_sub_path_, MMAP_OPEN_NORECURSIVE, err_info);
+  tmp_bt->open(bt_path, table_path_, tbl_sub_path_, MMAP_OPEN_NORECURSIVE, err_info);
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] open failed: %s", bt_path.c_str(), err_info.errmsg.c_str())
     return nullptr;
   }
   return tmp_bt;
 }
-}  // namespace kwdbts
+}  //  namespace kwdbts
