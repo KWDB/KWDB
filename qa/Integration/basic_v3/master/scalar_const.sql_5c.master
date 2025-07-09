@@ -494,33 +494,37 @@ INSERT 2
                                         | access mode        | metaTable
 (23 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
-                tree               |    field     |                   description
------------------------------------+--------------+---------------------------------------------------
-                                   | distributed  | true
-                                   | vectorized   | false
-  root                             |              |
-   ├── synchronizer                |              |
-   │    └── render                 |              |
-   │         │                     | engine type  | time series
-   │         │                     | ?column?     | 0.0 = (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
-   │         └── ts scan           |              |
-   │                               | ts-table     | ts_table
-   │                               | access mode  | metaTable
-   └── subquery                    |              |
-        │                          | id           | @S1
-        │                          | original sql | (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
-        │                          | exec mode    | one row
-        └── limit                  |              |
-             │                     | engine type  | time series
-             │                     | count        | 1
-             └── synchronizer      |              |
-                  └── limit        |              |
-                       │           | engine type  | time series
-                       │           | count        | 1
-                       └── ts scan |              |
-                                   | ts-table     | ts_table2
-                                   | access mode  | metaTable
-(24 rows)
+             tree             |    field     |                   description
+------------------------------+--------------+---------------------------------------------------
+                              | distributed  | true
+                              | vectorized   | false
+  root                        |              |
+   ├── synchronizer           |              |
+   │    └── render            |              |
+   │         │                | engine type  | time series
+   │         │                | ?column?     | 0.0 = (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
+   │         └── ts scan      |              |
+   │                          | ts-table     | ts_table
+   │                          | access mode  | metaTable
+   └── subquery               |              |
+        │                     | id           | @S1
+        │                     | original sql | (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
+        │                     | exec mode    | one row
+        └── limit             |              |
+             │                | engine type  | time series
+             │                | count        | 1
+             └── synchronizer |              |
+                  └── ts scan |              |
+                              | ts-table     | ts_table2
+                              | access mode  | metaTable
+                              | limit        | 1
+(22 rows)
+> select extract('second', '2024-01-01 00:00:00'::timestamp) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+  ?column?
+------------
+   false
+   false
+(2 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) in ( select e4 from test_ts.ts_table2 where e2 > 1000000 group by e4) from test_ts.ts_table;
                 tree               |    field     |                                 description
 -----------------------------------+--------------+------------------------------------------------------------------------------
@@ -1924,33 +1928,37 @@ INSERT 2
                                                             | filter             | e6 = 'test_ts1'
 (50 rows)
 > explain select extract('year', localtimestamp()) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
-                tree               |    field     |                     description
------------------------------------+--------------+------------------------------------------------------
-                                   | distributed  | true
-                                   | vectorized   | false
-  root                             |              |
-   ├── synchronizer                |              |
-   │    └── render                 |              |
-   │         │                     | engine type  | time series
-   │         │                     | ?column?     | 2025.0 = (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
-   │         └── ts scan           |              |
-   │                               | ts-table     | ts_table
-   │                               | access mode  | metaTable
-   └── subquery                    |              |
-        │                          | id           | @S1
-        │                          | original sql | (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
-        │                          | exec mode    | one row
-        └── limit                  |              |
-             │                     | engine type  | time series
-             │                     | count        | 1
-             └── synchronizer      |              |
-                  └── limit        |              |
-                       │           | engine type  | time series
-                       │           | count        | 1
-                       └── ts scan |              |
-                                   | ts-table     | ts_table2
-                                   | access mode  | metaTable
-(24 rows)
+             tree             |    field     |                     description
+------------------------------+--------------+------------------------------------------------------
+                              | distributed  | true
+                              | vectorized   | false
+  root                        |              |
+   ├── synchronizer           |              |
+   │    └── render            |              |
+   │         │                | engine type  | time series
+   │         │                | ?column?     | 2025.0 = (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
+   │         └── ts scan      |              |
+   │                          | ts-table     | ts_table
+   │                          | access mode  | metaTable
+   └── subquery               |              |
+        │                     | id           | @S1
+        │                     | original sql | (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
+        │                     | exec mode    | one row
+        └── limit             |              |
+             │                | engine type  | time series
+             │                | count        | 1
+             └── synchronizer |              |
+                  └── ts scan |              |
+                              | ts-table     | ts_table2
+                              | access mode  | metaTable
+                              | limit        | 1
+(22 rows)
+> select extract('year', localtimestamp()) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+  ?column?
+------------
+   false
+   false
+(2 rows)
 > explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 where e2 > 1000000 group by e4) from test_ts.ts_table;
                 tree               |    field     |                                  description
 -----------------------------------+--------------+---------------------------------------------------------------------------------
@@ -2721,40 +2729,43 @@ INSERT 2
                                                             | filter                                         | e6 = 'test_ts1'
 (54 rows)
 > explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
-                tree               |                     field                      |                     description
------------------------------------+------------------------------------------------+------------------------------------------------------
-                                   | distributed                                    | true
-                                   | vectorized                                     | false
-  root                             |                                                |
-   ├── render                      |                                                |
-   │    │                          | engine type                                    | time series
-   │    │                          | ?column?                                       | max = (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
-   │    └── group                  |                                                |
-   │         │                     | engine type                                    | time series
-   │         │                     | aggregate 0                                    | max(extract('second', '2024-01-01 00:00:00+00:00'))
-   │         │                     | scalar                                         |
-   │         │                     | addSynchronizer                                | true
-   │         └── render            |                                                |
-   │              │                | engine type                                    | time series
-   │              │                | extract('second', '2024-01-01 00:00:00+00:00') | 0.0
-   │              └── ts scan      |                                                |
-   │                               | ts-table                                       | ts_table
-   │                               | access mode                                    | metaTable
-   └── subquery                    |                                                |
-        │                          | id                                             | @S1
-        │                          | original sql                                   | (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
-        │                          | exec mode                                      | one row
-        └── limit                  |                                                |
-             │                     | engine type                                    | time series
-             │                     | count                                          | 1
-             └── synchronizer      |                                                |
-                  └── limit        |                                                |
-                       │           | engine type                                    | time series
-                       │           | count                                          | 1
-                       └── ts scan |                                                |
-                                   | ts-table                                       | ts_table2
-                                   | access mode                                    | metaTable
-(31 rows)
+             tree             |                     field                      |                     description
+------------------------------+------------------------------------------------+------------------------------------------------------
+                              | distributed                                    | true
+                              | vectorized                                     | false
+  root                        |                                                |
+   ├── render                 |                                                |
+   │    │                     | engine type                                    | time series
+   │    │                     | ?column?                                       | max = (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
+   │    └── group             |                                                |
+   │         │                | engine type                                    | time series
+   │         │                | aggregate 0                                    | max(extract('second', '2024-01-01 00:00:00+00:00'))
+   │         │                | scalar                                         |
+   │         │                | addSynchronizer                                | true
+   │         └── render       |                                                |
+   │              │           | engine type                                    | time series
+   │              │           | extract('second', '2024-01-01 00:00:00+00:00') | 0.0
+   │              └── ts scan |                                                |
+   │                          | ts-table                                       | ts_table
+   │                          | access mode                                    | metaTable
+   └── subquery               |                                                |
+        │                     | id                                             | @S1
+        │                     | original sql                                   | (SELECT e4 FROM test_ts.ts_table2 LIMIT 1)
+        │                     | exec mode                                      | one row
+        └── limit             |                                                |
+             │                | engine type                                    | time series
+             │                | count                                          | 1
+             └── synchronizer |                                                |
+                  └── ts scan |                                                |
+                              | ts-table                                       | ts_table2
+                              | access mode                                    | metaTable
+                              | limit                                          | 1
+(29 rows)
+> select max(extract('second', '2024-01-01 00:00:00'::timestamp)) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+  ?column?
+------------
+   false
+(1 row)
 > explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) in ( select e4 from test_ts.ts_table2 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
                      tree                    |                     field                      |                                   description
 ---------------------------------------------+------------------------------------------------+----------------------------------------------------------------------------------
