@@ -1765,8 +1765,10 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 	}
 
 	// Set the new result routers.
+	p.TsTableReaderRouters = make([]physicalplan.ProcessorIdx, len(p.ResultRouters))
 	for i := 0; i < len(p.ResultRouters); i++ {
 		p.ResultRouters[i] = pIdxStart + physicalplan.ProcessorIdx(i)
+		p.TsTableReaderRouters[i] = pIdxStart + physicalplan.ProcessorIdx(i)
 	}
 
 	p.GateNoopInput = len(*rangeSpans)
@@ -4534,11 +4536,15 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 				// aggregator there. Otherwise, bring the results back on this node.
 				dsp.addSingleGroupStateForTS(p, prevStageNode, coreUnion, execinfrapb.TSPostProcessSpec{}, finalOutTypes)
 				if n.optType.TimeBucketOpt() {
-					tsProcessorSpec := p.getTSSpecFromTSTableReader()
-					// add Aggregator and AggPost to TableReader
-					if tsProcessorSpec != nil {
-						tsProcessorSpec.Core.TableReader.Aggregator = p.Processors[p.ResultRouters[0]].TSSpec.Core.Aggregator
-						tsProcessorSpec.Core.TableReader.AggregatorPost = &p.Processors[p.ResultRouters[0]].TSSpec.Post
+					for _, pIdx := range p.TsTableReaderRouters {
+						if p.Processors[pIdx].TSSpec.Core.TableReader != nil {
+							tsProcessorSpec := &p.Processors[pIdx].TSSpec
+							// add Aggregator and AggPost to TableReader
+							if tsProcessorSpec != nil {
+								tsProcessorSpec.Core.TableReader.Aggregator = p.Processors[p.ResultRouters[0]].TSSpec.Core.Aggregator
+								tsProcessorSpec.Core.TableReader.AggregatorPost = &p.Processors[p.ResultRouters[0]].TSSpec.Post
+							}
+						}
 					}
 				}
 			}
@@ -6784,42 +6790,27 @@ func makeTableReaderSpans(spans roachpb.Spans) []execinfrapb.TableReaderSpan {
 // pushLimitToAggScan is true when need push limit to post of tsAggScan
 func handleTSReaderPost(p *PhysicalPlan, pushLimitAndSorterToScan bool, pushLimitToAggScan bool) {
 	if pushLimitAndSorterToScan || pushLimitToAggScan {
-		tsProcessorSpec := p.getTSSpecFromTSTableReader()
-		if tsProcessorSpec == nil {
-			return
-		}
-
-		if pushLimitAndSorterToScan {
-			// add limit, offset and sorter to TSSpec.Post
-			order, limit, offset := p.getLimitOffset()
-			tsProcessorSpec.Post.Limit = limit
-			tsProcessorSpec.Post.Offset = offset
-			if order != nil {
-				tsProcessorSpec.Core.TableReader.Sorter = &order.OutputOrdering
+		for _, pIdx := range p.TsTableReaderRouters {
+			if p.Processors[pIdx].TSSpec.Core.TableReader != nil {
+				tsProcessorSpec := &p.Processors[pIdx].TSSpec
+				if pushLimitAndSorterToScan {
+					// add limit, offset and sorter to TSSpec.Post
+					order, limit, offset := p.getLimitOffset()
+					tsProcessorSpec.Post.Limit = limit
+					tsProcessorSpec.Post.Offset = offset
+					if order != nil {
+						tsProcessorSpec.Core.TableReader.Sorter = &order.OutputOrdering
+					}
+				} else if pushLimitToAggScan && tsProcessorSpec.Core.TableReader.AggregatorPost != nil {
+					// add limit and offset to TableReader.AggPost
+					_, limit, offset := p.getLimitOffset()
+					tsProcessorSpec.Core.TableReader.AggregatorPost.Limit = limit
+					tsProcessorSpec.Core.TableReader.AggregatorPost.Offset = offset
+					tsProcessorSpec.Core.TableReader.OrderedScan = true
+				}
 			}
-		} else if pushLimitToAggScan && tsProcessorSpec.Core.TableReader.AggregatorPost != nil {
-			// add limit and offset to TableReader.AggPost
-			_, limit, offset := p.getLimitOffset()
-			tsProcessorSpec.Core.TableReader.AggregatorPost.Limit = limit
-			tsProcessorSpec.Core.TableReader.AggregatorPost.Offset = offset
-			tsProcessorSpec.Core.TableReader.OrderedScan = true
 		}
 	}
-}
-
-func (p *PhysicalPlan) getTSSpecFromTSTableReader() *execinfrapb.TSProcessorSpec {
-	var tsProcessorSpec *execinfrapb.TSProcessorSpec
-	tsReaderCount := 0
-	for k, v := range p.Processors {
-		if v.TSSpec.Core.TableReader != nil {
-			tsProcessorSpec = &p.Processors[k].TSSpec
-			tsReaderCount++
-		} else if tsReaderCount != 0 {
-			break
-		}
-	}
-
-	return tsProcessorSpec
 }
 
 func (p *PhysicalPlan) getLimitOffset() (
