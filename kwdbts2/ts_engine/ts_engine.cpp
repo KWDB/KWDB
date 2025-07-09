@@ -44,7 +44,7 @@ namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
-const char schema_directory[]= "schema";
+const char schema_directory[]= "schema/";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(vgroups_),
                                                                       batch_jobs_lock_(RWLATCH_ID_BATCH_DATA_JOB_RWLOCK) {
@@ -110,7 +110,6 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   }
 
   InitExecutor(ctx, options_);
-
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());

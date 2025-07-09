@@ -43,51 +43,31 @@ class SchemaVersionConv {
 };
 
 /**
- * table schema used for organizing table schema(including tag / tag schema and metric schema).
+ * table schema manager used for organizing table schema (including tag data, tag schema, and metric schema).
  */
-
 class TsTableSchemaManager {
- private:
   TSTableID table_id_;
   // schema path of the database
-  string schema_root_path_;
+  string table_path_;
   // schema path of the metric
   string metric_schema_path_;
   // schema path of the tag
   string tag_schema_path_;
-  KRWLatch schema_rw_lock_;
-
-  int getColumnIndex(const AttributeInfo& attr_info);
-
-  KStatus alterTableTag(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
-                        uint32_t cur_version, uint32_t new_version, string& msg);
-
-  KStatus alterTableCol(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
-                        uint32_t cur_version, uint32_t new_version, string& msg);
 
  protected:
   uint32_t cur_version_{0};
-  std::shared_ptr<MetricsTableVersionManager> metric_table_{nullptr};
+  std::shared_ptr<MetricsVersionManager> metric_mgr_{nullptr};
   std::shared_ptr<TagTable> tag_table_{nullptr};
   std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
   KRWLatch* ver_conv_rw_lock_{nullptr};
 
-  /**
-   * @brief Open the schema file of the specified version
-   * @param version schema version
-   * @param err_info Error message
-   * @return std::shared_ptr<MMapMetricsTable> Pointer
-   */
-  std::shared_ptr<MMapMetricsTable> open(uint32_t version, ErrorInfo& err_info);
-
  public:
   TsTableSchemaManager() = delete;
 
-  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id), schema_root_path_(root_path + '/'),
-      schema_rw_lock_(RWLATCH_ID_TABLE_SCHEMA_RWLOCK) {
-    metric_schema_path_ = "metric_" + std::to_string(table_id_) + "/";
-    tag_schema_path_ = "tag_" + std::to_string(table_id_) + "/";
-    metric_table_ = std::make_shared<MetricsTableVersionManager>(schema_root_path_, metric_schema_path_, table_id_);
+  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id) {
+    table_path_ = root_path + "/" + std::to_string(tbl_id) + "/";
+    metric_schema_path_ = "metric/";
+    tag_schema_path_ = "tag/";
     ver_conv_rw_lock_ = new KRWLatch(RWLATCH_ID_VERSION_CONV_RWLOCK);
   }
 
@@ -95,11 +75,9 @@ class TsTableSchemaManager {
 
   bool IsSchemaDirsExist();
 
-  KStatus Init(kwdbContext_p ctx);
+  KStatus Init();
 
-  void put(uint32_t ts_version, const std::shared_ptr<MMapMetricsTable>& schema);
-
-  inline uint32_t GetCurrentVersion() {
+  uint32_t GetCurrentVersion() const {
     return cur_version_;
   }
 
@@ -126,8 +104,6 @@ class TsTableSchemaManager {
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
-  KStatus AddMetricSchema(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
-
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   KStatus GetColumnsExcludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
@@ -152,12 +128,6 @@ class TsTableSchemaManager {
 
   uint64_t GetDbID() const;
 
-  int rdLock();
-
-  int wrLock();
-
-  int unLock();
-
   int Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info);
 
   KStatus SetDropped();
@@ -165,9 +135,6 @@ class TsTableSchemaManager {
   bool IsDropped();
 
   KStatus RemoveAll();
-
-  static KStatus GetColAttrInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
-                                     AttributeInfo& attr_info, bool first_col);
 
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg);
@@ -195,17 +162,32 @@ class TsTableSchemaManager {
   const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
 
   bool FindVersionConv(const string& key, std::shared_ptr<SchemaVersionConv>* version_conv);
+
   void InsertVersionConv(const string& key, const shared_ptr<SchemaVersionConv>& ver_conv);
 
   bool IsExistTableVersion(uint32_t version);
 
  private:
-  std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version, bool lock = true) {
-    return metric_table_->GetMetricsTable(ts_version, lock);
+  std::shared_ptr<MMapMetricsTable> open(uint32_t version, ErrorInfo& err_info);
+
+  int getColumnIndex(const AttributeInfo& attr_info);
+
+  static KStatus parseAttrInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr_info, bool first_col);
+
+  KStatus alterTableTag(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
+                        uint32_t cur_version, uint32_t new_version, string& msg);
+
+  KStatus alterTableCol(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
+                        uint32_t cur_version, uint32_t new_version, string& msg);
+
+  KStatus addMetricForAlter(vector<AttributeInfo>& schema, uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
+
+  std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version) {
+    return metric_mgr_->GetMetricsTable(ts_version);
   }
 
-  std::shared_ptr<MMapMetricsTable> getCurrentMetricsTable(bool lock = true) {
-    return metric_table_->GetCurrentMetricsTable();
+  std::shared_ptr<MMapMetricsTable> getCurrentMetricsTable() {
+    return metric_mgr_->GetCurrentMetricsTable();
   }
 };
 
