@@ -1,3 +1,4 @@
+SET sql_safe_updates = FALSE;
 DROP DATABASE IF EXISTS test_last_row cascade;
 CREATE ts DATABASE test_last_row;
 CREATE TABLE test_last_row.test1(ts TIMESTAMPTZ NOT NULL, id INT, e1 INT2) TAGS(code1 INT2 NOT NULL) PRIMARY TAGS(code1);

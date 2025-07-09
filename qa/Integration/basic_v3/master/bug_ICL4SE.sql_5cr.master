@@ -1,3 +1,5 @@
+> SET sql_safe_updates = FALSE;
+SET
 > DROP DATABASE IF EXISTS test_last_row cascade;
 DROP DATABASE
 > CREATE ts DATABASE test_last_row;
