@@ -24,8 +24,21 @@ extern bool g_go_start_service;
 
 namespace kwdbts {
 
-TsTableV2Impl::~TsTableV2Impl() = default;
+TsTableV2Impl::~TsTableV2Impl() {
+  if (table_dropped_.load()) {
+    table_schema_mgr_->RemoveAll();
+    // metric data cannot remove now, clear by vacuum.
+  }
+}
 
+void TsTableV2Impl::SetDropped() {
+  table_dropped_.store(true);
+  table_schema_mgr_->SetDropped();
+}
+
+bool TsTableV2Impl::IsDropped() {
+  return table_dropped_.load();
+}
 
 KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, uint16_t* entity_id, uint32_t* inc_unordered_cnt,
@@ -137,11 +150,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
                                          k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
                                          bool reverse, bool sorted) {
   auto ts_table_iterator = new TsTableIterator();
-
-  // TODO(wyy): code review here; s is uninitialized and in most return path, it is not assigned to any value.
-  // But it is used in the defer function, so it should be initialized to SUCCESS or FAIL.
-  // just make s = SUCCESS to avoid compile error.
-  KStatus s = SUCCESS;
+  KStatus s = KStatus::SUCCESS;
   Defer defer{[&]() {
     if (s == FAIL) {
       delete ts_table_iterator;
@@ -199,7 +208,8 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
               scan_agg_types.size(), ts_table_iterator->GetIterNumber());
   (*iter) = ts_table_iterator;
-  return KStatus::SUCCESS;
+  s = KStatus::SUCCESS;
+  return s;
 }
 
 KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,

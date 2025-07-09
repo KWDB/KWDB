@@ -147,6 +147,8 @@ class ExecPool {
     return instance;
   }
   k_bool IsFull();
+  k_bool IsInited();
+  k_bool IsStopped();
 
  public:
   std::string db_path_;

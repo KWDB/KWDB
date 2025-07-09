@@ -452,6 +452,8 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   res->clear();
   if (only_count_ts_ && (KInt64(final_agg_data_[0].data) == 0)) {
+    free(final_agg_data_[0].data);
+    final_agg_data_[0].data = nullptr;
     *count = 0;
     *is_finished = false;
     ++cur_entity_index_;
