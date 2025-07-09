@@ -142,6 +142,9 @@ class TsVGroup {
   }
 
   bool TrySetTsExclusiveStatus(TsExclusiveStatus desired) {
+    if (comp_vacuum_status_ == desired) {
+      return true;
+    }
     TsExclusiveStatus expected = TsExclusiveStatus::NONE;
     if (comp_vacuum_status_.compare_exchange_strong(expected, desired)) {
       return true;

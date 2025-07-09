@@ -16,6 +16,7 @@
 #include <vector>
 #include <cstdio>
 #include <list>
+#include <unordered_map>
 #include <utility>
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_common.h"
@@ -78,27 +79,27 @@ class TsBatchData {
   uint32_t block_span_data_size_ = 0;
 
   // block span length + min ts + max ts + n_cols + n_rows
-  const static int block_span_data_header_size_ = 3 * sizeof(uint32_t) + 2 * sizeof(timestamp64);
+  const static int block_span_data_header_size_ = 3 * sizeof(uint32_t) + 2 * sizeof(timestamp64);  // NOLINT
 
-  const static uint8_t length_offset_in_span_data_ = 0;
-  const static uint8_t length_size_in_span_data_ = sizeof(uint32_t);
+  const static uint8_t length_offset_in_span_data_ = 0;  // NOLINT
+  const static uint8_t length_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
 
-  const static uint8_t min_ts_offset_in_span_data_ = length_offset_in_span_data_ + length_size_in_span_data_;
-  const static uint8_t min_ts_size_in_span_data_ = sizeof(timestamp64);
+  const static uint8_t min_ts_offset_in_span_data_ = length_offset_in_span_data_ + length_size_in_span_data_;  // NOLINT
+  const static uint8_t min_ts_size_in_span_data_ = sizeof(timestamp64);  // NOLINT
 
-  const static uint8_t max_ts_offset_in_span_data_ = min_ts_offset_in_span_data_ + min_ts_size_in_span_data_;
-  const static uint8_t max_ts_size_in_span_data_ = sizeof(timestamp64);
+  const static uint8_t max_ts_offset_in_span_data_ = min_ts_offset_in_span_data_ + min_ts_size_in_span_data_;  // NOLINT
+  const static uint8_t max_ts_size_in_span_data_ = sizeof(timestamp64);  // NOLINT
 
-  const static uint8_t n_cols_offset_in_span_data_ = max_ts_offset_in_span_data_ + max_ts_size_in_span_data_;
-  const static uint8_t n_cols_size_in_span_data_ = sizeof(uint32_t);
+  const static uint8_t n_cols_offset_in_span_data_ = max_ts_offset_in_span_data_ + max_ts_size_in_span_data_;  // NOLINT
+  const static uint8_t n_cols_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
 
-  const static uint8_t n_rows_offset_in_span_data_ = n_cols_offset_in_span_data_ + n_cols_size_in_span_data_;
-  const static uint8_t n_rows_size_in_span_data_ = sizeof(uint32_t);
+  const static uint8_t n_rows_offset_in_span_data_ = n_cols_offset_in_span_data_ + n_cols_size_in_span_data_;  // NOLINT
+  const static uint8_t n_rows_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
 
   std::string data_;
-  
-public:
-  TsBatchData(std::string batch_data) : data_(batch_data) {
+
+ public:
+  explicit TsBatchData(std::string batch_data) : data_(batch_data) {
     p_tag_size_ = KUint16(const_cast<char *>(data_.data()) + header_size_);
     p_tag_offset_ = header_size_ + sizeof(p_tag_size_);
     tags_data_offset_ = p_tag_offset_ + p_tag_size_ + sizeof(tags_data_size_);
@@ -113,7 +114,7 @@ public:
     data_.resize(header_size_);
   }
   ~TsBatchData() = default;
-  
+
   TSSlice GetCheckSum() const {
     return TSSlice{const_cast<char *>(const_cast<char *>(data_.data()) + checksum_offset_), checksum_size_};
   }
@@ -154,8 +155,8 @@ public:
     memcpy(data_.data() + row_type_offset_, &row_type, row_type_size_);
   }
 
-  uint32_t GetTableVersion() const { return KUint32(const_cast<char *>(data_.data()) + ts_version_offset_); }
-  
+  uint32_t GetTableVersion() const { return KUint32(const_cast<char*>(data_.data()) + ts_version_offset_); }
+
   void SetTableVersion(uint32_t table_version) {
     memcpy(data_.data() + ts_version_offset_, &table_version, ts_version_size_);
   }
@@ -183,24 +184,25 @@ public:
   void AddTags(TSSlice tags) {
     assert(p_tag_size_ != 0 && p_tag_offset_ != 0);
     tags_data_size_ = tags.len;
-    data_.append(reinterpret_cast<const char *>(&tags_data_size_), sizeof(tags_data_size_));
+    data_.append(reinterpret_cast<const char*>(&tags_data_size_), sizeof(tags_data_size_));
     tags_data_offset_ = data_.size();
     data_.append(tags.data, tags.len);
   }
-  
+
   TSSlice GetBlockSpanData() const {
-    return TSSlice{const_cast<char *>(data_.data()) + block_span_data_offset_, block_span_data_size_};
+    return TSSlice{const_cast<char*>(data_.data()) + block_span_data_offset_, block_span_data_size_};
   }
 
   void AddBlockSpanDataHeader(uint32_t block_span_length, timestamp64 min_ts, timestamp64 max_ts,
                               uint32_t n_cols, uint32_t n_rows) {
     assert(tags_data_size_ != 0 && tags_data_offset_ != 0);
     block_span_data_offset_ = data_.size();
-    data_.append(reinterpret_cast<const char *>(&block_span_length), sizeof(block_span_length));
-    data_.append(reinterpret_cast<const char *>(&min_ts), sizeof(min_ts));
-    data_.append(reinterpret_cast<const char *>(&max_ts), sizeof(max_ts));
-    data_.append(reinterpret_cast<const char *>(&n_cols), sizeof(n_cols));
-    data_.append(reinterpret_cast<const char *>(&n_rows), sizeof(n_rows));
+    data_.append(reinterpret_cast<const char *>(&block_span_length), sizeof(uint32_t));
+    data_.append(reinterpret_cast<const char *>(&min_ts), sizeof(timestamp64));
+    data_.append(reinterpret_cast<const char *>(&max_ts), sizeof(timestamp64));
+    data_.append(reinterpret_cast<const char *>(&n_cols), sizeof(uint32_t));
+    data_.append(reinterpret_cast<const char *>(&n_rows), sizeof(uint32_t));
+    assert(data_.size() - block_span_data_offset_ == block_span_data_header_size_);
   }
 
   void UpdateBatchDataInfo() {
@@ -212,7 +214,7 @@ public:
       memcpy(data_.data() + block_span_data_offset_, &block_span_data_size_, sizeof(block_span_data_size_));
       SetRowType(DataTagFlag::DATA_AND_TAG);
       uint32_t block_span_row_num_offset = block_span_data_offset_ + 2 * sizeof(uint32_t) + 2 * sizeof(timestamp64);
-      uint32_t row_num = *(uint64_t*)(data_.data() + block_span_row_num_offset);
+      uint32_t row_num = *reinterpret_cast<uint64_t*>(data_.data() + block_span_row_num_offset);
       SetRowCount(row_num);
     } else {
       SetRowType(DataTagFlag::TAG_ONLY);

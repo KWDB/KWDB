@@ -696,30 +696,31 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
   }
 
   uint32_t block_data_header_size = TsBatchData::block_span_data_header_size_;
+  uint32_t n_cols = *reinterpret_cast<uint32_t*>(block_data.data + TsBatchData::n_cols_offset_in_span_data_);
+  uint32_t n_rows = *reinterpret_cast<uint32_t*>(block_data.data +  + TsBatchData::n_rows_offset_in_span_data_);
+
   TsEntitySegmentBlockItem block_item;
   block_item.entity_id = entity_id;
   block_item.prev_block_id = entity_items_[entity_id].cur_block_id;  // pre block item id
   block_item.table_version = table_version;
-  uint32_t n_cols = *(uint32_t*)(block_data.data + TsBatchData::n_cols_offset_in_span_data_);
   block_item.n_cols = n_cols;
-  uint32_t n_rows = *(uint32_t*)(block_data.data +  + TsBatchData::n_rows_offset_in_span_data_);
   block_item.n_rows = n_rows;
-  block_item.block_len = *(uint32_t*)(block_data.data + block_data_header_size + (n_cols - 1) * sizeof(uint32_t));
-  block_item.min_ts = *(timestamp64*)(block_data.data + TsBatchData::min_ts_offset_in_span_data_);
-  block_item.max_ts = *(timestamp64*)(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
-  block_item.agg_len = *(uint32_t*)(block_data.data + block_data_header_size + n_cols * sizeof(uint32_t) +
-                     block_item.block_len + (n_cols - 2) * sizeof(uint32_t));
+  block_item.block_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size
+                         + (n_cols - 1) * sizeof(uint32_t)) + sizeof(uint32_t) * n_cols;
+  block_item.min_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::min_ts_offset_in_span_data_);
+  block_item.max_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
+  block_item.agg_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size + block_item.block_len
+                       + (n_cols - 2) * sizeof(uint32_t))  + sizeof(uint32_t) * (n_cols - 1);
 
-  TSSlice data_buffer = {block_data.data + block_data_header_size + n_cols * sizeof(uint32_t),
-                         block_item.block_len};
+  TSSlice data_buffer = {block_data.data + block_data_header_size, block_item.block_len};
   KStatus s = block_file_builder_->AppendBlock(data_buffer, &block_item.block_offset);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, append block failed.")
     return s;
   }
 
-  TSSlice agg_buffer = {block_data.data + block_data_header_size + n_cols * sizeof(uint32_t) +
-                        block_item.block_len + (n_cols - 1) * sizeof(uint32_t), block_item.agg_len};
+  TSSlice agg_buffer = {block_data.data + block_data_header_size + block_item.block_len, block_item.agg_len};
+  assert(block_data.len - (block_data_header_size + block_item.block_len) == block_item.agg_len);
   s = agg_file_builder_->AppendAggBlock(agg_buffer, &block_item.agg_offset);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, append agg block failed.")

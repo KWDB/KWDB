@@ -307,7 +307,6 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
         uint32_t var_offset = var_data.size();
         memcpy(var_offset_data.data() + i * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
       }
-      fixed_col_value_addr = var_data.data();
     }
     // compress bitmap
     if (has_bitmap) {
@@ -367,7 +366,8 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
       // sum: 1 byte is_overflow + 8 byte result (int64_t or double)
       sum.resize(9, '\0');
 
-      AggCalculatorV2 aggCalc(fixed_col_value_addr, b, d_type, d_size, row_num_);
+      DATATYPE type = static_cast<DATATYPE>(version_conv_->scan_attrs_[scan_idx].type);
+      AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, row_num_);
       *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(count, max.data(), min.data(), sum.data() + 1);
       if (0 == count) {
         continue;

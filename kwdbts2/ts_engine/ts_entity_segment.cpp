@@ -315,7 +315,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     // save decompressed col block data
     column_blocks_[col_idx + 1].buffer = std::move(plain);
   } else {
-    uint32_t var_offsets_len = *(uint32_t*)data.data;
+    uint32_t var_offsets_len = *reinterpret_cast<uint32_t*>(data.data);
     RemovePrefix(&data, sizeof(uint32_t));
     TSSlice compressed_var_offsets = {data.data, var_offsets_len};
     std::string var_offsets;
@@ -334,7 +334,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
       return KStatus::FAIL;
     }
     column_blocks_[col_idx + 1].buffer.append(var_data);
-    assert(*(uint32_t*)(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
+    assert(*reinterpret_cast<uint32_t*>(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
   }
   return KStatus::SUCCESS;
 }
@@ -390,7 +390,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   if (!HasDataCached(0)) {
     KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[0] data load failed");
+      LOG_ERROR("block segment column[ts] data load failed");
       return s;
     }
   }
@@ -398,7 +398,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   if (!HasDataCached(-1)) {
     KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[0] data load failed");
+      LOG_ERROR("block segment column[lsn] data load failed");
       return s;
     }
   }
@@ -433,7 +433,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans,
   if (!HasDataCached(0)) {
     KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[0] data load failed");
+      LOG_ERROR("block segment column[ts] data load failed");
       return s;
     }
   }

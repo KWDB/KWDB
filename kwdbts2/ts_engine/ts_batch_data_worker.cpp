@@ -25,7 +25,7 @@ TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableI
 KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
   // get tag schema
   std::vector<TagInfo> tags_info;
-  KStatus s = schema_->GetTagMeta( table_version_, tags_info);
+  KStatus s = schema_->GetTagMeta(table_version_, tags_info);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTagMeta failed");
     return KStatus::FAIL;
@@ -48,6 +48,10 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     LOG_ERROR("GetTagIterator failed");
     return KStatus::FAIL;
   }
+  Defer defer([&]() {
+    delete iter;
+    iter = nullptr;
+  });
   std::vector<EntityResultIndex> entity_id_list;
   ResultSet res(scan_tags.size());
   uint32_t count;
@@ -89,9 +93,9 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
       return s;
     }
     if (is_null) {
-      setRowDeleted(tag_data.data(), tag_idx + 1);
+      set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
     } else {
-      setRowValid(tag_data.data(), tag_idx + 1);
+      unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
     }
     if (tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
       uint64_t offset = tag_data.size();
@@ -178,7 +182,7 @@ KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
   }
   const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
   assert(!attrs.empty());
-  n_cols_ = attrs.size() + 1; // add lsn
+  n_cols_ = attrs.size() + 1;  // add lsn
   ts_col_type_ = static_cast<DATATYPE>(attrs[0].type);
   actual_ts_span_.begin = convertSecondToPrecisionTS(actual_ts_span_.begin, ts_col_type_);
   actual_ts_span_.end = convertSecondToPrecisionTS(actual_ts_span_.end, ts_col_type_);
@@ -196,6 +200,7 @@ KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
 std::string TsReadBatchDataWorker::GenKey(TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
                                           uint64_t end_hash, KwTsSpan ts_span) {
   char buffer[128];
+  memset(buffer, 0, sizeof(buffer));
   std::snprintf(buffer, sizeof(buffer), "%lu-%d-%lu-%lu-%ld-%ld", table_id, table_version,
                 begin_hash, end_hash, ts_span.begin, ts_span.end);
   return buffer;
@@ -233,7 +238,7 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, int32_t* r
   cur_batch_data_.SetTableVersion(table_version_);
   // ptag
   uint32_t ptags_size = cur_entity_index_.p_tags_size;
-  cur_batch_data_.AddPrimaryTag({(char*)cur_entity_index_.mem, ptags_size});
+  cur_batch_data_.AddPrimaryTag({reinterpret_cast<char*>(cur_entity_index_.mem), ptags_size});
   // tag value
   KStatus s = GetTagValue(ctx);
   if (s != KStatus::SUCCESS) {
@@ -257,7 +262,7 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, int32_t* r
   cur_batch_data_.UpdateBatchDataInfo();
   // set data
   data->data = cur_batch_data_.data_.data();
-  data->len = cur_batch_data_.GetDataLength();
+  data->len = cur_batch_data_.data_.size();
   return s;
 }
 
@@ -297,18 +302,24 @@ KStatus TsWriteBatchDataWorker::GetTagPayload(TSSlice* data, std::shared_ptr<TsR
 
 KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result) {
   // header
-  uint32_t block_data_header_size = 2 * sizeof(timestamp64) + 3 * sizeof(uint32_t);
-  result.append(input->data, block_data_header_size);
+  result.append(input->data, TsBatchData::block_span_data_header_size_);
   // block data
-  uint32_t n_cols = *(uint32_t*)(input->data + sizeof(uint32_t) + 2 * sizeof(timestamp64));
-  uint32_t n_rows = *(uint32_t*)(input->data + 2 * sizeof(uint32_t) + 2 * sizeof(timestamp64));
+  uint32_t n_cols = *reinterpret_cast<uint32_t*>(input->data + TsBatchData::n_cols_offset_in_span_data_);
+  uint32_t n_rows = *reinterpret_cast<uint32_t*>(input->data + TsBatchData::n_rows_offset_in_span_data_);
   std::vector<uint32_t> block_col_offsets;
   for (uint32_t idx = 0; idx < n_cols; ++idx) {
-    block_col_offsets.push_back(*(uint32_t*)(input->data + block_data_header_size + idx * sizeof(uint32_t)));
+    block_col_offsets.push_back(*reinterpret_cast<uint32_t*>(input->data + TsBatchData::block_span_data_header_size_ +
+                                idx * sizeof(uint32_t)));
   }
+  // agg block length
+  uint32_t agg_block_length = *reinterpret_cast<uint32_t*>(input->data + TsBatchData::block_span_data_header_size_
+                    + n_cols * sizeof(uint32_t) + block_col_offsets[n_cols - 1] + (n_cols - 2) * sizeof(uint32_t));
+  assert(input->len == TsBatchData::block_span_data_header_size_ + (n_cols * 2 - 1) * sizeof(uint32_t)
+                    + block_col_offsets[n_cols - 1] + agg_block_length);
   // column_block_data without lsn
-  TSSlice data = {input->data + block_data_header_size + n_cols * sizeof(uint32_t) + block_col_offsets[0],
-                  block_col_offsets[n_cols - 1] - block_col_offsets[0]};
+  uint32_t column_block_offset_without_lsn = TsBatchData::block_span_data_header_size_ + n_cols * sizeof(uint32_t)
+                                             + block_col_offsets[0];
+  TSSlice data = {input->data + column_block_offset_without_lsn, input->len - column_block_offset_without_lsn};
   // lsn
   std::string lsn_data;
   lsn_data.resize(sizeof(uint64_t) * n_rows);
@@ -325,7 +336,7 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
   // update offset
   uint32_t old_lsn_size = block_col_offsets[0];
   uint32_t new_lsn_size = compressed.size();
-  int32_t offset = new_lsn_size - old_lsn_size;
+  int32_t offset = (int32_t)new_lsn_size - old_lsn_size;
   for (uint32_t idx = 0; idx < n_cols; ++idx) {
     block_col_offsets[idx] += offset;
     result.append(reinterpret_cast<const char *>(&block_col_offsets[idx]), sizeof(uint32_t));
@@ -334,6 +345,11 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
   result.append(compressed.data(), compressed.size());
   // append other column block data
   result.append(data.data, data.len);
+  // block span length
+  uint32_t length = (uint32_t)result.size();
+  memcpy(result.data(), &length, sizeof(uint32_t));
+  assert(length == TsBatchData::block_span_data_header_size_ + (n_cols * 2 - 1) * sizeof(uint32_t)
+                   + block_col_offsets[n_cols - 1] + agg_block_length);
   return KStatus::SUCCESS;
 }
 
@@ -346,7 +362,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, int32_t*
   uint32_t block_span_data_offset = tags_data_offset + tags_data_size;
   uint32_t block_span_data_size = KUint32(data->data + block_span_data_offset);
   assert(data->len == block_span_data_offset + block_span_data_size);
-  uint8_t row_type = *(uint8_t*)(data->data + TsBatchData::row_type_offset_);
+  uint8_t row_type = *reinterpret_cast<uint8_t*>(data->data + TsBatchData::row_type_offset_);
   *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
 
   TSSlice tag_payload = {data->data, tags_data_offset + tags_data_size};
@@ -363,6 +379,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, int32_t*
     return s;
   }
   if (new_tag) {
+    entity_id = ts_engine_->GetTsVGroup(vgroup_id - 1)->AllocateEntityID();
     std::shared_ptr<TagTable> tag_table = schema_->GetTagTable();
     if (tag_table->InsertTagRecord(*payload_only_tag, vgroup_id, entity_id) < 0) {
       LOG_ERROR("InsertTagRecord failed, table_id[%lu], ptag[%s]", table_id_, payload_only_tag->GetPrimaryTag().data);
@@ -380,7 +397,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, int32_t*
   UpdateLSN(vgroup_id, &block_span_slice, block_span_data);
   TSSlice new_block_data = {block_span_data.data(), block_span_data.size()};
   // write payload data to entity segment
-  timestamp64 ts = *(timestamp64*)(new_block_data.data + sizeof(uint32_t));
+  timestamp64 ts = *reinterpret_cast<timestamp64*>(new_block_data.data + sizeof(uint32_t));
   std::shared_ptr<MMapMetricsTable> metric_schema;
   s = schema_->GetMetricSchema(table_version_, &metric_schema);
   if (s != KStatus::SUCCESS) {
@@ -412,7 +429,7 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
 
 void TsWriteBatchDataWorker::Cancel(kwdbContext_p ctx) {
   auto vgroups = ts_engine_->GetTsVGroups();
-  for (const auto &vgroup: *vgroups) {
+  for (const auto &vgroup : *vgroups) {
     KStatus s = vgroup->ClearWriteBatchData();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("ClearWriteBatchData failed, table_id[%lu]", table_id_);

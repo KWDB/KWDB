@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <atomic>
 #include <deque>
+#include <string>
 #include <utility>
 #include <vector>
 

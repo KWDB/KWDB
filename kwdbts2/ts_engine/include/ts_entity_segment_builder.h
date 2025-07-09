@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "ts_block.h"
 #include "ts_engine_schema_manager.h"
@@ -198,7 +199,7 @@ class TsEntitySegmentBuilder {
 
   TsEntityItem cur_entity_item_;
 
-  std::map<uint32_t, TsEntityItem> entity_items_;
+  std::unordered_map<uint32_t, TsEntityItem> entity_items_;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,

@@ -889,6 +889,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
   auto partition = current->GetPartition(database_id, p_time);
   if (partition == nullptr) {
     version_manager_->AddPartition(database_id, p_time);
+    current = version_manager_->Current();
     partition = current->GetPartition(database_id, p_time);
     if (partition == nullptr) {
       LOG_ERROR("cannot find partition: database_id[%u], p_time[%lu]", database_id, p_time);
@@ -932,8 +933,8 @@ KStatus TsVGroup::FinishWriteBatchData() {
     }
     PartitionIdentifier partition_id = kv.second->GetPartitionId();
   }
-  version_manager_->ApplyUpdate(&update);
   write_batch_segment_builders_.clear();
+  version_manager_->ApplyUpdate(&update);
   ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }

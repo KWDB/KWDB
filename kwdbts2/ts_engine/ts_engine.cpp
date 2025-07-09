@@ -1119,7 +1119,7 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
   if (workers_it != read_batch_data_workers_.end()) {
     workers_it->second.insert({key, worker});
   } else {
-    read_batch_data_workers_[job_id].insert({key, job});
+    read_batch_data_workers_[job_id].insert({key, worker});
   }
   RW_LATCH_UNLOCK(&read_batch_workers_lock_);
   return worker->Read(ctx, data, row_num);
@@ -1681,11 +1681,6 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
   }
   int32_t row_num = 0;
   TSSlice batch_data = {nullptr, 0};
-  Defer defer{[&](){
-    if (batch_data.data != nullptr) {
-      free(batch_data.data);
-    }
-  }};
   auto s = ReadBatchData(ctx, ts_snapshot_info.table_id, ts_snapshot_info.table_version, ts_snapshot_info.begin_hash,
                       ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, ts_snapshot_info.id, &batch_data, &row_num);
   if (s == KStatus::FAIL) {
@@ -1741,7 +1736,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
   data_with_rownum += 4;
   auto row_num = KInt32(data_with_rownum);
   data_with_rownum += 4;
-  TSSlice raw_data{data_with_rownum, data.len - 24};
+  TSSlice raw_data{data_with_rownum, data.len - 16};
   assert(table_id == ts_snapshot_info.table_id);
   auto s = WriteBatchData(ctx, table_id, table_version, ts_snapshot_info.id, &raw_data, &row_num);
   if (s == KStatus::FAIL) {
