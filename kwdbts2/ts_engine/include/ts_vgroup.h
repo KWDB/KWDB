@@ -198,28 +198,17 @@ class TsVGroup {
   KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
                               const std::vector<KwTsSpan>& ts_spans);
 
+  KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+  const std::vector<KwTsSpan>& ts_spans);
+  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+  const std::vector<KwTsSpan>& ts_spans);
+
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                          timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
 
   KStatus FinishWriteBatchData();
 
   KStatus ClearWriteBatchData();
-
-   /**
-   * Undoes deletion of rows within a specified entity group.
-   *
-   * @param ctx Pointer to the database context.
-   * @param primary_tag Primary tag identifying the entity.
-   * @param log_lsn LSN of the log for ensuring atomicity and consistency of the operation.
-   * @param rows Collection of row spans to be undeleted.
-   * @return Status of the operation, success or failure.
-   */
-  KStatus undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
-                     const std::vector<DelRowSpan>& rows);
-  KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
-  const std::vector<KwTsSpan>& ts_spans);
-  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
-  const std::vector<KwTsSpan>& ts_spans);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
@@ -243,24 +232,9 @@ class TsVGroup {
   KStatus undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
                         uint32_t group_id, uint32_t entity_id, TSSlice& tags);
 
-  /**
-   * redoPut redo a put operation. This function is utilized during log recovery to redo a put operation.
-   *
-   * @param ctx The context of the operation.
-   * @param primary_tag The primary tag associated with the data being operated on.
-   * @param log_lsn The log sequence number indicating the position in the log of this operation.
-   * @param payload The actual data payload being put into the database, provided as a slice.
-   *
-   * @return KStatus The status of the operation, indicating success or failure.
-   */
-  KStatus redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
-
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
   KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
-
-  KStatus redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
-                     const vector<DelRowSpan>& rows);
 
   KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
                         uint32_t entity_id, TSSlice& payload);
@@ -299,6 +273,7 @@ class TsVGroup {
    * @return KStatus
    */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false);
+  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
  private:
   // check partition of rows exist. if not creating it.
@@ -307,8 +282,7 @@ class TsVGroup {
   KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
     const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);
 
-  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
-
+  int saveToFile(uint32_t new_id) const;
   // Thread scheduling executes compact tasks to clean up items that require erasing.
   void compactRoutine(void* args);
   // Initialize compact thread.
