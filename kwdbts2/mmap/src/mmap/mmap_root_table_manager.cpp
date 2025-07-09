@@ -93,6 +93,7 @@ KStatus MMapRootTableManager::Init(ErrorInfo& err_info) {
   PutTable(max_table_version, tmp_bt);
   // Load the latest time partition interval
   partition_interval_ = tmp_bt->partitionInterval();
+  hash_num_ = tmp_bt->hashNum();
   return SUCCESS;
 }
 
@@ -116,7 +117,7 @@ KStatus MMapRootTableManager::CreateRootTable(vector<AttributeInfo>& schema, uin
   int encoding = ENTITY_TABLE | NO_DEFAULT_TABLE;
   auto* tmp_bt = new MMapMetricsTable();
   if (tmp_bt->open(bt_path, db_path_, tbl_sub_path_, MMAP_CREAT_EXCL, err_info) >= 0 || err_info.errcode == KWECORR) {
-    tmp_bt->create(schema, table_version, tbl_sub_path_, partition_interval_, encoding, err_info, false);
+    tmp_bt->create(schema, table_version, tbl_sub_path_, partition_interval_, encoding, err_info, false, hash_num_);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] create error : %s", bt_path.c_str(), err_info.errmsg.c_str());
@@ -137,6 +138,7 @@ KStatus MMapRootTableManager::CreateRootTable(vector<AttributeInfo>& schema, uin
     tmp_bt->metaData()->is_dropped = src_bt->metaData()->is_dropped;
     tmp_bt->metaData()->min_ts = src_bt->metaData()->min_ts;
     tmp_bt->metaData()->max_ts = src_bt->metaData()->max_ts;
+    tmp_bt->metaData()->hash_num = src_bt->metaData()->hash_num;
     // Version compatibility
     if (src_bt->metaData()->schema_version_of_latest_data == 0) {
       tmp_bt->metaData()->schema_version_of_latest_data = table_version;
@@ -153,6 +155,7 @@ KStatus MMapRootTableManager::CreateRootTable(vector<AttributeInfo>& schema, uin
   cur_root_table_ = tmp_bt;
   cur_table_version_ = table_version;
   partition_interval_ = tmp_bt->partitionInterval();
+  hash_num_ = tmp_bt->hashNum();
   return SUCCESS;
 }
 
@@ -176,7 +179,7 @@ KStatus MMapRootTableManager::AddRootTable(vector<AttributeInfo>& schema, uint32
   int encoding = ENTITY_TABLE | NO_DEFAULT_TABLE;
   auto* tmp_bt = new MMapMetricsTable();
   if (tmp_bt->open(tbl_name, db_path_, tbl_sub_path_, MMAP_CREAT_EXCL, err_info) >= 0 || err_info.errcode == KWECORR) {
-    tmp_bt->create(schema, table_version, tbl_sub_path_, partition_interval_, encoding, err_info, false);
+    tmp_bt->create(schema, table_version, tbl_sub_path_, partition_interval_, encoding, err_info, false, hash_num_);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] create error : %s", tbl_name.c_str(), err_info.errmsg.c_str());
@@ -524,4 +527,8 @@ uint32_t MMapRootTableManager::GetTableVersionOfLatestData() {
 
 TsHashLatch* MMapRootTableManager::GetDeleteDataLatch() {
   return &delete_data_latch_;
+}
+
+uint64_t MMapRootTableManager::GetHashNum() {
+  return cur_root_table_->hashNum();
 }

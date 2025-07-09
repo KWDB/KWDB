@@ -12,7 +12,9 @@
 package optbuilder
 
 import (
+	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -92,4 +94,38 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 		&memo.CreateProcedurePrivate{Schema: schID, Syntax: cv, Deps: b.viewDeps},
 	)
 	return outScope
+}
+
+// buildCreateProcedurePG
+func (b *Builder) buildCreateProcedurePG(
+	cv *tree.CreateProcedurePG, inScope *scope,
+) (outScope *scope) {
+	ctx := tree.NewFmtCtx(tree.FmtSimple)
+	ctx.WriteString("CREATE ")
+	ctx.WriteString("PROCEDURE ")
+	ctx.FormatNode(&cv.Name)
+	ctx.WriteString("(")
+	for i, arg := range cv.Parameters {
+		lex.EncodeRestrictedSQLIdent(&ctx.Buffer, string(arg.Name), lex.EncNoFlags)
+		ctx.WriteString(" ")
+		ctx.WriteString(arg.Type.SQLString())
+		if i < len(cv.Parameters)-1 {
+			ctx.WriteString(", ")
+		}
+	}
+	ctx.WriteString(") ")
+	ctx.WriteString(cv.BodyStr)
+	newSQL := ctx.String()
+	newStmt, err := parser.Parse(newSQL)
+	if err != nil {
+		panic(err)
+	}
+	if len(newStmt) != 1 {
+		panic(pgerror.Newf(pgcode.InvalidFunctionDefinition, "please put the statement into the body of BEGIN...END"))
+	}
+	cp, ok := newStmt[0].AST.(*tree.CreateProcedure)
+	if !ok {
+		panic(pgerror.Newf(pgcode.Syntax, "cannot parse \"%s\" as CREATE PROCEDURE statement", newStmt[0].AST.String()))
+	}
+	return b.buildCreateProcedure(cp, inScope)
 }

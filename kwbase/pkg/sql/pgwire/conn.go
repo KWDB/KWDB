@@ -1234,7 +1234,11 @@ func Send(
 	insertStmt.InsertFast = true
 	insertStmt.RowsAffected = int64(rowNum - failedRows)
 
-	insertStmt.UseDeepRule, insertStmt.DedupRule, insertStmt.DedupRows = con.SendDTI(EvalContext.Context, &EvalContext, r, di, stmts)
+	var err error
+	if insertStmt.UseDeepRule, insertStmt.DedupRule, insertStmt.DedupRows, err =
+		con.SendDTI(EvalContext.Context, &EvalContext, r, di, stmts); err != nil {
+		return err
+	}
 
 	return c.stmtBuf.Push(ctx, sql.ExecStmt{
 		Statement:    stmts[0],
