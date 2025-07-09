@@ -56,7 +56,7 @@ TEST_F(TestEngine, tagiterator) {
   ConstructRoachpbTable(&meta, cur_table_id);
 
   std::vector<RangeGroup> ranges{kTestRange};
-  auto s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  auto s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTable> ts_table;
