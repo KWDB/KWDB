@@ -89,7 +89,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   // read batch job
   uint64_t read_job_id = 1;
   TSSlice data;
-  int32_t row_num;
+  uint32_t row_num;
   s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id, &data, &row_num);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -110,7 +110,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
-  int32_t n_rows;
+  uint32_t n_rows;
   uint64_t write_job_id = 2;
   data.data = backup_data.data();
   data.len = backup_data.size();

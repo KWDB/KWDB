@@ -16,7 +16,7 @@
 namespace kwdbts {
 
 TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id,
-                                             uint32_t table_version, KwTsSpan ts_span, uint64_t job_id,
+                                             uint64_t table_version, KwTsSpan ts_span, uint64_t job_id,
                                              vector<EntityResultIndex> entity_indexes)
                                              : TsBatchDataWorker(job_id), ts_engine_(ts_engine), table_id_(table_id),
                                                table_version_(table_version), ts_span_(ts_span), actual_ts_span_(ts_span),
@@ -206,7 +206,7 @@ std::string TsReadBatchDataWorker::GenKey(TSTableID table_id, uint32_t table_ver
   return buffer;
 }
 
-KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, int32_t* row_num) {
+KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
   if (is_finished_) {
     *row_num = 0;
     return KStatus::SUCCESS;
@@ -353,7 +353,7 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, int32_t* row_num) {
+KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
   // parser tag info
   uint16_t p_tag_size = KUint16(data->data + TsBatchData::header_size_);
   uint32_t p_tag_offset = TsBatchData::header_size_ + sizeof(p_tag_size);

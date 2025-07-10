@@ -245,11 +245,11 @@ class TsBatchDataWorker {
     return KStatus::SUCCESS;
   }
 
-  virtual KStatus Read(kwdbContext_p ctx, TSSlice* data, int32_t* row_num) {
+  virtual KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
     return KStatus::SUCCESS;
   }
 
-  virtual KStatus Write(kwdbContext_p ctx, TSSlice* data, int32_t* row_num) {
+  virtual KStatus Write(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
     return KStatus::SUCCESS;
   }
 
@@ -268,7 +268,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
  private:
   TSEngineV2Impl* ts_engine_;
   TSTableID table_id_;
-  uint32_t table_version_;
+  uint64_t table_version_;
   KwTsSpan ts_span_;
   KwTsSpan actual_ts_span_;
 
@@ -288,7 +288,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
   KStatus NextBlockSpansIterator();
 
  public:
-  TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id, uint32_t table_version, KwTsSpan ts_span,
+  TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id, uint64_t table_version, KwTsSpan ts_span,
                         uint64_t job_id, vector<EntityResultIndex> entity_indexes_);
 
   KStatus Init(kwdbContext_p ctx) override;
@@ -296,7 +296,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
   static std::string GenKey(TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
                             uint64_t end_hash, KwTsSpan ts_span);
 
-  KStatus Read(kwdbContext_p ctx, TSSlice* data, int32_t* row_num) override;
+  KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) override;
 };
 
 class TsWriteBatchDataWorker : public TsBatchDataWorker {
@@ -321,7 +321,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
 
   KStatus Init(kwdbContext_p ctx) override;
 
-  KStatus Write(kwdbContext_p ctx, TSSlice* data, int32_t* row_num) override;
+  KStatus Write(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) override;
 
   KStatus Finish(kwdbContext_p ctx) override;
 

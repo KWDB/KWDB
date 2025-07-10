@@ -162,12 +162,12 @@ class TSEngineV2Impl : public TSEngine {
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
                               const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
 
-  KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+  KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
-                        int32_t* row_num) override;
+                        uint32_t* row_num) override;
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                         TSSlice* data, int32_t* row_num) override;
+                         TSSlice* data, uint32_t* row_num) override;
 
   KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) override;
 

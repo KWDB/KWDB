@@ -1064,9 +1064,9 @@ KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& 
   return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id);
 }
 
-KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                       uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
-                      int32_t* row_num) {
+                      uint32_t* row_num) {
   std::string key = TsReadBatchDataWorker::GenKey(table_id, table_version, begin_hash, end_hash, ts_span);
   RW_LATCH_S_LOCK(&read_batch_workers_lock_);
   auto workers_it = read_batch_data_workers_.find(job_id);
@@ -1126,7 +1126,7 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
 }
 
 KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                         TSSlice* data, int32_t* row_num) {
+                         TSSlice* data, uint32_t* row_num) {
   std::shared_ptr<TsBatchDataWorker> worker = nullptr;
   RW_LATCH_S_LOCK(&write_batch_worker_lock_);
   if (write_batch_data_worker_ != nullptr) {
@@ -1679,7 +1679,7 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
       return KStatus::FAIL;
     }
   }
-  int32_t row_num = 0;
+  uint32_t row_num = 0;
   TSSlice batch_data = {nullptr, 0};
   auto s = ReadBatchData(ctx, ts_snapshot_info.table_id, ts_snapshot_info.table_version, ts_snapshot_info.begin_hash,
                       ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, ts_snapshot_info.id, &batch_data, &row_num);
@@ -1734,7 +1734,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
   data_with_rownum += 8;
   auto table_version = KUint32(data_with_rownum);
   data_with_rownum += 4;
-  auto row_num = KInt32(data_with_rownum);
+  auto row_num = KUint32(data_with_rownum);
   data_with_rownum += 4;
   TSSlice raw_data{data_with_rownum, data.len - 16};
   assert(table_id == ts_snapshot_info.table_id);
