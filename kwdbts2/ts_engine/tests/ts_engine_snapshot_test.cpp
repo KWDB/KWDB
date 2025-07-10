@@ -44,7 +44,8 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
   }
 
   TestEngineSnapshotImgrate() {
-    system(("rm -rf " + db_path + "/*").c_str());
+    auto ret = system(("rm -rf " + db_path + "/*").c_str());
+    EXPECT_EQ(ret, 0);
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     opts_.db_path = db_path + "/srcdb/";
@@ -77,7 +78,6 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
       delete ts_engine_desc_;
       ts_engine_desc_ = nullptr;
     }
-    system(("rm -rf " + db_path + "/*").c_str());
   }
   
   void InsertData(TSEngineV2Impl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000) {
