@@ -567,6 +567,7 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
     ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
                                                   ts_scan_cols, table_schema_mgr, table_version, ASC);
   } else {
+    // need call Next function times: entity_ids.size(), no matter Next return what.
     ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols, ts_scan_cols,
                                       agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, table_version);
   }
@@ -835,7 +836,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_i
 const std::vector<KwTsSpan>& ts_spans) {
   if (lsn == UINT64_MAX) {  // make sure lsn is not larger than current lsn.
     wal_manager_->Lock();
-    lsn = wal_manager_->FetchCurrentLSN() + 1;  // not same with any allocated lsn.
+    lsn = wal_manager_->FetchCurrentLSN() - 1;  // not same with any allocated lsn.
     wal_manager_->Unlock();
   }
   return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);

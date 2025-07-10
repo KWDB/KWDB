@@ -779,17 +779,19 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   }
   *row_count = 0;
   k_uint32 count;
-  bool is_finished = false;
-  do {
-    ResultSet res{(k_uint32) scan_cols.size()};
+  ResultSet res;
+  res.setColumnNum(scan_cols.size());
+  for (size_t i = 0; i < entity_ids.size(); i++) {
+    res.clear();
     auto s = iter->Next(&res, &count);
     if (s != KStatus::SUCCESS) {
       return s;
     }
     if (count > 0) {
+      assert(count == 1);
       *row_count += *reinterpret_cast<uint64_t*>(res.data[0][0]->mem);
     }
-  } while (count > 0);
+  }
   return KStatus::SUCCESS;
 }
 

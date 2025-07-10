@@ -108,6 +108,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   ~TsAggIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
+  // need call Next function times: entity_ids.size(), no matter Next return what.
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
   bool IsDisordered() override;
 
