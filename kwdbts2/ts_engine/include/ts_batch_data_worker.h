@@ -237,7 +237,7 @@ class TsBatchDataWorker {
 
  public:
   explicit TsBatchDataWorker(uint64_t job_id) : job_id_(job_id) {}
-  virtual ~TsBatchDataWorker() {};
+  virtual ~TsBatchDataWorker() {}
 
   uint64_t GetJobId() const { return job_id_; }
 
