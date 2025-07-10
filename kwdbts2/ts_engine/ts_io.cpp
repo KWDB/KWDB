@@ -45,7 +45,7 @@ KStatus TsMMapAppendOnlyFile::UnmapCurrent() {
   return SUCCESS;
 }
 
-size_t TruncateToPage(size_t offset, size_t page_size) {
+static size_t TruncateToPage(size_t offset, size_t page_size) {
   assert((page_size & (page_size - 1)) == 0);
   offset -= offset & (page_size - 1);
   return offset;

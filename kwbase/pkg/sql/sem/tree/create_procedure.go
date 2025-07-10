@@ -61,6 +61,34 @@ func (node *CreateProcedure) Format(ctx *FmtCtx) {
 	ctx.WriteString("END")
 }
 
+// CreateProcedurePG represents the definition of stored procedures.
+type CreateProcedurePG struct {
+	Name       TableName
+	Parameters []*ProcedureParameter
+	BodyStr    string
+}
+
+// Format formats create procedure string
+func (node *CreateProcedurePG) Format(ctx *FmtCtx) {
+	f := ctx.flags
+	ctx.WriteString("CREATE ")
+	ctx.WriteString("PROCEDURE ")
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString("(")
+	for i, arg := range node.Parameters {
+		lex.EncodeRestrictedSQLIdent(&ctx.Buffer, string(arg.Name), f.EncodeFlags())
+		ctx.WriteString(" ")
+		ctx.WriteString(arg.Type.SQLString())
+		if i < len(node.Parameters)-1 {
+			ctx.WriteString(", ")
+		}
+	}
+	ctx.WriteString(") ")
+	ctx.WriteString("$$")
+	ctx.WriteString(node.BodyStr)
+	ctx.WriteString("$$")
+}
+
 // ProcedureParameter 表示存储过程的参数
 type ProcedureParameter struct {
 	Direction ProcDirection

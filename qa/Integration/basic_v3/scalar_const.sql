@@ -57,6 +57,7 @@ explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.
 
 --- simple function with correlated subquery
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+select extract('second', '2024-01-01 00:00:00'::timestamp) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) in ( select e4 from test_ts.ts_table2 where e2 > 1000000 group by e4) from test_ts.ts_table;
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) in ( select e4 from test_ts.ts_table2 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) in ( select e4 from test_ts.ts_table2 ) from test_ts.ts_table order by e3 desc limit 10 offset 1;
@@ -138,6 +139,7 @@ explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 
 
 -- args has function with correlated subquery
 explain select extract('year', localtimestamp()) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+select extract('year', localtimestamp()) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
 explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 where e2 > 1000000 group by e4) from test_ts.ts_table;
 explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
 explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 ) from test_ts.ts_table order by e3 desc limit 10 offset 1;
@@ -184,6 +186,7 @@ explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from tes
 
 -- aggregate function with correlated subquery
 explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+select max(extract('second', '2024-01-01 00:00:00'::timestamp)) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
 explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) in ( select e4 from test_ts.ts_table2 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
 
 -- aggregate function with JOIN

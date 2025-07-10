@@ -53,11 +53,9 @@ class MetricsVersionManager {
     return GetMetricsTable(cur_metric_version_, lock);
   }
 
-  uint32_t GetCurrentMetricsVersion() const {
-    return cur_metric_version_;
-  }
+  uint32_t GetCurrentMetricsVersion() const { return cur_metric_version_; }
 
-  void GetAllVersions(std::vector<uint32_t> *table_versions);
+  void GetAllVersions(std::vector<uint32_t>* table_versions);
 
   LifeTime GetLifeTime() const;
 

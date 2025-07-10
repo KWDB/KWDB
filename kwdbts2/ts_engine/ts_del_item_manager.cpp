@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <assert.h>
+#include "data_type.h"
 #include "ts_del_item_manager.h"
 
 namespace kwdbts {
@@ -20,7 +21,7 @@ std::vector<STScanRange> LSNRangeUtil::MergeScanAndDelRange(const std::vector<ST
   for (auto& range : ranges) {
     MergeRangeCross(range, del, &result);
   }
-  return std::move(result);
+  return result;
 }
 
 #define  IsMinLSN(lsn) (lsn == 0)
@@ -130,6 +131,9 @@ KStatus TsDelItemManager::Open() {
 KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item) {
   auto offset = mmap_alloc_.AllocateAssigned(sizeof(IndexNode), INVALID_POSITION);
   auto new_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(offset, sizeof(IndexNode)));
+  if (new_node == nullptr) {
+    return FAIL;
+  }
   new_node->del_item = del_item;
   new_node->del_item.status = DEL_ITEM_OK;
   auto node = index_.GetIndexObject(entity_id, true);

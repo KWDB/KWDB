@@ -167,14 +167,20 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 class TsOffsetIteratorV2Impl : public TsIterator {
  public:
   TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
-                         std::map<uint32_t, std::vector<EntityID>>& vgroup_ids,
-                         std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                         uint32_t table_version, uint32_t offset, uint32_t limit) : vgroups_(vgroups),
-                         vgroup_ids_(vgroup_ids), ts_spans_(ts_spans), ts_col_type_(ts_col_type),
-                         kw_scan_cols_(kw_scan_cols), ts_scan_cols_(ts_scan_cols), table_schema_mgr_(table_schema_mgr),
-                         table_version_(table_version), offset_(offset), limit_(limit) {}
+                         std::map<uint32_t, std::vector<EntityID>>& vgroup_ids, std::vector<KwTsSpan>& ts_spans,
+                         DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                         uint32_t offset, uint32_t limit)
+      : table_version_(table_version),
+        table_schema_mgr_(table_schema_mgr),
+        ts_col_type_(ts_col_type),
+        ts_spans_(ts_spans),
+        kw_scan_cols_(kw_scan_cols),
+        ts_scan_cols_(ts_scan_cols),
+        vgroup_ids_(vgroup_ids),
+        vgroups_(vgroups),
+        offset_(offset),
+        limit_(limit) {}
 
   ~TsOffsetIteratorV2Impl() override {}
 

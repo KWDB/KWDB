@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include "ts_table_v2_impl.h"
+#include "kwdb_type.h"
 #include "ts_tag_iterator_v2_impl.h"
 #include "ts_engine.h"
 #include "ts_vgroup.h"
@@ -145,10 +146,10 @@ KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityRes
 }
 
 KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                                   std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                   std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
-                                   k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
-                                   bool reverse, bool sorted) {
+                                         std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
+                                         std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
+                                         k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
+                                         bool reverse, bool sorted) {
   auto ts_table_iterator = new TsTableIterator();
   KStatus s = KStatus::SUCCESS;
   Defer defer{[&]() {
@@ -166,6 +167,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
       // In the concurrency scenario, after the storage has deleted the column,
       // kwsql sends query again
       LOG_ERROR("GetIterator Error : TsTable no column %d", col);
+      s = FAIL;
       return KStatus::FAIL;
     }
     ts_scan_cols.emplace_back(actual_cols[col]);
@@ -182,6 +184,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
   for (auto& vgroup_iter : vgroup_ids) {
     if (vgroup_iter.first >= EngineOptions::vgroup_max_num) {
       LOG_ERROR("Invalid vgroup id.[%u]", vgroup_iter.first);
+      s = FAIL;
       return s;
     }
     vgroup = (*ts_vgroups)[vgroup_iter.first];
@@ -531,13 +534,13 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
   }
   s = GetEntityRowCount(ctx, entity_store, {ts_span}, &row_num);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
-      begin_hash, end_hash, ts_span.begin, ts_span.end);
+    LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed, row_num[%lu].",
+      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
     return s;
   }
   if (row_num == 0) {
-    LOG_INFO("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] has no rows left.",
-      begin_hash, end_hash, ts_span.begin, ts_span.end);
+    LOG_INFO("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] has no rows left, row_num[%lu].",
+      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
     *half_ts = (ts_span.begin + ts_span.end) / 2;
     return KStatus::SUCCESS;
   }
@@ -604,9 +607,9 @@ vector<EntityResultIndex>& entity_store) {
       }
       if (!EngineOptions::isSingleNode()) {
         uint32_t tag_hash;
-        entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
         if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
-          entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+          entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
         }
       } else {
         entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);

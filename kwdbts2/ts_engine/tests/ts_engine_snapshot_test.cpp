@@ -162,17 +162,19 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1007;
   ConstructRoachpbTable(&meta, cur_table_id);
-  std::vector<RangeGroup> ranges{test_range};
-  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
 
   uint64_t snapshot_id;
   s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
   uint64_t desc_snapshot_id;
   s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -214,16 +216,17 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1007;
   ConstructRoachpbTable(&meta, cur_table_id);
-  std::vector<RangeGroup> ranges{test_range};
-  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
 
   uint64_t snapshot_id;
   s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   // input data to  table 1007
   InsertData(ts_engine_src_, cur_table_id, 1, 12345, 5);
@@ -282,16 +285,17 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1007;
   ConstructRoachpbTable(&meta, cur_table_id);
-  std::vector<RangeGroup> ranges{test_range};
-  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
 
   uint64_t snapshot_id;
   s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   // input data to  table 1007
   int partition_num = 3;
@@ -354,16 +358,17 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1007;
   ConstructRoachpbTable(&meta, cur_table_id);
-  std::vector<RangeGroup> ranges{test_range};
-  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
 
   uint64_t snapshot_id;
   s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   // input data to  table 1007
   int partition_num = 5;

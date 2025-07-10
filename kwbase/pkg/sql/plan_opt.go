@@ -245,7 +245,12 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	cols := planColumns(result.plan)
 	if stmt.ExpectedTypes != nil {
 		if !stmt.ExpectedTypes.TypesEqual(cols) {
-			if _, ok := root.(*memo.CallProcedureExpr); !ok {
+			// Because procedure supports multiple result sets and
+			// the type of the returned result cannot be determined,
+			// this error is skipped.
+			_, isCreateProc := root.(*memo.CreateProcedureExpr)
+			_, isCallProc := root.(*memo.CallProcedureExpr)
+			if !isCreateProc && !isCallProc {
 				return pgerror.New(pgcode.FeatureNotSupported, "cached plan must not change result type")
 			}
 		}
@@ -297,6 +302,7 @@ func (opc *optPlanningCtx) reset() {
 	opc.catalog.reset()
 	opc.optimizer.Init(p.EvalContext(), &opc.catalog)
 	opc.flags = 0
+	opc.procedureCols = nil
 
 	// We only allow memo caching for SELECT/INSERT/UPDATE/DELETE. We could
 	// support it for all statements in principle, but it would increase the

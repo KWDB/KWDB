@@ -52,7 +52,10 @@ KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_
 
 TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
-    : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow),
+    : block_(block),
+      entity_id_(entity_id),
+      start_row_(start),
+      nrow_(nrow),
       convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
   assert(nrow_ >= 1);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
@@ -60,7 +63,11 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
 
 TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
-    : vgroup_id_(vgroup_id), entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow),
+    : block_(block),
+      vgroup_id_(vgroup_id),
+      entity_id_(entity_id),
+      start_row_(start),
+      nrow_(nrow),
       convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
   assert(nrow_ >= 1);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);

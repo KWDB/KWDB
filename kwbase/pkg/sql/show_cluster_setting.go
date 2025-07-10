@@ -46,6 +46,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var versionName = "version"
+
 func (p *planner) showStateMachineSetting(
 	ctx context.Context, st *cluster.Settings, s *settings.StateMachineSetting, name string,
 ) (string, error) {

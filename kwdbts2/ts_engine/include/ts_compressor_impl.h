@@ -26,6 +26,7 @@ namespace kwdbts {
 
 class TsCompressorBase {
  public:
+  virtual ~TsCompressorBase() = default;
   virtual bool Compress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
                         std::string *out) const = 0;
   virtual bool Decompress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
@@ -34,6 +35,7 @@ class TsCompressorBase {
 
 class GenCompressorBase {
  public:
+  virtual ~GenCompressorBase() = default;
   virtual bool Compress(const TSSlice &raw, std::string *out) const = 0;
   virtual bool Decompress(const TSSlice &raw, std::string *out) const = 0;
 };
@@ -43,6 +45,7 @@ class CompressorImpl {
   CompressorImpl() = default;
 
  public:
+  virtual ~CompressorImpl() = default;
   CompressorImpl(const CompressorImpl &) = delete;
   void operator=(const CompressorImpl &) = delete;
   virtual bool Compress(const TSSlice &data, uint64_t count, std::string *out) const = 0;
