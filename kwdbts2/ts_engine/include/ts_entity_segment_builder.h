@@ -183,7 +183,6 @@ class TsEntitySegmentBuilder {
   std::filesystem::path root_path_;
   TsEngineSchemaManager* schema_manager_;
   TsVersionManager* version_manager_;
-  uint64_t entity_header_file_num_;
 
   PartitionIdentifier partition_id_;
   std::shared_ptr<TsEntitySegment> cur_entity_segment_;
@@ -233,8 +232,7 @@ class TsEntitySegmentBuilder {
                          uint64_t entity_header_file_num)
     : root_path_(root_path),
       partition_id_(partition_id),
-      cur_entity_segment_(entity_segment),
-      entity_header_file_num_(entity_header_file_num) {
+      cur_entity_segment_(entity_segment) {
     // entity header file
     std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_header_file_num);
     entity_item_builder_ =
@@ -251,12 +249,6 @@ class TsEntitySegmentBuilder {
   }
 
   KStatus Open();
-
-  std::string GetRootPath() { return root_path_; }
-
-  uint32_t GetEntityHeaderNum() { return entity_header_file_num_; }
-
-  PartitionIdentifier GetPartitionId() { return partition_id_; }
 
   KStatus Compact(TsVersionUpdate *update);
 

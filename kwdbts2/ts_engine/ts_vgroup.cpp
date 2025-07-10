@@ -938,10 +938,11 @@ KStatus TsVGroup::FinishWriteBatchData() {
   for (auto& kv : write_batch_segment_builders_) {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
+      write_batch_segment_builders_.clear();
+      ResetTsExclusiveStatus();
       LOG_ERROR("Finish entity segment builder failed");
       return s;
     }
-    PartitionIdentifier partition_id = kv.second->GetPartitionId();
   }
   write_batch_segment_builders_.clear();
   version_manager_->ApplyUpdate(&update);

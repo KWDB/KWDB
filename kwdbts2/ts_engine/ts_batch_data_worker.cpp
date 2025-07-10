@@ -135,7 +135,7 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
                                                                                    table_version_, &block_spans);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to get block span, "
-              "table_id[%lu], table_version[%u], entity_id[%u]",
+              "table_id[%lu], table_version[%lu], entity_id[%u]",
               table_id_, table_version_, cur_entity_index_.entityId);
     return s;
   }
@@ -153,7 +153,7 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
   s = block_spans_iterator_->Init();
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to init block span iterator, "
-              "table_id[%lu], table_version[%u], entity_id[%u]",
+              "table_id[%lu], table_version[%lu], entity_id[%u]",
               table_id_, table_version_, cur_entity_index_.entityId);
   }
   return s;
@@ -177,7 +177,7 @@ KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
   std::shared_ptr<MMapMetricsTable> metric_schema;
   s = schema_->GetMetricSchema(table_version_, &metric_schema);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to get metric schema, table id[%lu], version[%u]", table_id_, table_version_);
+    LOG_ERROR("Failed to get metric schema, table id[%lu], version[%lu]", table_id_, table_version_);
     return KStatus::FAIL;
   }
   const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
