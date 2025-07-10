@@ -731,3 +731,47 @@ CREATE PROCEDURE test_procedure_my_limit_ts.test_limit(i1 timestamp) BEGIN DELET
 DROP PROCEDURE IF EXISTS test_procedure_my_limit_ts.test_limit;
 CREATE PROCEDURE test_procedure_my_limit_ts.test_limit(i1 INT) BEGIN UPDATE test_procedure_my_limit_ts.test2 set code2='test' WHERE code1 = i1; END;
 DROP DATABASE IF EXISTS test_procedure_my_limit_ts CASCADE;
+
+--ZDP-48292 【ent-0708dev20】【存储过程】更新时序表，对依赖tag列限制有误
+DROP DATABASE IF EXISTS test_procedure_my_limit_ts CASCADE;
+DROP DATABASE IF EXISTS test_procedure_my_limit_rel CASCADE;
+CREATE TS DATABASE test_procedure_my_limit_ts;
+CREATE DATABASE test_procedure_my_limit_rel;
+DROP PROCEDURE IF EXISTS test_procedure_my_limit_rel.test_limit;
+CREATE TABLE test_procedure_my_limit_ts.test2(
+k_timestamp TIMESTAMPTZ NOT NULL,
+id INT NOT NULL,
+e1 INT2,
+e2 INT2,
+e3 VARCHAR)
+TAGS (
+code1 INT2 NOT NULL,
+code2 VARCHAR,
+code3 VARCHAR)
+PRIMARY TAGS(code1);
+INSERT INTO test_procedure_my_limit_ts.test2 VALUES('2024-1-1 08:00:00.1'  ,1,1,1,'a',1,'a','a');
+INSERT INTO test_procedure_my_limit_ts.test2 VALUES('2024-2-1 16:00:00.01' ,2,2,2,'b',2,'b','b');
+INSERT INTO test_procedure_my_limit_ts.test2 VALUES('2024-3-1 23:59:59.999',3,3,3,'c',3,'c','c');
+
+CREATE PROCEDURE test_procedure_my_limit_ts.test_limit(i1 INT) $$BEGIN UPDATE test_procedure_my_limit_ts.test2 SET code2 = 'test' WHERE code1 = 1; END$$;
+
+ALTER TABLE test_procedure_my_limit_ts.test2 RENAME TAG code2  TO code222;
+CALL test_procedure_my_limit_ts.test_limit(1);
+ALTER TABLE test_procedure_my_limit_ts.test2 RENAME TAG code222 TO code2;
+DROP DATABASE IF EXISTS test_procedure_my_limit_ts CASCADE;
+DROP DATABASE IF EXISTS test_procedure_my_limit_rel CASCADE;
+
+drop table if exists t1 cascade;
+create table t1(a int, b int);
+create procedure p1() begin update t1 set a =1 where b=0; end;
+alter table t1 rename column a to aa;
+alter table t1 rename column b to bb;
+drop table if exists t1 cascade;
+
+create procedure p1();
+create procedure p1(a int);
+create procedure p1(a int) $$ begin declare b int; declare c int; end; select b,c;$$;
+create procedure p1(a int) $$ begin declare b int; declare c int; end;$$ begin select b,c; end;
+create procedure p1(a int) $$ begin declare b int; declare c int; select a,b,c; end$$;
+call p1(111);
+drop procedure p1;

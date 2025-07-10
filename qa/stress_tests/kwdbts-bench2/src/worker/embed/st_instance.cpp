@@ -174,7 +174,7 @@ KBStatus StInstance::Init(BenchParams params, std::vector<uint32_t> table_ids_) 
     StMetaBuilder::constructRoachpbTable(&meta, table_id, params_);
     table_metas.push_back(meta);
     std::vector<RangeGroup> ranges{test_range};
-    KStatus s = ts_engine_->CreateTsTable(g_contet_p, table_id, &meta, ranges);
+    KStatus s = ts_engine_->CreateTsTable(g_contet_p, table_id, &meta, ranges, false);
     if (s != kwdbts::KStatus::SUCCESS) {
       log_ERROR("CreateKObjectTable fail");
     }

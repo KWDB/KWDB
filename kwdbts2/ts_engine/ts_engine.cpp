@@ -163,7 +163,7 @@ TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
 }
 
 KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-  std::vector<RangeGroup> ranges) {
+  std::vector<RangeGroup> ranges, bool not_get_table) {
   std::shared_ptr<TsTable> ts_table;
   return CreateTsTable(ctx, table_id, meta, ts_table);
 }

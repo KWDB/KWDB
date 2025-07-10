@@ -132,6 +132,13 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 
 	// Build each of the SET expressions.
 	mb.addUpdateCols(upd.Exprs)
+	if b.insideProcDef {
+		colOrds := make([]int, 0)
+		for _, colID := range mb.targetColList {
+			colOrds = append(colOrds, mb.tabID.ColumnOrdinal(colID))
+		}
+		b.addViewDep(tab, colOrds)
+	}
 
 	// Build the final update statement, including any returned expressions.
 	if resultsNeeded(upd.Returning) {
@@ -489,6 +496,13 @@ func (b *Builder) buildTSUpdate(
 	// Build each of the SET expressions.
 	if err := mb.addTSUpdateCols(upd.Exprs, exprs); err != nil {
 		panic(err)
+	}
+	if b.insideProcDef {
+		colOrds := make([]int, 0)
+		for _, colID := range mb.targetColList {
+			colOrds = append(colOrds, mb.tabID.ColumnOrdinal(colID))
+		}
+		b.addViewDep(mb.tab, colOrds)
 	}
 	outScope = inScope.push()
 

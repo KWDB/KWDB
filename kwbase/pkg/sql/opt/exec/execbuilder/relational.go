@@ -464,6 +464,12 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 
 	if addSynchronizer && e.GetAddSynchronizer() {
 		ep = b.buildSynchronizer(ep)
+		if scan, ok := e.(*memo.TSScanExpr); ok && scan.HardLimit.IsSet() {
+			ep, err = b.buildHardLimit(ep, scan)
+			if err != nil {
+				return execPlan{}, err
+			}
+		}
 	}
 
 	if e.IsTSEngine() {
@@ -740,8 +746,9 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 		rowCount = 0
 	}
 
+	hardLimit := scan.HardLimit.RowCount()
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount)
+	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount, uint32(hardLimit))
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -2603,6 +2610,24 @@ func (b *Builder) buildLimitOffset(e memo.RelExpr) (execPlan, bool, error) {
 		return execPlan{}, add, err
 	}
 	return execPlan{root: node, outputCols: input.outputCols}, add, nil
+}
+
+// buildHardLimit when a HardLimit is set in TsScan, add Limit outside the Synchronizer.
+func (b *Builder) buildHardLimit(input execPlan, e *memo.TSScanExpr) (execPlan, error) {
+	// LIMIT/OFFSET expression should never need buildScalarContext, because it
+	// can't refer to the input expression.
+	hardLimit := tree.DInt(e.HardLimit)
+	expr, err := b.buildScalar(nil, &memo.ConstExpr{Value: &hardLimit})
+	if err != nil {
+		return execPlan{}, err
+	}
+	var node exec.Node
+	//add := true
+	node, err = b.factory.ConstructHardLimit(input.root, expr, b.mem.Metadata())
+	if err != nil {
+		return execPlan{}, err
+	}
+	return execPlan{root: node, outputCols: input.outputCols}, nil
 }
 
 func (b *Builder) buildSort(sort *memo.SortExpr) (execPlan, error) {

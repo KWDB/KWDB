@@ -77,7 +77,7 @@ class TSEngineV2Impl : public TSEngine {
   ~TSEngineV2Impl() override;
 
   KStatus CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-                        std::vector<RangeGroup> ranges) override;
+                        std::vector<RangeGroup> ranges, bool not_get_table) override;
 
   KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override;
 
