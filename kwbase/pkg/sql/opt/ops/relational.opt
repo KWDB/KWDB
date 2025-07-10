@@ -1035,6 +1035,14 @@ define TSScanPrivate {
 
     # OrderedScanType is a flag for order by ts scan ts table
     OrderedScanType TSOrderedScanType
+
+    # HardLimit specifies the maximum number of rows that the scan can return
+    # (after applying any constraint), as well as the required scan direction.
+    # This is a "hard" limit, meaning that the scan operator must never return
+    # more than this number of rows, even if more are available. If its value is
+    # zero, then the limit is unknown, and the scan should return all available
+    # rows.
+    HardLimit ScanLimit
 }
 
 # TSInsert is an expression for INSERT DEVICE. Applies only to constant value inserts.
@@ -1048,6 +1056,8 @@ define TSInsertPrivate {
   # InputRows is the actual value of the input that is going to be inserted.
   # Already sorted in the order defined by the metadata.
   InputRows RowsValue
+  # ActualRows is the actual value of the input when run inside procedure.
+  ActualRows RowsValue
   ColsMap ColsMap
 
   # Table identifies the table to scan. It is an id that can be passed to
@@ -1060,6 +1070,7 @@ define TSInsertPrivate {
   HasPlaceHolder bool
   NeedCreateTable bool
   CT CreateTable
+  RunInsideProcedure bool
 }
 
 # TSUpdate is an expression for UPDATE DATA. Applies only to constant value inserts.
@@ -1095,6 +1106,9 @@ define TSDeletePrivate {
   InputRows RowsValue
   ColsMap ColsMap
 
+  # ActualRows is the actual value of the input when run inside procedure.
+  ActualRows RowsValue
+
   # Table identifies the table to scan. It is an id that can be passed to
   # the Metadata.Table method in order to fetch cat.Table metadata.
   ID TableID
@@ -1105,6 +1119,7 @@ define TSDeletePrivate {
   PayloadSize int
   RowSize int
   Spans TsSpans
+  RunInsideProcedure bool
 }
 
 [Private]

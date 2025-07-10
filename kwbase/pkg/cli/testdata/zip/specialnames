@@ -51,6 +51,6 @@ requesting table details for system.statement_diagnostics... writing: debug/sche
 requesting table details for system.kwdb_replication_info... writing: debug/schema/system-1/kwdb_replication_info.json
 requesting table details for system.bo_black_list... writing: debug/schema/system-1/bo_black_list.json
 requesting table details for system.kwdb_ts_table... writing: debug/schema/system-1/kwdb_ts_table.json
-requesting table details for system.user_defined_function... writing: debug/schema/system-1/user_defined_function.json
 requesting table details for system.eventlog... writing: debug/schema/system-1/eventlog.json
 requesting table details for system.scheduled_jobs... writing: debug/schema/system-1/scheduled_jobs.json
+requesting table details for system.user_defined_routine... writing: debug/schema/system-1/user_defined_routine.json

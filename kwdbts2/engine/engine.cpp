@@ -101,7 +101,7 @@ TSEngineImpl::~TSEngineImpl() {
 }
 
 KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-                                    std::vector<RangeGroup> ranges) {
+                                    std::vector<RangeGroup> ranges, bool not_get_table) {
   LOG_INFO("Create TsTable %lu begin.", table_id);
   KStatus s;
 
@@ -123,18 +123,22 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   case WALMode::FLUSH:
   case WALMode::SYNC:
   {
-    s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
-    if (s == FAIL) {
-      return s;
+    if (not_get_table) {
+      s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
+      if (s == FAIL) {
+        return s;
+      }
     }
     table = std::make_shared<LoggedTsTable>(ctx, options_.db_path, table_id, &options_);
   }
     break;
   case WALMode::BYRL:
   {
-    s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
-    if (s == FAIL) {
-      return s;
+    if (not_get_table) {
+      s = wal_sys_->WriteDDLCreateWAL(ctx, 0, table_id, meta, &ranges);
+      if (s == FAIL) {
+        return s;
+      }
     }
     LOG_INFO("create RaftLoggedTsTable %lu", table_id);
     table = std::make_shared<RaftLoggedTsTable>(ctx, options_.db_path, table_id);
@@ -390,7 +394,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
       LOG_ERROR("Parse schema From String failed.");
       return KStatus::FAIL;
     }
-    CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}});  // no need check result.
+    CreateTsTable(ctx, table_id, &meta, {{default_entitygroup_id_in_dist_v2, 1}}, false);  // no need check result.
     table = tables_cache_->Get(table_id);
     if (table == nullptr) {
       LOG_INFO("Unable to get the created table, try to get it again");
@@ -1971,7 +1975,7 @@ bool VarColAggCalculator::isDeleted(char* delete_flags, size_t row) {
   return static_cast<char*>(delete_flags)[byte] & bit;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMax(bool base_changed, std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMax(bool& base_changed, std::shared_ptr<void> base) {
   base_changed = true;
   void* max = nullptr;
   for (int i = 0; i < count_; ++i) {
@@ -1995,7 +1999,7 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(bool base_changed, std::shared
   return ptr;
 }
 
-std::shared_ptr<void> VarColAggCalculator::GetMin(bool base_changed, std::shared_ptr<void> base) {
+std::shared_ptr<void> VarColAggCalculator::GetMin(bool& base_changed, std::shared_ptr<void> base) {
   base_changed = true;
   void* min = nullptr;
   for (int i = 0; i < count_; i++) {

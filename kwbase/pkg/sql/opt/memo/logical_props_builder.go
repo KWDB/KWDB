@@ -149,6 +149,7 @@ func (b *logicalPropsBuilder) buildScanProps(scan *ScanExpr, rel *props.Relation
 
 func (b *logicalPropsBuilder) buildTSScanProps(scan *TSScanExpr, rel *props.Relational) {
 	md := scan.Memo().Metadata()
+	hardLimit := scan.HardLimit.RowCount()
 
 	// Side Effects
 	// ------------
@@ -166,9 +167,6 @@ func (b *logicalPropsBuilder) buildTSScanProps(scan *TSScanExpr, rel *props.Rela
 	// ----------------
 	// Initialize not-NULL columns from the table schema.
 	rel.NotNullCols = tableNotNullCols(md, scan.Table)
-	//if scan.Constraint != nil {
-	//	rel.NotNullCols.UnionWith(scan.Constraint.ExtractNotNullCols(b.evalCtx))
-	//}
 	rel.NotNullCols.IntersectionWith(rel.OutputCols)
 
 	// Outer Columns
@@ -179,24 +177,13 @@ func (b *logicalPropsBuilder) buildTSScanProps(scan *TSScanExpr, rel *props.Rela
 	// -----------------------
 	// Check the hard limit to determine whether there is at most one row. Note
 	// that def.HardLimit = 0 indicates there is no known limit.
-	//if hardLimit == 1 {
-	//	//rel.FuncDeps.MakeMax1Row(rel.OutputCols)
-	//} else {
-	//	// Initialize key FD's from the table schema, including constant columns from
-	//	// the constraint, minus any columns that are not projected by the Scan
-	//	// operator.
-	//	rel.FuncDeps.CopyFrom(MakeTableFuncDep(md, scan.Table))
-	//	//if scan.Constraint != nil {
-	//	//	rel.FuncDeps.AddConstants(scan.Constraint.ExtractConstCols(b.evalCtx))
-	//	//}
-	//	rel.FuncDeps.MakeNotNull(rel.NotNullCols)
-	//	rel.FuncDeps.ProjectCols(rel.OutputCols)
-	//}
+	if hardLimit == 1 {
+		rel.FuncDeps.MakeMax1Row(rel.OutputCols)
+	}
 
 	// Initialize key FD's from the table schema, including constant columns from
 	// the constraint, minus any columns that are not projected by the Scan
 	// operator.
-
 	if scan.OrderedScanType.Ordered() {
 		fd := &props.FuncDepSet{}
 		var keyCols opt.ColSet
@@ -217,18 +204,11 @@ func (b *logicalPropsBuilder) buildTSScanProps(scan *TSScanExpr, rel *props.Rela
 	// -----------
 	// Restrict cardinality based on constraint, FDs, and hard limit.
 	rel.Cardinality = props.AnyCardinality
-	//if scan.Constraint != nil && scan.Constraint.IsContradiction() {
-	//	rel.Cardinality = props.ZeroCardinality
-	//} else if rel.FuncDeps.HasMax1Row() {
-	//	rel.Cardinality = rel.Cardinality.Limit(1)
-	//} else {
-	//	if hardLimit > 0 && hardLimit < math.MaxUint32 {
-	//		rel.Cardinality = rel.Cardinality.Limit(uint32(hardLimit))
-	//	}
-	//	if scan.Constraint != nil {
-	//		b.updateCardinalityFromConstraint(scan.Constraint, rel)
-	//	}
-	//}
+	if rel.FuncDeps.HasMax1Row() {
+		rel.Cardinality = rel.Cardinality.Limit(1)
+	} else if hardLimit > 0 && hardLimit < math.MaxUint32 {
+		rel.Cardinality = rel.Cardinality.Limit(uint32(hardLimit))
+	}
 
 	// Statistics
 	// ----------
@@ -1452,6 +1432,20 @@ func (b *logicalPropsBuilder) buildMutationProps(mutation RelExpr, rel *props.Re
 	if !b.disableStats {
 		b.sb.buildMutation(mutation, rel)
 	}
+}
+
+func (b *logicalPropsBuilder) buildCreateProcedureProps(
+	cp *CreateProcedureExpr, rel *props.Relational,
+) {
+	BuildSharedProps(cp, &rel.Shared)
+	rel.Cardinality = props.AnyCardinality
+}
+
+func (b *logicalPropsBuilder) buildCallProcedureProps(
+	cp *CallProcedureExpr, rel *props.Relational,
+) {
+	BuildSharedProps(cp, &rel.Shared)
+	rel.Cardinality = props.AnyCardinality
 }
 
 func (b *logicalPropsBuilder) buildCreateTableProps(ct *CreateTableExpr, rel *props.Relational) {

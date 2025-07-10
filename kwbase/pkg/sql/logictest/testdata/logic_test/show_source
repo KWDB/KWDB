@@ -213,9 +213,9 @@ statement_diagnostics            BASE TABLE
 kwdb_replication_info            BASE TABLE
 bo_black_list                    BASE TABLE
 kwdb_ts_table                    BASE TABLE
-user_defined_function            BASE TABLE
 eventlog                         BASE TABLE
 scheduled_jobs                   BASE TABLE
+user_defined_routine             BASE TABLE
 
 query TTT
 SELECT * FROM [SHOW TABLES FROM system WITH COMMENT]
@@ -249,9 +249,9 @@ statement_diagnostics            BASE TABLE         ·
 kwdb_replication_info            BASE TABLE         ·
 bo_black_list                    BASE TABLE         ·
 kwdb_ts_table                    BASE TABLE         ·
-user_defined_function            BASE TABLE         ·
 eventlog                         BASE TABLE         ·
 scheduled_jobs                   BASE TABLE         ·
+user_defined_routine             BASE TABLE         ·
 
 query ITTT colnames
 SELECT node_id, user_name, application_name, active_queries

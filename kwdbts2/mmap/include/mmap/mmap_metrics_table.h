@@ -51,7 +51,8 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
            int flags, ErrorInfo& err_info) override;
 
   int create(const vector<AttributeInfo>& schema, const uint32_t& table_version, const string& tbl_sub_path,
-             uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data);
+             uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data,
+             uint64_t hash_number = 2000);
 
   int init(const vector<AttributeInfo>& schema, ErrorInfo& err_info);
 
@@ -74,6 +75,8 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   virtual string path() const override;
 
   uint64_t& partitionInterval() { return meta_data_->partition_interval; }
+
+  uint64_t& hashNum() { return meta_data_->hash_num; }
 
   virtual int remove();
 

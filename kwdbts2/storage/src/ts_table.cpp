@@ -1248,8 +1248,10 @@ KStatus TsTable::GetLastRowEntity(EntityResultIndex& entity_id) {
 
 MMapRootTableManager* TsTable::CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
-                                                          uint64_t partition_interval, ErrorInfo& err_info) {
-  MMapRootTableManager* tmp_bt_manager = new MMapRootTableManager(db_path, tbl_sub_path, table_id, partition_interval);
+                                                          uint64_t partition_interval, ErrorInfo& err_info,
+                                                          uint64_t hash_num) {
+  MMapRootTableManager* tmp_bt_manager = new MMapRootTableManager(db_path, tbl_sub_path, table_id, partition_interval,
+                                                                  hash_num);
   KStatus s = tmp_bt_manager->CreateRootTable(schema, table_version, err_info);
   if (s == KStatus::FAIL) {
     delete tmp_bt_manager;
@@ -1341,6 +1343,7 @@ KStatus TsTable::Init(kwdbContext_p ctx, std::unordered_map<uint64_t, int8_t>& r
     LOG_ERROR("TsTable Init error : %s", err_info.errmsg.c_str());
     return KStatus::FAIL;
   }
+  hash_num_ = entity_bt_manager_->GetHashNum();
 
   DIR* dir_ptr = opendir((db_path_ + "/" + tbl_sub_path_).c_str());
   if (dir_ptr == nullptr) {
@@ -1401,10 +1404,11 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
     }
   }
 
+  hash_num_ = hash_num;
   ErrorInfo err_info;
   // Create entity table
   entity_bt_manager_ = CreateMMapRootTableManager(db_path_, tbl_sub_path_, table_id_, metric_schema, ts_version,
-                                                  partition_interval, err_info);
+                                                  partition_interval, err_info, hash_num_);
   if (err_info.errcode < 0) {
     LOG_ERROR("createTable fail, table_id[%lu], msg[%s]", table_id_, err_info.errmsg.c_str());
   }
@@ -1413,17 +1417,11 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
     return KStatus::FAIL;
   }
 
-  hash_num_ = hash_num;
-
   return KStatus::SUCCESS;
 }
 
 KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
-  if (version == entity_bt_manager_->GetCurrentTableVersion()) {
-    return KStatus::SUCCESS;
-  }
-
   if (entity_bt_manager_->GetRootTable(version, true) != nullptr) {
     int retry = 6;
     while (retry > 0) {
@@ -3065,7 +3063,7 @@ KStatus TsTable::AddSchemaVersion(kwdbContext_p ctx, roachpb::CreateTsTable* met
     s = entity_bt_manager_->AddRootTable(metric_schema, upper_version, err_info);
   }
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("add new version schema failed for alter table: table id = %lu, new_version = %u, err_msg: %s",
+    LOG_ERROR("add new version schema failed, table id = %lu, new_version = %u, err_msg: %s",
               table_id_, upper_version, err_info.errmsg.c_str());
     return s;
   }
@@ -3503,25 +3501,6 @@ KStatus TsTable::SplitEntityBySubgroup(kwdbContext_p ctx, const std::vector<Enti
 }
 
 uint64_t TsTable::GetHashNum() {
-  // Check if hash_num_ has been initialized. If not, search and assign a value
-  if (hash_num_ == 0) {
-#ifdef WITH_TESTS
-    return 2000;
-#endif
-    char* error;
-    size_t data_len = 0;
-    char* data = getTableMetaByVersion(table_id_, entity_bt_manager_->GetCurrentTableVersion(), &data_len, &error);
-    if (error != nullptr) {
-      LOG_ERROR(error);
-      return KStatus::FAIL;
-    }
-    roachpb::CreateTsTable meta;
-    if (!meta.ParseFromString({data, data_len})) {
-      LOG_ERROR("Parse schema From String failed.");
-      return KStatus::FAIL;
-    }
-    hash_num_ = meta.ts_table().hash_num();
-  }
   return hash_num_;
 }
 

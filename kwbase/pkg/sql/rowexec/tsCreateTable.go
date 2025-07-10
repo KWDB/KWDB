@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
@@ -81,6 +82,9 @@ func newCreateTsTable(
 	}
 	return tct, nil
 }
+
+// InitProcessorProcedure init processor in procedure
+func (tct *tsCreateTable) InitProcessorProcedure(txn *kv.Txn) {}
 
 // Start is part of the RowSource interface.
 func (tct *tsCreateTable) Start(ctx context.Context) context.Context {

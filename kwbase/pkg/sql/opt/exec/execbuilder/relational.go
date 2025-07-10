@@ -348,6 +348,12 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 	case *memo.TSDeleteExpr:
 		ep, err = b.buildTSDelete(t)
 
+	case *memo.CallProcedureExpr:
+		ep, err = b.buildCallProcedure(t)
+
+	case *memo.CreateProcedureExpr:
+		ep, err = b.buildCreateProcedure(t)
+
 	case *memo.CreateTableExpr:
 		ep, err = b.buildCreateTable(t)
 
@@ -458,6 +464,12 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 
 	if addSynchronizer && e.GetAddSynchronizer() {
 		ep = b.buildSynchronizer(ep)
+		if scan, ok := e.(*memo.TSScanExpr); ok && scan.HardLimit.IsSet() {
+			ep, err = b.buildHardLimit(ep, scan)
+			if err != nil {
+				return execPlan{}, err
+			}
+		}
 	}
 
 	if e.IsTSEngine() {
@@ -734,8 +746,9 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 		rowCount = 0
 	}
 
+	hardLimit := scan.HardLimit.RowCount()
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount)
+	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount, uint32(hardLimit))
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -1627,7 +1640,7 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 
 		eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
 		eb.disableTelemetry = true
-		plan, err := eb.Build()
+		plan, err := eb.Build(true)
 		if err != nil {
 			if errors.IsAssertionFailure(err) {
 				// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
@@ -2599,6 +2612,24 @@ func (b *Builder) buildLimitOffset(e memo.RelExpr) (execPlan, bool, error) {
 	return execPlan{root: node, outputCols: input.outputCols}, add, nil
 }
 
+// buildHardLimit when a HardLimit is set in TsScan, add Limit outside the Synchronizer.
+func (b *Builder) buildHardLimit(input execPlan, e *memo.TSScanExpr) (execPlan, error) {
+	// LIMIT/OFFSET expression should never need buildScalarContext, because it
+	// can't refer to the input expression.
+	hardLimit := tree.DInt(e.HardLimit)
+	expr, err := b.buildScalar(nil, &memo.ConstExpr{Value: &hardLimit})
+	if err != nil {
+		return execPlan{}, err
+	}
+	var node exec.Node
+	//add := true
+	node, err = b.factory.ConstructHardLimit(input.root, expr, b.mem.Metadata())
+	if err != nil {
+		return execPlan{}, err
+	}
+	return execPlan{root: node, outputCols: input.outputCols}, nil
+}
+
 func (b *Builder) buildSort(sort *memo.SortExpr) (execPlan, error) {
 	input, err := b.buildRelational(sort.Input)
 	if err != nil {
@@ -2920,7 +2951,7 @@ func (b *Builder) buildRecursiveCTE(rec *memo.RecursiveCTEExpr) (execPlan, error
 		innerBld := *innerBldTemplate
 		innerBld.addBuiltWithExpr(rec.WithID, initial.outputCols, bufferRef)
 		var plan execPlan
-		plan, err1 = innerBld.build(rec.Recursive)
+		plan, err1 = innerBld.build(rec.Recursive, true)
 		if err1 != nil {
 			return nil, err1
 		}

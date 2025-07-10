@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"sort"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -623,6 +624,18 @@ func (jr *joinReader) hasNullLookupColumn(row sqlbase.EncDatumRow) bool {
 		}
 	}
 	return false
+}
+
+// InitProcessorProcedure init processor in procedure
+func (jr *joinReader) InitProcessorProcedure(txn *kv.Txn) {
+	if jr.EvalCtx.IsProcedure {
+		if jr.FlowCtx != nil {
+			jr.FlowCtx.Txn = txn
+		}
+		jr.Closed = false
+		jr.State = execinfra.StateRunning
+		jr.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

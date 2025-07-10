@@ -176,6 +176,12 @@ func (u *sqlSymUnion) UserDefinedVar() tree.UserDefinedVar {
 func (u *sqlSymUnion) columnIDList() tree.ColumnIDList {
     return u.val.(tree.ColumnIDList)
 }
+func (u *sqlSymUnion) SelectIntoTargets() tree.SelectIntoTargets {
+    return u.val.(tree.SelectIntoTargets)
+}
+func (u *sqlSymUnion) SelectIntoTarget() tree.SelectIntoTarget {
+		return u.val.(tree.SelectIntoTarget)
+}
 func (u *sqlSymUnion) unresolvedName() *tree.UnresolvedName {
     return u.val.(*tree.UnresolvedName)
 }
@@ -470,6 +476,9 @@ func (u *sqlSymUnion) distinctOn() tree.DistinctOn {
 func (u *sqlSymUnion) dir() tree.Direction {
     return u.val.(tree.Direction)
 }
+func (u *sqlSymUnion) procDir() tree.ProcDirection {
+    return u.val.(tree.ProcDirection)
+}
 func (u *sqlSymUnion) nullsOrder() tree.NullsOrder {
     return u.val.(tree.NullsOrder)
 }
@@ -620,6 +629,32 @@ func newNameFromStr(s string) *tree.Name {
 func (u *sqlSymUnion) roleType() tree.RoleType {
     return u.val.(tree.RoleType)
 }
+func (u *sqlSymUnion) procParameter() *tree.ProcedureParameter {
+    return u.val.(*tree.ProcedureParameter)
+}
+func (u *sqlSymUnion) procParameters() []*tree.ProcedureParameter {
+    return u.val.([]*tree.ProcedureParameter)
+}
+func (u *sqlSymUnion) stmts() []tree.Statement {
+    return u.val.([]tree.Statement)
+}
+
+func (u *sqlSymUnion) block() *tree.Block {
+    return u.val.(*tree.Block)
+}
+
+func (u *sqlSymUnion) elseIf() []tree.ElseIf {
+    return u.val.([]tree.ElseIf)
+}
+
+func (u *sqlSymUnion) caseWhen() *tree.CaseWhen {
+    return u.val.(*tree.CaseWhen)
+}
+
+func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
+    return u.val.([]*tree.CaseWhen)
+}
+
 //func (u *sqlSymUnion) childTableDef() tree.ChildTableDef {
 //    return u.val.(tree.ChildTableDef)
 //}
@@ -657,7 +692,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %token <str> BUCKET_COUNT
 %token <str> BLOB BOOL BOOLEAN BOTH BUNDLE BY BYTEA BYTES
 
-%token <str> CACHE CANCEL CASCADE CASE CAST CAST_CHECK CHANGEFEED CHAR
+%token <str> CACHE CALL CANCEL CASCADE CASE CAST CAST_CHECK CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK
 %token <str> CLOB CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMIT
 %token <str> COMMITTED COMPACT COMPLETE COMPRESS CONCAT CONCURRENTLY CONFIG CONFIGS CONFIGURATION CONFIGURATIONS CONFIGURE
@@ -666,10 +701,11 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
 %token <str> CURRENT_USER CYCLE COLLECT_SORTED_HISTOGRAM
 
-%token <str> D DATA DATABASE DATABASES DATAS DATE DAY DDLREPLAY DEC DECIMAL DEFAULT
+%token <str> D DATA DATABASE DATABASES DATAS DATE DAY DDLREPLAY DEC DECLARE DECIMAL DEFAULT DELIMITER_EOF
 %token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DEVICE
 %token <str> DICT DISCARD DISTINCT DO DOMAIN DOUBLE DROP DISABLE
 
+%token <str> ELSIF ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
 %token <str> ELSE ENCODING END ENDPOINT ENDTIME ENUM ESCAPE ESTIMATED EXCEPT EXCLUDE ENABLE
 %token <str> EXISTS EXECUTE EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
@@ -682,6 +718,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %token <str> GB GEOMETRY GLOBAL GRANT GRANTS GREATEST GROUP GROUPING GROUPS
 
+%token <str> HANDLER EXIT CONTINUE FOUND SQLEXCEPTION CURSOR CLOSE OPEN
 %token <str> H HAVING HASH HASHPOINT HIGH HISTOGRAM HOUR SORT_HISTOGRAM
 
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPORT IN INCLUDE INCREMENT INCREMENTAL
@@ -694,9 +731,10 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %token <str> KEY KEYS KV
 
+%token <str> LABEL LEAVE
 %token <str> LANGUAGE LAST LASTTS LAST_ROW LAST_ROW_TS LATERAL LC_CTYPE LC_COLLATE
 %token <str> LEADING LEASE LEAST LEFT LESS LEVEL LIKE LIMIT LIST LOCAL
-%token <str> LOCALTIME LOCALTIMESTAMP LOCATION LOCKED LOGIN LOOKUP LOW LSHIFT
+%token <str> LOCALTIME LOCALTIMESTAMP LOCATION LOCKED LOGIN LOOKUP LOOP LOW LSHIFT
 %token <str> ACTIVETIME LUA
 
 %token <str> M MATCH MATERIALIZED MB MEMCAPACITY MEMORY MERGE MICROSECOND MILLISECOND MINVALUE MAXVALUE MINUTE MON MONTH MS
@@ -705,11 +743,11 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOWAIT NS NULL NULLIF NULLS NUMERIC NVARCHAR
 
 %token <str> OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
-%token <str> ORDER ORDINALITY OTHERS OUT OUTER OVER OVERLAPS OVERLAY OWNED OPERATOR
+%token <str> ORDER ORDINALITY OTHERS OUT INOUT OUTER OVER OVERLAPS OVERLAY OWNED OPERATOR
 
 %token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PHYSICAL PLACING
 %token <str> PLAN PLANS POSITION PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY
-%token <str> PROCEDURAL PUBLIC PUBLICATION
+%token <str> PROCEDURAL PUBLIC PUBLICATION PROCEDURE PROCEDURES
 
 %token <str> QUERIES QUERY
 
@@ -737,7 +775,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %token <str> VALID VALIDATE VALUE VALUES VARBIT VARBYTES VARCHAR VARIADIC VIEW VARYING VIRTUAL
 
-%token <str> W WEEK WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRITE WHENEVER
+%token <str> W WEEK WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRITE WHENEVER WHILE
 
 %token <str> Y YEAR LINEAR PREV INTERPOLATE
 
@@ -782,6 +820,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Statement> alter_partition_stmt
 %type <tree.Statement> alter_role_stmt
 %type <tree.Statement> alter_audit_stmt
+%type <tree.Statement> alter_procedure_stmt
 
 // ALTER RANGE
 %type <tree.Statement> alter_zone_range_stmt
@@ -824,10 +863,14 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Statement> backup_stmt
 %type <tree.Statement> begin_stmt
 
+%type <tree.Statement> call_stmt
 %type <tree.Statement> cancel_stmt
 %type <tree.Statement> cancel_jobs_stmt
 %type <tree.Statement> cancel_queries_stmt
 %type <tree.Statement> cancel_sessions_stmt
+%type <tree.Statement> close_cursor_stmt fetch_cursor_stmt open_cursor_stmt
+%type <tree.Statement> declare_stmt proc_if_stmt proc_while_stmt
+%type <tree.Statement> proc_set_stmt proc_leave_stmt
 
 // SCRUB
 %type <tree.Statement> scrub_stmt
@@ -839,6 +882,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 
 %type <tree.Statement> comment_stmt
 %type <tree.Statement> commit_stmt
+%type <tree.Statement> procedure_commit_stmt
 %type <tree.Statement> copy_from_stmt
 %type <tree.Statement> compress_stmt
 
@@ -858,6 +902,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Statement> create_ts_table_stmt
 %type <tree.Statement> create_view_stmt
 %type <tree.Statement> create_sequence_stmt
+%type <tree.Statement> create_procedure_stmt
 %type <tree.Statement> create_function_stmt
 %type <tree.Statement> create_audit_stmt
 
@@ -875,6 +920,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Statement> drop_index_stmt
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
+%type <tree.Statement> drop_procedure_stmt
 %type <tree.Statement> drop_table_stmt
 %type <tree.Statement> drop_view_stmt
 %type <tree.Statement> drop_sequence_stmt
@@ -894,6 +940,8 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Statement> import_stmt
 %type <tree.Statement> pause_stmt
 %type <tree.Statement> pause_schedule_stmt
+%type <tree.Statement> procedure_body_stmt
+%type <tree.Statement> proc_handler_one_stmt
 %type <tree.Statement> rebalance_stmt
 %type <tree.Statement> release_stmt
 %type <tree.Statement> reset_stmt reset_session_stmt reset_csetting_stmt
@@ -946,6 +994,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Statement> show_stats_stmt
 %type <tree.Statement> show_syntax_stmt
 %type <tree.Statement> show_tables_stmt
+%type <tree.Statement> show_procedures_stmt
 %type <tree.Statement> show_trace_stmt
 %type <tree.Statement> show_transaction_stmt
 %type <tree.Statement> show_users_stmt
@@ -999,6 +1048,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.ValidationBehavior> opt_validate_behavior
 
 %type <str> opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause opt_comment_clause
+%type <str> opt_proc_body_str
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1017,7 +1067,8 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <str> family_name opt_family_name table_alias_name constraint_name target_name zone_name partition_name collation_name
 %type <str> db_object_name_component transaction_name
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
-%type <str> schema_name schedule_name audit_name function_name argument_name
+%type <*tree.UnresolvedObjectName> procedure_name
+%type <str> schema_name schedule_name audit_name function_name argument_name cursor_name
 %type <[]string> schema_name_list function_name_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star last_column
@@ -1063,11 +1114,13 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.DistinctOn> distinct_on_clause
 %type <tree.NameList> opt_column_list insert_column_list opt_stats_columns
 %type <tree.NoSchemaNameList> insert_no_schema_list
+%type <tree.SelectIntoTarget> select_into_target
+%type <tree.SelectIntoTargets> select_into_targets
 %type <tree.OrderBy> sort_clause opt_sort_clause
 %type <[]*tree.Order> sortby_list
 %type <tree.IndexElemList> index_params create_as_params
 %type <tree.NameList> name_list operation_list operations operators opt_audit_operation opt_audit_operators
-%type <tree.NameList> privilege_list opt_tag_name_list
+%type <tree.NameList> privilege_list
 %type <tree.UserDefinedVars> udv_exprs
 %type <tree.ColumnIDList> column_id_list opt_stats_columnids
 %type <[]int32> opt_array_bounds
@@ -1075,7 +1128,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.TableExprs> from_list rowsfrom_list opt_from_list
 %type <tree.TablePatterns> table_pattern_list single_table_pattern_list
 %type <tree.TableNames> table_name_list opt_locked_rels
-%type <tree.Exprs> expr_list opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values table_tag_val_list
+%type <tree.Exprs> expr_list opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
 %type <*tree.Tuple> expr_tuple1_ambiguous expr_tuple_unambiguous
 %type <tree.NameList> attrs
 %type <tree.SelectExprs> target_list
@@ -1139,6 +1192,7 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Expr> having_clause
 %type <tree.Expr> array_expr
 %type <tree.Expr> interval_value
+%type <tree.Expr> opt_default_expr
 %type <[]*types.T> type_list prep_type_clause
 %type <tree.Exprs> array_expr_list
 %type <*tree.Tuple> row labeled_row
@@ -1190,6 +1244,9 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <tree.Exprs> var_list
 %type <tree.NameList> var_name
 %type <str> unrestricted_name type_function_name
+%type <str> any_identifier opt_loop_label opt_label
+%type <str> handler_operator handler_for
+%type <[]string> handler_for_list cursor_list
 %type <str> non_reserved_word
 %type <str> non_reserved_word_or_sconst
 %type <tree.Expr> zone_value
@@ -1216,6 +1273,12 @@ func (u *sqlSymUnion) roleType() tree.RoleType {
 %type <*tree.With> with_clause opt_with_clause
 %type <[]*tree.CTE> cte_list
 %type <*tree.CTE> common_table_expr
+%type <[]*tree.ProcedureParameter> parameter_list
+%type <*tree.ProcedureParameter> parameter
+//%type <tree.ProcDirection> opt_direction
+%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body
+%type <tree.Statement> opt_procedure_block proc_handler_body
+%type <[]tree.ElseIf> opt_stmt_elsifs
 
 %type <empty> within_group_clause
 %type <tree.Expr> filter_clause
@@ -1370,6 +1433,7 @@ alter_ddl_stmt:
 | alter_range_stmt     // EXTEND WITH HELP: ALTER RANGE
 | alter_partition_stmt
 | alter_schedule_stmt  // EXTEND WITH HELP: ALTER SCHEDULE
+| alter_procedure_stmt // EXTEND WITH HELP: ALTER PROCEDURE
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -2088,6 +2152,19 @@ opt_validate_behavior:
   {
     $$.val = tree.ValidationDefault
   }
+// %Help: ALTER PROCEDURE - change the comment of a procedure
+// %Category: DDL
+// %Text:
+// ALTER PROCEDURE <proc_name> COMMENT IS 'comment_text'
+//
+// %SeeAlso: COMMENT ON PROCEDURE
+alter_procedure_stmt:
+  ALTER PROCEDURE procedure_name COMMENT IS comment_text
+	{
+	  name := $3.unresolvedObjectName().ToTableName()
+		$$.val = &tree.CommentOnProcedure{Name: name, Comment: $6.strPtr()}
+	}
+| ALTER PROCEDURE error // SHOW HELP: ALTER PROCEDURE
 
 
 // %Help: ALTER AUDIT - change the definition of an audit
@@ -2412,6 +2489,25 @@ cancel_stmt:
 | cancel_sessions_stmt // EXTEND WITH HELP: CANCEL SESSIONS
 | CANCEL error         // SHOW HELP: CANCEL
 
+// %Help: CALL - call procedure
+// %Category: Misc
+// %Text:
+// CALL <proc_name>
+// %SeeAlso: CREATE PROCEDURE
+call_stmt:
+	CALL procedure_name '(' ')'
+	{
+	  name := $2.unresolvedObjectName().ToTableName()
+		$$.val = &tree.CallProcedure{Name: name}
+	}
+| CALL procedure_name '(' expr_list ')'
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CallProcedure{Name: name, Exprs: $4.exprs()}
+  }
+| CALL error // SHOW HELP: CALL
+
+
 // %Help: CANCEL JOBS - cancel background jobs
 // %Category: Misc
 // %Text:
@@ -2512,6 +2608,11 @@ comment_stmt:
   {
     $$.val = &tree.CommentOnDatabase{Name: tree.Name($4), Comment: $6.strPtr()}
   }
+| COMMENT ON PROCEDURE procedure_name IS comment_text
+  {
+    name := $4.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CommentOnProcedure{Name: name, Comment: $6.strPtr()}
+  }
 | COMMENT ON TABLE table_name IS comment_text
   {
     $$.val = &tree.CommentOnTable{Table: $4.unresolvedObjectName(), Comment: $6.strPtr()}
@@ -2556,6 +2657,7 @@ create_stmt:
   create_role_stmt     // EXTEND WITH HELP: CREATE ROLE
 | create_ddl_stmt      // help texts in sub-rule
 | create_schedule_for_sql_stmt // EXTEND WITH HELP: CREATE SCHEDULE FOR SQL
+| create_procedure_stmt  // EXTEND WITH HELP: CREATE PROCEDURE
 | create_stats_stmt    // EXTEND WITH HELP: CREATE STATISTICS
 | create_audit_stmt    // EXTEND WITH HELP: CREATE AUDIT
 | create_unsupported   {}
@@ -2630,6 +2732,29 @@ create_ddl_stmt:
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
+
+procedure_body_stmt:
+ select_stmt
+| insert_stmt
+| update_stmt
+| upsert_stmt
+| delete_stmt
+| declare_stmt
+| proc_set_stmt
+| proc_if_stmt
+| proc_while_stmt
+| begin_stmt
+| procedure_commit_stmt
+| rollback_stmt
+| simple_select_into_clause
+| close_cursor_stmt
+| fetch_cursor_stmt
+| open_cursor_stmt
+| proc_leave_stmt
+
+proc_handler_one_stmt:
+ select_stmt
+| proc_set_stmt
 
 // %Help: CREATE STATISTICS - create a new table statistic
 // %Category: Misc
@@ -2938,6 +3063,7 @@ drop_ddl_stmt:
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
 | drop_schema_stmt   // EXTEND WITH HELP: DROP SCHEMA
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
+| drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
 
 // %Help: DROP VIEW - remove a view
 // %Category: DDL
@@ -3081,6 +3207,29 @@ schema_name_list:
   {
     $$.val = append($1.strs(), $3)
   }
+
+// %Help: DROP PROCEDURE - drop a procedure
+// %Category: DDL
+// %Text: DROP PROCEDURE <procedure_name>
+// %SeeAlso: CREATE PROCEDURE, SHOW PROCEDURES, SHOW CREATE PROCEDURES
+drop_procedure_stmt:
+	DROP PROCEDURE procedure_name
+	{
+	  name := $3.unresolvedObjectName().ToTableName()
+	  $$.val = &tree.DropProcedure{
+			Name: name,
+			IfExists: false,
+		}
+	}
+| DROP PROCEDURE IF EXISTS procedure_name
+	{
+	  name := $5.unresolvedObjectName().ToTableName()
+	  $$.val = &tree.DropProcedure{
+	    Name: name,
+	    IfExists: true,
+	  }
+	}
+| DROP PROCEDURE error // SHOW HELP: DROP PROCEDURE
 
 // %Help: DROP FUNCTION - remove a function
 // %Category: DDL
@@ -3248,6 +3397,7 @@ preparable_stmt:
 | update_stmt       // EXTEND WITH HELP: UPDATE
 | upsert_stmt       // EXTEND WITH HELP: UPSERT
 | simple_select_into_clause // EXTEND WITH HELP: SELECT INTO
+| call_stmt         // EXTEND WITH HELP: CALL
 
 
 
@@ -3888,6 +4038,7 @@ show_stmt:
 | show_stats_stmt           // EXTEND WITH HELP: SHOW STATISTICS
 | show_syntax_stmt          // EXTEND WITH HELP: SHOW SYNTAX
 | show_tables_stmt          // EXTEND WITH HELP: SHOW TABLES
+| show_procedures_stmt      // EXTEND WITH HELP: SHOW PROCEDURES
 | show_trace_stmt           // EXTEND WITH HELP: SHOW TRACE
 | show_transaction_stmt     // EXTEND WITH HELP: SHOW TRANSACTION
 | show_users_stmt           // EXTEND WITH HELP: SHOW USERS
@@ -4421,6 +4572,37 @@ show_applications_stmt:
   }
 | SHOW APPLICATIONS error // SHOW HELP: SHOW APPLICATIONS
 
+// %Help: SHOW PROCEDURES - list procedures
+// %Category: DDL
+// %Text: SHOW PROCEDURES
+// %SeeAlso:
+show_procedures_stmt:
+	SHOW PROCEDURES with_comment
+	{
+		$$.val = &tree.ShowProcedures{WithComment: $3.bool()}
+	}
+| SHOW PROCEDURES FROM name '.' name with_comment
+ {
+	 $$.val = &tree.ShowProcedures{TableNamePrefix:tree.TableNamePrefix{
+			 CatalogName: tree.Name($4),
+			 ExplicitCatalog: true,
+			 SchemaName: tree.Name($6),
+			 ExplicitSchema: true,
+	 },
+	 WithComment: $7.bool()}
+ }
+| SHOW PROCEDURES FROM name with_comment
+ {
+	 $$.val = &tree.ShowProcedures{TableNamePrefix:tree.TableNamePrefix{
+			 // Note: the schema name may be interpreted as database name,
+			 // see name_resolution.go.
+			 SchemaName: tree.Name($4),
+			 ExplicitSchema: true,
+	 },
+	 WithComment: $5.bool()}
+ }
+| SHOW PROCEDURES error // SHOW HELP: SHOW TABLES
+
 // %Help: SHOW TABLES - list tables
 // %Category: DDL
 // %Text: SHOW TABLES [FROM <databasename> [ . <schemaname> ] ] [WITH COMMENT]
@@ -4548,6 +4730,11 @@ show_create_stmt:
 | SHOW CREATE DATABASE database_name
   {
     $$.val = &tree.ShowCreateDatabase{Database: tree.Name($4)}
+  }
+| SHOW CREATE PROCEDURE procedure_name
+  {
+    name := $4.unresolvedObjectName().ToTableName()
+    $$.val = &tree.ShowCreateProcedure{Name: name}
   }
 | SHOW CREATE error // SHOW HELP: SHOW CREATE
 
@@ -4872,6 +5059,10 @@ targets:
 | SCHEMA name_list
   {
   	$$.val = tree.TargetList{Schemas: $2.nameList()}
+  }
+| PROCEDURE table_name_list
+  {
+  	$$.val = tree.TargetList{Procedures: $2.tableNames()}
   }
 
 // target_roles is the variant of targets which recognizes ON ROLES
@@ -5264,21 +5455,21 @@ table_elem_tag:
 //    }
 //  }
 
-opt_tag_name_list:
-  /* EMPTY */
-  {
-  	$$.val = tree.NameList(nil)
-  }
-| '(' name_list ')'
-  {
-  	$$.val = $2.nameList()
-  }
-
-table_tag_val_list:
-  expr_list
-  {
-  	$$.val = $1.exprs()
-  }
+//opt_tag_name_list:
+//  /* EMPTY */
+//  {
+//  	$$.val = tree.NameList(nil)
+//  }
+//| '(' name_list ')'
+//  {
+//  	$$.val = $2.nameList()
+//  }
+//
+//table_tag_val_list:
+//  expr_list
+//  {
+//  	$$.val = $1.exprs()
+//  }
 
 create_ts_table_stmt:
   CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
@@ -6276,6 +6467,338 @@ opt_with_schedule_options:
     $$.val = nil
   }
 
+// %Help: CREATE PROCEDURE - define a new procedure
+// %Category: DDL
+// %Text:
+create_procedure_stmt:
+  CREATE PROCEDURE procedure_name '(' parameter_list ')' opt_proc_body_str opt_procedure_block
+  {
+    name := $3.unresolvedObjectName().ToTableName()
+    bodyStr := $7
+    bodyBlock := $8.block()
+    if bodyStr == "" && bodyBlock == nil {
+      sqllex.Error("the procedure body is missing")
+      return 1
+    }
+    if bodyStr != "" && bodyBlock != nil {
+      sqllex.Error("body-string and body-block cannot occur simultaneously")
+      return 1
+    }
+    if bodyStr != "" {
+		 $$.val = &tree.CreateProcedurePG{
+				Name: name,
+				Parameters: $5.procParameters(),
+				BodyStr: bodyStr,
+			}
+    } else {
+      $$.val = &tree.CreateProcedure{
+				Name: name,
+				Parameters: $5.procParameters(),
+				Block: *(bodyBlock),
+			}
+    }
+  }
+| CREATE PROCEDURE error // SHOW HELP: CREATE PROCEDURE
+
+parameter_list:
+  /* empty */
+  {
+    $$.val = []*tree.ProcedureParameter{}
+  }
+| parameter
+  {
+    $$.val = []*tree.ProcedureParameter{$1.procParameter()}
+  }
+| parameter_list ',' parameter
+  {
+    $$.val = append($1.procParameters(), $3.procParameter())
+  }
+
+
+parameter:
+  name typename
+  {
+    $$.val = &tree.ProcedureParameter{
+      Direction: tree.InDirection,
+      Name: tree.Name($1),
+      Type: $2.colType(),
+    }
+  }
+
+// opt_procedure_block represents the stored procedure body enclosed in BEGIN...END.
+// This syntax is typically used in the kwbase client along with delimiter.
+opt_procedure_block:
+ opt_loop_label BEGIN proc_stmt_list END opt_label
+  {
+		loopLabel, loopEndLabel := $1, $5
+		if err := checkLoopLabels(loopLabel, loopEndLabel); err != nil {
+			return setErr(sqllex, err)
+		}
+    $$.val = &tree.Block{
+      Label: $1,
+      Body:  $3.stmts(),
+    }
+  }
+| /* empty */ %prec VALUES
+	{
+		$$.val = (*tree.Block)(nil)
+	}
+
+// opt_proc_body_str represents the string of the procedure body.
+// This syntax is designed to support CREATE PROCEDURE via jdbc.
+// For example: create procedure p1() $$ BEGIN...END $$; ($$ represents a string).
+opt_proc_body_str:
+ SCONST
+  {
+    $$ = $1
+  }
+| /* empty */ %prec VALUES
+	{
+		$$ = ""
+	}
+
+proc_stmt_list:
+  /* empty */ %prec VALUES
+  {
+    $$.val = []tree.Statement(nil)
+  }
+  | proc_stmt_list procedure_body_stmt ';'
+  {
+    $$.val = append($1.stmts(), $2.stmt())
+  }
+
+proc_handler_body:
+ opt_loop_label BEGIN proc_stmt_list ENDHANDLER opt_label
+  {
+		loopLabel, loopEndLabel := $1, $5
+		if err := checkLoopLabels(loopLabel, loopEndLabel); err != nil {
+			return setErr(sqllex, err)
+		}
+    $$.val = &tree.Block{
+      Label: $1,
+      Body:  $3.stmts(),
+    }
+  }
+| proc_handler_one_stmt
+  {
+    $$.val = &tree.Block{
+      Body:  []tree.Statement{$1.stmt()},
+    }
+  }
+
+declare_stmt:
+	DECLARE var_name typename opt_default_expr
+  {
+    $$.val = &tree.Declaration{
+      Typ: tree.DeclVariable,
+      Variable: tree.DeclareVar{
+        VarName: strings.Join($2.strs(), "."),
+        Typ: $3.colType(),
+        DefaultExpr: $4.expr(),
+      },
+    }
+  }
+//| DECLARE handler_operator HANDLER FOR handler_for_list procedure_body
+//  {
+//    $$.val = &tree.Declaration{
+//      Typ: tree.DeclHandler,
+//      Handler: tree.DeclareHandler{
+//        HandlerOp: $2,
+//        HandlerFor: $5.strs(),
+//        Body: $6.stmts(),
+//      },
+//    }
+//  }
+| DECLARE handler_operator HANDLER FOR handler_for_list proc_handler_body
+	{
+		$$.val = &tree.Declaration{
+			Typ: tree.DeclHandler,
+			Handler: tree.DeclareHandler{
+				HandlerOp: $2,
+				HandlerFor: $5.strs(),
+				Block: *($6.block()),
+			},
+		}
+	}
+| DECLARE cursor_name CURSOR FOR select_stmt
+  {
+    $$.val = &tree.Declaration{
+      Typ: tree.DeclCursor,
+      Cursor: tree.DeclareCursor{
+        CurName: tree.Name($2),
+        Body: $5.stmt(),
+      },
+    }
+  }
+
+handler_operator:
+  EXIT
+  {
+    $$ = tree.HandlerOpExit
+  }
+| CONTINUE
+  {
+    $$ = tree.HandlerOpContinue
+  }
+
+handler_for_list:
+  handler_for
+  {
+    $$.val = []string{$1}
+  }
+| handler_for_list ',' handler_for
+  {
+    $$.val = append($1.strs(), $3)
+  }
+
+handler_for:
+  NOT FOUND
+  {
+     $$ = tree.HandlerForNotFound
+  }
+| SQLEXCEPTION
+  {
+     $$ = tree.HandlerForException
+  }
+
+proc_set_stmt:
+	SET var_name '=' a_expr
+  {
+    $$.val = &tree.ProcSet{
+      Name: strings.Join($2.strs(), "."),
+      Value: $4.expr(),
+    }
+  }
+
+opt_default_expr:
+	DEFAULT a_expr
+	{
+		$$.val = $2.expr()
+	}
+| /* EMPTY */
+	{
+		$$.val = nil
+	}
+
+proc_if_stmt:
+	IF a_expr THEN proc_stmt_list opt_stmt_elsifs opt_stmt_else ENDIF
+	{
+		$$.val = &tree.ProcIf{
+			Condition: $2.expr(),
+			ThenBody: $4.stmts(),
+			ElseIfList: $5.elseIf(),
+			ElseBody: $6.stmts(),
+		}
+	}
+
+opt_stmt_elsifs:
+	opt_stmt_elsifs ELSIF a_expr THEN proc_stmt_list
+	{
+		newStmt := tree.ElseIf{
+			Condition: $3.expr(),
+			Stmts: $5.stmts(),
+		}
+		$$.val = append($1.elseIf(), newStmt)
+	}
+| /* EMPTY */
+	{
+		$$.val = []tree.ElseIf(nil)
+	}
+
+opt_stmt_else:
+	/* empty */
+	{
+		$$.val = []tree.Statement(nil)
+	}
+| ELSE proc_stmt_list
+	{
+		$$.val = $2.stmts()
+	}
+
+proc_while_stmt:
+	opt_loop_label WHILE a_expr DO while_body opt_label
+	{
+		loopLabel, loopEndLabel := $1, $6
+		if err := checkLoopLabels(loopLabel, loopEndLabel); err != nil {
+			return setErr(sqllex, err)
+		}
+		$$.val = &tree.ProcWhile{
+		  Label: $1,
+			Condition: $3.expr(),
+			Body: $5.stmts(),
+		}
+	}
+
+while_body:
+ proc_stmt_list ENDWHILE
+ {
+   $$.val = $1.stmts()
+ }
+
+opt_loop_label:
+  {
+    $$ = ""
+  }
+| LABEL any_identifier ':'
+  {
+    $$ = $2
+  }
+
+opt_label:
+  {
+    $$ = ""
+  }
+| any_identifier
+  {
+    $$ = $1
+  }
+
+proc_leave_stmt:
+ LEAVE any_identifier
+  {
+		$$.val = &tree.ProcLeave{
+			Label: $2,
+		}
+  }
+
+close_cursor_stmt:
+	CLOSE cursor_name
+	{
+		$$.val = &tree.ControlCursor{
+			CurName: tree.Name($2),
+			Command: tree.CloseCursor,
+		}
+	}
+
+fetch_cursor_stmt:
+	FETCH cursor_name INTO cursor_list
+	{
+		$$.val = &tree.ControlCursor{
+			CurName: tree.Name($2),
+			Command: tree.FetchCursor,
+			FetchInto: $4.strs(),
+		}
+	}
+
+cursor_list:
+	var_name
+	{
+		$$.val = []string{strings.Join($1.strs(), ".")}
+	}
+| cursor_list	',' var_name
+	{
+		$$.val = append($1.strs(), strings.Join($3.strs(), "."))
+	}
+
+open_cursor_stmt:
+	OPEN cursor_name
+	{
+		$$.val = &tree.ControlCursor{
+			CurName: tree.Name($2),
+			Command: tree.OpenCursor,
+		}
+	}
+
 // %Help: CREATE FUNCTION - create a new function
 // %Category: DDL
 // %Text:
@@ -7184,6 +7707,13 @@ commit_stmt:
   }
 | END error // SHOW HELP: COMMIT
 
+procedure_commit_stmt:
+  COMMIT opt_transaction
+  {
+    $$.val = &tree.CommitTransaction{}
+  }
+| COMMIT error // SHOW HELP: COMMIT
+
 abort_stmt:
   ABORT opt_abort_mod
   {
@@ -7614,6 +8144,11 @@ returning_clause:
     ret := tree.ReturningExprs($2.selExprs())
     $$.val = &ret
   }
+| RETURNING target_list INTO select_into_targets
+  {
+    ret := tree.ReturningIntoClause{SelectClause: tree.ReturningExprs($2.selExprs()),  Targets: $4.SelectIntoTargets()}
+    $$.val = &ret
+  }
 | RETURNING NOTHING
   {
     $$.val = tree.ReturningNothingClause
@@ -7951,7 +8486,7 @@ simple_select_clause:
 //        [ OFFSET <expr> [ ROW | ROWS ] ]
 // %SeeAlso: SHOW TABLES
 simple_select_into_clause:
-  SELECT select_hint_set opt_all_clause target_list INTO udv_exprs
+  SELECT select_hint_set opt_all_clause target_list INTO select_into_targets
     from_clause opt_where_clause
     group_clause having_clause window_clause opt_sort_clause select_limit
   {
@@ -7966,11 +8501,11 @@ simple_select_into_clause:
     }
     sel := &tree.Select{Select: selClause, OrderBy: $12.orderBy(), Limit: $13.limit()}
     $$.val = &tree.SelectInto{
-    	Names:  $6.UserDefinedVars(),
-    	Values: sel,
+    	Targets: $6.SelectIntoTargets(),
+    	SelectClause: sel,
     }
   }
-| SELECT select_hint_set opt_all_clause target_list INTO udv_exprs
+| SELECT select_hint_set opt_all_clause target_list INTO select_into_targets
     from_clause opt_where_clause
     group_clause having_clause window_clause opt_sort_clause
   {
@@ -7985,11 +8520,11 @@ simple_select_into_clause:
     }
     sel := &tree.Select{Select: selClause, OrderBy: $12.orderBy()}
     $$.val = &tree.SelectInto{
-    	Names:  $6.UserDefinedVars(),
-    	Values: sel,
+    	Targets: $6.SelectIntoTargets(),
+    	SelectClause: sel,
     }
   }
-| SELECT distinct_clause target_list INTO udv_exprs
+| SELECT distinct_clause target_list INTO select_into_targets
     from_clause opt_where_clause
     group_clause having_clause window_clause opt_sort_clause select_limit
   {
@@ -8004,11 +8539,11 @@ simple_select_into_clause:
     }
     sel := &tree.Select{Select: selClause, OrderBy: $11.orderBy(), Limit: $12.limit()}
     $$.val = &tree.SelectInto{
-    	Names:  $5.UserDefinedVars(),
-    	Values: sel,
+    	Targets: $5.SelectIntoTargets(),
+    	SelectClause: sel,
     }
   }
-| SELECT distinct_clause target_list INTO udv_exprs
+| SELECT distinct_clause target_list INTO select_into_targets
     from_clause opt_where_clause
     group_clause having_clause window_clause opt_sort_clause
   {
@@ -8023,11 +8558,31 @@ simple_select_into_clause:
     }
     sel := &tree.Select{Select: selClause, OrderBy: $11.orderBy()}
     $$.val = &tree.SelectInto{
-    	Names:  $5.UserDefinedVars(),
-    	Values: sel,
+    	Targets: $5.SelectIntoTargets(),
+    	SelectClause: sel,
     }
   }
 | SELECT INTO error // SHOW HELP: SELECT INTO
+
+select_into_targets:
+	select_into_target
+	{
+		$$.val = tree.SelectIntoTargets{$1.SelectIntoTarget()}
+	}
+| select_into_targets ',' select_into_target
+	{
+		$$.val = append($1.SelectIntoTargets(), $3.SelectIntoTarget())
+	}
+
+select_into_target:
+	var_name
+	{
+		$$.val = tree.SelectIntoTarget{DeclareVar: strings.Join($1.strs(), ".")}
+	}
+| udv_expr
+	{
+		$$.val = tree.SelectIntoTarget{Udv: $1.UserDefinedVar()}
+	}
 
 udv_exprs:
 	udv_expr
@@ -8038,6 +8593,7 @@ udv_exprs:
 	{
 		$$.val = append($1.UserDefinedVars(), $3.UserDefinedVar())
 	}
+
 
 set_operation:
   select_clause UNION all_or_distinct select_clause
@@ -11906,9 +12462,13 @@ schema_name:           name
 
 table_name:            db_object_name
 
+procedure_name:        db_object_name
+
 function_name:         name
 
 schedule_name:         name
+
+cursor_name:					 name
 
 argument_name:         name
 
@@ -12072,6 +12632,10 @@ type_function_name:
 | unreserved_keyword
 | type_func_name_keyword
 
+any_identifier:
+  IDENT
+| unreserved_keyword
+
 // Any not-fully-reserved word --- these names can be, eg, variable names.
 non_reserved_word:
   IDENT
@@ -12146,10 +12710,12 @@ unreserved_keyword:
 | BYTEA
 | BYTES
 | CACHE
+| CALL
 | CANCEL
 | CASCADE
 | CHANGEFEED
 | CLOB
+| CLOSE
 | CLUSTER
 | COLUMNS
 | COMMIT
@@ -12181,6 +12747,7 @@ unreserved_keyword:
 | DATE
 | DAY
 | DEALLOCATE
+| DECLARE
 | DELETE
 | DEVICE
 | DEFERRED
@@ -12258,6 +12825,8 @@ unreserved_keyword:
 | KEY
 | KEYS
 | KV
+| LABEL
+| LEAVE
 | LANGUAGE
 | LAST
 | LASTTS
@@ -12310,6 +12879,7 @@ unreserved_keyword:
 | OID
 | OIDS
 | OIDVECTOR
+| OPEN
 | OPERATOR
 | OPT
 | OPTION
@@ -12331,6 +12901,8 @@ unreserved_keyword:
 | PREPARE
 | PRESERVE
 | PRIORITY
+| PROCEDURE
+| PROCEDURES
 | PUBLIC
 | PUBLICATION
 | QUERIES
@@ -12605,13 +13177,26 @@ reserved_keyword:
 | CURRENT_TIMESTAMP
 | CURRENT_USER
 | DDLREPLAY
+| DELIMITER_EOF
 | DEFAULT
 | DEFERRABLE
 | DESC
 | DISTINCT
 | DO
 | ELSE
+| ELSIF
 | END
+| ENDIF
+| ENDWHILE
+| ENDCASE
+| ENDLOOP
+| ENDHANDLER
+| CURSOR
+| HANDLER
+| EXIT
+| CONTINUE
+| FOUND
+| SQLEXCEPTION
 | EXCEPT
 | FALSE
 | FETCH
@@ -12630,6 +13215,7 @@ reserved_keyword:
 | LIMIT
 | LOCALTIME
 | LOCALTIMESTAMP
+| LOOP
 | NOT
 | NEVER
 | NULL
@@ -12666,6 +13252,7 @@ reserved_keyword:
 | VARIADIC
 | WHEN
 | WHERE
+| WHILE
 | WINDOW
 | WITH
 | kwbasedb_extra_reserved_keyword

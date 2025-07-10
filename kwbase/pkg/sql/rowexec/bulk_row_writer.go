@@ -28,6 +28,7 @@ import (
 	"context"
 	"sync/atomic"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -247,4 +248,16 @@ func (sp *bulkRowWriter) convertLoop(
 func (sp *bulkRowWriter) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
 	sp.InternalClose()
+}
+
+// InitProcessorProcedure init processor in procedure
+func (sp *bulkRowWriter) InitProcessorProcedure(txn *kv.Txn) {
+	if sp.EvalCtx.IsProcedure {
+		if sp.FlowCtx != nil {
+			sp.FlowCtx.Txn = txn
+		}
+		sp.Closed = false
+		sp.State = execinfra.StateRunning
+		sp.Out.SetRowIdx(0)
+	}
 }

@@ -108,6 +108,7 @@ func (r *insertRun) initRowContainer(
 	if !r.rowsNeeded {
 		return
 	}
+
 	r.rows = rowcontainer.NewRowContainer(
 		params.EvalContext().Mon.MakeBoundAccount(),
 		sqlbase.ColTypeInfoFromResCols(columns),

@@ -27,6 +27,7 @@ package execinfra
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
@@ -133,4 +134,16 @@ func (mts *MetadataTestSender) Next() (sqlbase.EncDatumRow, *execinfrapb.Produce
 func (mts *MetadataTestSender) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
 	mts.InternalClose()
+}
+
+// InitProcessorProcedure init processor in procedure
+func (mts *MetadataTestSender) InitProcessorProcedure(txn *kv.Txn) {
+	if mts.EvalCtx.IsProcedure {
+		if mts.FlowCtx != nil {
+			mts.FlowCtx.Txn = txn
+		}
+		mts.Closed = false
+		mts.State = StateRunning
+		mts.Out.SetRowIdx(0)
+	}
 }

@@ -72,7 +72,7 @@ class MemRowContainer : public DataContainer, public std::enable_shared_from_thi
 
   k_int32 NextLine() override;
 
-  void Sort() override;
+  KStatus Sort() override;
 
   KStatus Init() override;
 

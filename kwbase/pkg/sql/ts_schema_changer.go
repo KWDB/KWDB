@@ -521,7 +521,7 @@ func (p *planner) handleDropTsDatabase(
 			})
 			descriptorIDs = append(descriptorIDs, desc.ID)
 			jobDesc := "handle drop table " + desc.Name
-			if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc); err != nil {
+			if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
 				return err
 			}
 		}
@@ -606,7 +606,7 @@ func (p *planner) handleDropTsTable(
 		}
 		// execute without error, then delete corresponding metadata
 		jobDesc := "handle drop table " + tableDesc.Name
-		if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc); err != nil {
+		if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
 			return err
 		}
 		// Queue a new job.

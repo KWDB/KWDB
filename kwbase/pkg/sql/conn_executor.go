@@ -494,7 +494,7 @@ func (h ConnectionHandler) SendDTI(
 	r CommandResult,
 	di DirectInsert,
 	stmts parser.Statements,
-) (useDeepRule bool, dedupRule int64, dedupRows int64) {
+) (useDeepRule bool, dedupRule int64, dedupRows int64, err error) {
 	h.ex.metrics.StartedStatementCounters.QueryCount.Inc()
 	h.ex.metrics.StartedStatementCounters.InsertCount.Inc()
 	if !evalCtx.StartSinglenode {
@@ -508,6 +508,9 @@ func (h ConnectionHandler) SendDTI(
 		"insert stmt")
 	defer sp.Finish()
 	useDeepRule, dedupRule, dedupRows = h.ex.SendDirectTsInsert(ctx, evalCtx, r, di.PayloadNodeMap)
+	if err = r.Err(); err != nil {
+		return
+	}
 	endtime := timeutil.Now()
 	var tempStmt Statement
 	var flags planFlags
@@ -1668,7 +1671,12 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 			ex.metrics.StartedStatementCounters.QueryCount.Inc()
 			ex.metrics.StartedStatementCounters.InsertCount.Inc()
 			ex.SendDirectTsInsert(ctx, &portal.Stmt.PrepareInsertDirect.EvalContext, portal.Stmt.PrepareInsertDirect.stmtRes, portal.Stmt.PrepareInsertDirect.payloadNodeMap)
-			err = portal.Stmt.Insertdirectstmt.ErrorInfo
+			if err = portal.Stmt.Insertdirectstmt.ErrorInfo; err != nil {
+				return err
+			}
+			if err = portal.Stmt.PrepareInsertDirect.stmtRes.Err(); err != nil {
+				return err
+			}
 			stmtRes.IncrementRowsAffected(int(portal.Stmt.Insertdirectstmt.RowsAffected))
 
 			var tempStmt Statement
@@ -2508,14 +2516,17 @@ func (ex *connExecutor) txnStateTransitionsApplyWrapper(
 //
 // If an error is returned, it is to be considered a query execution error.
 func (ex *connExecutor) initStatementResult(
-	ctx context.Context, res RestrictedCommandResult, stmt *Statement, cols sqlbase.ResultColumns,
+	ctx context.Context,
+	res RestrictedCommandResult,
+	stmtType tree.StatementType,
+	cols sqlbase.ResultColumns,
 ) error {
 	for _, c := range cols {
 		if err := checkResultType(c.Typ); err != nil {
 			return err
 		}
 	}
-	if stmt.AST.StatementType() == tree.Rows {
+	if stmtType == tree.Rows {
 		// Note that this call is necessary even if cols is nil.
 		res.SetColumns(ctx, cols)
 	}

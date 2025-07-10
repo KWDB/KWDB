@@ -686,6 +686,9 @@ type ExecutorConfig struct {
 
 	// UDFCache is user defined functions
 	UDFCache *UDFCache
+
+	// ProcedureCache is the cache of procedures.
+	ProcedureCache *ProcedureCache
 }
 
 // Three modes of activation

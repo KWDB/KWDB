@@ -35,6 +35,7 @@ package tree
 
 import (
 	"fmt"
+	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/event/target"
 )
@@ -383,6 +384,18 @@ func (*CommentOnDatabase) StatementTag() string { return "COMMENT ON DATABASE" }
 func (*CommentOnDatabase) StatTargetType() string { return "DATABASE" }
 
 // StatementType implements the Statement interface.
+func (*CommentOnProcedure) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CommentOnProcedure) StatOp() string { return "COMMENT" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CommentOnProcedure) StatementTag() string { return "COMMENT ON PROCEDURE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CommentOnProcedure) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
 func (*CommentOnIndex) StatementType() StatementType { return DDL }
 
 // StatOp implements the StatOp interface.
@@ -612,6 +625,188 @@ func (*CreateFunction) StatementTag() string { return "CREATE FUNCTION" }
 func (*CreateFunction) StatTargetType() string { return "FUNCTION" }
 
 // StatementType implements the Statement interface.
+func (n *CreateProcedure) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreateProcedure) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateProcedure) StatementTag() string { return "CREATE PROCEDURE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreateProcedure) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *CreateProcedurePG) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreateProcedurePG) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateProcedurePG) StatementTag() string { return "CREATE PROCEDURE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreateProcedurePG) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *Block) StatementType() StatementType { return Ack }
+
+// StatOp implements the StatOp interface.
+func (*Block) StatOp() string { return "BLOCK" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*Block) StatementTag() string { return "PROCEDURE BLOCK" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*Block) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *CallProcedure) StatementType() StatementType {
+	if n.IsRows {
+		return Rows
+	}
+	return DDL
+}
+
+// StatOp implements the StatOp interface.
+func (*CallProcedure) StatOp() string { return "CALL" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CallProcedure) StatementTag() string { return "CALL PROCEDURE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CallProcedure) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ProcedureReturn) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ProcedureReturn) StatOp() string { return "RETURN" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcedureReturn) StatementTag() string { return "PROCEDURE RETURN" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcedureReturn) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *Declaration) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*Declaration) StatOp() string { return "DECLARE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*Declaration) StatementTag() string { return "DECLARE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*Declaration) StatTargetType() string { return "DECLARE" }
+
+// StatementType implements the Statement interface.
+func (n *ControlCursor) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (n *ControlCursor) StatOp() string {
+	if n.Command == OpenCursor {
+		return "OPEN"
+	} else if n.Command == FetchCursor {
+		return "FETCH"
+	}
+	return "CLOSE"
+}
+
+// StatementTag returns a short string identifying the type of statement.
+func (n *ControlCursor) StatementTag() string {
+	return fmt.Sprintf("%s CURSOR", CursorCommandToStatement[n.Command])
+}
+
+// StatTargetType implements the StatTargetType interface.
+func (*ControlCursor) StatTargetType() string { return "CURSOR" }
+
+// StatementType implements the Statement interface.
+func (n *ProcSet) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ProcSet) StatOp() string { return "SET" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcSet) StatementTag() string { return "PROCEDURE SET" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcSet) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ProcIf) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ProcIf) StatOp() string { return "IF" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcIf) StatementTag() string { return "PROCEDURE IF" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcIf) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ElseIf) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ElseIf) StatOp() string { return "ELSIF" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ElseIf) StatementTag() string { return "PROCEDURE ELSIF" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ElseIf) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ProcWhile) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ProcWhile) StatOp() string { return "WHILE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcWhile) StatementTag() string { return "PROCEDURE WHILE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcWhile) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ProcLeave) StatementType() StatementType { return Ack }
+
+// StatOp implements the StatOp interface.
+func (*ProcLeave) StatOp() string { return "LEAVE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcLeave) StatementTag() string { return "PROCEDURE LEAVE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcLeave) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ProcLoop) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ProcLoop) StatOp() string { return "LOOP" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcLoop) StatementTag() string { return "PROCEDURE LOOP" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcLoop) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (n *ProcCase) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ProcCase) StatOp() string { return "CASE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ProcCase) StatementTag() string { return "PROCEDURE CASE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ProcCase) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
 func (*CreateSchedule) StatementType() StatementType { return DDL }
 
 // StatOp implements the StatOp interface.
@@ -839,6 +1034,18 @@ func (*DropFunction) StatOp() string { return "DROP" }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropFunction) StatementTag() string { return "DROP FUNCTION" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*DropProcedure) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
+func (*DropProcedure) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*DropProcedure) StatOp() string { return "DROP" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropProcedure) StatementTag() string { return "DROP PROCEDURE" }
 
 // StatementType implements the Statement interface.
 func (*DropAudit) StatementType() StatementType { return DDL }
@@ -1513,6 +1720,18 @@ func (*ShowCreateDatabase) StatementTag() string { return "SHOW CREATE DATABASE"
 func (*ShowCreateDatabase) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowCreateProcedure) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowCreateProcedure) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ShowCreateProcedure) StatementTag() string { return "SHOW CREATE PROCEDURE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowCreateProcedure) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowBackup) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -1879,6 +2098,18 @@ func (*ShowTables) StatementTag() string { return "SHOW TABLES" }
 func (*ShowTables) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowProcedures) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowProcedures) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ShowProcedures) StatementTag() string { return "SHOW PROCEDURES" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowProcedures) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowSchemas) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -2020,12 +2251,14 @@ func (n *AlterSequence) String() string                  { return AsString(n) }
 func (n *AlterAudit) String() string                     { return AsString(n) }
 func (n *Backup) String() string                         { return AsString(n) }
 func (n *BeginTransaction) String() string               { return AsString(n) }
+func (n *ControlCursor) String() string                  { return AsString(n) }
 func (c *ControlJobs) String() string                    { return AsString(c) }
 func (n *CancelQueries) String() string                  { return AsString(n) }
 func (n *CancelSessions) String() string                 { return AsString(n) }
 func (n *CannedOptPlan) String() string                  { return AsString(n) }
 func (n *CommentOnColumn) String() string                { return AsString(n) }
 func (n *CommentOnDatabase) String() string              { return AsString(n) }
+func (n *CommentOnProcedure) String() string             { return AsString(n) }
 func (n *CommentOnIndex) String() string                 { return AsString(n) }
 func (n *CommentOnTable) String() string                 { return AsString(n) }
 func (n *CommitTransaction) String() string              { return AsString(n) }
@@ -2057,6 +2290,7 @@ func (n *PauseSchedule) String() string                  { return AsString(n) }
 func (n *ResumeSchedule) String() string                 { return AsString(n) }
 func (n *AlterSchedule) String() string                  { return AsString(n) }
 func (n *DropFunction) String() string                   { return AsString(n) }
+func (n *DropProcedure) String() string                  { return AsString(n) }
 func (n *DropAudit) String() string                      { return AsString(n) }
 func (n *Execute) String() string                        { return AsString(n) }
 func (n *Explain) String() string                        { return AsString(n) }
@@ -2077,6 +2311,15 @@ func (n *RenameColumn) String() string                   { return AsString(n) }
 func (n *RenameDatabase) String() string                 { return AsString(n) }
 func (n *RenameIndex) String() string                    { return AsString(n) }
 func (n *RenameTable) String() string                    { return AsString(n) }
+func (n *ProcedureReturn) String() string                { return AsString(n) }
+func (n *Declaration) String() string                    { return AsString(n) }
+func (n *ProcSet) String() string                        { return AsString(n) }
+func (n *ProcIf) String() string                         { return AsString(n) }
+func (n *ElseIf) String() string                         { return AsString(n) }
+func (n *ProcWhile) String() string                      { return AsString(n) }
+func (n *ProcLeave) String() string                      { return AsString(n) }
+func (n *ProcLoop) String() string                       { return AsString(n) }
+func (n *ProcCase) String() string                       { return AsString(n) }
 func (n *Restore) String() string                        { return AsString(n) }
 func (n *Revoke) String() string                         { return AsString(n) }
 func (n *RevokeRole) String() string                     { return AsString(n) }
@@ -2107,6 +2350,7 @@ func (n *ShowColumns) String() string                    { return AsString(n) }
 func (n *ShowConstraints) String() string                { return AsString(n) }
 func (n *ShowCreate) String() string                     { return AsString(n) }
 func (n *ShowCreateDatabase) String() string             { return AsString(n) }
+func (n *ShowCreateProcedure) String() string            { return AsString(n) }
 func (n *ShowDatabases) String() string                  { return AsString(n) }
 func (n *ShowFunction) String() string                   { return AsString(n) }
 func (n *ShowSchedule) String() string                   { return AsString(n) }
@@ -2129,6 +2373,7 @@ func (n *ShowSessions) String() string                   { return AsString(n) }
 func (n *ShowSyntax) String() string                     { return AsString(n) }
 func (n *ShowTableStats) String() string                 { return AsString(n) }
 func (n *ShowTables) String() string                     { return AsString(n) }
+func (n *ShowProcedures) String() string                 { return AsString(n) }
 func (n *ShowRetentions) String() string                 { return AsString(n) }
 func (n *ShowTraceForSession) String() string            { return AsString(n) }
 func (n *ShowTransactionStatus) String() string          { return AsString(n) }
@@ -2145,3 +2390,19 @@ func (n *Truncate) String() string                       { return AsString(n) }
 func (n *UnionClause) String() string                    { return AsString(n) }
 func (n *Update) String() string                         { return AsString(n) }
 func (n *ValuesClause) String() string                   { return AsString(n) }
+
+func (n *CreateProcedure) String() string {
+	var params []string
+	for _, param := range n.Parameters {
+		params = append(params, param.String())
+	}
+	return fmt.Sprintf("CREATE PROCEDURE %s (%s) BEGIN ... END", n.Name.String(), strings.Join(params, ", "))
+}
+
+func (n *CreateProcedurePG) String() string { return AsString(n) }
+
+func (n *CallProcedure) String() string { return AsString(n) }
+func (n *Block) String() string         { return AsString(n) }
+func (n *ProcedureParameter) String() string {
+	return fmt.Sprintf("%s %s", n.Name, n.Type)
+}

@@ -42,8 +42,32 @@ type ViewDep struct {
 	// with a specific list of column IDs.
 	ColumnOrdinals util.FastIntSet
 
+	// ColumnIDToOrd maps a scopeColumn's ColumnID to its ColumnOrdinal. This
+	// helps us add only the columns that are actually referenced by the object's
+	// query into the dependencies. We add a dependency on a column only when the
+	// column is referenced and created as a scopeColumn.
+	ColumnIDToOrd map[ColumnID]int
+
 	// If an index is referenced specifically (via an index hint), SpecificIndex
 	// is true and Index is the ordinal of that index.
 	SpecificIndex bool
 	Index         cat.IndexOrdinal
+}
+
+// Union returns the union of vp and newDeps as a new ViewDeps.
+func (vp ViewDeps) Union(newDeps ViewDeps) ViewDeps {
+	for j := range newDeps {
+		found := false
+		for i := range vp {
+			if vp[i].DataSource.ID() == newDeps[j].DataSource.ID() {
+				vp[i].ColumnOrdinals.Union(newDeps[j].ColumnOrdinals)
+				found = true
+				break
+			}
+		}
+		if !found {
+			vp = append(vp, newDeps[j])
+		}
+	}
+	return vp
 }

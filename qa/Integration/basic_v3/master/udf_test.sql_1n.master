@@ -97,7 +97,7 @@ DROP FUNCTION
 > select calculate_growth_rate(c1,c2) from t1 where k_timestamp >= '2024-1-1 1:00:00' and k_timestamp <= '2024-1-1 5:00:00';
 ERROR: unknown function: calculate_growth_rate()
 SQLSTATE: 42883
-> DELETE FROM system.user_defined_function WHERE true;
+> DELETE FROM system.user_defined_routine WHERE routine_type = 2;
 DELETE 0
 > use default;
 SET

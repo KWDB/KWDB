@@ -113,15 +113,15 @@ func New(
 
 // Build constructs the execution node tree and returns its root node if no
 // error occurred.
-func (b *Builder) Build() (_ exec.Plan, err error) {
-	plan, err := b.build(b.e)
+func (b *Builder) Build(autocommit bool) (_ exec.Plan, err error) {
+	plan, err := b.build(b.e, autocommit)
 	if err != nil {
 		return nil, err
 	}
 	return b.factory.ConstructPlan(plan.root, b.subqueries, b.postqueries)
 }
 
-func (b *Builder) build(e opt.Expr) (_ execPlan, err error) {
+func (b *Builder) build(e opt.Expr, autocommit bool) (_ execPlan, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			// This code allows us to propagate errors without adding lots of checks
@@ -143,7 +143,9 @@ func (b *Builder) build(e opt.Expr) (_ execPlan, err error) {
 		)
 	}
 
-	b.allowAutoCommit = b.canAutoCommit(rel)
+	if autocommit {
+		b.allowAutoCommit = b.canAutoCommit(rel)
+	}
 
 	return b.buildRelational(rel)
 }

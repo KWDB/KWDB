@@ -49,7 +49,7 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEn
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
       path_(std::filesystem::path(engine_options.db_path) / VGroupDirName(vgroup_id)),
-      entity_counter_(0),
+      max_entity_id_(0),
       engine_options_(engine_options),
       version_manager_(std::make_unique<TsVersionManager>(engine_options.io_env, path_)),
       enable_compact_thread_(enable_compact_thread) {}
@@ -57,11 +57,6 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEn
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  if (config_file_ != nullptr) {
-    config_file_->sync(MS_SYNC);
-    delete config_file_;
-    config_file_ = nullptr;
-  }
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
@@ -74,6 +69,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   s = version_manager_->Recover();
   if (s == FAIL) {
     LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+    return s;
   }
   initCompactThread();
 
@@ -85,25 +81,6 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     return res;
   }
 
-  config_file_ = new MMapFile();
-  string cf_file_path = path_.string() + "/vg_config";
-  int flag = MMAP_CREAT_EXCL;
-  bool exist = false;
-  if (IsExists(cf_file_path)) {
-    flag = MMAP_OPEN_NORECURSIVE;
-    exist = true;
-  }
-  int error_code = config_file_->open(cf_file_path, flag);
-  if (error_code < 0) {
-    LOG_ERROR("Open config file failed, error code: %d, path: %s", error_code, cf_file_path.c_str());
-    return KStatus::FAIL;
-  }
-  if (!exist) {
-    config_file_->resize(4096);
-    entity_counter_ = 0;
-  } else {
-    entity_counter_ = KUint32(config_file_->memAddr());
-  }
   return KStatus::SUCCESS;
 }
 
@@ -162,21 +139,19 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
 
 std::filesystem::path TsVGroup::GetPath() const { return path_; }
 
-uint32_t TsVGroup::AllocateEntityID() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  uint64_t new_id = entity_counter_ + 1;
-  if (saveToFile(new_id) == 0) {
-    entity_counter_ = new_id;
-    return new_id;
-  } else {
-    throw std::runtime_error("Failed to persist the new ID to file");
-  }
-  return 0;
+TSEntityID TsVGroup::AllocateEntityID() {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  return ++max_entity_id_;
 }
 
-uint32_t TsVGroup::GetMaxEntityID() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return entity_counter_;
+TSEntityID TsVGroup::GetMaxEntityID() const {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  return max_entity_id_;
+}
+
+void TsVGroup::InitEntityID(TSEntityID entity_id) {
+  std::lock_guard<std::mutex> lock(entity_id_mutex_);
+  max_entity_id_ = entity_id;
 }
 
 KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload) {
@@ -244,10 +219,13 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   // 1. read chk wal log
   wal_manager_->Lock();
   std::vector<uint64_t> ignore;
-  TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();
-  if (last_lsn != 0) {
-    chk_lsn = last_lsn;
-  }
+
+  // TODO(xy): code review here, last_lsn is not used, should we remove it?
+  // TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();
+  // if (last_lsn != 0) {
+  //   chk_lsn = last_lsn;
+  // }
+
   KStatus s =
       wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(), wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
@@ -344,13 +322,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
     }
   }
   return s;
-}
-
-int TsVGroup::saveToFile(uint32_t new_id) const {
-  uint32_t entity_id = new_id;
-  memcpy(reinterpret_cast<char*>(config_file_->memAddr()), &entity_id, sizeof(entity_id));
-  // return config_file_->sync(MS_SYNC);
-  return 0;
 }
 
 void TsVGroup::compactRoutine(void* args) {
@@ -523,7 +494,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
         // we will record this updation in update and persist it to disk later.
         if (partition->IsMemoryOnly() && new_created_partitions.find(partition) == new_created_partitions.end()) {
-          LOG_INFO("partition[%ld] is memory only, skip compact.", partition->GetStartTime());
           update.PartitionDirCreated(partition->GetPartitionIdentifier());
           new_created_partitions.insert(partition);
         }
@@ -719,6 +689,14 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       //      }
       //      break;
     }
+
+    // TODO(xy): code review here, the following cases are not handled.
+    case WALLogType::CREATE_INDEX:
+    case WALLogType::DROP_INDEX:
+    case WALLogType::END_CHECKPOINT: {
+      assert(false);
+      break;
+    }
   }
 
   return SUCCESS;
@@ -734,7 +712,7 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
       if (insert_log->getTableType() == WALTableType::DATA) {
         auto log = reinterpret_cast<InsertLogMetricsEntry*>(wal_log);
         p_tag = log->getPrimaryTag();
-        return redoPut(ctx, p_tag, log->getLSN(), log->getPayload());
+        return redoPut(ctx, log->getLSN(), log->getPayload());
       } else {
         auto log = reinterpret_cast<InsertLogTagsEntry*>(wal_log);
         return redoPutTag(ctx, log->getLSN(), log->getPayload());
@@ -907,12 +885,21 @@ KStatus TsVGroup::getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSli
 }
 
 KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
-  TsRawPayload p{payload};
-  auto table_id = p.GetTableID();
-  TSSlice primary_key = p.GetPrimaryTag();
-  auto tbl_version = p.GetTableVersion();
+  TsRawPayload tmp_p{payload};
+  auto table_id = tmp_p.GetTableID();
+  TSSlice primary_key = tmp_p.GetPrimaryTag();
+  auto tbl_version = tmp_p.GetTableVersion();
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaMgr failed.");
+    return s;
+  }
+  std::vector<AttributeInfo> metric_schema;
+  tb_schema_mgr->GetColumnsExcludeDropped(metric_schema, tbl_version);
+  TsRawPayload p(payload, metric_schema);
   TSEntityID entity_id;
-  auto s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
+  s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("undoPut failed.");
     return s;
@@ -930,16 +917,6 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
       return s;
     }
   }
-  return KStatus::SUCCESS;
-}
-// todo(liangbo01)  delete this function after below finished.
-KStatus TsVGroup::undoDelete(kwdbContext_p ctx, std::string& primary_tag, TS_LSN log_lsn,
-                   const std::vector<DelRowSpan>& rows) {
-  return KStatus::SUCCESS;
-}
-// todo(liangbo01)  delete this function after below finished.
-KStatus TsVGroup::redoDelete(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn,
- const vector<DelRowSpan>& rows) {
   return KStatus::SUCCESS;
 }
 
@@ -1016,54 +993,6 @@ KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::strin
 KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn, uint32_t group_id,
                                 uint32_t entity_id, TSSlice& tags) {
   return KStatus::SUCCESS;
-}
-
-/**
- * redoPut redo a put operation. This function is utilized during log recovery to redo a put
- * operation.
- *
- * @param ctx The context of the operation.
- * @param primary_tag The primary tag associated with the data being operated on.
- * @param log_lsn The log sequence number indicating the position in the log of this operation.
- * @param payload The actual data payload being put into the database, provided as a slice.
- *
- * @return KStatus The status of the operation, indicating success or failure.
- */
-KStatus TsVGroup::redoPut(kwdbContext_p ctx, std::string& primary_tag, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p{payload};
-  auto table_id = p.GetTableID();
-  TSSlice primary_key = p.GetPrimaryTag();
-  auto tbl_version = p.GetTableVersion();
-  bool new_tag;
-  uint32_t vgroup_id;
-  TSEntityID entity_id;
-
-  auto s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  if (new_tag) {
-    LOG_WARN("cannot find tag info for this parimary key.");
-    return KStatus::SUCCESS;
-  }
-  assert(vgroup_id == GetVGroupID());
-  uint8_t payload_data_flag = p.GetRowType();
-  if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    std::list<TSMemSegRowData> rows;
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("failed putdata.");
-      return s;
-    }
-    s = makeSurePartitionExist(table_id, rows);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("makeSurePartitionExist Failed.")
-      return FAIL;
-    }
-  } else {
-    LOG_WARN("no data need inserted.");
-  }
-  return s;
 }
 
 KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {

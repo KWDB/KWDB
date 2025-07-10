@@ -184,6 +184,8 @@ type cliState struct {
 	// autoTrace, when non-empty, encloses the executed statements
 	// by suitable SET TRACING and SHOW TRACE FOR SESSION statements.
 	autoTrace string
+
+	delimiter int
 }
 
 // cliStateEnum drives the CLI state machine in runInteractive().
@@ -503,7 +505,16 @@ func (c *cliState) handleUnset(args []string, nextState, errState cliStateEnum) 
 	return nextState
 }
 
-func isEndOfStatement(lastTok int) bool {
+func (c *cliState) isEndOfStatement(lastTok int) bool {
+	if c.delimiter == parser.DELIMITER_EOF {
+		if lastTok == parser.DELIMITER_EOF {
+			c.lastInputLine = strings.ReplaceAll(c.lastInputLine, "\\\\", ";")
+			c.concatLines = strings.ReplaceAll(c.concatLines, "\\\\", ";")
+			return true
+		}
+		return false
+	}
+
 	return lastTok == ';' || lastTok == parser.HELPTOKEN
 }
 
@@ -1039,6 +1050,14 @@ func (c *cliState) doProcessFirstLine(startState, nextState cliStateEnum) cliSta
 	case "exit", "quit":
 		return cliStop
 	}
+	switch strings.ToLower(c.lastInputLine) {
+	case "delimiter \\\\":
+		c.delimiter = parser.DELIMITER_EOF
+		return startState
+	case "delimiter ;":
+		c.delimiter = ';'
+		return startState
+	}
 
 	return nextState
 }
@@ -1122,6 +1141,11 @@ func (c *cliState) doHandleCliCmd(loopState, nextState cliStateEnum) cliStateEnu
 
 	case `\demo`:
 		return c.handleDemo(cmd[1:], loopState, errState)
+	case `\\`:
+		if c.delimiter == parser.DELIMITER_EOF {
+			return nextState
+		}
+		return c.invalidSyntax(errState, `%s. Try \? for help.`, c.lastInputLine)
 
 	default:
 		if strings.HasPrefix(cmd[0], `\d`) {
@@ -1149,7 +1173,7 @@ func (c *cliState) doPrepareStatementLine(
 	}
 
 	lastTok, ok := parser.LastLexicalToken(c.concatLines)
-	endOfStmt := isEndOfStatement(lastTok)
+	endOfStmt := c.isEndOfStatement(lastTok)
 	if c.partialStmtsLen == 0 && !ok {
 		// More whitespace, or comments. Still nothing to do. However
 		// if the syntax was non-trivial to arrive here,

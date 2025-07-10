@@ -17,11 +17,12 @@ func _() {
 	_ = x[DELETE-7]
 	_ = x[UPDATE-8]
 	_ = x[ZONECONFIG-9]
+	_ = x[EXECUTE-10]
 }
 
-const _Kind_name = "ALLCREATEDROPGRANTSELECTINSERTDELETEUPDATEZONECONFIG"
+const _Kind_name = "ALLCREATEDROPGRANTSELECTINSERTDELETEUPDATEZONECONFIGEXECUTE"
 
-var _Kind_index = [...]uint8{0, 3, 9, 13, 18, 24, 30, 36, 42, 52}
+var _Kind_index = [...]uint8{0, 3, 9, 13, 18, 24, 30, 36, 42, 52, 59}
 
 func (i Kind) String() string {
 	i -= 1

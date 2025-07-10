@@ -54,6 +54,8 @@ class TsEngineSchemaManager {
 
   KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr);
 
+  KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr);
+
   KStatus GetTableList(std::vector<TSTableID>* table_ids);
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
@@ -74,7 +76,7 @@ class TsEngineSchemaManager {
   int unLock();
 
  protected:
-  std::filesystem::path root_path_;
+  std::filesystem::path schema_root_path_;
   uint32_t vgroup_id_;
   string tbl_sub_path_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;

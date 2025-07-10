@@ -1806,7 +1806,7 @@ SET CLUSTER SETTING
                                         | table       | re1@primary
                                         | spans       | FULL SCAN
 (28 rows)
-> set cluster setting ts.sql.query_opt_mode=11110;
+> set cluster setting ts.sql.query_opt_mode=DEFAULT;
 SET CLUSTER SETTING
 > drop database if exists tsdb cascade;
 DROP DATABASE

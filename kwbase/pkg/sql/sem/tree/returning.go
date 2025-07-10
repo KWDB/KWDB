@@ -36,6 +36,25 @@ var _ ReturningClause = &ReturningExprs{}
 var _ ReturningClause = &ReturningNothing{}
 var _ ReturningClause = &NoReturningClause{}
 
+// ReturningIntoClause represents RETURNING expressions.
+type ReturningIntoClause struct {
+	SelectClause ReturningExprs
+	Targets      SelectIntoTargets
+}
+
+// Format implements the NodeFormatter interface.
+func (r *ReturningIntoClause) Format(ctx *FmtCtx) {
+	ctx.FormatNode(&r.SelectClause)
+	ctx.WriteString(" INTO")
+	for i := range r.Targets {
+		if i > 0 {
+			ctx.WriteString(",")
+		}
+		ctx.WriteString(" ")
+		ctx.WriteString(r.Targets[i].DeclareVar)
+	}
+}
+
 // ReturningExprs represents RETURNING expressions.
 type ReturningExprs SelectExprs
 
@@ -67,13 +86,15 @@ type NoReturningClause struct{}
 func (*NoReturningClause) Format(_ *FmtCtx) {}
 
 // used by parent statements to determine their own StatementType.
-func (*ReturningExprs) statementType() StatementType    { return Rows }
-func (*ReturningNothing) statementType() StatementType  { return RowsAffected }
-func (*NoReturningClause) statementType() StatementType { return RowsAffected }
+func (*ReturningExprs) statementType() StatementType      { return Rows }
+func (*ReturningNothing) statementType() StatementType    { return RowsAffected }
+func (*NoReturningClause) statementType() StatementType   { return RowsAffected }
+func (*ReturningIntoClause) statementType() StatementType { return RowsAffected }
 
-func (*ReturningExprs) returningClause()    {}
-func (*ReturningNothing) returningClause()  {}
-func (*NoReturningClause) returningClause() {}
+func (*ReturningExprs) returningClause()      {}
+func (*ReturningNothing) returningClause()    {}
+func (*NoReturningClause) returningClause()   {}
+func (*ReturningIntoClause) returningClause() {}
 
 // HasReturningClause determines if a ReturningClause is present, given a
 // variant of the ReturningClause interface.

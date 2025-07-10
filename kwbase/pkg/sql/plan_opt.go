@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/querycache"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -70,6 +71,7 @@ func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) 
 	case *tree.AlterIndex, *tree.AlterTable, *tree.AlterSequence, *tree.AlterSchedule,
 		*tree.BeginTransaction,
 		*tree.CommentOnColumn, *tree.CommentOnDatabase, *tree.CommentOnIndex, *tree.CommentOnTable,
+		*tree.CommentOnProcedure,
 		*tree.CommitTransaction,
 		*tree.CopyFrom, *tree.CreateDatabase, *tree.CreateFunction, *tree.CreateIndex, *tree.CreateView,
 		*tree.CreateSchedule,
@@ -146,15 +148,19 @@ func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) 
 
 	md := memo.Metadata()
 	physical := memo.RootProps()
-	resultCols := make(sqlbase.ResultColumns, len(physical.Presentation))
-	for i, col := range physical.Presentation {
-		resultCols[i].Name = col.Alias
-		resultCols[i].Typ = md.ColumnMeta(col.ID).Type
-		if err := checkResultType(resultCols[i].Typ); err != nil {
-			return 0, err
+	var resultCols sqlbase.ResultColumns
+	if len(opc.procedureCols) == 0 {
+		resultCols = make(sqlbase.ResultColumns, len(physical.Presentation))
+		for i, col := range physical.Presentation {
+			resultCols[i].Name = col.Alias
+			resultCols[i].Typ = md.ColumnMeta(col.ID).Type
+			if err := checkResultType(resultCols[i].Typ); err != nil {
+				return 0, err
+			}
 		}
+	} else {
+		resultCols = opc.procedureCols
 	}
-
 	// Verify that all placeholder types have been set.
 	if err := p.semaCtx.Placeholders.Types.AssertAllSet(); err != nil {
 		return 0, err
@@ -198,8 +204,17 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	opc := &p.optPlanningCtx
 	opc.reset()
 
-	execMemo, layerType, err := opc.buildExecMemo(ctx)
+	var execMemo *memo.Memo
+	var layerType tree.PhysicalLayerType
+	var err error
+	useProcedureCache := stmt.AST.StatOp() == "CALL" && opt.CheckOptMode(opt.TSQueryOptMode.Get(&p.ExecCfg().Settings.SV), opt.EnableProcedureCache)
 
+	if useProcedureCache {
+		// Try to find the cached memo in the procedure cache
+		execMemo, layerType, err = p.handleProcedureCache(ctx, stmt, opc)
+	} else {
+		execMemo, layerType, err = opc.buildExecMemo(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -210,7 +225,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	bld := execbuilder.New(&execFactory, execMemo, &opc.catalog, root, p.EvalContext())
 	bld.PhysType = layerType
 
-	plan, err := bld.Build()
+	plan, err := bld.Build(true)
 	if err != nil {
 		return err
 	}
@@ -230,7 +245,14 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	cols := planColumns(result.plan)
 	if stmt.ExpectedTypes != nil {
 		if !stmt.ExpectedTypes.TypesEqual(cols) {
-			return pgerror.New(pgcode.FeatureNotSupported, "cached plan must not change result type")
+			// Because procedure supports multiple result sets and
+			// the type of the returned result cannot be determined,
+			// this error is skipped.
+			_, isCreateProc := root.(*memo.CreateProcedureExpr)
+			_, isCallProc := root.(*memo.CallProcedureExpr)
+			if !isCreateProc && !isCallProc {
+				return pgerror.New(pgcode.FeatureNotSupported, "cached plan must not change result type")
+			}
 		}
 	}
 
@@ -262,6 +284,9 @@ type optPlanningCtx struct {
 	useCache bool
 
 	flags planFlags
+
+	// procedureCols saves procedure output column
+	procedureCols sqlbase.ResultColumns
 }
 
 // init performs one-time initialization of the planning context; reset() must
@@ -277,6 +302,7 @@ func (opc *optPlanningCtx) reset() {
 	opc.catalog.reset()
 	opc.optimizer.Init(p.EvalContext(), &opc.catalog)
 	opc.flags = 0
+	opc.procedureCols = nil
 
 	// We only allow memo caching for SELECT/INSERT/UPDATE/DELETE. We could
 	// support it for all statements in principle, but it would increase the
@@ -365,10 +391,20 @@ func (opc *optPlanningCtx) buildReusableMemo(ctx context.Context) (_ *memo.Memo,
 
 	bld := optbuilder.New(ctx, &p.semaCtx, p.EvalContext(), &opc.catalog, f, opc.p.stmt.AST)
 	bld.KeepPlaceholders = true
-	bld.TSInfo.WhiteListMap = p.ExecCfg().TSWhiteListMap
 	// find sql of select in insert...select...
 	if err := bld.Build(); err != nil {
 		return nil, err
+	}
+	if len(bld.OutPutCols) > 0 {
+		resultCols := make(sqlbase.ResultColumns, len(bld.OutPutCols))
+		for i, col := range bld.OutPutCols {
+			resultCols[i].Name = string(col.GetName())
+			resultCols[i].Typ = col.GetType()
+			if err := checkResultType(resultCols[i].Typ); err != nil {
+				return nil, err
+			}
+		}
+		opc.procedureCols = resultCols
 	}
 	if opc.optimizer.Memo().QueryType == memo.MultiModel {
 		if len(opc.optimizer.Memo().Metadata().AllTables()) > 1 {
@@ -464,8 +500,6 @@ func (opc *optPlanningCtx) reuseMemo(cachedMemo *memo.Memo) (*memo.Memo, error) 
 	}
 	opc.optimizer.Memo().SetWhiteList(cachedMemo.GetWhiteList())
 	opc.optimizer.Memo().SetAllFlag(cachedMemo.GetAllFlag())
-
-	opc.optimizer.Memo().TSWhiteListMap = cachedMemo.TSWhiteListMap
 	opc.optimizer.Memo().SetTsDop(cachedMemo.GetTsDop())
 	if opc.optimizer.Memo().QueryType == memo.MultiModel &&
 		!opt.CheckOptMode(opt.TSQueryOptMode.Get(&opc.p.ExecCfg().Settings.SV), opt.OutsideInUseCBO) {
@@ -552,9 +586,7 @@ func (opc *optPlanningCtx) buildExecMemo(
 
 	// We are executing a statement for which there is no reusable memo
 	// available.
-	f.Memo().SetWhiteList(p.ExecCfg().TSWhiteListMap)
 	bld := optbuilder.New(ctx, &p.semaCtx, p.EvalContext(), &opc.catalog, f, opc.p.stmt.AST)
-	bld.TSInfo.WhiteListMap = p.ExecCfg().TSWhiteListMap
 
 	//computer queryingerPrint for a select sql,and get its external hint from pseudo catalog cache
 	//or pseudo catalog table.
@@ -603,4 +635,79 @@ func (opc *optPlanningCtx) buildExecMemo(
 
 	f.Memo().ColsUsage = bld.ColsUsage
 	return f.Memo(), bld.PhysType, nil
+}
+
+// handleProcedureCache handles the procedure cache lookup, validation, and update logic.
+func (p *planner) handleProcedureCache(
+	ctx context.Context, stmt *Statement, opc *optPlanningCtx,
+) (execMemo *memo.Memo, layerType tree.PhysicalLayerType, err error) {
+	procedureName := stmt.AST.(*tree.CallProcedure).Name
+	found, desc, err := ResolveProcedureObject(ctx, p, &procedureName)
+	if err != nil {
+		return nil, tree.Invalid, err
+	}
+	if !found {
+		return nil, tree.Invalid, sqlbase.NewUndefinedProcedureError(&procedureName)
+	}
+
+	procedureInfo := ProcedureInfo{ProcedureID: uint32(desc.ID)}
+
+	// Try to find the cached data in the procedure cache
+	if cachedData := p.execCfg.ProcedureCache.Find(procedureInfo); cachedData != nil {
+		// Verify exec privilege for the procedure
+		if err := p.CheckPrivilege(ctx, desc, privilege.EXECUTE); err != nil {
+			return nil, tree.Invalid, err
+		}
+
+		// Check if cached plan is stale
+		isStale, err := cachedData.ProcedureFn.ProcedureCacheIsStale(ctx, p.EvalContext(), &opc.catalog)
+		if err != nil {
+			return nil, tree.Invalid, err
+		}
+
+		if isStale {
+			// ReCompile memo if stale
+			if _, _, err = opc.buildExecMemo(ctx); err != nil {
+				return nil, tree.Invalid, err
+			}
+
+			// Update cache with fresh memo
+			memo := opc.optimizer.DetachMemo()
+			memo.ProcCacheHelper.ExecViaProcedureCache = true
+			memo.ProcCacheHelper.ProcedureStmtType = stmt.AST.StatementType()
+			p.execCfg.ProcedureCache.Add(&CachedData{
+				ProcedureInfo: procedureInfo,
+				ProcedureFn:   memo,
+			})
+		}
+
+		// Replace the parameter values to avoid repeated compilation
+		cp := stmt.AST.(*tree.CallProcedure)
+		if len(cp.Exprs) != len(desc.Parameters) {
+			return nil, tree.Invalid, pgerror.New(pgcode.InvalidParameterValue, "Number of arguments does not match stored procedure definition")
+		}
+
+		if err = cachedData.ProcedureFn.ReplaceProcedureParam(&p.semaCtx, cp.Exprs, desc.Parameters); err != nil {
+			return nil, tree.Invalid, err
+		}
+
+		// Return cached memo
+		return cachedData.ProcedureFn, tree.Invalid, nil
+	}
+
+	// Cache miss so compile new memo
+	execMemo, layerType, err = opc.buildExecMemo(ctx)
+	if err != nil {
+		return nil, tree.Invalid, err
+	}
+
+	memo := opc.optimizer.DetachMemo()
+	memo.ProcCacheHelper.ExecViaProcedureCache = true
+	memo.ProcCacheHelper.ProcedureStmtType = stmt.AST.StatementType()
+	p.execCfg.ProcedureCache.Add(&CachedData{
+		ProcedureInfo: procedureInfo,
+		ProcedureFn:   memo,
+	})
+
+	return execMemo, layerType, nil
 }

@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -145,6 +146,18 @@ func newIndexJoiner(
 // SetBatchSize sets the desired batch size. It should only be used in tests.
 func (ij *indexJoiner) SetBatchSize(batchSize int) {
 	ij.batchSize = batchSize
+}
+
+// InitProcessorProcedure init processor in procedure
+func (ij *indexJoiner) InitProcessorProcedure(txn *kv.Txn) {
+	if ij.EvalCtx.IsProcedure {
+		if ij.FlowCtx != nil {
+			ij.FlowCtx.Txn = txn
+		}
+		ij.Closed = false
+		ij.State = execinfra.StateRunning
+		ij.Out.SetRowIdx(0)
+	}
 }
 
 // Start is part of the RowSource interface.

@@ -1561,6 +1561,6 @@ DROP DATABASE my_timeseries_db;
 DROP DATABASE my_relation_db;
 delete  from system.table_statistics where name = '_stats_firegases' or name = '_stats_station_info' or name = '_stats_';
 
-set cluster setting ts.sql.query_opt_mode = 1110;
+set cluster setting ts.sql.query_opt_mode = DEFAULT;
 set cluster setting sql.stats.tag_automatic_collection.enabled = true;
 set cluster setting sql.stats.automatic_collection.enabled = true;

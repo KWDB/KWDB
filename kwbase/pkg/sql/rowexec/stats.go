@@ -73,6 +73,11 @@ func (isc *inputStatCollector) Child(nth int, verbose bool) execinfra.OpNode {
 	return nil
 }
 
+// InitProcessorProcedure init processor in procedure
+func (isc *inputStatCollector) InitProcessorProcedure(txn *kv.Txn) {
+	isc.RowSource.InitProcessorProcedure(txn)
+}
+
 // Start implements the RowSource interface. It calls Start on the embedded
 // RowSource and collects stats.
 func (isc *inputStatCollector) Start(ctx context.Context) context.Context {

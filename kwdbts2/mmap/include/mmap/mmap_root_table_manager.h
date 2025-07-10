@@ -57,6 +57,7 @@ protected:
   TsHashLatch delete_data_latch_;
   // Stores mappings of all versions of the root table.
   std::unordered_map<uint32_t, MMapMetricsTable*> root_tables_;
+  uint64_t hash_num_;
 
   /**
    * @brief Opens the root table for the specified version.
@@ -89,10 +90,11 @@ public:
    * @param partition_interval Partition interval.
    */
   MMapRootTableManager(const string& db_path, const string& tbl_sub_path, uint32_t table_id,
-                       uint64_t partition_interval) :
+                       uint64_t partition_interval, uint64_t hash_num = 2000) :
       rw_latch_(RWLATCH_ID_MMAP_ROOT_TABLE_RWLOCK), name_(to_string(table_id)), db_path_(db_path),
       tbl_sub_path_(tbl_sub_path), table_id_(table_id), cur_table_version_(0), partition_interval_(partition_interval),
-      delete_data_latch_(DELETE_DATA_LATCH_BUCKET_NUM, LATCH_ID_TSTABLE_DELETE_DATA_LOCK) {}
+      delete_data_latch_(DELETE_DATA_LATCH_BUCKET_NUM, LATCH_ID_TSTABLE_DELETE_DATA_LOCK),
+      hash_num_(hash_num) {}
 
   /**
    * @brief Destructor, which frees resources.
@@ -346,5 +348,7 @@ public:
    * @return Returns the status of the operation.
    */
   int unLock();
+
+  uint64_t GetHashNum();
 
 };
