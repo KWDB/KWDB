@@ -69,6 +69,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   s = version_manager_->Recover();
   if (s == FAIL) {
     LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+    return s;
   }
   initCompactThread();
 
@@ -141,7 +142,6 @@ std::filesystem::path TsVGroup::GetPath() const { return path_; }
 TSEntityID TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock(entity_id_mutex_);
   return ++max_entity_id_;
-
 }
 
 TSEntityID TsVGroup::GetMaxEntityID() const {
@@ -219,10 +219,13 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   // 1. read chk wal log
   wal_manager_->Lock();
   std::vector<uint64_t> ignore;
-  TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();
-  if (last_lsn != 0) {
-    chk_lsn = last_lsn;
-  }
+
+  // TODO(xy): code review here, last_lsn is not used, should we remove it?
+  // TS_LSN chk_lsn = wal_manager_->FetchCheckpointLSN();
+  // if (last_lsn != 0) {
+  //   chk_lsn = last_lsn;
+  // }
+
   KStatus s =
       wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(), wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
@@ -491,7 +494,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
         // we will record this updation in update and persist it to disk later.
         if (partition->IsMemoryOnly() && new_created_partitions.find(partition) == new_created_partitions.end()) {
-          LOG_INFO("partition[%ld] is memory only, skip compact.", partition->GetStartTime());
           update.PartitionDirCreated(partition->GetPartitionIdentifier());
           new_created_partitions.insert(partition);
         }
@@ -686,6 +688,14 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       //        return KStatus::FAIL;
       //      }
       //      break;
+    }
+
+    // TODO(xy): code review here, the following cases are not handled.
+    case WALLogType::CREATE_INDEX:
+    case WALLogType::DROP_INDEX:
+    case WALLogType::END_CHECKPOINT: {
+      assert(false);
+      break;
     }
   }
 

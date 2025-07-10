@@ -25,29 +25,52 @@ from
       limit 44) as subq_0
 where subq_0.c2 is NULL
 limit 143;
-                tree               |    field    |   description
------------------------------------+-------------+-------------------
-                                   | distributed | true
-                                   | vectorized  | false
-  render                           |             |
-   │                               | engine type | time series
-   │                               | c0          | 41
-   │                               | c1          | allrenergy1_a
-   │                               | c2          | vol_b
-   │                               | c3          | 3
-   └── filter                      |             |
-        │                          | engine type | time series
-        │                          | filter      | allpower IS NULL
-        └── limit                  |             |
-             │                     | engine type | time series
-             │                     | count       | 44
-             └── synchronizer      |             |
-                  └── limit        |             |
-                       │           | engine type | time series
-                       │           | count       | 44
-                       └── ts scan |             |
-                                   | ts-table    | t_electmeter
-                                   | access mode | metaTable
-(21 rows)
+           tree          |     field     |   description
+-------------------------+---------------+-------------------
+                         | distributed   | true
+                         | vectorized    | false
+  render                 |               |
+   │                     | engine type   | time series
+   │                     | c0            | c0
+   │                     | c1            | allrenergy1_a
+   │                     | c2            | vol_b
+   │                     | c3            | c3
+   └── synchronizer      |               |
+        └── render       |               |
+             │           | engine type   | time series
+             │           | c0            | 41
+             │           | c3            | 3
+             │           | allrenergy1_a | allrenergy1_a
+             │           | vol_b         | vol_b
+             └── ts scan |               |
+                         | ts-table      | t_electmeter
+                         | access mode   | metaTable
+                         | limit         | 44
+                         | filter        | allpower IS NULL
+(20 rows)
+> select
+  41 as c0,
+  subq_0.c0 as c1,
+  subq_0.c4 as c2,
+  subq_0.c3 as c3
+from
+  (select
+        ref_0.allrenergy1_a as c0,
+        ref_0.powerr as c1,
+        ref_0.allpower as c2,
+        3 as c3,
+        ref_0.vol_b as c4,
+        ref_0.vol_ca as c5
+      from
+        public.t_electmeter as ref_0
+      where ref_0.powerf is not NULL
+      limit 44) as subq_0
+where subq_0.c2 is NULL
+limit 143;
+  c0 | c1 | c2 | c3
+-----+----+----+-----
+(0 rows)
+> use defaultdb;
+SET
 > drop database test cascade;
 DROP DATABASE

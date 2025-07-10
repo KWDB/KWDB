@@ -20,7 +20,7 @@
 namespace kwdbts {
 class AggCalculatorV2 {
  public:
-  AggCalculatorV2(void* mem, TsBitmap* bitmap, DATATYPE type, int32_t size, int32_t count) :
+  AggCalculatorV2(char* mem, TsBitmap* bitmap, DATATYPE type, int32_t size, int32_t count) :
       mem_(mem), bitmap_(bitmap), type_(type), size_(size), count_(count) {
     if (type_ == DATATYPE::TIMESTAMP64_LSN) {
       size_ = 8;
@@ -34,7 +34,7 @@ class AggCalculatorV2 {
     }
   }
 
-  AggCalculatorV2(void* pre_agg, DATATYPE type, int32_t size, int32_t count) :
+  AggCalculatorV2(char* pre_agg, DATATYPE type, int32_t size, int32_t count) :
       pre_agg_(pre_agg), type_(type), size_(size), count_(count) {
     if (type_ == DATATYPE::TIMESTAMP64_LSN) {
       size_ = 8;
@@ -59,8 +59,8 @@ class AggCalculatorV2 {
   bool isnull(size_t row);
 
  private:
-  void* mem_;
-  void* pre_agg_;
+  char* mem_;
+  char* pre_agg_;
   TsBitmap* bitmap_ = nullptr;
   DATATYPE type_;
   int32_t size_;
@@ -75,8 +75,7 @@ class VarColAggCalculatorV2 {
   explicit VarColAggCalculatorV2(const std::vector<string>& var_rows) : var_rows_(var_rows) {
   }
 
-  VarColAggCalculatorV2(void* pre_agg, DATATYPE type, int32_t count) :
-      pre_agg_(pre_agg), type_(type), count_(count) {  }
+  VarColAggCalculatorV2(char* pre_agg, DATATYPE type, int32_t count) : type_(type), pre_agg_(pre_agg), count_(count) {}
 
   void CalcAggForFlush(string& max, string& min, uint64_t& count);
   void MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type);
@@ -85,7 +84,7 @@ class VarColAggCalculatorV2 {
  private:
   std::vector<string> var_rows_;
   DATATYPE type_;
-  void* pre_agg_;
+  char* pre_agg_;
   uint16_t count_;
 };
 

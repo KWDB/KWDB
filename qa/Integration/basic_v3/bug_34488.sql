@@ -25,5 +25,25 @@ from
 where subq_0.c2 is NULL
 limit 143;
 
+select
+  41 as c0,
+  subq_0.c0 as c1,
+  subq_0.c4 as c2,
+  subq_0.c3 as c3
+from
+  (select
+        ref_0.allrenergy1_a as c0,
+        ref_0.powerr as c1,
+        ref_0.allpower as c2,
+        3 as c3,
+        ref_0.vol_b as c4,
+        ref_0.vol_ca as c5
+      from
+        public.t_electmeter as ref_0
+      where ref_0.powerf is not NULL
+      limit 44) as subq_0
+where subq_0.c2 is NULL
+limit 143;
 
+use defaultdb;
 drop database test cascade;

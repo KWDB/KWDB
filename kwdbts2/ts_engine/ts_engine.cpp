@@ -20,6 +20,7 @@
 #include <string>
 #include <memory>
 #include <utility>
+#include "kwdb_type.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
@@ -44,7 +45,7 @@ namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
-const char schema_directory[]= "schema";
+const char schema_directory[]= "schema/";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(vgroups_),
                                                                       batch_jobs_lock_(RWLATCH_ID_BATCH_DATA_JOB_RWLOCK) {
@@ -110,7 +111,6 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   }
 
   InitExecutor(ctx, options_);
-
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
@@ -164,7 +164,7 @@ TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
 }
 
 KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-  std::vector<RangeGroup> ranges) {
+  std::vector<RangeGroup> ranges, bool not_get_table) {
   std::shared_ptr<TsTable> ts_table;
   return CreateTsTable(ctx, table_id, meta, ts_table);
 }
@@ -361,7 +361,6 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
 
-    TSSlice primary_key = payload.GetPrimaryTag();
     auto tbl_version = payload.GetTableVersion();
     std::shared_ptr<kwdbts::TsTable> ts_table;
     KStatus s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
@@ -537,7 +536,7 @@ KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, 
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
-    LOG_ERROR(err_msg.c_str());
+    LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
   s = ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
@@ -570,7 +569,7 @@ KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id,
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
-    LOG_ERROR(err_msg.c_str());
+    LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
   s = ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
@@ -603,7 +602,7 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
-    LOG_ERROR(err_msg.c_str());
+    LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
   s = ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
@@ -1071,6 +1070,7 @@ std::string GetBatchDataKey(TSTableID table_id, uint32_t table_version, uint64_t
 
 std::string GetBatchDataKey(TSTableID table_id, uint32_t table_version) {
   char buffer[64];
+  memset(buffer, 0, 64);
   std::snprintf(buffer, sizeof(buffer), "%lu-%d", table_id, table_version);
   return buffer;
 }
@@ -1117,7 +1117,6 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
   if (job_it != batch_data_jobs_.end()) {
     job_it->second.insert({key, job});
   } else {
-    batch_data_jobs_[job_id] = {};
     batch_data_jobs_[job_id].insert({key, job});
   }
   RW_LATCH_UNLOCK(&batch_jobs_lock_);
@@ -1162,6 +1161,7 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
   }
   batch_data_jobs_.erase(job_id);
   RW_LATCH_UNLOCK(&batch_jobs_lock_);
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
@@ -1584,6 +1584,7 @@ uint64_t TSEngineV2Impl::insertToSnapshotCache(TsRangeImgrationInfo& snapshot) {
     while (snapshots_.find(snapshot_id) != snapshots_.end()) {
       snapshot_id += 1;
     }
+    snapshot.id = snapshot_id;
     snapshots_[snapshot_id] = snapshot;
     snapshot_mutex_.unlock();
   }
@@ -1731,7 +1732,7 @@ KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapsho
       return KStatus::FAIL;
     }
   }
-  auto s = BatchJobFinish(ctx, ts_snapshot_info.id);
+  auto s = BatchJobFinish(ctx, snapshot_id);
   if (s == KStatus::SUCCESS) {
     snapshot_mutex_.lock();
     snapshots_.erase(snapshot_id);
@@ -1753,7 +1754,7 @@ KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapsh
       return KStatus::FAIL;
     }
   }
-  auto s = CancelBatchJob(ctx, ts_snapshot_info.id);
+  auto s = CancelBatchJob(ctx, snapshot_id);
   if (s == KStatus::SUCCESS) {
     snapshot_mutex_.lock();
     snapshots_.erase(snapshot_id);

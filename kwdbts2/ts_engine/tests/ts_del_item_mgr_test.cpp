@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <gtest/gtest.h>
+#include <cstdint>
 #include "ts_del_item_manager.h"
 #include "sys_utils.h"
 
@@ -48,7 +49,7 @@ TEST(TsDelItemMgrTest, simpleInsert) {
   mgr.Open();
   mgr.Reset();
   for (size_t i = 0; i < 10; i++) {
-    TsEntityDelItem del_item({2 + i, 22 + i}, {1 + i, 11 + i}, 1);
+    TsEntityDelItem del_item({(int64_t)(2 + i), (int64_t)(22 + i)}, {1 + i, 11 + i}, 1);
     KStatus s = mgr.AddDelItem(1, del_item);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
@@ -79,7 +80,7 @@ TEST(TsDelItemMgrTest, simpleMultiInsert) {
   for (size_t i = 1; i <= thread_num; i++) {
     threads.push_back(thread([&](int index) {
       for (size_t i = 0; i < entity_del_item_num; i++) {
-        TsEntityDelItem del_item({2 + i, 22 + i}, {1 + i, 11 + i}, index);
+        TsEntityDelItem del_item({(int64_t)(2 + i), (int64_t)(22 + i)}, {1 + i, 11 + i}, index);
         KStatus s = mgr.AddDelItem(index, del_item);
         ASSERT_TRUE(s == KStatus::SUCCESS);
       }

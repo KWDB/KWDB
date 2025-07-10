@@ -66,7 +66,7 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-                                std::vector<RangeGroup> ranges) = 0;
+                                std::vector<RangeGroup> ranges, bool not_get_table = true) = 0;
 
   /**
  * @brief drop ts table
@@ -572,7 +572,7 @@ class TSEngineImpl : public TSEngine {
   ~TSEngineImpl() override;
 
   KStatus CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-                        std::vector<RangeGroup> ranges) override;
+                        std::vector<RangeGroup> ranges, bool not_get_table = true) override;
 
   KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override;
 
@@ -895,9 +895,9 @@ class VarColAggCalculator {
                       mem_(mem), var_mem_(var_mem), bitmap_(bitmap), first_row_(first_row), size_(size), count_(count) {
   }
 
-  std::shared_ptr<void> GetMax(bool base_changed, std::shared_ptr<void> base = nullptr);
+  std::shared_ptr<void> GetMax(bool& base_changed, std::shared_ptr<void> base = nullptr);
 
-  std::shared_ptr<void> GetMin(bool base_changed, std::shared_ptr<void> base = nullptr);
+  std::shared_ptr<void> GetMin(bool& base_changed, std::shared_ptr<void> base = nullptr);
 
   void CalAllAgg(void* min_base, void* max_base, std::shared_ptr<void> var_min_base,
                  std::shared_ptr<void> var_max_base, void* count_base, bool block_first_line, const BlockSpan& span);

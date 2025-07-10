@@ -16,6 +16,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -37,6 +38,7 @@ class LastSegmentMetaBlockBase {
   virtual void SerializeImpl(std::string* dst) = 0;
 
  public:
+  virtual ~LastSegmentMetaBlockBase() {}
   virtual std::string GetName() const = 0;
   void Serialize(std::string* dst) {
     dst->clear();
@@ -83,6 +85,7 @@ struct TsLastSegmentFooter {
   uint64_t magic_number;
 };
 static_assert(sizeof(TsLastSegmentFooter) == 64);
+static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter>);
 
 struct TsLastSegmentBlockIndex {
   uint64_t offset, length;

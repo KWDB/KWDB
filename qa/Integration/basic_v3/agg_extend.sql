@@ -44,5 +44,8 @@ select first(k_timestamp),last(k_timestamp),k_timestamp,min(e18) FROM test_selec
 select k_timestamp,min(e21),first(k_timestamp),code15,code16 from test_select_maxandmin.t1 group by time_window(k_timestamp,'10min') order by k_timestamp;
 select k_timestamp,e15,e16,min(e22),last(k_timestamp),first(k_timestamp),code4,code5 from test_select_maxandmin.t1 group by time_window(k_timestamp,'10min') order by k_timestamp;
 SELECT k_timestamp,e3,code3,min(e19),code10 from test_select_maxandmin.t1 group by time_window(k_timestamp,'10min') order by k_timestamp;
+SELECT k_timestamp,e1 from test_select_maxandmin.t1 order by k_timestamp;
+SELECT MIN(e1),e1 from test_select_maxandmin.t1;
+SELECT MAX(e1),e1 from test_select_maxandmin.t1;
 USE defaultdb;
 DROP DATABASE IF exists test_select_maxandmin cascade;

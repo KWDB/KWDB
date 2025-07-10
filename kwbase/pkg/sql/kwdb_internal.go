@@ -913,6 +913,9 @@ CREATE TABLE kwdb_internal.cluster_settings (
 			return err
 		}
 		for _, k := range settings.Keys() {
+			if k == versionName {
+				continue
+			}
 			setting, _ := settings.Lookup(k, settings.LookupForLocalAccess)
 			strVal := setting.String(&p.ExecCfg().Settings.SV)
 			isPublic := setting.Visibility() == settings.Public

@@ -15,8 +15,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <cstddef>
@@ -26,8 +24,10 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
+#include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
@@ -50,9 +50,7 @@ class TsAppendOnlyFile {
   virtual ~TsAppendOnlyFile() {}
 
   virtual KStatus Append(std::string_view) = 0;
-  virtual KStatus Append(TSSlice slice) {
-    return this->Append(std::string_view{slice.data, slice.len});
-  }
+  KStatus Append(TSSlice slice) { return this->Append(std::string_view{slice.data, slice.len}); }
 
   virtual size_t GetFileSize() const = 0;
   std::string GetFilePath() const { return path_; }
@@ -136,11 +134,7 @@ class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
 
  public:
   TsMMapAppendOnlyFile(const std::string& path, int fd, size_t offset /*append from offset*/)
-      : TsAppendOnlyFile(path),
-        fd_(fd),
-        page_size_(getpagesize()),
-        mmap_size_(16 * page_size_),
-        file_size_(offset) {}
+      : TsAppendOnlyFile(path), fd_(fd), page_size_(getpagesize()), mmap_size_(16 * page_size_), file_size_(offset) {}
   ~TsMMapAppendOnlyFile();
 
   KStatus Append(std::string_view data) override;
@@ -159,16 +153,18 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
 
  public:
   TsMMapRandomReadFile(const std::string& path, int fd, char* addr, size_t filesize)
-      : TsRandomReadFile(path),
-        fd_(fd),
-        mmap_start_(addr),
-        file_size_(filesize),
-        page_size_(getpagesize()) {
-    assert(mmap_start_);
-    assert(file_size_ > 0);
+      : TsRandomReadFile(path), fd_(fd), mmap_start_(addr), file_size_(filesize), page_size_(getpagesize()) {
+    assert(fd > 0);
+    if (filesize != 0) {
+      assert(mmap_start_ != nullptr);
+    } else {
+      assert(mmap_start_ == nullptr);
+    }
   }
   ~TsMMapRandomReadFile() {
-    munmap(mmap_start_, file_size_);
+    if (mmap_start_ != nullptr) {
+      munmap(mmap_start_, file_size_);
+    }
     close(fd_);
   }
   KStatus Prefetch(size_t offset, size_t n) override;
@@ -186,10 +182,20 @@ class TsMMapSequentialReadFile : public TsSequentialReadFile {
  public:
   TsMMapSequentialReadFile(const std::string& path, int fd, char* addr, size_t filesize)
       : TsSequentialReadFile(path, filesize), fd_(fd), mmap_start_(addr), page_size_(getpagesize()) {
-    assert(mmap_start_);
-    assert(file_size_ > 0);
+    assert(fd > 0);
+    if (filesize != 0) {
+      assert(mmap_start_ != nullptr);
+    } else {
+      assert(mmap_start_ == nullptr);
+    }
   }
   KStatus Read(size_t n, TSSlice* slice, char* buf) override;
+  ~TsMMapSequentialReadFile() {
+    if (mmap_start_ != nullptr) {
+      munmap(mmap_start_, file_size_);
+    }
+    close(fd_);
+  }
 };
 
 class TsIOEnv {
@@ -228,7 +234,8 @@ class TsMMapAllocFile : public FileWithIndex {
     uint64_t index_header_offset;
     char reserved[104];
   };
-static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
+  static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
+  static_assert(std::has_unique_object_representations_v<FileHeader>, "padding in struct FileHeader");
 
   std::string path_;
   int fd_ = -1;
@@ -275,13 +282,9 @@ static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check
     }
   }
 
-  uint64_t GetStartPos() {
-    return sizeof(FileHeader);
-  }
+  uint64_t GetStartPos() { return sizeof(FileHeader); }
 
-  FileHeader* getHeader() {
-    return reinterpret_cast<FileHeader*>(addrs_[0].data);
-  }
+  FileHeader* getHeader() { return reinterpret_cast<FileHeader*>(addrs_[0].data); }
 
   KStatus resize(uint64_t add_size) {
     size_t new_len = getHeader()->file_len;

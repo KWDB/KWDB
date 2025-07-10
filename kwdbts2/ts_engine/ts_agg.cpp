@@ -327,7 +327,7 @@ KStatus AggCalculatorV2::MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype
       break;
     }
     case SUM: {
-      bool pre_agg_overflow = *static_cast<bool *>(pre_agg_ + sizeof(uint16_t) + size_ * 2);
+      bool pre_agg_overflow = *reinterpret_cast<bool*>(pre_agg_ + sizeof(uint16_t) + size_ * 2);
       if (pre_agg_overflow) {
         is_overflow = true;
       }
@@ -468,7 +468,7 @@ KStatus VarColAggCalculatorV2::MergeAggResultFromPreAgg(TSSlice &agg_data, Sumfu
     }
     case MAX: {
       void* max = nullptr;
-      max_len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
+      max_len = *reinterpret_cast<uint32_t*>(pre_agg_ + sizeof(uint16_t));
       max = pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2;
       string max_str(static_cast<const char *>(max), max_len);
       if (agg_data.data) {
@@ -489,8 +489,8 @@ KStatus VarColAggCalculatorV2::MergeAggResultFromPreAgg(TSSlice &agg_data, Sumfu
     }
     case MIN: {
       void* min = nullptr;
-      max_len = *static_cast<uint32_t *>(pre_agg_ + sizeof(uint16_t));
-      min_len = *static_cast<uint32_t *>(pre_agg_+ sizeof(uint16_t) + sizeof(uint32_t));
+      max_len = *reinterpret_cast<uint32_t*>(pre_agg_ + sizeof(uint16_t));
+      min_len = *reinterpret_cast<uint32_t*>(pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t));
       min = pre_agg_ + sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len;
       string min_str(static_cast<const char *>(min), min_len);
       if (agg_data.data) {

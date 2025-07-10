@@ -1048,6 +1048,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.ValidationBehavior> opt_validate_behavior
 
 %type <str> opt_template_clause opt_encoding_clause opt_lc_collate_clause opt_lc_ctype_clause opt_comment_clause
+%type <str> opt_proc_body_str
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1276,7 +1277,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <*tree.ProcedureParameter> parameter
 //%type <tree.ProcDirection> opt_direction
 %type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body
-%type <tree.Statement> procedure_block proc_handler_body
+%type <tree.Statement> opt_procedure_block proc_handler_body
 %type <[]tree.ElseIf> opt_stmt_elsifs
 
 %type <empty> within_group_clause
@@ -6470,13 +6471,31 @@ opt_with_schedule_options:
 // %Category: DDL
 // %Text:
 create_procedure_stmt:
-  CREATE PROCEDURE procedure_name '(' parameter_list ')' procedure_block
+  CREATE PROCEDURE procedure_name '(' parameter_list ')' opt_proc_body_str opt_procedure_block
   {
     name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.CreateProcedure{
-      Name: name,
-      Parameters: $5.procParameters(),
-      Block: *($7.block()),
+    bodyStr := $7
+    bodyBlock := $8.block()
+    if bodyStr == "" && bodyBlock == nil {
+      sqllex.Error("the procedure body is missing")
+      return 1
+    }
+    if bodyStr != "" && bodyBlock != nil {
+      sqllex.Error("body-string and body-block cannot occur simultaneously")
+      return 1
+    }
+    if bodyStr != "" {
+		 $$.val = &tree.CreateProcedurePG{
+				Name: name,
+				Parameters: $5.procParameters(),
+				BodyStr: bodyStr,
+			}
+    } else {
+      $$.val = &tree.CreateProcedure{
+				Name: name,
+				Parameters: $5.procParameters(),
+				Block: *(bodyBlock),
+			}
     }
   }
 | CREATE PROCEDURE error // SHOW HELP: CREATE PROCEDURE
@@ -6502,12 +6521,13 @@ parameter:
     $$.val = &tree.ProcedureParameter{
       Direction: tree.InDirection,
       Name: tree.Name($1),
-      // TODO(zxy)
       Type: $2.colType(),
     }
   }
 
-procedure_block:
+// opt_procedure_block represents the stored procedure body enclosed in BEGIN...END.
+// This syntax is typically used in the kwbase client along with delimiter.
+opt_procedure_block:
  opt_loop_label BEGIN proc_stmt_list END opt_label
   {
 		loopLabel, loopEndLabel := $1, $5
@@ -6519,6 +6539,23 @@ procedure_block:
       Body:  $3.stmts(),
     }
   }
+| /* empty */ %prec VALUES
+	{
+		$$.val = (*tree.Block)(nil)
+	}
+
+// opt_proc_body_str represents the string of the procedure body.
+// This syntax is designed to support CREATE PROCEDURE via jdbc.
+// For example: create procedure p1() $$ BEGIN...END $$; ($$ represents a string).
+opt_proc_body_str:
+ SCONST
+  {
+    $$ = $1
+  }
+| /* empty */ %prec VALUES
+	{
+		$$ = ""
+	}
 
 proc_stmt_list:
   /* empty */ %prec VALUES

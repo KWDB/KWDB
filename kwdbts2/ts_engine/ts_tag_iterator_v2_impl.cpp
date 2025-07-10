@@ -14,16 +14,12 @@
 namespace kwdbts {
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
-                                      const std::vector<k_uint32>& scan_tags) : tag_bt_(tag_bt),
-                                      table_version_(table_versioin), scan_tags_(scan_tags) {
-}
+                                     const std::vector<k_uint32>& scan_tags)
+    : scan_tags_(scan_tags), tag_bt_(tag_bt), table_version_(table_versioin) {}
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
-                                      const std::vector<k_uint32>& scan_tags,
-                                      const std::vector<uint32_t>& hps) : tag_bt_(tag_bt),
-                                      table_version_(table_versioin),
-                                      scan_tags_(scan_tags), hps_(hps) {
-}
+                                     const std::vector<k_uint32>& scan_tags, const std::vector<uint32_t>& hps)
+    : scan_tags_(scan_tags), hps_(hps), tag_bt_(tag_bt), table_version_(table_versioin) {}
 
 TagIteratorV2Impl::~TagIteratorV2Impl() {
   for (size_t idx = 0; idx < tag_partition_iters_.size(); ++idx) {

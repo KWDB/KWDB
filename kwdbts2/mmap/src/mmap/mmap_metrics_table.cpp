@@ -52,7 +52,8 @@ int MMapMetricsTable::open(const string& table_path, const std::string& db_path,
 }
 
 int MMapMetricsTable::create(const vector<AttributeInfo>& schema, const uint32_t& table_version, const string& tbl_sub_path,
-                             uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data) {
+                             uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data,
+                             uint64_t hash_number) {
   if (init(schema, err_info) < 0)
     return err_info.errcode;
 
@@ -62,6 +63,7 @@ int MMapMetricsTable::create(const vector<AttributeInfo>& schema, const uint32_t
   meta_data_->partition_interval = partition_interval;
 
   meta_data_->has_data = init_data;
+  meta_data_->hash_num = hash_number;
   setObjectReady();
 
   return 0;
