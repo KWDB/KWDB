@@ -13,8 +13,9 @@
 
 #include <string>
 #include <unordered_map>
-#include "libkwdbts2.h"
+
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "lt_rw_latch.h"
 
 namespace kwdbts {
@@ -24,8 +25,7 @@ enum RaftKeyType {
   DEL = 2,
 };
 
-struct RaftStoreOptions {
-};
+struct RaftStoreOptions {};
 
 struct RaftValueOffset {
   size_t offset;
@@ -34,12 +34,10 @@ struct RaftValueOffset {
 
 class RaftStore {
  public:
-  RaftStore(const std::string& file_path, RaftStoreOptions& options) : file_path_(file_path), options_(options) {
+  RaftStore(const std::string& file_path, RaftStoreOptions& options) : options_(options), file_path_(file_path) {
     rwlock_ = new KRWLatch(RWLATCH_ID_PARTITION_LRU_CACHE_MANAGER_RWLOCK);
   }
-  ~RaftStore() {
-    delete rwlock_;
-  }
+  ~RaftStore() { delete rwlock_; }
 
   KStatus Open();
 

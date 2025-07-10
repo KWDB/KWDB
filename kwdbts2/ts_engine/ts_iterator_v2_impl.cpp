@@ -149,7 +149,7 @@ inline void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
 }
 
 inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts) {
-  return ts != INVALID_TS && (!is_reversed_ && begin_ts > ts || is_reversed_ && end_ts < ts);
+  return ts != INVALID_TS && ((!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts));
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
@@ -1294,7 +1294,9 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
     } else if ((is_reversed_ && max_ts <= min_ts) || (!is_reversed_ && min_ts > mid_ts)) {
       filter_block_spans_.push_back(block_span);
     } else {
-      bool is_lower_part;
+      // TODO(lmz): code review here, is_lower_part is uninitialized. It may cause a bug.
+      //  is_lower_part = true to avoid compile error.
+      bool is_lower_part = true;
       int first_row = block_span->GetStartRow(), start_row = block_span->GetStartRow();
       uint32_t row_num = block_span->GetRowNum();
       for (int j = start_row; j < start_row + row_num; ++j) {

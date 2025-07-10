@@ -287,14 +287,28 @@ target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
 	)
 
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
-  # COMPILE_FLAGS "-Werror -Wunused-variable"
   COMPILE_FLAGS " -fno-plt"
   POSITION_INDEPENDENT_CODE ON
 )
 
+include(CheckCXXCompilerFlag)
+set(STV3_CXX_BASIC_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing")
+set(STV3_CXX_EXTRA_FLAGS "-Wduplicated-branches -Wduplicated-cond -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith")
+
+
+CHECK_CXX_COMPILER_FLAG(${STV3_CXX_BASIC_FLAGS} CXX_BASIC_WARNING_FLAGS)
+if(CXX_BASIC_WARNING_FLAGS)
+    set(STV3_CXX_FLAGS ${STV3_CXX_BASIC_FLAGS})
+endif()
+
+CHECK_CXX_COMPILER_FLAG(${STV3_CXX_EXTRA_FLAGS} CXX_EXTRA_WARNING_FLAGS)
+if(CXX_EXTRA_WARNING_FLAGS)
+    set(STV3_CXX_FLAGS "${STV3_CXX_FLAGS} ${STV3_CXX_EXTRA_FLAGS}")
+endif()
+
 file(GLOB_RECURSE STV3_SRC ts_engine/*cpp)
 set_source_files_properties(${STV3_SRC} PROPERTIES
-  # COMPILE_FLAGS " -Werror"
+ COMPILE_FLAGS "${STV3_CXX_FLAGS}"
 )
 
 # Compile and generate test case executables

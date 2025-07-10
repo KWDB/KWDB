@@ -102,7 +102,7 @@ extern const char *GetFmtStrByErrCode(KwdbErrCode err_code) {
  * @param[in] size : The maximum capacity of the output buf.
  * @return[out] Returns a KStatus that checks whether the error code was successfully converted to PgCode.
  */
-extern const KStatus ErrCode2PgCode(KwdbErrCode err_code, char *buf,
+extern KStatus ErrCode2PgCode(KwdbErrCode err_code, char *buf,
                                     k_uint32 size) {
   k_int32 len = 0;
   auto it = kPgCodeMap.find(err_code);

@@ -11,6 +11,7 @@
 
 #include <string>
 #include <string_view>
+#include "mmap/mmap_tag_column_table.h"
 #include "test_util.h"
 #include "payload_builder.h"
 
@@ -26,12 +27,11 @@ std::vector<ColDataTypes> tag_col_types({
   {DATATYPE::TIMESTAMP64, 8, TagType::PRIMARY_TAG},
   {DATATYPE::INT64, 8, TagType::GENERAL_TAG}});
 
-std::vector<ColDataTypes> metric_col_types({
-  {DATATYPE::TIMESTAMP64_LSN, 16},
-  {DATATYPE::VARSTRING, 1024},
-  {DATATYPE::INT32, 4},
-  {DATATYPE::VARBINARY, 1123},
-  {DATATYPE::VARSTRING, 12334}});
+std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64_LSN, 16, TagType::UNKNOWN_TAG},
+                                            {DATATYPE::VARSTRING, 1024, TagType::UNKNOWN_TAG},
+                                            {DATATYPE::INT32, 4, TagType::UNKNOWN_TAG},
+                                            {DATATYPE::VARBINARY, 1123, TagType::UNKNOWN_TAG},
+                                            {DATATYPE::VARSTRING, 12334, TagType::UNKNOWN_TAG}});
 
 class TestRowPayloadBuilder : public testing::Test {
  public:

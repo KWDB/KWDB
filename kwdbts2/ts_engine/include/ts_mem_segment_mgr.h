@@ -59,7 +59,7 @@ struct TSMemSegRowData {
     lsn = clsn;
     row_data = crow_data;
   }
-  static size_t GetKeyLen() {
+  static constexpr size_t GetKeyLen() {
     return 4 + 8 + 4 + 8 + 8 + 8 + 4;
   }
 
@@ -262,7 +262,7 @@ class TsMemSegBlock : public TsBlock {
   }
   size_t GetRowNum() override { return row_data_.size(); }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
-  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
 
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {

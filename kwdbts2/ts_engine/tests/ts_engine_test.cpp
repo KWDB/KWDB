@@ -11,6 +11,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include "cm_kwdb_context.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
@@ -165,7 +166,7 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   using namespace roachpb;
   TSTableID table_id = 12345;
   CreateTsTable pb_meta;
-  kwdbContext_p ctx;
+  kwdbContext_t ctx;
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE, roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
   std::shared_ptr<TsTable> ts_table;
@@ -195,7 +196,7 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
     }
     engine_->SwitchMemSegments(j);
   }
-  s = engine_->CreateCheckpoint(ctx);
+  s = engine_->CreateCheckpoint(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
 }
 
@@ -203,7 +204,7 @@ TEST_F(TsEngineV2Test, Recover){
   using namespace roachpb;
   TSTableID table_id = 12345;
   CreateTsTable pb_meta;
-  kwdbContext_p ctx;
+  kwdbContext_t ctx;
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
                                     roachpb::DOUBLE};
   ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
@@ -234,9 +235,9 @@ TEST_F(TsEngineV2Test, Recover){
     }
     engine_->SwitchMemSegments(j);
   }
-  s = engine_->CreateCheckpoint(ctx);
+  s = engine_->CreateCheckpoint(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
-  s = engine_->recover(ctx);
+  s = engine_->recover(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
 }
 
