@@ -150,7 +150,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) override;
   KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
                                    uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id);
+                                   const KwTsSpan& ts_span, uint64_t* snapshot_id) override;
   KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) override;
   KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) override;
   KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) override;

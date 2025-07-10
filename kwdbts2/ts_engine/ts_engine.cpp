@@ -150,7 +150,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   // TODO(zzr): Recover TsVersion for each VGroup.
   // After WAL RedoPut, TsVersion should be updated.
   for (auto vgroup : vgroups_) {
-    auto s = vgroup->SetReady();
+    s = vgroup->SetReady();
     if (s == FAIL) {
       return FAIL;
     }
@@ -481,7 +481,6 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
-    ErrorInfo err_info;
     err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
@@ -959,7 +958,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
-  TS_LSN lsn;
+  TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
   char* v_lsn = new char[lsn_len];
   int location = 0;
@@ -968,7 +967,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     location += sizeof(uint64_t);
   }
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
-  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, lsn);
+  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
   delete []v_lsn;
   if (s == KStatus::FAIL) {
@@ -1187,7 +1186,7 @@ KStatus TSEngineV2Impl::DropResidualTsTable(kwdbContext_p ctx) {
   for (auto table_id : tables) {
     bool is_exist = checkTableMetaExist(table_id);
     if (!is_exist) {
-      KStatus s = DropTsTable(ctx, table_id);
+      s = DropTsTable(ctx, table_id);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("drop table [%ld] failed", table_id);
         return s;
@@ -1267,7 +1266,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = ddl_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info);
+            s = GetTsTable(ctx, table_id, table, true, err_info);
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1292,7 +1291,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = index_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1317,7 +1316,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = index_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1375,7 +1374,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
         uint64_t table_id = index_log->getObjectID();
         std::shared_ptr<TsTable> table;
         ErrorInfo err_info;
-        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
           return s;
         }
@@ -1399,7 +1398,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
         uint64_t table_id = index_log->getObjectID();
         std::shared_ptr<TsTable> table;
         ErrorInfo err_info;
-        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
           return s;
         }
