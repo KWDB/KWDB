@@ -589,40 +589,46 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       final_agg_data_[i].len = sizeof(timestamp64);
     } else {
       if (!c.blk_span->IsColExist(col_idx)) {
-        return SUCCESS;
-      }
-      if (!c.blk_span->IsVarLenType(col_idx)) {
-        char* value = nullptr;
-        TsBitmap bitmap;
-        auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap);
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-
-        if (bitmap[c.row_idx] != DataFlags::kValid) {
+        if (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::LAST_ROW) {
           final_agg_data_[i] = {nullptr, 0};
         } else {
-          final_agg_data_[i].len = col_idx == 0 ? 16 : c.blk_span->GetColSize(col_idx);
-          final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-          memcpy(final_agg_data_[i].data,
-                value + c.row_idx * final_agg_data_[i].len,
-                final_agg_data_[i].len);
+          LOG_ERROR("Something is wrong here since column doesn't exist and we should not have any candidates.")
+          return KStatus::FAIL;
         }
       } else {
-        TSSlice slice;
-        DataFlags flag;
-        auto ret = c.blk_span->GetVarLenTypeColAddr(c.row_idx, col_idx, flag, slice);
-        if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("GetVarLenTypeColAddr failed.");
-          return ret;
-        }
-        if (flag != DataFlags::kValid) {
-          final_agg_data_[i] = {nullptr, 0};
+        if (!c.blk_span->IsVarLenType(col_idx)) {
+          char* value = nullptr;
+          TsBitmap bitmap;
+          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap);
+          if (ret != KStatus::SUCCESS) {
+            return ret;
+          }
+
+          if (bitmap[c.row_idx] != DataFlags::kValid) {
+            final_agg_data_[i] = {nullptr, 0};
+          } else {
+            final_agg_data_[i].len = col_idx == 0 ? 16 : c.blk_span->GetColSize(col_idx);
+            final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+            memcpy(final_agg_data_[i].data,
+                  value + c.row_idx * final_agg_data_[i].len,
+                  final_agg_data_[i].len);
+          }
         } else {
-          final_agg_data_[i].len = slice.len + kStringLenLen;
-          final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-          KUint16(final_agg_data_[i].data) = slice.len;
-          memcpy(final_agg_data_[i].data + kStringLenLen, slice.data, slice.len);
+          TSSlice slice;
+          DataFlags flag;
+          auto ret = c.blk_span->GetVarLenTypeColAddr(c.row_idx, col_idx, flag, slice);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarLenTypeColAddr failed.");
+            return ret;
+          }
+          if (flag != DataFlags::kValid) {
+            final_agg_data_[i] = {nullptr, 0};
+          } else {
+            final_agg_data_[i].len = slice.len + kStringLenLen;
+            final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+            KUint16(final_agg_data_[i].data) = slice.len;
+            memcpy(final_agg_data_[i].data + kStringLenLen, slice.data, slice.len);
+          }
         }
       }
     }
