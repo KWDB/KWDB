@@ -693,7 +693,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       }
     }
   }
-  Return(s)
+  Return(KStatus::SUCCESS)
 }
 
 KStatus TSEngineV2Impl::checkpoint(kwdbts::kwdbContext_p ctx) {
