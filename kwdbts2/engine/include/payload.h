@@ -281,7 +281,7 @@ class Payload {
     return false;
   }
 
-  inline const int32_t GetTagLen() { return tag_len_; }
+  inline int32_t GetTagLen() { return tag_len_; }
 
   inline char* GetTagAddr() {
     return reinterpret_cast<char*> (slice_.data + tag_offset_);

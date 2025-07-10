@@ -264,11 +264,15 @@ protected:
   std::map<uint32_t, TagPartitionTable*> m_partition_tables_;
 
 public:
-  explicit TagPartitionTableManager (const std::string& db_path, const std::string& tbl_sub_path, uint32_t table_id, uint32_t entity_group_id) :
-      m_db_path_(db_path), m_tbl_sub_path_(tbl_sub_path), m_table_id_(table_id),m_entity_group_id_(entity_group_id),
-      rw_latch_(RWLATCH_ID_TAG_TABLE_PARTITION_MGR_RWLOCK) {
-        m_table_prefix_name_ = std::to_string(table_id) + ".tag" + ".pt";
-      }
+ explicit TagPartitionTableManager(const std::string& db_path, const std::string& tbl_sub_path, uint32_t table_id,
+                                   uint32_t entity_group_id)
+     : rw_latch_(RWLATCH_ID_TAG_TABLE_PARTITION_MGR_RWLOCK),
+       m_db_path_(db_path),
+       m_tbl_sub_path_(tbl_sub_path),
+       m_table_id_(table_id),
+       m_entity_group_id_(entity_group_id) {
+   m_table_prefix_name_ = std::to_string(table_id) + ".tag" + ".pt";
+ }
 
   virtual ~TagPartitionTableManager();
 

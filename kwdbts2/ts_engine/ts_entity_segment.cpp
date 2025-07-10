@@ -107,9 +107,9 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
 
 TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, uint64_t entity_header_file_num,
                                                        uint64_t header_b_file_size)
-    : entity_header_(dir_path + "/" + EntityHeaderFileName(entity_header_file_num)),
-      block_header_(dir_path + "/" + block_item_file_name, header_b_file_size),
-      dir_path_(dir_path) {}
+    : dir_path_(dir_path),
+      entity_header_(dir_path + "/" + EntityHeaderFileName(entity_header_file_num)),
+      block_header_(dir_path + "/" + block_item_file_name, header_b_file_size) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
@@ -581,8 +581,8 @@ KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_
   if (col_blk.agg.empty()) {
     return KStatus::SUCCESS;
   }
-  void* pre_agg = static_cast<void*>(col_blk.agg.data());
-  is_overflow = *static_cast<bool*>(pre_agg + sizeof(uint16_t) + size * 2);
+  char* pre_agg = col_blk.agg.data();
+  is_overflow = *reinterpret_cast<bool*>(pre_agg + sizeof(uint16_t) + size * 2);
   pre_sum = pre_agg + sizeof(uint16_t) + size * 2 + 1;
   return KStatus::SUCCESS;
 }
@@ -627,9 +627,9 @@ KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
   if (col_blk.agg.empty()) {
     return KStatus::SUCCESS;
   }
-  void* pre_agg = static_cast<void*>(col_blk.agg.data());
-  pre_max.len = *static_cast<uint32_t *>(pre_agg + sizeof(uint16_t));
-  pre_max.data = static_cast<char*>(pre_agg + sizeof(uint16_t) + sizeof(uint32_t) * 2);
+  char* pre_agg = col_blk.agg.data();
+  pre_max.len = *reinterpret_cast<uint32_t*>(pre_agg + sizeof(uint16_t));
+  pre_max.data = pre_agg + sizeof(uint16_t) + sizeof(uint32_t) * 2;
 
   return KStatus::SUCCESS;
 }
@@ -643,10 +643,10 @@ KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   if (col_blk.agg.empty()) {
     return KStatus::SUCCESS;
   }
-  void* pre_agg = static_cast<void*>(col_blk.agg.data());
-  uint32_t max_len = *static_cast<uint32_t *>(pre_agg + sizeof(uint16_t));
-  pre_min.len = *static_cast<uint32_t *>(pre_agg+ sizeof(uint16_t) + sizeof(uint32_t));
-  pre_min.data = static_cast<char*>(pre_agg + sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len);
+  char* pre_agg = col_blk.agg.data();
+  uint32_t max_len = *reinterpret_cast<uint32_t*>(pre_agg + sizeof(uint16_t));
+  pre_min.len = *reinterpret_cast<uint32_t*>(pre_agg + sizeof(uint16_t) + sizeof(uint32_t));
+  pre_min.data = pre_agg + sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len;
   return KStatus::SUCCESS;
 }
 

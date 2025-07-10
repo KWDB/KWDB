@@ -4771,7 +4771,7 @@ class MaxExtendAggregate : public AggregateFunc {
             last_ptr_ = data_container->GetData(row, arg_idx2);
           }
         } else {
-          if (src_val > max_val || src_val == std::numeric_limits<T>::lowest()) {
+          if (src_val > max_val || max_val == std::numeric_limits<T>::lowest()) {
             max_val = src_val;
             is_last_null_ = data_container->IsNull(row, arg_idx2);
             last_ptr_ = data_container->GetData(row, arg_idx2);
@@ -4910,7 +4910,7 @@ class MaxExtendAggregate : public AggregateFunc {
           current_data_chunk_->SetNotNull(target_row, col_idx_);
           if (IsVarStringType(storage_type2)) {
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
           } else if (IsFixedStringType(storage_type2)) {
             last_len_ = strlen(last_ptr_);
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -4945,7 +4945,7 @@ class MaxExtendAggregate : public AggregateFunc {
             last_len_ = arg_field2->ValStrLength(last_ptr_);
           }
         } else {
-          if (src_val > max_val || src_val == std::numeric_limits<T>::lowest()) {
+          if (src_val > max_val || max_val == std::numeric_limits<T>::lowest()) {
             max_val = src_val;
             is_last_null_ = arg_field2->CheckNull();
             last_ptr_ = arg_field2->get_ptr(row_batch);
@@ -4961,7 +4961,7 @@ class MaxExtendAggregate : public AggregateFunc {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       if (IsVarStringType(storage_type2)) {
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
       } else if (IsFixedStringType(storage_type2)) {
         last_len_ = strlen(last_ptr_);
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -5013,7 +5013,7 @@ class MaxExtendAggregate : public AggregateFunc {
           current_data_chunk_->SetNotNull(target_row, col_idx_);
           if (IsVarStringType(storage_type2)) {
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
           } else if (IsFixedStringType(storage_type2)) {
             last_len_ = strlen(last_ptr_);
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -5066,7 +5066,7 @@ class MaxExtendAggregate : public AggregateFunc {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       if (IsVarStringType(storage_type2)) {
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
       } else if (IsFixedStringType(storage_type2)) {
         last_len_ = strlen(last_ptr_);
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -5223,7 +5223,7 @@ class MinExtendAggregate : public AggregateFunc {
             last_ptr_ = data_container->GetData(row, arg_idx2);
           }
         } else {
-          if (src_val < min_val || src_val == std::numeric_limits<T>::max()) {
+          if (src_val < min_val || min_val == std::numeric_limits<T>::max()) {
             min_val = src_val;
             is_last_null_ = data_container->IsNull(row, arg_idx2);
             last_ptr_ = data_container->GetData(row, arg_idx2);
@@ -5363,7 +5363,7 @@ class MinExtendAggregate : public AggregateFunc {
           current_data_chunk_->SetNotNull(target_row, col_idx_);
           if (IsVarStringType(storage_type2)) {
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
           } else if (IsFixedStringType(storage_type2)) {
             last_len_ = strlen(last_ptr_);
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -5399,7 +5399,7 @@ class MinExtendAggregate : public AggregateFunc {
             last_len_ = arg_field2->ValStrLength(last_ptr_);
           }
         } else {
-          if (src_val < min_val || src_val == std::numeric_limits<T>::max()) {
+          if (src_val < min_val || min_val == std::numeric_limits<T>::max()) {
             min_val = src_val;
             is_last_null_ = arg_field2->CheckNull();
             last_ptr_ = arg_field2->get_ptr(row_batch);
@@ -5415,7 +5415,7 @@ class MinExtendAggregate : public AggregateFunc {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       if (IsVarStringType(storage_type2)) {
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
       } else if (IsFixedStringType(storage_type2)) {
         last_len_ = strlen(last_ptr_);
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -5466,7 +5466,7 @@ class MinExtendAggregate : public AggregateFunc {
           current_data_chunk_->SetNotNull(target_row, col_idx_);
           if (IsVarStringType(storage_type2)) {
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+            std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
           } else if (IsFixedStringType(storage_type2)) {
             last_len_ = strlen(last_ptr_);
             std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
@@ -5520,7 +5520,7 @@ class MinExtendAggregate : public AggregateFunc {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       if (IsVarStringType(storage_type2)) {
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);
-        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_ + 1);
+        std::memcpy(dest_ptr + STRING_WIDE, last_ptr_, last_len_);
       } else if (IsFixedStringType(storage_type2)) {
         last_len_ = strlen(last_ptr_);
         std::memcpy(dest_ptr, &last_len_, STRING_WIDE);

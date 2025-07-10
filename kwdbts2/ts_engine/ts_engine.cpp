@@ -20,6 +20,7 @@
 #include <string>
 #include <memory>
 #include <utility>
+#include "kwdb_type.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
@@ -165,7 +166,7 @@ TsVGroup* TSEngineV2Impl::GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id) {
 }
 
 KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
-  std::vector<RangeGroup> ranges) {
+  std::vector<RangeGroup> ranges, bool not_get_table) {
   std::shared_ptr<TsTable> ts_table;
   return CreateTsTable(ctx, table_id, meta, ts_table);
 }
@@ -362,7 +363,6 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
     // tag
     LOG_DEBUG("tag bt insert hashPoint=%hu", payload.GetHashPoint());
 
-    TSSlice primary_key = payload.GetPrimaryTag();
     auto tbl_version = payload.GetTableVersion();
     std::shared_ptr<kwdbts::TsTable> ts_table;
     KStatus s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
@@ -535,7 +535,7 @@ KStatus TSEngineV2Impl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, 
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
-    LOG_ERROR(err_msg.c_str());
+    LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
   s = ts_table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
@@ -568,7 +568,7 @@ KStatus TSEngineV2Impl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id,
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
-    LOG_ERROR(err_msg.c_str());
+    LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
   s = ts_table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
@@ -601,7 +601,7 @@ KStatus TSEngineV2Impl::AlterColumnType(kwdbContext_p ctx, const KTableKey &tabl
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
-    LOG_ERROR(err_msg.c_str());
+    LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
   s = ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);

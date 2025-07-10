@@ -2263,6 +2263,7 @@ func initPostSpecForTSReaders(
 
 	post := execinfrapb.TSPostProcessSpec{
 		Filter: filter.Expr,
+		Limit:  n.hardLimit,
 	}
 
 	return post, nil

@@ -122,6 +122,7 @@ TEST_F(TsFileVectorIndexTest, insertAndSelect) {
   int start_value = 12345;
   for (size_t i = 0; i < number; i++) {
     auto ret = file_index.GetIndexObject(i, true);
+    ASSERT_NE(ret, nullptr);
     *ret = start_value + i;
   }
   
@@ -164,15 +165,15 @@ TEST_F(TsFileVectorIndexTest, multiIndexinsertAndSelect) {
     file_index->Init(&file, &offsets[i]);
     indexs.push_back(file_index);
   }
-  
 
   for (size_t i = 0; i < number; i++) {
     for (size_t j = 0; j < indexs.size(); j++) {
       auto ret = indexs[j]->GetIndexObject(i, true);
+      ASSERT_NE(ret, nullptr);
       *ret = start_value + i + j;
     }
   }
-  
+
   for (size_t i = 0; i < number; i++) {
     for (size_t j = 0; j < indexs.size(); j++) {
       auto ret = indexs[j]->GetIndexObject(i, false);

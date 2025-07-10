@@ -515,7 +515,7 @@ KStatus TsTableSchemaManager::parseAttrInfo(const roachpb::KWDBKTSColumn& col,
 
   attr_info.size = getDataTypeSize(attr_info);
   attr_info.id = col.column_id();
-  strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN);
+  strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN - 1);
   attr_info.length = col.storage_len();
   if (!col.nullable()) {
     attr_info.setFlag(AINFO_NOT_NULL);

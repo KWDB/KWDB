@@ -101,6 +101,11 @@ type tsScanNode struct {
 	// output. When there are no statistics to make the estimation, it will be
 	// set to zero.
 	estimatedRowCount uint64
+
+	// if non-zero, hardLimit indicates that the tsScanNode only needs to provide
+	// this many rows (after applying any filter). It is a "hard" guarantee that
+	// Next will only be called this many times.
+	hardLimit uint32
 }
 
 // RelationalInfo contains relational information from the other side of

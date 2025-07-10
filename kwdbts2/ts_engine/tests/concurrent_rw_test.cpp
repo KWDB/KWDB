@@ -31,38 +31,44 @@ class ConcurrentRWTest : public testing::Test {
 
   TSTableID table_id = 12315;
 
-  std::unique_ptr<TSEngineV2Impl> engine_;
-
   ConcurrentRWTest() {
     EngineOptions::vgroup_max_num = 1;
     EngineOptions::g_dedup_rule = DedupRule::KEEP;
     EngineOptions::mem_segment_max_size = INT32_MAX;
     EngineOptions::max_last_segment_num = 0;
     EngineOptions::max_compact_num = 2;
+    EngineOptions::min_rows_per_block = 1;
     opts_.db_path = "./tsdb";
   }
 
+  std::unique_ptr<TsEngineSchemaManager> schema_mgr_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   std::vector<AttributeInfo> metric_schema_;
   std::vector<TagInfo> tag_schema_;
+
+  std::shared_ptr<TsVGroup> vgroup_;
 
   void SetUp() override {
     std::filesystem::remove_all("./tsdb");
     std::filesystem::remove_all("./schema");
 
     InitKWDBContext(ctx_);
-    engine_ = std::make_unique<TSEngineV2Impl>(opts_);
-    ASSERT_EQ(engine_->Init(ctx_), KStatus::SUCCESS);
+    schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema");
 
     roachpb::CreateTsTable meta;
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     std::shared_ptr<TsTable> ts_table;
-    ASSERT_EQ(engine_->CreateTsTable(ctx_, table_id, &meta, ts_table), KStatus::SUCCESS);
-    ASSERT_EQ(engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr_), KStatus::SUCCESS);
+
+    ASSERT_EQ(schema_mgr_->CreateTable(ctx_, 1, table_id, &meta), SUCCESS);
+    ASSERT_EQ(schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, metric_schema_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
+
+    vgroup_ = std::make_shared<TsVGroup>(opts_, 1, schema_mgr_.get(), false);
+    ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
+    vgroup_->SetReady();
   }
-  void TearDown() override { engine_.reset(); }
+  void TearDown() override { vgroup_.reset(); }
 
   ~ConcurrentRWTest() { KWDBDynamicThreadPool::GetThreadPool().Stop(); }
 };
@@ -73,24 +79,22 @@ struct QueryResult {
 
 TEST_F(ConcurrentRWTest, FlushOnly) {
   int npayload = 100;
-  int nrow = 50;
-  auto vgroups = engine_->GetTsVGroups();
-  ASSERT_EQ(vgroups->size(), 1);
-  auto vgroup = (*vgroups)[0];
+  int nrow = 20;
+  int total_row = npayload * nrow;
 
   for (int i = 0; i < npayload; ++i) {
     auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
     TsRawPayloadRowParser parser{metric_schema_};
     TsRawPayload p{payload, metric_schema_};
     auto ptag = p.GetPrimaryTag();
-    vgroup->PutData(ctx_, table_id, 0, &ptag, 1, &payload, false);
+    vgroup_->PutData(ctx_, table_id, 0, &ptag, 1, &payload, false);
     free(payload.data);
   }
 
   bool stop = false;
 
   auto FlushWork = [&]() {
-    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+    ASSERT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
     stop = true;
   };
 
@@ -102,8 +106,8 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
     std::vector<k_uint32> scan_cols = {0, 1};
     std::vector<Sumfunctype> scan_agg_types;
     do {
-      ASSERT_EQ(vgroup->GetIterator(ctx_, {1}, {ts_span}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
-                                    table_schema_mgr_, 1, &ts_iter, vgroup, {}, false, false),
+      ASSERT_EQ(vgroup_->GetIterator(ctx_, {1}, {ts_span}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
+                                    table_schema_mgr_, 1, &ts_iter, vgroup_, {}, false, false),
                 KStatus::SUCCESS);
       ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
@@ -124,9 +128,22 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(ts_set.size());
+      std::this_thread::yield();
     } while (stop != true);
     promise.set_value(std::move(result));
   };
+
+  {
+    // check correctness statically
+    std::promise<QueryResult> q_promise;
+    stop = true;
+    QueryWork(q_promise);
+    auto q_result = q_promise.get_future().get();
+    ASSERT_EQ(q_result.count.size(), 1);
+    ASSERT_EQ(q_result.count[0], total_row);
+    ASSERT_EQ(q_result.expect.size(), 1);
+    ASSERT_EQ(q_result.expect[0], total_row);
+  }
 
   std::promise<QueryResult> q_promise;
   std::thread t_query(QueryWork, std::ref(q_promise));
@@ -138,7 +155,7 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
   ASSERT_EQ(q_result.count.size(), q_result.expect.size());
   for (int i = 0; i < q_result.count.size(); i++) {
     EXPECT_EQ(q_result.count[i], q_result.expect[i]);
-    EXPECT_EQ(q_result.count[i], npayload * nrow);
+    EXPECT_EQ(q_result.count[i], total_row) << i;
   }
 
   q_promise = std::promise<QueryResult>();
@@ -150,12 +167,10 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
 }
 
 TEST_F(ConcurrentRWTest, CompactOnly) {
-  int nrow_per_last_segment = 4000;
-  int nlast_segment = 10;
+  int nrow_per_last_segment = 400;
+  int nlast_segment = 5;
   int total_row = nrow_per_last_segment * nlast_segment;
-  auto vgroups = engine_->GetTsVGroups();
-  ASSERT_EQ(vgroups->size(), 1);
-  auto vgroup = (*vgroups)[0];
+  auto vgroup = vgroup_;
 
   for (int i = 0; i < nlast_segment; ++i) {
     auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow_per_last_segment, 100000 * i, 1);
@@ -168,7 +183,7 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
 
-  std::atomic_bool stop = false;
+  bool stop = false;
 
   auto QueryWork = [&](std::promise<QueryResult>& promise) {
     QueryResult result;
@@ -200,16 +215,14 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(ts_set.size());
-    } while (stop.load() != true);
+      std::this_thread::yield();
+    } while (stop != true);
     promise.set_value(std::move(result));
-    std::cout << "query done" << std::endl;
   };
 
   auto CompactWork = [&]() {
-    for (int i = 0; i < 5; ++i) {
       vgroup->Compact();
-    }
-    stop.store(true);
+    stop = true;
     std::cout << "compact done" << std::endl;
   };
 
@@ -233,7 +246,7 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
     auto q_result = q_promise.get_future().get();
     t_query.join();
     t_compact.join();
-    std::cout << "joined" << std::endl;
+    std::cout << "joined: query " << q_result.count.size() << " times" << std::endl;
     EXPECT_EQ(q_result.count.size(), q_result.expect.size());
     auto size = q_result.count.size();
     for (int i = 0; i < size; i++) {

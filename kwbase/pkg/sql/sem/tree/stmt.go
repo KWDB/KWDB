@@ -637,6 +637,18 @@ func (*CreateProcedure) StatementTag() string { return "CREATE PROCEDURE" }
 func (*CreateProcedure) StatTargetType() string { return "PROCEDURE" }
 
 // StatementType implements the Statement interface.
+func (n *CreateProcedurePG) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreateProcedurePG) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateProcedurePG) StatementTag() string { return "CREATE PROCEDURE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreateProcedurePG) StatTargetType() string { return "PROCEDURE" }
+
+// StatementType implements the Statement interface.
 func (n *Block) StatementType() StatementType { return Ack }
 
 // StatOp implements the StatOp interface.
@@ -2386,6 +2398,8 @@ func (n *CreateProcedure) String() string {
 	}
 	return fmt.Sprintf("CREATE PROCEDURE %s (%s) BEGIN ... END", n.Name.String(), strings.Join(params, ", "))
 }
+
+func (n *CreateProcedurePG) String() string { return AsString(n) }
 
 func (n *CallProcedure) String() string { return AsString(n) }
 func (n *Block) String() string         { return AsString(n) }

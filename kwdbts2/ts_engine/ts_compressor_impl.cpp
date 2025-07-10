@@ -84,7 +84,7 @@ bool GorillaInt::Compress(const TSSlice &data, uint64_t count, std::string *out)
     } else if (dod >= -255 && dod <= 256) {
       writer.WriteBits(3, 0b110);
       writer.WriteBits(9, dod + 255);
-    } else if (dod >= -255 && dod <= 256) {
+    } else if (dod >= -2047 && dod <= 2048) {
       writer.WriteBits(4, 0b1110);
       writer.WriteBits(12, dod + 2047);
     } else {
@@ -794,7 +794,9 @@ bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) co
   }
 
   auto it = general_compressor_.find(alg);
-  assert(it != general_compressor_.end());
+  if (it == general_compressor_.end()) {
+    return false;
+  }
   std::string tmp;
   output->clear();
   return it->second->Decompress(input, output);

@@ -122,7 +122,7 @@ typedef struct KWDBErrorInfo {
   }
 
 extern const char *GetFmtStrByErrCode(KwdbErrCode err_code);
-extern const KStatus ErrCode2PgCode(KwdbErrCode err_code, char *buf, k_uint32 size);
+extern KStatus ErrCode2PgCode(KwdbErrCode err_code, char *buf, k_uint32 size);
 extern const KWDBErrorInfo_t &GetErrInfoByErrCode(KwdbErrCode err_code);
 
 }  // namespace kwdbts

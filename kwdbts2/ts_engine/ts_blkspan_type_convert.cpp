@@ -48,11 +48,13 @@ KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
       KStatus s = tbl_schema_mgr_->GetMetricSchema(blk_version, &blk_metric);
       if (s != SUCCESS) {
         LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_version);
+        return FAIL;
       }
       std::shared_ptr<MMapMetricsTable> scan_metric;
       s = tbl_schema_mgr_->GetMetricSchema(scan_version, &scan_metric);
       if (s != SUCCESS) {
         LOG_ERROR("GetMetricSchema failed. table version [%u]", scan_version);
+        return FAIL;
       }
       auto& scan_cols = scan_metric->getIdxForValidCols();
       auto& scan_attrs = scan_metric->getSchemaInfoExcludeDropped();

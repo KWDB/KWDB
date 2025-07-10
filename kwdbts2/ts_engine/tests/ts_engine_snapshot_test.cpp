@@ -11,6 +11,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include "gtest/gtest.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
@@ -44,7 +45,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
   }
 
   TestEngineSnapshotImgrate() {
-    system(("rm -rf " + db_path + "/*").c_str());
+    [[maybe_unused]] int ok = system(("rm -rf " + db_path + "/*").c_str());
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     opts_.wal_level = 0;
@@ -78,7 +79,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
       delete ts_engine_desc_;
       ts_engine_desc_ = nullptr;
     }
-    system(("rm -rf " + db_path + "/*").c_str());
+    [[maybe_unused]] int ok = system(("rm -rf " + db_path + "/*").c_str());
   }
   
   void InsertData(TSEngineV2Impl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000) {
@@ -121,7 +122,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   KTableKey cur_table_id = 1007;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::vector<RangeGroup> ranges{test_range};
-  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t snapshot_id;
@@ -129,7 +130,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint64_t desc_snapshot_id;
   s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
@@ -175,7 +176,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   KTableKey cur_table_id = 1007;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::vector<RangeGroup> ranges{test_range};
-  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t snapshot_id;
@@ -183,7 +184,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
   // input data to  table 1007
   InsertData(ts_engine_src_, cur_table_id, 1, 12345, 5);
@@ -252,7 +253,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // input data to  table 1007
@@ -284,7 +285,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   uint64_t desc_snapshot_id;
 //   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
@@ -357,7 +358,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // input data to  table 1007
@@ -387,7 +388,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   uint64_t desc_snapshot_id;
 //   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
@@ -460,7 +461,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // input data to  table 1007
@@ -491,7 +492,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   uint64_t desc_snapshot_id;
 //   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
@@ -562,7 +563,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   DATATYPE ts_type;
@@ -592,7 +593,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   uint64_t desc_snapshot_id;
 //   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX,
@@ -679,7 +680,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   DATATYPE ts_type;
@@ -703,7 +704,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   // input data to  table 1008
 //   {
@@ -808,7 +809,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   DATATYPE ts_type;
 //   // input data to  table 1007
@@ -837,7 +838,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   uint64_t desc_snapshot_id;
 //   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX,
@@ -923,7 +924,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // input data to  table 1007
@@ -1020,7 +1021,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // input data to  table 1007
@@ -1080,7 +1081,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 //   uint64_t desc_snapshot_id;
 //   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
@@ -1155,7 +1156,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   KTableKey cur_table_id = 1007;
 //   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
 //   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
+//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // input data to  table 1007
@@ -1181,7 +1182,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 //   roachpb::CreateTsTable meta_desc;
 //   KTableKey desc_table_id = 1008;
 //   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
+//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges, false);
 //   ASSERT_EQ(s, KStatus::SUCCESS);
 
 //   // add one column to table 1007
