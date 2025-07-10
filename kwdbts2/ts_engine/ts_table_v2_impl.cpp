@@ -11,6 +11,7 @@
 
 #include <map>
 #include <memory>
+#include <list>
 #include <string>
 #include <vector>
 #include "ts_table_v2_impl.h"
@@ -549,21 +550,42 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
     }
   }};
   // find half ts by offset iterator.
-  s = GetOffsetIterator(ctx, entity_store, ts_spans, scan_cols, 1, &iter, row_num / 2, 1, false);
+  uint64_t offset = row_num / 2;
+  s = GetOffsetIterator(ctx, entity_store, ts_spans, scan_cols, 1, &iter, offset, 1, false);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetOffsetIterator failed.");
     return s;
   }
+  std::list<timestamp64> range_tss;
   uint32_t count;
   ResultSet res;
   res.setColumnNum(1);
-  s = iter->Next(&res, &count);
-  if (KStatus::FAIL == s) {
-    LOG_ERROR("TsTableIterator::Next() Failed");
-    return s;
+  do {
+    res.clear();
+    s = iter->Next(&res, &count);
+    if (KStatus::FAIL == s) {
+      LOG_ERROR("TsTableIterator::Next() Failed");
+      return s;
+    }
+    for (size_t i = 0; i < count; i++) {
+      range_tss.push_back(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + i * 16));
+    }
+  } while (count > 0);
+  range_tss.sort();
+  uint64_t actual_offset = iter->GetFilterCount();
+  uint64_t read_row_num = offset + 1;
+  uint64_t range_tss_idx = read_row_num - actual_offset;
+  assert(read_row_num > actual_offset);
+  assert(range_tss_idx <= range_tss.size());
+  auto list_iter = range_tss.begin();
+  for (size_t i = 0; i < range_tss_idx - 1; i++) {
+    if (list_iter == range_tss.end()) {
+      LOG_ERROR("rearch list end.");
+      return KStatus::FAIL;
+    }
+    list_iter++;
   }
-  assert(count == 1);
-  *half_ts = KTimestamp(res.data[0][0]->mem);
+  *half_ts = *(list_iter);
   return KStatus::SUCCESS;
 }
 

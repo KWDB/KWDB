@@ -115,6 +115,35 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
 TEST_F(TestEngineSnapshotImgrate, empty) {
 }
 
+// data valume test.
+TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1007;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+
+  int entity_num = 5;
+  int entity_rows = 10;
+  for (size_t i = 1; i <= entity_num; i++) {
+    InsertData(ts_engine_src_, cur_table_id, i, 12345 + 1000 * entity_rows * (i - 1), entity_rows);
+    uint64_t row_num;
+    s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    ASSERT_EQ(row_num, i * entity_rows);
+    uint64_t volume;
+    s = ts_table->GetDataVolume(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &volume);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    ASSERT_EQ(volume, 28 * row_num);
+    timestamp64 half_ts;
+    s = ts_table->GetDataVolumeHalfTS(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &half_ts);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    ASSERT_EQ(half_ts, 12345 + (1000 * entity_rows * i) / 2);
+  }
+}
+
 // snapshot data from src engine to desc engine , only 0 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   roachpb::CreateTsTable meta;
