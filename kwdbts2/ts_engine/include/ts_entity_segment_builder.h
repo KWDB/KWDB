@@ -13,9 +13,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 #include "ts_block.h"
 #include "ts_engine_schema_manager.h"
@@ -121,7 +121,6 @@ class TsEntityBlockBuilder {
   uint32_t table_id_ = 0;
   uint32_t table_version_ = 0;
   uint64_t entity_id_ = 0;
-  uint64_t prev_block_id_ = 0;
   std::vector<AttributeInfo> metric_schema_;
 
   TsEntitySegmentBlockInfo block_info_;
@@ -198,7 +197,7 @@ class TsEntitySegmentBuilder {
 
   TsEntityItem cur_entity_item_;
 
-  std::unordered_map<uint32_t, TsEntityItem> entity_items_;
+  std::map<uint32_t, TsEntityItem> entity_items_;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,

@@ -362,7 +362,8 @@ KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>& metric_sche
   assert(block_info_.col_block_offset.size() == n_cols_);
   // lsn column block
   uint32_t start_offset = 0;
-  KStatus s = LoadLSNColData({buffer.data, buffer.len - start_offset});
+  uint32_t end_offset = block_info_.col_block_offset[0];
+  KStatus s = LoadLSNColData({buffer.data, end_offset - start_offset});
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("block segment column[0] data load failed");
     return s;
@@ -370,7 +371,8 @@ KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>& metric_sche
   // metric column blocks
   for (int i = 0; i < n_cols_ - 1; ++i) {
     start_offset = block_info_.col_block_offset[i];
-    s = LoadColData(i, metric_schema, {buffer.data + start_offset, buffer.len - start_offset});
+    end_offset = block_info_.col_block_offset[i + 1];
+    s = LoadColData(i, metric_schema, {buffer.data + start_offset, end_offset - start_offset});
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", i + 1);
       return s;
@@ -766,8 +768,11 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
   }
   if (!block->HasAggData(col_idx)) {
     uint32_t agg_offsets_len = sizeof(uint32_t) * (block->GetNCols() - 1);
-    uint32_t start_offset = block->GetBlockInfo().col_agg_offset[col_idx];
-    uint32_t end_offset = block->GetBlockInfo().col_agg_offset[col_idx + 1];
+    uint32_t start_offset = 0;
+    if (col_idx != 0) {
+      start_offset = block->GetBlockInfo().col_agg_offset[col_idx - 1];
+    }
+    uint32_t end_offset = block->GetBlockInfo().col_agg_offset[col_idx];
     TSSlice col_agg_buffer;
     col_agg_buffer.len = end_offset - start_offset;
     KStatus s = agg_file_.ReadAggData(block->GetAggOffset() + agg_offsets_len + start_offset,
