@@ -337,6 +337,9 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 	},
 )
 
+// TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.
+const TsWALLevelClusterSettingName = "ts.wal.wal_level"
+
 // TsWALLevel indicates the WAL level
 var TsWALLevel = settings.RegisterPublicIntSetting(
 	"ts.wal.wal_level",
