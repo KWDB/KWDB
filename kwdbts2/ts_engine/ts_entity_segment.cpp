@@ -288,12 +288,6 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   if (metric_schema_.empty()) {
     metric_schema_ = metric_schema;
   }
-  uint32_t start_offset = 0;
-  if (col_idx != -1) {
-    start_offset = block_info_.col_block_offset[col_idx];
-  }
-  uint32_t end_offset = block_info_.col_block_offset[col_idx + 1];
-  assert(buffer.len == end_offset - start_offset);
 
   TSSlice data{buffer.data, buffer.len};
   size_t bitmap_len = 0;
