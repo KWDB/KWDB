@@ -420,9 +420,9 @@ TSStatus TSPutData(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_
   return TSStatus{nullptr, 0};
 }
 
-TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num, RangeGroup range_group,
-                   uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
-                   bool writeWAL, const char* tsx_id) {
+TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num,
+                           RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                           uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
   KWDB_DURATION(StStatistics::Get().ts_put);
   // The CGO calls the interface, and the GO layer code will call this interface to write data
   kwdbContext_t context;
@@ -634,7 +634,8 @@ TSStatus TSMtrBeginExplicit(TSEngine* engine, TSTableID table_id, uint64_t range
   return kTsSuccess;
 }
 
-TSStatus TSMtrCommitExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
+TSStatus TSMtrCommitExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                             const char* tsx_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
