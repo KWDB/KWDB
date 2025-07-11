@@ -79,18 +79,19 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 		now := p.ExecCfg().DB.Clock().Now()
 		// handel txn by txn status if txn is expired
 		if txnExpiredTime.Less(now) {
-			if res.Status == roachpb.PENDING {
-				// txn should be roll back
-				ba := roachpb.BatchRequest{}
-				for _, span := range res.Spans {
-					_, tableID, err := keys.DecodeTablePrefix(span.Key)
-					if err != nil {
-						return err
-					}
-					_, err = sqlbase.GetTableDescFromID(ctx, p.txn, sqlbase.ID(tableID))
-					if err != nil {
-						return err
-					}
+			ba := roachpb.BatchRequest{}
+			for _, span := range res.Spans {
+				_, tableID, err := keys.DecodeTablePrefix(span.Key)
+				if err != nil {
+					return err
+				}
+				_, err = sqlbase.GetTableDescFromID(ctx, p.txn, sqlbase.ID(tableID))
+				if err != nil {
+					return err
+				}
+				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+				if res.Status == roachpb.PENDING {
+					// txn should be roll back
 					ba.Add(&roachpb.TsRollbackRequest{
 						RequestHeader: roachpb.RequestHeader{
 							Key:    span.Key,
@@ -98,26 +99,9 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 						},
 						TsTransaction: &tsTran,
 					})
-					ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
-				}
-				_, pErr := p.ExecCfg().DistSender.Send(ctx, ba)
-				if pErr != nil {
-					return pErr.GoError()
-				}
 
-			} else if res.Status == roachpb.PREPARED {
-				// txn is prepared, we should commit this txn
-
-				ba := roachpb.BatchRequest{}
-				for _, span := range res.Spans {
-					_, tableID, err := keys.DecodeTablePrefix(span.Key)
-					if err != nil {
-						return err
-					}
-					_, err = sqlbase.GetTableDescFromID(ctx, p.txn, sqlbase.ID(tableID))
-					if err != nil {
-						return err
-					}
+				} else if res.Status == roachpb.PREPARED {
+					// txn is prepared, we should commit this txn
 					ba.Add(&roachpb.TsCommitRequest{
 						RequestHeader: roachpb.RequestHeader{
 							Key:    span.Key,
@@ -125,12 +109,11 @@ func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 						},
 						TsTransaction: &tsTran,
 					})
-					ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 				}
-				_, pErr := p.ExecCfg().DistSender.Send(ctx, ba)
-				if pErr != nil {
-					return pErr.GoError()
-				}
+			}
+			_, pErr := p.ExecCfg().DistSender.Send(ctx, ba)
+			if pErr != nil {
+				return pErr.GoError()
 			}
 			// txn is already completed, we should delete this txn record
 			if err = p.ExecCfg().DB.Del(ctx, keyValue.Key); err != nil {

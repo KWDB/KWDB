@@ -420,6 +420,7 @@ TSStatus TSPutData(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_
   return TSStatus{nullptr, 0};
 }
 
+// TSPutDataExplicit is used for time-series data insertion with distributed transaction support.
 TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num,
                            RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
                            uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
@@ -433,10 +434,6 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payloa
   }
   // Parsing table_id from payload
   TSTableID tmp_table_id = *reinterpret_cast<uint64_t*>(payload[0].data + Payload::table_id_offset_);
-  // hash_point_id_offset_=16 , hash_point_id_size_=2
-  // uint16_t hash_point;
-  // memcpy(&hash_point, payload[0].data+Payload::hash_point_id_offset_, Payload::hash_point_id_size_);
-  // LOG_ERROR("TSPUT DATA HASH POINT = %d", hash_point);
   // Parse range_group_id from payload
   uint64_t tmp_range_group_id = 1;
   s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload, payload_num, mtr_id,
