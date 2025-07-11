@@ -93,7 +93,6 @@ type Factory interface {
 		private *memo.TSScanPrivate,
 		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 		rowCount float64,
-		hardLimit uint32,
 	) (Node, error)
 
 	// MakeTSSpans push down time to tsScanNode.
@@ -311,11 +310,6 @@ type Factory interface {
 	// results of the given node. If one or the other is not needed, then it is
 	// set to nil.
 	ConstructLimit(input Node, limit, offset tree.TypedExpr, limitExpr memo.RelExpr, meta *opt.Metadata) (Node, error)
-
-	// ConstructHardLimit returns a node that implements LIMIT on the
-	// results of the given node. If one or the other is not needed, then it is
-	// set to nil.
-	ConstructHardLimit(input Node, limit tree.TypedExpr, meta *opt.Metadata) (Node, error)
 
 	// ConstructMax1Row returns a node that permits at most one row from the
 	// given input node, returning an error with the given text at runtime if
