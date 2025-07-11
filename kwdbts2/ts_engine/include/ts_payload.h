@@ -62,7 +62,7 @@ class TsRawPayload {
   ____________________________________________________________________________________________________
   |    16    |       2       |         4        |   4  |    8    |       4        |   4    |    1    |
   |----------|---------------|------------------|------|---------|----------------|--------|---------|
-  |  txnID   | range groupID |  payloadVersion  | dbID |  tbID   |    TSVersion   | rowNum | rowType |
+  |  txnID   |   hash point  |  payloadVersion  | dbID |  tbID   |    TSVersion   | rowNum | rowType |
   */
   const static uint8_t txn_id_offset_ = 0;  // NOLINT
   const static uint8_t txn_id_size_ = 16;  // NOLINT

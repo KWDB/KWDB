@@ -90,6 +90,9 @@ class TSBlkDataTypeConvert {
   KStatus GetPreMin(uint32_t scan_idx, int32_t size, void* &pre_min);
   KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max);
   KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min);
+
+  // convert value to compressed entity block data
+  KStatus BuildCompressedData(std::string& data);
 };
 
 

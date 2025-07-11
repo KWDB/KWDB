@@ -29,6 +29,15 @@
 
 namespace kwdbts {
 
+class TsEntitySegmentBuilder;
+
+enum class TsExclusiveStatus{
+  NONE = 0,
+  COMPACTE,
+  WRITE_BATCH,
+  VACUUM,
+};
+
 /**
  * table group used for organizing a series of table(super table of device).
  * in current time vgroup is same as database
@@ -58,6 +67,9 @@ class TsVGroup {
 
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
 
+  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
+  std::shared_mutex builders_mutex_;
+
   // compact thread flag
   bool enable_compact_thread_{true};
   // Id of the compact thread
@@ -69,6 +81,8 @@ class TsVGroup {
 
   // Flushing Mutex
   std::mutex flush_mutex_;
+
+  std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
 
  public:
   TsVGroup() = delete;
@@ -123,6 +137,21 @@ class TsVGroup {
     return s;
   }
 
+  void ResetTsExclusiveStatus() {
+    comp_vacuum_status_.store(TsExclusiveStatus::NONE);
+  }
+
+  bool TrySetTsExclusiveStatus(TsExclusiveStatus desired) {
+    if (comp_vacuum_status_ == desired) {
+      return true;
+    }
+    TsExclusiveStatus expected = TsExclusiveStatus::NONE;
+    if (comp_vacuum_status_.compare_exchange_strong(expected, desired)) {
+      return true;
+    }
+    return false;
+  }
+
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
   KStatus Compact();
@@ -152,6 +181,10 @@ class TsVGroup {
                       std::shared_ptr<TsVGroup> vgroup,
                       std::vector<timestamp64> ts_points, bool reverse, bool sorted);
 
+  KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
+                        std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                        std::list<std::shared_ptr<TsBlockSpan>>* block_spans);
+
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log);
 
   KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete);
@@ -167,10 +200,18 @@ class TsVGroup {
                     const std::vector<KwTsSpan>& ts_spans);
   KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
                               const std::vector<KwTsSpan>& ts_spans);
+
   KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
   KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
+
+  KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
+                         timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
+
+  KStatus FinishWriteBatchData();
+
+  KStatus ClearWriteBatchData();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 

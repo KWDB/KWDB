@@ -30,6 +30,7 @@
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_segment.h"
+#include "ts_time_partition.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
