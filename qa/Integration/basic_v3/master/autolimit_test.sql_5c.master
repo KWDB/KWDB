@@ -26,28 +26,28 @@ CREATE TABLE
 attributes (attr1 smallint not null, attr2 int not null, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
 primary attributes (attr1, attr2);
 CREATE TABLE
-> insert into ts_table values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
-INSERT 1
-> insert into ts_table2 values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
-INSERT 1
-> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+1, attr2, attr3, attr4, attr5, attr6 from ts_table;
-INSERT 1
-> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2, attr2, attr3, attr4, attr5, attr6 from ts_table;
+> insert into ts_table values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-05-31 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
 INSERT 2
-> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+3, attr2, attr3, attr4, attr5, attr6 from ts_table;
+> insert into ts_table2 values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-05-31 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
+INSERT 2
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+1, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 2
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2, attr2, attr3, attr4, attr5, attr6 from ts_table;
 INSERT 4
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+3, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 8
 > insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+4, attr2, attr3, attr4, attr5, attr6 from ts_table;
-INSERT 7
+INSERT 14
 > insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+5, attr2, attr3, attr4, attr5, attr6 from ts_table;
-INSERT 11
+INSERT 22
 > select count(1) from ts_table;
   count
 ---------
-     16
+     32
 (1 row)
 > set cluster setting sql.auto_limit.quantity=10;
 SET CLUSTER SETTING
-> explain select * from test_ts.ts_table order by attr1;
+> explain select * from test_ts.ts_table;
            tree          |    field    |  description
 -------------------------+-------------+-----------------
                          | distributed | true
@@ -55,28 +55,14 @@ SET CLUSTER SETTING
   limit                  |             |
    │                     | engine type | time series
    │                     | count       | 10
-   └── sort              |             |
-        │                | engine type | time series
-        │                | order       | +attr1
-        └── synchronizer |             |
+   └── synchronizer      |             |
+        └── limit        |             |
+             │           | engine type | time series
+             │           | count       | 10
              └── ts scan |             |
                          | ts-table    | ts_table
                          | access mode | tableTableMeta
 (12 rows)
-> select * from test_ts.ts_table order by attr1;
-            time            |  e1  |   e2    |         e3         |  e4   |  e5  |    e6    | attr1 |  attr2  |   attr3    | attr4  | attr5 |    attr6
-----------------------------+------+---------+--------------------+-------+------+----------+-------+---------+------------+--------+-------+---------------
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1000 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1001 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1002 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1003 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1004 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1005 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1006 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1007 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1008 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-  2023-05-31 10:00:00+00:00 | 1000 | 1000000 | 100000000000000000 | 1e+17 | true | test_ts1 |  1009 | 1000000 | 1000000000 | 100.11 | false | test_attr_ts
-(10 rows)
 > explain with with_table as (select * from test_ts.ts_table) select * from with_table where e1=1000;
              tree             |    field    |  description
 ------------------------------+-------------+-----------------
@@ -128,33 +114,29 @@ SET CLUSTER SETTING
                               | access mode | metaTable
 (14 rows)
 > explain (select e1 from test_ts.ts_table limit 1) union select col1 from test.test1 order by e1;
-                tree               |    field    |  description
------------------------------------+-------------+----------------
-                                   | distributed | true
-                                   | vectorized  | false
-  limit                            |             |
-   │                               | count       | 10
-   └── sort                        |             |
-        │                          | order       | +e1
-        └── union                  |             |
-             ├── scan              |             |
-             │                     | table       | test1@primary
-             │                     | spans       | FULL SCAN
-             └── limit             |             |
-                  │                | engine type | time series
-                  │                | count       | 1
-                  └── synchronizer |             |
-                       └── ts scan |             |
-                                   | ts-table    | ts_table
-                                   | access mode | metaTable
-                                   | limit       | 1
-(18 rows)
-> (select e1 from test_ts.ts_table limit 1) union select col1 from test.test1 order by e1;
-   e1
---------
-  1000
-  2000
-(2 rows)
+                  tree                  |    field    |  description
+----------------------------------------+-------------+----------------
+                                        | distributed | true
+                                        | vectorized  | false
+  limit                                 |             |
+   │                                    | count       | 10
+   └── sort                             |             |
+        │                               | order       | +e1
+        └── union                       |             |
+             ├── scan                   |             |
+             │                          | table       | test1@primary
+             │                          | spans       | FULL SCAN
+             └── limit                  |             |
+                  │                     | engine type | time series
+                  │                     | count       | 1
+                  └── synchronizer      |             |
+                       └── limit        |             |
+                            │           | engine type | time series
+                            │           | count       | 1
+                            └── ts scan |             |
+                                        | ts-table    | ts_table
+                                        | access mode | metaTable
+(20 rows)
 > explain select e1 from test_ts.ts_table union (select col1 from test.test1 limit 1) order by e1;
              tree             |    field    |  description
 ------------------------------+-------------+----------------
@@ -325,7 +307,23 @@ SET CLUSTER SETTING
   2023-05-31 10:00:00+00:00
   2023-05-31 10:00:00+00:00
   2023-05-31 10:00:00+00:00
-(16 rows)
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+(32 rows)
 > set cluster setting sql.auto_limit.quantity=10;
 SET CLUSTER SETTING
 > select time from test_ts.ts_table order by time;
@@ -363,7 +361,11 @@ SET CLUSTER SETTING
   2023-05-31 10:00:00+00:00
   2023-05-31 10:00:00+00:00
   2023-05-31 10:00:00+00:00
-(16 rows)
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+  2023-05-31 11:00:00+00:00
+(20 rows)
 > use defaultdb;
 SET
 > set cluster setting sql.query_cache.enabled=default;
