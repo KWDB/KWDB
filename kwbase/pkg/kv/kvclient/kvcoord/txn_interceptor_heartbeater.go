@@ -450,12 +450,18 @@ var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
 
 // TxnSignal is used to notify the heartbeater about transaction status.
 // If StopHB is true and the ID matches, the heartbeater should stop.
+// Typically sent by tsTxnCommitter to tsTxnHeartbeater when ts
+// transaction finishes but status is pending.
 type TxnSignal struct {
 	ID     uuid.UUID // Transaction ID for matching
 	StopHB bool      // True if the heartbeat should stop
 }
 
 // tsTxnHeartbeater maintains the liveness of a ts insert transaction by periodically sending heartbeats.
+// Unlike the standard txnHeartbeater, tsTxnHeartbeater directly writes
+// to KV to persist heartbeat information and maintain the ts transaction record.
+// It cooperates with tsTxnCommitter via the signalCh. Once the transaction finished and status is pending,
+// tsTxnCommitter sends a TxnSignal to notify tsTxnHeartbeater to stop the heartbeat loop.
 type tsTxnHeartbeater struct {
 	log.AmbientContext
 	wrapped      lockedSender // The next sender in the interceptor stack.
@@ -519,7 +525,6 @@ func (h *tsTxnHeartbeater) SendLocked(
 		return nil, roachpb.NewError(err)
 	}
 
-	var notInsert bool
 	var tsTxn roachpb.TsTransaction
 	tsTxn.ID = h.tsTxn.ID
 	ba.TsTransaction = &tsTxn
@@ -537,17 +542,12 @@ func (h *tsTxnHeartbeater) SendLocked(
 			span.EndKey = tdr.EndKey
 			*h.ranges = append(*h.ranges, span)
 			tdr.TsTransaction = &tsTxn
-		default:
-			notInsert = true
-			break
 		}
 	}
 
-	if h.txn != nil && !notInsert {
-		if !h.mu.loopStarted {
-			if err := h.startHeartbeatLoopLocked(ctx); err != nil {
-				return nil, roachpb.NewError(err)
-			}
+	if h.txn != nil && !h.mu.loopStarted {
+		if err := h.startHeartbeatLoopLocked(ctx); err != nil {
+			return nil, roachpb.NewError(err)
 		}
 	}
 	return h.wrapped.SendLocked(ctx, ba)
@@ -647,7 +647,7 @@ func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRe
 	record.Status = roachpb.PENDING
 	record.LastHeartbeat = h.clock.Now()
 	record.Spans = append(record.Spans, *h.ranges...)
-	_, txnRecord, err := h.txn.DB().ScanAndWriteTxnRecord(ctx, record)
+	_, txnRecord, err := h.txn.DB().ScanAndWriteTsTxnRecord(ctx, record)
 	if err != nil {
 		return txnRecord, err
 	}

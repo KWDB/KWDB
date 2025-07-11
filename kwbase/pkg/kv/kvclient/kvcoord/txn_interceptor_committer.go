@@ -610,20 +610,37 @@ type tsTxnCommitter struct {
 }
 
 // SendLocked implements the lockedSender interface.
+// It sends a batch request during a TS insert transaction.
+// It wraps the original send call and adds logic to finalize
+// the TS transaction based on the response outcome.
+//
+// If the batch succeeds, it writes a PREPARED txn record and sends a commit request.
+// If the batch fails, it sends a rollback request and marks the transaction as ABORTED.
+// All outcomes are explicitly persisted via WriteTxnRecord.
+//
+// It also signals the tsTxnHeartbeater to stop by sending a TxnSignal on completion.
 func (tc *tsTxnCommitter) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 	defer func() {
+		// Notify the heartbeater to stop once txn has reached terminal state.
 		tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}
 	}()
+
+	// Send the original batch request.
 	br, pErr := tc.wrapped.Send(ctx, ba)
+
+	// Inject test failure or panic if configured.
 	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 2); err != nil {
 		return nil, roachpb.NewError(err)
 	}
+
 	var record roachpb.TsTxnRecord
 	record.ID = tc.tsTxn.ID
 	record.Spans = append(record.Spans, *tc.ranges...)
+
 	if pErr != nil {
+		// On failure, attempt rollback.
 		rollbackErr := tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
 		if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 5); err != nil {
 			return nil, roachpb.NewError(err)
@@ -632,10 +649,11 @@ func (tc *tsTxnCommitter) SendLocked(
 			log.Errorf(ctx, "txn %v rollback failed, will be retried in background\n", record.ID)
 			return nil, rollbackErr
 		}
+		// Mark txn as aborted and persist.
 		record.Status = roachpb.ABORTED
 		record.LastHeartbeat = tc.clock.Now()
 		log.VEventf(ctx, 2, "txn %v rollback success and update ts txn record\n", record.ID)
-		if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+		if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
 			return nil, roachpb.NewError(err)
 		}
 		if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 7); err != nil {
@@ -643,15 +661,19 @@ func (tc *tsTxnCommitter) SendLocked(
 		}
 		return nil, pErr
 	}
+
+	// On success, mark as prepared.
 	record.Status = roachpb.PREPARED
 	record.LastHeartbeat = tc.clock.Now()
 	log.VEventf(ctx, 2, "txn %v prepare success and update ts txn record\n", record.ID)
-	if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+	if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
 		return nil, roachpb.NewError(err)
 	}
 	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 3); err != nil {
 		return nil, roachpb.NewError(err)
 	}
+
+	// Send commit request.
 	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, record.Spans, 0)
 	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 4); err != nil {
 		return nil, roachpb.NewError(err)
@@ -660,10 +682,12 @@ func (tc *tsTxnCommitter) SendLocked(
 		log.Errorf(ctx, "txn %v commit failed, will be retried in background\n", record.ID)
 		return br, nil
 	}
+
+	// Mark as committed and persist.
 	record.Status = roachpb.COMMITTED
 	record.LastHeartbeat = tc.clock.Now()
 	log.VEventf(ctx, 2, "txn %v commit success and update ts txn record\n", record.ID)
-	if err := tc.txn.DB().WriteTxnRecord(ctx, &record); err != nil {
+	if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
 		log.Errorf(ctx, "txn %v update txn record to commit failed, will be retried in background\n", record.ID)
 		return br, nil
 	}
@@ -674,27 +698,35 @@ func (tc *tsTxnCommitter) SendLocked(
 	return br, pErr
 }
 
+// sendRollbackRequest constructs and sends a TsRollbackRequest for each span
+// involved in the transaction. It retries up to 5 times if it encounters errors.
+//
+// This is used when the original batch request fails and the transaction needs
+// to be explicitly aborted.
 func (tc *tsTxnCommitter) sendRollbackRequest(
 	ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int,
 ) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
 	ba.TsTransaction = &txn
+
+	// Add a rollback request for each span.
 	for _, span := range spans {
 		ba.Add(&roachpb.TsRollbackRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    span.Key,
 				EndKey: span.EndKey,
 			},
-			TsTransaction: &roachpb.TsTransaction{
-				ID: txn.ID,
-			},
+			TsTransaction: &roachpb.TsTransaction{ID: txn.ID},
 		})
 	}
+
 	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
-	log.VEventf(ctx, 2, "txn %v attempt to commit %v time\n", txn.ID, retry)
+	log.VEventf(ctx, 2, "txn %v attempt to rollback %v time\n", txn.ID, retry)
+
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
+		// Retry recursively.
 		if err := tc.sendRollbackRequest(ctx, txn, spans, retry); err != nil {
 			return err
 		}
@@ -702,27 +734,34 @@ func (tc *tsTxnCommitter) sendRollbackRequest(
 	return pErr
 }
 
+// sendCommitRequest constructs and sends a TsCommitRequest for each span
+// involved in the transaction. It retries up to 5 times if it encounters errors.
+//
+// This is called after a successful prepare phase to finalize the commit.
 func (tc *tsTxnCommitter) sendCommitRequest(
 	ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int,
 ) *roachpb.Error {
 	ba := roachpb.BatchRequest{}
 	ba.TsTransaction = &txn
+
+	// Add a commit request for each span.
 	for _, span := range spans {
 		ba.Add(&roachpb.TsCommitRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    span.Key,
 				EndKey: span.EndKey,
 			},
-			TsTransaction: &roachpb.TsTransaction{
-				ID: txn.ID,
-			},
+			TsTransaction: &roachpb.TsTransaction{ID: txn.ID},
 		})
 	}
+
 	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
-	log.VEventf(ctx, 2, "txn %v attempt to rollback %v time\n", txn.ID, retry)
+	log.VEventf(ctx, 2, "txn %v attempt to commit %v time\n", txn.ID, retry)
+
 	_, pErr := tc.wrapped.Send(ctx, ba)
 	if pErr != nil && retry < 5 {
 		retry++
+		// Retry recursively.
 		if err := tc.sendCommitRequest(ctx, txn, spans, retry); err != nil {
 			return err
 		}

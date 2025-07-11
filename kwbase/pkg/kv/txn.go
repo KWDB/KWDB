@@ -1535,9 +1535,9 @@ func (txn *Txn) SetIsoLevel(isoLevel enginepb.Level) error {
 	return txn.mu.sender.SetIsoLevel(isoLevel)
 }
 
-// WriteTxnRecord writes a ts transaction record under a dedicated key.
+// WriteTsTxnRecord writes a ts transaction record under a dedicated key.
 // This function wraps the operation in a transaction to ensure atomicity.
-func (db *DB) WriteTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) error {
+func (db *DB) WriteTsTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) error {
 	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
 		key := keys.MakeTxnRecordKey(record.ID)
 		b := Batch{}
@@ -1556,10 +1556,10 @@ func (db *DB) WriteTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) e
 	return nil
 }
 
-// GetTxnRecord retrieves a ts transaction record by transaction ID.
+// GetTsTxnRecord retrieves a ts transaction record by transaction ID.
 // If the record exists, it returns true along with the deserialized record.
 // If the record does not exist, it returns false and a nil record.
-func (db *DB) GetTxnRecord(
+func (db *DB) GetTsTxnRecord(
 	ctx context.Context, txnID uuid.UUID,
 ) (bool, *roachpb.TsTxnRecord, error) {
 	var res roachpb.TsTxnRecord
@@ -1585,10 +1585,10 @@ func (db *DB) GetTxnRecord(
 	return isExists, &res, nil
 }
 
-// ScanAndWriteTxnRecord attempts to fetch an existing transaction record by ID,
+// ScanAndWriteTsTxnRecord attempts to fetch an existing transaction record by ID,
 // and either creates a new one or updates the heartbeat timestamp of the existing record.
 // It returns the latest version of the transaction record as observed during the read phase.
-func (db *DB) ScanAndWriteTxnRecord(
+func (db *DB) ScanAndWriteTsTxnRecord(
 	ctx context.Context, txnRecord *roachpb.TsTxnRecord,
 ) (bool, *roachpb.TsTxnRecord, error) {
 	var res roachpb.TsTxnRecord
@@ -1612,7 +1612,6 @@ func (db *DB) ScanAndWriteTxnRecord(
 			newTxn.LastHeartbeat = txnRecord.LastHeartbeat
 		}
 		log.VEventf(ctx, 2, "write txn record when heartbeat loop, txn id: %v, txn status: %v\n", txnRecord.ID, txnRecord.Status)
-		fmt.Printf("txn %v heartbeat: %v\n", txnRecord.ID, txnRecord.LastHeartbeat)
 		b := Batch{}
 		value, err := protoutil.Marshal(newTxn)
 		if err != nil {

@@ -690,6 +690,8 @@ func (r *Replica) stageTsBatchRequest(
 				payload = append(payload, req.Value.RawBytes)
 				if payload != nil {
 					var tsTransactionID []byte
+					// When TsTransaction is not nil, it indicates that atomicity is enabled,
+					// so a transaction begin operation and WAL logging of the transaction ID should be performed here.
 					if ba.TsTransaction != nil {
 						needAutoCommit = false
 						tsTransactionID = append(tsTransactionID, ba.TsTransaction.ID.GetBytes()...)
@@ -703,6 +705,8 @@ func (r *Replica) stageTsBatchRequest(
 						}
 					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutData(1, payload, tsTxnID, true, tsTransactionID); err != nil {
+						// When TsTransaction is not nil and PutData fails, rollback should NOT be performed here,
+						// as a rollback request will be issued later by the transaction layer to handle the rollback.
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 							if errRollback != nil {
@@ -739,6 +743,8 @@ func (r *Replica) stageTsBatchRequest(
 				var entitiesAffect tse.EntitiesAffect
 				if req.Values != nil {
 					var tsTransactionID []byte
+					// When TsTransaction is not nil, it indicates that atomicity is enabled,
+					// so a transaction begin operation and WAL logging of the transaction ID should be performed here.
 					if ba.TsTransaction != nil {
 						needAutoCommit = false
 						tsTransactionID = append(tsTransactionID, ba.TsTransaction.ID.GetBytes()...)
@@ -751,10 +757,9 @@ func (r *Replica) stageTsBatchRequest(
 							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to begin transaction")
 						}
 					}
-					if req.TsTransaction != nil {
-						fmt.Printf("node %v received TsRowPut request, txn id: %v, ranges: %v\n", r.NodeID(), req.TsTransaction.ID, req.Span())
-					}
 					if dedupResult, entitiesAffect, err = r.store.TsEngine.PutRowData(1, req.HeaderPrefix, req.Values, req.ValueSize, tsTxnID, !req.CloseWAL, tsTransactionID); err != nil {
+						// When TsTransaction is not nil and PutData fails, rollback should NOT be performed here,
+						// as a rollback request will be issued later by the transaction layer to handle the rollback.
 						if ba.TsTransaction == nil {
 							errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 							if errRollback != nil {
@@ -924,7 +929,7 @@ func (r *Replica) stageTsBatchRequest(
 			if err := r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
 				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to commit transaction")
 			}
-			fmt.Printf("node %v received commit request, txn id: %v, ranges: %v\n", r.NodeID(), req.TsTransaction.ID, req.Span())
+			log.VEventf(ctx, 2, "node %v received commit request, txn id: %v, ranges: %v\n", r.NodeID(), req.TsTransaction.ID, req.Span())
 			if isLocal && responses != nil {
 				if _, ok := responses[idx].GetInner().(*roachpb.TsCommitResponse); ok {
 					continue
@@ -941,11 +946,10 @@ func (r *Replica) stageTsBatchRequest(
 			if err != nil {
 				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "fail to resolve table id")
 			}
+			log.VEventf(ctx, 2, "node %v received rollback request, txn id: %v, ranges: %v\n", r.NodeID(), req.TsTransaction.ID, req.Span())
 			if err := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, req.TsTransaction.ID.GetBytes()); err != nil {
-				fmt.Printf("node %v received rollback request and rollback fail, txn id: %v, ranges: %v, err:%v\n", r.NodeID(), req.TsTransaction.ID, req.Span(), err)
-				//return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback transaction")
 			}
-			fmt.Printf("node %v received rollback request, txn id: %v, ranges: %v\n", r.NodeID(), req.TsTransaction.ID, req.Span())
 			if isLocal && responses != nil {
 				if _, ok := responses[idx].GetInner().(*roachpb.TsRollbackResponse); ok {
 					continue

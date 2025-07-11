@@ -1578,9 +1578,6 @@ func splitMsgApps(msgs []raftpb.Message) (msgApps, otherMsgs []raftpb.Message) {
 // maybeFatalOnRaftReadyErr will fatal if err is neither nil nor
 // apply.ErrRemoved.
 func maybeFatalOnRaftReadyErr(ctx context.Context, expl string, err error) (removed bool) {
-	if expl == "111" {
-		return true
-	}
 	switch err {
 	case nil:
 		return false
