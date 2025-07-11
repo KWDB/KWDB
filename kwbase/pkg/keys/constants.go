@@ -420,8 +420,7 @@ const (
 	EventLogTableID            = 56
 	ScheduledJobsTableID       = 57
 	UDRTableID                 = 58
-	// TsTxnTableID used for ts transaction record
-	TsTxnTableID = 59
+	TsTxnTableID               = 59 // TsTxnTableID used for ts transaction record
 	// CommentType is type for system.comments
 	DatabaseCommentType = 0
 	TableCommentType    = 1

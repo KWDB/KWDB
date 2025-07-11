@@ -45,20 +45,25 @@ import (
 
 // TsSender is a Sender to send TS requests to TS DB
 type TsSender struct {
-	tsEngine         *tse.TsEngine
-	wrapped          kv.Sender
-	isSingleNode     bool
-	rpcContext       *rpc.Context
-	gossip           *gossip.Gossip
-	stopper          *stop.Stopper
+	tsEngine     *tse.TsEngine
+	wrapped      kv.Sender
+	isSingleNode bool
+	rpcContext   *rpc.Context
+	gossip       *gossip.Gossip
+	stopper      *stop.Stopper
+	// interceptorStack holds a chain of request interceptors (tsTxnHeartbeater and tsTxnCommitter).
 	interceptorStack []lockedSender
+	// interceptorAlloc preallocates interceptors including tsTxnHeartbeater and tsTxnCommitter
 	interceptorAlloc struct {
-		arr [2]txnInterceptor
+		// tsTxnHeartbeater sends heartbeats for TS insert transactions
+		// to keep the transaction alive during async ingestion.
 		tsTxnHeartbeater
+		// tsTxnCommitter handles responses for TS insert transactions
+		// and decides whether to commit or rollback.
 		tsTxnCommitter
 	}
+	// setting provides access to cluster-wide settings.
 	setting *cluster.Settings
-	NodeID  roachpb.NodeID
 }
 
 // TsDBConfig is config for building TsSender
@@ -147,7 +152,7 @@ func (s *TsSender) Send(
 				})
 			default:
 				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
-				return s.interceptorStack[0].SendLocked(ctx, ba)
+				return s.wrapped.Send(ctx, ba)
 			}
 		}
 		if putPayload != nil {
@@ -202,7 +207,6 @@ func (s *TsSender) Send(
 type DB struct {
 	kdb *kv.DB
 	tss *TsSender
-	txn *kv.Txn
 }
 
 // NewDB returns a new DB.
@@ -217,7 +221,6 @@ func NewDB(cfg TsDBConfig) *DB {
 			stopper:      cfg.Stopper,
 			isSingleNode: cfg.IsSingleNode,
 			setting:      cfg.Setting,
-			NodeID:       cfg.NodeID,
 		},
 	}
 	tsDB.tss.interceptorAlloc.tsTxnCommitter = tsTxnCommitter{

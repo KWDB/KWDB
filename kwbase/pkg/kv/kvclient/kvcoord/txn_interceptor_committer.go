@@ -593,15 +593,16 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 	return clone
 }
 
+// tsTxnCommitter finalizes the ts insert transaction by handling the response and deciding to commit or rollback.
 type tsTxnCommitter struct {
-	wrapped  kv.Sender
-	txn      *kv.Txn
-	tsTxn    roachpb.TsTransaction
-	ranges   *roachpb.Spans
+	wrapped  kv.Sender             // The next sender to forward requests to.
+	txn      *kv.Txn               // Used for scanning and writing ts txn record.
+	tsTxn    roachpb.TsTransaction // TS transaction metadata.
+	ranges   *roachpb.Spans        // The key spans written during the transaction.
 	setting  *cluster.Settings
 	NodeID   roachpb.NodeID
 	clock    *hlc.Clock
-	signalCh chan<- TxnSignal
+	signalCh chan<- TxnSignal // Channel to send signals to tsTxnHeartbeater (to stop the heartbeat loop).
 }
 
 // SendLocked implements the lockedSender interface.

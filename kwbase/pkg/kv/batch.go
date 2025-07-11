@@ -78,7 +78,7 @@ type Batch struct {
 	rowsStaticIdx int
 }
 
-// Txn returns the
+// Txn returns the batch's transaction.
 func (b *Batch) Txn() *Txn {
 	return b.txn
 }

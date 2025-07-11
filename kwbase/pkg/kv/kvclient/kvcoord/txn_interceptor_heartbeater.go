@@ -455,25 +455,24 @@ type TxnSignal struct {
 	StopHB bool      // True if the heartbeat should stop
 }
 
+// tsTxnHeartbeater maintains the liveness of a ts insert transaction by periodically sending heartbeats.
 type tsTxnHeartbeater struct {
 	log.AmbientContext
-	wrapped      lockedSender
-	txn          *kv.Txn
+	wrapped      lockedSender // The next sender in the interceptor stack.
+	txn          *kv.Txn      // Used for scanning and writing ts txn record.
 	loopInterval time.Duration
 	stopper      *stop.Stopper
 	clock        *hlc.Clock
 	mu           struct {
 		sync.Locker
-
-		loopStarted bool
-
-		loopCancel func()
+		loopStarted bool   // Indicates whether the heartbeat loop has started.
+		loopCancel  func() // Function to cancel the running heartbeat loop.
 	}
-	ranges   *roachpb.Spans
-	tsTxn    roachpb.TsTransaction
+	ranges   *roachpb.Spans        // The key spans involved in the transaction.
+	tsTxn    roachpb.TsTransaction // TS transaction metadata to be maintained.
 	setting  *cluster.Settings
 	NodeID   roachpb.NodeID
-	signalCh <-chan TxnSignal
+	signalCh <-chan TxnSignal // Channel to receive external signals(from tsTxnCommitter) to stop heartbeat.
 }
 
 // setWrapped implements the txnInterceptor interface.
