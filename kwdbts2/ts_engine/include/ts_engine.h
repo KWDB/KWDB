@@ -45,6 +45,7 @@ struct TsRangeImgrationInfo {
   KwTsSpan ts_span;
   KTableKey table_id;
   uint32_t table_version;
+  uint32_t package_id;
   std::shared_ptr<TsTable> table;
 };
 
