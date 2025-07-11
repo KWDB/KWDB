@@ -26,10 +26,11 @@ extern bool g_go_start_service;
 namespace kwdbts {
 
 TsTableV2Impl::~TsTableV2Impl() {
-  if (table_dropped_.load()) {
-    table_schema_mgr_->RemoveAll();
-    // metric data cannot remove now, clear by vacuum.
-  }
+  // todo(liangbo01)  no implemented.
+  // if (table_dropped_.load()) {
+  //   table_schema_mgr_->RemoveAll();
+  //   // metric data cannot remove now, clear by vacuum.
+  // }
 }
 
 void TsTableV2Impl::SetDropped() {
