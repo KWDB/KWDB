@@ -30,7 +30,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -278,9 +277,7 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 					v.printTsSpans(n, name, 1e9)
 				}
 			}
-			if n.hardLimit > 0 {
-				v.observer.attr(name, "limit", strconv.FormatUint(uint64(n.hardLimit), 10))
-			}
+
 		}
 		if v.observer.expr != nil {
 			v.expr(name, "filter", -1, n.filter)
