@@ -128,6 +128,9 @@ type PhysicalPlan struct {
 	// Synchronizer child process idx
 	SynchronizerChildRouters []ProcessorIdx
 
+	// TsTableReaderRouters tsTableReader process idx
+	TsTableReaderRouters []ProcessorIdx
+
 	// ResultTypes is the schema (column types) of the rows produced by the
 	// ResultRouters.
 	//

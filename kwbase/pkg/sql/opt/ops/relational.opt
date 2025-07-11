@@ -1035,14 +1035,6 @@ define TSScanPrivate {
 
     # OrderedScanType is a flag for order by ts scan ts table
     OrderedScanType TSOrderedScanType
-
-    # HardLimit specifies the maximum number of rows that the scan can return
-    # (after applying any constraint), as well as the required scan direction.
-    # This is a "hard" limit, meaning that the scan operator must never return
-    # more than this number of rows, even if more are available. If its value is
-    # zero, then the limit is unknown, and the scan should return all available
-    # rows.
-    HardLimit ScanLimit
 }
 
 # TSInsert is an expression for INSERT DEVICE. Applies only to constant value inserts.
