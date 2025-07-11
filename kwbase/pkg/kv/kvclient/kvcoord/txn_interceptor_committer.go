@@ -593,7 +593,11 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 	return clone
 }
 
-// tsTxnCommitter finalizes the ts insert transaction by handling the response and deciding to commit or rollback.
+// tsTxnCommitter finalizes the ts insert transaction by handling the response
+// and deciding to commit or rollback. It finalizes the TS transaction by sending
+// tsInsert/tsCommit/tsRollback request, writing status records (PREPARED,
+// COMMITTED, ABORTED) and coordinating with the TS heartbeater to stop
+// heartbeat activity upon completion.
 type tsTxnCommitter struct {
 	wrapped  kv.Sender             // The next sender to forward requests to.
 	txn      *kv.Txn               // Used for scanning and writing ts txn record.
