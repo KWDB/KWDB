@@ -1755,7 +1755,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
     LOG_WARN("WriteSnapshotBatchData ignore null data.");
     return KStatus::SUCCESS;
   }
-  assert(data.len >= 16);
+  assert(data.len >= 20);
   // package_id + table_id + table_version + row_num + data
   char* data_with_rownum = data.data;
   auto package_id = KUint32(data_with_rownum);
@@ -1766,7 +1766,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
   data_with_rownum += 4;
   auto row_num = KUint32(data_with_rownum);
   data_with_rownum += 4;
-  TSSlice raw_data{data_with_rownum, data.len - 16};
+  TSSlice raw_data{data_with_rownum, data.len - 20};
   assert(table_id == ts_snapshot_info.table_id);
   if (package_id - 1 != ts_snapshot_info.package_id) {
     LOG_WARN("last package id [%u] not front of current package [%u], ignore it.",

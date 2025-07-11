@@ -263,17 +263,17 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
-  // entity_ids.clear();
-  // for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-  //   if (vg->GetMaxEntityID() > 0) {
-  //     entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
-  //     break;
-  //   }
-  // }
-  // ASSERT_EQ(1, entity_ids.size());
-  // // scan table ,check if data is correct in table 1008.
-  // row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
-  // ASSERT_EQ(row_count, 5);
+  entity_ids.clear();
+  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    if (vg->GetMaxEntityID() > 0) {
+      entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
+      break;
+    }
+  }
+  ASSERT_EQ(1, entity_ids.size());
+  // scan table ,check if data is correct in table 1008.
+  row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ASSERT_EQ(row_count, 5);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
