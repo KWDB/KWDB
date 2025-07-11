@@ -42,21 +42,11 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     LOG_ERROR("GetTsTable failed");
     return KStatus::FAIL;
   }
-  BaseEntityIterator *iter;
-  s = ts_table->GetTagIterator(ctx, scan_tags, {cur_entity_index_.hash_point}, &iter, table_version_);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTagIterator failed");
-    return KStatus::FAIL;
-  }
-  Defer defer([&]() {
-    delete iter;
-    iter = nullptr;
-  });
-  std::vector<EntityResultIndex> entity_id_list;
   ResultSet res(scan_tags.size());
   uint32_t count;
-  if (iter->Next(&entity_id_list, &res, &count) != KStatus::SUCCESS) {
-    LOG_ERROR("GetTagData failed");
+  s = ts_table->GetTagList(ctx, {cur_entity_index_}, scan_tags, &res, &count, table_version_);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagIterator failed");
     return KStatus::FAIL;
   }
   if (count != 1) {
@@ -148,13 +138,16 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
       ++it;
     }
   }
-  // init block span iterator
-  block_spans_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(block_spans, EngineOptions::g_dedup_rule);
-  s = block_spans_iterator_->Init();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to init block span iterator, "
-              "table_id[%lu], table_version[%lu], entity_id[%u]",
-              table_id_, table_version_, cur_entity_index_.entityId);
+  block_spans_iterator_ = nullptr;
+  if (!block_spans.empty()) {
+    // init block span iterator
+    block_spans_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(block_spans, EngineOptions::g_dedup_rule);
+    s = block_spans_iterator_->Init();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to init block span iterator, "
+                "table_id[%lu], table_version[%lu], entity_id[%u]",
+                table_id_, table_version_, cur_entity_index_.entityId);
+    }
   }
   return s;
 }
@@ -206,31 +199,7 @@ std::string TsReadBatchDataWorker::GenKey(TSTableID table_id, uint32_t table_ver
   return buffer;
 }
 
-KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
-  if (is_finished_) {
-    *row_num = 0;
-    return KStatus::SUCCESS;
-  }
-  // get next ts block span
-  std::shared_ptr<TsBlockSpan> cur_block_span;
-  bool block_span_read_finished = false;
-  while (!is_finished_) {
-    block_spans_iterator_->Next(cur_block_span, &block_span_read_finished);
-    if (block_span_read_finished) {
-      KStatus s = NextBlockSpansIterator();
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("NextBlockSpansIterator failed");
-        return s;
-      }
-      if (is_finished_) {
-        *row_num = 0;
-        return KStatus::SUCCESS;
-      }
-    } else {
-      break;
-    }
-  }
-  // clear
+KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span) {
   cur_batch_data_.Clear();
   // hash point
   cur_batch_data_.SetHashPoint(cur_entity_index_.hash_point);
@@ -246,21 +215,75 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
     return s;
   }
   // add TsBlockSpan info
-  s = AddTsBlockSpanInfo(ctx, cur_block_span);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("add block span info failed");
-    return s;
-  }
-  // get compress data
-  *row_num = cur_block_span->GetRowNum();
-  s = cur_block_span->GetCompressData(cur_batch_data_.data_);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetCompressData failed");
-    return s;
+  if (block_span) {
+    AddTsBlockSpanInfo(ctx, block_span);
+    // get compress data
+    s = block_span->GetCompressData(cur_batch_data_.data_);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetCompressData failed");
+      return s;
+    }
   }
   // set ts block span data length
   cur_batch_data_.UpdateBatchDataInfo();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
+  *row_num = 0;
+  data->data = nullptr;
+  data->len = 0;
+  if (is_finished_) {
+    return KStatus::SUCCESS;
+  }
+  // get next ts block span
+  std::shared_ptr<TsBlockSpan> cur_block_span;
+  bool block_span_read_finished = false;
+  bool cur_entity_tag_only = false;
+  while (!is_finished_) {
+    if (block_spans_iterator_ == nullptr) {
+      cur_entity_tag_only = true;
+      // generate batch data
+      KStatus s = GenerateBatchData(ctx, nullptr);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GenerateBatchData failed");
+        return s;
+      }
+      *row_num = 1;
+      data->data = cur_batch_data_.data_.data();
+      data->len = cur_batch_data_.data_.size();
+      block_span_read_finished = true;
+    } else {
+      KStatus s = block_spans_iterator_->Next(cur_block_span, &block_span_read_finished);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("get next block span failed");
+        return s;
+      }
+    }
+    if (block_span_read_finished) {
+      KStatus s = NextBlockSpansIterator();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("NextBlockSpansIterator failed");
+        return s;
+      }
+      if (cur_entity_tag_only) {
+        return s;
+      }
+    } else {
+      break;
+    }
+  }
+  if (is_finished_) {
+    return KStatus::SUCCESS;
+  }
+  // generate batch data
+  KStatus s = GenerateBatchData(ctx, cur_block_span);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GenerateBatchData failed");
+    return s;
+  }
   // set data
+  *row_num = cur_block_span->GetRowNum();
   data->data = cur_batch_data_.data_.data();
   data->len = cur_batch_data_.data_.size();
   return s;
@@ -359,11 +382,13 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t
   uint32_t p_tag_offset = TsBatchData::header_size_ + sizeof(p_tag_size);
   uint32_t tags_data_offset = p_tag_offset + p_tag_size + sizeof(uint32_t);
   uint32_t tags_data_size = KUint32(data->data + tags_data_offset - sizeof(uint32_t));
-  uint32_t block_span_data_offset = tags_data_offset + tags_data_size;
-  uint32_t block_span_data_size = KUint32(data->data + block_span_data_offset);
-  assert(data->len == block_span_data_offset + block_span_data_size);
   uint8_t row_type = *reinterpret_cast<uint8_t*>(data->data + TsBatchData::row_type_offset_);
-  *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
+  uint32_t block_span_data_offset = tags_data_offset + tags_data_size;
+  uint32_t block_span_data_size = 0;
+  if (row_type == DataTagFlag::DATA_AND_TAG) {
+    block_span_data_size = KUint32(data->data + block_span_data_offset);
+  }
+  assert(data->len == block_span_data_offset + block_span_data_size);
 
   TSSlice tag_payload = {data->data, tags_data_offset + tags_data_size};
   std::shared_ptr<TsRawPayload> payload_only_tag;
@@ -388,6 +413,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t
   }
 
   if (row_type == TAG_ONLY) {
+    *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
     return KStatus::SUCCESS;
   }
 
@@ -411,7 +437,9 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t
                                                              entity_id, ts, ts_col_type, new_block_data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", table_id_, entity_id);
+    return KStatus::FAIL;
   }
+  *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
   return s;
 }
 

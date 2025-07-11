@@ -287,6 +287,8 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
   KStatus NextBlockSpansIterator();
 
+  KStatus GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span);
+
  public:
   TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id, uint64_t table_version, KwTsSpan ts_span,
                         uint64_t job_id, vector<EntityResultIndex> entity_indexes_);
