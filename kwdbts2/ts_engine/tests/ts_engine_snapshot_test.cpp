@@ -117,7 +117,7 @@ TEST_F(TestEngineSnapshotImgrate, empty) {
 // data valume test.
 TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1001;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -160,7 +160,7 @@ TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
 // snapshot data from src engine to desc engine , only 0 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1002;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -214,7 +214,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
 // snapshot data from src engine to desc engine , only 5 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1003;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -272,7 +272,9 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   }
   ASSERT_EQ(1, entity_ids.size());
   // scan table ,check if data is correct in table 1008.
+  ctx_->ts_engine = ts_engine_desc_;
   row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(row_count, 5);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -283,7 +285,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 // snapshot data from src engine to desc engine , three partition each 5 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1004;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -345,7 +347,9 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   }
   ASSERT_EQ(1, entity_ids.size());
   // scan table ,check if data is correct in table 1008.
+  ctx_->ts_engine = ts_engine_desc_;
   row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(row_count, 5 * partition_num);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -356,7 +360,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
 // snapshot data from table 1007, at least 5 * partitions datas. rollback at last.
 TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1005;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -418,7 +422,9 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   }
   ASSERT_EQ(1, entity_ids.size());
   // scan table ,check if data is correct in table 1008.
+  ctx_->ts_engine = ts_engine_desc_;
   row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(row_count, 0);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -428,7 +434,7 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
 
 TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1006;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -481,7 +487,9 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   entity_store.clear();
+  ctx_->ts_engine = ts_engine_desc_;
   s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_store.size(), entity_num);
   
@@ -545,9 +553,11 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmpty) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint64_t count;
+  ctx_->ts_engine = ts_engine_desc_;
   s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(count, entity_num * 5);
+  ASSERT_EQ(count, entity_num * 10);
   
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
