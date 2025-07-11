@@ -542,6 +542,8 @@ func (h *tsTxnHeartbeater) SendLocked(
 			span.EndKey = tdr.EndKey
 			*h.ranges = append(*h.ranges, span)
 			tdr.TsTransaction = &tsTxn
+		default:
+			panic(roachpb.NewErrorf("unexpected request type %T", tdr))
 		}
 	}
 
