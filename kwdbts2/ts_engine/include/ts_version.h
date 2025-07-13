@@ -168,6 +168,10 @@ class TsVersionUpdate {
 
   bool NeedRecordFileNumber() const { return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_; }
   bool NeedRecord() const { return need_record_; }
+  bool MemSegmentsOnly() const {
+    return has_mem_segments_ && !has_new_partition_ && !has_new_lastseg_ && !has_delete_lastseg_ &&
+           !has_entity_segment_ && !has_next_file_number_;
+  }
 
  public:
   bool Empty() const {

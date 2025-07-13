@@ -257,6 +257,20 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     return SUCCESS;
   }
 
+  if (update->MemSegmentsOnly()) {
+    // switch memsegment operation will not persist to disk, process it as fast as possible
+    std::unique_lock lk{mu_};
+    auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
+    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(update->valid_memseg_);
+    for (auto [par_id, par] : new_vgroup_version->partitions_) {
+      auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
+      new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
+      new_vgroup_version->partitions_[par_id] = std::move(new_partition_version);
+    }
+    current_ = std::move(new_vgroup_version);
+    return SUCCESS;
+  }
+
   if (update->has_next_file_number_) {
     assert(this->next_file_number_.load(std::memory_order_relaxed) == 0);
     this->next_file_number_.store(update->next_file_number_, std::memory_order_relaxed);
