@@ -257,16 +257,26 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     return SUCCESS;
   }
 
+  if (update->has_next_file_number_) {
+    assert(this->next_file_number_.load(std::memory_order_relaxed) == 0);
+    this->next_file_number_.store(update->next_file_number_, std::memory_order_relaxed);
+  }
+
+  if (update->NeedRecordFileNumber()) {
+    update->SetNextFileNumber(this->next_file_number_.load(std::memory_order_relaxed));
+  }
+
+  std::string encoded_update;
+  if (update->NeedRecord()) {
+    encoded_update = update->EncodeToString();
+  }
+
   // TODO(zzr): thinking concurrency control carefully.
   std::unique_lock lk{mu_};
 
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
 
-  if (update->has_next_file_number_) {
-    assert(this->next_file_number_.load(std::memory_order_relaxed) == 0);
-    this->next_file_number_.store(update->next_file_number_, std::memory_order_relaxed);
-  }
 
   if (update->has_new_partition_) {
     for (const auto &p : update->partitions_created_) {
@@ -355,16 +365,11 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     new_vgroup_version->partitions_[par_id] = std::move(new_partition_version);
   }
 
-  if (update->NeedRecordFileNumber()) {
-    update->SetNextFileNumber(this->next_file_number_.load(std::memory_order_relaxed));
-  }
-
-  std::string encoded_update = update->EncodeToString();
-  if (!encoded_update.empty()) {
+  if (update->NeedRecord()) {
     logger_->AddRecord(encoded_update);
   }
   current_ = std::move(new_vgroup_version);
-  LOG_INFO("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
+  // LOG_INFO("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
   return SUCCESS;
 }
 
@@ -904,6 +909,8 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
 
   update->has_next_file_number_ = all_updates_.has_next_file_number_;
   update->next_file_number_ = all_updates_.next_file_number_;
+
+  update->need_record_ = true;
 }
 
 static std::ostream &operator<<(std::ostream &os, const PartitionIdentifier &p) {
