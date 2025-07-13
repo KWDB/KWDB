@@ -226,9 +226,9 @@ class TsVersionUpdate {
 
 class TsVersionManager {
  private:
-  int vgroup_id_;
   TsIOEnv *env_;
   mutable std::shared_mutex mu_;
+  mutable PartitionIdentifier last_created_partition_{-1, INVALID_TS, INVALID_TS};  // Initial as invalid
 
   std::shared_ptr<const TsVGroupVersion> current_;
 
@@ -243,8 +243,7 @@ class TsVersionManager {
   class VersionBuilder;
 
  public:
-  explicit TsVersionManager(TsIOEnv *env, const std::string &root_path, int vgroup_id)
-      : vgroup_id_(vgroup_id), env_(env), root_path_(root_path) {}
+  explicit TsVersionManager(TsIOEnv *env, const std::string &root_path) : env_(env), root_path_(root_path) {}
   KStatus Recover();
   KStatus ApplyUpdate(TsVersionUpdate *update);
 

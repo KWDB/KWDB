@@ -293,7 +293,7 @@ set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
 
 include(CheckCXXCompilerFlag)
 set(STV3_CXX_BASIC_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing")
-set(STV3_CXX_EXTRA_FLAGS "-Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith")
+set(STV3_CXX_EXTRA_FLAGS "-Wduplicated-branches -Wduplicated-cond -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith")
 
 
 CHECK_CXX_COMPILER_FLAG(${STV3_CXX_BASIC_FLAGS} CXX_BASIC_WARNING_FLAGS)
