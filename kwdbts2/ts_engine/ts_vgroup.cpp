@@ -51,7 +51,7 @@ TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEn
       path_(std::filesystem::path(engine_options.db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
-      version_manager_(std::make_unique<TsVersionManager>(engine_options.io_env, path_)),
+      version_manager_(std::make_unique<TsVersionManager>(engine_options.io_env, path_, vgroup_id)),
       enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {

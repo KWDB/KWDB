@@ -18,20 +18,22 @@
 #include <cstdint>
 #include <filesystem>
 #include <iterator>
-#include <utility>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <regex>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
-#include <list>
+
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "lg_impl.h"
 #include "libkwdbts2.h"
+#include "settings.h"
 #include "ts_coding.h"
 #include "ts_entity_segment.h"
 #include "ts_filename.h"
@@ -58,18 +60,21 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t interval) {
   return index * interval;
 }
 
+// because vgroup id starts from 1
+thread_local std::vector<PartitionIdentifier> last_created_partition(EngineOptions::vgroup_max_num + 1, {-1, -1, -1});
+
 void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   timestamp64 start = GetPartitionStartTime(ptime, interval);
   PartitionIdentifier partition_id{dbid, start, start + interval};
-  if (partition_id == this->last_created_partition_) {
+  if (partition_id == last_created_partition[vgroup_id_]) {
     return;
   }
   {
     auto current = Current();
-    assert(current!= nullptr);
+    assert(current != nullptr);
     auto it = current->partitions_.find(partition_id);
     if (it != current->partitions_.end()) {
-      last_created_partition_ = partition_id;
+      last_created_partition[vgroup_id_] = partition_id;
       return;
     }
   }
@@ -77,7 +82,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   std::unique_lock lk{mu_};
   auto it = current_->partitions_.find(partition_id);
   if (it != current_->partitions_.end()) {
-    last_created_partition_ = partition_id;
+    last_created_partition[vgroup_id_] = partition_id;
     return;
   }
 
@@ -102,7 +107,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
 
   // update current version
   current_ = std::move(new_version);
-  last_created_partition_ = partition_id;
+  last_created_partition[vgroup_id_] = partition_id;
 }
 
 KStatus TsVersionManager::Recover() {
@@ -252,7 +257,6 @@ KStatus TsVersionManager::Recover() {
 }
 
 KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
-  return SUCCESS;
   if (update->Empty()) {
     // empty update, do nothing
     return SUCCESS;
@@ -291,7 +295,6 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
 
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
-
 
   if (update->has_new_partition_) {
     for (const auto &p : update->partitions_created_) {
@@ -388,8 +391,8 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
   return SUCCESS;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(uint32_t target_dbid,
-  const std::vector<KwTsSpan>& ts_spans, DATATYPE ts_type) const {
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions(
+    uint32_t target_dbid, const std::vector<KwTsSpan> &ts_spans, DATATYPE ts_type) const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   for (const auto &[k, v] : partitions_) {
     const auto &[dbid, _, __] = k;
@@ -477,7 +480,8 @@ KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<Kw
   }
   return KStatus::SUCCESS;
 }
-KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
+KStatus TsPartitionVersion::getFilter(const TsScanFilterParams &filter,
+                                      TsBlockItemFilterParams &block_data_filter) const {
   std::list<STDelRange> del_range;
   auto s = GetDelRange(filter.entity_id, del_range);
   if (s != KStatus::SUCCESS) {
@@ -488,7 +492,7 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type);
   partition_span.end = convertSecondToPrecisionTS(GetEndTime(), filter.table_ts_type) - 1;
   std::vector<STScanRange> cur_scan_range;
-  for (auto& scan : filter.ts_spans_) {
+  for (auto &scan : filter.ts_spans_) {
     KwTsSpan cross_part;
     cross_part.begin = std::max(partition_span.begin, scan.begin);
     cross_part.end = std::min(partition_span.end, scan.end);
@@ -496,7 +500,7 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
       cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn}));
     }
   }
-  for (auto& del : del_range) {
+  for (auto &del : del_range) {
     cur_scan_range = LSNRangeUtil::MergeScanAndDelRange(cur_scan_range, del);
   }
   block_data_filter.spans_ = std::move(cur_scan_range);
@@ -507,9 +511,10 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionVersion::GetBlockSpan(const TsScanFilterParams& filter,
-std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
+KStatus TsPartitionVersion::GetBlockSpan(const TsScanFilterParams &filter,
+                                         std::list<shared_ptr<TsBlockSpan>> *ts_block_spans,
+                                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
+                                         bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;
   auto s = getFilter(filter, block_data_filter);
   if (s != KStatus::SUCCESS) {
@@ -519,7 +524,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
 
   ts_block_spans->clear();
   // get block span in mem segment
-  for (auto& mem : GetAllMemSegments()) {
+  for (auto &mem : GetAllMemSegments()) {
     auto s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
@@ -529,7 +534,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   if (!skip_last) {
     // get block span in last segment
     std::vector<std::shared_ptr<TsLastSegment>> last_segs = GetAllLastSegments();
-    for (auto& last_seg : last_segs) {
+    for (auto &last_seg : last_segs) {
       auto s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpans of mem segment failed.");
@@ -544,8 +549,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
       // entity segment not exist
       return KStatus::SUCCESS;
     }
-    auto s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans,
-             tbl_schema_mgr, scan_version);
+    auto s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
       return s;
@@ -554,7 +558,6 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
   return KStatus::SUCCESS;
 }
-
 
 // version update
 
@@ -644,8 +647,9 @@ inline void EncodeEntitySegment(
   }
 }
 
-const char *DecodeEntitySegment(const char *ptr, const char *limit,
-                                std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> *entity_segments) {
+const char *DecodeEntitySegment(
+    const char *ptr, const char *limit,
+    std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> *entity_segments) {
   uint32_t npartition = 0;
   ptr = DecodeVarint32(ptr, limit, &npartition);
   if (ptr == nullptr) {
