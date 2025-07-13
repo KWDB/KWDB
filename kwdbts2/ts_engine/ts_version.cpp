@@ -252,6 +252,7 @@ KStatus TsVersionManager::Recover() {
 }
 
 KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
+  return SUCCESS;
   if (update->Empty()) {
     // empty update, do nothing
     return SUCCESS;
