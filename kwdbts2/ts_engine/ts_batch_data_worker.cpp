@@ -301,7 +301,7 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
     return KStatus::FAIL;
   }
   auto vgroups = ts_engine_->GetTsVGroups();
-  for (uint32_t vgroup_id = 1; vgroup_id < vgroups->size(); ++vgroup_id) {
+  for (uint32_t vgroup_id = 0; vgroup_id < vgroups->size(); ++vgroup_id) {
     vgroups_lsn_[vgroup_id] = (*vgroups)[vgroup_id]->GetWALManager()->FetchCurrentLSN();
   }
   return KStatus::SUCCESS;
@@ -347,7 +347,7 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
   std::string lsn_data;
   lsn_data.resize(sizeof(uint64_t) * n_rows);
   for (uint32_t row_idx = 0; row_idx < n_rows; ++row_idx) {
-    memcpy(lsn_data.data() + row_idx * sizeof(uint64_t), &(vgroups_lsn_[vgroup_id]), sizeof(uint64_t));
+    memcpy(lsn_data.data() + row_idx * sizeof(uint64_t), &(vgroups_lsn_[vgroup_id - 1]), sizeof(uint64_t));
   }
   DATATYPE d_type = DATATYPE::INT64;
   size_t d_size = sizeof(uint64_t);
