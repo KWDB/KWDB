@@ -2440,5 +2440,9 @@ SET CLUSTER SETTING
 ------
   14
 (1 row)
+> select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1 limit 1 offset 6;
+  e1
+------
+(0 rows)
 > drop database if exists d1 cascade;
 DROP DATABASE
