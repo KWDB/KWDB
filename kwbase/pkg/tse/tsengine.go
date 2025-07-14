@@ -348,7 +348,7 @@ var TsWALLevel = settings.RegisterPublicIntSetting(
 var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
 	"ts WAL checkpoint interval in TsEngine",
-	1*time.Second,
+	2*time.Minute,
 )
 
 // SQLTimeseriesTrace set trace for timeseries.
