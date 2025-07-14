@@ -61,8 +61,9 @@ const (
 	// HasFirst is set when query includes last
 	HasFirst = 1 << 5
 
-	// NotPruneGapFill is set to avoid dead loops caused by unprune timebucketgapfill col.
-	NotPruneGapFill = 1 << 6
+	// NotPruneAgg is setted to avoid dead loops caused by unprune
+	// timebucketgapfill col or max col or min col.
+	NotPruneAgg = 1 << 6
 )
 
 // AutoLimitQuantity is quantity of autolimit

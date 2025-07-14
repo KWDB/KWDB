@@ -587,7 +587,8 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 
 	// Construct the pre-projection, which renders the grouping columns and the
 	// aggregate arguments, as well as any additional order by columns.
-	if fromScope.CanApplyAggExtend(&groupingColSet) {
+	canApplyAggExtend := fromScope.CanApplyAggExtend(&groupingColSet)
+	if canApplyAggExtend {
 		// construct pre-projection when the SQL can apply agg extend.
 		g.aggInScope.expr = b.constructProjectInAggExtend(fromScope.expr, append(g.aggInScope.cols, g.aggInScope.extraCols...), fromScope.AggExHelper.extendColSet)
 	} else {
@@ -595,7 +596,7 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 	}
 
 	g.aggOutScope.expr = b.constructGroupBy(g.aggInScope.expr, groupingColSet, aggCols,
-		g.aggInScope.ordering, timeBucketGapFillColID, groupWindowID, fromScope.CanApplyAggExtend(&groupingColSet), &fromScope.AggExHelper)
+		g.aggInScope.ordering, timeBucketGapFillColID, groupWindowID, canApplyAggExtend, &fromScope.AggExHelper)
 	if len(aggFuncs) != 0 {
 		if g, ok := g.aggOutScope.expr.(*memo.ScalarGroupByExpr); ok {
 			g.GroupingPrivate.Func = aggFuncs
