@@ -11,14 +11,13 @@
 
 #include "ts_lastsegment.h"
 
-#include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -162,6 +161,58 @@ static KStatus ReadVarcharBlock(TsRandomReadFile* file, const TsLastSegmentBlock
   return ok ? SUCCESS : FAIL;
 }
 
+KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
+    std::vector<TsLastSegmentBlockIndex>** block_indices) {
+  {
+    std::shared_lock lk{mu_};
+    if (cached_) {
+      *block_indices = &block_indices_;
+      return SUCCESS;
+    }
+  }
+  std::unique_lock lk{mu_};
+  if (cached_) {
+    *block_indices = &block_indices_;
+    return SUCCESS;
+  }
+  auto s = lastseg_->GetAllBlockIndex(&block_indices_);
+  if (s == FAIL) {
+    LOG_ERROR("cannot get block index from last segment");
+  }
+  cached_ = true;
+  *block_indices = &block_indices_;
+  return SUCCESS;
+}
+
+KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) {
+  {
+    std::shared_lock lk{mu_};
+    if (cache_flag_[block_id] == 1) {
+      *info = &block_infos_[block_id];
+      return SUCCESS;
+    }
+  }
+  std::unique_lock lk{mu_};
+  if (cache_flag_[block_id] == 1) {
+    *info = &block_infos_[block_id];
+    return SUCCESS;
+  }
+  TsLastSegmentBlockIndex* index;
+  auto s = lastseg_cache_->GetBlockIndex(block_id, &index);
+  if (s == FAIL) {
+    LOG_ERROR("cannot load block index from last segment");
+  }
+  TsLastSegmentBlockInfo tmp_info;
+  s = LoadBlockInfo(lastseg_cache_->segment_->file_.get(), *index, &tmp_info);
+  if (s == FAIL) {
+    LOG_ERROR("cannot load block info from last segment");
+  }
+  block_infos_[block_id] = std::move(tmp_info);
+  cache_flag_[block_id] = 1;
+  *info = &block_infos_[block_id];
+  return SUCCESS;
+}
+
 KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
   TSSlice result;
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
@@ -189,8 +240,12 @@ KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* bl
   tmp_indices.resize(footer.n_data_block);
   TSSlice result;
   auto buf = std::make_unique<char[]>(footer.n_data_block * sizeof(TsLastSegmentBlockIndex));
-  file_->Read(footer.block_info_idx_offset, tmp_indices.size() * sizeof(TsLastSegmentBlockIndex),
-              &result, buf.get());
+  s = file_->Read(footer.block_info_idx_offset, tmp_indices.size() * sizeof(TsLastSegmentBlockIndex), &result,
+                  buf.get());
+  if (s == FAIL) {
+    LOG_ERROR("cannot read data from file");
+    return s;
+  }
   assert(result.len == tmp_indices.size() * sizeof(TsLastSegmentBlockIndex));
   for (int i = 0; i < tmp_indices.size(); ++i) {
     GetFixed64(&result, &tmp_indices[i].offset);
@@ -486,6 +541,71 @@ class TsLastBlock : public TsBlock {
   }
 };
 
+KStatus TsLastSegment::TsLastSegBlockCache::BlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) {
+  {
+    std::shared_lock lk{mu_};
+    if (cache_flag_[block_id] == 1) {
+      *block = block_infos_[block_id];
+      return SUCCESS;
+    }
+  }
+  std::unique_lock lk{mu_};
+  if (cache_flag_[block_id] == 1) {
+    *block = block_infos_[block_id];
+    return SUCCESS;
+  }
+  // std::shared_ptr<TsLastSegment> lastseg, int block_id,
+  //           TsLastSegmentBlockIndex block_index, TsLastSegmentBlockInfo block_info
+  TsLastSegmentBlockIndex* index;
+  auto s = lastseg_cache_->GetBlockIndex(block_id, &index);
+  if (s == FAIL) {
+    LOG_ERROR("cannot get block index");
+    return s;
+  }
+
+  TsLastSegmentBlockInfo* info;
+  s = lastseg_cache_->GetBlockInfo(block_id, &info);
+  if (s == FAIL) {
+    LOG_ERROR("cannot get block info");
+    return s;
+  }
+
+  auto tmp_block = std::make_unique<TsLastBlock>(lastseg_cache_->segment_->shared_from_this(), block_id, *index, *info);
+  cache_flag_[block_id] = 1;
+  block_infos_[block_id] = std::move(tmp_block);
+  *block = block_infos_[block_id];
+  return SUCCESS;
+}
+
+TsLastSegment::TsLastSegBlockCache::TsLastSegBlockCache(TsLastSegment* last, int nblock)
+    : segment_(last),
+      block_index_cache_(std::make_unique<BlockIndexCache>(last)),
+      block_info_cache_(std::make_unique<BlockInfoCache>(this, nblock)),
+      block_cache_(std::make_unique<BlockCache>(this, nblock)) {}
+
+KStatus TsLastSegment::TsLastSegBlockCache::GetAllBlockIndex(
+    std::vector<TsLastSegmentBlockIndex>** block_indices) const {
+  return block_index_cache_->GetBlockIndices(block_indices);
+}
+
+KStatus TsLastSegment::TsLastSegBlockCache::GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const {
+  std::vector<TsLastSegmentBlockIndex>* block_indices;
+  auto s = block_index_cache_->GetBlockIndices(&block_indices);
+  if (s == FAIL) {
+    return s;
+  }
+  *index = &(*block_indices)[block_id];
+  return SUCCESS;
+}
+
+KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
+  return block_info_cache_->GetBlockInfo(block_id, info);
+}
+
+KStatus TsLastSegment::TsLastSegBlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const {
+  return block_cache_->GetBlock(block_id, block);
+}
+
 struct Element_ {
   TSEntityID e_id;
   timestamp64 ts;
@@ -525,22 +645,78 @@ int FindLowerBound(const Element_& target, const TSEntityID* entities, const tim
   return r;
 }
 
-KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                     TsEngineSchemaManager* schema_mgr) {
-  std::vector<TsLastSegmentBlockIndex> block_indices;
-  auto s = GetAllBlockIndex(&block_indices);
+KStatus TsLastSegment::Open() {
+  // just check the magic number;
+  auto sz = file_->GetFileSize();
+  if (sz < sizeof(TsLastSegmentFooter)) {
+    LOG_ERROR("lastsegment file corrupted");
+    return FAIL;
+  }
+  auto s = GetFooter(&footer_);
   if (s == FAIL) {
+    return s;
+  }
+  if (footer_.magic_number != FOOTER_MAGIC) {
+    LOG_ERROR("magic mismatch");
     return FAIL;
   }
 
-  for (int idx = 0; idx < block_indices.size(); ++idx) {
-    TsLastSegmentBlockInfo info;
-    s = LoadBlockInfo(file_.get(), block_indices[idx], &info);
+  // load necessary meta block to memory.
+  // NOTICE: maybe we will support lazy loading later. For now, just load all meta blocks in
+  // Open()
+  int nmeta = footer_.n_meta_block;
+  if (nmeta != 0) {
+    Arena arena;
+    TSSlice result;
+    char* buf = arena.Allocate(nmeta * 16);
+    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, buf);
     if (s == FAIL) {
-      return FAIL;
+      return s;
     }
-    auto self = shared_from_this();
-    auto block = std::make_shared<TsLastBlock>(self, idx, block_indices[idx], info);
+    std::vector<size_t> meta_offset(nmeta);
+    std::vector<size_t> meta_len(nmeta);
+    for (int i = 0; i < nmeta; ++i) {
+      GetFixed64(&result, &meta_offset[i]);
+      GetFixed64(&result, &meta_len[i]);
+    }
+
+    for (int i = 0; i < nmeta; ++i) {
+      char* buf2 = arena.Allocate(meta_len[i]);
+      s = file_->Read(meta_offset[i], meta_len[i], &result, buf2);
+      if (s == FAIL) {
+        return FAIL;
+      }
+      uint8_t len = static_cast<uint8_t>(result.data[0]);
+      std::string_view sv{result.data + 1, len};
+      result.data += len + 1;
+      result.len -= len + 1;
+      if (sv == LastSegmentBloomFilter::Name()) {
+        s = TsBloomFilter::FromData(result, &bloom_filter_);
+      } else {
+        assert(false);
+      }
+      if (s == FAIL) {
+        return FAIL;
+      }
+    }
+  }
+
+  int nblock = footer_.n_data_block;
+  assert(nblock >= 0);  // TODO(zzr) the case nblock == 0 may exist in UT.
+  block_cache_ = std::make_unique<TsLastSegBlockCache>(this, nblock);
+  return SUCCESS;
+}
+
+KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                     TsEngineSchemaManager* schema_mgr) {
+  assert(block_cache_ != nullptr);
+  for (int idx = 0; idx < footer_.n_data_block; ++idx) {
+    std::shared_ptr<TsBlock> base_block;
+    auto s = block_cache_->GetBlock(idx, &base_block);
+    if(s == FAIL) {
+      LOG_ERROR("cannot load block %d", idx);
+    }
+    auto block = static_pointer_cast<TsLastBlock>(base_block);
 
     // split current block to several span;
     int prev_end = 0;
@@ -558,11 +734,10 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
       LOG_ERROR("get table schema manager failed. table id: %lu", block->GetTableId());
       return s;
     }
-    while (prev_end < info.nrow) {
+    while (prev_end < block->GetRowNum()) {
       int start = prev_end;
       auto current_entity = entities[start];
-      auto upper_bound =
-          FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, info.nrow);
+      auto upper_bound = FindUpperBound({current_entity, INT64_MAX}, entities, ts, start, block->GetRowNum());
       block_spans.emplace_back(
           make_shared<TsBlockSpan>(current_entity, block, start, upper_bound - start, tbl_schema_mgr, 0));
       prev_end = upper_bound;
@@ -575,6 +750,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                      uint32_t scan_version) {
+  assert(block_cache_ != nullptr);
   if (!MayExistEntity(filter.entity_id)) {
     return SUCCESS;
   }
@@ -582,11 +758,13 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   if (filter.spans_.empty()) {
     return SUCCESS;
   }
-  std::vector<TsLastSegmentBlockIndex> block_indices;
-  auto s = GetAllBlockIndex(&block_indices);
+  std::vector<TsLastSegmentBlockIndex>* p_block_indices;
+  auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
   if (s == FAIL) {
     return FAIL;
   }
+  const std::vector<TsLastSegmentBlockIndex>& block_indices = *p_block_indices;
+  assert(block_indices.size() == footer_.n_data_block);
 
   TSEntityID entity_id = filter.entity_id;
   int block_idx = 0;
@@ -618,13 +796,21 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       continue;
     }
     // todo(zhangzirui)  code review.
-    TsLastSegmentBlockInfo info;
-    s = LoadBlockInfo(file_.get(), cur_block, &info);
+
+    // TsLastSegmentBlockInfo info;
+    // s = LoadBlockInfo(file_.get(), cur_block, &info);
+    // if (s == FAIL) {
+    //   return FAIL;
+    // }
+    // auto block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, block_indices[block_idx], info);
+
+    std::shared_ptr<TsBlock> base_block;
+    s = block_cache_->GetBlock(block_idx, &base_block);
     if (s == FAIL) {
+      LOG_ERROR("cannot load block data, block_idx: %d", block_idx);
       return FAIL;
     }
-    auto block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx,
-                                          block_indices[block_idx], info);
+    auto block = static_pointer_cast<TsLastBlock>(base_block);
 
     auto row_num = block->GetRowNum();
     auto ts = block->GetTimestamps();
@@ -649,16 +835,16 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         if (match_found) {
           match_found = false;
-          block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx, i - start_idx,
-                                                            tbl_schema_mgr, scan_version));
+          block_spans.emplace_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
+                                                                 i - start_idx, tbl_schema_mgr, scan_version));
         }
       }
     }
     if (match_found) {
       match_found = false;
-      block_spans.emplace_back(make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
-                                end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
-                                tbl_schema_mgr, scan_version));
+      block_spans.emplace_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
+                                                             end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
+                                                             tbl_schema_mgr, scan_version));
     }
   }
 
