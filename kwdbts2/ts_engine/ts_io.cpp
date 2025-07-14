@@ -45,7 +45,7 @@ KStatus TsMMapAppendOnlyFile::UnmapCurrent() {
   return SUCCESS;
 }
 
-size_t TruncateToPage(size_t offset, size_t page_size) {
+static size_t TruncateToPage(size_t offset, size_t page_size) {
   assert((page_size & (page_size - 1)) == 0);
   offset -= offset & (page_size - 1);
   return offset;
@@ -247,11 +247,13 @@ KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_
   if (fd < 0) {
     return FAIL;
   }
-
-  void* ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
-  if (ptr == MAP_FAILED) {
-    LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
-    return FAIL;
+  void* ptr = nullptr;
+  if (readable_size != 0) {
+    ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
+    if (ptr == MAP_FAILED) {
+      LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
+      return FAIL;
+    }
   }
   auto new_file = std::make_unique<TsMMapRandomReadFile>(filepath, fd, static_cast<char*>(ptr), readable_size);
   *file = std::move(new_file);
@@ -264,14 +266,18 @@ KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::uni
   if (fd < 0) {
     return FAIL;
   }
-  void* ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
-  if (ptr == MAP_FAILED) {
-    LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
-    return FAIL;
-  }
-  int ok = madvise(ptr, readable_size, MADV_SEQUENTIAL);
-  if (ok < 0) {
-    LOG_WARN("madvise failed, reason %s", strerror(errno));
+
+  void* ptr = nullptr;
+  if (readable_size != 0) {
+    ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
+    if (ptr == MAP_FAILED) {
+      LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
+      return FAIL;
+    }
+    int ok = madvise(ptr, readable_size, MADV_SEQUENTIAL);
+    if (ok < 0) {
+      LOG_WARN("madvise failed, reason %s", strerror(errno));
+    }
   }
 
   auto new_file = std::make_unique<TsMMapSequentialReadFile>(filepath, fd, static_cast<char*>(ptr), readable_size);

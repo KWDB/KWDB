@@ -10,7 +10,6 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_block_span_sorted_iterator.h"
-#include "ts_entity_segment.h"
 
 #include <unistd.h>
 
@@ -21,13 +20,14 @@
 #include "settings.h"
 #include "test_util.h"
 #include "ts_block.h"
+#include "ts_entity_segment.h"
 #include "ts_vgroup.h"
 
 using namespace kwdbts;  // NOLINT
 
 TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                         uint32_t scan_version) : entity_id_(entity_id), block_(block), start_row_(start), nrow_(nrow) {}
+                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
+    : block_(block), entity_id_(entity_id), start_row_(start), nrow_(nrow) {}
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   EXPECT_TRUE(row_num <= nrow_);
@@ -45,11 +45,12 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
 }
 
 class TsBlockSpanSortedIteratorTest : public ::testing::Test {
-public:
+ public:
   std::vector<AttributeInfo> schema_;
   std::list<TSMemSegRowData*> datas_;
   std::list<char*> row_datas_;
-public:
+
+ public:
   TsBlockSpanSortedIteratorTest() {
     schema_.clear();
     AttributeInfo ts;
@@ -197,6 +198,11 @@ TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
         case DedupRule::DISCARD:
           EXPECT_TRUE(total_rows == ts_num);
           break;
+        case DedupRule::MERGE:
+        // not support yet.
+        case DedupRule::REJECT:
+          ASSERT_TRUE(false);
+          break;
       }
     }
     total_rows = 0;
@@ -227,6 +233,11 @@ TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
           break;
         case DedupRule::DISCARD:
           EXPECT_TRUE(total_rows == ts_num);
+          break;
+        case DedupRule::MERGE:
+        // not support yet.
+        case DedupRule::REJECT:
+          ASSERT_TRUE(false);
           break;
       }
     }
@@ -266,6 +277,11 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
         case DedupRule::DISCARD:
           EXPECT_TRUE(total_rows == ts_num + span_num - 1);
           break;
+        case DedupRule::MERGE:
+        // not support yet.
+        case DedupRule::REJECT:
+          ASSERT_TRUE(false);
+          break;
       }
     }
     total_rows = 0;
@@ -296,6 +312,11 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
           break;
         case DedupRule::DISCARD:
           EXPECT_TRUE(total_rows == ts_num + span_num - 1);
+          break;
+        case DedupRule::MERGE:
+        // not support yet.
+        case DedupRule::REJECT:
+          ASSERT_TRUE(false);
           break;
       }
     }

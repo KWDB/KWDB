@@ -176,6 +176,8 @@ void ExecPool::PushTimeEvent(TimerEventPtr event_ptr) {
 }
 
 k_bool ExecPool::IsFull() { return task_queue_.size() >= tq_num_; }
+k_bool ExecPool::IsInited() { return is_init_; }
+k_bool ExecPool::IsStopped() {return is_tp_stop_; }
 
 k_uint32 ExecPool::GetWaitThreadNum() const {
   k_int32 idle = threads_num_ + threads_starting_ - active_threads_;

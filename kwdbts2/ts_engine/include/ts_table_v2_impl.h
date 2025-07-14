@@ -25,6 +25,7 @@ class TsTableV2Impl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<std::shared_ptr<TsVGroup>>& vgroups_;
+  std::atomic_bool table_dropped_{false};
 
  public:
   TsTableV2Impl(std::shared_ptr<TsTableSchemaManager> table_schema,
@@ -39,6 +40,9 @@ class TsTableV2Impl : public TsTable {
   uint32_t GetCurrentTableVersion() override {
     return table_schema_mgr_->GetCurrentVersion();
   }
+
+  void SetDropped() override;
+  bool IsDropped() override;
 
   std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
     return table_schema_mgr_;
@@ -191,10 +195,7 @@ class TsTableV2Impl : public TsTable {
   KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);
   KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
-  KStatus getEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<EntityResultIndex>& entity_store);
-
-  KStatus GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                 queue<std::pair<uint32_t, uint32_t>>* vgroup_entity_ids) override;
+  KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<EntityResultIndex>& entity_store);
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;

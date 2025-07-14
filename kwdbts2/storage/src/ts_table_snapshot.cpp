@@ -444,7 +444,7 @@ KStatus TsSnapshotConsumer::beginMtrOfEntityGroup(kwdbContext_p ctx) {
     return s;
   }
   // default entitygroup use for storing new entities.
-  entities_result_idx_.push_back({default_entitygroup_id_in_dist_v2, 0, 0, nullptr});
+  entities_result_idx_.push_back({default_entitygroup_id_in_dist_v2, 0, 0, nullptr, 0});
   // allocate mtr id of all entitygroups , for snapshot writing atomic.
   std::shared_ptr<kwdbts::TsEntityGroup> cur_egrp;
   for (auto& entity : entities_result_idx_) {

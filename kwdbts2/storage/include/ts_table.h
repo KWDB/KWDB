@@ -440,8 +440,8 @@ class TsTable {
              const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
              uint32_t table_version);
 
-  virtual KStatus GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                         queue<std::pair<uint32_t, uint32_t>>* vgroup_entity_ids) {
+  virtual KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                        vector<EntityResultIndex>& entity_store) {
     return KStatus::SUCCESS;
   }
 
@@ -588,7 +588,8 @@ class TsTable {
 
   static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
-                                                          uint64_t partition_interval, ErrorInfo& err_info);
+                                                          uint64_t partition_interval, ErrorInfo& err_info,
+                                                          uint64_t hash_num = 2000);
 
   static MMapRootTableManager* OpenMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                         ErrorInfo& err_info);

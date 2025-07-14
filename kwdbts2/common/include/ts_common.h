@@ -403,11 +403,13 @@ struct EntityResultIndex {
   EntityResultIndex() {}
   EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId):
                       entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId) {}
-  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, void* mem) :
-                     entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId), mem(mem) {}
-  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, uint32_t hash_point, void* mem) :
+  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, void* mem, size_t p_tags_size) :
                      entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
-                     hash_point(hash_point), mem(mem) {}
+                     mem(mem), p_tags_size(p_tags_size) {}
+  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, uint32_t hash_point,
+                    void* mem, size_t p_tags_size) :
+                     entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
+                     hash_point(hash_point), mem(mem), p_tags_size(p_tags_size) {}
   uint64_t entityGroupId{0};
   uint32_t entityId{0};
   uint32_t subGroupId{0};
@@ -415,6 +417,7 @@ struct EntityResultIndex {
   uint32_t index{0};
   uint32_t ts_version{0};
   void* mem{nullptr};  // primaryTags address
+  size_t p_tags_size{0};
 
   bool equalsWithoutMem(const EntityResultIndex& entity_index) {
     if (entityId != entity_index.entityId ||

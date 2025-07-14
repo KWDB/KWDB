@@ -14,6 +14,7 @@
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_filename.h"
 #include "ts_lastsegment_builder.h"
+#include "ts_batch_data_worker.h"
 #include "ts_version.h"
 
 namespace kwdbts {
@@ -671,54 +672,66 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
 
 KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
   std::shared_lock lock{mutex_};
-  auto it = entity_cur_block_id_.find(entity_id);
-  if (it == entity_cur_block_id_.end()) {
+  auto it = entity_items_.find(entity_id);
+  if (it == entity_items_.end()) {
     TsEntityItem entity_item{entity_id};
-    bool is_exist = true;
-    KStatus s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
-    if (s != KStatus::SUCCESS && is_exist) {
-      LOG_ERROR("entity item[%d] not found", entity_id);
-      return s;
+    if (cur_entity_segment_) {
+      bool is_exist = true;
+      KStatus s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
+      if (s != KStatus::SUCCESS && is_exist) {
+        LOG_ERROR("entity item[%d] not found", entity_id);
+        return s;
+      }
     }
-    entity_cur_block_id_[entity_id] = entity_item.cur_block_id;
+    entity_items_[entity_id] = entity_item;
   }
 
-  uint32_t block_data_header_size = 2 * sizeof(timestamp64) + 3 * sizeof(uint32_t);
+  uint32_t block_data_header_size = TsBatchData::block_span_data_header_size_;
+  uint32_t n_cols = *reinterpret_cast<uint32_t*>(block_data.data + TsBatchData::n_cols_offset_in_span_data_);
+  uint32_t n_rows = *reinterpret_cast<uint32_t*>(block_data.data +  + TsBatchData::n_rows_offset_in_span_data_);
+
   TsEntitySegmentBlockItem block_item;
   block_item.entity_id = entity_id;
-  block_item.prev_block_id = entity_cur_block_id_[entity_id];     // pre block item id
+  block_item.prev_block_id = entity_items_[entity_id].cur_block_id;  // pre block item id
   block_item.table_version = table_version;
-  uint32_t n_cols = *(uint32_t*)(block_data.data + sizeof(uint32_t) + 2 * sizeof(timestamp64));
   block_item.n_cols = n_cols;
-  uint32_t n_rows = *(uint32_t*)(block_data.data + 2 * sizeof(uint32_t) + 2 * sizeof(timestamp64));
   block_item.n_rows = n_rows;
-  block_item.block_len = *(uint32_t*)(block_data.data + block_data_header_size + (n_cols - 1) * sizeof(uint32_t));
-  block_item.min_ts = *(timestamp64*)(block_data.data + sizeof(uint32_t));
-  block_item.max_ts = *(timestamp64*)(block_data.data + sizeof(uint32_t) + sizeof(timestamp64));
-  block_item.agg_len = *(uint32_t*)(block_data.data + block_data_header_size + n_cols * sizeof(uint32_t) +
-                     block_item.block_len + (n_cols - 2) * sizeof(uint32_t));
+  block_item.block_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size
+                         + (n_cols - 1) * sizeof(uint32_t)) + sizeof(uint32_t) * n_cols;
+  block_item.min_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::min_ts_offset_in_span_data_);
+  block_item.max_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
+  block_item.agg_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size + block_item.block_len
+                       + (n_cols - 2) * sizeof(uint32_t))  + sizeof(uint32_t) * (n_cols - 1);
 
-  TSSlice data_buffer = {block_data.data + block_data_header_size + n_cols * sizeof(uint32_t),
-                         block_item.block_len};
+  TSSlice data_buffer = {block_data.data + block_data_header_size, block_item.block_len};
   KStatus s = block_file_builder_->AppendBlock(data_buffer, &block_item.block_offset);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, append block failed.")
     return s;
   }
 
-  TSSlice agg_buffer = {block_data.data + block_data_header_size + n_cols * sizeof(uint32_t) +
-                        block_item.block_len + (n_cols - 1) * sizeof(uint32_t), block_item.agg_len};
+  TSSlice agg_buffer = {block_data.data + block_data_header_size + block_item.block_len, block_item.agg_len};
+  assert(block_data.len - (block_data_header_size + block_item.block_len) == block_item.agg_len);
   s = agg_file_builder_->AppendAggBlock(agg_buffer, &block_item.agg_offset);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append agg block failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, append agg block failed.")
   }
 
   s = block_item_builder_->AppendBlockItem(block_item);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block item failed.")
+    LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, append block item failed.")
     return s;
   }
-  entity_cur_block_id_[entity_id] = block_item.block_id;
+
+  entity_items_[entity_id].cur_block_id = block_item.block_id;
+  entity_items_[entity_id].row_written += block_item.n_rows;
+  if (block_item.max_ts > entity_items_[entity_id].max_ts) {
+    entity_items_[entity_id].max_ts = block_item.max_ts;
+  }
+  if (block_item.min_ts < entity_items_[entity_id].min_ts) {
+    entity_items_[entity_id].min_ts = block_item.min_ts;
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
@@ -726,8 +739,32 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   // write entity header
   KStatus s = KStatus::SUCCESS;
   uint32_t cur_entity_id = 0;
-  for (auto kv : entity_cur_block_id_) {
+  for (auto kv : entity_items_) {
     for (uint32_t entity_id = cur_entity_id + 1; entity_id < kv.first; ++entity_id) {
+      TsEntityItem entity_item{entity_id};
+      if (cur_entity_segment_) {
+        bool is_exist = true;
+        s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
+        if (s != KStatus::SUCCESS && is_exist) {
+          LOG_ERROR("GetEntityItem[entity_id=%d] failed", entity_id)
+          return s;
+        }
+      }
+      s = entity_item_builder_->AppendEntityItem(entity_item);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("AppendEntityItem[entity_id=%d] failed", entity_id)
+        return s;
+      }
+    }
+    s = entity_item_builder_->AppendEntityItem(kv.second);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("AppendEntityItem[entity_id=%d] failed", kv.first)
+      return s;
+    }
+    cur_entity_id = kv.first;
+  }
+  if (cur_entity_segment_) {
+    for (uint32_t entity_id = cur_entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
       TsEntityItem entity_item{entity_id};
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
@@ -741,35 +778,8 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
         return s;
       }
     }
-    TsEntityItem entity_item{kv.first};
-    bool is_exist = true;
-    s = cur_entity_segment_->GetEntityItem(kv.first, entity_item, is_exist);
-    if (s != KStatus::SUCCESS && is_exist) {
-      LOG_ERROR("GetEntityItem[entity_id=%d] failed", kv.first)
-      return s;
-    }
-    entity_item.cur_block_id = kv.second;
-    s = entity_item_builder_->AppendEntityItem(entity_item);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("AppendEntityItem[entity_id=%d] failed", kv.first)
-      return s;
-    }
-    cur_entity_id = kv.first;
   }
-  for (uint32_t entity_id = cur_entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
-    TsEntityItem entity_item{entity_id};
-    bool is_exist = true;
-    s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
-    if (s != KStatus::SUCCESS && is_exist) {
-      LOG_ERROR("GetEntityItem[entity_id=%d] failed", entity_id)
-      return s;
-    }
-    s = entity_item_builder_->AppendEntityItem(entity_item);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("AppendEntityItem[entity_id=%d] failed", entity_id)
-      return s;
-    }
-  }
+
   TsVersionUpdate::EntitySegmentVersionInfo info;
   info.agg_file_size = agg_file_builder_->GetFileSize();
   info.block_file_size = block_file_builder_->GetFileSize();

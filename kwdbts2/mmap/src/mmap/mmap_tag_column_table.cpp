@@ -1002,7 +1002,8 @@ int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::Enti
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id,
-                                                                 record_ptr + k_entity_group_id_size)));
+                                                                 record_ptr + k_entity_group_id_size,
+                                                                 primaryTagSize())));
   return 0;
 }
 
@@ -1026,7 +1027,8 @@ void MMapTagColumnTable::getHashedEntityIdByRownum(size_t row, uint32_t hps,
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex{m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id, hps,
-                                                                 record_ptr + k_entity_group_id_size
+                                                                 record_ptr + k_entity_group_id_size,
+                                                                 primaryTagSize()
                                                                  }));
   return ;
 }

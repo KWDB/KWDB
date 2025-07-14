@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "data_type.h"
@@ -69,7 +70,7 @@ class TsBlock {
                                                 std::vector<AggCandidate>& candidates);
 };
 
-struct TsBlockSpan {
+class TsBlockSpan {
  private:
   std::shared_ptr<TsBlock> block_ = nullptr;
   uint32_t vgroup_id_ = 0;

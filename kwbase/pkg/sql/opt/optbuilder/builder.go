@@ -379,6 +379,9 @@ func (b *Builder) buildStmt(
 
 	case *tree.CreateProcedure:
 		return b.buildCreateProcedure(stmt, inScope)
+	case *tree.CreateProcedurePG:
+		return b.buildCreateProcedurePG(stmt, inScope)
+
 	case *tree.CallProcedure:
 		return b.buildCallProcedure(stmt, inScope)
 
@@ -550,4 +553,20 @@ func (b *Builder) buildProcCommand(
 		return b.buildProcStmt(stmt, desiredTypes, inScope)
 	}
 	return nil
+}
+
+// addViewDep adds ColumnOrdinal to ViewDep.
+func (b *Builder) addViewDep(tab cat.Table, colOrds []int) {
+	if len(colOrds) == 0 {
+		return
+	}
+	// add viewDeps
+	dep := opt.ViewDep{DataSource: tab}
+	dep.ColumnIDToOrd = make(map[opt.ColumnID]int)
+	for _, ord := range colOrds {
+		dep.ColumnOrdinals.Add(ord)
+	}
+	// We will track the ColumnID to Ord mapping so Ords can be added
+	// when a column is referenced.
+	b.viewDeps = append(b.viewDeps, dep)
 }

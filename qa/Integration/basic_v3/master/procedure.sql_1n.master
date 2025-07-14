@@ -1714,3 +1714,92 @@ ERROR: unsupported conditions in update: cannot use declared variable "i1" in ti
 SQLSTATE: 0A000
 > DROP DATABASE IF EXISTS test_procedure_my_limit_ts CASCADE;
 DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_limit_ts CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_limit_rel CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE test_procedure_my_limit_ts;
+CREATE TS DATABASE
+> CREATE DATABASE test_procedure_my_limit_rel;
+CREATE DATABASE
+> DROP PROCEDURE IF EXISTS test_procedure_my_limit_rel.test_limit;
+DROP PROCEDURE
+> CREATE TABLE test_procedure_my_limit_ts.test2(
+k_timestamp TIMESTAMPTZ NOT NULL,
+id INT NOT NULL,
+e1 INT2,
+e2 INT2,
+e3 VARCHAR)
+TAGS (
+code1 INT2 NOT NULL,
+code2 VARCHAR,
+code3 VARCHAR)
+PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_procedure_my_limit_ts.test2 VALUES('2024-1-1 08:00:00.1'  ,1,1,1,'a',1,'a','a');
+INSERT 1
+> INSERT INTO test_procedure_my_limit_ts.test2 VALUES('2024-2-1 16:00:00.01' ,2,2,2,'b',2,'b','b');
+INSERT 1
+> INSERT INTO test_procedure_my_limit_ts.test2 VALUES('2024-3-1 23:59:59.999',3,3,3,'c',3,'c','c');
+INSERT 1
+> CREATE PROCEDURE test_procedure_my_limit_ts.test_limit(i1 INT) $$BEGIN UPDATE test_procedure_my_limit_ts.test2 SET code2 = 'test' WHERE code1 = 1; END$$;
+CREATE PROCEDURE
+> ALTER TABLE test_procedure_my_limit_ts.test2 RENAME TAG code2  TO code222;
+ERROR: cannot rename tag "code2" because procedure "test_procedure_my_limit_ts.public.test_limit" depends on it
+SQLSTATE: 2BP01
+HINT: you can drop test_procedure_my_limit_ts.public.test_limit instead.
+> CALL test_procedure_my_limit_ts.test_limit(1);
+CALL PROCEDURE
+> ALTER TABLE test_procedure_my_limit_ts.test2 RENAME TAG code222 TO code2;
+ERROR: column "code222" does not exist
+SQLSTATE: 42703
+> DROP DATABASE IF EXISTS test_procedure_my_limit_ts CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_limit_rel CASCADE;
+DROP DATABASE
+> drop table if exists t1 cascade;
+DROP TABLE
+> create table t1(a int, b int);
+CREATE TABLE
+> create procedure p1() begin update t1 set a =1 where b=0; end;
+CREATE PROCEDURE
+> alter table t1 rename column a to aa;
+ERROR: cannot rename column "a" because procedure "defaultdb.public.p1" depends on it
+SQLSTATE: 2BP01
+HINT: you can drop defaultdb.public.p1 instead.
+> alter table t1 rename column b to bb;
+ERROR: cannot rename column "b" because procedure "defaultdb.public.p1" depends on it
+SQLSTATE: 2BP01
+HINT: you can drop defaultdb.public.p1 instead.
+> drop table if exists t1 cascade;
+DROP TABLE
+> create procedure p1();
+ERROR: at or near "EOF": syntax error: the procedure body is missing
+SQLSTATE: 42601
+DETAIL: source SQL:
+create procedure p1()
+                     ^
+> create procedure p1(a int);
+ERROR: at or near "EOF": syntax error: the procedure body is missing
+SQLSTATE: 42601
+DETAIL: source SQL:
+create procedure p1(a int)
+                          ^
+> create procedure p1(a int) $$ begin declare b int; declare c int; end; select b,c;$$;
+ERROR: please put the statement into the body of BEGIN...END
+SQLSTATE: 42P13
+> create procedure p1(a int) $$ begin declare b int; declare c int; end;$$ begin select b,c; end;
+ERROR: at or near "EOF": syntax error: body-string and body-block cannot occur simultaneously
+SQLSTATE: 42601
+DETAIL: source SQL:
+create procedure p1(a int) $$ begin declare b int; declare c int; end;$$ begin select b,c; end
+                                                                                              ^
+> create procedure p1(a int) $$ begin declare b int; declare c int; select a,b,c; end$$;
+CREATE PROCEDURE
+> call p1(111);
+   a  |  b   |  c
+------+------+-------
+  111 | NULL | NULL
+(1 row)
+> drop procedure p1;
+DROP PROCEDURE

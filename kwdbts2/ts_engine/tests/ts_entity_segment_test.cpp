@@ -266,6 +266,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     ConstructRoachpbTableWithTypes(
         &meta, table_id, {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT, DataType::VARCHAR});
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    mgr->Init(nullptr);
     auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::shared_ptr<TsTableSchemaManager> schema_mgr;

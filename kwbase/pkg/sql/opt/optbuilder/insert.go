@@ -204,22 +204,19 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		panic(pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert into a TEMPLATE table, table name: %v", tab.Name()))
 	}
 	if b.insideProcDef {
-		dep := opt.ViewDep{DataSource: tab}
-		dep.ColumnIDToOrd = make(map[opt.ColumnID]int)
+		colOrds := make([]int, 0)
 		if ins.Columns != nil {
 			for i := range ins.Columns {
 				if ord := cat.FindTableColumnByName(tab, ins.Columns[i]); ord != -1 {
-					dep.ColumnOrdinals.Add(ord)
+					colOrds = append(colOrds, ord)
 				}
 			}
 		} else {
 			for ord := 0; ord < tab.ColumnCount(); ord++ {
-				dep.ColumnOrdinals.Add(ord)
+				colOrds = append(colOrds, ord)
 			}
 		}
-		// We will track the ColumnID to Ord mapping so Ords can be added
-		// when a column is referenced.
-		b.viewDeps = append(b.viewDeps, dep)
+		b.addViewDep(tab, colOrds)
 	}
 
 	if ins.IsNoSchema {

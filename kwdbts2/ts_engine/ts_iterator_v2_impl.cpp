@@ -149,7 +149,7 @@ inline void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
 }
 
 inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts) {
-  return ts != INVALID_TS && (!is_reversed_ && begin_ts > ts || is_reversed_ && end_ts < ts);
+  return ts != INVALID_TS && ((!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts));
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
@@ -452,6 +452,8 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   res->clear();
   if (only_count_ts_ && (KInt64(final_agg_data_[0].data) == 0)) {
+    free(final_agg_data_[0].data);
+    final_agg_data_[0].data = nullptr;
     *count = 0;
     *is_finished = false;
     ++cur_entity_index_;
@@ -587,40 +589,46 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       final_agg_data_[i].len = sizeof(timestamp64);
     } else {
       if (!c.blk_span->IsColExist(col_idx)) {
-        return SUCCESS;
-      }
-      if (!c.blk_span->IsVarLenType(col_idx)) {
-        char* value = nullptr;
-        TsBitmap bitmap;
-        auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap);
-        if (ret != KStatus::SUCCESS) {
-          return ret;
-        }
-
-        if (bitmap[c.row_idx] != DataFlags::kValid) {
+        if (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::LAST_ROW) {
           final_agg_data_[i] = {nullptr, 0};
         } else {
-          final_agg_data_[i].len = col_idx == 0 ? 16 : c.blk_span->GetColSize(col_idx);
-          final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-          memcpy(final_agg_data_[i].data,
-                value + c.row_idx * final_agg_data_[i].len,
-                final_agg_data_[i].len);
+          LOG_ERROR("Something is wrong here since column doesn't exist and we should not have any candidates.")
+          return KStatus::FAIL;
         }
       } else {
-        TSSlice slice;
-        DataFlags flag;
-        auto ret = c.blk_span->GetVarLenTypeColAddr(c.row_idx, col_idx, flag, slice);
-        if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("GetVarLenTypeColAddr failed.");
-          return ret;
-        }
-        if (flag != DataFlags::kValid) {
-          final_agg_data_[i] = {nullptr, 0};
+        if (!c.blk_span->IsVarLenType(col_idx)) {
+          char* value = nullptr;
+          TsBitmap bitmap;
+          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap);
+          if (ret != KStatus::SUCCESS) {
+            return ret;
+          }
+
+          if (bitmap[c.row_idx] != DataFlags::kValid) {
+            final_agg_data_[i] = {nullptr, 0};
+          } else {
+            final_agg_data_[i].len = col_idx == 0 ? 16 : c.blk_span->GetColSize(col_idx);
+            final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+            memcpy(final_agg_data_[i].data,
+                  value + c.row_idx * final_agg_data_[i].len,
+                  final_agg_data_[i].len);
+          }
         } else {
-          final_agg_data_[i].len = slice.len + kStringLenLen;
-          final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-          KUint16(final_agg_data_[i].data) = slice.len;
-          memcpy(final_agg_data_[i].data + kStringLenLen, slice.data, slice.len);
+          TSSlice slice;
+          DataFlags flag;
+          auto ret = c.blk_span->GetVarLenTypeColAddr(c.row_idx, col_idx, flag, slice);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarLenTypeColAddr failed.");
+            return ret;
+          }
+          if (flag != DataFlags::kValid) {
+            final_agg_data_[i] = {nullptr, 0};
+          } else {
+            final_agg_data_[i].len = slice.len + kStringLenLen;
+            final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+            KUint16(final_agg_data_[i].data) = slice.len;
+            memcpy(final_agg_data_[i].data + kStringLenLen, slice.data, slice.len);
+          }
         }
       }
     }
@@ -1286,7 +1294,9 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
     } else if ((is_reversed_ && max_ts <= min_ts) || (!is_reversed_ && min_ts > mid_ts)) {
       filter_block_spans_.push_back(block_span);
     } else {
-      bool is_lower_part;
+      // TODO(lmz): code review here, is_lower_part is uninitialized. It may cause a bug.
+      //  is_lower_part = true to avoid compile error.
+      bool is_lower_part = true;
       int first_row = block_span->GetStartRow(), start_row = block_span->GetStartRow();
       uint32_t row_num = block_span->GetRowNum();
       for (int j = start_row; j < start_row + row_num; ++j) {

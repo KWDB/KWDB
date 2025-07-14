@@ -16,23 +16,24 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <vector>
+#include <type_traits>
 #include <utility>
+#include <vector>
+
 #include "ts_block.h"
+#include "ts_compressor.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_entity_segment_data.h"
-#include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_version.h"
 
-
 namespace kwdbts {
 
 struct TsEntitySegmentBlockItem {
-  uint64_t block_id = 0;          // block item id
+  uint64_t block_id = 0;  // block item id
   uint64_t entity_id = 0;
-  uint64_t prev_block_id = 0;     // pre block item id
+  uint64_t prev_block_id = 0;  // pre block item id
   uint64_t block_offset = 0;
   uint32_t block_len = 0;
   uint32_t table_version = 0;
@@ -42,36 +43,40 @@ struct TsEntitySegmentBlockItem {
   timestamp64 max_ts = INT64_MIN;
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
-  uint16_t non_null_row_count = 0;  // the number of non-null rows
+  uint16_t non_null_row_count = 0;    // the number of non-null rows
   bool is_agg_res_available = false;  //  agg for block is valid.
-  char reserved[49] = {0};      // reserved for user-defined information.
+  char reserved[49] = {0};            // reserved for user-defined information.
   // todo(liangbo01) add lsn to filter quickyly
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");
+static_assert(std::has_unique_object_representations_v<TsEntitySegmentBlockItem>,
+              "check padding in TsEntitySegmentBlockItem");
 
 static constexpr uint64_t TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
 static constexpr uint64_t TS_ENTITY_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
 
 struct TsEntityItemFileHeader {
-  uint64_t magic;               // Magic number for block.e file.
-  int32_t encoding;             // Encoding scheme.
-  int32_t status;               // status flag.
-  uint64_t entity_num;          // entity num
-  char reserved[40];           // reserved for user-defined meta data information.
+  uint64_t magic;       // Magic number for block.e file.
+  int32_t encoding;     // Encoding scheme.
+  int32_t status;       // status flag.
+  uint64_t entity_num;  // entity num
+  char reserved[40];    // reserved for user-defined meta data information.
 };
 static_assert(sizeof(TsEntityItemFileHeader) == 64, "wrong size of TsBlockFileHeader, please check compatibility.");
+static_assert(std::has_unique_object_representations_v<TsEntityItemFileHeader>, "check padding in TsEntityItemFileHeader");
 
 struct TsEntityItem {
   uint64_t entity_id = 0;
-  uint64_t cur_block_id = 0;        // block id that is allocating space for writing.
-  int64_t max_ts = INT64_MIN;       // max ts of current entity in this Partition
-  int64_t min_ts = INT64_MAX;       // min ts of current entity in this Partition
-  uint64_t row_written = 0;         // row num that has written into file.
+  uint64_t cur_block_id = 0;   // block id that is allocating space for writing.
+  int64_t max_ts = INT64_MIN;  // max ts of current entity in this Partition
+  int64_t min_ts = INT64_MAX;  // min ts of current entity in this Partition
+  uint64_t row_written = 0;    // row num that has written into file.
   uint32_t table_id = 0;
-  char reserved[80] = {0};          // reserved for user-defined information.
+  char reserved[80] = {0};     // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
+static_assert(std::has_unique_object_representations_v<TsEntityItem>, "check padding in TsEntityItem");
 
 /**
  * TsEntitySegmentEntityItemFile used for managing entity_item file.
@@ -109,13 +114,13 @@ class TsEntitySegmentEntityItemFile {
 };
 
 struct TsBlockItemFileHeader {
-  uint64_t magic;               // Magic number for block.e file.
-  int32_t encoding;             // Encoding scheme.
-  int32_t status;               // status flag.
-  char user_defined[48];       // reserved for user-defined meta data information.
+  uint64_t magic;         // Magic number for block.e file.
+  int32_t encoding;       // Encoding scheme.
+  int32_t status;         // status flag.
+  char user_defined[48];  // reserved for user-defined meta data information.
 };
-static_assert(sizeof(TsBlockItemFileHeader) == 64,
-              "wrong size of TsBlockItemFileHeader, please check compatibility.");
+static_assert(sizeof(TsBlockItemFileHeader) == 64, "wrong size of TsBlockItemFileHeader, please check compatibility.");
+static_assert(std::has_unique_object_representations_v<TsBlockItemFileHeader>, "check padding in TsBlockItemFileHeader");
 
 class TsEntitySegmentBlockItemFile {
  private:
@@ -168,10 +173,9 @@ class TsEntitySegmentMetaManager {
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> blk_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                        uint32_t scan_version);
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version);
 
-  void MarkDeleteEntityHeader() {entity_header_.MarkDelete(); }
+  void MarkDeleteEntityHeader() { entity_header_.MarkDelete(); }
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -213,13 +217,13 @@ class TsEntityBlock : public TsBlock {
   TsEntityBlock(const TsEntityBlock& other);
   ~TsEntityBlock() {}
 
-  size_t GetRowNum() { return n_rows_; }
+  size_t GetRowNum() override { return n_rows_; }
 
   uint32_t GetNCols() { return n_cols_; }
 
-  TSTableID GetTableId() { return table_id_; }
+  TSTableID GetTableId() override { return table_id_; }
 
-  uint32_t GetTableVersion() { return table_version_; }
+  uint32_t GetTableVersion() override { return table_version_; }
 
   const TsEntitySegmentBlockInfo& GetBlockInfo() const { return block_info_; }
 
@@ -231,9 +235,7 @@ class TsEntityBlock : public TsBlock {
 
   uint32_t GetAggLength() const { return agg_length_; }
 
-  bool HasAggData(int32_t col_idx) {
-    return !column_blocks_[col_idx + 1].agg.empty();
-  }
+  bool HasAggData(int32_t col_idx) { return !column_blocks_[col_idx + 1].agg.empty(); }
 
   inline bool HasDataCached(int32_t col_idx) {
     assert(col_idx >= -1);
@@ -259,28 +261,25 @@ class TsEntityBlock : public TsBlock {
   KStatus GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans);
   KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans);
 
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
-                     char** value);
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
 
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
-                       TsBitmap& bitmap);
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override;
 
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
-                        TSSlice& value);
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
 
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema);
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
 
-  timestamp64 GetTS(int row_num);
+  timestamp64 GetTS(int row_num) override;
 
-  uint64_t* GetLSNAddr(int row_num);
+  uint64_t* GetLSNAddr(int row_num) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override;
 
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
   KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count) override;
-  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) override;
-  KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max) override;
-  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_max) override;
+  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void*& pre_sum, bool& is_overflow) override;
+  KStatus GetPreMax(uint32_t blk_col_idx, void*& pre_max) override;
+  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void*& pre_max) override;
   KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
   KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
 };
