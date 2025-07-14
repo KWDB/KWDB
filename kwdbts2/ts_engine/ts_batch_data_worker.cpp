@@ -164,7 +164,9 @@ KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
     int64_t acceptable_ts = INT64_MIN;
     auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
     acceptable_ts = now.time_since_epoch().count() - life_time.ts;
-    actual_ts_span_.begin = acceptable_ts;
+    if (acceptable_ts > actual_ts_span_.begin) {
+      actual_ts_span_.begin = acceptable_ts;
+    }
   }
   // convert second to actual timestamp
   std::shared_ptr<MMapMetricsTable> metric_schema;
