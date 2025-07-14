@@ -229,10 +229,8 @@ class TsBatchData {
 };
 
 class TsBatchDataWorker {
- private:
-  uint64_t job_id_;
-
  protected:
+  uint64_t job_id_;
   bool is_finished_ = false;
 
  public:
@@ -249,7 +247,7 @@ class TsBatchDataWorker {
     return KStatus::SUCCESS;
   }
 
-  virtual KStatus Write(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
+  virtual KStatus Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, TSSlice* data, uint32_t* row_num) {
     return KStatus::SUCCESS;
   }
 
@@ -304,26 +302,21 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 class TsWriteBatchDataWorker : public TsBatchDataWorker {
  private:
   TSEngineV2Impl* ts_engine_;
-  TSTableID table_id_;
-  uint32_t table_version_;
-
-  std::shared_ptr<TsTableSchemaManager> schema_ = nullptr;
 
   std::unordered_map<uint64_t, TS_LSN> vgroups_lsn_;
-  std::string tag_payload_;
 
   std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> entity_segment_builders_;
 
-  KStatus GetTagPayload(TSSlice* data, std::shared_ptr<TsRawPayload>& payload_only_tag);
+  KStatus GetTagPayload(TSSlice* data, std::string& tag_payload_str, std::shared_ptr<TsRawPayload>& payload_only_tag);
 
   KStatus UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result);
 
  public:
-  TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id, uint32_t table_version, uint64_t job_id);
+  TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id);
 
   KStatus Init(kwdbContext_p ctx) override;
 
-  KStatus Write(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) override;
+  KStatus Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, TSSlice* data, uint32_t* row_num) override;
 
   KStatus Finish(kwdbContext_p ctx) override;
 

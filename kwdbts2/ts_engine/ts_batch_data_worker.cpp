@@ -288,20 +288,15 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
   *row_num = cur_block_span->GetRowNum();
   data->data = cur_batch_data_.data_.data();
   data->len = cur_batch_data_.data_.size();
+  LOG_INFO("current batch data read success, job_id[%lu], table_id[%lu], table_version[%lu], row_num[%u]",
+           job_id_, table_id_, table_version_, *row_num);
   return s;
 }
 
-TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id,
-                                               uint32_t table_version, uint64_t job_id)
-                                               : TsBatchDataWorker(job_id), ts_engine_(ts_engine),
-                                               table_id_(table_id), table_version_(table_version) {}
+TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id)
+                                               : TsBatchDataWorker(job_id), ts_engine_(ts_engine) {}
 
 KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
-  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, schema_);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id_);
-    return KStatus::FAIL;
-  }
   auto vgroups = ts_engine_->GetTsVGroups();
   for (uint32_t vgroup_id = 0; vgroup_id < vgroups->size(); ++vgroup_id) {
     vgroups_lsn_[vgroup_id] = (*vgroups)[vgroup_id]->GetWALManager()->FetchCurrentLSN();
@@ -309,18 +304,19 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::GetTagPayload(TSSlice* data, std::shared_ptr<TsRawPayload>& payload_only_tag) {
-  tag_payload_.clear();
-  tag_payload_.append(data->data, data->len);
+KStatus TsWriteBatchDataWorker::GetTagPayload(TSSlice* data, std::string& tag_payload_str,
+                                              std::shared_ptr<TsRawPayload>& payload_only_tag) {
+  tag_payload_str.clear();
+  tag_payload_str.append(data->data, data->len);
   // update tag row num
   uint32_t row_num = 1;
-  memcpy(tag_payload_.data() + TsBatchData::row_num_offset_, &row_num, TsBatchData::row_num_size_);
+  memcpy(tag_payload_str.data() + TsBatchData::row_num_offset_, &row_num, TsBatchData::row_num_size_);
   // update tag type
   uint8_t tag_type = DataTagFlag::TAG_ONLY;
-  memcpy(tag_payload_.data() + TsBatchData::row_type_offset_, &tag_type, TsBatchData::row_type_size_);
+  memcpy(tag_payload_str.data() + TsBatchData::row_type_offset_, &tag_type, TsBatchData::row_type_size_);
 
   std::vector<AttributeInfo> data_schema;
-  TSSlice payload_data = {tag_payload_.data(), tag_payload_.size()};
+  TSSlice payload_data = {tag_payload_str.data(), tag_payload_str.size()};
   payload_only_tag = std::make_shared<TsRawPayload>(payload_data, data_schema);
   return KStatus::SUCCESS;
 }
@@ -378,7 +374,15 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
+KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version,
+                                      TSSlice* data, uint32_t* row_num) {
+  // get table schema && create ts table
+  std::shared_ptr<TsTableSchemaManager> schema = nullptr;
+  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id);
+    return KStatus::FAIL;
+  }
   // parser tag info
   uint16_t p_tag_size = KUint16(data->data + TsBatchData::header_size_);
   uint32_t p_tag_offset = TsBatchData::header_size_ + sizeof(p_tag_size);
@@ -392,33 +396,43 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t
   }
   assert(data->len == block_span_data_offset + block_span_data_size);
 
-  TSSlice tag_payload = {data->data, tags_data_offset + tags_data_size};
+  TSSlice tag_slice = {data->data, tags_data_offset + tags_data_size};
+  std::string tag_payload_str;
   std::shared_ptr<TsRawPayload> payload_only_tag;
-  GetTagPayload(&tag_payload, payload_only_tag);
+  GetTagPayload(&tag_slice, tag_payload_str, payload_only_tag);
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
   bool new_tag;
-  KStatus s = ts_engine_->GetEngineSchemaManager()->GetVGroup(ctx, table_id_, payload_only_tag->GetPrimaryTag(),
+  s = ts_engine_->GetEngineSchemaManager()->GetVGroup(ctx, table_id, payload_only_tag->GetPrimaryTag(),
                                                               &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetVGroup failed, table_id[%lu], ptag[%s]", table_id_, payload_only_tag->GetPrimaryTag().data);
+    LOG_ERROR("GetVGroup failed, table_id[%lu], ptag[%s]", table_id, payload_only_tag->GetPrimaryTag().data);
     return s;
   }
   if (new_tag) {
     entity_id = ts_engine_->GetTsVGroup(vgroup_id - 1)->AllocateEntityID();
-    std::shared_ptr<TagTable> tag_table = schema_->GetTagTable();
+    std::shared_ptr<TagTable> tag_table = schema->GetTagTable();
     if (tag_table->InsertTagRecord(*payload_only_tag, vgroup_id, entity_id) < 0) {
-      LOG_ERROR("InsertTagRecord failed, table_id[%lu], ptag[%s]", table_id_, payload_only_tag->GetPrimaryTag().data);
+      LOG_ERROR("InsertTagRecord failed, table_id[%lu], ptag[%s]", table_id, payload_only_tag->GetPrimaryTag().data);
       return KStatus::FAIL;
     }
   }
 
   if (row_type == TAG_ONLY) {
     *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
+    LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], entity_id[%lu], row_num[%u]",
+             job_id_, table_id, entity_id, *row_num);
     return KStatus::SUCCESS;
   }
 
+  if (schema == nullptr) {
+    s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id);
+      return KStatus::FAIL;
+    }
+  }
   // update lsn
   TSSlice block_span_slice = {data->data + block_span_data_offset, block_span_data_size};
   std::string block_span_data;
@@ -427,21 +441,23 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSSlice* data, uint32_t
   // write payload data to entity segment
   timestamp64 ts = *reinterpret_cast<timestamp64*>(new_block_data.data + sizeof(uint32_t));
   std::shared_ptr<MMapMetricsTable> metric_schema;
-  s = schema_->GetMetricSchema(table_version_, &metric_schema);
+  s = schema->GetMetricSchema(table_version, &metric_schema);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to get metric schema, table id[%lu], version[%u]", table_id_, table_version_);
+    LOG_ERROR("Failed to get metric schema, table id[%lu], version[%u]", table_id, table_version);
     return KStatus::FAIL;
   }
   const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
   assert(!attrs.empty());
   DATATYPE ts_col_type = static_cast<DATATYPE>(attrs[0].type);
-  s = ts_engine_->GetTsVGroup(vgroup_id - 1)->WriteBatchData(ctx, table_id_, table_version_,
+  s = ts_engine_->GetTsVGroup(vgroup_id - 1)->WriteBatchData(ctx, table_id, table_version,
                                                              entity_id, ts, ts_col_type, new_block_data);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", table_id_, entity_id);
+    LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", table_id, entity_id);
     return KStatus::FAIL;
   }
   *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
+  LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], entity_id[%lu], row_num[%u]",
+           job_id_, table_id, entity_id, *row_num);
   return s;
 }
 
@@ -450,7 +466,7 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
   for (const auto& vgroup : *vgroups) {
     KStatus s = vgroup->FinishWriteBatchData();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("FinishWriteBatchData failed, table_id[%lu]", table_id_);
+      LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
       return s;
     }
   }
@@ -462,7 +478,7 @@ void TsWriteBatchDataWorker::Cancel(kwdbContext_p ctx) {
   for (const auto &vgroup : *vgroups) {
     KStatus s = vgroup->ClearWriteBatchData();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ClearWriteBatchData failed, table_id[%lu]", table_id_);
+      LOG_ERROR("ClearWriteBatchData failed, job_id[%lu]", job_id_);
     }
   }
 }
