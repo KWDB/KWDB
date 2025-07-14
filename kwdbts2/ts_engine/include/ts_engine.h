@@ -265,6 +265,15 @@ class TSEngineV2Impl : public TSEngine {
     return iter->second;
   }
 
+  void initRangeIndexMap(AppliedRangeIndex* applied_indexes, uint64_t range_num) {
+    if (applied_indexes != nullptr) {
+      for (int i = 0; i < range_num; i++) {
+        range_indexes_map_[applied_indexes[i].range_id] = applied_indexes[i].applied_index;
+      }
+    }
+    LOG_INFO("map for applied range indexes is initialized.");
+  }
+
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
