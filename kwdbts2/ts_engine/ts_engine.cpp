@@ -909,7 +909,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   for (auto log : logs) {
     switch (log->getType()) {
-      case MTR_COMMIT : {
+      case MTR_COMMIT :
+      case MTR_ROLLBACK: {
         commit.emplace_back(log->getXID());
       }
       default:
@@ -926,7 +927,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
     if (!skip) {
-      if (log->getType() != WALLogType::CHECKPOINT) {
+      if (log->getType() == WALLogType::INSERT ||
+          log->getType() == WALLogType::UPDATE ||
+          log->getType() == WALLogType::DELETE ||
+          log->getType() == WALLogType::MTR_BEGIN) {
         if (!EngineOptions::isSingleNode()) {
           rewrite.emplace_back(log);
         }
