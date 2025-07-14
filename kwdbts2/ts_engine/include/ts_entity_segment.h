@@ -73,7 +73,7 @@ struct TsEntityItem {
   int64_t min_ts = INT64_MAX;  // min ts of current entity in this Partition
   uint64_t row_written = 0;    // row num that has written into file.
   uint32_t table_id = 0;
-  char reserved[80] = {0};     // reserved for user-defined information.
+  char reserved[84] = {0};     // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
 static_assert(std::has_unique_object_representations_v<TsEntityItem>, "check padding in TsEntityItem");

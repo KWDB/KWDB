@@ -13,9 +13,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <list>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include "ts_block.h"
 #include "ts_engine_schema_manager.h"
@@ -261,6 +263,10 @@ class TsEntitySegmentVacuumer {
  public:
   explicit TsEntitySegmentVacuumer(const std::string& root_path);
   KStatus Open();
+  KStatus AppendEntityItem(TsEntityItem& entity_item);
+  KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
+  KStatus AppendAgg(const TSSlice& agg, uint64_t* offset);
+  KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
 
  private:
   std::filesystem::path root_path_;

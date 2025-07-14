@@ -806,7 +806,6 @@ TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string &root_path) :
   // block agg file
   std::string agg_file_path = root_path + "/" + block_agg_file_name + ".vacuum";
   agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
-
 }
 
 KStatus TsEntitySegmentVacuumer::Open() {
@@ -830,5 +829,21 @@ KStatus TsEntitySegmentVacuumer::Open() {
     LOG_ERROR("Open Agg File Failed");
   }
   return s;
+}
+
+KStatus TsEntitySegmentVacuumer::AppendEntityItem(TsEntityItem& entity_item) {
+  return entity_item_builder_->AppendEntityItem(entity_item);
+}
+
+KStatus TsEntitySegmentVacuumer::AppendBlock(const TSSlice& block, uint64_t* offset) {
+  return block_file_builder_->AppendBlock(block, offset);
+}
+
+KStatus TsEntitySegmentVacuumer::AppendAgg(const TSSlice& agg, uint64_t* offset) {
+  return agg_file_builder_->AppendAggBlock(agg, offset);
+}
+
+KStatus TsEntitySegmentVacuumer::AppendBlockItem(TsEntitySegmentBlockItem& block_item) {
+  return block_item_builder_->AppendBlockItem(block_item);
 }
 }  //  namespace kwdbts
