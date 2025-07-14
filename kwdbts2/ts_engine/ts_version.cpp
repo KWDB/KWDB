@@ -383,7 +383,8 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     logger_->AddRecord(encoded_update);
   }
   current_ = std::move(new_vgroup_version);
-  // LOG_INFO("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
+  lk.unlock();
+  LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
   return SUCCESS;
 }
 
