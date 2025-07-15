@@ -64,4 +64,17 @@ KStatus DestoryExecutor() {
   g_pstBufferPoolInfo = nullptr;
   return SUCCESS;
 }
+
+KStatus GetWaitThreadNum(kwdbContext_p ctx, void *resp) {
+  // Get wait thread num
+  k_uint32 wait_threads = ExecPool::GetInstance().GetWaitThreadNum();
+  // Prepare response
+  auto *return_info = static_cast<ThreadInfo *>(resp);
+  if (return_info == nullptr) {
+    LOG_ERROR("invalid resp pointer")
+    return KStatus::FAIL;
+  }
+  return_info->wait_threads = wait_threads;
+  return KStatus::SUCCESS;
+}
 }  // namespace kwdbts
