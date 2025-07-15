@@ -376,7 +376,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
   data_buffer_.append(col_data.data, dsize_);
 }
 
-void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
+void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress(bool use_plain) {
   bitmap_buffer_.clear();
   if (has_bitmap_) {
     // TODO(zzr) Compress bitmap..
@@ -393,6 +393,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
     first = TsCompAlg::kGorilla_32;
   }
   TSSlice plain{data_buffer_.data(), data_buffer_.size()};
+  if (use_plain) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
+  }
   mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
   data_buffer_.swap(compressed);
 }
@@ -543,7 +547,8 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Finish() {
     //    1. Get compression type from schema_mgr
     //    2. compress
 
-    colblocks_[i]->Compress();
+    bool use_plain = (i <= 2);
+    colblocks_[i]->Compress(use_plain);
     int bitmap_len = colblocks_[i]->GetBitmap().len;
     int data_len = colblocks_[i]->GetData().len;
     BlockInfo::ColInfo col_info;

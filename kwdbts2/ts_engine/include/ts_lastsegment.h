@@ -182,16 +182,12 @@ class TsLastSegment::TsLastSegBlockCache {
   class BlockInfoCache;
   std::unique_ptr<BlockInfoCache> block_info_cache_;
 
-  class BlockCache;
-  std::unique_ptr<BlockCache> block_cache_;
-
  public:
   explicit TsLastSegBlockCache(TsLastSegment* last, int nblock);
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>** block_indexes) const;
   KStatus GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const;
   KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const;
-  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache::BlockIndexCache {
@@ -217,19 +213,6 @@ class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
       : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
   KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info);
-};
-
-class TsLastSegment::TsLastSegBlockCache::BlockCache {
- private:
-  TsLastSegBlockCache* lastseg_cache_;
-  std::vector<uint8_t> cache_flag_;
-  std::vector<std::shared_ptr<TsBlock>> block_infos_;
-  std::shared_mutex mu_;
-
- public:
-  explicit BlockCache(TsLastSegBlockCache* cache, int nblocks)
-      : lastseg_cache_(cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
-  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block);
 };
 
 }  // namespace kwdbts

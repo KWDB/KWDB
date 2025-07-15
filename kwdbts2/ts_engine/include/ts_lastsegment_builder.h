@@ -292,7 +292,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   }
   void Add(const TSSlice& col_data, DataFlags data_flag = kValid) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
-  void Compress();
+  void Compress(bool use_plain);
   void Reserve(size_t nrow) {
     data_buffer_.reserve(nrow * dsize_);
     bitmap_.Reset(has_bitmap_ ? nrow : 0);
