@@ -269,6 +269,7 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
     TsBitmap* b = nullptr;
     TsBitmap bitmap;
     std::string ts_col_data;
+    std::string null_col_data;
     char* fixed_col_value_addr;
     std::string var_offset_data;
     var_offset_data.resize(row_num_ * sizeof(uint32_t));
@@ -285,6 +286,14 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
           ts_col_data.append(fixed_col_value_addr + i * d_size, sizeof(timestamp64));
         }
         fixed_col_value_addr = ts_col_data.data();
+      }
+      if (fixed_col_value_addr == nullptr) {
+        null_col_data.resize(row_num_ * d_size);
+        fixed_col_value_addr = null_col_data.data();
+        bitmap.SetCount(row_num_);
+        for (size_t i = 0; i < row_num_; ++i) {
+          bitmap[i] = DataFlags::kNull;
+        }
       }
     } else {
       if (has_bitmap) {
@@ -371,29 +380,27 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
       DATATYPE type = static_cast<DATATYPE>(version_conv_->scan_attrs_[scan_idx].type);
       AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, row_num_);
       *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(count, max.data(), min.data(), sum.data() + 1);
-      if (0 == count) {
-        continue;
+      if (0 != count) {
+        col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
+        memcpy(col_agg.data(), &count, sizeof(uint16_t));
+        memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
+        memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
+        memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
-      memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
     } else {
       VarColAggCalculatorV2 aggCalc(var_rows);
       string max;
       string min;
       uint64_t count = 0;
       aggCalc.CalcAggForFlush(max, min, count);
-      if (0 == count) {
-        continue;
+      if (0 != count) {
+        col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
+        memcpy(col_agg.data(), &count, sizeof(uint16_t));
+        col_agg.append(max);
+        col_agg.append(min);
+        *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
+        *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
-      memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      col_agg.append(max);
-      col_agg.append(min);
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
     }
     agg_data.append(col_agg);
     uint32_t offset = agg_data.size()- agg_col_offsets_len;

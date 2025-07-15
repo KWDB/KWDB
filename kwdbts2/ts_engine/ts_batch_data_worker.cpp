@@ -305,10 +305,12 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::GetTagPayload(TSSlice* data, std::string& tag_payload_str,
+KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str,
                                               std::shared_ptr<TsRawPayload>& payload_only_tag) {
   tag_payload_str.clear();
   tag_payload_str.append(data->data, data->len);
+  // update table version
+  memcpy(tag_payload_str.data() + TsBatchData::ts_version_offset_, &table_version, TsBatchData::ts_version_size_);
   // update tag row num
   uint32_t row_num = 1;
   memcpy(tag_payload_str.data() + TsBatchData::row_num_offset_, &row_num, TsBatchData::row_num_size_);
@@ -400,7 +402,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   TSSlice tag_slice = {data->data, tags_data_offset + tags_data_size};
   std::string tag_payload_str;
   std::shared_ptr<TsRawPayload> payload_only_tag;
-  GetTagPayload(&tag_slice, tag_payload_str, payload_only_tag);
+  GetTagPayload(table_version, &tag_slice, tag_payload_str, payload_only_tag);
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
