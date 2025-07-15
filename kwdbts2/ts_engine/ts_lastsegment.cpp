@@ -11,15 +11,18 @@
 
 #include "ts_lastsegment.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -256,6 +259,8 @@ KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* bl
     tmp_indices[i].min_ts = v;
     GetFixed64(&result, &v);
     tmp_indices[i].max_ts = v;
+    GetFixed64(&result, &tmp_indices[i].min_lsn);
+    GetFixed64(&result, &tmp_indices[i].max_lsn);
     GetFixed64(&result, &tmp_indices[i].min_entity_id);
     GetFixed64(&result, &tmp_indices[i].max_entity_id);
   }
@@ -422,7 +427,7 @@ class TsLastBlock : public TsBlock {
 
   uint64_t* GetLSNAddr(int row_num) override {
     assert(block_info_.ncol > 2);
-    auto seq_nos = GetSeqNos();
+    auto seq_nos = GetLSN();
     if (seq_nos == nullptr) {
       LOG_ERROR("cannot get lsn addr");
       return nullptr;
@@ -511,7 +516,7 @@ class TsLastBlock : public TsBlock {
     return entities;
   }
 
-  const uint64_t* GetSeqNos() {
+  const uint64_t* GetLSN() {
     auto s = LoadAllDataToCache(1);
     if (s == FAIL) {
       LOG_ERROR("cannot load lsn column");
@@ -705,17 +710,33 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
   return SUCCESS;
 }
 
+struct ValuePoint {
+  TSTableID table_id;
+  TSEntityID entity_id;
+  timestamp64 ts;
+  TS_LSN lsn;
+};
+
+static inline bool Compare(const ValuePoint& lhs, const ValuePoint& rhs) {
+  using Helper = std::tuple<TSTableID, TSEntityID, timestamp64, TS_LSN>;
+  return Helper(lhs.table_id, lhs.entity_id, lhs.ts, lhs.lsn) <= Helper(rhs.table_id, rhs.entity_id, rhs.ts, rhs.lsn);
+}
+
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
   assert(block_cache_ != nullptr);
-  if (!MayExistEntity(filter.entity_id)) {
-    return SUCCESS;
-  }
-  // spans->clear();
+
+  // if filter is empty, no need to do anything.
   if (filter.spans_.empty()) {
     return SUCCESS;
   }
+
+  // check bloom filter first
+  if (!MayExistEntity(filter.entity_id)) {
+    return SUCCESS;
+  }
+  
   std::vector<TsLastSegmentBlockIndex>* p_block_indices;
   auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
   if (s == FAIL) {
@@ -724,89 +745,97 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   const std::vector<TsLastSegmentBlockIndex>& block_indices = *p_block_indices;
   assert(block_indices.size() == footer_.n_data_block);
 
-  TSEntityID entity_id = filter.entity_id;
-  int block_idx = 0;
-  int span_idx = 0;
-  for (; block_idx < block_indices.size(); ++block_idx) {
-    const TsLastSegmentBlockIndex& cur_block = block_indices[block_idx];
-    // Filter table, entity first
-    // TODO(zzr) use binary search here?
-    if (cur_block.table_id == filter.table_id && entity_id >= cur_block.min_entity_id &&
-        entity_id <= cur_block.max_entity_id) {
-      break;
-    }
-    if (cur_block.table_id > filter.table_id) {
-      return SUCCESS;
-    }
-  }
-  if (block_idx == block_indices.size()) {
-    return SUCCESS;
-  }
+  auto begin_it = block_indices.begin();
 
-  for (; block_idx < block_indices.size(); ++block_idx) {
-    const TsLastSegmentBlockIndex& cur_block = block_indices[block_idx];
-    if (cur_block.table_id != filter.table_id || entity_id < cur_block.min_entity_id) {
-      // no need to read following blocks
-      break;
-    }
-    // todo(liangbo)  store lsn info.
-    if (!IsTsLsnSpanCrossSpans(filter.spans_, {cur_block.min_ts, cur_block.max_ts}, {0, UINT64_MAX})) {
-      continue;
-    }
-    // todo(zhangzirui)  code review.
+  std::vector<int> iota_vector;
 
-    // TsLastSegmentBlockInfo info;
-    // s = LoadBlockInfo(file_.get(), cur_block, &info);
-    // if (s == FAIL) {
-    //   return FAIL;
-    // }
-    // auto block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, block_indices[block_idx], info);
+  std::shared_ptr<TsLastBlock> block = nullptr;
 
-    TsLastSegmentBlockInfo* info;
-    s = block_cache_->GetBlockInfo(block_idx, &info);
-    if (s == FAIL) {
-      LOG_ERROR("cannot get block info");
-      return s;
-    }
+  for (const auto& span : filter.spans_) {
+    ValuePoint filter_span_start{filter.table_id, filter.entity_id, span.ts_span.begin, span.lsn_span.begin};
+    ValuePoint filter_span_end{filter.table_id, filter.entity_id, span.ts_span.end, span.lsn_span.end};
 
-    auto block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, cur_block, *info);
+    auto it = std::upper_bound(
+        begin_it, block_indices.end(), filter_span_start,
+        [](const ValuePoint& val, const TsLastSegmentBlockIndex& element) {
+          return Compare(val, {element.table_id, element.max_entity_id, element.max_ts, element.max_lsn});
+        });
 
-    auto row_num = block->GetRowNum();
-    auto ts = block->GetTimestamps();
-    auto lsn = block->GetSeqNos();
-    auto entities = block->GetEntities();
-    int start_idx = 0;
-    int end_idx = 0;
-    bool match_found = false;
-    for (size_t i = 0; i < row_num; i++) {
-      if (entities[i] > entity_id) {
-        end_idx = i;
+    bool use_binary_search_for_start_row = true;
+    for (;; ++it) {
+      ValuePoint block_span_start{it->table_id, it->min_entity_id, it->min_ts, it->min_lsn};
+      if (!Compare(block_span_start, filter_span_end)) {
         break;
       }
-      if (entities[i] != entity_id) {
-        continue;
-      }
-      if (IsTsLsnInSpans(ts[i], lsn[i], filter.spans_)) {
-        if (!match_found) {
-          start_idx = i;
-          match_found = true;
-        }
-      } else {
-        if (match_found) {
-          match_found = false;
-          block_spans.emplace_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
-                                                                 i - start_idx, tbl_schema_mgr, scan_version));
-        }
-      }
-    }
-    if (match_found) {
-      match_found = false;
-      block_spans.emplace_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, entity_id, block, start_idx,
-                                                             end_idx == 0 ? row_num - start_idx : end_idx - start_idx,
-                                                             tbl_schema_mgr, scan_version));
-    }
-  }
 
+      //  we need to read the block to do futher filtering.
+      int block_idx = it - block_indices.begin();
+      TsLastSegmentBlockInfo* info;
+      s = block_cache_->GetBlockInfo(block_idx, &info);
+      if (s == FAIL) {
+        LOG_ERROR("cannot get block info");
+        return s;
+      }
+      if (block == nullptr || block->GetBlockID() != block_idx) {
+        block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, *it, *info);
+      }
+      auto ts = block->GetTimestamps();
+      auto entities = block->GetEntities();
+      auto lsn = block->GetLSN();
+      if (ts == nullptr || entities == nullptr || lsn == nullptr) {
+        return FAIL;
+      }
+      iota_vector.resize(block->GetRowNum());
+      std::iota(iota_vector.begin(), iota_vector.end(), 0);
+
+      int start_idx = 0;
+      if (use_binary_search_for_start_row) {
+        // find the first row int the block that matches the filter.
+        auto idx_it = std::upper_bound(iota_vector.begin(), iota_vector.end(), filter_span_start,
+                                       [&](const ValuePoint& val, int idx) {
+                                         ValuePoint data_point{block->GetTableId(), entities[idx], ts[idx], lsn[idx]};
+                                         return Compare(val, data_point);
+                                       });
+        if (idx_it == iota_vector.end()) {
+          // cannot found in this block, move to the next.
+          continue;
+        }
+        start_idx = *idx_it;
+      } else {
+        ValuePoint data_point{block->GetTableId(), entities[0], ts[0], lsn[0]};
+        if (!Compare(data_point, filter_span_end)) {
+          // which means data_point > filter_span_end, the filter is end.
+          break;
+        }
+      }
+
+      // find the last row int the block that matches the filter.
+      auto idx_it = std::lower_bound(iota_vector.begin(), iota_vector.end(), filter_span_end,
+                                     [&](int idx, const ValuePoint& val) {
+                                       ValuePoint data_point{block->GetTableId(), entities[idx], ts[idx], lsn[idx]};
+                                       return Compare(data_point, val);
+                                     });
+
+      // no need to check wheather idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
+      int end_idx = idx_it - iota_vector.begin();
+
+      if (end_idx - start_idx > 0) {
+        block_spans.emplace_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, start_idx,
+                                                               end_idx - start_idx, tbl_schema_mgr, scan_version));
+      }
+
+      if (idx_it != iota_vector.end()) {
+        // filter spans end before this block, move to the next filter
+        break;
+      } else {
+        // we reach the end of the block, move to the next. And no need to use binary search for start row in the next
+        // block. just check the first row;
+        use_binary_search_for_start_row = false;
+      }
+    }
+
+    begin_it = it;
+  }
   return SUCCESS;
 }
 

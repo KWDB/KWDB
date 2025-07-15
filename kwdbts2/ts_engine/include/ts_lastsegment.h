@@ -93,6 +93,7 @@ struct TsLastSegmentBlockIndex {
   uint64_t table_id;
   uint32_t table_version, n_entity;
   int64_t min_ts, max_ts;
+  uint64_t min_lsn, max_lsn;
   uint64_t min_entity_id, max_entity_id;
 };
 
