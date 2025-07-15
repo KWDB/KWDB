@@ -466,11 +466,18 @@ KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<Kw
   return KStatus::SUCCESS;
 }
 KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
-  std::list<STDelRange> del_range;
-  auto s = GetDelRange(filter.entity_id, del_range);
+  std::list<STDelRange> del_range_all;
+  auto s = GetDelRange(filter.entity_id, del_range_all);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelRange failed.");
     return s;
+  }
+  // filter delitems that insert after scannig.
+  std::list<STDelRange> del_range;
+  for (STDelRange& d_item : del_range_all) {
+    if (d_item.lsn_span.end <= filter.end_lsn) {
+      del_range.push_back(d_item);
+    }
   }
   KwTsSpan partition_span;
   partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type);
