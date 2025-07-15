@@ -117,7 +117,7 @@ TEST_F(TestEngineSnapshotImgrate, empty) {
 // data valume test.
 TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1001;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -160,7 +160,7 @@ TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
 // snapshot data from src engine to desc engine , only 0 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1002;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -214,7 +214,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
 // snapshot data from src engine to desc engine , only 5 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1003;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -272,7 +272,9 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   }
   ASSERT_EQ(1, entity_ids.size());
   // scan table ,check if data is correct in table 1008.
+  ctx_->ts_engine = ts_engine_desc_;
   row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(row_count, 5);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -283,7 +285,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
 // snapshot data from src engine to desc engine , three partition each 5 rows.
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1004;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -336,17 +338,19 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
-  // entity_ids.clear();
-  // for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-  //   if (vg->GetMaxEntityID() > 0) {
-  //     entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
-  //     break;
-  //   }
-  // }
-  // ASSERT_EQ(1, entity_ids.size());
-  // // scan table ,check if data is correct in table 1008.
-  // row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
-  // ASSERT_EQ(row_count, 5);
+  entity_ids.clear();
+  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    if (vg->GetMaxEntityID() > 0) {
+      entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
+      break;
+    }
+  }
+  ASSERT_EQ(1, entity_ids.size());
+  // scan table ,check if data is correct in table 1008.
+  ctx_->ts_engine = ts_engine_desc_;
+  row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ctx_->ts_engine = ts_engine_src_;
+  ASSERT_EQ(row_count, 5 * partition_num);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
@@ -356,7 +360,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
 // snapshot data from table 1007, at least 5 * partitions datas. rollback at last.
 TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   roachpb::CreateTsTable meta;
-  KTableKey cur_table_id = 1007;
+  KTableKey cur_table_id = 1005;
   ConstructRoachpbTable(&meta, cur_table_id);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
@@ -409,840 +413,314 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
-  // entity_ids.clear();
-  // for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-  //   if (vg->GetMaxEntityID() > 0) {
-  //     entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
-  //     break;
-  //   }
-  // }
-  // ASSERT_EQ(1, entity_ids.size());
-  // // scan table ,check if data is correct in table 1008.
-  // row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
-  // ASSERT_EQ(row_count, 0);
+  entity_ids.clear();
+  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    if (vg->GetMaxEntityID() > 0) {
+      entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
+      break;
+    }
+  }
+  ASSERT_EQ(1, entity_ids.size());
+  // scan table ,check if data is correct in table 1008.
+  ctx_->ts_engine = ts_engine_desc_;
+  row_count = GetDataNum(ts_engine_desc_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
+  ctx_->ts_engine = ts_engine_src_;
+  ASSERT_EQ(row_count, 0);
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 }
 
-// TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
-//   int batch_num = snapshot_payload_rows_num * 2 + 332;
-//   const KTimestamp start_ts = iot_interval_ * 1000;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1006;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  // input data to  table 1007
+  int entity_num = 5;
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_src_, cur_table_id, 1 + i, 12345 + i * 1000, 5);
+  }
+  uint64_t row_num;
+  s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(row_num, 5 * entity_num);
+  s = ts_table->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(row_num, 0);
+  std::vector<kwdbts::EntityResultIndex> entity_store;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), entity_num);
 
-//   // input data to  table 1007
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//     int partition_num = 3;
-//     for (size_t i = 0; i < partition_num; i++) {
-//       char* data_value = GenSomePayloadData(ctx_, batch_num, p_len,
-//                 start_ts + i * iot_interval_ * 1000 + i * batch_num * 10 , &meta, 10, 0, false);
-//       TSSlice payload{data_value, p_len};
-//       s = tbl_range->PutData(ctx_, payload);
-//       ASSERT_EQ(s, KStatus::SUCCESS);
-//       delete[] data_value;
-//     }
-//   }
+  // create table 1008
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint64_t desc_snapshot_id;
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint64_t snapshot_id;
+  s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
 
-//   uint64_t snapshot_id;
-//   s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+  // migrate data from 1007 to 1008
+  TSSlice snapshot_data{nullptr, 0};
+  do {
+    s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    if (snapshot_data.data != nullptr) {
+      s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      free(snapshot_data.data);
+    }
+  } while (snapshot_data.len > 0);
+  s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  entity_store.clear();
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ctx_->ts_engine = ts_engine_src_;
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), entity_num);
+  
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
 
-//   // create table 1008
-//   roachpb::CreateTsTable meta_desc;
-//   KTableKey desc_table_id = 1008;
-//   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   uint64_t desc_snapshot_id;
-//   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+// snapshot data from table 1007 to table 1008, dest table entity has some data already.
+TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmpty) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1007;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  // input data to  table 1007
+  int entity_num = 5;
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_src_, cur_table_id, 1 + i, 12345 + i * 1000, 5);
+  }
+  uint64_t row_num;
+  s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(row_num, 5 * entity_num);
+  std::vector<kwdbts::EntityResultIndex> entity_store;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), entity_num);
 
-//   // migrate data from 1007 to 1008
-//   TSSlice snapshot_data{nullptr, 0};
-//   while (true) {
-//     s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     if (snapshot_data.data == nullptr) {
-//       break;
-//     }
-//     s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     free(snapshot_data.data);
-//   }
-//   s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->WriteSnapshotRollback(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+  // create table 1008
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_desc_, cur_table_id, 1 + i, 123456789 + i * 1000, 5);
+  }
+   uint64_t count;
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, entity_num * 5);
 
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   auto ts_type = ts_table_dest->GetRootTableManager()->GetTsColDataType();
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+  uint64_t desc_snapshot_id;
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
 
-//   // scan table ,check if data is correct in table 1008.
-//   KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-//   std::vector<k_uint32> scancols = {0, 1};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1, 2, 3, 4, 5, 6}, {ts_span}, ts_type, scancols, scancols, {},
-//               scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   size_t total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     total_count += count;
-//   }
-//   EXPECT_EQ(total_count, 0);
-//   delete iter1;
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
+  uint64_t snapshot_id;
+  s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
 
+  // migrate data from 1007 to 1008
+  TSSlice snapshot_data{nullptr, 0};
+  do {
+    s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    if (snapshot_data.data != nullptr) {
+      s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      free(snapshot_data.data);
+    }
+  } while (snapshot_data.len > 0);
+  s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ctx_->ts_engine = ts_engine_src_;
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, entity_num * 5);
+  
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
 
-// // snapshot data from table 1007 to table 1008, dest table entity has some data already.
-// TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmpty) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
+// snapshot data from table 1007 to table 1008, dest table entity has some data already. migrate three times.
+TEST_F(TestEngineSnapshotImgrate, DestNoEmptyThreeTimes) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1007;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  // input data to  table 1007
+  int entity_num = 5;
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_src_, cur_table_id, 1 + i, 12345 + i * 1000, 5);
+  }
+  uint64_t row_num;
+  s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(row_num, 5 * entity_num);
+  std::vector<kwdbts::EntityResultIndex> entity_store;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), entity_num);
 
-//   int batch_num = snapshot_payload_rows_num * 2 + 332;
-//   const KTimestamp start_ts = iot_interval_ * 1000;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+  // create table 1008
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_desc_, cur_table_id, 1 + i, 123456789 + i * 1000, 5);
+  }
+  uint64_t count;
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, entity_num * 5);
 
-//   DATATYPE ts_type;
-//   // input data to  table 1007
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//     char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts, &meta);
-//     TSSlice payload{data_value, p_len};
-//     s = tbl_range->PutData(ctx_, payload);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     delete[] data_value;
-//   }
+  for (size_t i = 0; i < 3; i++) {
+    uint64_t desc_snapshot_id;
+    s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    uint64_t snapshot_id;
+    s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
 
-//   uint64_t snapshot_id;
-//   s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX,
-//                                         {INT64_MIN, convertMSToPrecisionTS(start_ts + batch_num * 10, ts_type)}, &snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+    // migrate data from 1007 to 1008
+    TSSlice snapshot_data{nullptr, 0};
+    do {
+      s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      if (snapshot_data.data != nullptr) {
+        s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
+        ASSERT_EQ(s, KStatus::SUCCESS);
+        free(snapshot_data.data);
+      }
+    } while (snapshot_data.len > 0);
+    s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    s = ts_engine_desc_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+  
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, entity_num * 5);
+  
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
 
-//   // create table 1008
-//   roachpb::CreateTsTable meta_desc;
-//   KTableKey desc_table_id = 1008;
-//   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   uint64_t desc_snapshot_id;
-//   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX,
-//                                       {INT64_MIN, convertMSToPrecisionTS(start_ts + batch_num * 10, ts_type)}, &desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   // input data to  table 1008
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//       char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts + batch_num * 10, &meta);
-//       TSSlice payload{data_value, p_len};
-//       s = tbl_range->PutData(ctx_, payload);
-//       ASSERT_EQ(s, KStatus::SUCCESS);
-//       delete[] data_value;
-//   }
+// snapshot data from table 1007 to table 1008, dest table entity has some data .rollback
+TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1007;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  // input data to  table 1007
+  int entity_num = 5;
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_src_, cur_table_id, 1 + i, 12345 + i * 1000, 5);
+  }
+  uint64_t row_num;
+  s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(row_num, 5 * entity_num);
+  std::vector<kwdbts::EntityResultIndex> entity_store;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), entity_num);
 
-//   // migrate data from 1007 to 1008
-//   TSSlice snapshot_data{nullptr, 0};
-//   while (true) {
-//     s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     if (snapshot_data.data == nullptr) {
-//       break;
-//     }
-//     s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     free(snapshot_data.data);
-//   }
-//   s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+  // create table 1008
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_desc_, cur_table_id, 1 + i, 123456789 + i * 1000, 5);
+  }
+  uint64_t count;
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, entity_num * 5);
 
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
+  for (size_t i = 0; i < 3; i++) {
+    uint64_t desc_snapshot_id;
+    s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    uint64_t snapshot_id;
+    s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
 
-//   // scan table ,check if data is correct in table 1008.
-//     // scan table ,check if data is correct in table 1008.
-//   KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-//   std::vector<k_uint32> scancols = {0, 1};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
-//               scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   size_t total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     total_count += count;
-//   }
-//   EXPECT_EQ(total_count, 2 * batch_num);
-//   delete iter1;
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
-
-
-// // snapshot data from table 1007 to table 1008, dest table entity has some data already. migrate three times.
-// TEST_F(TestEngineSnapshotImgrate, DestNoEmptyThreeTimes) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
-
-//   int batch_num = 602;
-//   const KTimestamp start_ts = iot_interval_ * 1000;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   DATATYPE ts_type;
-//   // input data to  table 1007
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//     char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts, &meta);
-//     TSSlice payload{data_value, p_len};
-//     s = tbl_range->PutData(ctx_, payload);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     delete[] data_value;
-//   }
-//   // create table 1008
-//   roachpb::CreateTsTable meta_desc;
-//   KTableKey desc_table_id = 1008;
-//   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   // input data to  table 1008
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//       char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts + batch_num * 10, &meta);
-//       TSSlice payload{data_value, p_len};
-//       s = tbl_range->PutData(ctx_, payload);
-//       ASSERT_EQ(s, KStatus::SUCCESS);
-//       delete[] data_value;
-//   }
-//   for (int i = 0; i < 3; i++) {
-//     uint64_t snapshot_id;
-//     s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX,
-//                                           {INT64_MIN, convertMSToPrecisionTS(start_ts + batch_num * 10 - 1, ts_type)}, &snapshot_id);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     uint64_t desc_snapshot_id;
-//     s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX,
-//                                         {INT64_MIN, convertMSToPrecisionTS(start_ts + batch_num * 10 - 1, ts_type)}, &desc_snapshot_id);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-
-//     // migrate data from 1007 to 1008
-//     TSSlice snapshot_data{nullptr, 0};
-//     while (true) {
-//       s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//       ASSERT_EQ(s, KStatus::SUCCESS);
-//       if (snapshot_data.data == nullptr) {
-//         break;
-//       }
-//       s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//       ASSERT_EQ(s, KStatus::SUCCESS);
-//       free(snapshot_data.data);
-//     }
-//     s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     s = ts_engine_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//   }
-
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // scan table ,check if data is correct in table 1008.
-//   KwTsSpan ts_span = {convertMSToPrecisionTS(start_ts, ts_type), convertMSToPrecisionTS(start_ts + batch_num * 10 - 1, ts_type)};
-//   std::vector<k_uint32> scancols = {0, 1};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
-//               scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   size_t total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     total_count += count;
-//   }
-//   EXPECT_EQ(total_count, batch_num);
-//   delete iter1;
-//   ts_span = {convertMSToPrecisionTS(start_ts + batch_num * 10, ts_type), INT64_MAX};
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
-//               scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     total_count += count;
-//   }
-//   EXPECT_EQ(total_count, batch_num);
-//   delete iter1;
-
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
-
-// // snapshot data from table 1007 to table 1008, dest table entity has some data .rollback
-// TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
-
-//   int batch_num = snapshot_payload_rows_num * 2 + 332;
-//   const KTimestamp start_ts = iot_interval_ * 1000;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   DATATYPE ts_type;
-//   // input data to  table 1007
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//     char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts, &meta);
-//     TSSlice payload{data_value, p_len};
-//     s = tbl_range->PutData(ctx_, payload);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     delete[] data_value;
-//   }
-
-//   uint64_t snapshot_id;
-//   s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX,
-//                                         {INT64_MIN, convertMSToPrecisionTS(start_ts + batch_num * 10, ts_type)}, &snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // create table 1008
-//   roachpb::CreateTsTable meta_desc;
-//   KTableKey desc_table_id = 1008;
-//   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   uint64_t desc_snapshot_id;
-//   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX,
-//                                       {INT64_MIN, convertMSToPrecisionTS(start_ts + batch_num * 10, ts_type)}, &desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   // input data to  table 1008
-//   {
-//     std::shared_ptr<TsTable> ts_table;
-//     s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     std::shared_ptr<TsEntityGroup> tbl_range;
-//     s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     k_uint32 p_len = 0;
-//       char* data_value = GenSomePayloadData(ctx_, batch_num, p_len, start_ts + batch_num * 10 + 1, &meta);
-//       TSSlice payload{data_value, p_len};
-//       s = tbl_range->PutData(ctx_, payload);
-//       ASSERT_EQ(s, KStatus::SUCCESS);
-//       delete[] data_value;
-//   }
-
-//   // migrate data from 1007 to 1008
-//   TSSlice snapshot_data{nullptr, 0};
-//   while (true) {
-//     s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     if (snapshot_data.data == nullptr) {
-//       break;
-//     }
-//     s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     free(snapshot_data.data);
-//   }
-//   s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->WriteSnapshotRollback(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // scan table ,check if data is correct in table 1008.
-//     // scan table ,check if data is correct in table 1008.
-//   KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-//   std::vector<k_uint32> scancols = {0, 1};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, 1, {1}, {ts_span}, ts_type, scancols, scancols, {},
-//             scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   size_t total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     total_count += count;
-//   }
-//   EXPECT_EQ(total_count, batch_num);
-//   delete iter1;
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
-
-// // snapshot data from table 1007 to table 1008
-// // desc node has not created table 1008 yet.
-// TEST_F(TestEngineSnapshotImgrate, CreateSnapshotDescNoTable) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
-
-//   int row_num = 601;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // input data to  table 1007
-//   const KTimestamp start_ts = iot_interval_ * 10 * 1000;
-//   k_uint32 p_len = 0;
-//   char* data_value = GenSomePayloadData(ctx_, row_num, p_len, start_ts, &meta);
-//   std::shared_ptr<TsTable> ts_table;
-//   s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range;
-//   s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   TSSlice payload{data_value, p_len};
-//   s = tbl_range->PutData(ctx_, payload);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   delete[] data_value;
-
-//   uint64_t snapshot_id;
-//   s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // create table 1008
-//   KTableKey desc_table_id = 1008;
-//   uint64_t desc_snapshot_id;
-//   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // migrate data from 1007 to 1008
-//   TSSlice snapshot_data{nullptr, 0};
-//   while (true) {
-//     s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     if (snapshot_data.data == nullptr) {
-//       break;
-//     }
-//     s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     free(snapshot_data.data);
-//   }
-//   s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // scan table ,check if data is correct in table 1008.
-//   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-//   k_uint32 entity_id = 1;
-//   KwTsSpan ts_span = {convertMSToPrecisionTS(start_ts, ts_type), convertMSToPrecisionTS(start_ts + row_num * 10, ts_type)};
-//   std::vector<k_uint32> scancols = {0, 1, 2};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   SubGroupID group_id = 1;
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
-//               scanaggtypes, 1, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   uint32_t total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     if (total_count == 0) {
-//       ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_type));
-//     }
-//     total_count += count;
-//     res.clear();
-//   }
-//   ASSERT_EQ(total_count, row_num);
-//   delete iter1;
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
-
-// // snapshot data from table 1007 to table 1008 , only 5 rows.
-// // dest node has 1008 table, but schema version is not newest.
-// TEST_F(TestEngineSnapshotImgrate, CreateSnapshotDestTableVersionLow) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
-
-//   int row_num = 5;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // input data to  table 1007
-//   const KTimestamp start_ts = iot_interval_ * 10;
-//   k_uint32 p_len = 0;
-//   char* data_value = GenSomePayloadData(ctx_, row_num, p_len, start_ts, &meta);
-//   std::shared_ptr<TsTable> ts_table;
-//   s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range;
-//   s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   TSSlice payload{data_value, p_len};
-//   s = tbl_range->PutData(ctx_, payload);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   delete[] data_value;
-
-//   // add one column to table 1007
-//   roachpb::CreateTsTable meta_col;
-//   roachpb::KWDBKTSColumn* column = meta_col.mutable_k_column()->Add();
-//   column->set_storage_type(roachpb::DataType::TIMESTAMP);
-//   column->set_storage_len(8);
-//   column->set_column_id(13);
-//   column->set_name("column13");
-//   string err_msg;
-//   size_t col_size = column->ByteSizeLong();
-//   char* buffer = reinterpret_cast<char*>(malloc(col_size));
-//   column->SerializeToArray(buffer, col_size);
-//   TSSlice column_slice{buffer, col_size};
-//   ASSERT_EQ(column->ParseFromArray(column_slice.data, column_slice.len), true);
-//   string trans_id = "0000000000000001";
-//   s = ts_engine_->AddColumn(ctx_, cur_table_id, const_cast<char*>(trans_id.data()), column_slice, 1, 2, err_msg);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   free(buffer);
-
-//   // delete one column to table 1007
-//   column = meta_col.mutable_k_column()->Add();
-//   column->set_storage_type(roachpb::DataType::TIMESTAMP);
-//   column->set_storage_len(8);
-//   column->set_column_id(11);
-//   column->set_name("column12");
-//   col_size = column->ByteSizeLong();
-//   buffer = reinterpret_cast<char*>(malloc(col_size));
-//   column->SerializeToArray(buffer, col_size);
-//   column_slice = {buffer, col_size};
-//   ASSERT_EQ(column->ParseFromArray(column_slice.data, column_slice.len), true);
-//   trans_id = "0000000000000001";
-//   s = ts_engine_->DropColumn(ctx_, cur_table_id, const_cast<char*>(trans_id.data()), column_slice, 2, 3, err_msg);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   free(buffer);
-
-//   uint64_t snapshot_id;
-//   s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // create table 1008
-//   roachpb::CreateTsTable meta_desc;
-//   KTableKey desc_table_id = 1008;
-//   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   uint64_t desc_snapshot_id;
-//   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // migrate data from 1007 to 1008
-//   TSSlice snapshot_data{nullptr, 0};
-//   while (true) {
-//     s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     if (snapshot_data.data == nullptr) {
-//       break;
-//     }
-//     s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     free(snapshot_data.data);
-//   }
-//   s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // scan table ,check if data is correct in table 1008.
-//   k_uint32 entity_id = 1;
-//   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-//   KwTsSpan ts_span = {convertMSToPrecisionTS(start_ts, ts_type), convertMSToPrecisionTS(start_ts + row_num * 10, ts_type)};
-//   std::vector<k_uint32> scancols = {0, 1, 2};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   SubGroupID group_id = 1;
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
-//             scanaggtypes, 3, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   uint32_t total_count = 0;
-//   while (true) {
-//     ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//     if (is_finished) {
-//       break;
-//     }
-//     if (total_count == 0) {
-//       ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_type));
-//     }
-//     total_count += count;
-//     res.clear();
-//   }
-//   ASSERT_EQ(total_count, row_num);
-//   delete iter1;
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
-
-// // snapshot data from table 1007 to table 1008 , only 5 rows.
-// // dest node has 1008 table, but schema version is upper than 1007.
-// TEST_F(TestEngineSnapshotImgrate, CreateSnapshotDestTableVersionHigh) {
-//   int type = GetParam();
-//   SnapshotFactory::TestSetType(type);
-
-//   int row_num = 5;
-//   roachpb::CreateTsTable meta;
-//   KTableKey cur_table_id = 1007;
-//   ConstructRoachpbTable(&meta, "testSnapshot", cur_table_id, iot_interval_, 12);
-//   std::vector<RangeGroup> ranges{test_range};
-//   KStatus s = ts_engine_->CreateTsTable(ctx_, cur_table_id, &meta, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // input data to  table 1007
-//   const KTimestamp start_ts = iot_interval_ * 10;
-//   k_uint32 p_len = 0;
-//   char* data_value = GenSomePayloadData(ctx_, row_num, p_len, start_ts, &meta);
-//   std::shared_ptr<TsTable> ts_table;
-//   s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range;
-//   s = ts_table->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   TSSlice payload{data_value, p_len};
-//   s = tbl_range->PutData(ctx_, payload);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   delete[] data_value;
-
-//   uint64_t snapshot_id;
-//   s = ts_engine_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // create table 1008
-//   roachpb::CreateTsTable meta_desc;
-//   KTableKey desc_table_id = 1008;
-//   ConstructRoachpbTable(&meta_desc, "destSnapshot", desc_table_id, iot_interval_, 12);
-//   s = ts_engine_->CreateTsTable(ctx_, desc_table_id, &meta_desc, ranges);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // add one column to table 1007
-//   roachpb::CreateTsTable meta_col;
-//   roachpb::KWDBKTSColumn* column = meta_col.mutable_k_column()->Add();
-//   column->set_storage_type(roachpb::DataType::TIMESTAMP);
-//   column->set_storage_len(8);
-//   column->set_column_id(13);
-//   column->set_name("column13");
-//   string err_msg;
-//   size_t col_size = column->ByteSizeLong();
-//   char* buffer = reinterpret_cast<char*>(malloc(col_size));
-//   column->SerializeToArray(buffer, col_size);
-//   TSSlice column_slice{buffer, col_size};
-//   ASSERT_EQ(column->ParseFromArray(column_slice.data, column_slice.len), true);
-//   string trans_id = "0000000000000001";
-//   s = ts_engine_->AddColumn(ctx_, desc_table_id, const_cast<char*>(trans_id.data()), column_slice, 1, 2, err_msg);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   free(buffer);
-
-//   // delete one column to table 1007
-//   column = meta_col.mutable_k_column()->Add();
-//   column->set_storage_type(roachpb::DataType::TIMESTAMP);
-//   column->set_storage_len(8);
-//   column->set_column_id(11);
-//   column->set_name("column12");
-//   col_size = column->ByteSizeLong();
-//   buffer = reinterpret_cast<char*>(malloc(col_size));
-//   column->SerializeToArray(buffer, col_size);
-//   column_slice = {buffer, col_size};
-//   ASSERT_EQ(column->ParseFromArray(column_slice.data, column_slice.len), true);
-//   trans_id = "0000000000000001";
-//   s = ts_engine_->DropColumn(ctx_, desc_table_id, const_cast<char*>(trans_id.data()), column_slice, 2, 3, err_msg);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   free(buffer);
-
-//   uint64_t desc_snapshot_id;
-//   s = ts_engine_->CreateSnapshotForWrite(ctx_, desc_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // migrate data from 1007 to 1008
-//   TSSlice snapshot_data{nullptr, 0};
-//   while (true) {
-//     s = ts_engine_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     if (snapshot_data.data == nullptr) {
-//       break;
-//     }
-//     s = ts_engine_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
-//     ASSERT_EQ(s, KStatus::SUCCESS);
-//     free(snapshot_data.data);
-//   }
-//   s = ts_engine_->DeleteSnapshot(ctx_, snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DeleteSnapshot(ctx_, desc_snapshot_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   // scan table ,check if data is correct in table 1008.
-//   k_uint32 entity_id = 1;
-//   auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-//   KwTsSpan ts_span = {convertMSToPrecisionTS(start_ts, ts_type), convertMSToPrecisionTS(start_ts + row_num * 10, ts_type)};
-//   std::vector<k_uint32> scancols = {0, 1, 2};
-//   std::vector<Sumfunctype> scanaggtypes;
-//   TsStorageIterator* iter1;
-//   SubGroupID group_id = 1;
-//   std::shared_ptr<TsTable> ts_table_dest;
-//   s = ts_engine_->GetTsTable(ctx_, desc_table_id, ts_table_dest);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   std::shared_ptr<TsEntityGroup> tbl_range_desc;
-//   s = ts_table_dest->GetEntityGroup(ctx_, test_range.range_group_id, &tbl_range_desc);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   ASSERT_EQ(tbl_range_desc->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
-//             scanaggtypes, 3, &iter1, tbl_range_desc, {}, false, false), KStatus::SUCCESS);
-//   ResultSet res(scancols.size());
-//   k_uint32 count;
-//   bool is_finished = false;
-//   ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//   ASSERT_EQ(count, row_num);
-//   ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_type));
-//   ASSERT_EQ(iter1->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-//   ASSERT_EQ(count, 0);
-//   delete iter1;
-//   s = ts_engine_->DropTsTable(ctx_, cur_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   s = ts_engine_->DropTsTable(ctx_, desc_table_id);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-// }
+    // migrate data from 1007 to 1008
+    TSSlice snapshot_data{nullptr, 0};
+    do {
+      s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      if (snapshot_data.data != nullptr) {
+        s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
+        ASSERT_EQ(s, KStatus::SUCCESS);
+        free(snapshot_data.data);
+      }
+    } while (snapshot_data.len > 0);
+    s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    s = ts_engine_desc_->WriteSnapshotRollback(ctx_, desc_snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+  
+  ctx_->ts_engine = ts_engine_desc_;
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  entity_store.clear();
+  s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+  ctx_->ts_engine = ts_engine_src_;
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), entity_num);
+  
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}

@@ -1140,7 +1140,7 @@ KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, ui
   }
   RW_LATCH_UNLOCK(&write_batch_worker_lock_);
   if (worker != nullptr) {
-    return worker->Write(ctx, data, row_num);
+    return worker->Write(ctx, table_id, table_version, data, row_num);
   }
   RW_LATCH_X_LOCK(&write_batch_worker_lock_);
   if (write_batch_data_worker_ != nullptr) {
@@ -1154,9 +1154,9 @@ KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, ui
   }
   if (worker != nullptr) {
     RW_LATCH_UNLOCK(&write_batch_worker_lock_);
-    return worker->Write(ctx, data, row_num);
+    return worker->Write(ctx, table_id, table_version, data, row_num);
   }
-  worker = std::make_shared<TsWriteBatchDataWorker>(this, table_id, table_version, job_id);
+  worker = std::make_shared<TsWriteBatchDataWorker>(this, job_id);
   KStatus s = worker->Init(ctx);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsWriteBatchDataWorker init failed");
@@ -1165,7 +1165,7 @@ KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, ui
   }
   write_batch_data_worker_ = worker;
   RW_LATCH_UNLOCK(&write_batch_worker_lock_);
-  return worker->Write(ctx, data, row_num);
+  return worker->Write(ctx, table_id, table_version, data, row_num);
 }
 
 KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
@@ -1174,6 +1174,7 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
   if (write_batch_data_worker_ != nullptr && write_batch_data_worker_->GetJobId() == job_id) {
     write_batch_data_worker_->Cancel(ctx);
     write_batch_data_worker_ = nullptr;
+    LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
   }
   RW_LATCH_UNLOCK(&write_batch_worker_lock_);
   // read
@@ -1183,6 +1184,7 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
     for (auto& kv : job_it->second) {
       kv.second->Cancel(ctx);
     }
+    LOG_INFO("Cancel read batch data, job_id[%lu]", job_id);
   }
   read_batch_data_workers_.erase(job_id);
   RW_LATCH_UNLOCK(&read_batch_workers_lock_);
@@ -1199,6 +1201,7 @@ KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
       RW_LATCH_UNLOCK(&write_batch_worker_lock_);
       return KStatus::FAIL;
     }
+    LOG_INFO("Finish write batch data, job_id[%lu]", job_id);
     write_batch_data_worker_ = nullptr;
   }
   RW_LATCH_UNLOCK(&write_batch_worker_lock_);
@@ -1209,6 +1212,7 @@ KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
     for (auto& kv : job_it->second) {
       kv.second->Finish(ctx);
     }
+    LOG_INFO("Finish read batch data, job_id[%lu]", job_id);
   }
   read_batch_data_workers_.erase(job_id);
   RW_LATCH_UNLOCK(&read_batch_workers_lock_);
