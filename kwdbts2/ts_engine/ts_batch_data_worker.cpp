@@ -84,10 +84,11 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     }
     if (is_null) {
       set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
+      continue;
     } else {
       unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
     }
-    if (tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
+    if (!tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
       uint64_t offset = tag_data.size();
       memcpy(tag_data.data() + tag_value_bitmap_len_ + tags_info[tag_idx].m_offset, &offset, sizeof(uint64_t));
       uint16_t var_data_len = col_batch->getVarColDataLen(0);
