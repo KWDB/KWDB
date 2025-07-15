@@ -752,6 +752,10 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   std::shared_ptr<TsLastBlock> block = nullptr;
 
   for (const auto& span : filter.spans_) {
+    if (begin_it == block_indices.end()) {
+      break;
+    }
+
     ValuePoint filter_span_start{filter.table_id, filter.entity_id, span.ts_span.begin, span.lsn_span.begin};
     ValuePoint filter_span_end{filter.table_id, filter.entity_id, span.ts_span.end, span.lsn_span.end};
 
@@ -762,7 +766,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         });
 
     bool use_binary_search_for_start_row = true;
-    for (;; ++it) {
+    for (; it != block_indices.end(); ++it) {
       ValuePoint block_span_start{it->table_id, it->min_entity_id, it->min_ts, it->min_lsn};
       if (!Compare(block_span_start, filter_span_end)) {
         break;
