@@ -355,11 +355,21 @@ KStatus TsTableSchemaManager::GetMetricMeta(uint32_t version, std::vector<Attrib
 }
 
 KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>& info) {
-  const auto pt = tag_table_->GetTagPartitionTableManager()->GetPartitionTable(version);
-  if (pt == nullptr) {
+  auto version_obj = tag_table_->GetTagTableVersionManager()->GetVersionObject(version);
+  if (!version_obj) {
+    LOG_ERROR("GetVersionObject not found. table_version: %u ", version);
     return FAIL;
   }
-  auto tag_cols = pt->getSchemaInfo();
+  auto real_version = version_obj->metaData()->m_real_used_version_;
+  TagPartitionTable* tag_pt = nullptr;
+  uint32_t dest_version = version >= real_version ? real_version : version;
+  tag_pt = tag_table_->GetTagPartitionTableManager()->GetPartitionTable(dest_version);
+  if (tag_pt == nullptr) {
+    LOG_ERROR("GetPartitionTable not found. table_version: %u ", dest_version);
+    return FAIL;
+  }
+
+  auto tag_cols = tag_pt->getSchemaInfo();
   for (auto tag_col : tag_cols) {
     auto tag_info = tag_col->attributeInfo();
     info.push_back(tag_info);
