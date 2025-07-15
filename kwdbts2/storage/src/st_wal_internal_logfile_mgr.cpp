@@ -320,7 +320,7 @@ TS_LSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
   for (int i = 0; i < opt_->wal_file_in_group; i++) {
     if (block_no >= header.getStartBlockNo() && block_no <= header.getEndBlockNo()) {
       // at current file
-      return header.getStartLSN() + (block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE;
+      return header.getStartLSN() + (block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
     } else if (header.getStartBlockNo() >= MIN_BLOCK_NUM) {
       if (block_no > header.getStartBlockNo() - MIN_BLOCK_NUM && block_no < header.getStartBlockNo()) {
         // at prev file, won't across 2 files
