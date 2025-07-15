@@ -97,6 +97,7 @@ class TSEngineV2Impl : public TSEngine {
                               const std::vector<uint32_t/* tag column id*/> &new_index_schema) override;
 
   KStatus CompressTsTable(kwdbContext_p ctx, const KTableKey& table_id, KTimestamp ts) override {
+    LOG_WARN("should not use CompressTsTable any more.");
     return KStatus::SUCCESS;
   }
 
@@ -122,6 +123,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
     // TODO(liumengzhen) check version
+    LOG_WARN("should not use GetMetaData any more.");
     return KStatus::SUCCESS;
   }
 
@@ -143,9 +145,15 @@ class TSEngineV2Impl : public TSEngine {
   KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                          std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) override;
 
-  KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override { return KStatus::SUCCESS; }
+  KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override {
+    LOG_WARN("should not use GetBatchRepr any more.");
+    return KStatus::SUCCESS;
+  }
 
-  KStatus ApplyBatchRepr(kwdbContext_p ctx, TSSlice* batch) override { return KStatus::SUCCESS; }
+  KStatus ApplyBatchRepr(kwdbContext_p ctx, TSSlice* batch) override {
+    LOG_WARN("should not use ApplyBatchRepr any more.");
+    return KStatus::SUCCESS;
+    }
 
   // range imgration snapshot using interface...............begin................................
   KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
@@ -175,11 +183,14 @@ class TSEngineV2Impl : public TSEngine {
   KStatus BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) override;
 
 
-  KStatus FlushBuffer(kwdbContext_p ctx) override { return KStatus::SUCCESS; }
+  KStatus FlushBuffer(kwdbContext_p ctx) override;
 
   KStatus CreateCheckpoint(kwdbContext_p ctx) override;
 
-  KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override { return KStatus::SUCCESS; }
+  KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override {
+    LOG_WARN("should not use CreateCheckpointForTable any more.");
+    return KStatus::SUCCESS;
+  }
 
   KStatus Recover(kwdbContext_p ctx) override;
 
@@ -213,7 +224,10 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 
-  void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override { exit(0); }
+  void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override {
+    LOG_WARN("should not use GetTableIDList any more.");
+    exit(0);
+  }
 
   KStatus UpdateSetting(kwdbContext_p ctx) override;
 
@@ -230,16 +244,18 @@ class TSEngineV2Impl : public TSEngine {
                           uint32_t new_version, string& err_msg) override;
 
   KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override {
+    LOG_WARN("should not use AlterPartitionInterval any more.");
     return KStatus::SUCCESS;
   }
 
   KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) override;
 
-  KStatus GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) override { return KStatus::SUCCESS; }
+  KStatus GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) override;
   KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) override {
+    LOG_WARN("should not use GetTableVersion any more.");
     return KStatus::SUCCESS;
   }
-  KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override { return KStatus::SUCCESS; }
+  KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override;
   static KStatus CloseTSEngine(kwdbContext_p ctx, TSEngine* engine) { return KStatus::SUCCESS; }
   KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value);
   void AlterTableCacheCapacity(int capacity)  override {}
