@@ -539,10 +539,47 @@ class TsLastBlock : public TsBlock {
   }
 };
 
+KStatus TsLastSegment::TsLastSegBlockCache::BlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) {
+  {
+    std::shared_lock lk{mu_};
+    if (cache_flag_[block_id] == 1) {
+      *block = block_infos_[block_id];
+      return SUCCESS;
+    }
+  }
+  std::unique_lock lk{mu_};
+  if (cache_flag_[block_id] == 1) {
+    *block = block_infos_[block_id];
+    return SUCCESS;
+  }
+  // std::shared_ptr<TsLastSegment> lastseg, int block_id,
+  //           TsLastSegmentBlockIndex block_index, TsLastSegmentBlockInfo block_info
+  TsLastSegmentBlockIndex* index;
+  auto s = lastseg_cache_->GetBlockIndex(block_id, &index);
+  if (s == FAIL) {
+    LOG_ERROR("cannot get block index");
+    return s;
+  }
+
+  TsLastSegmentBlockInfo* info;
+  s = lastseg_cache_->GetBlockInfo(block_id, &info);
+  if (s == FAIL) {
+    LOG_ERROR("cannot get block info");
+    return s;
+  }
+
+  auto tmp_block = std::make_unique<TsLastBlock>(lastseg_cache_->segment_->shared_from_this(), block_id, *index, *info);
+  cache_flag_[block_id] = 1;
+  block_infos_[block_id] = std::move(tmp_block);
+  *block = block_infos_[block_id];
+  return SUCCESS;
+}
+
 TsLastSegment::TsLastSegBlockCache::TsLastSegBlockCache(TsLastSegment* last, int nblock)
     : segment_(last),
       block_index_cache_(std::make_unique<BlockIndexCache>(last)),
-      block_info_cache_(std::make_unique<BlockInfoCache>(this, nblock)) {}
+      block_info_cache_(std::make_unique<BlockInfoCache>(this, nblock)),
+      block_cache_(std::make_unique<BlockCache>(this, nblock)) {}
 
 KStatus TsLastSegment::TsLastSegBlockCache::GetAllBlockIndex(
     std::vector<TsLastSegmentBlockIndex>** block_indices) const {
@@ -561,6 +598,10 @@ KStatus TsLastSegment::TsLastSegBlockCache::GetBlockIndex(int block_id, TsLastSe
 
 KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
   return block_info_cache_->GetBlockInfo(block_id, info);
+}
+
+KStatus TsLastSegment::TsLastSegBlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const {
+  return block_cache_->GetBlock(block_id, block);
 }
 
 struct Element_ {
@@ -781,7 +822,13 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         return s;
       }
       if (block == nullptr || block->GetBlockID() != block_idx) {
-        block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, *it, *info);
+        std::shared_ptr<TsBlock> tmp_block;
+        auto s = block_cache_->GetBlock(block_idx, &tmp_block);
+        if (s == FAIL) {
+          return s;
+        }
+        block = std::static_pointer_cast<TsLastBlock>(tmp_block);
+        // block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, *it, *info);
       }
       auto ts = block->GetTimestamps();
       auto entities = block->GetEntities();
