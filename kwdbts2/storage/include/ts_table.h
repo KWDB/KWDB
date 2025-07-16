@@ -528,6 +528,8 @@ class TsTable {
 
   virtual uint64_t GetHashNum();
 
+  virtual KStatus GetLastRowEntity(EntityResultIndex& entity_id);
+
   struct SubgroupEntities{
     uint64_t entity_group_id;
     uint32_t subgroup_id;
@@ -570,8 +572,6 @@ class TsTable {
                               const std::vector<roachpb::NTagIndexInfo>& idx_info = {});
 
  public:
-  KStatus GetLastRowEntity(EntityResultIndex& entity_id);
-
   static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
                                                           uint64_t partition_interval, ErrorInfo& err_info,

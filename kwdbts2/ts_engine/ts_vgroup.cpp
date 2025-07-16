@@ -331,6 +331,72 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   return s;
 }
 
+KStatus TsVGroup::GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                   pair<timestamp64, uint32_t>& last_row_entity) {
+  KTableKey table_id = table_schema_mgr->GetTableId();
+  DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
+  uint32_t db_id = GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  auto current = CurrentVersion();
+  auto ts_partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, ts_col_type);
+  {
+    std::shared_lock<std::shared_mutex> lock(last_row_mutex_);
+    if (last_row_checked_[table_id] && last_row_entity_.count(table_id)) {
+      last_row_entity = last_row_entity_[table_id];
+      return KStatus::SUCCESS;
+    }
+  }
+  {
+    std::unique_lock<std::shared_mutex> lock(last_row_mutex_);
+    if (ts_partitions.empty()) {
+      last_row_entity = {INT64_MIN, 0};
+      last_row_checked_[table_id] = true;
+      return KStatus::SUCCESS;
+    }
+  }
+  bool last_row_found = false;
+  for (int i = ts_partitions.size() - 1; !last_row_found && i >= 0; --i) {
+    std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
+    for (TSEntityID entity_id = 1; entity_id <= max_entity_id_; ++entity_id) {
+      // TODO(liumengzhen) : set correct lsn
+      TS_LSN scan_lsn = UINT64_MAX;
+      TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type,
+                                scan_lsn, {{INT64_MIN, INT64_MAX}}};
+      std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
+      KStatus ret = ts_partitions[i]->GetBlockSpan(filter, &ts_block_spans, table_schema_mgr,
+                                                   table_schema_mgr->GetCurrentVersion());
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetBlockSpan failed.");
+        return KStatus::FAIL;
+      }
+      if (ts_block_spans.empty()) continue;
+
+      TsBlockSpanSortedIterator iter(ts_block_spans, EngineOptions::g_dedup_rule);
+      iter.Init();
+      bool is_finished = false;
+      std::shared_ptr<TsBlockSpan> dedup_block_span;
+      std::vector<shared_ptr<TsBlockSpan>> sorted_ts_block_spans;
+      while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
+        sorted_ts_block_spans.push_back(dedup_block_span);
+      }
+      ts_block_spans.clear();
+      dedup_block_span.reset();
+
+      if (last_block_span == nullptr || last_block_span->GetLastTS() < sorted_ts_block_spans.back()->GetLastTS()) {
+        last_block_span = sorted_ts_block_spans.back();
+      }
+    }
+    if (last_block_span == nullptr) continue;
+    last_row_entity = {last_block_span->GetLastTS(), last_block_span->GetEntityID()};
+    last_row_found = true;
+  }
+  std::unique_lock<std::shared_mutex> lock(last_row_mutex_);
+  if (!last_row_entity_.count(table_id) || last_row_entity.first >= last_row_entity_[table_id].first) {
+    last_row_entity_[table_id] = last_row_entity;
+  }
+  last_row_checked_[table_id] = true;
+  return KStatus::SUCCESS;
+}
+
 void TsVGroup::compactRoutine(void* args) {
   while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
     std::unique_lock<std::mutex> lock(cv_mutex_);

@@ -1244,6 +1244,7 @@ KStatus TsTable::GetLastRowEntity(EntityResultIndex& entity_id) {
         entity_id.entityGroupId = e_grp.first;
         entity_id.subGroupId = sub_grp->GetID();
         entity_id.entityId = cur_last_entity.second;
+        entity_max_ts = cur_last_entity.first;
       }
     }
   }

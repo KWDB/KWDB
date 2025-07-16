@@ -19,6 +19,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -80,6 +81,10 @@ class TsVGroup {
   std::mutex cv_mutex_;
 
   std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
+
+  mutable std::shared_mutex last_row_mutex_;
+  std::map<uint32_t, bool> last_row_checked_;
+  std::map<uint32_t, pair<timestamp64, uint32_t>> last_row_entity_;
 
  public:
   TsVGroup() = delete;
@@ -286,6 +291,26 @@ class TsVGroup {
    */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
+
+  KStatus GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                           pair<timestamp64, uint32_t>& last_row_entity);
+
+  void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
+    std::unique_lock<std::shared_mutex> lock(last_row_mutex_);
+    if (!last_row_entity_.count(table_id) || max_ts >= last_row_entity_[table_id].first) {
+      last_row_entity_[table_id] = {max_ts, entity_id};
+    }
+  }
+
+  void ResetEntityMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
+    std::unique_lock<std::shared_mutex> lock(last_row_mutex_);
+    if (last_row_entity_.count(table_id) && max_ts >= last_row_entity_[table_id].first) {
+      if (entity_id == last_row_entity_[table_id].second) {
+        last_row_entity_.erase(table_id);
+        last_row_checked_[table_id] = false;
+      }
+    }
+  }
 
  private:
   // check partition of rows exist. if not creating it.

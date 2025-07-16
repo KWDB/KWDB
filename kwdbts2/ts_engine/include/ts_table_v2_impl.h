@@ -128,6 +128,8 @@ class TsTableV2Impl : public TsTable {
     */
   virtual KStatus TSxClean(kwdbContext_p ctx);
 
+  KStatus GetLastRowEntity(EntityResultIndex& entity_id) override;
+
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                              const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
 
