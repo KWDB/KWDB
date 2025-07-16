@@ -119,7 +119,7 @@ struct TsLastSegmentColumnBlock {
   std::string buffer;
 };
 
-class TsLastSegment : public TsSegmentBase, public std::enable_shared_from_this<TsLastSegment> {
+class TsLastSegment : public TsSegmentBase {
  public:
   static int kNRowPerBlock;
   friend class TsLastBlock;

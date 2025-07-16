@@ -316,7 +316,7 @@ constexpr static int TIMESTAMP8_CACHE_ID = -2;
 
 class TsLastBlock : public TsBlock {
  private:
-  std::shared_ptr<TsLastSegment> lastsegment_;
+  TsLastSegment* lastsegment_;
 
   int block_id_;
 
@@ -326,13 +326,14 @@ class TsLastBlock : public TsBlock {
   std::unique_ptr<ColumnBlockCacheV2> column_cache_;
 
  public:
-  TsLastBlock(std::shared_ptr<TsLastSegment> lastseg, int block_id, TsLastSegmentBlockIndex block_index,
+  TsLastBlock(TsLastSegment* lastseg, int block_id, TsLastSegmentBlockIndex block_index,
               TsLastSegmentBlockInfo block_info)
-      : lastsegment_(std::move(lastseg)),
+      : lastsegment_(lastseg),
         block_id_(block_id),
         block_index_(block_index),
         block_info_(std::move(block_info)),
         column_cache_(std::make_unique<ColumnBlockCacheV2>()) {}
+  ~TsLastBlock() = default;
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }
   size_t GetRowNum() override { return block_info_.nrow; }
@@ -568,7 +569,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockCache::GetBlock(int block_id, s
     return s;
   }
 
-  auto tmp_block = std::make_unique<TsLastBlock>(lastseg_cache_->segment_->shared_from_this(), block_id, *index, *info);
+  auto tmp_block = std::make_unique<TsLastBlock>(lastseg_cache_->segment_, block_id, *index, *info);
   cache_flag_[block_id] = 1;
   block_infos_[block_id] = std::move(tmp_block);
   *block = block_infos_[block_id];
@@ -721,7 +722,11 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
       return s;
     }
 
-    auto block = std::make_shared<TsLastBlock>(shared_from_this(), idx, block_indices[idx], *info);
+    std::shared_ptr<TsBlock> tmp_block;
+    block_cache_->GetBlock(idx, &tmp_block);
+    auto block = std::static_pointer_cast<TsLastBlock>(tmp_block);
+
+    // auto block = std::make_shared<TsLastBlock>(shared_from_this(), idx, block_indices[idx], *info);
 
     // split current block to several span;
     int prev_end = 0;
