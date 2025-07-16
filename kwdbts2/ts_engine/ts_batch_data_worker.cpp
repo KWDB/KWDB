@@ -424,8 +424,8 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 
   if (row_type == TAG_ONLY) {
     *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
-    LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], entity_id[%lu], row_num[%u]",
-             job_id_, table_id, entity_id, *row_num);
+    LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], vgroup_id[%u], entity_id[%lu], row_num[%u]",
+             job_id_, table_id, vgroup_id, entity_id, *row_num);
     return KStatus::SUCCESS;
   }
 
@@ -459,8 +459,8 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
     return KStatus::FAIL;
   }
   *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
-  LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], entity_id[%lu], row_num[%u]",
-           job_id_, table_id, entity_id, *row_num);
+  LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], vgroup_id[%u], entity_id[%lu], row_num[%u]",
+           job_id_, table_id, vgroup_id, entity_id, *row_num);
   return s;
 }
 
