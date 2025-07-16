@@ -494,6 +494,7 @@ func (h *tsTxnHeartbeater) setWrapped(wrapped lockedSender) { h.wrapped = wrappe
 //
 // - errType 1: return a pg error
 // - errType 2: trigger a panic
+// todo(tyh): delete after test
 func ErrorOrPanicOnSpecificNode(nodeID int, setting *cluster.Settings, phase int) error {
 	testScenario := TestTxnScenario.Get(&setting.SV)
 	res, err := ExtractTxnTestScenario(testScenario)

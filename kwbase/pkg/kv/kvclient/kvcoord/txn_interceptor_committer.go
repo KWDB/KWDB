@@ -49,6 +49,7 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 
 // TestTxnScenario is a cluster setting that specifies test transaction scenarios.
 // The format is a semicolon-separated list of phase:nodeID:errType, e.g., "8:2:1;6:1:1".
+// todo(tyh): delete after test
 var TestTxnScenario = settings.RegisterStringSetting(
 	"sql.test_txn.scenario",
 	"txn test scenario",

@@ -267,6 +267,7 @@ func (r *Replica) executeWriteTSBatch(
 	ctx context.Context, ba *roachpb.BatchRequest, st storagepb.LeaseStatus, g *concurrency.Guard,
 ) (br *roachpb.BatchResponse, _ *concurrency.Guard, pErr *roachpb.Error) {
 	startTime := timeutil.Now()
+	// todo(tyh): delete after test
 	if ba.TsTransaction != nil {
 		if ba.Requests != nil {
 			switch ba.Requests[0].GetInner().(type) {
@@ -285,9 +286,11 @@ func (r *Replica) executeWriteTSBatch(
 			}
 		}
 	}
+	// todo(tyh): delete after test
 	if ba.Requests != nil {
 		switch ba.Requests[0].GetInner().(type) {
 		case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
+			fmt.Printf("node %v received insert request\n", r.NodeID())
 			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 11); err != nil {
 				return nil, g, roachpb.NewError(err)
 			}
