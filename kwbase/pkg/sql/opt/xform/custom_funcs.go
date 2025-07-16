@@ -88,15 +88,6 @@ func (c *CustomFuncs) IsCanonicalScan(scan *memo.ScanPrivate) bool {
 	return scan.IsCanonical()
 }
 
-// IsCanonicalTSScan returns true if the given TSScanPrivate is an original
-// unaltered primary index Scan operator (i.e. unconstrained and not limited).
-func (c *CustomFuncs) IsCanonicalTSScan(scan *memo.TSScanPrivate) bool {
-	if scan.PrimaryTagFilter == nil && scan.HardLimit == 0 {
-		return true
-	}
-	return false
-}
-
 // ExploreOrderedTSScan returns true if the given ScanPrivate need explore ordered tsscan
 func (c *CustomFuncs) ExploreOrderedTSScan(scan *memo.TSScanPrivate) bool {
 	return scan.ExploreOrderedScan
@@ -1283,30 +1274,6 @@ func (c *CustomFuncs) GenerateLimitedScans(
 
 		sb.build(grp)
 	}
-}
-
-// GenerateLimitedTSScans convert limit-tsscan to tsscan(hardlimit)
-func (c *CustomFuncs) GenerateLimitedTSScans(
-	grp memo.RelExpr,
-	scanPrivate *memo.TSScanPrivate,
-	limit tree.Datum,
-	required physical.OrderingChoice,
-) {
-	limitVal := int64(*limit.(*tree.DInt))
-	newScanPrivate := *scanPrivate
-	// If the alternate index does not conform to the ordering, then skip it.
-	// If reverse=true, then the tsScan needs to be in reverse order to match
-	// the required ordering.
-	ok, reverse := ordering.TSScanPrivateCanProvide(
-		c.e.mem.Metadata(), &newScanPrivate, &required,
-	)
-	if !ok {
-		return
-	}
-	newScanPrivate.HardLimit = memo.MakeScanLimit(limitVal, reverse)
-	var sb limitTSScanBuilder
-	sb.init(c, newScanPrivate)
-	sb.build(grp)
 }
 
 // ----------------------------------------------------------------------

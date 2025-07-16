@@ -368,12 +368,12 @@ KStatus SortRowChunk::Append(SortRowChunkPtr& data_chunk_ptr,
       DatumPtr input_col_data_ptr =
           input_row_data_ptr + data_chunk_ptr->col_offset_[col];
       if (col_info_[col].is_string) {
-        if (!*reinterpret_cast<k_bool*>(input_col_data_ptr)) {
-          row_data_ptr[col_offset_[col]] = 1;
+        if (!*reinterpret_cast<k_bool*>(input_col_data_ptr)) {  // is null
+          row_data_ptr[col_offset_[col]] = 0;
           memset(row_data_ptr + col_offset_[col] + NULL_INDECATOR_WIDE, 0,
                  col_info_[col].max_string_len + STRING_WIDE);
         } else {
-          row_data_ptr[col_offset_[col]] = 0;
+          row_data_ptr[col_offset_[col]] = 1;
           k_uint8 *input_non_constant_data;
           if (data_chunk_ptr->non_constant_save_mode_ == POINTER_MODE) {
             input_non_constant_data = *reinterpret_cast<k_uint8**>(

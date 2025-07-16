@@ -39,15 +39,11 @@ func tsScanBuildProvided(expr memo.RelExpr, required *physical.OrderingChoice) o
 func TSScanPrivateCanProvide(
 	md *opt.Metadata, s *memo.TSScanPrivate, required *physical.OrderingChoice,
 ) (ok bool, reverse bool) {
-	if !required.Optional.Empty() {
-		if required.Optional.Contains(md.TableMeta(s.Table).MetaID.ColumnID(0)) {
-			return true, false
-		}
-		return false, false
+	//if s.OrderedScanType == keys.OrderedScan || s.OrderedScanType == keys.SortAfterScan {
+	if required.Optional.Contains(md.TableMeta(s.Table).MetaID.ColumnID(0)) {
+		return true, false
 	}
-	// we need not perform optimization if there are sorted columns.
-	if len(required.Columns) > 0 {
-		return false, false
-	}
-	return true, false
+	//}
+
+	return false, false
 }

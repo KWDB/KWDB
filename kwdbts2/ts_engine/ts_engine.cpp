@@ -1849,6 +1849,36 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::FlushBuffer(kwdbContext_p ctx) {
+  if (options_.wal_level != WALMode::OFF) {
+    {
+      wal_mgr_->Lock();
+      wal_mgr_->Flush(ctx);
+      wal_mgr_->Unlock();
+    }
+    for (auto& vg : vgroups_) {
+      auto wal = vg->GetWALManager();
+      wal->Lock();
+      wal->Flush(ctx);
+      wal->Unlock();
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
+  if (wal_level == nullptr) {
+    LOG_ERROR("wal_level is nullptr");
+    return KStatus::FAIL;
+  }
+  *wal_level = options_.wal_level;
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) {
+  return GetWaitThreadNum(ctx, resp);
+}
+
 // get max entity id
 KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
   std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;

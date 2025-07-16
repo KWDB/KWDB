@@ -79,9 +79,6 @@ class TsVGroup {
   // Mutexes for condition variables
   std::mutex cv_mutex_;
 
-  // Flushing Mutex
-  std::mutex flush_mutex_;
-
   std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
 
  public:
@@ -119,7 +116,6 @@ class TsVGroup {
 
   // flush all mem segment data into last segment.
   KStatus Flush() {
-    std::lock_guard lk{flush_mutex_};
     std::shared_ptr<TsMemSegment> imm_segment;
     mem_segment_mgr_.SwitchMemSegment(&imm_segment);
     assert(imm_segment.get() != nullptr);
