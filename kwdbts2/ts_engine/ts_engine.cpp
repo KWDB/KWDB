@@ -634,8 +634,7 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
     return KStatus::SUCCESS;
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  auto vgroup = GetVGroupByID(ctx, 1);
   return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
 }
 
@@ -645,8 +644,7 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
     return KStatus::SUCCESS;
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  auto vgroup = GetVGroupByID(ctx, 1);
   return vgroup->MtrCommit(ctx, mtr_id);
 }
 
@@ -666,8 +664,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   KStatus s;
 
   if (skip_log) {
-    std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-    auto vgroup = GetVGroupByID(ctx, distrib(gen));
+    auto vgroup = GetVGroupByID(ctx, 1);
     s = vgroup->MtrRollback(ctx, mtr_id);
     if (s == FAIL) {
       Return(s);
@@ -1521,8 +1518,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     auto log_entry = it.second;
     uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
-      std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-      auto vgroup = GetVGroupByID(ctx, distrib(gen));
+      auto vgroup = GetVGroupByID(ctx, 1);
       s = vgroup->MtrCommit(ctx, mtr_id);
       if (s == FAIL) return s;
     } else {
