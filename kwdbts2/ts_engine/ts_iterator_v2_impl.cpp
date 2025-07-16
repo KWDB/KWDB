@@ -166,7 +166,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
     auto s = partition_version->GetBlockSpan(filter, &cur_block_span, table_schema_mgr_, table_version_);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("e_paritition GetBlockSpan failed.");
+      LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
     }
     ts_block_spans_.splice(ts_block_spans_.begin(), cur_block_span);

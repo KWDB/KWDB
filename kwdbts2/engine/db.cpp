@@ -132,6 +132,7 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   if (strcmp(options.engine_version, "2") == 0) {
     g_engine_version = 2;
     auto engine = new TSEngineV2Impl(opts);
+    engine->initRangeIndexMap(applied_indexes, range_num);
     auto s = engine->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return ToTsStatus("open TSEngineV2Impl Error!");
@@ -1307,8 +1308,8 @@ TSStatus TSDeleteSnapshot(TSEngine* engine, TSTableID table_id, uint64_t snapsho
   return kTsSuccess;
 }
 
-TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
-                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, int32_t* row_num) {
+TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
+                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, uint32_t* row_num) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
   KStatus s = InitServerKWDBContext(ctx);
@@ -1323,7 +1324,7 @@ TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint32_t table_ve
 }
 
 TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                          TSSlice* data, int32_t* row_num) {
+                          TSSlice* data, uint32_t* row_num) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
   KStatus s = InitServerKWDBContext(ctx);

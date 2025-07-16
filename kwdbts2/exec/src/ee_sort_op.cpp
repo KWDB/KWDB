@@ -219,8 +219,8 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
           }
         }
         container_ = std::move(disk_container);
-      } else if (limit_ > 0 && (limit_ + offset_) * chunk->RowSize() <
-                                   SORT_MAX_MEM_BUFFER_SIZE) {
+      } else if (limit_ > 0 && (limit_ + offset_) <
+                                   (SORT_MAX_MEM_BUFFER_SIZE / chunk->RowSize())) {
         sort_type_ = EESortType::EE_SORT_HEAP;
         auto heap_container = std::make_unique<HeapSortContainer>(
             order_info_, input_col_info_, input_col_num_, limit_ + offset_);

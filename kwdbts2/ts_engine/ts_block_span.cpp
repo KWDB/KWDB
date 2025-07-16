@@ -133,6 +133,21 @@ uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
   return block_->GetLSNAddr(start_row_ + row_idx);
 }
 
+KStatus TsBlockSpan::GetCompressData(std::string& data) {
+  assert(nrow_ > 0);
+  // compressed data
+  KStatus s = block_->GetCompressDataFromFile(convert_.version_conv_->scan_version_, nrow_, data);
+  if (s == KStatus::SUCCESS) {
+    return s;
+  }
+  // build compressed data
+  s = convert_.BuildCompressedData(data);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  return KStatus::SUCCESS;
+}
+
 void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
   *min_ts = block_->GetTS(start_row_);
   *max_ts = block_->GetTS(start_row_ + nrow_ - 1);

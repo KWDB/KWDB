@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <atomic>
 #include <deque>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -279,12 +280,8 @@ class TsMemSegBlock : public TsBlock {
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
 
-  KStatus GetCompressData(TSSlice* data, int32_t* row_num) override {
-    return KStatus::SUCCESS;
-  }
-
-  KStatus GetCompressDataWithEntityID(TSSlice* data, int32_t* row_num) override {
-    return KStatus::SUCCESS;
+  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
+    return KStatus::FAIL;
   }
 
   bool InsertRow(TSMemSegRowData* row) {

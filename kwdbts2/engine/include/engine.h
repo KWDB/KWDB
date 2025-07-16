@@ -352,14 +352,14 @@ struct TSEngine {
     return KStatus::FAIL;
   }
 
-  virtual KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+  virtual KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                                 uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
-                                int32_t* row_num) {
+                                uint32_t* row_num) {
     return FAIL;
   }
 
   virtual KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                                 TSSlice* data, int32_t* row_num) {
+                                 TSSlice* data, uint32_t* row_num) {
     return FAIL;
   }
 
@@ -441,7 +441,12 @@ struct TSEngine {
     * @return KStatus
     */
   virtual KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
+<<<<<<< HEAD
                                 uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) = 0;
+=======
+                                uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) = 0;
+
+>>>>>>> kwdb5/st-v3
   /**
     * @brief begin one transaction.
     * @param[in] table_id  ID
@@ -667,8 +672,12 @@ class TSEngineImpl : public TSEngine {
                       uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
 
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
+<<<<<<< HEAD
                         uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
 
+=======
+                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
+>>>>>>> kwdb5/st-v3
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 

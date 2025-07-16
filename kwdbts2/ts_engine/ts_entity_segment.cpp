@@ -48,11 +48,9 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
 KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
   if (entity_id > header_->entity_num) {
     is_exist = false;
-    entity_item = TsEntityItem{};
-    entity_item.entity_id = entity_id;
-    LOG_WARN("entity item[id=%lu] not exist.", entity_id);
-    return KStatus::SUCCESS;
+    return KStatus::FAIL;
   }
+  is_exist = true;
   assert(entity_id * sizeof(TsEntityItem) <= r_file_->GetFileSize() - sizeof(TsEntityItemFileHeader));
   TSSlice result;
   KStatus s = r_file_->Read((entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
@@ -132,10 +130,10 @@ KStatus TsEntitySegmentMetaManager::Open() {
 
 KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
                                                     std::vector<TsEntitySegmentBlockItem*>* blk_items) {
-  TsEntityItem entity_item;
+  TsEntityItem entity_item{entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
-  if (s != KStatus::SUCCESS) {
+  if (s != KStatus::SUCCESS && is_exist) {
     return s;
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
@@ -157,10 +155,10 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                                   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                                   uint32_t scan_version) {
-  TsEntityItem entity_item;
+  TsEntityItem entity_item{filter.entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(filter.entity_id, entity_item, is_exist);
-  if (s != KStatus::SUCCESS) {
+  if (s != KStatus::SUCCESS && is_exist) {
     return s;
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
@@ -245,9 +243,13 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
 
   if (!metric_schema_.empty() && isVarLenType(metric_schema_[col_idx].type)) {
     char* ptr = column_blocks_[col_idx + 1].buffer.data();
-    uint32_t offset = *reinterpret_cast<uint32_t*>(ptr + row_idx * sizeof(uint32_t));
-    uint32_t next_row_offset = *reinterpret_cast<uint32_t*>(ptr + (row_idx + 1) * sizeof(uint32_t));
-    value.data = column_blocks_[col_idx + 1].buffer.data() + offset;
+    uint32_t offset = 0;
+    if (row_idx != 0) {
+      offset = *reinterpret_cast<uint32_t *>(ptr + (row_idx - 1) * sizeof(uint32_t));
+    }
+    uint32_t next_row_offset = *reinterpret_cast<uint32_t*>(ptr + row_idx * sizeof(uint32_t));
+    uint32_t var_offsets_len = n_rows_ * sizeof(uint32_t);
+    value.data = column_blocks_[col_idx + 1].buffer.data() + var_offsets_len + offset;
     value.len = next_row_offset - offset;
   } else {
     size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx].size);
@@ -258,10 +260,10 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
 }
 
 KStatus TsEntityBlock::LoadLSNColData(TSSlice buffer) {
-  assert(block_info_.col_block_offset.size() == n_cols_ + 1);
+  assert(block_info_.col_block_offset.size() == n_cols_);
   assert(column_blocks_.size() == n_cols_);
-  uint32_t start_offset = block_info_.col_block_offset[0];
-  uint32_t end_offset = block_info_.col_block_offset[1];
+  uint32_t start_offset = 0;
+  uint32_t end_offset = block_info_.col_block_offset[0];
   // decompress
   TSSlice data{buffer.data, end_offset - start_offset};
   std::string plain;
@@ -278,18 +280,16 @@ KStatus TsEntityBlock::LoadLSNColData(TSSlice buffer) {
 
 KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                                          TSSlice buffer) {
-  assert(block_info_.col_block_offset.size() == n_cols_ + 1);
+  assert(block_info_.col_block_offset.size() == n_cols_);
   assert(column_blocks_.size() == n_cols_);
   assert(column_blocks_.size() > col_idx + 1);
+  bool is_var_type = col_idx > 0 && isVarLenType(metric_schema[col_idx].type);
   const auto& mgr = CompressorManager::GetInstance();
   if (metric_schema_.empty()) {
     metric_schema_ = metric_schema;
   }
-  uint32_t start_offset = block_info_.col_block_offset[col_idx + 1];
-  uint32_t end_offset = block_info_.col_block_offset[col_idx + 2];
-  assert(buffer.len == end_offset - start_offset);
 
-  TSSlice data{buffer.data, end_offset - start_offset};
+  TSSlice data{buffer.data, buffer.len};
   size_t bitmap_len = 0;
   if (col_idx >= 1) {
     bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
@@ -299,14 +299,37 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     column_blocks_[col_idx + 1].bitmap.SetCount(n_rows_);
   }
   RemovePrefix(&data, bitmap_len);
-  std::string plain;
-  bool ok = mgr.DecompressData(data, &column_blocks_[col_idx + 1].bitmap, n_rows_, &plain);
-  if (!ok) {
-    LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
-    return KStatus::FAIL;
+  if (!is_var_type) {
+    std::string plain;
+    bool ok = mgr.DecompressData(data, &column_blocks_[col_idx + 1].bitmap, n_rows_, &plain);
+    if (!ok) {
+      LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
+      return KStatus::FAIL;
+    }
+    // save decompressed col block data
+    column_blocks_[col_idx + 1].buffer = std::move(plain);
+  } else {
+    uint32_t var_offsets_len = *reinterpret_cast<uint32_t*>(data.data);
+    RemovePrefix(&data, sizeof(uint32_t));
+    TSSlice compressed_var_offsets = {data.data, var_offsets_len};
+    std::string var_offsets;
+    bool ok = mgr.DecompressData(compressed_var_offsets, nullptr, n_rows_, &var_offsets);
+    if (!ok) {
+      LOG_ERROR("Decompress var offsets failed");
+      return KStatus::FAIL;
+    }
+    assert(var_offsets.size() == n_rows_ * sizeof(uint32_t));
+    column_blocks_[col_idx + 1].buffer.append(var_offsets);
+    RemovePrefix(&data, var_offsets_len);
+    std::string var_data;
+    ok = mgr.DecompressVarchar(data, &var_data);
+    if (!ok) {
+      LOG_ERROR("Decompress varchar failed");
+      return KStatus::FAIL;
+    }
+    column_blocks_[col_idx + 1].buffer.append(var_data);
+    assert(*reinterpret_cast<uint32_t*>(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
   }
-  // save decompressed col block data
-  column_blocks_[col_idx + 1].buffer = std::move(plain);
   return KStatus::SUCCESS;
 }
 
@@ -318,14 +341,14 @@ KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TSSlice buffer) {
 }
 
 KStatus TsEntityBlock::LoadBlockInfo(TSSlice buffer) {
-  for (int i = 0; i < n_cols_ + 1; ++i) {
+  for (int i = 0; i < n_cols_; ++i) {
     block_info_.col_block_offset.push_back(*reinterpret_cast<uint32_t*>(buffer.data + sizeof(uint32_t) * i));
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsEntityBlock::LoadAggInfo(TSSlice buffer) {
-  for (int i = 0; i < n_cols_; ++i) {
+  for (int i = 0; i < n_cols_ - 1; ++i) {
     block_info_.col_agg_offset.push_back(*reinterpret_cast<uint32_t*>(buffer.data + sizeof(uint32_t) * i));
   }
   return KStatus::SUCCESS;
@@ -336,18 +359,20 @@ KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>& metric_sche
   assert(n_cols_ == metric_schema.size() + 1);
   // block info(col offsets)
   LoadBlockInfo(buffer);
-  assert(block_info_.col_block_offset.size() == n_cols_ + 1);
+  assert(block_info_.col_block_offset.size() == n_cols_);
   // lsn column block
-  uint32_t start_offset = block_info_.col_block_offset[0];
-  KStatus s = LoadLSNColData({buffer.data + start_offset, buffer.len - start_offset});
+  uint32_t start_offset = 0;
+  uint32_t end_offset = block_info_.col_block_offset[0];
+  KStatus s = LoadLSNColData({buffer.data, end_offset - start_offset});
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("block segment column[0] data load failed");
     return s;
   }
   // metric column blocks
   for (int i = 0; i < n_cols_ - 1; ++i) {
-    start_offset = block_info_.col_block_offset[i + 1];
-    s = LoadColData(i, metric_schema, {buffer.data + start_offset, buffer.len - start_offset});
+    start_offset = block_info_.col_block_offset[i];
+    end_offset = block_info_.col_block_offset[i + 1];
+    s = LoadColData(i, metric_schema, {buffer.data + start_offset, end_offset - start_offset});
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", i + 1);
       return s;
@@ -361,7 +386,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   if (!HasDataCached(0)) {
     KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[0] data load failed");
+      LOG_ERROR("block segment column[ts] data load failed");
       return s;
     }
   }
@@ -369,7 +394,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   if (!HasDataCached(-1)) {
     KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[0] data load failed");
+      LOG_ERROR("block segment column[lsn] data load failed");
       return s;
     }
   }
@@ -404,7 +429,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans,
   if (!HasDataCached(0)) {
     KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[0] data load failed");
+      LOG_ERROR("block segment column[ts] data load failed");
       return s;
     }
   }
@@ -506,6 +531,23 @@ uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {
     }
   }
   return reinterpret_cast<uint64_t*>(column_blocks_[0].buffer.data() + row_num * sizeof(uint64_t));
+}
+
+KStatus TsEntityBlock::GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) {
+  if (nrow != n_rows_ || table_version != table_version_) {
+    return KStatus::FAIL;
+  }
+  KStatus s = entity_segment_->GetBlockData(this, data);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetBlockData failed");
+    return s;
+  }
+  s = entity_segment_->GetAggData(this, data);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetAggData failed");
+    return s;
+  }
+  return KStatus::SUCCESS;
 }
 
 bool TsEntityBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
@@ -640,12 +682,26 @@ KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);
 }
 
+KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& data) {
+  // get compressed data
+  TSSlice buffer;
+  buffer.len = block->GetBlockLength();
+  KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer.data, buffer.len);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegment::GetBlockData read block data[offset=%lu, length=%d] failed",
+              block->GetBlockOffset(), block->GetBlockLength());
+    return s;
+  }
+  data.append(buffer.data, buffer.len);
+  return KStatus::SUCCESS;
+}
+
 KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
                                        TsEntityBlock* block) {
   // init block info
   if (block->GetBlockInfo().col_block_offset.empty()) {
     TSSlice buffer;
-    buffer.len = sizeof(uint32_t) * (block->GetNCols() + 1);
+    buffer.len = sizeof(uint32_t) * block->GetNCols();
     KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer.data, buffer.len);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read block info data failed")
@@ -659,11 +715,15 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
   }
   // init column block
   if (!block->HasDataCached(col_idx)) {
-    uint32_t start_offset = block->GetBlockInfo().col_block_offset[col_idx + 1];
-    uint32_t end_offset = block->GetBlockInfo().col_block_offset[col_idx + 2];
+    uint32_t col_offsets_len = sizeof(uint32_t) * block->GetNCols();
+    uint32_t start_offset = 0;
+    if (col_idx != -1) {
+      start_offset = block->GetBlockInfo().col_block_offset[col_idx];
+    }
+    uint32_t end_offset = block->GetBlockInfo().col_block_offset[col_idx + 1];
     TSSlice buffer;
     buffer.len = end_offset - start_offset;
-    KStatus s = block_file_.ReadData(block->GetBlockOffset() + start_offset, &buffer.data, buffer.len);
+    KStatus s = block_file_.ReadData(block->GetBlockOffset() + col_offsets_len + start_offset, &buffer.data, buffer.len);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read column[%u] block data failed", col_idx + 1);
       return s;
@@ -677,10 +737,24 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
   return KStatus::SUCCESS;
 }
 
+KStatus TsEntitySegment::GetAggData(TsEntityBlock *block, std::string& data) {
+  // get agg data
+  TSSlice col_agg_buffer;
+  col_agg_buffer.len = block->GetAggLength();
+  KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &col_agg_buffer.data, col_agg_buffer.len);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegment::GetAggData read agg block[offset=%lu, length=%d] data failed",
+              block->GetAggOffset(), block->GetAggLength());
+    return s;
+  }
+  data.append(col_agg_buffer.data, col_agg_buffer.len);
+  return KStatus::SUCCESS;
+}
+
 KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
   if (block->GetBlockInfo().col_agg_offset.empty()) {
     TSSlice agg_offsets;
-    agg_offsets.len = sizeof(uint32_t) * block->GetNCols();
+    agg_offsets.len = sizeof(uint32_t) * (block->GetNCols() - 1);
     KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &agg_offsets.data, agg_offsets.len);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read agg data failed")
@@ -693,11 +767,16 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
     }
   }
   if (!block->HasAggData(col_idx)) {
-    uint32_t start_offset = block->GetBlockInfo().col_agg_offset[col_idx];
-    uint32_t end_offset = block->GetBlockInfo().col_agg_offset[col_idx + 1];
+    uint32_t agg_offsets_len = sizeof(uint32_t) * (block->GetNCols() - 1);
+    uint32_t start_offset = 0;
+    if (col_idx != 0) {
+      start_offset = block->GetBlockInfo().col_agg_offset[col_idx - 1];
+    }
+    uint32_t end_offset = block->GetBlockInfo().col_agg_offset[col_idx];
     TSSlice col_agg_buffer;
     col_agg_buffer.len = end_offset - start_offset;
-    KStatus s = agg_file_.ReadAggData(block->GetAggOffset() + start_offset, &col_agg_buffer.data, col_agg_buffer.len);
+    KStatus s = agg_file_.ReadAggData(block->GetAggOffset() + agg_offsets_len + start_offset,
+                                      &col_agg_buffer.data, col_agg_buffer.len);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read column[%u] block data failed", col_idx + 1);
       return s;

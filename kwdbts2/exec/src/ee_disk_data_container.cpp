@@ -154,6 +154,7 @@ EEIteratorErrCode DiskDataContainer::NextChunk(DataChunkPtr& chunk) {
     cache_chunk_readers_[0].chunk_ptr_->DecodeData();
     chunk = std::move(cache_chunk_readers_[0].chunk_ptr_);
     current_chunk_++;
+    chunk->ResetLine();
     return EEIteratorErrCode::EE_OK;
   }
   KStatus ret = UpdateTempCacheChunk();
@@ -171,6 +172,7 @@ EEIteratorErrCode DiskDataContainer::NextChunk(DataChunkPtr& chunk) {
   write_merge_infos_->count_ += write_cache_chunk_ptr_->Count();
   chunk = std::move(write_cache_chunk_ptr_);
   current_chunk_++;
+  chunk->ResetLine();
   return EEIteratorErrCode::EE_OK;
 }
 
@@ -294,9 +296,9 @@ KStatus DiskDataContainer::Sort() {
       LOG_ERROR("ConquerMerge Failed : %d", ret);
       return ret;
     }
-
     ReloadReadPtr(MAX_CHUNK_BATCH_NUM, 0);
     loser_tree_.Init(read_merge_infos_->batch_chunk_indexs_.size(), cache_chunk_readers_, compare_);
+    write_merge_infos_->batch_chunk_indexs_.push_back({});
   }
 
   sorted_count_ = 0;
@@ -439,12 +441,10 @@ EEIteratorErrCode DiskDataContainer::mergeMultipleLists(
              EEIteratorErrCode::EE_OK &&
          *sorted_count < max_output_rows_) {
     k_uint32 batch_index = start_batch_index + data_index;
-    if (!with_limit_offset || *sorted_count >= offset_) {
-      KStatus ret = write_cache_chunk_ptr_->Append(
-          cache_chunk_readers_[data_index].chunk_ptr_, data_ptr);
-      if (ret != SUCCESS) {
-        return EEIteratorErrCode::EE_OK;
-      }
+    KStatus ret = write_cache_chunk_ptr_->Append(
+        cache_chunk_readers_[data_index].chunk_ptr_, data_ptr);
+    if (ret != SUCCESS) {
+      return EEIteratorErrCode::EE_OK;
     }
     (*sorted_count)++;
 

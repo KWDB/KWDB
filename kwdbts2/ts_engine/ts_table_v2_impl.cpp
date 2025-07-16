@@ -11,6 +11,7 @@
 
 #include <map>
 #include <memory>
+#include <list>
 #include <string>
 #include <vector>
 #include "ts_table_v2_impl.h"
@@ -25,10 +26,11 @@ extern bool g_go_start_service;
 namespace kwdbts {
 
 TsTableV2Impl::~TsTableV2Impl() {
-  if (table_dropped_.load()) {
-    table_schema_mgr_->RemoveAll();
-    // metric data cannot remove now, clear by vacuum.
-  }
+  // todo(liangbo01)  no implemented.
+  // if (table_dropped_.load()) {
+  //   table_schema_mgr_->RemoveAll();
+  //   // metric data cannot remove now, clear by vacuum.
+  // }
 }
 
 void TsTableV2Impl::SetDropped() {
@@ -167,7 +169,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
       // kwsql sends query again
       LOG_ERROR("GetIterator Error : TsTable no column %d", col);
       s = FAIL;
-      return KStatus::FAIL;
+      return s;
     }
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
@@ -433,9 +435,9 @@ KStatus TsTableV2Impl::GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, 
 KwTsSpan ts_span, uint64_t* count) {
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
-  auto s = getEntityIdByHashSpan(ctx, hash_span, entity_store);
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("getEntityIdByHashSpan failed.");
+    LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
   s = GetEntityRowCount(ctx, entity_store, {ts_span}, count);
@@ -459,9 +461,9 @@ KwTsSpan ts_span, uint64_t mtr_id) {
 #endif
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
-  auto s = getEntityIdByHashSpan(ctx, hash_span, entity_store);
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("getEntityIdByHashSpan failed.");
+    LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
   for (auto& entity : entity_store) {
@@ -526,9 +528,9 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
   uint64_t row_num = 0;
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
-  auto s = getEntityIdByHashSpan(ctx, hash_span, entity_store);
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("getEntityIdByHashSpan failed.");
+    LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
   s = GetEntityRowCount(ctx, entity_store, {ts_span}, &row_num);
@@ -552,26 +554,47 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
     }
   }};
   // find half ts by offset iterator.
-  s = GetOffsetIterator(ctx, entity_store, ts_spans, scan_cols, 1, &iter, row_num / 2, 1, false);
+  uint64_t offset = row_num / 2;
+  s = GetOffsetIterator(ctx, entity_store, ts_spans, scan_cols, 1, &iter, offset, 1, false);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetOffsetIterator failed.");
     return s;
   }
+  std::list<timestamp64> range_tss;
   uint32_t count;
   ResultSet res;
   res.setColumnNum(1);
-  s = iter->Next(&res, &count);
-  if (KStatus::FAIL == s) {
-    LOG_ERROR("TsTableIterator::Next() Failed");
-    return s;
+  do {
+    res.clear();
+    s = iter->Next(&res, &count);
+    if (KStatus::FAIL == s) {
+      LOG_ERROR("TsTableIterator::Next() Failed");
+      return s;
+    }
+    for (size_t i = 0; i < count; i++) {
+      range_tss.push_back(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + i * 16));
+    }
+  } while (count > 0);
+  range_tss.sort();
+  uint64_t actual_offset = iter->GetFilterCount();
+  uint64_t read_row_num = offset + 1;
+  uint64_t range_tss_idx = read_row_num - actual_offset;
+  assert(read_row_num > actual_offset);
+  assert(range_tss_idx <= range_tss.size());
+  auto list_iter = range_tss.begin();
+  for (size_t i = 0; i < range_tss_idx - 1; i++) {
+    if (list_iter == range_tss.end()) {
+      LOG_ERROR("rearch list end.");
+      return KStatus::FAIL;
+    }
+    list_iter++;
   }
-  assert(count == 1);
-  *half_ts = KTimestamp(res.data[0][0]->mem);
+  *half_ts = *(list_iter);
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::getEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-vector<EntityResultIndex>& entity_store) {
+KStatus TsTableV2Impl::GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                             vector<EntityResultIndex>& entity_store) {
   std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
   TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
@@ -587,7 +610,7 @@ vector<EntityResultIndex>& entity_store) {
         uint32_t tag_hash;
         entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
         if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
-          entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+          entity_tag_bt->getHashedEntityIdByRownum(rownum, tag_hash, &entity_store);
         }
       } else {
         entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
@@ -622,48 +645,6 @@ KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& h
         string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
                                                   entity_tag_bt->primaryTagSize());
         primary_tags->emplace_back(primary_tag);
-      }
-    }
-    entity_tag_bt->stopRead();
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsTableV2Impl::GetEntityIdsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                              vector<std::pair<uint64_t, uint64_t>>* entity_ids) {
-  std::vector<TagPartitionTable*> all_tag_partition_tables;
-  auto tag_bt = table_schema_mgr_->GetTagTable();
-  TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
-  tag_bt->GetTagPartitionTableManager()->GetAllPartitionTablesLessVersion(all_tag_partition_tables,
-                                                                          cur_tbl_version);
-  for (const auto& entity_tag_bt : all_tag_partition_tables) {
-    entity_tag_bt->startRead();
-    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
-      if (!entity_tag_bt->isValidRow(rownum)) {
-        continue;
-      }
-      if (!EngineOptions::isSingleNode()) {
-        uint32_t tag_hash;
-        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
-        if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
-          string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
-                             entity_tag_bt->primaryTagSize());
-          uint32_t v_group_id, entity_id;
-          if (!tag_bt->hasPrimaryKey(primary_tag.data(), primary_tag.size(), entity_id, v_group_id)) {
-            LOG_ERROR("primary key[%s] dose not exist", primary_tag.c_str())
-            return FAIL;
-          }
-          entity_ids->emplace_back(v_group_id, entity_id);
-        }
-      } else {
-        string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
-                           entity_tag_bt->primaryTagSize());
-        uint32_t v_group_id, entity_id;
-        if (!tag_bt->hasPrimaryKey(primary_tag.data(), primary_tag.size(), entity_id, v_group_id)) {
-          LOG_ERROR("primary key[%s] dose not exist", primary_tag.c_str())
-          return FAIL;
-        }
-        entity_ids->emplace_back(v_group_id, entity_id);
       }
     }
     entity_tag_bt->stopRead();
@@ -760,17 +741,19 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   }
   *row_count = 0;
   k_uint32 count;
-  bool is_finished = false;
-  do {
-    ResultSet res{(k_uint32) scan_cols.size()};
+  ResultSet res;
+  res.setColumnNum(scan_cols.size());
+  for (size_t i = 0; i < entity_ids.size(); i++) {
+    res.clear();
     auto s = iter->Next(&res, &count);
     if (s != KStatus::SUCCESS) {
       return s;
     }
     if (count > 0) {
+      assert(count == 1);
       *row_count += *reinterpret_cast<uint64_t*>(res.data[0][0]->mem);
     }
-  } while (count > 0);
+  }
   return KStatus::SUCCESS;
 }
 

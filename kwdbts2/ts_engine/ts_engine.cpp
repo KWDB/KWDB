@@ -47,8 +47,10 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 const char schema_directory[]= "schema/";
 
-TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) : options_(engine_options), flush_mgr_(vgroups_),
-                                                                      batch_jobs_lock_(RWLATCH_ID_BATCH_DATA_JOB_RWLOCK) {
+TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
+                              options_(engine_options), flush_mgr_(vgroups_),
+                              read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
+                              write_batch_worker_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -150,7 +152,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   // TODO(zzr): Recover TsVersion for each VGroup.
   // After WAL RedoPut, TsVersion should be updated.
   for (auto vgroup : vgroups_) {
-    auto s = vgroup->SetReady();
+    s = vgroup->SetReady();
     if (s == FAIL) {
       return FAIL;
     }
@@ -484,7 +486,6 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
-    ErrorInfo err_info;
     err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
@@ -632,6 +633,10 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineV2Impl::GetTsVGroups() {
   return &vgroups_;
 }
 
+std::shared_ptr<TsVGroup> TSEngineV2Impl::GetTsVGroup(uint32_t vgroup_id) {
+  return vgroups_[vgroup_id];
+}
+
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                                    uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   if (options_.wal_level == WALMode::OFF) {
@@ -639,7 +644,11 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
   auto vgroup = GetVGroupByID(ctx, 1);
+<<<<<<< HEAD
   return vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
+=======
+  return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
+>>>>>>> kwdb5/st-v3
 }
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
@@ -649,11 +658,19 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   auto vgroup = GetVGroupByID(ctx, 1);
+<<<<<<< HEAD
   return vgroup->MtrCommit(ctx, mtr_id, tsx_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
                                       uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
+=======
+  return vgroup->MtrCommit(ctx, mtr_id);
+}
+
+KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
+                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log) {
+>>>>>>> kwdb5/st-v3
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -667,10 +684,19 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
   KStatus s;
 
+<<<<<<< HEAD
   auto vgroup = GetVGroupByID(ctx, 1);
   s = vgroup->MtrRollback(ctx, mtr_id, false, tsx_id);
   if (s == FAIL) {
     Return(s);
+=======
+  if (skip_log) {
+    auto vgroup = GetVGroupByID(ctx, 1);
+    s = vgroup->MtrRollback(ctx, mtr_id);
+    if (s == FAIL) {
+      Return(s);
+    }
+>>>>>>> kwdb5/st-v3
   }
   if (tsx_id != nullptr && mtr_id == 0) {
     return SUCCESS;
@@ -695,7 +721,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       }
     }
   }
-  Return(s)
+  Return(KStatus::SUCCESS)
 }
 
 KStatus TSEngineV2Impl::checkpoint(kwdbts::kwdbContext_p ctx) {
@@ -911,7 +937,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   for (auto log : logs) {
     switch (log->getType()) {
-      case MTR_COMMIT : {
+      case MTR_COMMIT :
+      case MTR_ROLLBACK: {
         commit.emplace_back(log->getXID());
       }
       default:
@@ -928,7 +955,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
     if (!skip) {
-      if (log->getType() != WALLogType::CHECKPOINT) {
+      if (log->getType() == WALLogType::INSERT ||
+          log->getType() == WALLogType::UPDATE ||
+          log->getType() == WALLogType::DELETE ||
+          log->getType() == WALLogType::MTR_BEGIN) {
         if (!EngineOptions::isSingleNode()) {
           rewrite.emplace_back(log);
         }
@@ -960,7 +990,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
-  TS_LSN lsn;
+  TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
   char* v_lsn = new char[lsn_len];
   int location = 0;
@@ -969,7 +999,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     location += sizeof(uint64_t);
   }
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
-  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, lsn);
+  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
   delete []v_lsn;
   if (s == KStatus::FAIL) {
@@ -1060,36 +1090,21 @@ KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& 
   return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id);
 }
 
-std::string GetBatchDataKey(TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
-                            uint64_t end_hash, KwTsSpan ts_span) {
-  char buffer[128];
-  std::snprintf(buffer, sizeof(buffer), "%lu-%d-%lu-%lu-%ld-%ld", table_id, table_version,
-                begin_hash, end_hash, ts_span.begin, ts_span.end);
-  return buffer;
-}
-
-std::string GetBatchDataKey(TSTableID table_id, uint32_t table_version) {
-  char buffer[64];
-  memset(buffer, 0, 64);
-  std::snprintf(buffer, sizeof(buffer), "%lu-%d", table_id, table_version);
-  return buffer;
-}
-
-KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, uint64_t begin_hash,
+KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                       uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
-                      int32_t* row_num) {
-  RW_LATCH_S_LOCK(&batch_jobs_lock_);
-  auto job_it = batch_data_jobs_.find(job_id);
-  if (job_it != batch_data_jobs_.end()) {
-    std::string key = GetBatchDataKey(table_id, table_version, begin_hash, end_hash, ts_span);
-    auto it = job_it->second.find(key);
-    if (it != job_it->second.end()) {
-      std::shared_ptr<TsBatchDataJob> job = it->second;
-      RW_LATCH_UNLOCK(&batch_jobs_lock_);
-      return job->Read(data, row_num);
+                      uint32_t* row_num) {
+  std::string key = TsReadBatchDataWorker::GenKey(table_id, table_version, begin_hash, end_hash, ts_span);
+  RW_LATCH_S_LOCK(&read_batch_workers_lock_);
+  auto workers_it = read_batch_data_workers_.find(job_id);
+  if (workers_it != read_batch_data_workers_.end()) {
+    auto worker_it = workers_it->second.find(key);
+    if (worker_it != workers_it->second.end()) {
+      std::shared_ptr<TsBatchDataWorker> worker = worker_it->second;
+      RW_LATCH_UNLOCK(&read_batch_workers_lock_);
+      return worker->Read(ctx, data, row_num);
     }
   }
-  RW_LATCH_UNLOCK(&batch_jobs_lock_);
+  RW_LATCH_UNLOCK(&read_batch_workers_lock_);
 
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
@@ -1098,82 +1113,135 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
     LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
     return s;
   }
-  ctx->ts_engine = this;
-  std::vector<std::pair<uint64_t, uint64_t>> entity_ids;
-  s = ts_table->GetEntityIdsByHashSpan(ctx, {begin_hash, end_hash}, &entity_ids);
+  vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx, {begin_hash, end_hash}, entity_indexes);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot get entity_ids by hash span[%lu, %lu]", begin_hash, end_hash);
     return s;
   }
-  if (entity_ids.empty()) {
+  if (entity_indexes.empty()) {
     *row_num = 0;
     return KStatus::SUCCESS;
   }
-  RW_LATCH_X_LOCK(&batch_jobs_lock_);
-  std::shared_ptr<TsBatchDataJob> job = std::make_shared<TsReadBatchDataJob>(this, table_id, table_version, begin_hash,
-                                                                             end_hash, ts_span, job_id, entity_ids);
-  std::string key = GetBatchDataKey(table_id, table_version, begin_hash, end_hash, ts_span);
-  job_it = batch_data_jobs_.find(job_id);
-  if (job_it != batch_data_jobs_.end()) {
-    job_it->second.insert({key, job});
-  } else {
-    batch_data_jobs_[job_id].insert({key, job});
+  RW_LATCH_X_LOCK(&read_batch_workers_lock_);
+  workers_it = read_batch_data_workers_.find(job_id);
+  if (workers_it != read_batch_data_workers_.end()) {
+    auto worker_it = workers_it->second.find(key);
+    if (worker_it != workers_it->second.end()) {
+      std::shared_ptr<TsBatchDataWorker> worker = worker_it->second;
+      RW_LATCH_UNLOCK(&read_batch_workers_lock_);
+      return worker->Read(ctx, data, row_num);
+    }
   }
-  RW_LATCH_UNLOCK(&batch_jobs_lock_);
-  return job->Read(data, row_num);
+  std::shared_ptr<TsBatchDataWorker> worker = std::make_shared<TsReadBatchDataWorker>(this, table_id, table_version,
+                                                                                      ts_span, job_id, entity_indexes);
+  s = worker->Init(ctx);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to init read batch data worker.");
+    RW_LATCH_UNLOCK(&read_batch_workers_lock_);
+    return s;
+  }
+  workers_it = read_batch_data_workers_.find(job_id);
+  if (workers_it != read_batch_data_workers_.end()) {
+    workers_it->second.insert({key, worker});
+  } else {
+    read_batch_data_workers_[job_id].insert({key, worker});
+  }
+  RW_LATCH_UNLOCK(&read_batch_workers_lock_);
+  return worker->Read(ctx, data, row_num);
 }
 
 KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                         TSSlice* data, int32_t* row_num) {
-  RW_LATCH_S_LOCK(&batch_jobs_lock_);
-  auto job_it = batch_data_jobs_.find(job_id);
-  if (job_it != batch_data_jobs_.end()) {
-    std::string key = GetBatchDataKey(table_id, table_version);
-    auto it = job_it->second.find(key);
-    if (it != job_it->second.end()) {
-      std::shared_ptr<TsBatchDataJob> job = it->second;
-      RW_LATCH_UNLOCK(&batch_jobs_lock_);
-      return job->Write(data, row_num);
+                         TSSlice* data, uint32_t* row_num) {
+  std::shared_ptr<TsBatchDataWorker> worker = nullptr;
+  RW_LATCH_S_LOCK(&write_batch_worker_lock_);
+  if (write_batch_data_worker_ != nullptr) {
+    if (write_batch_data_worker_->GetJobId() == job_id) {
+      worker = write_batch_data_worker_;
+    } else {
+      LOG_ERROR("TsWriteBatchDataWorker init failed, there are other jobs writing to the current table[%lu]", table_id);
+      RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+      return KStatus::FAIL;
     }
   }
-  RW_LATCH_UNLOCK(&batch_jobs_lock_);
-  RW_LATCH_X_LOCK(&batch_jobs_lock_);
-  std::shared_ptr<TsBatchDataJob> job = std::make_shared<TsWriteBatchDataJob>(this, table_id, table_version, job_id);
-  std::string key = GetBatchDataKey(table_id, table_version);
-  job_it = batch_data_jobs_.find(job_id);
-  if (job_it != batch_data_jobs_.end()) {
-    job_it->second.insert({key, job});
-  } else {
-    batch_data_jobs_[job_id] = {};
-    batch_data_jobs_[job_id].insert({key, job});
+  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  if (worker != nullptr) {
+    return worker->Write(ctx, table_id, table_version, data, row_num);
   }
-  RW_LATCH_UNLOCK(&batch_jobs_lock_);
-  return job->Write(data, row_num);
+  RW_LATCH_X_LOCK(&write_batch_worker_lock_);
+  if (write_batch_data_worker_ != nullptr) {
+    if (write_batch_data_worker_->GetJobId() == job_id) {
+      worker = write_batch_data_worker_;
+    } else {
+      LOG_ERROR("TsWriteBatchDataWorker init failed, there are other jobs writing to the current table[%lu]", table_id);
+      RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+      return KStatus::FAIL;
+    }
+  }
+  if (worker != nullptr) {
+    RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+    return worker->Write(ctx, table_id, table_version, data, row_num);
+  }
+  worker = std::make_shared<TsWriteBatchDataWorker>(this, job_id);
+  KStatus s = worker->Init(ctx);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsWriteBatchDataWorker init failed");
+    RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+    return s;
+  }
+  write_batch_data_worker_ = worker;
+  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  return worker->Write(ctx, table_id, table_version, data, row_num);
 }
 
 KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
-  RW_LATCH_X_LOCK(&batch_jobs_lock_);
-  auto job_it = batch_data_jobs_.find(job_id);
-  if (job_it != batch_data_jobs_.end()) {
-    for (auto& kv : job_it->second) {
-      kv.second->Cancel();
-    }
+  // write
+  RW_LATCH_X_LOCK(&write_batch_worker_lock_);
+  if (write_batch_data_worker_ != nullptr && write_batch_data_worker_->GetJobId() == job_id) {
+    write_batch_data_worker_->Cancel(ctx);
+    write_batch_data_worker_ = nullptr;
+    LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
   }
-  batch_data_jobs_.erase(job_id);
-  RW_LATCH_UNLOCK(&batch_jobs_lock_);
+  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  // read
+  RW_LATCH_X_LOCK(&read_batch_workers_lock_);
+  auto job_it = read_batch_data_workers_.find(job_id);
+  if (job_it != read_batch_data_workers_.end()) {
+    for (auto& kv : job_it->second) {
+      kv.second->Cancel(ctx);
+    }
+    LOG_INFO("Cancel read batch data, job_id[%lu]", job_id);
+  }
+  read_batch_data_workers_.erase(job_id);
+  RW_LATCH_UNLOCK(&read_batch_workers_lock_);
   return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
-  RW_LATCH_X_LOCK(&batch_jobs_lock_);
-  auto job_it = batch_data_jobs_.find(job_id);
-  if (job_it != batch_data_jobs_.end()) {
-    for (auto& kv : job_it->second) {
-      kv.second->Finish();
+  // write
+  RW_LATCH_X_LOCK(&write_batch_worker_lock_);
+  if (write_batch_data_worker_ != nullptr && write_batch_data_worker_->GetJobId() == job_id) {
+    if (write_batch_data_worker_->Finish(ctx) != KStatus::SUCCESS) {
+      write_batch_data_worker_->Cancel(ctx);
+      write_batch_data_worker_ = nullptr;
+      RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+      return KStatus::FAIL;
     }
+    LOG_INFO("Finish write batch data, job_id[%lu]", job_id);
+    write_batch_data_worker_ = nullptr;
   }
-  batch_data_jobs_.erase(job_id);
-  RW_LATCH_UNLOCK(&batch_jobs_lock_);
+  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  // read
+  RW_LATCH_X_LOCK(&read_batch_workers_lock_);
+  auto job_it = read_batch_data_workers_.find(job_id);
+  if (job_it != read_batch_data_workers_.end()) {
+    for (auto& kv : job_it->second) {
+      kv.second->Finish(ctx);
+    }
+    LOG_INFO("Finish read batch data, job_id[%lu]", job_id);
+  }
+  read_batch_data_workers_.erase(job_id);
+  RW_LATCH_UNLOCK(&read_batch_workers_lock_);
   return KStatus::SUCCESS;
 }
 
@@ -1188,7 +1256,7 @@ KStatus TSEngineV2Impl::DropResidualTsTable(kwdbContext_p ctx) {
   for (auto table_id : tables) {
     bool is_exist = checkTableMetaExist(table_id);
     if (!is_exist) {
-      KStatus s = DropTsTable(ctx, table_id);
+      s = DropTsTable(ctx, table_id);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("drop table [%ld] failed", table_id);
         return s;
@@ -1268,7 +1336,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = ddl_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info);
+            s = GetTsTable(ctx, table_id, table, true, err_info);
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1293,7 +1361,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = index_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1318,7 +1386,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = index_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1376,7 +1444,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
         uint64_t table_id = index_log->getObjectID();
         std::shared_ptr<TsTable> table;
         ErrorInfo err_info;
-        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
           return s;
         }
@@ -1400,7 +1468,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
         uint64_t table_id = index_log->getObjectID();
         std::shared_ptr<TsTable> table;
         ErrorInfo err_info;
-        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
           return s;
         }
@@ -1497,7 +1565,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
         auto x_id = log->getXID();
-        if (TSMtrRollback(ctx, 0, 0, x_id) == KStatus::FAIL) return KStatus::FAIL;
+        if (TSMtrRollback(ctx, 0, 0, x_id, true) == KStatus::FAIL) return KStatus::FAIL;
         incomplete.erase(log->getXID());
         break;
       }
@@ -1606,6 +1674,7 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   ts_snapshot_info.type = 0;
   ts_snapshot_info.table_id = table_id;
   ts_snapshot_info.table = table;
+  ts_snapshot_info.package_id = 0;
   // todo(liangbo01) maybe we need use available version.
   ts_snapshot_info.table_version = table->GetCurrentTableVersion();
   *snapshot_id = insertToSnapshotCache(ts_snapshot_info);
@@ -1616,7 +1685,7 @@ KStatus TSEngineV2Impl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKe
 uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snapshot_id) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true);
-  if (s == FAIL) {
+  if (s == KStatus::FAIL) {
     LOG_ERROR("GetTsTable [%lu] failed.", table_id);
     return s;
   }
@@ -1628,8 +1697,24 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   ts_snapshot_info.table_id = table_id;
   ts_snapshot_info.table = table;
   ts_snapshot_info.table_version = 0;
+  ts_snapshot_info.package_id = 0;
   *snapshot_id = insertToSnapshotCache(ts_snapshot_info);
   ts_snapshot_info.id = *snapshot_id;
+  uint64_t count;
+  s = table->GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &count);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
+    return s;
+  }
+  if (count > 0) {
+    LOG_WARN("range hash[%lu ~ %lu], ts[%ld ~ %ld] has row [%lu], we clear them now.",
+      begin_hash, end_hash, ts_span.begin, ts_span.end, count);
+    s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, 1);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("DeleteTotalRange [%lu] failed.", table_id);
+      return s;
+    }
+  }
   return KStatus::SUCCESS;
 }
 
@@ -1647,13 +1732,8 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
       return KStatus::FAIL;
     }
   }
-  int32_t row_num = 0;
+  uint32_t row_num = 0;
   TSSlice batch_data = {nullptr, 0};
-  Defer defer{[&](){
-    if (batch_data.data != nullptr) {
-      free(batch_data.data);
-    }
-  }};
   auto s = ReadBatchData(ctx, ts_snapshot_info.table_id, ts_snapshot_info.table_version, ts_snapshot_info.begin_hash,
                       ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, ts_snapshot_info.id, &batch_data, &row_num);
   if (s == KStatus::FAIL) {
@@ -1661,14 +1741,24 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
     return s;
   }
   if (row_num > 0) {
-    // table_id + table_version + row_num + data
-    size_t data_len = 8 + 4 + 4 + batch_data.len;
+    // package_id + table_id + table_version + row_num + data
+    size_t data_len = 4 + 8 + 4 + 4 + batch_data.len;
     char* data_with_rownum = reinterpret_cast<char*>(malloc(data_len));
     if (data_with_rownum == nullptr) {
       LOG_ERROR("malloc failed.");
       return KStatus::FAIL;
     }
     *data = {data_with_rownum, data_len};
+    {
+      snapshot_mutex_.lock();
+      Defer defer{[&](){
+        snapshot_mutex_.unlock();
+      }};
+      TsRangeImgrationInfo& map_info = snapshots_[snapshot_id];
+      map_info.package_id += 1;
+      KUint32(data_with_rownum) = map_info.package_id;
+    }
+    data_with_rownum += 4;
     KUint64(data_with_rownum) = ts_snapshot_info.table_id;
     data_with_rownum += 8;
     KUint32(data_with_rownum) = ts_snapshot_info.table_version;
@@ -1676,6 +1766,7 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
     KInt32(data_with_rownum) = row_num;
     data_with_rownum += 4;
     memcpy(data_with_rownum, batch_data.data, batch_data.len);
+
   } else {
     *data = {nullptr, 0};
   }
@@ -1700,21 +1791,35 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
     LOG_WARN("WriteSnapshotBatchData ignore null data.");
     return KStatus::SUCCESS;
   }
-  assert(data.len >= 16);
-  // table_id + table_version + row_num + data
+  assert(data.len >= 20);
+  // package_id + table_id + table_version + row_num + data
   char* data_with_rownum = data.data;
+  auto package_id = KUint32(data_with_rownum);
+  data_with_rownum += 4;
   auto table_id = KUint64(data_with_rownum);
   data_with_rownum += 8;
   auto table_version = KUint32(data_with_rownum);
   data_with_rownum += 4;
-  auto row_num = KInt32(data_with_rownum);
+  auto row_num = KUint32(data_with_rownum);
   data_with_rownum += 4;
-  TSSlice raw_data{data_with_rownum, data.len - 24};
+  TSSlice raw_data{data_with_rownum, data.len - 20};
   assert(table_id == ts_snapshot_info.table_id);
+  if (package_id - 1 != ts_snapshot_info.package_id) {
+    LOG_WARN("last package id [%u] not front of current package [%u], ignore it.",
+      ts_snapshot_info.package_id, package_id);
+    return KStatus::SUCCESS;
+  }
   auto s = WriteBatchData(ctx, table_id, table_version, ts_snapshot_info.id, &raw_data, &row_num);
   if (s == KStatus::FAIL) {
     LOG_ERROR("WriteBatchData snapshot [%lu] failed.", snapshot_id);
     return s;
+  }
+  {
+    snapshot_mutex_.lock();
+    Defer defer{[&](){
+      snapshot_mutex_.unlock();
+    }};
+    snapshots_[snapshot_id].package_id = package_id;
   }
   return KStatus::SUCCESS;
 }
@@ -1768,10 +1873,42 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
     snapshot_mutex_.unlock();
   }};
   if (snapshots_.find(snapshot_id) != snapshots_.end()) {
-    LOG_WARN("snapshot[%lu] is not commit ar rollback.", snapshot_id);
+    if (snapshots_[snapshot_id].type == 1) {
+      LOG_WARN("snapshot[%lu] is not commit ar rollback.", snapshot_id);
+    }
     snapshots_.erase(snapshot_id);
   }
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::FlushBuffer(kwdbContext_p ctx) {
+  if (options_.wal_level != WALMode::OFF) {
+    {
+      wal_mgr_->Lock();
+      wal_mgr_->Flush(ctx);
+      wal_mgr_->Unlock();
+    }
+    for (auto& vg : vgroups_) {
+      auto wal = vg->GetWALManager();
+      wal->Lock();
+      wal->Flush(ctx);
+      wal->Unlock();
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
+  if (wal_level == nullptr) {
+    LOG_ERROR("wal_level is nullptr");
+    return KStatus::FAIL;
+  }
+  *wal_level = options_.wal_level;
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) {
+  return GetWaitThreadNum(ctx, resp);
 }
 
 // get max entity id

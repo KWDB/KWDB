@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -120,7 +121,6 @@ class TsEntityBlockBuilder {
   uint32_t table_id_ = 0;
   uint32_t table_version_ = 0;
   uint64_t entity_id_ = 0;
-  uint64_t prev_block_id_ = 0;
   std::vector<AttributeInfo> metric_schema_;
 
   TsEntitySegmentBlockInfo block_info_;
@@ -193,7 +193,11 @@ class TsEntitySegmentBuilder {
   std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
   std::shared_ptr<TsEntityBlockBuilder> block = nullptr;
 
+  std::shared_mutex mutex_;
+
   TsEntityItem cur_entity_item_;
+
+  std::map<uint32_t, TsEntityItem> entity_items_;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,
@@ -221,9 +225,35 @@ class TsEntitySegmentBuilder {
     agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
   }
 
+  TsEntitySegmentBuilder(const std::string& root_path,
+                         PartitionIdentifier partition_id,
+                         std::shared_ptr<TsEntitySegment> entity_segment,
+                         uint64_t entity_header_file_num)
+    : root_path_(root_path),
+      partition_id_(partition_id),
+      cur_entity_segment_(entity_segment) {
+    // entity header file
+    std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_header_file_num);
+    entity_item_builder_ =
+      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
+    // block header file
+    std::string block_header_file_path = root_path + "/" + block_item_file_name;
+    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+    // block data file
+    std::string block_file_path = root_path + "/" + block_data_file_name;
+    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
+    // block agg file
+    std::string agg_file_path = root_path + "/" + block_agg_file_name;
+    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
+  }
+
   KStatus Open();
 
-  KStatus BuildAndFlush(TsVersionUpdate *update);
+  KStatus Compact(TsVersionUpdate *update);
+
+  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
+
+  KStatus WriteBatchFinish(TsVersionUpdate *update);
 };
 
 }  // namespace kwdbts

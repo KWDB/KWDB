@@ -92,7 +92,7 @@ const (
 )
 
 // KwEngineVersion indicates which verson storage engine to use
-var KwEngineVersion = envutil.EnvOrDefaultString("KW_ENGINE_VERSION", "1")
+var KwEngineVersion = envutil.EnvOrDefaultString("KW_ENGINE_VERSION", "2")
 
 // TsPayloadSizeLimit is the max size of per payload.
 var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
@@ -351,7 +351,7 @@ var TsWALLevel = settings.RegisterPublicIntSetting(
 var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
 	"ts WAL checkpoint interval in TsEngine",
-	2*time.Minute,
+	time.Minute,
 )
 
 // SQLTimeseriesTrace set trace for timeseries.

@@ -73,7 +73,6 @@ func (f *stubFactory) ConstructTSScan(
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 	rowCount float64,
-	hardLimit uint32,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }
@@ -247,12 +246,6 @@ func (f *stubFactory) ConstructZigzagJoin(
 
 func (f *stubFactory) ConstructLimit(
 	input exec.Node, limit, offset tree.TypedExpr, limitExpr memo.RelExpr, meta *opt.Metadata,
-) (exec.Node, error) {
-	return struct{}{}, nil
-}
-
-func (f *stubFactory) ConstructHardLimit(
-	input exec.Node, limit tree.TypedExpr, meta *opt.Metadata,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }
