@@ -306,7 +306,7 @@ KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recov
     if (IsExists(path)) {
       Remove(path);
     }
-    KStatus s = initWalFile(0);
+    KStatus s = initWalFile(0, 0);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to initialize the WAL file.")
       return s;
