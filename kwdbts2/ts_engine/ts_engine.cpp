@@ -672,7 +672,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
   KStatus s;
 
-  if (skip_log) {
+  if (!skip_log) {
     auto vgroup = GetVGroupByID(ctx, 1);
     s = vgroup->MtrRollback(ctx, mtr_id, false, tsx_id);
     if (s == FAIL) {
