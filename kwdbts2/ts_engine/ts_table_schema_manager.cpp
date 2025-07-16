@@ -615,11 +615,21 @@ bool TsTableSchemaManager::IsExistTableVersion(uint32_t version) {
     LOG_ERROR("Couldn't find metrics table with version: %u", version);
     return false;
   }
-  if (tag_table_->GetTagTableVersionManager()->GetVersionObject(version) == nullptr) {
+  int retry = 6;
+  while (retry > 0) {
+    TagVersionObject* tagVersionObject = tag_table_->GetTagTableVersionManager()->GetVersionObject(version);
+    if (tagVersionObject && tagVersionObject->isValid()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    retry--;
+  }
+  if (retry > 0) {
+    return true;
+  } else {
     LOG_ERROR("Couldn't find table tag with version: %u", version);
     return false;
   }
-  return true;
 }
 }  //  namespace kwdbts
 

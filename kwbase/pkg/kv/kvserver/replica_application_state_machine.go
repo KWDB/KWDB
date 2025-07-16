@@ -614,6 +614,12 @@ func (b *replicaAppBatch) stageWriteBatch(ctx context.Context, cmd *replicatedCm
 				ctx, &reqs, responses, isLocal, &b.state); err != nil {
 				return err
 			}
+			if b.TSTxnID != 0 {
+				err := b.r.store.TsEngine.MtrCommit(b.tableID, b.rangeGroupID, b.TSTxnID)
+				if err != nil {
+					return wrapWithNonDeterministicFailure(err, "unable to commit mini-transaction")
+				}
+			}
 		}
 	}
 	if wb == nil {
@@ -757,10 +763,18 @@ func (r *Replica) stageTsBatchRequest(
 				}
 				_, _, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
+					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
+					if errRollback != nil {
+						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+					}
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
 				_, _, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
+					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
+					if errRollback != nil {
+						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+					}
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
 				// exclude the EndKey
@@ -812,6 +826,10 @@ func (r *Replica) stageTsBatchRequest(
 				var pld [][]byte
 				pld = append(pld, req.Tags)
 				if err = r.store.TsEngine.PutEntity(rangeGroupID, req.TableId, pld, tsTxnID); err != nil {
+					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
+					if errRollback != nil {
+						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+					}
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "failed update tag")
 				}
 				if isLocal && responses != nil {
@@ -835,10 +853,18 @@ func (r *Replica) stageTsBatchRequest(
 				}
 				tableID, beginHash, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
+					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
+					if errRollback != nil {
+						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+					}
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
 				_, endHash, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
+					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID)
+					if errRollback != nil {
+						return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+					}
 					return tableID, rangeGroupID, tsTxnID, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
 				var tsSpans []*roachpb.TsSpan
@@ -1207,12 +1233,6 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 					log.Errorf(ctx, "DeleteReplicaTSData failed", err)
 				}
 			}
-		}
-	}
-	if b.TSTxnID != 0 {
-		err := b.r.store.TsEngine.MtrCommit(b.tableID, b.rangeGroupID, b.TSTxnID)
-		if err != nil {
-			return wrapWithNonDeterministicFailure(err, "unable to commit mini-transaction")
 		}
 	}
 	b.batch.Close()

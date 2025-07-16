@@ -166,8 +166,10 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
           break;
         }
 
-        if (x_id != current_lsn) {
-          memcpy(&x_id, read_buf, sizeof(x_id));
+        uint64_t old_lsn = 0;
+        memcpy(&old_lsn, read_buf, sizeof(x_id));
+        if (x_id != old_lsn && old_lsn != 0) {
+          x_id = old_lsn;
         }
         uint64_t read_offset = sizeof(x_id);
         memcpy(tsx_id, read_buf + read_offset, LogEntry::TS_TRANS_ID_LEN);
