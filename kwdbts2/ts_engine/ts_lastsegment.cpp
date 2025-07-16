@@ -102,66 +102,6 @@ static KStatus ReadColumnBitmap(TsRandomReadFile* file, const TsLastSegmentBlock
   return SUCCESS;
 }
 
-static KStatus ReadColumnBlock(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info, int col_id,
-                               std::string* col_data, std::unique_ptr<TsBitmap>* bitmap) {
-  bitmap->reset();
-  auto s = ReadColumnBitmap(file, info, col_id, bitmap);
-  if (s == FAIL) {
-    LOG_ERROR("cannot read column bitmap");
-    return s;
-  }
-  size_t offset = info.block_offset + info.col_infos[col_id].offset;
-  offset += info.col_infos[col_id].bitmap_len;
-  size_t len = info.col_infos[col_id].data_len;
-  TSSlice result;
-  auto buf = std::make_unique<char[]>(len);
-  s = file->Read(offset, len, &result, buf.get());
-  if (s == FAIL) {
-    return FAIL;
-  }
-
-  // Metric
-  const auto& mgr = CompressorManager::GetInstance();
-  bool ok = mgr.DecompressData(result, bitmap->get(), info.nrow, col_data);
-  if (!ok) {
-    LOG_ERROR("cannot decompress data");
-  }
-  return ok ? SUCCESS : FAIL;
-}
-
-static KStatus ReadVarcharBlock(TsRandomReadFile* file, const TsLastSegmentBlockInfo& info, std::string* out) {
-  bool has_varchar = info.var_offset != 0;
-  if (!has_varchar) {
-    LOG_ERROR("no varcha block to read");
-    return FAIL;
-  }
-  size_t offset = info.block_offset + info.var_offset;
-  size_t len = info.var_len;
-  auto buf = std::make_unique<char[]>(len);
-  TSSlice result;
-
-  assert(len > 0);
-  file->Read(offset, len, &result, buf.get());
-  char* ptr = result.data;
-  GenCompAlg type = static_cast<GenCompAlg>(ptr[0]);
-  RemovePrefix(&result, 1);
-  int ok = true;
-  switch (type) {
-    case GenCompAlg::kPlain: {
-      out->assign(result.data, result.len);
-      break;
-    }
-    case GenCompAlg::kSnappy: {
-      const auto& snappy = SnappyString::GetInstance();
-      ok = snappy.Decompress(result, 0, out);
-      break;
-    }
-    default:
-      assert(false);
-  }
-  return ok ? SUCCESS : FAIL;
-}
-
 KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
     std::vector<TsLastSegmentBlockIndex>** block_indices) {
   {
@@ -306,9 +246,8 @@ struct ColumnBlockCacheV2 {
   }
 };
 
-
-constexpr static int VARCHAR_CACHE_ID = -1;
-constexpr static int TIMESTAMP8_CACHE_ID = -2;
+constexpr static int ENTITY_ID_IDX = 0;
+constexpr static int LSN_IDX = 1;
 
 class TsLastBlock;
 class ColumnBlockCache {
@@ -318,23 +257,36 @@ class ColumnBlockCache {
   TsLastSegmentBlockInfo* block_info_;
 
   std::vector<ColumnBlockV2> column_block_cache_;
+  std::unique_ptr<std::string> varchar_cache_;
+  std::string timestamp_16_cache_;
 
  public:
   ColumnBlockCache(TsRandomReadFile* underlying_file, TsLastSegmentBlockInfo* block_info);
   KStatus GetColBitmap(int actual_colid, const std::vector<AttributeInfo>& schema, TsBitmap** bitmap);
-  KStatus GetColAddr(int actual_colid, const std::vector<AttributeInfo>& schema, char** value);
+  KStatus GetColAddr(int actual_colid, char** value);
   KStatus GetValueSlice(int row_num, int actural_colid, const std::vector<AttributeInfo>& schema, TSSlice& value);
+  const timestamp64* GetTimestamps() {
+    char* value;
+    auto s = GetColAddr(2, &value);
+    if (s == FAIL) {
+      return nullptr;
+    }
+    return reinterpret_cast<const timestamp64*>(column_block_cache_[2].data->data());
+  }
 
  private:
-  KStatus LoadColumnDataToCache(int actual_colid, const std::vector<AttributeInfo>& schema);
+  KStatus LoadColumnDataToCache(int actual_colid);
   KStatus LoadVarcharDataToCache();
   KStatus FormatValueSlice(int row_num, int actural_colid, const std::vector<AttributeInfo>& schema, TSSlice& value);
+  KStatus FormatColAddr(int actual_colid, char** value);
 };
 
 static inline bool need_convert_ts(int dtype) {
   return (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN || dtype == TIMESTAMP64_LSN_NANO);
 }
 
+// here we have 3 extra columns for entity_id, lsn
+constexpr static int kColIDShift = 2;
 
 class TsLastBlock : public TsBlock {
  private:
@@ -345,7 +297,6 @@ class TsLastBlock : public TsBlock {
   TsLastSegmentBlockIndex block_index_;
   TsLastSegmentBlockInfo block_info_;
 
-  std::unique_ptr<ColumnBlockCacheV2> column_cache_;
   std::unique_ptr<ColumnBlockCache> column_block_cache_;
 
  public:
@@ -355,7 +306,7 @@ class TsLastBlock : public TsBlock {
         block_id_(block_id),
         block_index_(block_index),
         block_info_(std::move(block_info)),
-        column_cache_(std::make_unique<ColumnBlockCacheV2>()) {}
+        column_block_cache_(std::make_unique<ColumnBlockCache>(lastsegment_->file_.get(), &block_info_)) {}
   ~TsLastBlock() = default;
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }
@@ -363,82 +314,41 @@ class TsLastBlock : public TsBlock {
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override {
     int actual_colid = col_id + 2;
-    auto s = LoadBitmapToCache(actual_colid);
+    TsBitmap* p_bitmap = nullptr;
+    auto s = column_block_cache_->GetColBitmap(actual_colid, schema, &p_bitmap);
     if (s == FAIL) {
       return FAIL;
     }
 
     // TODO(zzr): optimize, avoid copy and just return the pointer
-    bitmap = *column_cache_->GetColumnBlock(actual_colid)->bitmap;
+    if (p_bitmap) {
+      bitmap = *p_bitmap;
+    }
     return SUCCESS;
   }
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override {
-    int dtype = schema[col_id].type;
-    if (isVarLenType(dtype)) {
-      *value = nullptr;
-      return FAIL;
-    }
-
-    int actual_colid = col_id + 2;
-    auto s = LoadAllDataToCache(actual_colid);
-    if (s == FAIL) {
-      return FAIL;
-    }
-    if (need_convert_ts(dtype)) {
-      ConvertTS8to16(actual_colid);
-      actual_colid = TIMESTAMP8_CACHE_ID;
-    }
-    *value = column_cache_->GetColumnBlock(actual_colid)->data->data();
-    return SUCCESS;
+    int actual_colid = col_id + kColIDShift;
+    return column_block_cache_->GetColAddr(actual_colid, value);
   }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override {
-    int dtype = schema[col_id].type;
-    int actual_colid = col_id + 2;
-    auto s = LoadAllDataToCache(actual_colid);
-    if (s == FAIL) {
-      return FAIL;
-    }
-
-    if (need_convert_ts(dtype)) {
-      ConvertTS8to16(actual_colid);
-      actual_colid = TIMESTAMP8_CACHE_ID;
-    }
-    char* ptr = column_cache_->GetColumnBlock(actual_colid)->data->data();
-
-    if (isVarLenType(dtype)) {
-      s = LoadVarcharToCache();
-      if (s == FAIL) {
-        return FAIL;
-      }
-      const uint32_t* data = reinterpret_cast<const uint32_t*>(ptr);
-      size_t offset = data[row_num];
-      TSSlice result{column_cache_->GetColumnBlock(VARCHAR_CACHE_ID)->data->data() + offset, 2};
-      uint16_t len;
-      GetFixed16(&result, &len);
-      value.data = result.data;
-      value.len = len;
-      return SUCCESS;
-    }
-    int dsize = schema[col_id].size;
-    if (need_convert_ts(dtype)) {
-      dsize = 16;
-    }
-    value.len = dsize;
-    value.data = ptr + dsize * row_num;
-
-    return SUCCESS;
+    int actual_colid = col_id + kColIDShift;
+    return column_block_cache_->GetValueSlice(row_num, actual_colid, schema, value);
   }
+
   bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
-    int actual_colid = col_id + 2;
-    LoadBitmapToCache(actual_colid);
-    ColumnBlockV2* p = column_cache_->GetColumnBlock(actual_colid);
-    if (!p->HasBitmap()) {
-      // this column is not nullable
+    int actual_colid = col_id + kColIDShift;
+    TsBitmap* p_bitmap = nullptr;
+    auto s = column_block_cache_->GetColBitmap(actual_colid, schema, &p_bitmap);
+    if (s == FAIL) {
+      LOG_ERROR("cannot get bitmap");
       return false;
     }
-    const TsBitmap& bitmap = *column_cache_->GetColumnBlock(actual_colid)->bitmap;
-    return bitmap[row_num] == kNull;
+    if (p_bitmap == nullptr) {
+      return false;  // no bitmap means all elements are valid
+    }
+    return (*p_bitmap)[row_num] == DataFlags::kNull;
   }
+
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {
     assert(block_info_.ncol > 2);
@@ -467,111 +377,34 @@ class TsLastBlock : public TsBlock {
 
  private:
   friend class TsLastSegment;
-  KStatus LoadBitmapToCache(int actual_colid) {
-    if (!column_cache_->HasBitmapCached(actual_colid)) {
-      std::unique_ptr<TsBitmap> bitmap;
-      auto s = ReadColumnBitmap(lastsegment_->file_.get(), block_info_, actual_colid, &bitmap);
-      if (s == FAIL) {
-        return FAIL;
-      }
-      column_cache_->PutBitmap(actual_colid, std::move(bitmap));
-    }
-    return SUCCESS;
-  }
 
-  void ConvertTS8to16(int ts_col_id) {
-    if (column_cache_->HasDataCached(TIMESTAMP8_CACHE_ID)) {
-      return;
-    }
-    assert(column_cache_->HasDataCached(ts_col_id));
-    const std::string& cached = *column_cache_->GetColumnBlock(ts_col_id)->data;
-    auto sz = cached.size();
-    assert(sz % 8 == 0);
-    auto count = sz / 8;
-    std::string tmp;
-    tmp.resize(count * 16);
-    struct TsWithLSN {
-      timestamp64 ts;
-      TS_LSN lsn;
-    };
-    TsWithLSN* ptr = reinterpret_cast<TsWithLSN*>(tmp.data());
-    const timestamp64* p_ts = reinterpret_cast<const timestamp64*>(cached.data());
-    for (int i = 0; i < count; ++i) {
-      ptr[i].ts = p_ts[i];
-    }
-    column_cache_->PutData(TIMESTAMP8_CACHE_ID, std::move(tmp));
-  }
-
-  KStatus LoadAllDataToCache(int actual_colid) {
-    if (!column_cache_->HasDataCached(actual_colid)) {
-      std::unique_ptr<TsBitmap> bitmap;
-      std::string data;
-      auto s = ReadColumnBlock(lastsegment_->file_.get(), block_info_, actual_colid, &data, &bitmap);
-      if (s == FAIL) {
-        LOG_ERROR("cannot read column block %d", actual_colid);
-        return FAIL;
-      }
-      column_cache_->PutData(actual_colid, std::move(data));
-      if (bitmap != nullptr && !column_cache_->HasBitmapCached(actual_colid)) {
-        column_cache_->PutBitmap(actual_colid, std::move(bitmap));
-      }
-    }
-    return SUCCESS;
-  }
-  KStatus LoadVarcharToCache() {
-    if (!column_cache_->HasDataCached(VARCHAR_CACHE_ID)) {
-      std::string data;
-      auto s = ReadVarcharBlock(lastsegment_->file_.get(), block_info_, &data);
-      if (s == FAIL) {
-        return FAIL;
-      }
-      column_cache_->PutData(VARCHAR_CACHE_ID, std::move(data));
-    }
-    return SUCCESS;
-  }
   const TSEntityID* GetEntities() {
-    auto s = LoadAllDataToCache(0);
+    char* value = nullptr;
+    auto s = column_block_cache_->GetColAddr(ENTITY_ID_IDX, &value);
     if (s == FAIL) {
       LOG_ERROR("cannot load entitiy column");
       return nullptr;
     }
-    const std::string& data = *column_cache_->GetColumnBlock(0)->data;
-    const TSEntityID* entities = reinterpret_cast<const TSEntityID*>(data.data());
-    return entities;
+    return reinterpret_cast<const TSEntityID*>(value);
   }
 
   const uint64_t* GetLSN() {
-    auto s = LoadAllDataToCache(1);
+    char* value = nullptr;
+    auto s = column_block_cache_->GetColAddr(LSN_IDX, &value);
     if (s == FAIL) {
       LOG_ERROR("cannot load lsn column");
       return nullptr;
     }
-    const std::string& data = *column_cache_->GetColumnBlock(1)->data;
-    const uint64_t* seq_nos = reinterpret_cast<const uint64_t*>(data.data());
-    return seq_nos;
+    return reinterpret_cast<const uint64_t*>(value);
   }
 
-  const timestamp64* GetTimestamps() {
-    auto s = LoadAllDataToCache(2);
-    if (s == FAIL) {
-      LOG_ERROR("cannot load timestamp column");
-      return nullptr;
-    }
-    const std::string& data = *column_cache_->GetColumnBlock(2)->data;
-    const timestamp64* ts = reinterpret_cast<const timestamp64*>(data.data());
-    return ts;
-  }
+  const timestamp64* GetTimestamps() { return column_block_cache_->GetTimestamps(); }
 };
 
 ColumnBlockCache::ColumnBlockCache(TsRandomReadFile* underlying_file, TsLastSegmentBlockInfo* block_info)
-    : underlying_file_(underlying_file),
-      block_info_(block_info),
-      column_block_cache_(block_info->ncol + 1 /* the extra 1 is reserved for varchar cache*/) {}
+    : underlying_file_(underlying_file), block_info_(block_info), column_block_cache_(block_info->ncol) {}
 
-// entity_id, lsn
-constexpr int kColIDShift = 2;
-
-KStatus ColumnBlockCache::LoadColumnDataToCache(int actual_colid, const std::vector<AttributeInfo>& schema) {
+KStatus ColumnBlockCache::LoadColumnDataToCache(int actual_colid) {
   assert(column_block_cache_[actual_colid].data_cached == false);
 
   TsBitmap* bitmap = nullptr;
@@ -619,17 +452,24 @@ KStatus ColumnBlockCache::LoadColumnDataToCache(int actual_colid, const std::vec
     };
     auto dstptr = reinterpret_cast<TsWithLSN*>(tmp.data());
     auto srcptr = reinterpret_cast<const timestamp64*>(data.data());
+    assert(8 * block_info_->nrow == data.size());
     for (int i = 0; i < block_info_->nrow; ++i) {
       dstptr[i].ts = srcptr[i];
     }
 
-    column_block_cache_[actual_colid].data->swap(tmp);
+    timestamp_16_cache_.swap(tmp);
   }
 
   return SUCCESS;
 }
 
 KStatus ColumnBlockCache::LoadVarcharDataToCache() {
+  if (varchar_cache_ != nullptr) {
+    // already loaded
+    return SUCCESS;
+  }
+  varchar_cache_ = std::make_unique<std::string>();
+
   bool has_varchar = block_info_->var_offset != 0;
   if (!has_varchar) {
     LOG_ERROR("no varcha block to read");
@@ -646,15 +486,14 @@ KStatus ColumnBlockCache::LoadVarcharDataToCache() {
   GenCompAlg type = static_cast<GenCompAlg>(ptr[0]);
   RemovePrefix(&result, 1);
   int ok = true;
-  column_block_cache_.back().data = std::make_unique<std::string>();
   switch (type) {
     case GenCompAlg::kPlain: {
-      column_block_cache_.back().data->assign(result.data, result.len);
+      varchar_cache_->assign(result.data, result.len);
       break;
     }
     case GenCompAlg::kSnappy: {
       const auto& snappy = SnappyString::GetInstance();
-      ok = snappy.Decompress(result, 0, column_block_cache_.back().data.get());
+      ok = snappy.Decompress(result, 0, varchar_cache_.get());
       break;
     }
     default:
@@ -665,7 +504,6 @@ KStatus ColumnBlockCache::LoadVarcharDataToCache() {
     return FAIL;
   }
 
-  column_block_cache_.back().data_cached = true;
   return SUCCESS;
 }
 
@@ -693,27 +531,36 @@ KStatus ColumnBlockCache::GetColBitmap(int actual_colid, const std::vector<Attri
   return SUCCESS;
 }
 
-KStatus ColumnBlockCache::GetColAddr(int actual_colid, const std::vector<AttributeInfo>& schema, char** value) {
+KStatus ColumnBlockCache::FormatColAddr(int actual_colid, char** value) {
+  auto& data = *column_block_cache_[actual_colid].data;
+  if (actual_colid - kColIDShift == 0) {
+    auto& data = timestamp_16_cache_;
+    *value = data.data();
+  } else {
+    auto& data = *column_block_cache_[actual_colid].data;
+    *value = data.data();
+  }
+  return SUCCESS;
+}
+
+KStatus ColumnBlockCache::GetColAddr(int actual_colid, char** value) {
   {
     std::shared_lock lk{mu_};
     if (column_block_cache_[actual_colid].data_cached) {
-      *value = column_block_cache_[actual_colid].data->data();
-      return SUCCESS;
+      return FormatColAddr(actual_colid, value);
     }
   }
   {
     std::unique_lock lk{mu_};
     if (column_block_cache_[actual_colid].data_cached) {
-      *value = column_block_cache_[actual_colid].data->data();
-      return SUCCESS;
+      return FormatColAddr(actual_colid, value);
     }
-    auto s = LoadColumnDataToCache(actual_colid, schema);
+    auto s = LoadColumnDataToCache(actual_colid);
     if (s == FAIL) {
       return FAIL;
     }
   }
-  *value = this->column_block_cache_[actual_colid].data->data();
-  return SUCCESS;
+  return FormatColAddr(actual_colid, value);
 }
 
 KStatus ColumnBlockCache::FormatValueSlice(int row_num, int actual_colid, const std::vector<AttributeInfo>& schema,
@@ -723,7 +570,7 @@ KStatus ColumnBlockCache::FormatValueSlice(int row_num, int actual_colid, const 
   if (isVarLenType(schema[col_id].type)) {
     const uint32_t* data = reinterpret_cast<const uint32_t*>(column_block_cache_[actual_colid].data->data());
     size_t offset = data[row_num];
-    TSSlice result{column_block_cache_.back().data->data() + offset, 2};
+    TSSlice result{varchar_cache_->data() + offset, 2};
     uint16_t len;
     GetFixed16(&result, &len);
     value.data = result.data;
@@ -753,7 +600,7 @@ KStatus ColumnBlockCache::GetValueSlice(int row_num, int actual_colid, const std
       return FormatValueSlice(row_num, actual_colid, schema, value);
     }
 
-    auto s = LoadColumnDataToCache(actual_colid, schema);
+    auto s = LoadColumnDataToCache(actual_colid);
     if (s == FAIL) {
       return FAIL;
     }
@@ -1009,7 +856,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   if (!MayExistEntity(filter.entity_id)) {
     return SUCCESS;
   }
-  
+
   std::vector<TsLastSegmentBlockIndex>* p_block_indices;
   auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
   if (s == FAIL) {
@@ -1099,7 +946,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        return Compare(data_point, val);
                                      });
 
-      // no need to check wheather idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
+      // no need to check whether idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
       int end_idx = idx_it - iota_vector.begin();
 
       if (end_idx - start_idx > 0) {
