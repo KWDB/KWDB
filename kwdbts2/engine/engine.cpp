@@ -1171,11 +1171,7 @@ KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
 }
 
 KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-<<<<<<< HEAD
-                                    uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
-=======
-                                    uint64_t range_group_id, uint64_t mtr_id, bool skip_log) {
->>>>>>> kwdb5/st-v3
+                                    uint64_t range_group_id, uint64_t mtr_id, bool skip_log, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3 || mtr_id == 0) {
     return KStatus::SUCCESS;
   }

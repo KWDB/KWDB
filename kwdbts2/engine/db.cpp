@@ -655,7 +655,7 @@ TSStatus TSMtrRollbackExplicit(TSEngine* engine, TSTableID table_id, uint64_t ra
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSMtrRollback(ctx_p, table_id, range_group_id, mtr_id, tsx_id);
+  s = engine->TSMtrRollback(ctx_p, table_id, range_group_id, mtr_id, false, tsx_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Failed to rollback the TS mini-transaction!");
   }

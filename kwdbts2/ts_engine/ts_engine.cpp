@@ -644,11 +644,7 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-<<<<<<< HEAD
   return vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
-=======
-  return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
->>>>>>> kwdb5/st-v3
 }
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
@@ -658,19 +654,11 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-<<<<<<< HEAD
   return vgroup->MtrCommit(ctx, mtr_id, tsx_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                      uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
-=======
-  return vgroup->MtrCommit(ctx, mtr_id);
-}
-
-KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log) {
->>>>>>> kwdb5/st-v3
+                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log, const char* tsx_id) {
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -684,19 +672,12 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
   KStatus s;
 
-<<<<<<< HEAD
-  auto vgroup = GetVGroupByID(ctx, 1);
-  s = vgroup->MtrRollback(ctx, mtr_id, false, tsx_id);
-  if (s == FAIL) {
-    Return(s);
-=======
   if (skip_log) {
     auto vgroup = GetVGroupByID(ctx, 1);
-    s = vgroup->MtrRollback(ctx, mtr_id);
+    s = vgroup->MtrRollback(ctx, mtr_id, false, tsx_id);
     if (s == FAIL) {
       Return(s);
     }
->>>>>>> kwdb5/st-v3
   }
   if (tsx_id != nullptr && mtr_id == 0) {
     return SUCCESS;

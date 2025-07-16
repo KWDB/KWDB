@@ -204,12 +204,8 @@ class TSEngineV2Impl : public TSEngine {
   KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
                       uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
 
-  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-<<<<<<< HEAD
-                        uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
-=======
-                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
->>>>>>> kwdb5/st-v3
+  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, uint64_t mtr_id,
+                        bool skip_log = false, const char* tsx_id = nullptr) override;
 
   /**
  * @brief DDL WAL recover.

@@ -440,13 +440,8 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-<<<<<<< HEAD
-                                uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) = 0;
-=======
-                                uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) = 0;
-
->>>>>>> kwdb5/st-v3
+  virtual KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, uint64_t mtr_id,
+                                bool skip_log = false, const char* tsx_id = nullptr) = 0;
   /**
     * @brief begin one transaction.
     * @param[in] table_id  ID
@@ -671,13 +666,8 @@ class TSEngineImpl : public TSEngine {
   KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
                       uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
 
-  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-<<<<<<< HEAD
-                        uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
-
-=======
-                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
->>>>>>> kwdb5/st-v3
+  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, uint64_t mtr_id,
+                        bool skip_log = false, const char* tsx_id = nullptr) override;
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 
