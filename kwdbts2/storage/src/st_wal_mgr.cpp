@@ -436,7 +436,7 @@ KStatus WALMgr::CreateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx) {
 
 KStatus WALMgr::UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn) {
   meta_.current_checkpoint_no++;
-  buffer_mgr_->setHeaderBlockCheckpointInfo(meta_.current_lsn, meta_.current_checkpoint_no);
+  buffer_mgr_->setHeaderBlockCheckpointInfo(chk_lsn, meta_.current_checkpoint_no);
   meta_.checkpoint_lsn = chk_lsn;
   return SUCCESS;
 }
@@ -944,17 +944,21 @@ KStatus WALMgr::SwitchNextFile() {
       return KStatus::FAIL;
     }
   }
-  TS_LSN start_lsn = FetchCurrentLSN() + BLOCK_SIZE;
+  TS_LSN first_lsn = FetchCurrentLSN() + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
 //  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
 //  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
 //                        FetchCurrentLSN(), 0);
 //  KStatus s = file_mgr_->initWalFileWithHeader(hb);
-  KStatus s = file_mgr_->initWalFile(start_lsn);
+  KStatus s = file_mgr_->initWalFile(first_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initWalFileWithHeader.")
     return s;
   }
-  file_mgr_->Open();
+  s = file_mgr_->Open();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to Open the WAL metadata.")
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 
