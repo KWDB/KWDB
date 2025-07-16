@@ -163,7 +163,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) override;
   KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
                                    uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id);
+                                   const KwTsSpan& ts_span, uint64_t* snapshot_id) override;
   KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) override;
   KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) override;
   KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) override;
@@ -204,7 +204,7 @@ class TSEngineV2Impl : public TSEngine {
                       uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id) override;
+                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
 
   /**
  * @brief DDL WAL recover.
@@ -288,6 +288,15 @@ class TSEngineV2Impl : public TSEngine {
       return 0;
     }
     return iter->second;
+  }
+
+  void initRangeIndexMap(AppliedRangeIndex* applied_indexes, uint64_t range_num) {
+    if (applied_indexes != nullptr) {
+      for (int i = 0; i < range_num; i++) {
+        range_indexes_map_[applied_indexes[i].range_id] = applied_indexes[i].applied_index;
+      }
+    }
+    LOG_INFO("map for applied range indexes is initialized.");
   }
 
  private:
