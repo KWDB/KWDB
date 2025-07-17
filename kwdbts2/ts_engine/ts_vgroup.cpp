@@ -811,7 +811,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   if (UNLIKELY(nullptr == tag_pack)) {
     return KStatus::FAIL;
   }
-  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData());
+  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_);
   delete tag_pack;
   if (s == KStatus::FAIL) {
     LOG_ERROR("WriteDeleteTagWAL failed.");
