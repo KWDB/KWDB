@@ -199,7 +199,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
-  auto s = TSEngineImpl::parseMetaSchema(ctx, meta, metric_schema, tag_schema);
+  auto s = parseMetaToSchema(meta, metric_schema, tag_schema);
   if (s != SUCCESS) {
     return s;
   }
