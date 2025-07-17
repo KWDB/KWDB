@@ -721,6 +721,44 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
 
 
+  std::vector<LogEntry*> engine_wal_logs;
+  std::vector<uint64_t> ignore;
+  std::vector<LogEntry*> rollback_logs;
+  Defer defer_engine{[&]() {
+    for (auto& log : engine_wal_logs) {
+      delete log;
+    }
+  }};
+  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
+  if (s == FAIL && !engine_wal_logs.empty()) {
+    Return(s)
+  }
+
+  for (auto log : engine_wal_logs) {
+    if (log->getXID() == mtr_id) {
+      rollback_logs.emplace_back(log);
+    }
+  }
+
+  std::reverse(rollback_logs.begin(), rollback_logs.end());
+  for (auto log : rollback_logs) {
+    auto vgrp_id = log->getVGroupID();
+    // todo(xy), 0 means the wal log does not need to rollback.
+    if (vgrp_id == 0) {
+      continue;
+    }
+    auto vgrp = GetVGroupByID(ctx, vgrp_id);
+    if (vgrp == nullptr) {
+      LOG_ERROR("GetVGroupByID fail, vgroup id : %lu", vgrp_id)
+      return KStatus::FAIL;
+    }
+    if (vgrp->rollback(ctx, log, true) == KStatus::FAIL) {
+      LOG_ERROR("rollback fail, vgroup id : %lu", vgrp_id)
+      return KStatus::FAIL;
+    }
+  }
+
+
   // for range
   for (auto vgrp : vgroups_) {
     std::vector<LogEntry*> wal_logs;
@@ -1569,6 +1607,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   // 3. apply redo log && insert MtrID
   auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
+  std::vector<TS_LSN> rollback;
   for (auto wal_log : logs) {
     if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
       auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
@@ -1584,7 +1623,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
         auto x_id = log->getXID();
-        if (TSMtrRollback(ctx, 0, 0, x_id, true) == KStatus::FAIL) return KStatus::FAIL;
+        rollback.emplace_back(x_id);
         incomplete.erase(log->getXID());
         break;
       }
@@ -1604,7 +1643,11 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
         vg->ApplyWal(ctx, wal_log, incomplete);
     }
   }
-  // 4. rollback incomplete wal
+  // 4. do rollback
+  for (auto x_id : rollback) {
+    if (TSMtrRollback(ctx, 0, 0, x_id, true) == KStatus::FAIL) return KStatus::FAIL;
+  }
+  // 5. rollback incomplete wal
   for (auto& it : incomplete) {
     TS_LSN mtr_id = it.first;
     auto log_entry = it.second;
