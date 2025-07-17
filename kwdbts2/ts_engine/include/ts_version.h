@@ -10,7 +10,6 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <list>
@@ -21,18 +20,16 @@
 #include <string>
 #include <string_view>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
-#include "mmap/mmap_entity_block_meta.h"
 #include "settings.h"
-#include "ts_bitmap.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_segment.h"
+#include "ts_entity_segment_handle.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -151,14 +148,6 @@ enum class VersionUpdateType : uint8_t {
 class TsVersionUpdate {
   friend class TsVersionManager;
 
- public:
-  struct EntitySegmentVersionInfo {
-    uint64_t block_file_size;
-    uint64_t header_b_size;
-    uint64_t agg_file_size;
-    uint64_t header_e_file_number;
-  };
-
  private:
   bool has_new_partition_ = false;
   std::set<PartitionIdentifier> partitions_created_;
@@ -173,7 +162,7 @@ class TsVersionUpdate {
   std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
 
   bool has_entity_segment_ = false;
-  std::map<PartitionIdentifier, EntitySegmentVersionInfo> entity_segment_;
+  std::map<PartitionIdentifier, EntitySegmentHandleInfo> entity_segment_;
 
   bool has_next_file_number_ = false;
   uint64_t next_file_number_ = 0;
@@ -212,7 +201,7 @@ class TsVersionUpdate {
     has_mem_segments_ = true;
   }
 
-  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentVersionInfo info) {
+  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentHandleInfo info) {
     std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     entity_segment_[partition_id] = info;

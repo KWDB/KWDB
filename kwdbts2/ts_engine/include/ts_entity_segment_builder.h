@@ -23,6 +23,7 @@
 #include "ts_engine_schema_manager.h"
 #include "ts_entity_segment_data.h"
 #include "ts_compressor.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_io.h"
 #include "ts_entity_segment.h"
 #include "ts_filename.h"
@@ -66,11 +67,13 @@ class TsEntitySegmentEntityItemFileBuilder {
 class TsEntitySegmentBlockItemFileBuilder {
  private:
   string file_path_;
+  uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   TsBlockItemFileHeader header_;
 
  public:
-  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path, uint64_t file_number)
+      : file_path_(file_path), file_number_(file_number) {
     memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
@@ -78,17 +81,19 @@ class TsEntitySegmentBlockItemFileBuilder {
 
   KStatus Open();
   KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
-  size_t GetFileSize() { return w_file_->GetFileSize(); }
+  MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
 };
 
 class TsEntitySegmentBlockFileBuilder {
  private:
   string file_path_;
+  uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
 
  public:
-  explicit TsEntitySegmentBlockFileBuilder(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentBlockFileBuilder(const string& file_path, uint64_t file_number)
+      : file_path_(file_path), file_number_(file_number) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -96,17 +101,19 @@ class TsEntitySegmentBlockFileBuilder {
 
   KStatus Open();
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
-  size_t GetFileSize() { return w_file_->GetFileSize(); }
+  MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
 };
 
 class TsEntitySegmentAggFileBuilder {
  private:
   string file_path_;
+  uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
 
  public:
-  explicit TsEntitySegmentAggFileBuilder(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentAggFileBuilder(const string& file_path, uint64_t file_number)
+      : file_path_(file_path), file_number_(file_number) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -114,7 +121,7 @@ class TsEntitySegmentAggFileBuilder {
 
   KStatus Open();
   KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
-  size_t GetFileSize() { return w_file_->GetFileSize(); }
+  MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
 };
 
 class TsEntitySegmentBuilder;
@@ -170,12 +177,10 @@ class TsEntitySegmentBuilder {
     bool operator==(const TsEntityKey& other) const {
       return entity_id == other.entity_id && table_version == other.table_version && table_id == other.table_id;
     }
-    bool operator!=(const TsEntityKey& other) const {
-      return !(*this == other);
-    }
+    bool operator!=(const TsEntityKey& other) const { return !(*this == other); }
   };
 
-  KStatus NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>*, uint64_t *file_number);
+  KStatus NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>*, uint64_t* file_number);
 
   KStatus UpdateEntityItem(TsEntityKey& entity_key, TsEntitySegmentBlockItem& block_item);
 
@@ -217,51 +222,51 @@ class TsEntitySegmentBuilder {
     std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_header_file_num);
     entity_item_builder_ =
         std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
+
+    uint64_t block_header_file_num;
+    uint64_t datablock_file_num;
+    uint64_t aggblock_file_num;
+    if (entity_segment == nullptr) {
+      // brand new entity segment, allocate all file numbers
+      block_header_file_num = version_manager_->NewFileNumber();
+      datablock_file_num = version_manager_->NewFileNumber();
+      aggblock_file_num = version_manager_->NewFileNumber();
+    } else {
+      //  entity segment exists, reuse file numbers
+      auto info = entity_segment->GetHandleInfo();
+      block_header_file_num = info.header_b_info.file_number;
+      datablock_file_num = info.datablock_info.file_number;
+      aggblock_file_num = info.agg_info.file_number;
+    }
+
     // block header file
-    std::string block_header_file_path = root_path_ / block_item_file_name;
-    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+    std::string block_header_file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
+    block_item_builder_ =
+        std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_header_file_num);
     // block data file
-    std::string block_file_path = root_path_ / block_data_file_name;
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
+    std::string block_file_path = root_path_ / DataBlockFileName(datablock_file_num);
+    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, datablock_file_num);
     // block agg file
-    std::string agg_file_path = root_path_ / block_agg_file_name;
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
+    std::string agg_file_path = root_path_ / EntityAggFileName(aggblock_file_num);
+    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, aggblock_file_num);
   }
 
-  TsEntitySegmentBuilder(const std::string& root_path,
-                         PartitionIdentifier partition_id,
-                         std::shared_ptr<TsEntitySegment> entity_segment,
-                         uint64_t entity_header_file_num)
-    : root_path_(root_path),
-      partition_id_(partition_id),
-      cur_entity_segment_(entity_segment) {
-    // entity header file
-    std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_header_file_num);
-    entity_item_builder_ =
-      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
-    // block header file
-    std::string block_header_file_path = root_path + "/" + block_item_file_name;
-    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
-    // block data file
-    std::string block_file_path = root_path + "/" + block_data_file_name;
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
-    // block agg file
-    std::string agg_file_path = root_path + "/" + block_agg_file_name;
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
-  }
+  TsEntitySegmentBuilder(const std::string& root_path, TsVersionManager* version_manager,
+                         PartitionIdentifier partition_id, std::shared_ptr<TsEntitySegment> entity_segment)
+      : TsEntitySegmentBuilder(root_path, nullptr, version_manager, partition_id, entity_segment, {}) {}
 
   KStatus Open();
 
-  KStatus Compact(TsVersionUpdate *update);
+  KStatus Compact(TsVersionUpdate* update);
 
   KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
 
-  KStatus WriteBatchFinish(TsVersionUpdate *update);
+  KStatus WriteBatchFinish(TsVersionUpdate* update);
 };
 
 class TsEntitySegmentVacuumer {
  public:
-  explicit TsEntitySegmentVacuumer(const std::string& root_path);
+  explicit TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager);
   KStatus Open();
   KStatus AppendEntityItem(TsEntityItem& entity_item);
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
@@ -270,6 +275,8 @@ class TsEntitySegmentVacuumer {
 
  private:
   std::filesystem::path root_path_;
+  TsVersionManager* version_manager_;
+
   std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;

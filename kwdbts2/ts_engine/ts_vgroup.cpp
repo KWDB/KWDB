@@ -919,8 +919,8 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
       uint64_t new_entity_header_num = version_manager_->NewFileNumber();
 
-      builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), partition_id,
-                                                         entity_segment, new_entity_header_num);
+      builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), version_manager_.get(), partition_id,
+                                                         entity_segment);
       KStatus s = builder->Open();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Open entity segment builder failed.");
@@ -1194,7 +1194,7 @@ KStatus TsVGroup::Vacuum() {
     auto entity_segment = partition->GetEntitySegment();
     auto max_entity_id = entity_segment->GetEntityNum();
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-    TsEntitySegmentVacuumer vacuumer(root_path);
+    TsEntitySegmentVacuumer vacuumer(root_path, this->version_manager_.get());
     vacuumer.Open();
     for (uint32_t i = 1; i <= max_entity_id; i++) {
       TsEntityItem entity_item;

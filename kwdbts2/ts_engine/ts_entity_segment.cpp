@@ -19,6 +19,7 @@
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_coding.h"
 #include "ts_compressor.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
@@ -106,11 +107,10 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, uint64_t entity_header_file_num,
-                                                       uint64_t header_b_file_size)
+TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentHandleInfo info)
     : dir_path_(dir_path),
-      entity_header_(dir_path + "/" + EntityHeaderFileName(entity_header_file_num)),
-      block_header_(dir_path + "/" + block_item_file_name, header_b_file_size) {}
+      entity_header_(dir_path_ / EntityHeaderFileName(info.header_e_file_number)),
+      block_header_(dir_path_ / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
@@ -647,11 +647,8 @@ KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   return KStatus::SUCCESS;
 }
 
-TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, TsVersionUpdate::EntitySegmentVersionInfo info)
-    : dir_path_(root),
-      meta_mgr_(root, info.header_e_file_number, info.header_b_size),
-      block_file_(root / block_data_file_name, info.block_file_size),
-      agg_file_(root / block_agg_file_name, info.agg_file_size) {
+TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, EntitySegmentHandleInfo info)
+    : dir_path_(root), meta_mgr_(root, info), block_file_(root, info), agg_file_(root, info), info_(info) {
   Open();
 }
 

@@ -24,6 +24,7 @@
 #include "ts_compressor.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_entity_segment_data.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_version.h"
@@ -148,12 +149,12 @@ class TsEntitySegmentBlockItemFile {
 class TsEntitySegment;
 class TsEntitySegmentMetaManager {
  private:
-  string dir_path_;
+  std::filesystem::path dir_path_;
   TsEntitySegmentEntityItemFile entity_header_;
   TsEntitySegmentBlockItemFile block_header_;
 
  public:
-  explicit TsEntitySegmentMetaManager(const string& dir_path, uint64_t header_e_file_num, uint64_t header_b_file_size);
+  explicit TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentHandleInfo info);
 
   ~TsEntitySegmentMetaManager() {}
 
@@ -176,6 +177,8 @@ class TsEntitySegmentMetaManager {
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version);
 
   void MarkDeleteEntityHeader() { entity_header_.MarkDelete(); }
+
+  void MarkDeleteAll() {}
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -291,10 +294,12 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   TsEntitySegmentBlockFile block_file_;
   TsEntitySegmentAggFile agg_file_;
 
+  const EntitySegmentHandleInfo info_;
+
  public:
   TsEntitySegment() = delete;
 
-  explicit TsEntitySegment(const std::filesystem::path& root, TsVersionUpdate::EntitySegmentVersionInfo info);
+  explicit TsEntitySegment(const std::filesystem::path& root, EntitySegmentHandleInfo info);
 
   ~TsEntitySegment() {}
 
@@ -321,7 +326,12 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block);
 
+  const EntitySegmentHandleInfo &GetHandleInfo() const { return info_; }
+
   void MarkDeleteEntityHeader() { meta_mgr_.MarkDeleteEntityHeader(); }
+
+  // used by Vacuum, delete all data files.
+  void MarkDeleteAll() {}
 };
 
 }  // namespace kwdbts

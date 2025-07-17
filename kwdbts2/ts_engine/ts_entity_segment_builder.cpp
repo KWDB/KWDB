@@ -10,11 +10,15 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_entity_segment_builder.h"
+#include <sys/types.h>
+#include <cstdint>
+
 #include "ts_agg.h"
+#include "ts_batch_data_worker.h"
 #include "ts_block_span_sorted_iterator.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_lastsegment_builder.h"
-#include "ts_batch_data_worker.h"
 #include "ts_version.h"
 
 namespace kwdbts {
@@ -492,7 +496,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
+KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
   std::shared_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
@@ -514,8 +518,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
         break;
       }
     }
-    TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(),
-                                  block_span->GetEntityID()};
+    TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key != cur_entity_key) {
       if (block && block->HasData()) {
         if (block->GetRowNum() >= EngineOptions::min_rows_per_block) {
@@ -543,8 +546,8 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
             std::vector<TSSlice> metric_value;
             std::vector<DataFlags> data_flags;
             block->GetMetricValue(row_idx, metric_value, data_flags);
-            s = builder->PutColData(entity_key.table_id, entity_key.table_version,
-                                    entity_key.entity_id, lsn, metric_value, data_flags);
+            s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, lsn,
+                                    metric_value, data_flags);
             if (s != KStatus::SUCCESS) {
               LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
               return s;
@@ -569,11 +572,11 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
       if (block == nullptr || entity_key.table_id != cur_entity_key.table_id ||
           entity_key.table_version != cur_entity_key.table_version) {
         std::shared_ptr<MMapMetricsTable> table_schema_;
-        s = schema_manager_->GetTableMetricSchema({}, block_span->GetTableID(),
-                                                  block_span->GetTableVersion(), &table_schema_);
+        s = schema_manager_->GetTableMetricSchema({}, block_span->GetTableID(), block_span->GetTableVersion(),
+                                                  &table_schema_);
         if (s != KStatus::SUCCESS) {
-          LOG_ERROR("get table schema failed. table id: %lu, table version: %u.",
-                    block_span->GetTableID(), block_span->GetTableVersion());
+          LOG_ERROR("get table schema failed. table id: %lu, table version: %u.", block_span->GetTableID(),
+                    block_span->GetTableVersion());
           return s;
         }
         metric_schema = table_schema_->getSchemaInfoExcludeDropped();
@@ -581,8 +584,8 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
         metric_schema = block->GetMetricSchema();
       }
       // init the block segment block
-      block = std::make_shared<TsEntityBlockBuilder>(
-        block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID(), metric_schema);
+      block = std::make_shared<TsEntityBlockBuilder>(block_span->GetTableID(), block_span->GetTableVersion(),
+                                                     block_span->GetEntityID(), metric_schema);
       entity_key = cur_entity_key;
     }
 
@@ -642,8 +645,8 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
       std::vector<TSSlice> metric_value;
       std::vector<DataFlags> data_flags;
       block->GetMetricValue(row_idx, metric_value, data_flags);
-      s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id,
-                              lsn, metric_value, data_flags);
+      s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, lsn, metric_value,
+                              data_flags);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
         return s;
@@ -654,17 +657,16 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate *update) {
   if (builder != nullptr) {
     s = builder->Finalize();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR(
-        "TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
       return s;
     }
     update->AddLastSegment(partition_id_, builder->GetFileNumber());
   }
 
-  TsVersionUpdate::EntitySegmentVersionInfo info;
-  info.agg_file_size = agg_file_builder_->GetFileSize();
-  info.block_file_size = block_file_builder_->GetFileSize();
-  info.header_b_size = block_item_builder_->GetFileSize();
+  EntitySegmentHandleInfo info;
+  info.agg_info = agg_file_builder_->GetFileInfo();
+  info.datablock_info = block_file_builder_->GetFileInfo();
+  info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
   update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
@@ -780,32 +782,38 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
     }
   }
 
-  TsVersionUpdate::EntitySegmentVersionInfo info;
-  info.agg_file_size = agg_file_builder_->GetFileSize();
-  info.block_file_size = block_file_builder_->GetFileSize();
-  info.header_b_size = block_item_builder_->GetFileSize();
+  EntitySegmentHandleInfo info;
+  info.agg_info = agg_file_builder_->GetFileInfo();
+  info.datablock_info = block_file_builder_->GetFileInfo();
+  info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
   update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string &root_path) : root_path_(root_path) {
+TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager)
+    : root_path_(root_path), version_manager_(version_manager) {
   // entity header file
-  std::string entity_header_file_path = root_path + "/" + entity_item_file_name + ".vacuum";
+  std::filesystem::path root(root_path);
+  uint64_t entity_header_file_number = version_manager->NewFileNumber();
+  std::string entity_header_file_path = root / EntityHeaderFileName(entity_header_file_number);
   entity_item_builder_ =
-      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, 0);
+      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_number);
 
   // block header file
-  std::string block_header_file_path = root_path + "/" + block_item_file_name + ".vacuum";
-  block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+  uint64_t block_item_file_number = version_manager->NewFileNumber();
+  std::string block_header_file_path = root / BlockHeaderFileName(block_item_file_number);
+  block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_item_file_number);
 
   // block data file
-  std::string block_file_path = root_path + "/" + block_data_file_name + ".vacuum";
-  block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
+  uint64_t block_data_file_number = version_manager->NewFileNumber();
+  std::string block_file_path = root / DataBlockFileName(block_data_file_number);
+  block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, block_data_file_number);
 
   // block agg file
-  std::string agg_file_path = root_path + "/" + block_agg_file_name + ".vacuum";
-  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
+  uint64_t agg_file_number = version_manager->NewFileNumber();
+  std::string agg_file_path = root / EntityAggFileName(agg_file_number);
+  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, agg_file_number);
 }
 
 KStatus TsEntitySegmentVacuumer::Open() {

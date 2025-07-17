@@ -16,6 +16,7 @@
 #include <string>
 #include <cstdio>
 #include "ts_common.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_io.h"
 
 namespace kwdbts {
@@ -30,12 +31,14 @@ struct TsAggAndBlockFileHeader {
 
 class TsEntitySegmentBlockFile {
  private:
-  string file_path_;
+  std::filesystem::path root_path_;
+  const EntitySegmentHandleInfo info_;
+
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
 
  public:
-  explicit TsEntitySegmentBlockFile(const string& file_path, size_t filesize);
+  explicit TsEntitySegmentBlockFile(const string& root, EntitySegmentHandleInfo info);
 
   ~TsEntitySegmentBlockFile();
 
@@ -81,12 +84,13 @@ class TsEntitySegmentBlockFile {
  */
 class TsEntitySegmentAggFile {
  private:
-  string file_path_;
+  std::filesystem::path root_;
+  EntitySegmentHandleInfo info_;
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
 
  public:
-  explicit TsEntitySegmentAggFile(const string& file_path, size_t filesize);
+  explicit TsEntitySegmentAggFile(const string& root, EntitySegmentHandleInfo info);
 
   ~TsEntitySegmentAggFile() {}
 

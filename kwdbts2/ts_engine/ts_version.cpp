@@ -34,6 +34,7 @@
 #include "libkwdbts2.h"
 #include "ts_coding.h"
 #include "ts_entity_segment.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 
@@ -637,22 +638,21 @@ inline const char *DecodePartitonFiles(const char *ptr, const char *limit,
   return ptr;
 }
 
-inline void EncodeEntitySegment(
-    std::string *result,
-    const std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> &entity_segments) {
+inline void EncodeEntitySegment(std::string *result,
+                                const std::map<PartitionIdentifier, EntitySegmentHandleInfo> &entity_segments) {
   uint32_t npartition = entity_segments.size();
   PutVarint32(result, npartition);
   for (const auto &[par_id, info] : entity_segments) {
     EncodePartitionID(result, par_id);
-    PutVarint64(result, info.block_file_size);
-    PutVarint64(result, info.header_b_size);
+    PutVarint64(result, info.datablock_info.length);
+    PutVarint64(result, info.header_b_info.length);
     PutVarint64(result, info.header_e_file_number);
-    PutVarint64(result, info.agg_file_size);
+    PutVarint64(result, info.agg_info.length);
   }
 }
 
 const char *DecodeEntitySegment(const char *ptr, const char *limit,
-                                std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> *entity_segments) {
+                                std::map<PartitionIdentifier, EntitySegmentHandleInfo> *entity_segments) {
   uint32_t npartition = 0;
   ptr = DecodeVarint32(ptr, limit, &npartition);
   if (ptr == nullptr) {
@@ -665,11 +665,11 @@ const char *DecodeEntitySegment(const char *ptr, const char *limit,
     if (ptr == nullptr) {
       return nullptr;
     }
-    TsVersionUpdate::EntitySegmentVersionInfo info;
-    ptr = DecodeVarint64(ptr, limit, &info.block_file_size);
-    ptr = DecodeVarint64(ptr, limit, &info.header_b_size);
+    EntitySegmentHandleInfo info;
+    ptr = DecodeVarint64(ptr, limit, &info.datablock_info.length);
+    ptr = DecodeVarint64(ptr, limit, &info.header_b_info.length);
     ptr = DecodeVarint64(ptr, limit, &info.header_e_file_number);
-    ptr = DecodeVarint64(ptr, limit, &info.agg_file_size);
+    ptr = DecodeVarint64(ptr, limit, &info.agg_info.length);
     if (ptr == nullptr) {
       return nullptr;
     }
@@ -951,9 +951,9 @@ static std::ostream &operator<<(std::ostream &os, const std::set<uint64_t> &info
   return os;
 }
 
-static std::ostream &operator<<(std::ostream &os, const TsVersionUpdate::EntitySegmentVersionInfo &info) {
-  os << "[" << info.block_file_size << "," << info.header_b_size << "," << info.header_e_file_number << ","
-     << info.agg_file_size << "]";
+static std::ostream &operator<<(std::ostream &os, const EntitySegmentHandleInfo &info) {
+  os << "[" << info.datablock_info.length << "," << info.header_b_info.length << "," << info.header_e_file_number << ","
+     << info.agg_info.length << "]";
   return os;
 }
 
