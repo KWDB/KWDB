@@ -440,7 +440,7 @@ struct TSEngine {
     * @return KStatus
     */
   virtual KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                uint64_t range_group_id, uint64_t mtr_id) = 0;
+                                uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) = 0;
 
   /**
     * @brief begin one transaction.
@@ -670,7 +670,7 @@ class TSEngineImpl : public TSEngine {
                       uint64_t range_group_id, uint64_t mtr_id) override;
 
   KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id) override;
+                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 

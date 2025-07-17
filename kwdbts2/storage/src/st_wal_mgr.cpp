@@ -138,11 +138,9 @@ KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t leng
   meta_.current_lsn = lsn_offset;
 
   // TODO(xy): optimize:if WAL LEVEL=SYNC, don't need sync every log to disk, only sync by FLUSH while COMMIT/ROLLBACK.
-  if (WALMode(opt_->wal_level) == WALMode::SYNC) {
-    if (Flush(ctx) == KStatus::FAIL) {
-      LOG_ERROR("Failed to flush the WAL logs on SYNC level, wal length %lu", length)
-      return KStatus::FAIL;
-    }
+  if (Flush(ctx) == KStatus::FAIL) {
+    LOG_ERROR("Failed to flush the WAL logs on SYNC level, wal length %lu", length)
+    return KStatus::FAIL;
   }
 
 //  if (vg_ != nullptr && NeedCheckpoint()) {
@@ -438,7 +436,7 @@ KStatus WALMgr::CreateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx) {
 
 KStatus WALMgr::UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn) {
   meta_.current_checkpoint_no++;
-  buffer_mgr_->setHeaderBlockCheckpointInfo(meta_.current_lsn, meta_.current_checkpoint_no);
+  buffer_mgr_->setHeaderBlockCheckpointInfo(chk_lsn, meta_.current_checkpoint_no);
   meta_.checkpoint_lsn = chk_lsn;
   return SUCCESS;
 }
@@ -785,7 +783,7 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN sta
 
 KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, mtr_trans_id, meta_.current_lsn, end_chk, mtr_trans_id);
+  KStatus status = buffer_mgr_->readWALLogs(logs, meta_.checkpoint_lsn, meta_.current_lsn, end_chk, mtr_trans_id);
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)
@@ -946,17 +944,21 @@ KStatus WALMgr::SwitchNextFile() {
       return KStatus::FAIL;
     }
   }
-  TS_LSN start_lsn = FetchCurrentLSN() + BLOCK_SIZE;
+  TS_LSN first_lsn = FetchCurrentLSN() + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
 //  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
 //  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
 //                        FetchCurrentLSN(), 0);
 //  KStatus s = file_mgr_->initWalFileWithHeader(hb);
-  KStatus s = file_mgr_->initWalFile(start_lsn);
+  KStatus s = file_mgr_->initWalFile(first_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initWalFileWithHeader.")
     return s;
   }
-  file_mgr_->Open();
+  s = file_mgr_->Open();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to Open the WAL metadata.")
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 

@@ -181,7 +181,7 @@ class TsVGroup {
                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
                         std::list<std::shared_ptr<TsBlockSpan>>* block_spans);
 
-  KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log);
+  KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk = false);
 
   KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete);
 

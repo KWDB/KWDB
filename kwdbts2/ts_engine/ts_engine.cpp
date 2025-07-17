@@ -152,7 +152,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   // TODO(zzr): Recover TsVersion for each VGroup.
   // After WAL RedoPut, TsVersion should be updated.
   for (auto vgroup : vgroups_) {
-    auto s = vgroup->SetReady();
+    s = vgroup->SetReady();
     if (s == FAIL) {
       return FAIL;
     }
@@ -483,7 +483,6 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
-    ErrorInfo err_info;
     err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
@@ -641,8 +640,7 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
     return KStatus::SUCCESS;
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  auto vgroup = GetVGroupByID(ctx, 1);
   return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
 }
 
@@ -652,13 +650,12 @@ KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id
     return KStatus::SUCCESS;
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
+  auto vgroup = GetVGroupByID(ctx, 1);
   return vgroup->MtrCommit(ctx, mtr_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                      uint64_t range_group_id, uint64_t mtr_id) {
+                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log) {
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -672,12 +669,51 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   }
   KStatus s;
 
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  auto vgroup = GetVGroupByID(ctx, distrib(gen));
-  s = vgroup->MtrRollback(ctx, mtr_id);
-  if (s == FAIL) {
-    Return(s);
+  if (!skip_log) {
+    auto vgroup = GetVGroupByID(ctx, 1);
+    s = vgroup->MtrRollback(ctx, mtr_id);
+    if (s == FAIL) {
+      Return(s);
+    }
   }
+
+  std::vector<LogEntry*> engine_wal_logs;
+  std::vector<uint64_t> ignore;
+  std::vector<LogEntry*> rollback_logs;
+  Defer defer_engine{[&]() {
+    for (auto& log : engine_wal_logs) {
+      delete log;
+    }
+  }};
+  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
+  if (s == FAIL && !engine_wal_logs.empty()) {
+    Return(s)
+  }
+
+  for (auto log : engine_wal_logs) {
+    if (log->getXID() == mtr_id) {
+      rollback_logs.emplace_back(log);
+    }
+  }
+
+  std::reverse(rollback_logs.begin(), rollback_logs.end());
+  for (auto log : rollback_logs) {
+    auto vgrp_id = log->getVGroupID();
+    // todo(xy), 0 means the wal log does not need to rollback.
+    if (vgrp_id == 0) {
+      continue;
+    }
+    auto vgrp = GetVGroupByID(ctx, vgrp_id);
+    if (vgrp == nullptr) {
+      LOG_ERROR("GetVGroupByID fail, vgroup id : %lu", vgrp_id)
+      return KStatus::FAIL;
+    }
+    if (vgrp->rollback(ctx, log, true) == KStatus::FAIL) {
+      LOG_ERROR("rollback fail, vgroup id : %lu", vgrp_id)
+      return KStatus::FAIL;
+    }
+  }
+
 
   // for range
   for (auto vgrp : vgroups_) {
@@ -696,10 +732,9 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       if (wal_log->getXID() == mtr_id && s != FAIL) {
         s = vgrp->rollback(ctx, wal_log);
       }
-      delete wal_log;
     }
   }
-  Return(s)
+  Return(KStatus::SUCCESS)
 }
 
 KStatus TSEngineV2Impl::checkpoint(kwdbts::kwdbContext_p ctx) {
@@ -915,7 +950,8 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   for (auto log : logs) {
     switch (log->getType()) {
-      case MTR_COMMIT : {
+      case MTR_COMMIT :
+      case MTR_ROLLBACK: {
         commit.emplace_back(log->getXID());
       }
       default:
@@ -932,7 +968,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
     if (!skip) {
-      if (log->getType() != WALLogType::CHECKPOINT) {
+      if (log->getType() == WALLogType::INSERT ||
+          log->getType() == WALLogType::UPDATE ||
+          log->getType() == WALLogType::DELETE ||
+          log->getType() == WALLogType::MTR_BEGIN) {
         if (!EngineOptions::isSingleNode()) {
           rewrite.emplace_back(log);
         }
@@ -964,7 +1003,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
-  TS_LSN lsn;
+  TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
   char* v_lsn = new char[lsn_len];
   int location = 0;
@@ -973,7 +1012,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     location += sizeof(uint64_t);
   }
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
-  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, lsn);
+  s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
   delete []v_lsn;
   if (s == KStatus::FAIL) {
@@ -1230,7 +1269,7 @@ KStatus TSEngineV2Impl::DropResidualTsTable(kwdbContext_p ctx) {
   for (auto table_id : tables) {
     bool is_exist = checkTableMetaExist(table_id);
     if (!is_exist) {
-      KStatus s = DropTsTable(ctx, table_id);
+      s = DropTsTable(ctx, table_id);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("drop table [%ld] failed", table_id);
         return s;
@@ -1310,7 +1349,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = ddl_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info);
+            s = GetTsTable(ctx, table_id, table, true, err_info);
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1335,7 +1374,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = index_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1360,7 +1399,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
             uint64_t table_id = index_log->getObjectID();
             std::shared_ptr<TsTable> table;
             ErrorInfo err_info;
-            KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+            s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
             if (s == KStatus::FAIL) {
               return s;
             }
@@ -1418,7 +1457,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
         uint64_t table_id = index_log->getObjectID();
         std::shared_ptr<TsTable> table;
         ErrorInfo err_info;
-        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
           return s;
         }
@@ -1442,7 +1481,7 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
         uint64_t table_id = index_log->getObjectID();
         std::shared_ptr<TsTable> table;
         ErrorInfo err_info;
-        KStatus s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
+        s = GetTsTable(ctx, table_id, table, true, err_info, index_log->getCurTsVersion());
         if (s == KStatus::FAIL) {
           return s;
         }
@@ -1523,6 +1562,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
 
   // 3. apply redo log
   std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
+  std::vector<TS_LSN> rollback;
   for (auto wal_log : logs) {
     if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
       auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
@@ -1535,7 +1575,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       case WALLogType::MTR_ROLLBACK: {
         auto log = reinterpret_cast<MTREntry*>(wal_log);
         auto x_id = log->getXID();
-        if (TSMtrRollback(ctx, 0, 0, x_id) == KStatus::FAIL) return KStatus::FAIL;
+        rollback.emplace_back(x_id);
         incomplete.erase(log->getXID());
         break;
       }
@@ -1555,14 +1595,17 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
         vg->ApplyWal(ctx, wal_log, incomplete);
     }
   }
-  // 4. rollback incomplete wal
+  // 4. do rollback
+  for (auto x_id : rollback) {
+    if (TSMtrRollback(ctx, 0, 0, x_id, true) == KStatus::FAIL) return KStatus::FAIL;
+  }
+  // 5. rollback incomplete wal
   for (auto& it : incomplete) {
     TS_LSN mtr_id = it.first;
     auto log_entry = it.second;
     uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
-      std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-      auto vgroup = GetVGroupByID(ctx, distrib(gen));
+      auto vgroup = GetVGroupByID(ctx, 1);
       s = vgroup->MtrCommit(ctx, mtr_id);
       if (s == FAIL) return s;
     } else {
@@ -1847,6 +1890,36 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
     snapshots_.erase(snapshot_id);
   }
   return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::FlushBuffer(kwdbContext_p ctx) {
+  if (options_.wal_level != WALMode::OFF) {
+    {
+      wal_mgr_->Lock();
+      wal_mgr_->Flush(ctx);
+      wal_mgr_->Unlock();
+    }
+    for (auto& vg : vgroups_) {
+      auto wal = vg->GetWALManager();
+      wal->Lock();
+      wal->Flush(ctx);
+      wal->Unlock();
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
+  if (wal_level == nullptr) {
+    LOG_ERROR("wal_level is nullptr");
+    return KStatus::FAIL;
+  }
+  *wal_level = options_.wal_level;
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) {
+  return GetWaitThreadNum(ctx, resp);
 }
 
 // get max entity id

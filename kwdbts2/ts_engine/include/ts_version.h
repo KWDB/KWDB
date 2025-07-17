@@ -168,11 +168,18 @@ class TsVersionUpdate {
   bool has_next_file_number_ = false;
   uint64_t next_file_number_ = 0;
 
+  bool need_record_ = false;
+
   std::set<PartitionIdentifier> updated_partitions_;
 
   std::mutex mu_;
 
   bool NeedRecordFileNumber() const { return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_; }
+  bool NeedRecord() const { return need_record_; }
+  bool MemSegmentsOnly() const {
+    return has_mem_segments_ && !has_new_partition_ && !has_new_lastseg_ && !has_delete_lastseg_ &&
+           !has_entity_segment_ && !has_next_file_number_;
+  }
 
  public:
   bool Empty() const {
@@ -183,18 +190,21 @@ class TsVersionUpdate {
     partitions_created_.insert(partition_id);
     updated_partitions_.insert(partition_id);
     has_new_partition_ = true;
+    need_record_ = true;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     new_lastsegs_[partition_id].insert(file_number);
     has_new_lastseg_ = true;
+    need_record_ = true;
   }
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     delete_lastsegs_[partition_id].insert(file_number);
     has_delete_lastseg_ = true;
+    need_record_ = true;
   }
 
   void SetValidMemSegments(const std::list<std::shared_ptr<TsMemSegment>> &mem) {
@@ -208,11 +218,13 @@ class TsVersionUpdate {
     entity_segment_[partition_id] = info;
     has_entity_segment_ = true;
     delete_all_prev_entity_segment_ = delete_all_prev_files;
+    need_record_ = true;
   }
 
   void SetNextFileNumber(uint64_t file_number) {
     next_file_number_ = file_number;
     has_next_file_number_ = true;
+    need_record_ = true;
   }
 
   std::string EncodeToString() const;

@@ -132,6 +132,7 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   if (strcmp(options.engine_version, "2") == 0) {
     g_engine_version = 2;
     auto engine = new TSEngineV2Impl(opts);
+    engine->initRangeIndexMap(applied_indexes, range_num);
     auto s = engine->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return ToTsStatus("open TSEngineV2Impl Error!");
