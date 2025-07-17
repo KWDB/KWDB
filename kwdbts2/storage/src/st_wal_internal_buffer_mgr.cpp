@@ -691,7 +691,7 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
   TS_LSN old_lsn = 0;
-  TS_LSN v_lsn = current_offset;
+  TS_LSN v_lsn = current_offset - 1;
 
   KStatus status;
 
@@ -841,6 +841,7 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
   TS_LSN old_lsn = 0;
+  TS_LSN v_lsn = current_offset - 1;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn) + sizeof(WALTableType),
@@ -908,6 +909,9 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       if (txn_id == 0 || txn_id == x_id) {
         UpdateLogTagsEntry* update_tags = nullptr;
         try {
+          if (for_chk) {
+            old_lsn = v_lsn;
+          }
           update_tags = KNEW UpdateLogTagsEntry(current_lsn, WALLogType::UPDATE, x_id, tbl_typ, time_partition,
                                                       offset, length, old_len, read_buf, vgrp_id, old_lsn);
         } catch (exception &e) {
@@ -940,6 +944,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
   TS_LSN old_lsn = 0;
+  TS_LSN v_lsn = current_offset - 1;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn), res);
@@ -1013,6 +1018,9 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       if (txn_id == 0 || txn_id == x_id) {
         DeleteLogTagsEntry* d_tags_entry = nullptr;
         try {
+          if (for_chk) {
+            old_lsn = v_lsn;
+          }
           d_tags_entry = KNEW DeleteLogTagsEntry(current_lsn, WALLogType::DELETE, x_id, table_type, group_id,
                                                        entity_id, p_tag_len, tag_len, res, vgrp_id, old_lsn);
         } catch (exception &e) {
@@ -1068,6 +1076,9 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       }
 
       if (txn_id == 0 || txn_id == x_id) {
+        if (for_chk) {
+          old_lsn = v_lsn;
+        }
         auto* metrics_entry = KNEW DeleteLogMetricsEntry(current_lsn, WALLogType::DELETE, x_id, table_type, p_tag_len,
                                                          range_size, res, vgrp_id, old_lsn);
         if (metrics_entry == nullptr) {
@@ -1117,6 +1128,9 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       }
 
       if (txn_id == 0 || txn_id == x_id) {
+        if (for_chk) {
+          old_lsn = v_lsn;
+        }
         auto* metrics_entry = KNEW DeleteLogMetricsEntryV2(current_lsn, WALLogType::DELETE, x_id, table_type, table_id,
                                                            p_tag_len, range_size, res, vgrp_id, old_lsn);
         if (metrics_entry == nullptr) {
