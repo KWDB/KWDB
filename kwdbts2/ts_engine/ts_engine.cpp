@@ -714,7 +714,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       LOG_ERROR("GetVGroupByID fail, vgroup id : %lu", vgrp_id)
       return KStatus::FAIL;
     }
-    if (vgrp->rollback(ctx, log) == KStatus::FAIL) {
+    if (vgrp->rollback(ctx, log, true) == KStatus::FAIL) {
       LOG_ERROR("rollback fail, vgroup id : %lu", vgrp_id)
       return KStatus::FAIL;
     }
