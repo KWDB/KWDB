@@ -44,6 +44,7 @@ class TsEntitySegmentBlockFile {
 
   KStatus Open();
   KStatus ReadData(uint64_t offset, char** buff, size_t len);
+  void MarkDelete() { r_file_->MarkDelete(); }
 };
 
 /*
@@ -96,6 +97,7 @@ class TsEntitySegmentAggFile {
 
   KStatus Open();
   KStatus ReadAggData(uint64_t offset, char** buff, size_t len);
+  void MarkDelete() { r_file_->MarkDelete(); }
 };
 
 }  // namespace kwdbts

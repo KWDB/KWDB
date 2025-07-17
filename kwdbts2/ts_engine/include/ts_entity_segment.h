@@ -144,6 +144,8 @@ class TsEntitySegmentBlockItemFile {
   KStatus Open();
 
   KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item);
+
+  void MarkDelete() { r_file_->MarkDelete(); }
 };
 
 class TsEntitySegment;
@@ -178,7 +180,10 @@ class TsEntitySegmentMetaManager {
 
   void MarkDeleteEntityHeader() { entity_header_.MarkDelete(); }
 
-  void MarkDeleteAll() {}
+  void MarkDeleteAll() {
+    entity_header_.MarkDelete();
+    block_header_.MarkDelete();
+  }
 };
 
 struct TsEntitySegmentBlockInfo {
@@ -331,7 +336,11 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   void MarkDeleteEntityHeader() { meta_mgr_.MarkDeleteEntityHeader(); }
 
   // used by Vacuum, delete all data files.
-  void MarkDeleteAll() {}
+  void MarkDeleteAll() {
+    meta_mgr_.MarkDeleteAll();
+    block_file_.MarkDelete();
+    agg_file_.MarkDelete();
+  }
 };
 
 }  // namespace kwdbts

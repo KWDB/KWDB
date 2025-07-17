@@ -272,6 +272,7 @@ class TsEntitySegmentVacuumer {
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
   KStatus AppendAgg(const TSSlice& agg, uint64_t* offset);
   KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
+  EntitySegmentHandleInfo GetHandleInfo();
 
  private:
   std::filesystem::path root_path_;

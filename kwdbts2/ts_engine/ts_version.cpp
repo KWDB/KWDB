@@ -218,6 +218,7 @@ KStatus TsVersionManager::Recover() {
   builder.Finalize(&update);
   assert(logger_ != nullptr);
   s = ApplyUpdate(&update);
+  LOG_INFO("recovered update: %s", update.DebugStr().c_str());
   if (s == FAIL) {
     return FAIL;
   }
@@ -348,6 +349,9 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       std::string root = root_path_ / PartitionDirName(par_id);
       if (new_partition_version->entity_segment_) {
         new_partition_version->entity_segment_->MarkDeleteEntityHeader();
+        if (update->delete_all_prev_entity_segment_) {
+          new_partition_version->entity_segment_->MarkDeleteAll();
+        }
       }
       new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(root, it->second);
     }
@@ -638,16 +642,28 @@ inline const char *DecodePartitonFiles(const char *ptr, const char *limit,
   return ptr;
 }
 
+static inline void EncodeMetaInfo(std::string *result, const MetaFileInfo &meta_info) {
+  PutVarint64(result, meta_info.file_number);
+  PutVarint64(result, meta_info.length);
+}
+
+static inline const char *DecodeMetaInfo(const char *ptr, const char *limit, MetaFileInfo *meta_info) {
+  ptr = DecodeVarint64(ptr, limit, &meta_info->file_number);
+  ptr = DecodeVarint64(ptr, limit, &meta_info->length);
+  return ptr;
+}
+
 inline void EncodeEntitySegment(std::string *result,
                                 const std::map<PartitionIdentifier, EntitySegmentHandleInfo> &entity_segments) {
   uint32_t npartition = entity_segments.size();
   PutVarint32(result, npartition);
   for (const auto &[par_id, info] : entity_segments) {
     EncodePartitionID(result, par_id);
-    PutVarint64(result, info.datablock_info.length);
-    PutVarint64(result, info.header_b_info.length);
+
+    EncodeMetaInfo(result, info.datablock_info);
+    EncodeMetaInfo(result, info.header_b_info);
     PutVarint64(result, info.header_e_file_number);
-    PutVarint64(result, info.agg_info.length);
+    EncodeMetaInfo(result, info.agg_info);
   }
 }
 
@@ -666,10 +682,10 @@ const char *DecodeEntitySegment(const char *ptr, const char *limit,
       return nullptr;
     }
     EntitySegmentHandleInfo info;
-    ptr = DecodeVarint64(ptr, limit, &info.datablock_info.length);
-    ptr = DecodeVarint64(ptr, limit, &info.header_b_info.length);
+    ptr = DecodeMetaInfo(ptr, limit, &info.datablock_info);
+    ptr = DecodeMetaInfo(ptr, limit, &info.header_b_info);
     ptr = DecodeVarint64(ptr, limit, &info.header_e_file_number);
-    ptr = DecodeVarint64(ptr, limit, &info.agg_info.length);
+    ptr = DecodeMetaInfo(ptr, limit, &info.agg_info);
     if (ptr == nullptr) {
       return nullptr;
     }

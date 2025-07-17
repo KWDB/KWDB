@@ -668,7 +668,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
   info.datablock_info = block_file_builder_->GetFileInfo();
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
-  update->SetEntitySegment(partition_id_, info);
+  update->SetEntitySegment(partition_id_, info, false);
   return KStatus::SUCCESS;
 }
 
@@ -787,7 +787,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   info.datablock_info = block_file_builder_->GetFileInfo();
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
-  update->SetEntitySegment(partition_id_, info);
+  update->SetEntitySegment(partition_id_, info, false);
   return KStatus::SUCCESS;
 }
 
@@ -853,5 +853,14 @@ KStatus TsEntitySegmentVacuumer::AppendAgg(const TSSlice& agg, uint64_t* offset)
 
 KStatus TsEntitySegmentVacuumer::AppendBlockItem(TsEntitySegmentBlockItem& block_item) {
   return block_item_builder_->AppendBlockItem(block_item);
+}
+
+EntitySegmentHandleInfo TsEntitySegmentVacuumer::GetHandleInfo() {
+  EntitySegmentHandleInfo info;
+  info.datablock_info = block_file_builder_->GetFileInfo();
+  info.agg_info = agg_file_builder_->GetFileInfo();
+  info.header_b_info = block_item_builder_->GetFileInfo();
+  info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  return info;
 }
 }  //  namespace kwdbts

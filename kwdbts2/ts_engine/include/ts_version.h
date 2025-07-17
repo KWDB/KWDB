@@ -162,6 +162,7 @@ class TsVersionUpdate {
   std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
 
   bool has_entity_segment_ = false;
+  bool delete_all_prev_entity_segment_ = false;
   std::map<PartitionIdentifier, EntitySegmentHandleInfo> entity_segment_;
 
   bool has_next_file_number_ = false;
@@ -201,11 +202,12 @@ class TsVersionUpdate {
     has_mem_segments_ = true;
   }
 
-  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentHandleInfo info) {
+  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentHandleInfo info, bool delete_all_prev_files) {
     std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     entity_segment_[partition_id] = info;
     has_entity_segment_ = true;
+    delete_all_prev_entity_segment_ = delete_all_prev_files;
   }
 
   void SetNextFileNumber(uint64_t file_number) {

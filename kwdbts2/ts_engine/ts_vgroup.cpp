@@ -1293,6 +1293,10 @@ KStatus TsVGroup::Vacuum() {
         return s;
       }
     }
+    TsVersionUpdate update;
+    auto info = vacuumer.GetHandleInfo();
+    update.SetEntitySegment((*it)->GetPartitionIdentifier(), info, true);
+    version_manager_->ApplyUpdate(&update);
     partition->ResetStatus();
   }
 
