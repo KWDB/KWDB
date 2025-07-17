@@ -683,6 +683,40 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
     return SUCCESS;
   }
 
+  std::vector<LogEntry*> engine_wal_logs;
+  std::vector<uint64_t> ignore;
+  std::vector<LogEntry*> rollback_logs;
+  Defer defer_engine{[&]() {
+    for (auto& log : engine_wal_logs) {
+      delete log;
+    }
+  }};
+  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
+  if (s == FAIL && !engine_wal_logs.empty()) {
+    Return(s)
+  }
+
+  for (auto log : engine_wal_logs) {
+    if (log->getXID() == mtr_id) {
+      rollback_logs.emplace_back(log);
+    }
+  }
+
+  std::reverse(rollback_logs.begin(), rollback_logs.end());
+  for (auto log : rollback_logs) {
+    auto vgrp_id = log->getVGroupID();
+    auto vgrp = GetVGroupByID(ctx, vgrp_id);
+    if (vgrp == nullptr) {
+      LOG_ERROR("GetVGroupByID fail, vgroup id : %lu", vgrp_id)
+      return KStatus::FAIL;
+    }
+    if (vgrp->rollback(ctx, log) == KStatus::FAIL) {
+      LOG_ERROR("rollback fail, vgroup id : %lu", vgrp_id)
+      return KStatus::FAIL;
+    }
+  }
+
+
   // for range
   for (auto vgrp : vgroups_) {
     std::vector<LogEntry*> wal_logs;
