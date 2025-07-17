@@ -705,7 +705,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
   std::reverse(rollback_logs.begin(), rollback_logs.end());
   for (auto log : rollback_logs) {
     auto vgrp_id = log->getVGroupID();
-    // todo(xy), 0 means the wal log does not need to rollback. 
+    // todo(xy), 0 means the wal log does not need to rollback.
     if (vgrp_id == 0) {
       continue;
     }
