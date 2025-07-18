@@ -803,7 +803,8 @@ TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, T
   // block header file
   uint64_t block_item_file_number = version_manager->NewFileNumber();
   std::string block_header_file_path = root / BlockHeaderFileName(block_item_file_number);
-  block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_item_file_number);
+  block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path,
+                                                                              block_item_file_number);
 
   // block data file
   uint64_t block_data_file_number = version_manager->NewFileNumber();
