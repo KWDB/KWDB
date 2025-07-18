@@ -138,8 +138,7 @@ size_t InsertLogMetricsEntry::getLen() {
            sizeof(length_) +
            length_ +
            sizeof(p_tag_len_) +
-           p_tag_len_ +
-           sizeof(vgrp_id_);
+           p_tag_len_;
   }
 
   return len_;
