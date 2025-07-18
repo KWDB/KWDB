@@ -829,6 +829,7 @@ TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp en
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
+  ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
   s = engine->GetTsTable(ctx_p, table_id, ts_tb, false);
   if (s != KStatus::SUCCESS) {
@@ -848,15 +849,13 @@ TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp en
 }
 
 TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* row_size) {
-  if (g_engine_version == 2) {
-    return kTsSuccess;
-  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
+  ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
   s = engine->GetTsTable(ctx_p, table_id, ts_tb);
   if (s != KStatus::SUCCESS) {
@@ -873,15 +872,13 @@ TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* ro
 // Query the total amount of data within the range (an approximate value is sufficient)
 TSStatus TSGetDataVolume(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
                         KwTsSpan ts_span, uint64_t* volume) {
-  if (g_engine_version == 2) {
-    return kTsSuccess;
-  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
+  ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
   s = engine->GetTsTable(ctx_p, table_id, ts_tb);
   if (s != KStatus::SUCCESS) {
@@ -953,6 +950,7 @@ TSStatus TSGetDataVolumeHalfTS(TSEngine* engine, TSTableID table_id, uint64_t be
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
+  ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
   s = engine->GetTsTable(ctx_p, table_id, ts_tb);
   if (s != KStatus::SUCCESS) {
@@ -1078,6 +1076,7 @@ TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t 
     return ToTsStatus("InitServerKWDBContext Error!");
   }
 
+  ctx_p->ts_engine = engine;
   s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("CreateSnapshot Error!");
@@ -1094,6 +1093,7 @@ TSStatus TSGetSnapshotNextBatchData(TSEngine* engine, TSTableID table_id, uint64
     return ToTsStatus("InitServerKWDBContext Error!");
   }
 
+  ctx_p->ts_engine = engine;
   s = engine->GetSnapshotNextBatchData(ctx_p, snapshot_id, data);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetSnapshotData Error!");
@@ -1110,6 +1110,7 @@ TSStatus TSCreateSnapshotForWrite(TSEngine* engine, TSTableID table_id, uint64_t
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
+  ctx_p->ts_engine = engine;
   s = engine->CreateSnapshotForWrite(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitSnapshot Error!");
@@ -1126,6 +1127,7 @@ TSStatus TSWriteSnapshotBatchData(TSEngine* engine, TSTableID table_id, uint64_t
     return ToTsStatus("InitServerKWDBContext Error!");
   }
 
+  ctx_p->ts_engine = engine;
   s = engine->WriteSnapshotBatchData(ctx_p, snapshot_id, data);
   if (s != KStatus::SUCCESS) {
       return ToTsStatus("WriteSnapshotBatchData Error!");
@@ -1142,6 +1144,7 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
     return ToTsStatus("InitServerKWDBContext Error!");
   }
 
+  ctx_p->ts_engine = engine;
   s = engine->WriteSnapshotSuccess(ctx_p, snapshot_id);
   if (s != KStatus::SUCCESS) {
       return ToTsStatus("WriteSnapshotBatchData Error!");
@@ -1158,6 +1161,7 @@ TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t 
     return ToTsStatus("InitServerKWDBContext Error!");
   }
 
+  ctx_p->ts_engine = engine;
   s = engine->WriteSnapshotRollback(ctx_p, snapshot_id);
   if (s != KStatus::SUCCESS) {
       return ToTsStatus("WriteSnapshotBatchData Error!");
@@ -1173,6 +1177,7 @@ TSStatus TSDeleteSnapshot(TSEngine* engine, TSTableID table_id, uint64_t snapsho
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
+  ctx_p->ts_engine = engine;
   s = engine->DeleteSnapshot(ctx_p, snapshot_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DropSnapshot Error!");

@@ -1,0 +1,103 @@
+Distributed Regression Pipeline Guide
+
+Execute all distributed regression use cases
+	bash  ./qa/run_test_local_v2.sh TEST_v2_integration_distribute_v2.sh *.sql 5c
+	Please execute the above command in the kwbasedb/ directory
+Execute a single distributed regression use case
+	bash  ./qa/run_test_local_v2.sh TEST_v2_integration_distribute_v2.sh cluster_dead_join_node.sql 5c
+
+Distributed regression will split the SQL file of the execution case by line,
+generate the corresponding shell command from the corresponding SQL statement
+or special comment, and execute it through the shell.
+For the test file XXX.sql, it will generate XXX.sql.sh file in the
+    qa/Integration/cluster_v2/master/ directory and execute it line by line.
+
+The cluster startup directory for distributed regression is
+	/home/fxy/gozdp/src/gitee.com/kwbasedb/install/deploy/，nodes are c1,c2...
+
+    Note that due to the simultaneous startup of a multi-node cluster, the node
+IDs may not be in order. For example, the node ID corresponding to the node status
+query is not 1 when the c1 directory is started. In this test process, a query is
+performed after the node is started to obtain the node ID mapping. In subsequent
+special instructions, node c1 represents the node with node ID 1, not the node with
+data storage directory c1.
+
+
+For SQL statements, the default call is to execute the c1 node (the default port is
+26257), so when the test case kills node 1, please pay attention to switch the node
+(--node)
+
+The specific special comments and corresponding functions are as follows.
+If you need to modify or expand, please modify qa/util/distribute_regression.py
+
+-- node
+	Switch to the specified node for execution
+	ex: --node: c1
+	Switch to the node with node ID 1 to execute the following SQL
+-- kill
+	Kill the specified node
+	ex: --kill: c2
+	Kill the node with node id 2
+-- sleep
+	Wait for a while and then continue execution
+	ex: --sleep 30s
+	Wait 30 seconds before continuing
+-- restart
+	Restart the specified node
+	ex: --restart: c2
+	Restart the node with node id 2
+-- join
+	Add new nodes.
+	ex: --join: c6
+	Add new node 6.
+	Note：
+	1. When adding a new node, the node id of the newly added node cannot be guaranteed.
+        The mapping relationship of the newly added node id is pre-set at the beginning
+        and cannot be hot-updated after execution. Therefore, please make sure to add
+        new nodes in the order of 6, 7, 8...
+    2. Please do not add multiple nodes at the same time
+    3. The current pre-allocated number of newly added nodes is 5
+
+-- decommission
+	Decommissioning a designated node
+	ex: --decommission: c2
+	Decommission node c2
+	This command uses quit decommission instead of node decommission. Therefore, it can
+	automatically quit after decommissioning, without manually killing the decommissioned
+	node.
+
+-- wait-join
+	Waiting for nodes to join
+	ex: --wait-join: c2
+	Query node status and wait for the node c2 status to change to joining
+	If the time exceeds 180 seconds, the process will time out.
+
+-- wait-dead
+	Waiting for node death
+	ex: --wait-dead: c2
+	Query node status and wait for the node c2 status to change to dead
+	If the time exceeds 180 seconds, the process will time out.
+
+-- wait-running
+	Query the node status by specifying the node and wait for the replica status to be available
+	ex：--wait-running: c2
+	Query show ts partitions through the c2 node and wait for all replicas to be in the running
+	state.
+	If the time exceeds 180 seconds, the process will time out.
+
+-- upgrade-complete
+	Mark the online upgrade completed and start the node
+	ex: --upgrade-complete: c2
+	Complete the online upgrade and start c2 with the new binary
+
+-- upgrade
+	Upgrading a node online
+	ex: --upgrade: c2
+	Upgrade node c2 online. After the online upgrade, the replica will be transferred to other
+	nodes. After completing the upgrade command, the current node will not be automatically
+	shut down. Before executing upgrade-complete, you need to manually kill the node (execute --kill)
+
+-- set-dead
+	Mark the specified node dead
+	ex: --set-dead: c2
+	Mark node c2 as dead. If c2 is in any state other than unhealthy, this command is invalid.
