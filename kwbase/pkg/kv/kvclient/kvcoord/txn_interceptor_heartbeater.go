@@ -40,7 +40,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -448,15 +447,6 @@ var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
 	false,
 )
 
-// TxnSignal is used to notify the heartbeater about transaction status.
-// If StopHB is true and the ID matches, the heartbeater should stop.
-// Typically sent by tsTxnCommitter to tsTxnHeartbeater when ts
-// transaction finishes but status is pending.
-type TxnSignal struct {
-	ID     uuid.UUID // Transaction ID for matching
-	StopHB bool      // True if the heartbeat should stop
-}
-
 // tsTxnHeartbeater maintains the liveness of a ts insert transaction by periodically sending heartbeats.
 // Unlike the standard txnHeartbeater, tsTxnHeartbeater directly writes
 // to KV to persist heartbeat information and maintain the ts transaction record.
@@ -473,12 +463,12 @@ type tsTxnHeartbeater struct {
 		sync.Locker
 		loopStarted bool   // Indicates whether the heartbeat loop has started.
 		loopCancel  func() // Function to cancel the running heartbeat loop.
+		loopStop    bool   // Indicates whether the heartbeat loop need to stop.
 	}
-	ranges   *roachpb.Spans        // The key spans involved in the transaction.
-	tsTxn    roachpb.TsTransaction // TS transaction metadata to be maintained.
-	setting  *cluster.Settings
-	NodeID   roachpb.NodeID
-	signalCh <-chan TxnSignal // Channel to receive external signals(from tsTxnCommitter) to stop heartbeat.
+	ranges  *roachpb.Spans        // The key spans involved in the transaction.
+	tsTxn   roachpb.TsTransaction // TS transaction metadata to be maintained.
+	setting *cluster.Settings
+	NodeID  roachpb.NodeID
 }
 
 // setWrapped implements the txnInterceptor interface.
@@ -553,7 +543,9 @@ func (h *tsTxnHeartbeater) SendLocked(
 			return nil, roachpb.NewError(err)
 		}
 	}
-	return h.wrapped.SendLocked(ctx, ba)
+	br, pErr := h.wrapped.SendLocked(ctx, ba)
+	h.mu.loopStop = true
+	return br, pErr
 }
 
 // startHeartbeatLoopLocked starts a heartbeat loop in a different goroutine.
@@ -611,11 +603,6 @@ func (h *tsTxnHeartbeater) heartbeatLoop(ctx context.Context) {
 				// so shut down the heartbeat loop.
 				return
 			}
-		case sig := <-h.signalCh:
-			if sig.StopHB && sig.ID == h.tsTxn.ID {
-				log.VEventf(ctx, 2, "txn %v received stop signal, stopping heartbeat", sig.ID)
-				return
-			}
 		case <-ctx.Done():
 			// Transaction finished normally.
 			return
@@ -638,7 +625,7 @@ func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
 		fmt.Printf("err: %v\n", err)
 	}
 	// Tear down the heartbeat loop if the response transaction is finalized.
-	if record != nil && record.Status.IsFinalized() {
+	if record != nil && record.Status.IsFinalized() && h.mu.loopStop {
 		return false
 	}
 	return true

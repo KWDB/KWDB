@@ -600,14 +600,13 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 // COMMITTED, ABORTED) and coordinating with the TS heartbeater to stop
 // heartbeat activity upon completion.
 type tsTxnCommitter struct {
-	wrapped  kv.Sender             // The next sender to forward requests to.
-	txn      *kv.Txn               // Used for scanning and writing ts txn record.
-	tsTxn    roachpb.TsTransaction // TS transaction metadata.
-	ranges   *roachpb.Spans        // The key spans written during the transaction.
-	setting  *cluster.Settings
-	NodeID   roachpb.NodeID
-	clock    *hlc.Clock
-	signalCh chan<- TxnSignal // Channel to send signals to tsTxnHeartbeater (to stop the heartbeat loop).
+	wrapped kv.Sender             // The next sender to forward requests to.
+	txn     *kv.Txn               // Used for scanning and writing ts txn record.
+	tsTxn   roachpb.TsTransaction // TS transaction metadata.
+	ranges  *roachpb.Spans        // The key spans written during the transaction.
+	setting *cluster.Settings
+	NodeID  roachpb.NodeID
+	clock   *hlc.Clock
 }
 
 // SendLocked implements the lockedSender interface.
@@ -623,10 +622,6 @@ type tsTxnCommitter struct {
 func (tc *tsTxnCommitter) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
-	defer func() {
-		// Notify the heartbeater to stop once txn has reached terminal state.
-		tc.signalCh <- TxnSignal{ID: tc.tsTxn.ID, StopHB: true}
-	}()
 
 	// Send the original batch request.
 	br, pErr := tc.wrapped.Send(ctx, ba)
