@@ -490,6 +490,27 @@ KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<Kw
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TsPartitionVersion::HasDeleteItem(bool& has_delete_info, const KwLSNSpan &lsn) const {
+  return del_info_->HasValidDelItem(lsn, has_delete_info);
+}
+
+KStatus TsPartitionVersion::RmDeleteItems(const std::list<std::pair<TSEntityID, TS_LSN>>& entity_max_lsn) const {
+  for (auto entity : entity_max_lsn) {
+    auto s = del_info_->RmDeleteItems(entity.first, {0, entity.second});
+    if (s != KStatus::SUCCESS) {
+      // failed not cause any function err, but scan may slow a little.
+      LOG_WARN("RmDeleteItems failed. entity_id[%lu], lsn[%lu]", entity.first, entity.second);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionVersion::DropEntity(TSEntityID e_id) const {
+  // todo(liangbo01) add metric data clearing function
+  return del_info_->DropEntity(e_id);
+}
+
 KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
   std::list<STDelRange> del_range_all;
   auto s = GetDelRange(filter.entity_id, del_range_all);
@@ -581,6 +602,19 @@ bool TsPartitionVersion::TrySetBusy() const {
     return true;
   }
   return false;
+}
+
+KStatus TsPartitionVersion::NeedVacuumEntiySegment(bool* need_vacuum) const {
+  bool has_del_info;
+  // todo(liangbo01) get entity segment min and max lsn.
+  KwLSNSpan span{0, UINT64_MAX};
+  auto s = del_info_->HasValidDelItem(span, has_del_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("HasValidDelItem failed.");
+    return s;
+  }
+  *need_vacuum = has_del_info;
+  return KStatus::SUCCESS;
 }
 
 void TsPartitionVersion::ResetStatus() const {

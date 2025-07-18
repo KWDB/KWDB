@@ -1191,9 +1191,20 @@ KStatus TsVGroup::Vacuum() {
 
   for (auto it = all_partitions.rbegin(); it != all_partitions.rend(); ++it) {
     const auto& partition = *it;
+    bool need_vacuum = false;
+    auto s = partition->NeedVacuumEntiySegment(&need_vacuum);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("NeedVacuumEntiySegment failed.");
+      continue;
+    }
+    if (!need_vacuum) {
+      LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
+      continue;
+    }
     if (!partition->TrySetBusy()) {
       continue;
     }
+
     // TODO(zqh): skip this partition if there is no data been deleted
     auto entity_segment = partition->GetEntitySegment();
     auto max_entity_id = entity_segment->GetEntityNum();
@@ -1302,8 +1313,13 @@ KStatus TsVGroup::Vacuum() {
     update.SetEntitySegment((*it)->GetPartitionIdentifier(), info, true);
     version_manager_->ApplyUpdate(&update);
     partition->ResetStatus();
+    // todo(zhaoqinhu)  set entity_max_lsn.
+    std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
+    s = partition->RmDeleteItems(entity_max_lsn);
+    if (s != KStatus::SUCCESS) {
+      LOG_INFO("delete delitem failed. can ignore this.");
+    }
   }
-
   return KStatus::SUCCESS;
 }
 

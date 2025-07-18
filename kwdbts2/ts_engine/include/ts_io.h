@@ -284,6 +284,8 @@ class TsMMapAllocFile : public FileWithIndex {
 
   uint64_t GetStartPos() { return sizeof(FileHeader); }
 
+  uint64_t GetAllocSize() { return getHeader()->alloc_offset - GetStartPos(); }
+
   FileHeader* getHeader() { return reinterpret_cast<FileHeader*>(addrs_[0].data); }
 
   KStatus resize(uint64_t add_size) {

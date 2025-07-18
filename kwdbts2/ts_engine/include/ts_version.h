@@ -90,6 +90,10 @@ class TsPartitionVersion {
 
   PartitionIdentifier GetPartitionIdentifier() const { return partition_info_; }
 
+  std::string GetPartitionIdentifierStr() const {
+    return intToString(std::get<0>(partition_info_)) + "_" + intToString(std::get<0>(partition_info_));
+  }
+
   bool NeedCompact() const { return last_segments_.size() > EngineOptions::max_last_segment_num; }
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments() const;
 
@@ -101,6 +105,9 @@ class TsPartitionVersion {
   // just a temporary solution
   KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
   KStatus UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
+  KStatus HasDeleteItem(bool& has_delete_info, const KwLSNSpan &lsn) const;
+  KStatus RmDeleteItems(const std::list<std::pair<TSEntityID, TS_LSN>>& entity_max_lsn) const;
+  KStatus DropEntity(TSEntityID e_id) const;
   KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange> &del_items) const {
     return del_info_->GetDelRange(e_id, del_items);
   }
@@ -110,7 +117,7 @@ class TsPartitionVersion {
                        bool skip_last = false, bool skip_entity = false) const;
 
   bool TrySetBusy() const;
-
+  KStatus NeedVacuumEntiySegment(bool* need_vacuum) const;
   void ResetStatus() const;
 };
 
