@@ -1210,7 +1210,8 @@ KStatus TsVGroup::Vacuum() {
         return s;
       }
       if (!found || 0 == entity_item.cur_block_id) {
-        TsEntityItem empty_entity_item;
+        TsEntityItem empty_entity_item{i};
+        empty_entity_item.table_id = entity_item.table_id;
         s = vacuumer->AppendEntityItem(empty_entity_item);
         if (s != SUCCESS) {
           LOG_ERROR("Vacuum failed, AppendEntityItem failed")
