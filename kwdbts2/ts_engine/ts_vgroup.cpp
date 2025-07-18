@@ -1198,8 +1198,9 @@ KStatus TsVGroup::Vacuum() {
     auto entity_segment = partition->GetEntitySegment();
     auto max_entity_id = entity_segment->GetEntityNum();
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-    TsEntitySegmentVacuumer vacuumer(root_path, this->version_manager_.get());
-    vacuumer.Open();
+
+    auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
+    vacuumer->Open();
     for (uint32_t i = 1; i <= max_entity_id; i++) {
       TsEntityItem entity_item;
       bool found = false;
@@ -1210,7 +1211,7 @@ KStatus TsVGroup::Vacuum() {
       }
       if (!found || 0 == entity_item.cur_block_id) {
         TsEntityItem empty_entity_item;
-        s = vacuumer.AppendEntityItem(empty_entity_item);
+        s = vacuumer->AppendEntityItem(empty_entity_item);
         if (s != SUCCESS) {
           LOG_ERROR("Vacuum failed, AppendEntityItem failed")
           return s;
@@ -1266,18 +1267,18 @@ KStatus TsVGroup::Vacuum() {
         blk_item.max_ts = block_span->GetLastTS();
         blk_item.block_len = block_data.size();
         blk_item.agg_len = block_agg.size();
-        s = vacuumer.AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
+        s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("Vacuum failed, AppendBlock failed")
           return s;
         }
-        s = vacuumer.AppendAgg({block_agg.data(), block_agg.size()}, &blk_item.agg_offset);
+        s = vacuumer->AppendAgg({block_agg.data(), block_agg.size()}, &blk_item.agg_offset);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("Vacuum failed, AppendAgg failed")
           return s;
         }
         blk_item.prev_block_id = cur_entity_item.cur_block_id;
-        s = vacuumer.AppendBlockItem(blk_item);  // block_id is set when append
+        s = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("Vacuum failed, AppendBlockItem failed")
           return s;
@@ -1291,15 +1292,16 @@ KStatus TsVGroup::Vacuum() {
           cur_entity_item.min_ts = blk_item.min_ts;
         }
       }
-      s = vacuumer.AppendEntityItem(cur_entity_item);
+      s = vacuumer->AppendEntityItem(cur_entity_item);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendEntityItem failed")
         return s;
       }
     }
     TsVersionUpdate update;
-    auto info = vacuumer.GetHandleInfo();
+    auto info = vacuumer->GetHandleInfo();
     update.SetEntitySegment((*it)->GetPartitionIdentifier(), info, true);
+    vacuumer.reset();
     version_manager_->ApplyUpdate(&update);
     partition->ResetStatus();
   }
