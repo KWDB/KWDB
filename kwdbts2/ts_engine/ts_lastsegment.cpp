@@ -847,11 +847,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
   assert(block_cache_ != nullptr);
 
-  LOG_INFO("nspan: %lu", filter.spans_.size());
-  for(auto s : filter.spans_) {
-    LOG_INFO("(%ld, %ld), (%lu, %lu)", s.ts_span.begin, s.ts_span.end, s.lsn_span.begin, s.lsn_span.end);
-  }
-
   // if filter is empty, no need to do anything.
   if (filter.spans_.empty()) {
     return SUCCESS;
@@ -880,7 +875,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     if (begin_it == block_indices.end()) {
       break;
     }
-    if(span.ts_span.begin > span.ts_span.end) {
+    if (span.ts_span.begin > span.ts_span.end) {
       // invalid span, move to the next.
       continue;
     }
@@ -941,15 +936,14 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                          TimePoint data_point{block->GetTableId(), entities[idx], ts[idx]};
                                          return CompareLessEqual(val, data_point);
                                        });
-        LOG_INFO("*idx_it: %d", *idx_it);
         if (idx_it == iota_vector.end()) {
           // cannot found in this block, move to the next.
           continue;
         }
         start_idx = *idx_it;
         TimePoint data_point{block->GetTableId(), entities[start_idx], ts[start_idx]};
-        LOG_INFO("Compare: %d", CompareLessEqual(filter_ts_span_start, data_point));
       } else {
+        assert(block->GetRowNum() > 0);
         TimePoint data_point{block->GetTableId(), entities[0], ts[0]};
         if (!CompareLessEqual(data_point, filter_ts_span_end)) {
           // which means data_point > filter_span_end, the filter is end.
@@ -1000,7 +994,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         // we reach the end of the block, move to the next. And no need to use binary search for start row in the next
         // block. just check the first row;
-        // Note: we reach the end
+        // Note: we reach the end of the block, ++it; 
         use_binary_search_for_start_row = false;
       }
     }
