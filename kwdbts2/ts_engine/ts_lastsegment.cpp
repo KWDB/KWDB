@@ -253,7 +253,7 @@ class TsLastBlock;
 class ColumnBlockCache {
  private:
   std::shared_mutex mu_;
-  TsRandomReadFile* underlying_file_;
+  TsRandomReadFile* lastseg_file_;
   TsLastSegmentBlockInfo* block_info_;
 
   std::vector<ColumnBlockV2> column_block_cache_;
@@ -261,7 +261,7 @@ class ColumnBlockCache {
   std::string timestamp_16_cache_;
 
  public:
-  ColumnBlockCache(TsRandomReadFile* underlying_file, TsLastSegmentBlockInfo* block_info);
+  ColumnBlockCache(TsRandomReadFile* file_, TsLastSegmentBlockInfo* block_info);
   KStatus GetColBitmap(int actual_colid, const std::vector<AttributeInfo>& schema, TsBitmap** bitmap);
   KStatus GetColAddr(int actual_colid, char** value);
   KStatus GetValueSlice(int row_num, int actural_colid, const std::vector<AttributeInfo>& schema, TSSlice& value);
@@ -402,14 +402,14 @@ class TsLastBlock : public TsBlock {
 };
 
 ColumnBlockCache::ColumnBlockCache(TsRandomReadFile* underlying_file, TsLastSegmentBlockInfo* block_info)
-    : underlying_file_(underlying_file), block_info_(block_info), column_block_cache_(block_info->ncol) {}
+    : lastseg_file_(underlying_file), block_info_(block_info), column_block_cache_(block_info->ncol) {}
 
 KStatus ColumnBlockCache::LoadColumnDataToCache(int actual_colid) {
   assert(column_block_cache_[actual_colid].data_cached == false);
 
   TsBitmap* bitmap = nullptr;
   if (!column_block_cache_[actual_colid].bitmap_cached) {
-    auto s = ReadColumnBitmap(underlying_file_, *block_info_, actual_colid, &column_block_cache_[actual_colid].bitmap);
+    auto s = ReadColumnBitmap(lastseg_file_, *block_info_, actual_colid, &column_block_cache_[actual_colid].bitmap);
     if (s == FAIL) {
       return FAIL;
     }
@@ -422,7 +422,8 @@ KStatus ColumnBlockCache::LoadColumnDataToCache(int actual_colid) {
   size_t len = block_info_->col_infos[actual_colid].data_len;
   TSSlice result;
   auto buf = std::make_unique<char[]>(len);
-  auto s = underlying_file_->Read(offset, len, &result, buf.get());
+  lastseg_file_->Prefetch(offset, len);
+  auto s = lastseg_file_->Read(offset, len, &result, buf.get());
   if (s == FAIL) {
     return FAIL;
   }
@@ -481,7 +482,7 @@ KStatus ColumnBlockCache::LoadVarcharDataToCache() {
   TSSlice result;
 
   assert(len > 0);
-  underlying_file_->Read(offset, len, &result, buf.get());
+  lastseg_file_->Read(offset, len, &result, buf.get());
   char* ptr = result.data;
   GenCompAlg type = static_cast<GenCompAlg>(ptr[0]);
   RemovePrefix(&result, 1);
@@ -521,7 +522,7 @@ KStatus ColumnBlockCache::GetColBitmap(int actual_colid, const std::vector<Attri
       *bitmap = column_block_cache_[actual_colid].bitmap.get();
       return SUCCESS;
     }
-    auto s = ReadColumnBitmap(underlying_file_, *block_info_, actual_colid, &column_block_cache_[actual_colid].bitmap);
+    auto s = ReadColumnBitmap(lastseg_file_, *block_info_, actual_colid, &column_block_cache_[actual_colid].bitmap);
     if (s == FAIL) {
       return FAIL;
     }
@@ -830,22 +831,26 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
   return SUCCESS;
 }
 
-struct ValuePoint {
+struct TimePoint {
   TSTableID table_id;
   TSEntityID entity_id;
   timestamp64 ts;
-  TS_LSN lsn;
 };
 
-static inline bool Compare(const ValuePoint& lhs, const ValuePoint& rhs) {
-  using Helper = std::tuple<TSTableID, TSEntityID, timestamp64, TS_LSN>;
-  return Helper(lhs.table_id, lhs.entity_id, lhs.ts, lhs.lsn) <= Helper(rhs.table_id, rhs.entity_id, rhs.ts, rhs.lsn);
+static inline bool CompareLessEqual(const TimePoint& lhs, const TimePoint& rhs) {
+  using Helper = std::tuple<TSTableID, TSEntityID, timestamp64>;
+  return Helper(lhs.table_id, lhs.entity_id, lhs.ts) <= Helper(rhs.table_id, rhs.entity_id, rhs.ts);
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
   assert(block_cache_ != nullptr);
+
+  LOG_INFO("nspan: %lu", filter.spans_.size());
+  for(auto s : filter.spans_) {
+    LOG_INFO("(%ld, %ld), (%lu, %lu)", s.ts_span.begin, s.ts_span.end, s.lsn_span.begin, s.lsn_span.end);
+  }
 
   // if filter is empty, no need to do anything.
   if (filter.spans_.empty()) {
@@ -875,20 +880,31 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     if (begin_it == block_indices.end()) {
       break;
     }
+    if(span.ts_span.begin > span.ts_span.end) {
+      // invalid span, move to the next.
+      continue;
+    }
 
-    ValuePoint filter_span_start{filter.table_id, filter.entity_id, span.ts_span.begin, span.lsn_span.begin};
-    ValuePoint filter_span_end{filter.table_id, filter.entity_id, span.ts_span.end, span.lsn_span.end};
+    TimePoint filter_ts_span_start{filter.table_id, filter.entity_id, span.ts_span.begin};
+    TimePoint filter_ts_span_end{filter.table_id, filter.entity_id, span.ts_span.end};
 
-    auto it = std::upper_bound(
-        begin_it, block_indices.end(), filter_span_start,
-        [](const ValuePoint& val, const TsLastSegmentBlockIndex& element) {
-          return Compare(val, {element.table_id, element.max_entity_id, element.max_ts, element.max_lsn});
-        });
-
+    // find the first block which satisfies block.max_ts >= filter_ts_span_start
+    auto it = std::upper_bound(begin_it, block_indices.end(), filter_ts_span_start,
+                               [](const TimePoint& val, const TsLastSegmentBlockIndex& element) {
+                                 return CompareLessEqual(val, {element.table_id, element.max_entity_id, element.max_ts});
+                               });
     bool use_binary_search_for_start_row = true;
     for (; it != block_indices.end(); ++it) {
-      ValuePoint block_span_start{it->table_id, it->min_entity_id, it->min_ts, it->min_lsn};
-      if (!Compare(block_span_start, filter_span_end)) {
+      using CompareHelper2 = std::tuple<TSTableID, TSEntityID>;
+      if (CompareHelper2(it->table_id, it->min_entity_id) > CompareHelper2(filter.table_id, filter.entity_id)) {
+        // scan all done, no need to scan the following blocks.
+        return SUCCESS;
+      }
+
+      TimePoint block_start_point{it->table_id, it->min_entity_id, it->min_ts};
+      if (!CompareLessEqual(block_start_point, filter_ts_span_end)) {
+        // block_span_start > filter_ts_span_end, which means the filter is end.
+        // we need to move to the next filter.
         break;
       }
 
@@ -907,7 +923,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
           return s;
         }
         block = std::static_pointer_cast<TsLastBlock>(tmp_block);
-        // block = std::make_shared<TsLastBlock>(shared_from_this(), block_idx, *it, *info);
       }
       auto ts = block->GetTimestamps();
       auto entities = block->GetEntities();
@@ -921,45 +936,71 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       int start_idx = 0;
       if (use_binary_search_for_start_row) {
         // find the first row int the block that matches the filter.
-        auto idx_it = std::upper_bound(iota_vector.begin(), iota_vector.end(), filter_span_start,
-                                       [&](const ValuePoint& val, int idx) {
-                                         ValuePoint data_point{block->GetTableId(), entities[idx], ts[idx], lsn[idx]};
-                                         return Compare(val, data_point);
+        auto idx_it = std::upper_bound(iota_vector.begin(), iota_vector.end(), filter_ts_span_start,
+                                       [&](const TimePoint& val, int idx) {
+                                         TimePoint data_point{block->GetTableId(), entities[idx], ts[idx]};
+                                         return CompareLessEqual(val, data_point);
                                        });
+        LOG_INFO("*idx_it: %d", *idx_it);
         if (idx_it == iota_vector.end()) {
           // cannot found in this block, move to the next.
           continue;
         }
         start_idx = *idx_it;
+        TimePoint data_point{block->GetTableId(), entities[start_idx], ts[start_idx]};
+        LOG_INFO("Compare: %d", CompareLessEqual(filter_ts_span_start, data_point));
       } else {
-        ValuePoint data_point{block->GetTableId(), entities[0], ts[0], lsn[0]};
-        if (!Compare(data_point, filter_span_end)) {
+        TimePoint data_point{block->GetTableId(), entities[0], ts[0]};
+        if (!CompareLessEqual(data_point, filter_ts_span_end)) {
           // which means data_point > filter_span_end, the filter is end.
           break;
         }
       }
 
       // find the last row int the block that matches the filter.
-      auto idx_it = std::lower_bound(iota_vector.begin(), iota_vector.end(), filter_span_end,
-                                     [&](int idx, const ValuePoint& val) {
-                                       ValuePoint data_point{block->GetTableId(), entities[idx], ts[idx], lsn[idx]};
-                                       return Compare(data_point, val);
+      // because the lsn may be disordered, we should search it row-by-row.
+      // but first, we can ignore lsn temporarily. Just find the last row match the filter_span_ts
+      auto idx_it = std::lower_bound(iota_vector.begin(), iota_vector.end(), filter_ts_span_end,
+                                     [&](int idx, const TimePoint& val) {
+                                       TimePoint data_point{block->GetTableId(), entities[idx], ts[idx]};
+                                       return CompareLessEqual(data_point, val);
                                      });
 
       // no need to check whether idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
       int end_idx = idx_it - iota_vector.begin();
+      assert(end_idx >= start_idx);
+      assert(end_idx <= block->GetRowNum());
 
-      if (end_idx - start_idx > 0) {
-        block_spans.emplace_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, start_idx,
-                                                               end_idx - start_idx, tbl_schema_mgr, scan_version));
+      // filter LSN row-by-row
+
+      int prev_idx = -1;  // invalide index
+      for (int i = start_idx; i < end_idx; ++i) {
+        if (span.lsn_span.begin <= lsn[i] && lsn[i] <= span.lsn_span.end) {
+          prev_idx = prev_idx == -1 ? i : prev_idx;
+          continue;
+        }
+
+        if (prev_idx != -1 && i - prev_idx > 0) {
+          // we need to split the block into spans.
+          block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
+                                                              i - prev_idx, tbl_schema_mgr, scan_version));
+        }
+        prev_idx = -1;
+      }
+
+      if (prev_idx != -1 && end_idx - prev_idx > 0) {
+        block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
+                                                            end_idx - prev_idx, tbl_schema_mgr, scan_version));
       }
 
       if (idx_it != iota_vector.end()) {
         // filter spans end before this block, move to the next filter
+        // Note: we just break here to avoid ++it, because we still use the same block.
         break;
       } else {
         // we reach the end of the block, move to the next. And no need to use binary search for start row in the next
         // block. just check the first row;
+        // Note: we reach the end
         use_binary_search_for_start_row = false;
       }
     }
