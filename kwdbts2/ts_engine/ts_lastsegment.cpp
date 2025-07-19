@@ -965,26 +965,33 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       assert(end_idx >= start_idx);
       assert(end_idx <= block->GetRowNum());
 
-      // filter LSN row-by-row
+      if (it->max_lsn <= span.lsn_span.end && span.lsn_span.begin <= it->min_lsn) {
+        // all lsn in the block is in the span, we can directly use the end_idx;
+        if (end_idx - start_idx > 0) {
+          block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, start_idx,
+                                                              end_idx - start_idx, tbl_schema_mgr, scan_version));
+        }
+      } else {
+        // we must filter LSN row-by-row
+        int prev_idx = -1;  // invalide index
+        for (int i = start_idx; i < end_idx; ++i) {
+          if (span.lsn_span.begin <= lsn[i] && lsn[i] <= span.lsn_span.end) {
+            prev_idx = prev_idx == -1 ? i : prev_idx;
+            continue;
+          }
 
-      int prev_idx = -1;  // invalide index
-      for (int i = start_idx; i < end_idx; ++i) {
-        if (span.lsn_span.begin <= lsn[i] && lsn[i] <= span.lsn_span.end) {
-          prev_idx = prev_idx == -1 ? i : prev_idx;
-          continue;
+          if (prev_idx != -1 && i - prev_idx > 0) {
+            // we need to split the block into spans.
+            block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
+                                                                i - prev_idx, tbl_schema_mgr, scan_version));
+          }
+          prev_idx = -1;
         }
 
-        if (prev_idx != -1 && i - prev_idx > 0) {
-          // we need to split the block into spans.
+        if (prev_idx != -1 && end_idx - prev_idx > 0) {
           block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
-                                                              i - prev_idx, tbl_schema_mgr, scan_version));
+                                                              end_idx - prev_idx, tbl_schema_mgr, scan_version));
         }
-        prev_idx = -1;
-      }
-
-      if (prev_idx != -1 && end_idx - prev_idx > 0) {
-        block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
-                                                            end_idx - prev_idx, tbl_schema_mgr, scan_version));
       }
 
       if (idx_it != iota_vector.end()) {
@@ -994,7 +1001,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       } else {
         // we reach the end of the block, move to the next. And no need to use binary search for start row in the next
         // block. just check the first row;
-        // Note: we reach the end of the block, ++it; 
+        // Note: we reach the end of the block, ++it;
         use_binary_search_for_start_row = false;
       }
     }
