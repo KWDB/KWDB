@@ -831,15 +831,14 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
   return SUCCESS;
 }
 
-struct TimePoint {
-  TSTableID table_id;
+struct EntityTsPoint {
   TSEntityID entity_id;
   timestamp64 ts;
 };
 
-static inline bool CompareLessEqual(const TimePoint& lhs, const TimePoint& rhs) {
-  using Helper = std::tuple<TSTableID, TSEntityID, timestamp64>;
-  return Helper(lhs.table_id, lhs.entity_id, lhs.ts) <= Helper(rhs.table_id, rhs.entity_id, rhs.ts);
+static inline bool CompareLessEqual(const EntityTsPoint& lhs, const EntityTsPoint& rhs) {
+  using Helper = std::tuple<TSEntityID, timestamp64>;
+  return Helper(lhs.entity_id, lhs.ts) <= Helper(rhs.entity_id, rhs.ts);
 }
 
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
@@ -865,7 +864,10 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   const std::vector<TsLastSegmentBlockIndex>& block_indices = *p_block_indices;
   assert(block_indices.size() == footer_.n_data_block);
 
-  auto begin_it = block_indices.begin();
+  // find the first block which satisfies block->table_id >= filter.table_id
+  auto begin_it =
+      std::upper_bound(block_indices.begin(), block_indices.end(), filter.table_id,
+                       [](TSTableID val, const TsLastSegmentBlockIndex& element) { return val <= element.table_id; });
 
   std::vector<int> iota_vector;
 
@@ -880,37 +882,18 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       continue;
     }
 
-    TimePoint filter_ts_span_start{filter.table_id, filter.entity_id, span.ts_span.begin};
-    TimePoint filter_ts_span_end{filter.table_id, filter.entity_id, span.ts_span.end};
+    EntityTsPoint filter_ts_span_start{filter.entity_id, span.ts_span.begin};
+    EntityTsPoint filter_ts_span_end{filter.entity_id, span.ts_span.end};
 
-    // find the first block which satisfies block.max_ts >= filter_ts_span_start
-    auto it = std::upper_bound(begin_it, block_indices.end(), filter_ts_span_start,
-                               [](const TimePoint& val, const TsLastSegmentBlockIndex& element) {
-                                 return CompareLessEqual(val, {element.table_id, element.max_entity_id, element.max_ts});
-                               });
-    bool use_binary_search_for_start_row = true;
-    for (; it != block_indices.end(); ++it) {
-      using CompareHelper2 = std::tuple<TSTableID, TSEntityID>;
-      if (CompareHelper2(it->table_id, it->min_entity_id) > CompareHelper2(filter.table_id, filter.entity_id)) {
+    for (auto it = begin_it; it != block_indices.end(); ++it) {
+      if (it->table_id > filter.table_id) {
         // scan all done, no need to scan the following blocks.
         return SUCCESS;
       }
 
-      TimePoint block_start_point{it->table_id, it->min_entity_id, it->min_ts};
-      if (!CompareLessEqual(block_start_point, filter_ts_span_end)) {
-        // block_span_start > filter_ts_span_end, which means the filter is end.
-        // we need to move to the next filter.
-        break;
-      }
-
       //  we need to read the block to do futher filtering.
       int block_idx = it - block_indices.begin();
-      TsLastSegmentBlockInfo* info;
-      s = block_cache_->GetBlockInfo(block_idx, &info);
-      if (s == FAIL) {
-        LOG_ERROR("cannot get block info");
-        return s;
-      }
+
       if (block == nullptr || block->GetBlockID() != block_idx) {
         std::shared_ptr<TsBlock> tmp_block;
         auto s = block_cache_->GetBlock(block_idx, &tmp_block);
@@ -929,39 +912,29 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       std::iota(iota_vector.begin(), iota_vector.end(), 0);
 
       int start_idx = 0;
-      if (use_binary_search_for_start_row) {
-        // find the first row int the block that matches the filter.
-        auto idx_it = std::upper_bound(iota_vector.begin(), iota_vector.end(), filter_ts_span_start,
-                                       [&](const TimePoint& val, int idx) {
-                                         TimePoint data_point{block->GetTableId(), entities[idx], ts[idx]};
-                                         return CompareLessEqual(val, data_point);
-                                       });
-        if (idx_it == iota_vector.end()) {
-          // cannot found in this block, move to the next.
-          continue;
-        }
-        start_idx = *idx_it;
-        TimePoint data_point{block->GetTableId(), entities[start_idx], ts[start_idx]};
-      } else {
-        assert(block->GetRowNum() > 0);
-        TimePoint data_point{block->GetTableId(), entities[0], ts[0]};
-        if (!CompareLessEqual(data_point, filter_ts_span_end)) {
-          // which means data_point > filter_span_end, the filter is end.
-          break;
-        }
+      // find the first row int the block that matches the filter.
+      auto idx_it = std::upper_bound(iota_vector.begin(), iota_vector.end(), filter_ts_span_start,
+                                     [&](const EntityTsPoint& val, int idx) {
+                                       EntityTsPoint data_point{entities[idx], ts[idx]};
+                                       return CompareLessEqual(val, data_point);
+                                     });
+      if (idx_it == iota_vector.end()) {
+        // cannot found in this block, move to the next.
+        continue;
       }
+      start_idx = *idx_it;
 
       // find the last row int the block that matches the filter.
       // because the lsn may be disordered, we should search it row-by-row.
       // but first, we can ignore lsn temporarily. Just find the last row match the filter_span_ts
-      auto idx_it = std::lower_bound(iota_vector.begin(), iota_vector.end(), filter_ts_span_end,
-                                     [&](int idx, const TimePoint& val) {
-                                       TimePoint data_point{block->GetTableId(), entities[idx], ts[idx]};
+      auto end_it = std::lower_bound(iota_vector.begin(), iota_vector.end(), filter_ts_span_end,
+                                     [&](int idx, const EntityTsPoint& val) {
+                                       EntityTsPoint data_point{entities[idx], ts[idx]};
                                        return CompareLessEqual(data_point, val);
                                      });
 
       // no need to check whether idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
-      int end_idx = idx_it - iota_vector.begin();
+      int end_idx = end_it - iota_vector.begin();
       assert(end_idx >= start_idx);
       assert(end_idx <= block->GetRowNum());
 
@@ -993,20 +966,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                                               end_idx - prev_idx, tbl_schema_mgr, scan_version));
         }
       }
-
-      if (idx_it != iota_vector.end()) {
-        // filter spans end before this block, move to the next filter
-        // Note: we just break here to avoid ++it, because we still use the same block.
-        break;
-      } else {
-        // we reach the end of the block, move to the next. And no need to use binary search for start row in the next
-        // block. just check the first row;
-        // Note: we reach the end of the block, ++it;
-        use_binary_search_for_start_row = false;
-      }
     }
-
-    begin_it = it;
   }
   return SUCCESS;
 }
