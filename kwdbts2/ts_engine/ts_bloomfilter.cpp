@@ -44,8 +44,38 @@ static std::tuple<size_t, int> GetMK(size_t n, double p) {
   return std::make_tuple(m, k);
 }
 
-static size_t hash1(TSEntityID eid) { return std::mt19937_64(eid)(); }
-static size_t hash2(TSEntityID eid) { return std::ranlux48(eid)(); }
+static inline uint32_t Murmur3Step(uint32_t k) {
+  k *= 0xcc9e2d51;
+  k = (k << 15) | (k >> 17);
+  k *= 0x1b873593;
+  return k;
+}
+
+static uint32_t Murmur3_32(uint64_t eid, uint32_t seed) {
+  uint32_t hash = seed;
+
+  uint32_t* p = reinterpret_cast<uint32_t*>(&eid);
+
+  hash ^= Murmur3Step(*p);
+  hash = (hash << 13) | (hash >> 19);
+  hash = hash * 5 + 0xe6546b64;
+  ++p;
+  hash ^= Murmur3Step(*p);
+  hash = (hash << 13) | (hash >> 19);
+  hash = hash * 5 + 0xe6546b64;
+
+  hash ^= 8;
+  hash ^= (hash >> 16);
+  hash *= 0x85ebca6b;
+  hash ^= (hash >> 13);
+  hash *= 0xc2b2ae35;
+  hash ^= (hash >> 16);
+
+  return hash;
+}
+
+static inline size_t hash1(TSEntityID eid) { return Murmur3_32(eid, 0); }
+static inline size_t hash2(TSEntityID eid) { return Murmur3_32(eid, 1); }
 
 namespace kwdbts {
 const char TsBloomFilter::MAGIC[] = "TSBLOOMFILTER";

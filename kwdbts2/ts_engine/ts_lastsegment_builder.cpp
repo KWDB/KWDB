@@ -16,6 +16,7 @@
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
@@ -652,7 +653,10 @@ KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsAppendOnlyFile* file) {
   auto sz = indices_.size() * sizeof(TsLastSegmentBlockIndex);
   auto buf = std::make_unique<char[]>(sz);
   char* p = buf.get();
+  [[maybe_unused]] TSTableID table_id = 0;  // for debug only
   for (const auto& idx : indices_) {
+    assert(idx.table_id >= table_id);
+    table_id = idx.table_id;
     p = EncodeFixed64(p, idx.offset);
     p = EncodeFixed64(p, idx.length);
     p = EncodeFixed64(p, idx.table_id);
