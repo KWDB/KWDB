@@ -81,7 +81,8 @@ void MetricsVersionManager::InsertNull(uint32_t ts_version) {
 }
 
 KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id,
-                                                      uint32_t ts_version, int64_t lifetime, ErrorInfo& err_info) {
+                                                      uint32_t ts_version, int64_t lifetime, uint64_t hash_num,
+                                                      ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
   string bt_path = IdToSchemaPath(table_id_, ts_version);
@@ -89,7 +90,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   auto tmp_bt = std::make_shared<MMapMetricsTable>();
   if (tmp_bt->open(bt_path, table_path_, tbl_sub_path_, MMAP_CREAT_EXCL, err_info) >= 0
       || err_info.errcode == KWECORR) {
-    tmp_bt->create(meta, ts_version, tbl_sub_path_, partition_interval_, encoding, err_info, false);
+    tmp_bt->create(meta, ts_version, tbl_sub_path_, partition_interval_, encoding, err_info, false, hash_num);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] create error : %s", bt_path.c_str(), err_info.errmsg.c_str());
@@ -290,6 +291,10 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
     return FAIL;
   }
   return SUCCESS;
+}
+
+uint64_t MetricsVersionManager::GetHashNum() const {
+  return cur_metric_table_->hashNum();
 }
 
 std::shared_ptr<MMapMetricsTable> MetricsVersionManager::open(uint32_t ts_version, ErrorInfo& err_info) {
