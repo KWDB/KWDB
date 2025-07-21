@@ -629,7 +629,7 @@ func (m *Memo) ReplaceProcedureParam(
 		param := cachedInputs[i]
 		var err error
 		if paramTypedExpr, err = sqlbase.SanitizeVarFreeExpr(
-			inputs[i], &param.Type, "DEFAULT", ctx, true /* allowImpure */, false, param.Name,
+			inputs[i], &param.Type, "Parameter", ctx, true /* allowImpure */, false, param.Name,
 		); err != nil {
 			return err
 		}
