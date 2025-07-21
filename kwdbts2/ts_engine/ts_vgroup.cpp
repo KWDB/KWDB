@@ -608,8 +608,12 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
+KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) {
   KStatus s;
+  uint64_t lsn = wal_log->getLSN();
+  if (from_chk) {
+    lsn = wal_log->getOldLSN();
+  }
 
   switch (wal_log->getType()) {
     case WALLogType::INSERT: {
@@ -617,17 +621,17 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       // tag or metrics
       if (insert_log->getTableType() == WALTableType::DATA) {
         auto log = reinterpret_cast<InsertLogMetricsEntry*>(wal_log);
-        return undoPut(ctx, log->getLSN(), log->getPayload());
+        return undoPut(ctx, lsn, log->getPayload());
       } else {
         auto log = reinterpret_cast<InsertLogTagsEntry*>(wal_log);
-        return undoPutTag(ctx, log->getLSN(), log->getPayload());
+        return undoPutTag(ctx, lsn, log->getPayload());
       }
     }
     case WALLogType::UPDATE: {
       auto update_log = reinterpret_cast<UpdateLogEntry*>(wal_log);
       if (update_log->getTableType() == WALTableType::TAG) {
         auto log = reinterpret_cast<UpdateLogTagsEntry*>(wal_log);
-        return undoUpdateTag(ctx, log->getLSN(), log->getPayload(), log->getOldPayload());
+        return undoUpdateTag(ctx, lsn, log->getPayload(), log->getOldPayload());
       }
       break;
     }
@@ -641,12 +645,12 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
         p_tag = log->getPrimaryTag();
         TSTableID table_id = log->getTableId();
         vector<KwTsSpan> ts_spans = log->getTsSpans();
-        return undoDeleteData(ctx, table_id, p_tag, log->getLSN(), ts_spans);
+        return undoDeleteData(ctx, table_id, p_tag, lsn, ts_spans);
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         TSSlice primary_tag = log->getPrimaryTag();
         TSSlice tags = log->getTags();
-        return undoDeleteTag(ctx, primary_tag, log->getLSN(), log->group_id_, log->entity_id_, tags);
+        return undoDeleteTag(ctx, primary_tag, lsn, log->group_id_, log->entity_id_, tags);
       }
     }
 
@@ -811,7 +815,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   if (UNLIKELY(nullptr == tag_pack)) {
     return KStatus::FAIL;
   }
-  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData());
+  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_);
   delete tag_pack;
   if (s == KStatus::FAIL) {
     LOG_ERROR("WriteDeleteTagWAL failed.");
@@ -910,7 +914,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
   PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
   std::shared_ptr<TsEntitySegmentBuilder> builder = nullptr;
   {
-    std::shared_lock lock{builders_mutex_};
+    std::unique_lock lock{builders_mutex_};
     auto it = write_batch_segment_builders_.find(partition_id);
     if (it == write_batch_segment_builders_.end()) {
       auto entity_segment = partition->GetEntitySegment();
@@ -935,7 +939,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  std::shared_lock lock{builders_mutex_};
+  std::unique_lock lock{builders_mutex_};
   for (auto& kv : write_batch_segment_builders_) {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
@@ -952,7 +956,7 @@ KStatus TsVGroup::FinishWriteBatchData() {
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {
-  std::shared_lock lock{builders_mutex_};
+  std::unique_lock lock{builders_mutex_};
   write_batch_segment_builders_.clear();
   return KStatus::SUCCESS;
 }

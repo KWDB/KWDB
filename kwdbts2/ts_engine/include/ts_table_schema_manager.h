@@ -189,6 +189,10 @@ class TsTableSchemaManager {
   std::shared_ptr<MMapMetricsTable> getCurrentMetricsTable() {
     return metric_mgr_->GetCurrentMetricsTable();
   }
+
+  static KStatus parseMetaToSchema(roachpb::CreateTsTable* meta,
+                                   std::vector<AttributeInfo>& metric_schema,
+                                   std::vector<TagInfo>& tag_schema);
 };
 
 }  // namespace kwdbts

@@ -142,7 +142,7 @@ install: .ALWAYS_REBUILD | build
 bin/.submodules-initialized:
 	gitdir=$$(git rev-parse --git-dir 2>/dev/null || true); \
 	if test -n "$$gitdir"; then \
-	   git submodule update --init --remote --recursive; \
+	   git submodule update --init --recursive; \
 	fi
 
 clean:
