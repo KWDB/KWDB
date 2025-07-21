@@ -497,7 +497,7 @@ KStatus TsEntitySegmentBuilder::Open() {
 }
 
 KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
-  std::shared_lock lock{mutex_};
+  std::unique_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
@@ -673,7 +673,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
-  std::shared_lock lock{mutex_};
+  std::unique_lock lock{mutex_};
   auto it = entity_items_.find(entity_id);
   if (it == entity_items_.end()) {
     TsEntityItem entity_item{entity_id};
@@ -737,7 +737,7 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
-  std::shared_lock lock{mutex_};
+  std::unique_lock lock{mutex_};
   // write entity header
   KStatus s = KStatus::SUCCESS;
   uint32_t cur_entity_id = 0;
