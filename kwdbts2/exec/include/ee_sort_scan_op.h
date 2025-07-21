@@ -75,7 +75,6 @@ class SortScanOperator : public TableScanOperator {
   EEIteratorErrCode PrioritySort(kwdbContext_p ctx, ScanRowBatch* row_batch, k_uint32 limit);
 
  protected:
-  TSReaderSpec* spec_{nullptr};
   Field* order_field_{nullptr};
   uint64_t ts_{INT64_MAX};
   std::priority_queue<Data*, std::vector<Data*>, Greater> data_desc_;

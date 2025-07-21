@@ -300,6 +300,12 @@ func (tr *TSReaderSpec) summary() (string, []string) {
 		details = append(details, fmt.Sprintf("Ordered direction: %v", *tr.Reverse))
 	}
 
+	if tr.BlockFilter != nil {
+		for _, filter := range tr.BlockFilter {
+			details = append(details, fmt.Sprintf("BlockFilter[@%d]: %s", *filter.ColID, PrintBlockFilter(*filter)))
+		}
+	}
+
 	return "TableReader", details
 }
 
@@ -1310,6 +1316,43 @@ func getSpecMessage(
 	}
 	if output != nil {
 		buf.WriteString(fmt.Sprintf("--Onput: %v\n", strings.Join(output, ",")))
+	}
+	return buf.String()
+}
+
+// PrintBlockFilter print TSBlockFilter
+func PrintBlockFilter(filter TSBlockFilter) string {
+	var buf bytes.Buffer
+	//buf.WriteString(string(table.Column(int(*filter.ColID)).ColName()))
+	//buf.WriteString(": ")
+	if *filter.FilterType == TSBlockFilter_T_NOTNULL {
+		buf.WriteString("NOT NULL ")
+	} else if *filter.FilterType == TSBlockFilter_T_NULL {
+		buf.WriteString("NULL ")
+	} else {
+		for i, span := range filter.ColumnSpan {
+			if i > 0 {
+				buf.WriteString("; ")
+			}
+			if span.StartBoundary == nil || (span.StartBoundary != nil && *span.StartBoundary == TSBlockFilter_Span_IncludeBoundary) {
+				buf.WriteString("[")
+			} else {
+				buf.WriteString("(")
+			}
+			if span.Start != nil {
+				buf.WriteString(*span.Start)
+			}
+			buf.WriteString(" - ")
+			if span.End != nil {
+				buf.WriteString(*span.End)
+			}
+			if span.EndBoundary == nil || (span.EndBoundary != nil && *span.EndBoundary == TSBlockFilter_Span_IncludeBoundary) {
+				buf.WriteString("]")
+			} else {
+				buf.WriteString(")")
+			}
+
+		}
 	}
 	return buf.String()
 }

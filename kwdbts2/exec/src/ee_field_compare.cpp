@@ -98,13 +98,8 @@ Field *FieldFuncLess::field_to_copy() {
 }
 
 k_int64 FieldFuncLessEq::ValInt() {
-  char *ptr = get_ptr();
-  if (ptr) {
-    return FieldFuncComparison::ValInt(ptr);
-  } else {
-    COMPARE_CHECK_NULL;
-    return cmp.compare(nullptr, nullptr, false, false) <= 0;
-  }
+  COMPARE_CHECK_NULL;
+  return cmp.compare(nullptr, nullptr, false, false) <= 0;
 }
 
 k_double64 FieldFuncLessEq::ValReal() { return ValInt(); }

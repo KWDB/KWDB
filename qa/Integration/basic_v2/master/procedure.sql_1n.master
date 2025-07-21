@@ -1803,3 +1803,18 @@ CREATE PROCEDURE
 (1 row)
 > drop procedure p1;
 DROP PROCEDURE
+> DROP DATABASE IF EXISTS test_procedure_my_rel CASCADE;
+DROP DATABASE
+> create database test_procedure_my_rel;
+CREATE DATABASE
+> DROP PROCEDURE IF EXISTS test_procedure_my_rel.test_input_5;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_my_rel.test_input_5(a INT2,b INT4,c INT8)
+    $$ BEGIN SELECT a,b,c;END $$ ;
+CREATE PROCEDURE
+> CALL test_procedure_my_rel.test_input_5(99.99,-1981.389,1982.193);
+ERROR: expected Parameter expression to have type int2, but '99.99' has type decimal
+> CALL test_procedure_my_rel.test_input_5(99.99,-1981.389,1982.193);
+ERROR: expected Parameter expression to have type int2, but '99.99' has type decimal
+> DROP DATABASE IF EXISTS test_procedure_my_rel CASCADE;
+DROP DATABASE

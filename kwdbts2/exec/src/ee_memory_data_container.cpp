@@ -143,7 +143,7 @@ KStatus MemRowContainer::Sort() {
   disorder_ = false;
   // sort
   OrderColumnCompare cmp(this, order_info_);
-  std::sort(it_begin, it_end, cmp);
+  std::stable_sort(it_begin, it_end, cmp);
   return KStatus::SUCCESS;
 }
 

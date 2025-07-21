@@ -46,4 +46,8 @@ void FieldsToChunk(Field** fields, k_uint32 field_num, k_uint32 row, DataChunkPt
 
 KTimestampTz TimeAddDuration(KTimestampTz ts, k_int64 duration,
                              k_bool var_interval, k_bool year_bucket);
+
+std::string parseUnicode2Utf8(const std::string &str);
+std::string parseHex2String(const std::string &hexStr);
+
 }       // namespace kwdbts

@@ -33,14 +33,12 @@ class AggTableScanOperator : public TableScanOperator {
   AggTableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
                        TABLE* table, BaseOperator* input, int32_t processor_id)
       : TableScanOperator(collection, spec, post, table, input, processor_id),
-        table_reader_spec_(*spec),
         aggregation_spec_(spec->aggregator()),
         aggregation_post_(spec->aggregatorpost()) {}
 
   AggTableScanOperator(const AggTableScanOperator& other, BaseOperator* input,
                        int32_t processor_id)
       : TableScanOperator(other, input, processor_id),
-        table_reader_spec_(other.table_reader_spec_),
         aggregation_spec_(other.aggregation_spec_),
         aggregation_post_(other.aggregation_post_),
         has_post_agg_(other.has_post_agg_),
@@ -162,7 +160,6 @@ class AggTableScanOperator : public TableScanOperator {
   // the list of input column's type
   std::vector<roachpb::DataType> data_types_;
   AggregatorSpecParam<TSAggregatorSpec> *agg_param_{nullptr};
-  TSReaderSpec& table_reader_spec_;
 
   // group cols
   k_uint32* group_cols_{nullptr};
