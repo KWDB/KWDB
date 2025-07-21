@@ -265,12 +265,12 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
           std::shared_ptr<void> min_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MIN);
           min.len = *(reinterpret_cast<uint16_t*>(min_agg_addr.get()));
           min.data = new char[min.len];
-          memcpy(min.data, reinterpret_cast<char*>(min_agg_addr.get()) + MMapStringColumn::kStringLenLen, min.len);
+          memcpy(min.data, reinterpret_cast<char*>(min_agg_addr.get()) + kStringLenLen, min.len);
 
           std::shared_ptr<void> max_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MAX);
           max.len = *(reinterpret_cast<uint16_t*>(max_agg_addr.get()));
           max.data = new char[max.len];
-          memcpy(max.data, reinterpret_cast<char*>(max_agg_addr.get()) + MMapStringColumn::kStringLenLen, max.len);
+          memcpy(max.data, reinterpret_cast<char*>(max_agg_addr.get()) + kStringLenLen, max.len);
           break;
         }
         default:

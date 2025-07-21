@@ -146,11 +146,7 @@ KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityRes
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                                         std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                         std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
-                                         k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
-                                         bool reverse, bool sorted) {
+KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
   auto ts_table_iterator = new TsTableIterator();
   KStatus s = KStatus::SUCCESS;
   Defer defer{[&]() {
@@ -161,9 +157,9 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
     }
   }};
 
-  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
+  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(params.table_version);
   std::vector<k_uint32> ts_scan_cols;
-  for (auto col : scan_cols) {
+  for (auto col : params.scan_cols) {
     if (col >= actual_cols.size()) {
       // In the concurrency scenario, after the storage has deleted the column,
       // kwsql sends query again
@@ -176,7 +172,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
 
   DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
-  for (auto& entity : entity_ids) {
+  for (auto& entity : params.entity_ids) {
     vgroup_ids[entity.subGroupId - 1].push_back(entity.entityId);
   }
   std::shared_ptr<TsVGroup> vgroup;
@@ -196,11 +192,12 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
       int64_t acceptable_ts = INT64_MIN;
       auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
       acceptable_ts = now.time_since_epoch().count() - life_time.ts;
-      updateTsSpan(acceptable_ts * life_time.precision, ts_spans);
+      updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
     }
-    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], ts_spans, ts_col_type,
-                              scan_cols, ts_scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr_,
-                              table_version, &ts_iter, vgroup, ts_points, reverse, sorted);
+    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, ts_col_type,
+                            params.scan_cols, ts_scan_cols, params.agg_extend_cols,
+                            params.scan_agg_types, table_schema_mgr_,params.table_version,
+                            &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
@@ -208,20 +205,17 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const std::vector<En
     ts_table_iterator->AddEntityIterator(ts_iter);
   }
   LOG_DEBUG("TsTable::GetIterator success.agg: %lu, iter num: %lu",
-              scan_agg_types.size(), ts_table_iterator->GetIterNumber());
+            params.scan_agg_types.size(), ts_table_iterator->GetIterNumber());
   (*iter) = ts_table_iterator;
   s = KStatus::SUCCESS;
   return s;
 }
 
-KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                                         vector<KwTsSpan>& ts_spans, std::vector<k_uint32> scan_cols,
-                                         k_uint32 table_version, TsIterator** iter, k_uint32 offset, k_uint32 limit,
-                                         bool reverse) {
+KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
   DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
-  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
+  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(params.table_version);
   std::vector<k_uint32> ts_scan_cols;
-  for (auto col : scan_cols) {
+  for (auto col : params.scan_cols) {
     if (col >= actual_cols.size()) {
       // In the concurrency scenario, after the storage has deleted the column, kwsql sends query again
       LOG_ERROR("GetOffsetIterator Error : TsTable no column %d", col);
@@ -232,7 +226,7 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<En
 
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
   std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups;
-  if (entity_ids.empty()) {
+  if (params.entity_ids.empty()) {
     k_uint32 max_vgroup_id = vgroups_.size();
     for (k_uint32 vgroup_id = 1; vgroup_id <= max_vgroup_id; ++vgroup_id) {
       std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id - 1];
@@ -243,7 +237,7 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<En
       vgroups[vgroup_id] = vgroup;
     }
   } else {
-    for (auto& entity : entity_ids) {
+    for (auto& entity : params.entity_ids) {
       vgroup_ids[entity.subGroupId].push_back(entity.entityId);
       if (!vgroups.count(entity.subGroupId)) {
         vgroups[entity.subGroupId] = vgroups_[entity.subGroupId - 1];
@@ -251,10 +245,10 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const std::vector<En
     }
   }
 
-  TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, ts_spans, ts_col_type,
-                                                               scan_cols, ts_scan_cols, table_schema_mgr_,
-                                                               table_version, offset, limit);
-  KStatus s = ts_iter->Init(reverse);
+  TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, params.ts_spans, ts_col_type,
+                                                               params.scan_cols, ts_scan_cols, table_schema_mgr_,
+                                                               params.table_version, params.offset, params.limit);
+  KStatus s = ts_iter->Init(params.reverse);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsOffsetIteratorV2Impl Init failed")
     delete ts_iter;
@@ -524,7 +518,7 @@ const KwTsSpan& ts_span, uint64_t* volume) {
 }
 
 KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-const KwTsSpan& ts_span, timestamp64* half_ts) {
+                                           const KwTsSpan& ts_span, timestamp64* half_ts) {
   uint64_t row_num = 0;
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
@@ -554,8 +548,25 @@ const KwTsSpan& ts_span, timestamp64* half_ts) {
     }
   }};
   // find half ts by offset iterator.
-  uint64_t offset = row_num / 2;
-  s = GetOffsetIterator(ctx, entity_store, ts_spans, scan_cols, 1, &iter, offset, 1, false);
+  uint32_t offset = row_num / 2;
+  std::vector<BlockFilter> block_filter;
+  std::vector<k_int32> agg_extend_cols;
+  std::vector<Sumfunctype> scan_agg_types;
+  IteratorParams params = {
+      .entity_ids = entity_store,
+      .ts_spans = ts_spans,
+      .block_filter = block_filter,
+      .scan_cols = scan_cols,
+      .agg_extend_cols = agg_extend_cols,
+      .scan_agg_types = scan_agg_types,
+      .table_version = 1,
+      .ts_points = {},
+      .reverse = false,
+      .sorted = false,
+      .offset = offset,
+      .limit = 1,
+  };
+  s = GetOffsetIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetOffsetIterator failed.");
     return s;
@@ -732,9 +743,24 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
       delete iter;
     }
   }};
+  std::vector<BlockFilter> block_filter;
+  std::vector<k_int32> agg_extend_cols;
   std::vector<timestamp64> ts_points;
-  KStatus s = GetNormalIterator(ctx, entity_ids, ts_spans, scan_cols, {}, scan_agg_types, table_version,
-                                &iter, ts_points, false, false);
+  IteratorParams params = {
+      .entity_ids = entity_ids,
+      .ts_spans = const_cast<vector<KwTsSpan>&>(ts_spans),
+      .block_filter = block_filter,
+      .scan_cols = scan_cols,
+      .agg_extend_cols = agg_extend_cols,
+      .scan_agg_types = scan_agg_types,
+      .table_version = table_version,
+      .ts_points = ts_points,
+      .reverse = false,
+      .sorted = false,
+      .offset = 0,
+      .limit = 0,
+  };
+  KStatus s = GetNormalIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityRowCount GetIterator failed.");
     return s;
