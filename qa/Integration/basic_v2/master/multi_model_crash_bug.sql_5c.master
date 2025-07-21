@@ -78,35 +78,36 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-             tree             |     field     |                                   description
-------------------------------+---------------+-----------------------------------------------------------------------------------
-                              | distributed   | true
-                              | vectorized    | false
-  group                       |               |
-   │                          | aggregate 0   | pipeline_name
-   │                          | aggregate 1   | pipe_start
-   │                          | aggregate 2   | pipe_end
-   │                          | aggregate 3   | count(measure_value)
-   │                          | aggregate 4   | avg(measure_value)
-   │                          | group by      | pipeline_name, pipe_start, pipe_end
-   └── render                 |               |
-        │                     | pipeline_name | pipeline_name
-        │                     | pipe_start    | pipe_start
-        │                     | pipe_end      | pipe_end
-        │                     | measure_value | measure_value
-        └── hash-join         |               |
-             │                | type          | inner
-             │                | equality      | (measure_tag, measure_type, measure_style) = (pipeline_name, column16, column17)
-             ├── synchronizer |               |
-             │    └── ts scan |               |
-             │                | ts-table      | measurepoints
-             │                | access mode   | tableTableMeta
-             │                | filter        | measure_value >= 2.7
-             └── render       |               |
-                  └── scan    |               |
-                              | table         | pipeline_info@primary
-                              | spans         | FULL SCAN
-(26 rows)
+             tree             |            field            |                                   description
+------------------------------+-----------------------------+-----------------------------------------------------------------------------------
+                              | distributed                 | true
+                              | vectorized                  | false
+  group                       |                             |
+   │                          | aggregate 0                 | pipeline_name
+   │                          | aggregate 1                 | pipe_start
+   │                          | aggregate 2                 | pipe_end
+   │                          | aggregate 3                 | count(measure_value)
+   │                          | aggregate 4                 | avg(measure_value)
+   │                          | group by                    | pipeline_name, pipe_start, pipe_end
+   └── render                 |                             |
+        │                     | pipeline_name               | pipeline_name
+        │                     | pipe_start                  | pipe_start
+        │                     | pipe_end                    | pipe_end
+        │                     | measure_value               | measure_value
+        └── hash-join         |                             |
+             │                | type                        | inner
+             │                | equality                    | (measure_tag, measure_type, measure_style) = (pipeline_name, column16, column17)
+             ├── synchronizer |                             |
+             │    └── ts scan |                             |
+             │                | ts-table                    | measurepoints
+             │                | access mode                 | tableTableMeta
+             │                | filter                      | measure_value >= 2.7
+             │                | block filter[measure_value] | [2.7 - ]
+             └── render       |                             |
+                  └── scan    |                             |
+                              | table                       | pipeline_info@primary
+                              | spans                       | FULL SCAN
+(27 rows)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,

@@ -89,8 +89,15 @@ class DynamicHashIndex : public MMapFile {
   int64_t data_size_threshold_in_memory_;
   k_int32 mode_{0};  // 0: in-memory, 1: mmap
 
-  inline DynamicHashIndexData* row(size_t n) const;
-  inline char* keyvalue(size_t n) const;
+  inline DynamicHashIndexData* row(size_t n) const {
+    return reinterpret_cast<DynamicHashIndexData*>(
+        mem_hash_ + (n - 1) * meta_data.m_record_size);
+  }
+
+  inline char* keyvalue(size_t n) const {
+    return mem_hash_ + (n - 1) * meta_data.m_record_size +
+           sizeof(DynamicHashIndexData);
+  }
 
   inline char* addrHash() const {
     return reinterpret_cast<char *>((intptr_t) mem_);

@@ -15,6 +15,8 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <unordered_map>
+
 #include "libkwdbts2.h"
 #include "mmap/mmap_root_table_manager.h"
 #include "st_subgroup.h"
@@ -201,7 +203,7 @@ class SubEntityGroupManager : public TSObject {
   SubGroupID max_subgroup_id_ = 0;
   // Record the maximum addable device subgroup id
   SubGroupID max_active_subgroup_id_ = 1;
-  map<SubGroupID , TsSubEntityGroup*> subgroups_;
+  std::unordered_map<SubGroupID , TsSubEntityGroup*> subgroups_;
 
   using SubEntityGroupManagerLatch = KLatch;
   using SubEntityGroupManagerRWLatch = KRWLatch;

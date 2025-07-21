@@ -150,6 +150,7 @@ func (ef *execFactory) ConstructTSScan(
 	table cat.Table,
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
+	blockFilter []*execinfrapb.TSBlockFilter,
 	rowCount float64,
 ) (exec.Node, error) {
 	// Create a tsScanNode.
@@ -209,6 +210,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.TableMetaID = private.Table
 	tsScan.hashNum = table.GetTSHashNum()
 	tsScan.estimatedRowCount = uint64(rowCount)
+	tsScan.blockFilter = blockFilter
 
 	// bind tag filter and primary filter to tsScanNode.
 	bindFilter := func(filters []tree.TypedExpr, primaryTag bool, tagIndex bool) bool {

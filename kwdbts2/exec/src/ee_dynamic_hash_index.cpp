@@ -190,7 +190,7 @@ k_int32 DynamicHashIndex::rehash(size_t new_size) {
   }
   k_int32 error_code = reserve(new_bucket_count);
   if (error_code != 0) {
-    LOG_ERROR("Failed to reserve memory: %d", new_bucket_count);
+    LOG_ERROR("Failed to reserve memory: %ld", new_bucket_count);
     return error_code;
   }
   for (uint32_t rownum = 1; rownum <= meta_data.m_row_count; ++rownum) {
@@ -222,7 +222,7 @@ k_int32 DynamicHashIndex::reserve(size_t n) {
           LOG_ERROR("new_mem_hash new failed\n");
           return KWENOMEM;
         } else {
-          LOG_INFO("in-memory reservation succeeded, new size is %d.", n);
+          LOG_INFO("in-memory reservation succeeded, new size is %ld.", n);
         }
         memcpy(new_mem_hash, mem_hash_, meta_data.m_capacity);
         delete[] mem_hash_;
@@ -244,7 +244,7 @@ k_int32 DynamicHashIndex::reserve(size_t n) {
         if (err_info.errcode < 0) {
           return err_info.errcode;
         } else {
-          LOG_INFO("a mmap file creation succeeded, new size is %d.", n);
+          LOG_INFO("a mmap file creation succeeded, new size is %ld.", n);
         }
         // get new mem addr of mmap file
         char* mem_hash_new = addrHash();
@@ -266,7 +266,7 @@ k_int32 DynamicHashIndex::reserve(size_t n) {
       if (err_code < 0) {
         return err_code;
       } else {
-        LOG_INFO("mmap reservation succeeded, new size is %d.", n);
+        LOG_INFO("mmap reservation succeeded, new size is %ld.", n);
       }
       mem_hash_ = addrHash();  // update hash mem address
       meta_data.m_file_size = new_file_size;  // update file size in metadata
@@ -345,7 +345,7 @@ k_int32 DynamicHashIndex::addOrUpdate(const char *key, k_int32 len,
             if (rownum > m_bucket_count_) {
               string log_error;
               size_t i = first_rownum;
-              LOG_ERROR("Something bad is happening, m_bucket_count_ is: %d.", m_bucket_count_);
+              LOG_ERROR("Something bad is happening, m_bucket_count_ is: %ld.", m_bucket_count_);
               while (i && i <= m_bucket_count_) {
                 log_error += to_string(i) + ", ";
                 i = row(i)->next_row;
@@ -418,14 +418,6 @@ uint64_t DynamicHashIndex::getLSN() const {
 
 void DynamicHashIndex::setLSN(uint64_t lsn) {
   meta_data.m_lsn = lsn;
-}
-
-inline DynamicHashIndexData* DynamicHashIndex::row(size_t n) const {
-  return reinterpret_cast<DynamicHashIndexData*>(mem_hash_ + (n - 1) * meta_data.m_record_size);
-}
-
-inline char* DynamicHashIndex::keyvalue(size_t n) const {
-  return mem_hash_ + (n - 1) * meta_data.m_record_size + sizeof(DynamicHashIndexData);
 }
 
 std::pair<bool, size_t> DynamicHashIndex::is_need_rehash() {

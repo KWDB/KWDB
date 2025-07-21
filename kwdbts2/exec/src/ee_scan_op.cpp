@@ -36,6 +36,7 @@ namespace kwdbts {
 TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
                                      TABLE* table, BaseOperator* input, int32_t processor_id)
     : BaseOperator(collection, table, processor_id),
+      spec_{spec},
       post_(post),
       schema_id_(0),
       object_id_(spec->tableid()),
@@ -71,6 +72,7 @@ TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSp
 
 TableScanOperator::TableScanOperator(const TableScanOperator& other, BaseOperator* input, int32_t processor_id)
     : BaseOperator(other),
+      spec_{other.spec_},
       post_(other.post_),
       schema_id_(other.schema_id_),
       object_id_(other.object_id_),
@@ -141,7 +143,10 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
       Return(EEIteratorErrCode::EE_ERROR)
     }
 
-    batch_copy_ = nullptr == filter_ && 0 == offset_ && 0 == limit_;
+    // batch_copy_ indicates that batch materialization optimization can be used.
+    // If the data type of the field is not FIELD_ITEM, it means that the field is not a simple field,
+    // and the data cannot be directly copied to the data chunk.
+    batch_copy_ = true;
 
     for (int i = 0; i < num_; i++) {
       auto field = renders_[i];
@@ -152,6 +157,10 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
 
     if (!is_clone_) {
       ret = param_.ResolveScanCols(ctx);
+      if (ret != EEIteratorErrCode::EE_OK) {
+        Return(ret);
+      }
+      ret = param_.ResolveBlockFilter(spec_);
     }
   } while (0);
   Return(ret);

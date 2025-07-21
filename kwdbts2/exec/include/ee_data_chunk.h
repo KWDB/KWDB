@@ -330,7 +330,7 @@ class DataChunk : public IChunk {
  * @param[in] renders
  */
   KStatus AddRecordByColumn(kwdbContext_p ctx, RowBatch* row_batch, Field** renders);
-
+  KStatus AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* row_batch, Field** renders);
   /**
    * @brief Copy all data from the RowBatch
    * @param[in] ctx

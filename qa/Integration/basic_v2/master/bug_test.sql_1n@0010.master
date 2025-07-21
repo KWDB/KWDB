@@ -39,27 +39,29 @@ INSERT 1
   500.578578 |  500000.5
 (4 rows)
 > explain select t6,e5 from test_select.tb where e5 in(-500000.5,500000.5,null) and e2=500 order by t6, e5;
-             tree             |    field    |                    description
-------------------------------+-------------+-----------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | t6          | t6
-   │                          | e5          | e5
-   └── sort                   |             |
-        │                     | engine type | time series
-        │                     | order       | +t6,+e5
-        └── synchronizer      |             |
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | e5          | e5
-                  │           | t6          | t6
-                  └── ts scan |             |
-                              | ts-table    | tb
-                              | access mode | tableTableMeta
-                              | filter      | (e2 = 500) AND (e5 IN (NULL, -500000.5, 500000.5))
-(18 rows)
+             tree             |      field       |                    description
+------------------------------+------------------+-----------------------------------------------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | t6               | t6
+   │                          | e5               | e5
+   └── sort                   |                  |
+        │                     | engine type      | time series
+        │                     | order            | +t6,+e5
+        └── synchronizer      |                  |
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | e5               | e5
+                  │           | t6               | t6
+                  └── ts scan |                  |
+                              | ts-table         | tb
+                              | access mode      | tableTableMeta
+                              | filter           | (e2 = 500) AND (e5 IN (NULL, -500000.5, 500000.5))
+                              | block filter[e2] | [500 - 500]
+                              | block filter[e5] | [-500000.5 - -500000.5]; [500000.5 - 500000.5]
+(20 rows)
 > select t6,e5 from test_select.tb where e5 in(-500000.5,500000.5,null) and e2=500 order by t6, e5;
       t6     |    e5
 -------------+------------

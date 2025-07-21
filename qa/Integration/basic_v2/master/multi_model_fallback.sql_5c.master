@@ -188,40 +188,41 @@ WHERE wi.work_area_name = 'work_area_1'
   AND t.measure_value > 80
 GROUP BY si.station_name
 ORDER BY si.station_name;
-                  tree                  |         field         |               description
-----------------------------------------+-----------------------+------------------------------------------
-                                        | distributed           | true
-                                        | vectorized            | false
-  group                                 |                       |
-   │                                    | aggregate 0           | station_name
-   │                                    | aggregate 1           | stddev(measure_value)
-   │                                    | group by              | station_name
-   │                                    | ordered               | +station_name
-   └── render                           |                       |
-        │                               | station_name          | station_name
-        │                               | measure_value         | measure_value
-        └── sort                        |                       |
-             │                          | order                 | +station_name
-             └── hash-join              |                       |
-                  │                     | type                  | inner
-                  │                     | equality              | (work_area_sn) = (work_area_sn)
-                  │                     | left cols are key     |
-                  ├── scan              |                       |
-                  │                     | table                 | workarea_info@workarea_name_index
-                  │                     | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
-                  └── lookup-join       |                       |
-                       │                | table                 | station_info@primary
-                       │                | type                  | inner
-                       │                | equality              | (station_sn) = (station_sn)
-                       │                | equality cols are key |
-                       │                | parallel              |
-                       └── synchronizer |                       |
-                            └── ts scan |                       |
-                                        | ts-table              | t_point
-                                        | access mode           | tableTableMeta
-                                        | filter                | measure_value > 80.0
-                                        | tag filter[0]         | measure_type = 5
-(31 rows)
+                  tree                  |            field            |               description
+----------------------------------------+-----------------------------+------------------------------------------
+                                        | distributed                 | true
+                                        | vectorized                  | false
+  group                                 |                             |
+   │                                    | aggregate 0                 | station_name
+   │                                    | aggregate 1                 | stddev(measure_value)
+   │                                    | group by                    | station_name
+   │                                    | ordered                     | +station_name
+   └── render                           |                             |
+        │                               | station_name                | station_name
+        │                               | measure_value               | measure_value
+        └── sort                        |                             |
+             │                          | order                       | +station_name
+             └── hash-join              |                             |
+                  │                     | type                        | inner
+                  │                     | equality                    | (work_area_sn) = (work_area_sn)
+                  │                     | left cols are key           |
+                  ├── scan              |                             |
+                  │                     | table                       | workarea_info@workarea_name_index
+                  │                     | spans                       | /"work_area_1"-/"work_area_1"/PrefixEnd
+                  └── lookup-join       |                             |
+                       │                | table                       | station_info@primary
+                       │                | type                        | inner
+                       │                | equality                    | (station_sn) = (station_sn)
+                       │                | equality cols are key       |
+                       │                | parallel                    |
+                       └── synchronizer |                             |
+                            └── ts scan |                             |
+                                        | ts-table                    | t_point
+                                        | access mode                 | tableTableMeta
+                                        | filter                      | measure_value > 80.0
+                                        | tag filter[0]               | measure_type = 5
+                                        | block filter[measure_value] | [80.00000000000001 - ]
+(32 rows)
 > explain SELECT si.station_name,
        CORR(t.measure_type, t.measure_value)
 FROM pipec_r.station_info si,
@@ -234,41 +235,42 @@ WHERE wi.work_area_name = 'work_area_1'
   AND t.measure_value > 80
 GROUP BY si.station_name
 ORDER BY si.station_name;
-                  tree                  |         field         |               description
-----------------------------------------+-----------------------+------------------------------------------
-                                        | distributed           | true
-                                        | vectorized            | false
-  group                                 |                       |
-   │                                    | aggregate 0           | station_name
-   │                                    | aggregate 1           | corr(measure_type, measure_value)
-   │                                    | group by              | station_name
-   │                                    | ordered               | +station_name
-   └── render                           |                       |
-        │                               | station_name          | station_name
-        │                               | measure_value         | measure_value
-        │                               | measure_type          | measure_type
-        └── sort                        |                       |
-             │                          | order                 | +station_name
-             └── hash-join              |                       |
-                  │                     | type                  | inner
-                  │                     | equality              | (work_area_sn) = (work_area_sn)
-                  │                     | left cols are key     |
-                  ├── scan              |                       |
-                  │                     | table                 | workarea_info@workarea_name_index
-                  │                     | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
-                  └── lookup-join       |                       |
-                       │                | table                 | station_info@primary
-                       │                | type                  | inner
-                       │                | equality              | (station_sn) = (station_sn)
-                       │                | equality cols are key |
-                       │                | parallel              |
-                       └── synchronizer |                       |
-                            └── ts scan |                       |
-                                        | ts-table              | t_point
-                                        | access mode           | tableTableMeta
-                                        | filter                | measure_value > 80.0
-                                        | tag filter[0]         | measure_type = 5
-(32 rows)
+                  tree                  |            field            |               description
+----------------------------------------+-----------------------------+------------------------------------------
+                                        | distributed                 | true
+                                        | vectorized                  | false
+  group                                 |                             |
+   │                                    | aggregate 0                 | station_name
+   │                                    | aggregate 1                 | corr(measure_type, measure_value)
+   │                                    | group by                    | station_name
+   │                                    | ordered                     | +station_name
+   └── render                           |                             |
+        │                               | station_name                | station_name
+        │                               | measure_value               | measure_value
+        │                               | measure_type                | measure_type
+        └── sort                        |                             |
+             │                          | order                       | +station_name
+             └── hash-join              |                             |
+                  │                     | type                        | inner
+                  │                     | equality                    | (work_area_sn) = (work_area_sn)
+                  │                     | left cols are key           |
+                  ├── scan              |                             |
+                  │                     | table                       | workarea_info@workarea_name_index
+                  │                     | spans                       | /"work_area_1"-/"work_area_1"/PrefixEnd
+                  └── lookup-join       |                             |
+                       │                | table                       | station_info@primary
+                       │                | type                        | inner
+                       │                | equality                    | (station_sn) = (station_sn)
+                       │                | equality cols are key       |
+                       │                | parallel                    |
+                       └── synchronizer |                             |
+                            └── ts scan |                             |
+                                        | ts-table                    | t_point
+                                        | access mode                 | tableTableMeta
+                                        | filter                      | measure_value > 80.0
+                                        | tag filter[0]               | measure_type = 5
+                                        | block filter[measure_value] | [80.00000000000001 - ]
+(33 rows)
 > explain SELECT si.station_name, string_agg(t.pipeline_sn, t.work_area_sn)
 FROM pipec_r.station_info si,
      pipec_r.workarea_info wi,
@@ -280,41 +282,42 @@ WHERE wi.work_area_name = 'work_area_1'
   AND t.measure_value > 80
 GROUP BY si.station_name
 ORDER BY si.station_name;
-                  tree                  |         field         |               description
-----------------------------------------+-----------------------+------------------------------------------
-                                        | distributed           | true
-                                        | vectorized            | false
-  group                                 |                       |
-   │                                    | aggregate 0           | station_name
-   │                                    | aggregate 1           | string_agg(pipeline_sn, work_area_sn)
-   │                                    | group by              | station_name
-   │                                    | ordered               | +station_name
-   └── render                           |                       |
-        │                               | station_name          | station_name
-        │                               | work_area_sn          | work_area_sn
-        │                               | pipeline_sn           | pipeline_sn
-        └── sort                        |                       |
-             │                          | order                 | +station_name
-             └── hash-join              |                       |
-                  │                     | type                  | inner
-                  │                     | equality              | (work_area_sn) = (work_area_sn)
-                  │                     | left cols are key     |
-                  ├── scan              |                       |
-                  │                     | table                 | workarea_info@workarea_name_index
-                  │                     | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
-                  └── lookup-join       |                       |
-                       │                | table                 | station_info@primary
-                       │                | type                  | inner
-                       │                | equality              | (station_sn) = (station_sn)
-                       │                | equality cols are key |
-                       │                | parallel              |
-                       └── synchronizer |                       |
-                            └── ts scan |                       |
-                                        | ts-table              | t_point
-                                        | access mode           | tableTableMeta
-                                        | filter                | measure_value > 80.0
-                                        | tag filter[0]         | measure_type = 5
-(32 rows)
+                  tree                  |            field            |               description
+----------------------------------------+-----------------------------+------------------------------------------
+                                        | distributed                 | true
+                                        | vectorized                  | false
+  group                                 |                             |
+   │                                    | aggregate 0                 | station_name
+   │                                    | aggregate 1                 | string_agg(pipeline_sn, work_area_sn)
+   │                                    | group by                    | station_name
+   │                                    | ordered                     | +station_name
+   └── render                           |                             |
+        │                               | station_name                | station_name
+        │                               | work_area_sn                | work_area_sn
+        │                               | pipeline_sn                 | pipeline_sn
+        └── sort                        |                             |
+             │                          | order                       | +station_name
+             └── hash-join              |                             |
+                  │                     | type                        | inner
+                  │                     | equality                    | (work_area_sn) = (work_area_sn)
+                  │                     | left cols are key           |
+                  ├── scan              |                             |
+                  │                     | table                       | workarea_info@workarea_name_index
+                  │                     | spans                       | /"work_area_1"-/"work_area_1"/PrefixEnd
+                  └── lookup-join       |                             |
+                       │                | table                       | station_info@primary
+                       │                | type                        | inner
+                       │                | equality                    | (station_sn) = (station_sn)
+                       │                | equality cols are key       |
+                       │                | parallel                    |
+                       └── synchronizer |                             |
+                            └── ts scan |                             |
+                                        | ts-table                    | t_point
+                                        | access mode                 | tableTableMeta
+                                        | filter                      | measure_value > 80.0
+                                        | tag filter[0]               | measure_type = 5
+                                        | block filter[measure_value] | [80.00000000000001 - ]
+(33 rows)
 > explain SELECT rt.c4,
        COUNT(si.station_sn),
        COUNT(rt.c2),
@@ -328,47 +331,48 @@ WHERE wi.work_area_sn = si.work_area_sn    -- 41, 41
   AND t.measure_type = rt.c6
   AND t.measure_value > 80                 -- est 1/3, act 8995243/45M = 0.19989
 GROUP BY rt.c4;
-                tree               |       field        |            description
------------------------------------+--------------------+------------------------------------
-                                   | distributed        | true
-                                   | vectorized         | false
-  group                            |                    |
-   │                               | aggregate 0        | c4
-   │                               | aggregate 1        | count(station_sn)
-   │                               | aggregate 2        | count(c2)
-   │                               | aggregate 3        | avg(measure_value)
-   │                               | group by           | c4
-   └── render                      |                    |
-        │                          | station_sn         | station_sn
-        │                          | measure_value      | measure_value
-        │                          | c2                 | c2
-        │                          | c4                 | c4
-        └── hash-join              |                    |
-             │                     | type               | inner
-             │                     | equality           | (station_sn) = (station_sn)
-             │                     | right cols are key |
-             ├── hash-join         |                    |
-             │    │                | type               | inner
-             │    │                | equality           | (measure_type) = (c6)
-             │    ├── synchronizer |                    |
-             │    │    └── ts scan |                    |
-             │    │                | ts-table           | t_point
-             │    │                | access mode        | tableTableMeta
-             │    │                | filter             | measure_value > 80.0
-             │    └── scan         |                    |
-             │                     | table              | rel_t1@primary
-             │                     | spans              | FULL SCAN
-             └── hash-join         |                    |
-                  │                | type               | inner
-                  │                | equality           | (work_area_sn) = (work_area_sn)
-                  │                | right cols are key |
-                  ├── scan         |                    |
-                  │                | table              | station_info@station_sn_index
-                  │                | spans              | FULL SCAN
-                  └── scan         |                    |
-                                   | table              | workarea_info@workarea_name_index
-                                   | spans              | FULL SCAN
-(38 rows)
+                tree               |            field            |            description
+-----------------------------------+-----------------------------+------------------------------------
+                                   | distributed                 | true
+                                   | vectorized                  | false
+  group                            |                             |
+   │                               | aggregate 0                 | c4
+   │                               | aggregate 1                 | count(station_sn)
+   │                               | aggregate 2                 | count(c2)
+   │                               | aggregate 3                 | avg(measure_value)
+   │                               | group by                    | c4
+   └── render                      |                             |
+        │                          | station_sn                  | station_sn
+        │                          | measure_value               | measure_value
+        │                          | c2                          | c2
+        │                          | c4                          | c4
+        └── hash-join              |                             |
+             │                     | type                        | inner
+             │                     | equality                    | (station_sn) = (station_sn)
+             │                     | right cols are key          |
+             ├── hash-join         |                             |
+             │    │                | type                        | inner
+             │    │                | equality                    | (measure_type) = (c6)
+             │    ├── synchronizer |                             |
+             │    │    └── ts scan |                             |
+             │    │                | ts-table                    | t_point
+             │    │                | access mode                 | tableTableMeta
+             │    │                | filter                      | measure_value > 80.0
+             │    │                | block filter[measure_value] | [80.00000000000001 - ]
+             │    └── scan         |                             |
+             │                     | table                       | rel_t1@primary
+             │                     | spans                       | FULL SCAN
+             └── hash-join         |                             |
+                  │                | type                        | inner
+                  │                | equality                    | (work_area_sn) = (work_area_sn)
+                  │                | right cols are key          |
+                  ├── scan         |                             |
+                  │                | table                       | station_info@station_sn_index
+                  │                | spans                       | FULL SCAN
+                  └── scan         |                             |
+                                   | table                       | workarea_info@workarea_name_index
+                                   | spans                       | FULL SCAN
+(39 rows)
 > explain SELECT wi.work_area_name,
        t.measure_type,
        COUNT(DISTINCT t.point_sn) AS measure_point_count
@@ -541,20 +545,20 @@ ORDER BY
 (33 rows)
 > explain SELECT si.station_name,
        COUNT(DISTINCT point_sn) AS abnormal_point_count
-FROM pipec_r.pipeline_info li,      
-     pipec_r.station_info si,       
-     db_pipec.t_point t             
-WHERE li.pipeline_sn = t.pipeline_sn            
-    AND t.station_sn = si.station_sn             
-    AND li.pipeline_name = 'pipeline_1'         
-    AND t.measure_type = 4                      
+FROM pipec_r.pipeline_info li,
+     pipec_r.station_info si,
+     db_pipec.t_point t
+WHERE li.pipeline_sn = t.pipeline_sn
+    AND t.station_sn = si.station_sn
+    AND li.pipeline_name = 'pipeline_1'
+    AND t.measure_type = 4
     AND t.k_timestamp >= '2023-08-01 00:00:00'
-    AND t.k_timestamp <= '2024-08-01 01:00:00'   
+    AND t.k_timestamp <= '2024-08-01 01:00:00'
     AND t.measure_value < 0.5 * (
-        SELECT AVG(t1.measure_value) 
-        FROM db_pipec.t_point t1               
-        WHERE t1.pipeline_sn = li.pipeline_sn    
-          AND t1.measure_type = 4)              
+        SELECT AVG(t1.measure_value)
+        FROM db_pipec.t_point t1
+        WHERE t1.pipeline_sn = li.pipeline_sn
+          AND t1.measure_type = 4)
 GROUP BY
     si.station_name
 ORDER BY
@@ -639,45 +643,46 @@ ORDER BY
                                                                            | tag filter[0]         | measure_type = 4
 (76 rows)
 > explain SELECT si.station_name
-FROM pipec_r.station_info si,              
-     pipec_r.workarea_info wi,             
-     db_pipec.t_point t                   
-WHERE wi.work_area_name = 'work_area_1'    
-  AND wi.work_area_sn = si.work_area_sn        
-  AND t.measure_type = cast(si.station_sn as int)                  
-  AND t.measure_value > 80                
+FROM pipec_r.station_info si,
+     pipec_r.workarea_info wi,
+     db_pipec.t_point t
+WHERE wi.work_area_name = 'work_area_1'
+  AND wi.work_area_sn = si.work_area_sn
+  AND t.measure_type = cast(si.station_sn as int)
+  AND t.measure_value > 80
 GROUP BY si.station_name
 ORDER BY si.station_name;
-                 tree                |       field        |               description
--------------------------------------+--------------------+------------------------------------------
-                                     | distributed        | true
-                                     | vectorized         | false
-  sort                               |                    |
-   │                                 | order              | +station_name
-   └── distinct                      |                    |
-        │                            | distinct on        | station_name
-        └── render                   |                    |
-             │                       | station_name       | station_name
-             └── hash-join           |                    |
-                  │                  | type               | inner
-                  │                  | equality           | (measure_type) = (column20)
-                  ├── synchronizer   |                    |
-                  │    └── ts scan   |                    |
-                  │                  | ts-table           | t_point
-                  │                  | access mode        | tableTableMeta
-                  │                  | filter             | measure_value > 80.0
-                  └── hash-join      |                    |
-                       │             | type               | inner
-                       │             | equality           | (work_area_sn) = (work_area_sn)
-                       │             | right cols are key |
-                       ├── render    |                    |
-                       │    └── scan |                    |
-                       │             | table              | station_info@primary
-                       │             | spans              | FULL SCAN
-                       └── scan      |                    |
-                                     | table              | workarea_info@workarea_name_index
-                                     | spans              | /"work_area_1"-/"work_area_1"/PrefixEnd
-(27 rows)
+                 tree                |            field            |               description
+-------------------------------------+-----------------------------+------------------------------------------
+                                     | distributed                 | true
+                                     | vectorized                  | false
+  sort                               |                             |
+   │                                 | order                       | +station_name
+   └── distinct                      |                             |
+        │                            | distinct on                 | station_name
+        └── render                   |                             |
+             │                       | station_name                | station_name
+             └── hash-join           |                             |
+                  │                  | type                        | inner
+                  │                  | equality                    | (measure_type) = (column20)
+                  ├── synchronizer   |                             |
+                  │    └── ts scan   |                             |
+                  │                  | ts-table                    | t_point
+                  │                  | access mode                 | tableTableMeta
+                  │                  | filter                      | measure_value > 80.0
+                  │                  | block filter[measure_value] | [80.00000000000001 - ]
+                  └── hash-join      |                             |
+                       │             | type                        | inner
+                       │             | equality                    | (work_area_sn) = (work_area_sn)
+                       │             | right cols are key          |
+                       ├── render    |                             |
+                       │    └── scan |                             |
+                       │             | table                       | station_info@primary
+                       │             | spans                       | FULL SCAN
+                       └── scan      |                             |
+                                     | table                       | workarea_info@workarea_name_index
+                                     | spans                       | /"work_area_1"-/"work_area_1"/PrefixEnd
+(28 rows)
 > explain SELECT
     LOWER(wi.work_area_name) AS work_area_name,  
     CONCAT(si.station_name, ' Station') AS station_name,  

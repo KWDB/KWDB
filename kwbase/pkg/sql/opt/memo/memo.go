@@ -2807,6 +2807,16 @@ func (m *Memo) checkGroupingAndAgg(
 	return ret
 }
 
+// GetPhyColIDByMetaID get the Physical Column ID by the MetaID in MetaData
+func (m *Memo) GetPhyColIDByMetaID(metaID opt.ColumnID) (uint32, error) {
+	tableID := m.Metadata().ColumnMeta(metaID).Table
+	if tableID <= 0 {
+		return 0, errors.Newf("the column %s cannot be converted to a span.", m.Metadata().ColumnMeta(metaID).Alias)
+	}
+	colIdx := int(metaID) - int(tableID.ColumnID(0))
+	return uint32(m.Metadata().Table(tableID).Column(colIdx).ColID()), nil
+}
+
 // ProcedureCacheIsStale returns true if the memo has been invalidated by changes to any of
 // its dependencies. Once a memo is known to be stale, it must be ejected from
 // any procedure cache  replaced with a recompiled memo that takes into account the changes.

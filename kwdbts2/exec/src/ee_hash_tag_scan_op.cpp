@@ -143,7 +143,7 @@ EEIteratorErrCode HashTagScanOperator::InitRelJointIndexes() {
   }
   // all primary tags should be involved in join columns for primaryHashTagScan
   if (primary_cols.size() != table_->ptag_size_) {
-    LOG_ERROR("The number of primary tags involved (%d) is not equal to ptag size (%d).\n",
+    LOG_ERROR("The number of primary tags involved (%ld) is not equal to ptag size (%d).\n",
                 primary_cols.size(), table_->ptag_size_);
     return EEIteratorErrCode::EE_PTAG_COUNT_NOT_MATCHED;
   }

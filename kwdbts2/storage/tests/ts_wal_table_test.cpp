@@ -136,7 +136,7 @@ class TestTSWALTable : public TestBigTableInstance {
       SubGroupID group_id = 1;
       while (entity_id <= entity_num) {
         TsStorageIterator* iter1;
-        entity_group->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, entity_group, {}, false, false);
+        entity_group->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, entity_group, {}, false, false);
         total_rows += GetIterRows(iter1, scan_cols.size());
         entity_id++;
         delete iter1;
@@ -193,7 +193,7 @@ TEST_F(TestTSWALTable, PutData) {
   std::vector<Sumfunctype> scan_agg_types;
   SubGroupID group_id = 1;
   TsStorageIterator* iter1;
-  ASSERT_EQ(log_eg->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, log_eg, {}, false, false),
+  ASSERT_EQ(log_eg->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, log_eg, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -240,7 +240,7 @@ TEST_F(TestTSWALTable, batchPutData) {
   std::vector<Sumfunctype> scan_agg_types;
   SubGroupID group_id = 1;
   TsStorageIterator* iter1;
-  ASSERT_EQ(log_eg->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, log_eg, {}, false, false),
+  ASSERT_EQ(log_eg->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, log_eg, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -315,7 +315,7 @@ TEST_F(TestTSWALTable, mulitiInsert) {
   std::vector<Sumfunctype> scan_agg_types;
   SubGroupID group_id = 1;
   TsStorageIterator* iter1;
-  ASSERT_EQ(log_eg->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, log_eg, {}, false, false),
+  ASSERT_EQ(log_eg->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, log_eg, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};

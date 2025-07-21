@@ -338,7 +338,7 @@ EEIteratorErrCode WindowOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
         row_batch_->NextLine();
         ++examined_rows_;
       }
-      if (0 != (static_cast<ScanRowBatch*>(row_batch_))->GetSelection()->size()) {
+      if (0 != static_cast<ScanRowBatch *>(row_batch_)->GetEffectCount()) {
         break;
       }
     }

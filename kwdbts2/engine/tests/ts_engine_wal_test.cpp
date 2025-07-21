@@ -68,9 +68,8 @@ class TestEngineWAL : public TestBigTableInstance {
       SubGroupID group_id = 1;
       while (entity_id <= entity_num) {
         TsStorageIterator* iter1;
-        entity_group->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols,
-                                  {}, scan_agg_types,
-                                  table_version, &iter1, entity_group, {}, false, false);
+        entity_group->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols,
+                                  {}, scan_agg_types, table_version, &iter1, entity_group, {}, false, false);
         total_rows += GetIterRows(iter1, scan_cols.size());
         entity_id++;
         delete iter1;

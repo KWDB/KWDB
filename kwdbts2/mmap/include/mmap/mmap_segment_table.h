@@ -608,6 +608,31 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
     return true;
   }
 
+  inline bool isAllNotNullValue(BLOCK_ID block_id, size_t count, vector<kwdbts::k_uint32> c) const {
+    size_t null_size = (count - 1) / 8 + 1;
+    for (auto& col : c) {
+      if (!isColExist(col)) {
+        continue;
+      }
+      char* bitmap = static_cast<char*>(getBlockHeader(block_id, col));
+      for (int i = 0; i < null_size; ++i) {
+        if (i == null_size - 1 && count % 8) {
+          for (size_t j = 0 ; j < count % 8 ; ++j) {
+            size_t bit = 1 << (j & 7);
+            if (bitmap[i] & bit) {
+              return false;
+            }
+          }
+        } else {
+          if (*(reinterpret_cast<unsigned char*>((intptr_t) bitmap) + i) > 0x00) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
   bool TryUnmountSqfs(ErrorInfo& err_info) const {
     if(!is_compressed_) {
       return true;
