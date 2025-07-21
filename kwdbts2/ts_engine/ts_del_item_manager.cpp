@@ -140,7 +140,7 @@ KStatus TsDelItemManager::Open() {
 
 KStatus TsDelItemManager::HasValidDelItem(const KwLSNSpan& lsn, bool& has_valid) {
   has_valid = false;
-  for (size_t i = 0; i <= header_->max_entity_id; i++) {
+  for (size_t i = 1; i <= header_->max_entity_id; i++) {
     std::list<STDelRange> del_range;
     auto s = GetDelRange(i, del_range);
     if (s != KStatus::SUCCESS) {

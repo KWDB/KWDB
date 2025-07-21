@@ -1212,6 +1212,8 @@ KStatus TsVGroup::Vacuum() {
 
     auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
     vacuumer->Open();
+
+    std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
     for (uint32_t i = 1; i <= max_entity_id; i++) {
       TsEntityItem entity_item;
       bool found = false;
@@ -1259,7 +1261,12 @@ KStatus TsVGroup::Vacuum() {
       }
       TsEntityItem cur_entity_item = {i};
       cur_entity_item.table_id = entity_item.table_id;
+      uint64_t max_lsn = 0;
       for (auto& block_span : block_spans) {
+        for (int j = 0; j < block_span->GetRowNum(); j++) {
+          auto lsn = *block_span->GetLSNAddr(j);
+          max_lsn = std::max(max_lsn, lsn);
+        }
         string data;
         block_span->GetCompressData(data);
         uint32_t col_count = block_span->convert_.version_conv_->scan_attrs_.size();
@@ -1309,19 +1316,18 @@ KStatus TsVGroup::Vacuum() {
         LOG_ERROR("Vacuum failed, AppendEntityItem failed")
         return s;
       }
+      entity_max_lsn.emplace_back(make_pair(i, max_lsn));
     }
     TsVersionUpdate update;
     auto info = vacuumer->GetHandleInfo();
     update.SetEntitySegment((*it)->GetPartitionIdentifier(), info, true);
     vacuumer.reset();
     version_manager_->ApplyUpdate(&update);
-    partition->ResetStatus();
-    // todo(zhaoqinhu)  set entity_max_lsn.
-    std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
     s = partition->RmDeleteItems(entity_max_lsn);
     if (s != KStatus::SUCCESS) {
       LOG_INFO("delete delitem failed. can ignore this.");
     }
+    partition->ResetStatus();
   }
   return KStatus::SUCCESS;
 }
