@@ -56,6 +56,11 @@ import (
 // replicaRaftStorage implements the raft.Storage interface.
 type replicaRaftStorage Replica
 
+func (r *replicaRaftStorage) Inconsistent() bool {
+	//TODO implement me
+	return true
+}
+
 var _ raft.Storage = (*replicaRaftStorage)(nil)
 
 // All calls to raft.RawNode require that both Replica.raftMu and
