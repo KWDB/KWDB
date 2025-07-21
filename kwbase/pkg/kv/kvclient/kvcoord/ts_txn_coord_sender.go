@@ -263,9 +263,6 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 		// initialize some fields of TsSender
 		u := uuid.FastMakeV4()
 		var ranges roachpb.Spans
-		ch := make(chan TxnSignal, 1)
-		db.tss.interceptorAlloc.tsTxnHeartbeater.signalCh = ch
-		db.tss.interceptorAlloc.tsTxnCommitter.signalCh = ch
 		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
 		db.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
