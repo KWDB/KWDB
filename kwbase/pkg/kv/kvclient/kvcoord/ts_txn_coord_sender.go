@@ -259,17 +259,19 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 			return r.Err
 		}
 	}
-	if b.Txn() != nil {
+	if b.Txn() != nil && !db.tss.isSingleNode && b.IsTsInsert() && TsTxnAtomicityEnabled.Get(&db.tss.setting.SV) {
 		// initialize some fields of TsSender
+		newDB := db.Clone()
 		u := uuid.FastMakeV4()
 		var ranges roachpb.Spans
-		db.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
-		db.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
-		db.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
-		db.tss.interceptorAlloc.tsTxnCommitter.ranges = &ranges
-		db.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = u
-		db.tss.interceptorAlloc.tsTxnCommitter.tsTxn.ID = u
-		db.tss.interceptorAlloc.tsTxnHeartbeater.mu.loopStarted = false
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
+		newDB.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
+		newDB.tss.interceptorAlloc.tsTxnCommitter.ranges = &ranges
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = u
+		newDB.tss.interceptorAlloc.tsTxnCommitter.tsTxn.ID = u
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.loopStarted = false
+		return kv.SendAndFill(ctx, newDB.Send, b)
 	}
 	return kv.SendAndFill(ctx, db.Send, b)
 }
@@ -280,6 +282,44 @@ func (db *DB) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 	return db.kdb.SendUsingSender(ctx, ba, db.tss)
+}
+
+// Clone returns a shallow copy of DB with shared resources and deep-copied interceptor stack.
+func (db *DB) Clone() *DB {
+	if db == nil {
+		return nil
+	}
+	newDB := &DB{
+		kdb: db.kdb,
+		tss: &TsSender{
+			tsEngine:     db.tss.tsEngine,
+			wrapped:      db.tss.wrapped,
+			isSingleNode: db.tss.isSingleNode,
+			rpcContext:   db.tss.rpcContext,
+			gossip:       db.tss.gossip,
+			stopper:      db.tss.stopper,
+			setting:      db.tss.setting,
+		},
+	}
+
+	newDB.tss.interceptorAlloc.tsTxnCommitter = tsTxnCommitter{
+		wrapped: db.tss.interceptorAlloc.tsTxnCommitter.wrapped,
+		setting: db.tss.interceptorAlloc.tsTxnCommitter.setting,
+		NodeID:  db.tss.interceptorAlloc.tsTxnCommitter.NodeID,
+		clock:   db.tss.interceptorAlloc.tsTxnCommitter.clock,
+	}
+	newDB.tss.interceptorAlloc.tsTxnHeartbeater = tsTxnHeartbeater{
+		wrapped:      &newDB.tss.interceptorAlloc.tsTxnCommitter,
+		loopInterval: db.tss.interceptorAlloc.tsTxnHeartbeater.loopInterval,
+		stopper:      db.tss.interceptorAlloc.tsTxnHeartbeater.stopper,
+		clock:        db.tss.interceptorAlloc.tsTxnHeartbeater.clock,
+		setting:      db.tss.interceptorAlloc.tsTxnHeartbeater.setting,
+		NodeID:       db.tss.interceptorAlloc.tsTxnHeartbeater.NodeID,
+	}
+	newDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.Locker = &syncutil.RWMutex{}
+	newDB.tss.interceptorStack = []lockedSender{&newDB.tss.interceptorAlloc.tsTxnHeartbeater, &newDB.tss.interceptorAlloc.tsTxnCommitter}
+
+	return newDB
 }
 
 // CreateTSTable create ts table

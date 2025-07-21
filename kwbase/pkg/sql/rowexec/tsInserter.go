@@ -144,6 +144,7 @@ func (tri *tsInserter) Start(ctx context.Context) context.Context {
 func startForSingleMode(ctx context.Context, tri *tsInserter) context.Context {
 	ctx = tri.StartInternal(ctx, tsInsertProcName)
 	ba := tri.FlowCtx.Txn.NewBatch()
+	ba.SetIsTsInsert(true)
 
 	insertRowSum := 0
 	for i, pl := range tri.payload {
@@ -201,6 +202,7 @@ const rowTypeOffset = 42
 func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Context {
 	ctx = tri.StartInternal(ctx, tsInsertProcName)
 	ba := tri.FlowCtx.Txn.NewBatch()
+	ba.SetIsTsInsert(true)
 
 	insertRowSum := 0
 	for i, pl := range tri.payloadForDistributeMode {

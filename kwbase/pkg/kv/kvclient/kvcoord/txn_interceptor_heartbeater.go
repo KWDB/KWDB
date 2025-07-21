@@ -622,7 +622,7 @@ func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
 	}
 	record, err := h.heartbeatTsTxn(ctx)
 	if err != nil {
-		fmt.Printf("err: %v\n", err)
+		log.VEventf(ctx, 2, "heartbeat failed: %s", err)
 	}
 	// Tear down the heartbeat loop if the response transaction is finalized.
 	if (record != nil && record.Status.IsFinalized()) || h.mu.loopStop {
