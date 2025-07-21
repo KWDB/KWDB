@@ -103,6 +103,92 @@ TSEngineV2Impl::~TSEngineV2Impl() {
   SafeDeletePointer(tables_cache_);
 }
 
+KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
+  if (!IsExists(wal_mgr_->GetWALChkFilePath())) {
+    return KStatus::SUCCESS;
+  }
+  std::vector<LogEntry*> cur_eng_logs;
+  Defer defer_engine{[&]() {
+    for (auto& log : cur_eng_logs) {
+      delete log;
+    }
+  }};
+  std::vector<uint64_t> ignore;
+  bool is_end_chk = false;
+
+  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  auto res = wal_mgr_->ReadWALLog(cur_eng_logs, last_lsn, wal_mgr_->FetchCurrentLSN(), ignore);
+  if (!cur_eng_logs.empty()) {
+    if ((*cur_eng_logs.end())->getType() == WALLogType::END_CHECKPOINT) {
+      is_end_chk = true;
+    }
+  }
+  if (is_end_chk) {
+    if (wal_mgr_->RemoveChkFile(ctx) == KStatus::FAIL) {
+      LOG_ERROR("RemoveChkFile fail while Sorting WAL File.")
+      return KStatus::FAIL;
+    }
+    for (auto vgroup : vgroups_) {
+      if (vgroup->GetWALManager()->RemoveChkFile(ctx) == KStatus::FAIL) {
+        LOG_ERROR("Remove vgroup[%d] wal file fail while Sorting WAL File.", vgroup->GetVGroupID())
+        return KStatus::FAIL;
+      }
+    }
+  } else {
+    // remove engine cur, rename chk to cur, update meta
+    if (wal_mgr_->ResetCurLSNAndFlushMeta(ctx, last_lsn) == KStatus::FAIL) {
+      LOG_ERROR("ResetCurLSNAndFlushMeta failed.")
+      return KStatus::FAIL;
+    }
+    wal_mgr_.release();
+    auto cur_eng_path = options_.db_path + "/wal/engine/" + "kwdb_wal.cur";
+    auto chk_eng_path = options_.db_path + "/wal/engine/" + "kwdb_wal.chk";
+    if (Remove(cur_eng_path) == KStatus::FAIL) {
+      LOG_ERROR("Remove wal file fail while Sorting WAL File.")
+      return KStatus::FAIL;
+    }
+    if (-1 == rename(chk_eng_path.c_str(), cur_eng_path.c_str())) {
+      LOG_ERROR("Failed to rename WAL file.")
+      return KStatus::FAIL;
+    }
+    wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
+    res = wal_mgr_->Init(ctx);
+    if (res == KStatus::FAIL) {
+      LOG_ERROR("Failed to initialize WAL manager")
+      return res;
+    }
+
+    // append cur log to chk log, rename chk to cur
+    for (auto vgroup : vgroups_) {
+      if (!IsExists(vgroup->GetWALManager()->GetWALChkFilePath())) {
+        continue;
+      }
+      std::vector<LogEntry*> append_logs;
+      Defer defer_append{[&]() {
+        for (auto& log : append_logs) {
+          delete log;
+        }
+      }};
+      WALMgr* v_wal = vgroup->GetWALManager();
+      TS_LSN v_last_lsn = v_wal->GetFirstLSN();
+      std::vector<uint64_t> v_ignore;
+      if (v_wal->ReadWALLog(append_logs, v_last_lsn, v_wal->FetchCurrentLSN(), ignore) == KStatus::FAIL) {
+        LOG_ERROR("Failed to read WAL from vgroup file.")
+        return KStatus::FAIL;
+      }
+      if (v_wal->SwitchLastFile(ctx, v_last_lsn) == KStatus::FAIL) {
+        LOG_ERROR("Failed to SwitchLastFile vgroup file.")
+        return KStatus::FAIL;
+      }
+      if (v_wal->WriteIncompleteWAL(ctx, append_logs) == KStatus::FAIL) {
+        LOG_ERROR("Failed to WriteIncompleteWAL to vgroup wal file.")
+        return KStatus::FAIL;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   std::filesystem::path db_path{options_.db_path};
   assert(!db_path.empty());
@@ -133,6 +219,11 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   auto res = wal_mgr_->Init(ctx);
   if (res == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize WAL manager")
+    return res;
+  }
+
+  if (SortWALFile(ctx) != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to SortWALFile.")
     return res;
   }
 
@@ -685,7 +776,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       delete log;
     }
   }};
-  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
+  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->GetFirstLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
   if (s == FAIL && !engine_wal_logs.empty()) {
     Return(s)
   }
@@ -914,19 +1005,16 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   std::vector<uint64_t> vgroup_lsn;
-  s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
+  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to read wal log from chk file.")
+    LOG_ERROR("Failed to read wal log from chk file, with Last LSN [%lu] and Current LSN [%lu]",
+              last_lsn, wal_mgr_->FetchCurrentLSN())
     return s;
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
     logs.clear();
-  }
-  s = wal_mgr_->SwitchNextFile();
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to switch chk file.")
-    return s;
   }
 
   // 2. read wal log from all vgroup
@@ -979,14 +1067,19 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }
 
-  // 4. rewrite wal log to chk file
-  wal_mgr_ = nullptr;
-  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-  s = wal_mgr_->ResetWAL(ctx, true);
+  s = wal_mgr_->SwitchNextFile();
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
+    LOG_ERROR("Failed to switch chk file.")
     return s;
   }
+  // 4. rewrite wal log to chk file
+//  wal_mgr_ = nullptr;
+//  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
+//  s = wal_mgr_->ResetWAL(ctx, true);
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
+//    return s;
+//  }
   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
@@ -1520,6 +1613,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
+  LOG_INFO("Recover start.");
 
   // ddl recover
   KStatus s = recover(ctx);
@@ -1535,9 +1629,11 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     }
   }};
   std::vector<uint64_t> vgroup_lsn;
-  s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
+  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to ReadWALLog from chk file while recovering.")
+    LOG_ERROR("Failed to ReadWALLog from chk file while recovering, with Last LSN [%lu] and Current LSN [%lu].",
+              last_lsn, wal_mgr_->FetchCurrentLSN())
     return KStatus::FAIL;
   }
   if (vgroup_lsn.empty()) {
@@ -1612,6 +1708,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
     }
   }
+  LOG_INFO("Recover success.");
   return KStatus::SUCCESS;
 }
 

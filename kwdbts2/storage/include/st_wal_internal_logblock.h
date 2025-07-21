@@ -96,6 +96,8 @@ class HeaderBlock {
    */
   void setCheckpointInfo(TS_LSN checkpoint_lsn, uint32_t checkpoint_no);
 
+  void setFirstLSN(TS_LSN first_lsn);
+
   [[nodiscard]] TS_LSN getStartLSN() const;
 
   [[nodiscard]] TS_LSN getCheckpointLSN() const;
