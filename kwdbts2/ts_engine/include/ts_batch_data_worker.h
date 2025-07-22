@@ -22,6 +22,7 @@
 #include "ts_common.h"
 #include "ts_const.h"
 #include "ts_entity_segment_builder.h"
+#include "ts_table.h"
 #include "ts_version.h"
 
 namespace kwdbts {
@@ -272,6 +273,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
   DATATYPE ts_col_type_;
   vector<EntityResultIndex> entity_indexes_;
+  std::shared_ptr<TsTable> ts_table_;
   std::shared_ptr<TsTableSchemaManager> schema_ = nullptr;
   std::shared_ptr<TsBlockSpanSortedIterator> block_spans_iterator_ = nullptr;
 

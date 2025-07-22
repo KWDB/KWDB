@@ -296,27 +296,32 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
         }
       }
     } else {
-      if (has_bitmap) {
-        s = GetColBitmap(scan_idx, bitmap);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("GetColBitmap failed. col id [%u]", scan_idx);
-          return s;
+      if (!IsColExist(scan_idx)) {
+        bitmap.Reset(row_num_);
+        bitmap.SetAll(DataFlags::kNull);
+      } else {
+        if (has_bitmap) {
+          s = GetColBitmap(scan_idx, bitmap);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("GetColBitmap failed. col id [%u]", scan_idx);
+            return s;
+          }
         }
-      }
-      for (size_t i = 0; i < row_num_; ++i) {
-        DataFlags flag;
-        TSSlice var_slice;
-        s = GetVarLenTypeColAddr(i, scan_idx, flag, var_slice);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("GetVarLenTypeColAddr failed. rowidx[%lu] colid[%u]", i, scan_idx)
-          return s;
+        for (size_t i = 0; i < row_num_; ++i) {
+          DataFlags flag;
+          TSSlice var_slice;
+          s = GetVarLenTypeColAddr(i, scan_idx, flag, var_slice);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarLenTypeColAddr failed. rowidx[%lu] colid[%u]", i, scan_idx)
+            return s;
+          }
+          if (flag == kValid) {
+            var_data.append(var_slice.data, var_slice.len);
+            var_rows.emplace_back(var_slice.data, var_slice.len);
+          }
+          uint32_t var_offset = var_data.size();
+          memcpy(var_offset_data.data() + i * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
         }
-        if (flag == kValid) {
-          var_data.append(var_slice.data, var_slice.len);
-          var_rows.emplace_back(var_slice.data, var_slice.len);
-        }
-        uint32_t var_offset = var_data.size();
-        memcpy(var_offset_data.data() + i * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
       }
     }
     // compress bitmap

@@ -36,15 +36,9 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
   }
 
   // init tag iterator
-  std::shared_ptr<TsTable> ts_table;
-  s = ts_engine_->GetTsTable(ctx, table_id_, ts_table);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTsTable failed");
-    return KStatus::FAIL;
-  }
   ResultSet res(scan_tags.size());
   uint32_t count;
-  s = ts_table->GetTagList(ctx, {cur_entity_index_}, scan_tags, &res, &count, table_version_);
+  s = ts_table_->GetTagList(ctx, {cur_entity_index_}, scan_tags, &res, &count, table_version_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTagIterator failed");
     return KStatus::FAIL;
@@ -154,7 +148,13 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
 }
 
 KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
-  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, schema_);
+  ErrorInfo err_info;
+  KStatus s = ts_engine_->GetTsTable(ctx, table_id_, ts_table_, true, err_info, table_version_);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTsTable[%lu] failed, %s", table_id_, err_info.toString().c_str());
+    return KStatus::FAIL;
+  }
+  s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, schema_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id_);
     return KStatus::FAIL;
@@ -379,9 +379,17 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
 
 KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version,
                                       TSSlice* data, uint32_t* row_num) {
+  // get or create ts table
+  ErrorInfo err_info;
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_->GetTsTable(ctx, table_id, ts_table, true, err_info, table_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTsTable[%lu] failed, %s", table_id, err_info.toString().c_str());
+    return KStatus::FAIL;
+  }
   // get table schema && create ts table
   std::shared_ptr<TsTableSchemaManager> schema = nullptr;
-  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+  s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id);
     return KStatus::FAIL;

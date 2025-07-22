@@ -392,10 +392,11 @@ KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>&
     return FAIL;
   }
 
-  auto tag_cols = tag_pt->getSchemaInfo();
-  for (auto tag_col : tag_cols) {
-    auto tag_info = tag_col->attributeInfo();
-    info.push_back(tag_info);
+  auto tag_cols = tag_pt->getIncludeDroppedSchemaInfos();
+  for (auto tag_info : tag_cols) {
+    if (!tag_info.isDropped()) {
+      info.push_back(tag_info);
+    }
   }
   return SUCCESS;
 }
