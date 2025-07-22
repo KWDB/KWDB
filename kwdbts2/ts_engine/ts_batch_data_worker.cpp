@@ -71,10 +71,12 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
   for (int tag_idx = 0; tag_idx < res.col_num_; ++tag_idx) {
     const Batch* col_batch = res.data[tag_idx][0];
     bool is_null = false;
-    s = col_batch->isNull(0, &is_null);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("tag col value isNull failed");
-      return s;
+    if (!tags_info[tag_idx].isPrimaryTag()) {
+      s = col_batch->isNull(0, &is_null);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("tag col value isNull failed");
+        return s;
+      }
     }
     if (is_null) {
       set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
