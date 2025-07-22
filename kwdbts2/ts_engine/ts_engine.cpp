@@ -1049,6 +1049,72 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  *version = ts_table->GetCurrentTableVersion();
+  return KStatus::SUCCESS;
+}
+
+void TSEngineV2Impl::GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) {
+  schema_mgr_->GetTableList(&table_id_list);
+}
+
+KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,
+  RangeGroup range, roachpb::CreateTsTable* meta) {
+  std::shared_ptr<TsTable> table;
+  ErrorInfo err_info;
+  KStatus s = GetTsTable(ctx, table_id, table, true, err_info, 0);
+  if (s == FAIL) {
+    s = err_info.errcode == KWENOOBJ ? SUCCESS : FAIL;
+    return s;
+  }
+  uint32_t cur_table_version = table->GetCurrentTableVersion();
+  LOG_INFO("TSEngineImpl::GetMetaData Begin! table_id: %lu table_version: %u ",
+     table_id, cur_table_version);
+  // Construct roachpb::CreateTsTable.
+  // Set table configures.
+  auto ts_table = meta->mutable_ts_table();
+  ts_table->set_ts_table_id(table_id);
+  ts_table->set_ts_version(cur_table_version);
+  ts_table->set_partition_interval(table->GetPartitionInterval());
+  ts_table->set_hash_num(table->GetHashNum());
+
+  // Get table data schema.
+  std::vector<AttributeInfo> data_schema;
+  auto table_v2 = dynamic_pointer_cast<TsTableV2Impl>(table);
+  s = table_v2->GetSchemaManager()->GetColumnsIncludeDropped(data_schema, cur_table_version);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("GetDataSchemaIncludeDropped failed during GetMetaData, table id is %ld.", table_id)
+    return s;
+  }
+  // Get table tag schema.
+  std::shared_ptr<TagTable> tag_schema;
+  s = table_v2->GetSchemaManager()->GetTagSchema(ctx, &tag_schema);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("GetTagSchema failed during GetTagSchema, table id is %ld.", table_id)
+    return s;
+  }
+  auto tag_version = tag_schema->GetTagTableVersionManager()->GetVersionObject(cur_table_version);
+  if (tag_version == nullptr) {
+    LOG_ERROR("GetTagSchema failed during GetVersionObject, table id is %ld.", table_id)
+    return s;
+  }
+  std::vector<TagInfo> tag_schema_info = tag_version->getIncludeDroppedSchemaInfos();
+  // Use data schema and tag schema to construct meta.
+  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info, cur_table_version);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("generateMetaSchema failed during GetMetaData, table id is %ld.", table_id)
+    return s;
+  }
+  return s;
+}
+
 KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                         HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
                         uint64_t mtr_id) {
