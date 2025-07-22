@@ -183,7 +183,7 @@ KStatus TsTableSchemaManager::Init() {
               tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
     return FAIL;
   }
-
+  cur_version_ = metric_mgr_->GetCurrentMetricsVersion();
   LOG_INFO("Table schema manager init success")
   return SUCCESS;
 }
