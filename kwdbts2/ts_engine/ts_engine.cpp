@@ -210,6 +210,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
 
 KStatus TSEngineV2Impl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                     bool create_if_not_exist, ErrorInfo& err_info, uint32_t version) {
+  ctx->ts_engine = this;
   ts_table = tables_cache_->Get(table_id);
   if (ts_table == nullptr) {
     // 1. if table exist, open table.
