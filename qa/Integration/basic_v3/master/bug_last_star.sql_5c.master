@@ -19,30 +19,31 @@ INSERT 1
   2024-04-01 00:00:00+00:00 |        1 | abc      |   true   |         10
 (1 row)
 > explain select last(*) from t1 where e1 is not null;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  group                       |             |
-   │                          | aggregate 0 | last(ts, ts)
-   │                          | aggregate 1 | last(e1, ts)
-   │                          | aggregate 2 | last(e2, ts)
-   │                          | aggregate 3 | last(e3, ts)
-   │                          | aggregate 4 | last(tag1, ts)
-   │                          | scalar      |
-   └── render                 |             |
-        │                     | ts          | ts
-        │                     | e1          | e1
-        │                     | e2          | e2
-        │                     | e3          | e3
-        │                     | tag1        | tag1
-        └── filter            |             |
-             │                | filter      | e1 IS NOT NULL
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-(21 rows)
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  group                       |                  |
+   │                          | aggregate 0      | last(ts, ts)
+   │                          | aggregate 1      | last(e1, ts)
+   │                          | aggregate 2      | last(e2, ts)
+   │                          | aggregate 3      | last(e3, ts)
+   │                          | aggregate 4      | last(tag1, ts)
+   │                          | scalar           |
+   └── render                 |                  |
+        │                     | ts               | ts
+        │                     | e1               | e1
+        │                     | e2               | e2
+        │                     | e3               | e3
+        │                     | tag1             | tag1
+        └── filter            |                  |
+             │                | filter           | e1 IS NOT NULL
+             └── synchronizer |                  |
+                  └── ts scan |                  |
+                              | ts-table         | t1
+                              | access mode      | tableTableMeta
+                              | block filter[e1] | NOT NULL
+(22 rows)
 > alter table t1 drop column e2;
 ALTER TABLE
 > alter table t1 add column e2 varchar;
@@ -68,29 +69,30 @@ ALTER TABLE
   2024-04-01 00:00:00+00:00 |        1 |   true   | NULL     |         10
 (1 row)
 > explain select last(t1.*) from t1 where e1 is not null;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  group                       |             |
-   │                          | aggregate 0 | last(ts, ts)
-   │                          | aggregate 1 | last(e1, ts)
-   │                          | aggregate 2 | last(e3, ts)
-   │                          | aggregate 3 | last(e2, ts)
-   │                          | aggregate 4 | last(tag1, ts)
-   │                          | scalar      |
-   └── render                 |             |
-        │                     | ts          | ts
-        │                     | e1          | e1
-        │                     | e3          | e3
-        │                     | tag1        | tag1
-        │                     | e2          | e2
-        └── filter            |             |
-             │                | filter      | e1 IS NOT NULL
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-(21 rows)
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  group                       |                  |
+   │                          | aggregate 0      | last(ts, ts)
+   │                          | aggregate 1      | last(e1, ts)
+   │                          | aggregate 2      | last(e3, ts)
+   │                          | aggregate 3      | last(e2, ts)
+   │                          | aggregate 4      | last(tag1, ts)
+   │                          | scalar           |
+   └── render                 |                  |
+        │                     | ts               | ts
+        │                     | e1               | e1
+        │                     | e3               | e3
+        │                     | tag1             | tag1
+        │                     | e2               | e2
+        └── filter            |                  |
+             │                | filter           | e1 IS NOT NULL
+             └── synchronizer |                  |
+                  └── ts scan |                  |
+                              | ts-table         | t1
+                              | access mode      | tableTableMeta
+                              | block filter[e1] | NOT NULL
+(22 rows)
 > drop database if exists last_star cascade;
 DROP DATABASE
