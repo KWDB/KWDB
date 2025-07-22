@@ -576,11 +576,9 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       .offset = table_->offset_,
       .limit = table_->limit_,
     };
-    if (this->table_->GetRelTagJoinColumnIndexes().size() > 0) {
-      ret = ts_table_->GetIteratorInOrder(ctx, params, &ts_iterator);
-    } else {
-      ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
-    }
+
+    ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
+
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
