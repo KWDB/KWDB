@@ -213,7 +213,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_
   cur_batch_data_.SetTableVersion(table_version_);
   // ptag
   uint32_t ptags_size = cur_entity_index_.p_tags_size;
-  cur_batch_data_.AddPrimaryTag({reinterpret_cast<char*>(cur_entity_index_.mem), ptags_size});
+  cur_batch_data_.AddPrimaryTag({reinterpret_cast<char*>(cur_entity_index_.mem.get()), ptags_size});
   // tag value
   KStatus s = GetTagValue(ctx);
   if (s != KStatus::SUCCESS) {
