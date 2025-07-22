@@ -420,6 +420,16 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   ASSERT_EQ(spans_list.size(), 0);
 
   spans_list.clear();
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{123, 2000}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
+  ASSERT_EQ(spans_list.size(), 1);
+  EXPECT_EQ(spans_list.front()->GetRowNum(), 2);
+
+  spans_list.clear();
+  last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{3000, 6000}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
+  ASSERT_EQ(spans_list.size(), 1);
+  EXPECT_EQ(spans_list.front()->GetRowNum(), 3);
+
+  spans_list.clear();
   last_segment->GetBlockSpans({0, table_id, vgroup_id, 3, {{{123, 2000}, {0, UINT64_MAX}}, {{3000, 6000}, {0, UINT64_MAX}}}}, spans_list, schema_mgr, 0);
   ASSERT_EQ(spans_list.size(), 2);
   EXPECT_EQ(spans_list.front()->GetRowNum(), 2);

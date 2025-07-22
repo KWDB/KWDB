@@ -179,6 +179,7 @@ struct TsLastSegmentBuilder::BlockInfo {
   uint32_t var_offset;
   uint32_t var_len;
   int64_t min_ts, max_ts;
+  uint64_t min_lsn, max_lsn;
   uint64_t min_entity_id, max_entity_id;
   std::vector<ColInfo> col_infos;
   BlockInfo() { Reset(-1, -1); }
@@ -189,6 +190,8 @@ struct TsLastSegmentBuilder::BlockInfo {
     nrow = ndevice = var_offset = var_len = 0;
     max_ts = INT64_MIN;
     min_ts = INT64_MAX;
+    min_lsn = UINT64_MAX;
+    max_lsn = 0;
     min_entity_id = UINT64_MAX;
     max_entity_id = 0;
     col_infos.clear();
@@ -292,7 +295,7 @@ class TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder {
   }
   void Add(const TSSlice& col_data, DataFlags data_flag = kValid) noexcept;
   DATATYPE GetDatatype() const { return dtype_; }
-  void Compress();
+  void Compress(bool use_plain);
   void Reserve(size_t nrow) {
     data_buffer_.reserve(nrow * dsize_);
     bitmap_.Reset(has_bitmap_ ? nrow : 0);

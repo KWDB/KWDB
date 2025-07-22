@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -1182,7 +1183,12 @@ inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) 
       assert(false);
       break;
   }
-  return ts * precision;
+  int64_t ret;
+  bool overflow = __builtin_smull_overflow(ts, precision, &ret);
+  if (!overflow) {
+    return ret;
+  }
+  return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
 inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
@@ -1207,7 +1213,12 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
       assert(false);
       break;
   }
-  return ts * precision;
+  int64_t ret;
+  bool overflow = __builtin_smull_overflow(ts, precision, &ret);
+  if (!overflow) {
+    return ret;
+  }
+  return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
 inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
