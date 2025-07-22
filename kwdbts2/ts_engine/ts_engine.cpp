@@ -1074,6 +1074,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
     s = err_info.errcode == KWENOOBJ ? SUCCESS : FAIL;
     return s;
   }
+  auto table_v2 = dynamic_pointer_cast<TsTableV2Impl>(table);
   uint32_t cur_table_version = table->GetCurrentTableVersion();
   LOG_INFO("TSEngineImpl::GetMetaData Begin! table_id: %lu table_version: %u ",
      table_id, cur_table_version);
@@ -1082,12 +1083,11 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
   auto ts_table = meta->mutable_ts_table();
   ts_table->set_ts_table_id(table_id);
   ts_table->set_ts_version(cur_table_version);
-  ts_table->set_partition_interval(table->GetPartitionInterval());
+  ts_table->set_partition_interval(table_v2->GetSchemaManager()->GetPartitionInterval());
   ts_table->set_hash_num(table->GetHashNum());
 
   // Get table data schema.
   std::vector<AttributeInfo> data_schema;
-  auto table_v2 = dynamic_pointer_cast<TsTableV2Impl>(table);
   s = table_v2->GetSchemaManager()->GetColumnsIncludeDropped(data_schema, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("GetDataSchemaIncludeDropped failed during GetMetaData, table id is %ld.", table_id)
