@@ -97,6 +97,10 @@ class TsTableV2Impl : public TsTable {
     return table_schema_mgr_->IsExistTableVersion(version);
   }
 
+  bool IsExist() override {
+    return true;
+  }
+
   LifeTime GetLifeTime() {
     return table_schema_mgr_->GetLifeTime();
   }
