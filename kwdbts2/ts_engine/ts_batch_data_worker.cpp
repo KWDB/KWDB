@@ -84,10 +84,11 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     }
     if (is_null) {
       set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
+      continue;
     } else {
       unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
     }
-    if (tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
+    if (!tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
       uint64_t offset = tag_data.size();
       memcpy(tag_data.data() + tag_value_bitmap_len_ + tags_info[tag_idx].m_offset, &offset, sizeof(uint64_t));
       uint16_t var_data_len = col_batch->getVarColDataLen(0);
@@ -304,10 +305,12 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::GetTagPayload(TSSlice* data, std::string& tag_payload_str,
+KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str,
                                               std::shared_ptr<TsRawPayload>& payload_only_tag) {
   tag_payload_str.clear();
   tag_payload_str.append(data->data, data->len);
+  // update table version
+  memcpy(tag_payload_str.data() + TsBatchData::ts_version_offset_, &table_version, TsBatchData::ts_version_size_);
   // update tag row num
   uint32_t row_num = 1;
   memcpy(tag_payload_str.data() + TsBatchData::row_num_offset_, &row_num, TsBatchData::row_num_size_);
@@ -399,7 +402,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   TSSlice tag_slice = {data->data, tags_data_offset + tags_data_size};
   std::string tag_payload_str;
   std::shared_ptr<TsRawPayload> payload_only_tag;
-  GetTagPayload(&tag_slice, tag_payload_str, payload_only_tag);
+  GetTagPayload(table_version, &tag_slice, tag_payload_str, payload_only_tag);
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
@@ -421,8 +424,8 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 
   if (row_type == TAG_ONLY) {
     *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
-    LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], entity_id[%lu], row_num[%u]",
-             job_id_, table_id, entity_id, *row_num);
+    LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], vgroup_id[%u], entity_id[%lu], row_num[%u]",
+             job_id_, table_id, vgroup_id, entity_id, *row_num);
     return KStatus::SUCCESS;
   }
 
@@ -456,8 +459,8 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
     return KStatus::FAIL;
   }
   *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
-  LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], entity_id[%lu], row_num[%u]",
-           job_id_, table_id, entity_id, *row_num);
+  LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], vgroup_id[%u], entity_id[%lu], row_num[%u]",
+           job_id_, table_id, vgroup_id, entity_id, *row_num);
   return s;
 }
 

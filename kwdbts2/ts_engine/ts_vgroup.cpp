@@ -914,7 +914,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
   PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
   std::shared_ptr<TsEntitySegmentBuilder> builder = nullptr;
   {
-    std::shared_lock lock{builders_mutex_};
+    std::unique_lock lock{builders_mutex_};
     auto it = write_batch_segment_builders_.find(partition_id);
     if (it == write_batch_segment_builders_.end()) {
       auto entity_segment = partition->GetEntitySegment();
@@ -939,7 +939,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  std::shared_lock lock{builders_mutex_};
+  std::unique_lock lock{builders_mutex_};
   for (auto& kv : write_batch_segment_builders_) {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
@@ -956,7 +956,7 @@ KStatus TsVGroup::FinishWriteBatchData() {
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {
-  std::shared_lock lock{builders_mutex_};
+  std::unique_lock lock{builders_mutex_};
   write_batch_segment_builders_.clear();
   return KStatus::SUCCESS;
 }

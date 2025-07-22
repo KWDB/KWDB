@@ -16,6 +16,7 @@
 #include <string>
 #include <algorithm>
 #include "ts_blkspan_type_convert.h"
+#include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_table_schema_manager.h"
 #include "ts_agg.h"
@@ -144,8 +145,8 @@ int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_ty
 
 KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+  bitmap.SetCount(row_num_);
   if (blk_col_idx == UINT32_MAX) {
-    bitmap.SetCount(block_->GetRowNum());
     bitmap.SetAll(DataFlags::kNull);
     return SUCCESS;
   }
@@ -159,7 +160,12 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
     }
     return SUCCESS;
   }
-  return block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, bitmap);
+  TsBitmap blk_bitmap;
+  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  for (int i = 0; i < row_num_; i++) {
+    bitmap[i] = blk_bitmap[start_row_idx_ + i];
+  }
+  return s;
 }
 
 KStatus TSBlkDataTypeConvert::getColBitmapConverted(uint32_t scan_idx, TsBitmap &bitmap) {
@@ -173,25 +179,24 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(uint32_t scan_idx, TsBitmap 
     return s;
   }
 
-  auto blk_row_count = block_->GetRowNum();
-  bitmap.SetCount(blk_row_count);
+  bitmap.SetCount(row_num_);
 
-  char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_row_count));
+  char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * row_num_));
   if (allc_mem == nullptr) {
-    LOG_ERROR("malloc failed. alloc size: %lu", dest_type_size * blk_row_count);
+    LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * row_num_);
     return KStatus::SUCCESS;
   }
-  memset(allc_mem, 0, dest_type_size * blk_row_count);
+  memset(allc_mem, 0, dest_type_size * row_num_);
   Defer defer([&]() { free(allc_mem); });
 
-
-  for (size_t i = 0; i < blk_row_count; i++) {
-    bitmap[i] = blk_bitmap[i];
+  for (size_t i = 0; i < row_num_; i++) {
+    int block_row_idx = start_row_idx_ + i;
+    bitmap[i] = blk_bitmap[block_row_idx];
     if (bitmap[i] != DataFlags::kValid) {
       continue;
     }
     TSSlice orig_value;
-    s = block_->GetValueSlice(i, blk_col_idx, version_conv_->blk_attrs_, orig_value);
+    s = block_->GetValueSlice(block_row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", i, blk_col_idx);
       return s;
@@ -269,6 +274,7 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
     TsBitmap* b = nullptr;
     TsBitmap bitmap;
     std::string ts_col_data;
+    std::string null_col_data;
     char* fixed_col_value_addr;
     std::string var_offset_data;
     var_offset_data.resize(row_num_ * sizeof(uint32_t));
@@ -285,6 +291,14 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
           ts_col_data.append(fixed_col_value_addr + i * d_size, sizeof(timestamp64));
         }
         fixed_col_value_addr = ts_col_data.data();
+      }
+      if (fixed_col_value_addr == nullptr) {
+        null_col_data.resize(row_num_ * d_size);
+        fixed_col_value_addr = null_col_data.data();
+        bitmap.SetCount(row_num_);
+        for (size_t i = 0; i < row_num_; ++i) {
+          bitmap[i] = DataFlags::kNull;
+        }
       }
     } else {
       if (has_bitmap) {
@@ -371,29 +385,27 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
       DATATYPE type = static_cast<DATATYPE>(version_conv_->scan_attrs_[scan_idx].type);
       AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, row_num_);
       *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(count, max.data(), min.data(), sum.data() + 1);
-      if (0 == count) {
-        continue;
+      if (0 != count) {
+        col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
+        memcpy(col_agg.data(), &count, sizeof(uint16_t));
+        memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
+        memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
+        memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
-      memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
     } else {
       VarColAggCalculatorV2 aggCalc(var_rows);
       string max;
       string min;
       uint64_t count = 0;
       aggCalc.CalcAggForFlush(max, min, count);
-      if (0 == count) {
-        continue;
+      if (0 != count) {
+        col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
+        memcpy(col_agg.data(), &count, sizeof(uint16_t));
+        col_agg.append(max);
+        col_agg.append(min);
+        *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
+        *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
-      memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      col_agg.append(max);
-      col_agg.append(min);
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
     }
     agg_data.append(col_agg);
     uint32_t offset = agg_data.size()- agg_col_offsets_len;

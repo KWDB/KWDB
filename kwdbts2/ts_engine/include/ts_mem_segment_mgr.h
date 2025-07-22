@@ -33,13 +33,13 @@ class TsVGroup;
 // store row-based data struct for certain entity.
 #pragma pack(1)
 struct TSMemSegRowData {
-  uint32_t database_id;
   TSTableID table_id;
   uint32_t table_version;
   TSEntityID entity_id;
   timestamp64 ts;
   TS_LSN lsn;
   uint32_t row_idx_in_mem_seg;
+  uint32_t database_id;
   TSSlice row_data;
 
  private:
@@ -72,7 +72,6 @@ struct TSMemSegRowData {
 
   void GenKey(char* buf) {
     skip_list_key_ = buf;
-    HTOBEFUNC(buf, htobe32(database_id), sizeof(database_id));
     HTOBEFUNC(buf, htobe64(table_id), sizeof(table_id));
     HTOBEFUNC(buf, htobe32(table_version), sizeof(table_version));
     HTOBEFUNC(buf, htobe64(entity_id), sizeof(entity_id));
@@ -80,10 +79,11 @@ struct TSMemSegRowData {
     HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
     HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
     HTOBEFUNC(buf, htobe32(row_idx_in_mem_seg), sizeof(row_idx_in_mem_seg));
+    HTOBEFUNC(buf, htobe32(database_id), sizeof(database_id));
   }
 
   inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {
-    return memcmp(this, b, 24) == 0;
+    return memcmp(this, b, 20) == 0;
   }
   inline bool SameEntityAndTs(TSMemSegRowData* b) {
     return entity_id == b->entity_id && ts == b->ts;

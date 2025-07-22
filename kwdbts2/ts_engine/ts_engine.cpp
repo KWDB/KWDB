@@ -1738,6 +1738,8 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
       return s;
     }
   }
+  LOG_INFO("CreateSnapshotForWrite [%lu] succeeded. range hash[%lu ~ %lu], ts[%ld ~ %ld] has row [%lu]",
+           table_id, begin_hash, end_hash, ts_span.begin, ts_span.end, count)
   return KStatus::SUCCESS;
 }
 
@@ -1789,10 +1791,10 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
     KInt32(data_with_rownum) = row_num;
     data_with_rownum += 4;
     memcpy(data_with_rownum, batch_data.data, batch_data.len);
-
   } else {
     *data = {nullptr, 0};
   }
+  LOG_INFO("GetSnapshotNextBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
   return KStatus::SUCCESS;
 }
 
@@ -1844,6 +1846,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
     }};
     snapshots_[snapshot_id].package_id = package_id;
   }
+  LOG_INFO("WriteSnapshotBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
   return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) {
@@ -1866,6 +1869,7 @@ KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapsho
     snapshots_.erase(snapshot_id);
     snapshot_mutex_.unlock();
   }
+  LOG_INFO("WriteSnapshotSuccess succeeded, snapshot[%lu]", snapshot_id);
   return s;
 }
 KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) {
@@ -1888,6 +1892,7 @@ KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapsh
     snapshots_.erase(snapshot_id);
     snapshot_mutex_.unlock();
   }
+  LOG_INFO("WriteSnapshotRollback succeeded, snapshot[%lu]", snapshot_id);
   return s;
 }
 KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) {
@@ -1901,6 +1906,7 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
     }
     snapshots_.erase(snapshot_id);
   }
+  LOG_INFO("DeleteSnapshot succeeded, snapshot[%lu]", snapshot_id);
   return KStatus::SUCCESS;
 }
 

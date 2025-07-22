@@ -1,0 +1,112 @@
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> SET CLUSTER SETTING ts.dedup.rule = 'merge'; 
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          3
+(1 row)
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = false; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          3
+(1 row)
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> SET CLUSTER SETTING ts.dedup.rule = 'keep'; 
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+ERROR: should set ts.dedup.rule to merge or override before set ts.raftlog_combine_wal.enabled to true
+Failed running "sql"
+> SET CLUSTER SETTING ts.dedup.rule = 'reject'; 
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+ERROR: should set ts.dedup.rule to merge or override before set ts.raftlog_combine_wal.enabled to true
+Failed running "sql"
+> SET CLUSTER SETTING ts.dedup.rule = 'discard'; 
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+ERROR: should set ts.dedup.rule to merge or override before set ts.raftlog_combine_wal.enabled to true
+Failed running "sql"
+> SET CLUSTER SETTING ts.dedup.rule = 'override'; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          3
+(1 row)
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = false; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          3
+(1 row)
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> create ts database tsdb; 
+CREATE TS DATABASE
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = false; 
+SET CLUSTER SETTING
+> create table tsdb.t1(ts timestamp not null,a int, b int) tags(tag1 int not null, tag2 int) primary tags(tag1); 
+CREATE TABLE
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+ERROR: cluster has time-series table, cannot set ts.raftlog_combine_wal.enabled to true
+Failed running "sql"
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> drop table tsdb.t1; 
+DROP TABLE
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true; 
+SET CLUSTER SETTING
+> select * from kwdb_internal.kwdb_tse_info; 
+  wal_level
+-------------
+          2
+(1 row)
+> select * from kwdb_internal.kwdb_tse_info;
+  wal_level
+-------------
+          3
+(1 row)
