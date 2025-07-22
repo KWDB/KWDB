@@ -405,6 +405,9 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   uint8_t row_type = *reinterpret_cast<uint8_t*>(data->data + TsBatchData::row_type_offset_);
   uint32_t block_span_data_offset = tags_data_offset + tags_data_size;
   uint32_t block_span_data_size = 0;
+  if (block_span_data_offset == data->len) {
+    row_type = DataTagFlag::TAG_ONLY;
+  }
   if (row_type == DataTagFlag::DATA_AND_TAG) {
     block_span_data_size = KUint32(data->data + block_span_data_offset);
   }
