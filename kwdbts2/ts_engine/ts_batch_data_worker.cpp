@@ -79,10 +79,10 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
       }
     }
     if (is_null) {
-      set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
+      set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx);
       continue;
     } else {
-      unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
+      unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx);
     }
     if (!tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
       uint64_t offset = tag_data.size();
