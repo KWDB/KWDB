@@ -26,9 +26,6 @@ package kvcoord
 
 import (
 	"context"
-	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -46,57 +43,6 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 	"if enabled, transactional commits will be parallelized with transactional writes",
 	true,
 )
-
-// TestTxnScenario is a cluster setting that specifies test transaction scenarios.
-// The format is a semicolon-separated list of phase:nodeID:errType, e.g., "8:2:1;6:1:1".
-// todo(tyh): delete after test
-var TestTxnScenario = settings.RegisterStringSetting(
-	"sql.test_txn.scenario",
-	"txn test scenario",
-	"0:0:0",
-)
-
-// TxnTestScenario represents a simulated transaction error scenario.
-// `phase` indicates the phase of the transaction (e.g., before commit, after write, etc).
-// `nodeID` indicates the node where the error should be simulated.
-// `errType` specifies the type of error to inject(including error and panic).
-type TxnTestScenario struct {
-	phase   int
-	nodeID  int
-	errType int
-}
-
-// ExtractTxnTestScenario parses the input string into a list of txnTestScenario structs.
-// The input string should be in the format: "phase:nodeID:errType;..."
-// Returns a slice of txnTestScenario or an error if parsing fails.
-func ExtractTxnTestScenario(s string) ([]TxnTestScenario, error) {
-	res := make([]TxnTestScenario, 0)
-	scenarios := strings.Split(s, ";")
-	for _, val := range scenarios {
-		tmp := strings.Split(val, ":")
-		if len(tmp) != 3 {
-			return nil, fmt.Errorf("invalid txn test scenario: %s", val)
-		}
-		phase, err := strconv.Atoi(tmp[0])
-		if err != nil {
-			return nil, err
-		}
-		nodeID, err := strconv.Atoi(tmp[1])
-		if err != nil {
-			return nil, err
-		}
-		errType, err := strconv.Atoi(tmp[2])
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, TxnTestScenario{
-			phase,
-			nodeID,
-			errType,
-		})
-	}
-	return res, nil
-}
 
 // txnCommitter is a txnInterceptor that concerns itself with committing and
 // rolling back transactions. It intercepts EndTxn requests and coordinates
@@ -626,11 +572,6 @@ func (tc *tsTxnCommitter) SendLocked(
 	// Send the original batch request.
 	br, pErr := tc.wrapped.Send(ctx, ba)
 
-	// Inject test failure or panic if configured.
-	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 2); err != nil {
-		return nil, roachpb.NewError(err)
-	}
-
 	var record roachpb.TsTxnRecord
 	record.ID = tc.tsTxn.ID
 	record.Spans = append(record.Spans, *tc.ranges...)
@@ -638,9 +579,6 @@ func (tc *tsTxnCommitter) SendLocked(
 	if pErr != nil {
 		// On failure, attempt rollback.
 		rollbackErr := tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
-		if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 5); err != nil {
-			return nil, roachpb.NewError(err)
-		}
 		if rollbackErr != nil {
 			log.Errorf(ctx, "txn %v rollback failed, will be retried in background\n", record.ID)
 			return nil, rollbackErr
@@ -650,9 +588,6 @@ func (tc *tsTxnCommitter) SendLocked(
 		record.LastHeartbeat = tc.clock.Now()
 		log.VEventf(ctx, 2, "txn %v rollback success and update ts txn record\n", record.ID)
 		if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
-			return nil, roachpb.NewError(err)
-		}
-		if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 7); err != nil {
 			return nil, roachpb.NewError(err)
 		}
 		return nil, pErr
@@ -665,15 +600,8 @@ func (tc *tsTxnCommitter) SendLocked(
 	if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
 		return nil, roachpb.NewError(err)
 	}
-	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 3); err != nil {
-		return nil, roachpb.NewError(err)
-	}
-
 	// Send commit request.
 	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, record.Spans, 0)
-	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 4); err != nil {
-		return nil, roachpb.NewError(err)
-	}
 	if pErr != nil {
 		log.Errorf(ctx, "txn %v commit failed, will be retried in background\n", record.ID)
 		return br, nil
@@ -686,9 +614,6 @@ func (tc *tsTxnCommitter) SendLocked(
 	if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
 		log.Errorf(ctx, "txn %v update txn record to commit failed, will be retried in background\n", record.ID)
 		return br, nil
-	}
-	if err := ErrorOrPanicOnSpecificNode(int(tc.NodeID), tc.setting, 6); err != nil {
-		return nil, roachpb.NewError(err)
 	}
 
 	return br, pErr

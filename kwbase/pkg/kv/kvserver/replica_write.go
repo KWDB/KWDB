@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
-	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/closedts/ctpb"
@@ -267,35 +266,6 @@ func (r *Replica) executeWriteTSBatch(
 	ctx context.Context, ba *roachpb.BatchRequest, st storagepb.LeaseStatus, g *concurrency.Guard,
 ) (br *roachpb.BatchResponse, _ *concurrency.Guard, pErr *roachpb.Error) {
 	startTime := timeutil.Now()
-	// todo(tyh): delete after test
-	if ba.TsTransaction != nil {
-		if ba.Requests != nil {
-			switch ba.Requests[0].GetInner().(type) {
-			case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
-				if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 8); err != nil {
-					return nil, g, roachpb.NewError(err)
-				}
-			case *roachpb.TsCommitRequest:
-				if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 9); err != nil {
-					return nil, g, roachpb.NewError(err)
-				}
-			case *roachpb.TsRollbackRequest:
-				if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 10); err != nil {
-					return nil, g, roachpb.NewError(err)
-				}
-			}
-		}
-	}
-	// todo(tyh): delete after test
-	if ba.Requests != nil {
-		switch ba.Requests[0].GetInner().(type) {
-		case *roachpb.TsPutTagRequest, *roachpb.TsRowPutRequest:
-			fmt.Printf("node %v received insert request\n", r.NodeID())
-			if err := kvcoord.ErrorOrPanicOnSpecificNode(int(r.NodeID()), r.ClusterSettings(), 11); err != nil {
-				return nil, g, roachpb.NewError(err)
-			}
-		}
-	}
 
 	// Even though we're not a read-only operation by definition, we have to
 	// take out a read lock on readOnlyCmdMu while performing any reads during
