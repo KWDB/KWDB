@@ -46,6 +46,7 @@ struct TsRangeImgrationInfo {
   KTableKey table_id;
   uint32_t table_version;
   uint32_t package_id;
+  uint64_t imgrated_rows;
   std::shared_ptr<TsTable> table;
 };
 

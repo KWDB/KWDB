@@ -91,6 +91,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
     // TODO(zzr): optimization: create the directory only when flushing
     // this logic is only for deletion and will be removed later after optimize delete
     auto partition_dir = root_path_ / PartitionDirName(partition_id);
+    env_->DeleteDir(partition_dir);
     env_->NewDirectory(partition_dir);
     LOG_INFO("Partition directory created: %s", partition_dir.string().c_str());
     partition->directory_created_ = true;

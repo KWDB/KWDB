@@ -372,7 +372,11 @@ KStatus TsVGroup::Compact() {
   while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACTE)) {
     sleep(1);
   }
-  Defer defer([this]() { ResetTsExclusiveStatus(); });
+  LOG_INFO("compact begin.");
+  Defer defer([this]() {
+    ResetTsExclusiveStatus();
+    LOG_INFO("compact end.");
+  });
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 
