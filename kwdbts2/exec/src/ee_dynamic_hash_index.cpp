@@ -420,14 +420,6 @@ void DynamicHashIndex::setLSN(uint64_t lsn) {
   meta_data.m_lsn = lsn;
 }
 
-inline DynamicHashIndexData* DynamicHashIndex::row(size_t n) const {
-  return reinterpret_cast<DynamicHashIndexData*>(mem_hash_ + (n - 1) * meta_data.m_record_size);
-}
-
-inline char* DynamicHashIndex::keyvalue(size_t n) const {
-  return mem_hash_ + (n - 1) * meta_data.m_record_size + sizeof(DynamicHashIndexData);
-}
-
 std::pair<bool, size_t> DynamicHashIndex::is_need_rehash() {
   if (m_element_count_ >= m_bucket_count_) {
     return std::make_pair(true, m_bucket_count_*2);

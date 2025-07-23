@@ -78,7 +78,8 @@ INSERT 1
                               | ts-table            | ts1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-(26 rows)
+                              | block filter[e1]    | NOT NULL
+(27 rows)
 > select min(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   min
 -------
@@ -113,7 +114,8 @@ INSERT 1
                               | ts-table            | ts1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-(26 rows)
+                              | block filter[e1]    | NOT NULL
+(27 rows)
 > select count(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   count
 ---------
@@ -1231,10 +1233,11 @@ INSERT 1
                   │                     | ts-table          | ts1
                   │                     | access mode       | tableTableMeta
                   │                     | filter            | e1 > 0
+                  │                     | block filter[e1]  | [1 - ]
                   └── scan              |                   |
                                         | table             | re1@primary
                                         | spans             | FULL SCAN
-(34 rows)
+(35 rows)
 > select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r2.e1 and ts.tag2=r2.e2 on ts.tag1=r1.e1 and ts.tag2=r1.e2 group by r1.e1;
   min
 -------
@@ -1280,10 +1283,11 @@ INSERT 1
                        │                     | ts-table          | ts1
                        │                     | access mode       | tableTableMeta
                        │                     | filter            | e1 > 0
+                       │                     | block filter[e1]  | [1 - ]
                        └── scan              |                   |
                                              | table             | re1@primary
                                              | spans             | FULL SCAN
-(40 rows)
+(41 rows)
 > set cluster setting ts.sql.query_opt_mode= 1111;
 SET CLUSTER SETTING
 > select count(ts.e1), time_bucket(ts.ts, '10s') as tb from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 group by tb;
@@ -1533,33 +1537,35 @@ SET CLUSTER SETTING
                                    | ts-table            | ts1
                                    | access mode         | metaTable
                                    | use statistic       | true
-(23 rows)
+                                   | block filter[e1]    | NOT NULL
+(24 rows)
 > select max(ts.e1) from tsdb.ts1 ts join redb.re1 r on ts.e1=r.e1;
   max
 --------
   NULL
 (1 row)
 > explain select max(ts.e1) from tsdb.ts1 ts join redb.re1 r on ts.e1=r.e1;
-             tree             |    field    | description
-------------------------------+-------------+--------------
-                              | distributed | true
-                              | vectorized  | false
-  group                       |             |
-   │                          | aggregate 0 | max(e1)
-   │                          | scalar      |
-   └── render                 |             |
-        │                     | e1          | e1
-        └── hash-join         |             |
-             │                | type        | inner
-             │                | equality    | (e1) = (e1)
-             ├── synchronizer |             |
-             │    └── ts scan |             |
-             │                | ts-table    | ts1
-             │                | access mode | metaTable
-             └── scan         |             |
-                              | table       | re1@primary
-                              | spans       | FULL SCAN
-(17 rows)
+             tree             |      field       | description
+------------------------------+------------------+--------------
+                              | distributed      | true
+                              | vectorized       | false
+  group                       |                  |
+   │                          | aggregate 0      | max(e1)
+   │                          | scalar           |
+   └── render                 |                  |
+        │                     | e1               | e1
+        └── hash-join         |                  |
+             │                | type             | inner
+             │                | equality         | (e1) = (e1)
+             ├── synchronizer |                  |
+             │    └── ts scan |                  |
+             │                | ts-table         | ts1
+             │                | access mode      | metaTable
+             │                | block filter[e1] | NOT NULL
+             └── scan         |                  |
+                              | table            | re1@primary
+                              | spans            | FULL SCAN
+(18 rows)
 > select max(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1+r.e2-10;
   max
 --------
@@ -1595,7 +1601,8 @@ SET CLUSTER SETTING
                               | ts-table            | ts1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-(27 rows)
+                              | block filter[e1]    | NOT NULL
+(28 rows)
 > select max(ts2.e1) from tsdb.ts1 ts2 join tsdb.ts1 ts3 on ts2.tag1=10 join redb.re1 r on ts2.tag1=r.e1;
   max
 -------
@@ -1640,7 +1647,8 @@ SET CLUSTER SETTING
                                              | access mode         | tagIndex
                                              | use statistic       | true
                                              | ptag filter[0]      | tag1 = 10
-(36 rows)
+                                             | block filter[e1]    | NOT NULL
+(37 rows)
 > select max(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 and ts.tag2=r.e2 or ts.tag3=r.e3 group by ts.tag1, r.e1;
   max
 -------
@@ -1705,107 +1713,110 @@ SET CLUSTER SETTING
     3
 (1 row)
 > explain select min(ts.e1+ts.e2) from redb.re1 r join (select * from tsdb.ts1 where tsdb.ts1.e1 is not null) ts on ts.tag1=r.e1 and ts.tag2=r.e2 group by r.e1;
-                  tree                  |    field    |       description
-----------------------------------------+-------------+--------------------------
-                                        | distributed | true
-                                        | vectorized  | false
-  render                                |             |
-   │                                    | min         | min
-   └── group                            |             |
-        │                               | aggregate 0 | e1
-        │                               | aggregate 1 | min(e1 + e2)
-        │                               | group by    | e1
-        └── render                      |             |
-             │                          | e1 + e2     | e1 + e2
-             │                          | e1          | e1
-             └── hash-join              |             |
-                  │                     | type        | inner
-                  │                     | equality    | (tag1, tag2) = (e1, e2)
-                  ├── filter            |             |
-                  │    │                | filter      | e1 IS NOT NULL
-                  │    └── synchronizer |             |
-                  │         └── ts scan |             |
-                  │                     | ts-table    | ts1
-                  │                     | access mode | tableTableMeta
-                  └── scan              |             |
-                                        | table       | re1@primary
-                                        | spans       | FULL SCAN
-(23 rows)
+                  tree                  |      field       |       description
+----------------------------------------+------------------+--------------------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | min              | min
+   └── group                            |                  |
+        │                               | aggregate 0      | e1
+        │                               | aggregate 1      | min(e1 + e2)
+        │                               | group by         | e1
+        └── render                      |                  |
+             │                          | e1 + e2          | e1 + e2
+             │                          | e1               | e1
+             └── hash-join              |                  |
+                  │                     | type             | inner
+                  │                     | equality         | (tag1, tag2) = (e1, e2)
+                  ├── filter            |                  |
+                  │    │                | filter           | e1 IS NOT NULL
+                  │    └── synchronizer |                  |
+                  │         └── ts scan |                  |
+                  │                     | ts-table         | ts1
+                  │                     | access mode      | tableTableMeta
+                  │                     | block filter[e1] | NOT NULL
+                  └── scan              |                  |
+                                        | table            | re1@primary
+                                        | spans            | FULL SCAN
+(24 rows)
 > select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 is not null) ts on ts.tag2=r2.e2 on ts.tag1=r1.e1 group by r1.e1;
   min
 -------
     3
 (1 row)
 > explain select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 is not null) ts on ts.tag2=r2.e2 on ts.tag1=r1.e1 group by r1.e1;
-                     tree                    |    field    |  description
----------------------------------------------+-------------+-----------------
-                                             | distributed | true
-                                             | vectorized  | false
-  render                                     |             |
-   │                                         | min         | min
-   └── group                                 |             |
-        │                                    | aggregate 0 | e1
-        │                                    | aggregate 1 | min(e1 + e2)
-        │                                    | group by    | e1
-        └── render                           |             |
-             │                               | e1 + e2     | e1 + e2
-             │                               | e1          | e1
-             └── hash-join                   |             |
-                  │                          | type        | inner
-                  │                          | equality    | (tag1) = (e1)
-                  ├── hash-join              |             |
-                  │    │                     | type        | inner
-                  │    │                     | equality    | (tag2) = (e2)
-                  │    ├── filter            |             |
-                  │    │    │                | filter      | e1 IS NOT NULL
-                  │    │    └── synchronizer |             |
-                  │    │         └── ts scan |             |
-                  │    │                     | ts-table    | ts1
-                  │    │                     | access mode | tableTableMeta
-                  │    └── scan              |             |
-                  │                          | table       | re1@primary
-                  │                          | spans       | FULL SCAN
-                  └── scan                   |             |
-                                             | table       | re1@primary
-                                             | spans       | FULL SCAN
-(29 rows)
+                     tree                    |      field       |  description
+---------------------------------------------+------------------+-----------------
+                                             | distributed      | true
+                                             | vectorized       | false
+  render                                     |                  |
+   │                                         | min              | min
+   └── group                                 |                  |
+        │                                    | aggregate 0      | e1
+        │                                    | aggregate 1      | min(e1 + e2)
+        │                                    | group by         | e1
+        └── render                           |                  |
+             │                               | e1 + e2          | e1 + e2
+             │                               | e1               | e1
+             └── hash-join                   |                  |
+                  │                          | type             | inner
+                  │                          | equality         | (tag1) = (e1)
+                  ├── hash-join              |                  |
+                  │    │                     | type             | inner
+                  │    │                     | equality         | (tag2) = (e2)
+                  │    ├── filter            |                  |
+                  │    │    │                | filter           | e1 IS NOT NULL
+                  │    │    └── synchronizer |                  |
+                  │    │         └── ts scan |                  |
+                  │    │                     | ts-table         | ts1
+                  │    │                     | access mode      | tableTableMeta
+                  │    │                     | block filter[e1] | NOT NULL
+                  │    └── scan              |                  |
+                  │                          | table            | re1@primary
+                  │                          | spans            | FULL SCAN
+                  └── scan                   |                  |
+                                             | table            | re1@primary
+                                             | spans            | FULL SCAN
+(30 rows)
 > select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r2.e1 or ts.tag2=r2.e2 on ts.tag1=r1.e1 or ts.tag2=r1.e2 group by r1.e1;
   min
 -------
     3
 (1 row)
 > explain select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r2.e1 or ts.tag2=r2.e2 on ts.tag1=r1.e1 or ts.tag2=r1.e2 group by r1.e1;
-                  tree                  |    field    |        description
-----------------------------------------+-------------+-----------------------------
-                                        | distributed | true
-                                        | vectorized  | false
-  render                                |             |
-   │                                    | min         | min
-   └── group                            |             |
-        │                               | aggregate 0 | e1
-        │                               | aggregate 1 | min(e1 + e2)
-        │                               | group by    | e1
-        └── render                      |             |
-             │                          | e1 + e2     | e1 + e2
-             │                          | e1          | e1
-             └── cross-join             |             |
-                  │                     | type        | inner
-                  │                     | pred        | (tag1 = e1) OR (tag2 = e2)
-                  ├── cross-join        |             |
-                  │    │                | type        | inner
-                  │    │                | pred        | (tag1 = e1) OR (tag2 = e2)
-                  │    ├── synchronizer |             |
-                  │    │    └── ts scan |             |
-                  │    │                | ts-table    | ts1
-                  │    │                | access mode | tableTableMeta
-                  │    │                | filter      | e1 > 0
-                  │    └── scan         |             |
-                  │                     | table       | re1@primary
-                  │                     | spans       | FULL SCAN
-                  └── scan              |             |
-                                        | table       | re1@primary
-                                        | spans       | FULL SCAN
-(28 rows)
+                  tree                  |      field       |        description
+----------------------------------------+------------------+-----------------------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | min              | min
+   └── group                            |                  |
+        │                               | aggregate 0      | e1
+        │                               | aggregate 1      | min(e1 + e2)
+        │                               | group by         | e1
+        └── render                      |                  |
+             │                          | e1 + e2          | e1 + e2
+             │                          | e1               | e1
+             └── cross-join             |                  |
+                  │                     | type             | inner
+                  │                     | pred             | (tag1 = e1) OR (tag2 = e2)
+                  ├── cross-join        |                  |
+                  │    │                | type             | inner
+                  │    │                | pred             | (tag1 = e1) OR (tag2 = e2)
+                  │    ├── synchronizer |                  |
+                  │    │    └── ts scan |                  |
+                  │    │                | ts-table         | ts1
+                  │    │                | access mode      | tableTableMeta
+                  │    │                | filter           | e1 > 0
+                  │    │                | block filter[e1] | [1 - ]
+                  │    └── scan         |                  |
+                  │                     | table            | re1@primary
+                  │                     | spans            | FULL SCAN
+                  └── scan              |                  |
+                                        | table            | re1@primary
+                                        | spans            | FULL SCAN
+(29 rows)
 > set cluster setting ts.sql.query_opt_mode=DEFAULT;
 SET CLUSTER SETTING
 > drop database if exists tsdb cascade;

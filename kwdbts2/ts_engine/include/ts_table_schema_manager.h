@@ -53,6 +53,7 @@ class TsTableSchemaManager {
   string metric_schema_path_;
   // schema path of the tag
   string tag_schema_path_;
+  uint64_t hash_num_;
 
  protected:
   uint32_t cur_version_{0};

@@ -176,6 +176,7 @@ KStatus TsTableSchemaManager::Init() {
     LOG_ERROR("metric manager init failed")
     return s;
   }
+  hash_num_ = metric_mgr_->GetHashNum();
   tag_table_ = std::make_shared<TagTable>(table_path_, tag_schema_path_, table_id_, 1);
   ErrorInfo err_info;
   if (tag_table_->open(err_info) < 0) {
@@ -206,7 +207,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   for (auto& attr : metric_schema) {
     attr.version = ts_version;
   }
-  s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(), err_info);
+  hash_num_ = meta->ts_table().hash_num();
+  s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(), hash_num_, err_info);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("failed to create the tag table %s%lu, error: %s",
               tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
@@ -251,7 +253,7 @@ KStatus TsTableSchemaManager::addMetricForAlter(vector<AttributeInfo>& schema, u
   if (tmp_bt->open(bt_path, table_path_, metric_schema_path_, MMAP_CREAT_EXCL, err_info) >= 0
       || err_info.errcode == KWECORR) {
     tmp_bt->create(schema, new_version, metric_schema_path_, metric_mgr_->GetPartitionInterval(),
-                    encoding, err_info, false);
+                    encoding, err_info, false, hash_num_);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] create error : %s", bt_path.c_str(), err_info.errmsg.c_str());
@@ -271,6 +273,7 @@ KStatus TsTableSchemaManager::addMetricForAlter(vector<AttributeInfo>& schema, u
     tmp_bt->metaData()->min_ts = src_bt->metaData()->min_ts;
     tmp_bt->metaData()->max_ts = src_bt->metaData()->max_ts;
     tmp_bt->metaData()->db_id = src_bt->metaData()->db_id;
+    tmp_bt->metaData()->hash_num = src_bt->metaData()->hash_num;
     // Version compatibility
     if (src_bt->metaData()->schema_version_of_latest_data == 0) {
       tmp_bt->metaData()->schema_version_of_latest_data = new_version;

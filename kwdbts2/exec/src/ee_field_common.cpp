@@ -394,22 +394,20 @@ int ArgComparator::compare_int(k_int64 val1, k_int64 val2) {
 }
 
 int ArgComparator::compare_float(k_double64 val1, k_double64 val2) {
-  int ret = 0;
-  if (std::isnan(val1) && std::isnan(val2)) {
-    ret = 0;
-  } else if (std::isnan(val1)) {
-    ret = -1;
-  } else if (std::isnan(val2)) {
-    ret = 1;
-  } else if (FLT_EQUAL(val1, val2)) {
-    ret = 0;
-  } else if (FLT_GREATER(val1, val2)) {
-    ret = 1;
-  } else {
-    ret = -1;
+  if (std::isnan(val1)) {
+    return std::isnan(val2) ? 0 : -1;
   }
-
-  return ret;
+  if (std::isnan(val2)) {
+    return 1;
+  }
+  const k_double64 diff = val1 - val2;
+  if (diff > FLT_COMPAR_TOL_FACTOR * FLT_EPSILON) {
+    return 1;
+  }
+  if (diff < -FLT_COMPAR_TOL_FACTOR * FLT_EPSILON) {
+    return -1;
+  }
+  return 0;
 }
 
 int ArgComparator::compare_string(const String &str1, const String &str2) {

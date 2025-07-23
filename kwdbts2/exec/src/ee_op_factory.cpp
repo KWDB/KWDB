@@ -11,6 +11,8 @@
 
 #include "ee_op_factory.h"
 
+#include <regex>
+
 #include "ee_agg_scan_op.h"
 #include "ee_aggregate_op.h"
 #include "ee_distinct_op.h"
@@ -136,9 +138,51 @@ KStatus OpFactory::NewAgg(kwdbContext_p ctx, TsFetcherCollection* collection, co
           childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
           const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
     } else {
-      *iterator = NewIterator<HashAggregateOperator>(collection,
-          childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
-          const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+      k_uint32 group_size = aggSpec.group_cols_size();
+      k_uint32 k_group_ptag_size = 0;
+      TableScanOperator* input = dynamic_cast<TableScanOperator*>(childIterator);
+      if (input) {
+        for (k_int32 i = 0; i < group_size; ++i) {
+          k_uint32 groupcol = aggSpec.group_cols(i);
+          k_int32 col = -1;
+          if (input->post_->renders_size() > 0) {
+            std::string render = input->post_->renders(groupcol);
+            render = render.substr(1);
+            try {
+              col = std::stoi(render) - 1;
+              if (input->post_->outputcols_size() > 0) {
+                col = input->post_->outputcols(col);
+              }
+            } catch (...) {
+              break;
+            }
+          } else if (input->post_->outputcols_size() > 0) {
+            col = input->post_->outputcols(groupcol);
+          } else {
+            col = groupcol;
+          }
+
+          if (col == -1 || col >= (*table)->field_num_) {
+            break;
+          }
+          Field* field = (*table)->fields_[col];
+          if (field->get_column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+            ++k_group_ptag_size;
+          }
+        }
+      }
+      // use OrderedAggregate, when grouping only by ptag.
+      // for example:
+      // select ptag, sum(v) from t group by ptag;
+      if (group_size == k_group_ptag_size && (*table)->PTagCount() == k_group_ptag_size) {
+        *iterator =
+            NewIterator<OrderedAggregateOperator>(collection, childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
+                                                  const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+      } else {
+        *iterator =
+            NewIterator<HashAggregateOperator>(collection, childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
+                                               const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+      }
     }
   }
   if (!(*iterator)) {

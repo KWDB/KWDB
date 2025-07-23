@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -1183,7 +1184,12 @@ inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) 
       assert(false);
       break;
   }
-  return ts * precision;
+  int64_t ret;
+  bool overflow = __builtin_smull_overflow(ts, precision, &ret);
+  if (!overflow) {
+    return ret;
+  }
+  return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
 inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
@@ -1208,7 +1214,12 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
       assert(false);
       break;
   }
-  return ts * precision;
+  int64_t ret;
+  bool overflow = __builtin_smull_overflow(ts, precision, &ret);
+  if (!overflow) {
+    return ret;
+  }
+  return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
 inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
@@ -1222,5 +1233,85 @@ inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t ha
   }
   return hash_val % hash_num;
 }
+
+struct SpanValue {
+  union {
+    k_int64 ival{0};
+    k_double64 dval;
+    char* data;
+  };
+  k_int32 len{0};
+};
+
+enum FilterSpanBoundary {
+  FSB_INCLUDE_BOUND = 0,  // include
+  FSB_EXCLUDE_BOUND,      // exclude
+  FSB_NONE                // none
+};
+
+/**
+ * @brief Defines a structure representing a filter span, used to specify
+ * filtering conditions for string or numerical ranges.
+ *
+ * This structure contains the left and right boundary values of the span, as
+ * well as the inclusion types of the left and right boundaries. It can be used
+ * to filter data that meets specific range criteria.
+ */
+struct FilterSpan {
+  SpanValue start;                   // left value
+  SpanValue end;                     // right value
+  FilterSpanBoundary startBoundary;  // left value type
+  FilterSpanBoundary endBoundary;    // right value type
+};
+
+enum BlockFilterType {
+  BFT_SPAN = 0,  // span
+  BFT_NULL,      // is null
+  BFT_NOTNULL    // is not null
+};
+
+/**
+ * @brief Defines a block filter structure used to store block-level filtering
+ * information.
+ *
+ * This structure contains a column ID, a filter type, and a series of filter
+ * spans. It can be used to apply conditional filtering to data blocks.
+ */
+struct BlockFilter {
+  k_uint32 colID;
+  BlockFilterType filterType;
+  std::vector<FilterSpan> spans;
+  void Reset() {
+    for (k_int32 i = 0; i < spans.size(); i++) {
+      if (spans[i].start.data) {
+        free(spans[i].start.data);
+        spans[i].start.data = nullptr;
+      }
+      if (spans[i].end.data) {
+        free(spans[i].end.data);
+        spans[i].end.data = nullptr;
+      }
+    }
+  }
+};
+
+/**
+ * @brief Defines a structure for iterator parameters, used to store various
+ * parameters required for an iterator to perform a scanning operation.
+ */
+struct IteratorParams {
+  std::vector<EntityResultIndex>& entity_ids;
+  std::vector<KwTsSpan>& ts_spans;
+  std::vector<BlockFilter>& block_filter;
+  std::vector<k_uint32>& scan_cols;
+  std::vector<k_int32>& agg_extend_cols;
+  std::vector<Sumfunctype>& scan_agg_types;
+  k_uint32 table_version;
+  std::vector<timestamp64> ts_points;
+  bool reverse;
+  bool sorted;
+  k_uint32 offset;
+  k_uint32 limit;
+};
 
 }  //  namespace kwdbts

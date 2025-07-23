@@ -1001,7 +1001,7 @@ int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::Enti
   char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
   memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
   std::shared_ptr<void> mem_ptr(mem, free);
-  LOG_DEBUG("entityid: %u, groupid: %u", entity_id, subgroup_id);
+  // LOG_DEBUG("entityid: %u, groupid: %u", entity_id, subgroup_id);
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id,

@@ -18,15 +18,17 @@
 #include <cstdint>
 #include <filesystem>
 #include <iterator>
-#include <utility>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <regex>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tuple>
+#include <utility>
 #include <vector>
-#include <list>
+
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -507,6 +509,14 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   for (auto& del : del_range) {
     cur_scan_range = LSNRangeUtil::MergeScanAndDelRange(cur_scan_range, del);
   }
+
+  // TODO(zzr, lb): optimize: cur_scan_range should be sorted, implement a O(m+n) algorithm to do this.
+  // for now, MergeScanAndDelRange in loop is O(m*n)
+  std::sort(cur_scan_range.begin(), cur_scan_range.end(), [](const STScanRange &a, const STScanRange &b) {
+    using HelperTuple = std::tuple<timestamp64, TS_LSN>;
+    return HelperTuple{a.ts_span.begin, a.lsn_span.begin} < HelperTuple{b.ts_span.begin, b.lsn_span.begin};
+  });
+
   block_data_filter.spans_ = std::move(cur_scan_range);
   block_data_filter.db_id = filter.db_id;
   block_data_filter.entity_id = filter.entity_id;

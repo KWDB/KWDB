@@ -78,37 +78,38 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-           tree          |      field       |                                   description
--------------------------+------------------+-----------------------------------------------------------------------------------
-                         | distributed      | false
-                         | vectorized       | false
-  batch-lookup-join      |                  |
-   │                     | type             | inner
-   │                     | equality         | (pipeline_name, column16, column17) = (measure_tag, measure_type, measure_style)
-   ├── render            |                  |
-   │    └── scan         |                  |
-   │                     | table            | pipeline_info@primary
-   │                     | spans            | FULL SCAN
-   └── group             |                  |
-        │                | engine type      | time series
-        │                | aggregate 0      | pipeline_name
-        │                | aggregate 1      | pipe_start
-        │                | aggregate 2      | pipe_end
-        │                | aggregate 3      | count(measure_value)
-        │                | aggregate 4      | avg(measure_value)
-        │                | group by         | pipeline_name, pipe_start, pipe_end
-        │                | addSynchronizer  | true
-        └── render       |                  |
-             │           | engine type      | time series
-             │           | measure_value    | measure_value
-             │           | pipeline_name    | pipeline_name
-             │           | pipe_start       | pipe_start
-             │           | pipe_end         | pipe_end
-             └── ts scan |                  |
-                         | ts-table         | measurepoints
-                         | access mode      | primaryHashTagScan
-                         | filter           | measure_value >= 2.7
-(28 rows)
+           tree          |            field            |                                   description
+-------------------------+-----------------------------+-----------------------------------------------------------------------------------
+                         | distributed                 | false
+                         | vectorized                  | false
+  batch-lookup-join      |                             |
+   │                     | type                        | inner
+   │                     | equality                    | (pipeline_name, column16, column17) = (measure_tag, measure_type, measure_style)
+   ├── render            |                             |
+   │    └── scan         |                             |
+   │                     | table                       | pipeline_info@primary
+   │                     | spans                       | FULL SCAN
+   └── group             |                             |
+        │                | engine type                 | time series
+        │                | aggregate 0                 | pipeline_name
+        │                | aggregate 1                 | pipe_start
+        │                | aggregate 2                 | pipe_end
+        │                | aggregate 3                 | count(measure_value)
+        │                | aggregate 4                 | avg(measure_value)
+        │                | group by                    | pipeline_name, pipe_start, pipe_end
+        │                | addSynchronizer             | true
+        └── render       |                             |
+             │           | engine type                 | time series
+             │           | measure_value               | measure_value
+             │           | pipeline_name               | pipeline_name
+             │           | pipe_start                  | pipe_start
+             │           | pipe_end                    | pipe_end
+             └── ts scan |                             |
+                         | ts-table                    | measurepoints
+                         | access mode                 | primaryHashTagScan
+                         | filter                      | measure_value >= 2.7
+                         | block filter[measure_value] | [2.7 - ]
+(29 rows)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,

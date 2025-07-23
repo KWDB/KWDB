@@ -72,6 +72,7 @@ func (f *stubFactory) ConstructTSScan(
 	table cat.Table,
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
+	blockFilter []*execinfrapb.TSBlockFilter,
 	rowCount float64,
 ) (exec.Node, error) {
 	return struct{}{}, nil

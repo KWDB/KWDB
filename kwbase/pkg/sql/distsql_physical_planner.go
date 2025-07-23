@@ -1725,10 +1725,17 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 	colMetas []sqlbase.TSCol,
 	n *tsScanNode,
 	rangeSpans *map[roachpb.NodeID][]execinfrapb.HashpointSpan,
+	tsColMap map[sqlbase.ColumnID]tsColIndex,
 ) error {
 	planCtx.tsTableReaderID++
+	// convert logicColID to physicalColID
+	for i, filter := range n.blockFilter {
+		if tsColIdx, ok := tsColMap[sqlbase.ColumnID(*filter.ColID)]; ok {
+			*n.blockFilter[i].ColID = uint32(tsColIdx.idx + 1)
+		}
+	}
 	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
-		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID}
+		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter}
 
 	if n.orderedType.NeedReverse() {
 		tr.Reverse = &tr.OrderedScan
@@ -2182,7 +2189,7 @@ func (p *PhysicalPlan) buildPhyPlanForTSReaders(
 			return err
 		}
 	} else {
-		err := p.initPhyPlanForTsReaders(planCtx, colMetas, n, rangeSpans)
+		err := p.initPhyPlanForTsReaders(planCtx, colMetas, n, rangeSpans, tsColMap)
 		if err != nil {
 			return err
 		}
@@ -2237,7 +2244,7 @@ func (p *PhysicalPlan) buildPhyPlanForTSReadersHash(
 	descColumnIDs []sqlbase.ColumnID,
 ) error {
 	//construct TSReaderSpec
-	err := p.initPhyPlanForTsReaders(planCtx, colMetas, n, rangeSpans)
+	err := p.initPhyPlanForTsReaders(planCtx, colMetas, n, rangeSpans, tsColMap)
 	if err != nil {
 		return err
 	}

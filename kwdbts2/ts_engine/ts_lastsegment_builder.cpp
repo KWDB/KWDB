@@ -12,9 +12,11 @@
 #include "ts_lastsegment_builder.h"
 #include <algorithm>
 #include <cstdint>
+#include <string_view>
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
@@ -376,7 +378,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Add(
   data_buffer_.append(col_data.data, dsize_);
 }
 
-void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
+void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress(bool use_plain) {
   bitmap_buffer_.clear();
   if (has_bitmap_) {
     // TODO(zzr) Compress bitmap..
@@ -393,6 +395,10 @@ void TsLastSegmentBuilder::MetricBlockBuilder::ColumnBlockBuilder::Compress() {
     first = TsCompAlg::kGorilla_32;
   }
   TSSlice plain{data_buffer_.data(), data_buffer_.size()};
+  if (use_plain) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
+  }
   mgr.CompressData(plain, bm, row_cnt_, &compressed, first, second);
   data_buffer_.swap(compressed);
 }
@@ -444,7 +450,7 @@ KStatus TsLastSegmentBuilder::MetricBlockBuilder::Reset(TSTableID table_id, uint
   return KStatus::SUCCESS;
 }
 
-void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN seq_no,
+void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN lsn,
                                                    TSSlice metric_data) {
   assert(!finished_);
   assert(parser_ != nullptr);
@@ -463,11 +469,14 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
   info_.max_ts = std::max(info_.max_ts, ts);
   info_.min_ts = std::min(info_.min_ts, ts);
 
+  info_.max_lsn = std::max(info_.max_lsn, lsn);
+  info_.min_lsn = std::min(info_.min_lsn, lsn);
+
   info_.max_entity_id = std::max(info_.max_entity_id, entity_id);
   info_.min_entity_id = std::min(info_.min_entity_id, entity_id);
 
   colblocks_[0]->Add({reinterpret_cast<char*>(&entity_id), sizeof(entity_id)});
-  colblocks_[1]->Add({reinterpret_cast<char*>(&seq_no), sizeof(seq_no)});
+  colblocks_[1]->Add({reinterpret_cast<char*>(&lsn), sizeof(lsn)});
   for (int i = 2; i < colblocks_.size(); ++i) {
     int col_id = i - 2;
     TSSlice data;
@@ -488,7 +497,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
   }
 }
 
-void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN seq_no,
+void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN lsn,
                                                    const std::vector<TSSlice>& col_data,
                                                    const std::vector<DataFlags>& data_flags) {
   assert(!finished_);
@@ -506,11 +515,14 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
   info_.max_ts = std::max(info_.max_ts, ts);
   info_.min_ts = std::min(info_.min_ts, ts);
 
+  info_.max_lsn = std::max(info_.max_lsn, lsn);
+  info_.min_lsn = std::min(info_.min_lsn, lsn);
+
   info_.max_entity_id = std::max(info_.max_entity_id, entity_id);
   info_.min_entity_id = std::min(info_.min_entity_id, entity_id);
 
   colblocks_[0]->Add({reinterpret_cast<char*>(&entity_id), sizeof(entity_id)});
-  colblocks_[1]->Add({reinterpret_cast<char*>(&seq_no), sizeof(seq_no)});
+  colblocks_[1]->Add({reinterpret_cast<char*>(&lsn), sizeof(lsn)});
   for (int i = 2; i < colblocks_.size(); ++i) {
     int col_id = i - 2;
     TSSlice data = col_data[col_id];
@@ -543,7 +555,8 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Finish() {
     //    1. Get compression type from schema_mgr
     //    2. compress
 
-    colblocks_[i]->Compress();
+    bool use_plain = (i <= 2);
+    colblocks_[i]->Compress(use_plain);
     int bitmap_len = colblocks_[i]->GetBitmap().len;
     int data_len = colblocks_[i]->GetData().len;
     BlockInfo::ColInfo col_info;
@@ -623,8 +636,8 @@ KStatus TsLastSegmentBuilder::InfoHandle::WriteInfo(TsAppendOnlyFile* file) {
 
 void TsLastSegmentBuilder::IndexHandle::RecordBlockInfo(size_t info_length, const BlockInfo& info) {
   assert(!finished_);
-  indices_.push_back({cursor_, info_length, info.table_id, info.version, info.ndevice, info.min_ts,
-                      info.max_ts, info.min_entity_id, info.max_entity_id});
+  indices_.push_back({cursor_, info_length, info.table_id, info.version, info.ndevice, info.min_ts, info.max_ts,
+                      info.min_lsn, info.max_lsn, info.min_entity_id, info.max_entity_id});
   cursor_ += info_length;
 }
 
@@ -637,19 +650,27 @@ void TsLastSegmentBuilder::IndexHandle::ApplyInfoBlockOffset(size_t offset) {
 
 KStatus TsLastSegmentBuilder::IndexHandle::WriteIndex(TsAppendOnlyFile* file) {
   assert(finished_);
-  std::string buf;
-  for (const auto idx : indices_) {
-    PutFixed64(&buf, idx.offset);
-    PutFixed64(&buf, idx.length);
-    PutFixed64(&buf, idx.table_id);
-    PutFixed32(&buf, idx.table_version);
-    PutFixed32(&buf, idx.n_entity);
-    PutFixed64(&buf, idx.min_ts);
-    PutFixed64(&buf, idx.max_ts);
-    PutFixed64(&buf, idx.min_entity_id);
-    PutFixed64(&buf, idx.max_entity_id);
+  auto sz = indices_.size() * sizeof(TsLastSegmentBlockIndex);
+  auto buf = std::make_unique<char[]>(sz);
+  char* p = buf.get();
+  [[maybe_unused]] TSTableID table_id = 0;  // for debug only
+  for (const auto& idx : indices_) {
+    assert(idx.table_id >= table_id);
+    table_id = idx.table_id;
+    p = EncodeFixed64(p, idx.offset);
+    p = EncodeFixed64(p, idx.length);
+    p = EncodeFixed64(p, idx.table_id);
+    p = EncodeFixed32(p, idx.table_version);
+    p = EncodeFixed32(p, idx.n_entity);
+    p = EncodeFixed64(p, idx.min_ts);
+    p = EncodeFixed64(p, idx.max_ts);
+    p = EncodeFixed64(p, idx.min_lsn);
+    p = EncodeFixed64(p, idx.max_lsn);
+    p = EncodeFixed64(p, idx.min_entity_id);
+    p = EncodeFixed64(p, idx.max_entity_id);
   }
-  return file->Append(buf);
+  assert(p - buf.get() == sz);
+  return file->Append(std::string_view{buf.get(), sz});
 }
 
 }  // namespace kwdbts

@@ -12,6 +12,7 @@
 
 #include "ee_table.h"
 
+#include "ee_common.h"
 #include "ee_field.h"
 #include "ee_kwthd_context.h"
 #include "er_api.h"
@@ -20,6 +21,13 @@
 namespace kwdbts {
 
 TABLE::~TABLE() {
+  for (k_int32 i = 0; i < block_filters_.size(); i++) {
+    if (IsStringType(fields_[block_filters_[i].colID]->get_storage_type()) ||
+        fields_[block_filters_[i].colID]->get_storage_type() ==
+            roachpb::DataType::BOOL) {
+      block_filters_[i].Reset();
+    }
+  }
   if (fields_) {
     for (k_uint32 i = 0; i < field_num_; ++i) {
       SafeDeletePointer(fields_[i]);
@@ -264,6 +272,16 @@ KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
 void *TABLE::GetData(int col, k_uint64 offset, roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt) {
   auto row_batch = current_thd->GetRowBatch();
   return row_batch->GetData(col, offset, ctype, dt);
+}
+
+k_uint32 TABLE::PTagCount() const {
+  k_uint32 ptag_count = 0;
+  for (k_uint32 i = 0; i < field_num_; ++i) {
+    if (fields_[i]->get_column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+      ++ptag_count;
+    }
+  }
+  return ptag_count;
 }
 
 k_uint16 TABLE::GetDataLen(int col, k_uint64 offset, roachpb::KWDBKTSColumn::ColumnType ctype) {

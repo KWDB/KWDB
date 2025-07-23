@@ -375,21 +375,11 @@ class TsTable {
     * @param[in] table_version The maximum table version that needs to be queried
     * @param[out] TsStorageIterator*
     */
-  virtual KStatus GetNormalIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                                    std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                                    std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
-                                    k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
-                                    bool reverse, bool sorted);
+  virtual KStatus GetNormalIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter);
 
-  virtual KStatus GetOffsetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                                    vector<KwTsSpan>& ts_spans, std::vector<k_uint32> scan_cols, k_uint32 table_version,
-                                    TsIterator** iter, k_uint32 offset, k_uint32 limit, bool reverse);
+  virtual KStatus GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter);
 
-  virtual KStatus GetIterator(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                              std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                              std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
-                              k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
-                              bool reverse, bool sorted, k_uint32 offset = 0, k_uint32 limit = 0);
+  virtual KStatus GetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter);
 
   virtual KStatus GetUnorderedDataInfo(kwdbContext_p ctx, const KwTsSpan ts_span, UnorderedDataStats* stats);
 
@@ -401,11 +391,7 @@ class TsTable {
     * @param[in] table_version The maximum table version that needs to be queried
     * @param[out] TsStorageIterator*
     */
-  virtual KStatus GetIteratorInOrder(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_ids,
-                              std::vector<KwTsSpan> ts_spans, std::vector<k_uint32> scan_cols,
-                              std::vector<k_int32> agg_extend_cols, std::vector<Sumfunctype> scan_agg_types,
-                              k_uint32 table_version, TsIterator** iter, std::vector<timestamp64> ts_points,
-                              bool reverse, bool sorted);
+  virtual KStatus GetIteratorInOrder(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter);
 
   /**
    * @brief get entityId List
@@ -862,13 +848,14 @@ class TsEntityGroup {
    * @param[out] TsStorageIterator*
    */
   virtual KStatus GetIterator(kwdbContext_p ctx, SubGroupID sub_group_id,
-                              vector<uint32_t> entity_ids,
-                              std::vector<KwTsSpan> ts_spans,
+                              const vector<uint32_t>& entity_ids,
+                              const std::vector<KwTsSpan>& ts_spans,
+                              const std::vector<BlockFilter>& block_filter,
                               DATATYPE ts_col_type,
-                              std::vector<k_uint32> scan_cols,
-                              std::vector<k_uint32> ts_scan_cols,
-                              std::vector<k_int32> ts_agg_extend_cols,
-                              std::vector<Sumfunctype> scan_agg_types,
+                              const std::vector<k_uint32>& scan_cols,
+                              const std::vector<k_uint32>& ts_scan_cols,
+                              const std::vector<k_int32>& ts_agg_extend_cols,
+                              const std::vector<Sumfunctype>& scan_agg_types,
                               uint32_t table_version, TsStorageIterator** iter,
                               std::shared_ptr<TsEntityGroup> entity_group,
                               std::vector<timestamp64> ts_points,

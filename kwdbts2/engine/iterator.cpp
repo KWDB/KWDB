@@ -72,19 +72,21 @@ TsStorageIterator::TsStorageIterator() {
 }
 
 TsStorageIterator::TsStorageIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id,
-                                     uint32_t subgroup_id, vector<uint32_t>& entity_ids,
-                                     std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                                     std::vector<uint32_t>& kw_scan_cols, std::vector<uint32_t>& ts_scan_cols,
-                                     uint32_t table_version)
-                       : entity_group_id_(entity_group_id),
-                         subgroup_id_(subgroup_id),
-                         entity_ids_(entity_ids),
-                         ts_spans_(ts_spans),
-                         ts_col_type_(ts_col_type),
-                         kw_scan_cols_(kw_scan_cols),
-                         ts_scan_cols_(ts_scan_cols),
-                         table_version_(table_version),
-                         entity_group_(entity_group) {
+                                     uint32_t subgroup_id, const vector<uint32_t>& entity_ids,
+                                     const std::vector<KwTsSpan>& ts_spans,
+                                     const std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
+                                     const std::vector<uint32_t>& kw_scan_cols,
+                                     const std::vector<uint32_t>& ts_scan_cols, uint32_t table_version)
+    : entity_group_id_(entity_group_id),
+      subgroup_id_(subgroup_id),
+      entity_ids_(entity_ids),
+      ts_spans_(ts_spans),
+      block_filter_(block_filter),
+      ts_col_type_(ts_col_type),
+      kw_scan_cols_(kw_scan_cols),
+      ts_scan_cols_(ts_scan_cols),
+      table_version_(table_version),
+      entity_group_(entity_group) {
   entity_group_->RdDropLock();
 }
 
@@ -100,6 +102,186 @@ TsStorageIterator::~TsStorageIterator() {
 
 void TsStorageIterator::fetchBlockItems(k_uint32 entity_id) {
   cur_partition_table_->GetAllBlockItems(entity_id, block_item_queue_, is_reversed_);
+  if (!block_filter_.empty()) {
+    uint32_t size = block_item_queue_.size();
+    for (int i = 0; i < size; ++i) {
+      BlockItem* cur_block = block_item_queue_.front();
+      block_item_queue_.pop_front();
+      if (!cur_block->publish_row_count || isBlockFiltered(cur_block)) {
+        continue;
+      }
+      block_item_queue_.push_back(cur_block);
+    }
+  }
+}
+
+bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype) {
+  for (auto filter_span : filter.spans) {
+    if (filter_span.startBoundary == FSB_NONE && filter_span.endBoundary == FSB_NONE) {
+      return true;
+    }
+    int min_res = 0, max_res = 0;
+    switch (datatype) {
+      case DATATYPE::BYTE:
+      case DATATYPE::BOOL:
+      case DATATYPE::CHAR:
+      case DATATYPE::BINARY:
+      case DATATYPE::STRING:
+      case DATATYPE::VARBINARY:
+      case DATATYPE::VARSTRING: {
+        k_int32 ret = 0;
+        if (filter_span.endBoundary != FSB_NONE) {
+          k_int32 min_len = std::min(min.len, filter_span.end.len);
+          ret = memcmp(min.data, filter_span.end.data, min_len);
+          min_res = (ret == 0) ? (min.len - filter_span.end.len) : ret;
+        }
+
+        if (filter_span.startBoundary != FSB_NONE) {
+          k_int32 max_len = std::max(max.len, filter_span.start.len);
+          ret = memcmp(max.data, filter_span.start.data, max_len);
+          max_res = (ret == 0) ? (max.len - filter_span.start.len) : ret;
+        }
+        break;
+      }
+      case DATATYPE::INT8:
+      case DATATYPE::INT16:
+      case DATATYPE::INT32:
+      case DATATYPE::INT64: {
+        min_res = (min.ival > filter_span.end.ival) ? 1 : ((min.ival < filter_span.end.ival) ? -1 : 0);
+        max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
+        break;
+      }
+      case DATATYPE::FLOAT:
+      case DATATYPE::DOUBLE: {
+        min_res = (min.dval > filter_span.end.dval) ? 1 : ((min.dval < filter_span.end.dval) ? -1 : 0);
+        max_res = (max.dval > filter_span.start.dval) ? 1 : ((max.dval < filter_span.start.dval) ? -1 : 0);
+        break;
+      }
+      default:
+        break;
+    }
+    if (filter_span.startBoundary == FSB_NONE &&
+        ((filter_span.endBoundary == FSB_INCLUDE_BOUND && min_res <= 0) ||
+        (filter_span.endBoundary == FSB_EXCLUDE_BOUND && min_res < 0))) {
+      return true;
+    } else if (filter_span.endBoundary == FSB_NONE &&
+               ((filter_span.startBoundary == FSB_INCLUDE_BOUND && max_res >= 0) ||
+               (filter_span.startBoundary == FSB_EXCLUDE_BOUND && max_res > 0))) {
+      return true;
+    } else if (!((filter_span.endBoundary == FSB_INCLUDE_BOUND && min_res > 0) ||
+                (filter_span.endBoundary == FSB_EXCLUDE_BOUND && min_res >= 0) ||
+                (filter_span.startBoundary == FSB_INCLUDE_BOUND && max_res < 0) ||
+                (filter_span.startBoundary == FSB_EXCLUDE_BOUND && max_res <= 0))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
+  if (!block_item->is_agg_res_available) {
+    return false;
+  }
+  for (const auto& filter : block_filter_) {
+    uint32_t col_id = filter.colID;
+    BlockFilterType filter_type = filter.filterType;
+    std::vector<FilterSpan> filter_spans = filter.spans;
+    std::shared_ptr<MMapSegmentTable> segment_tbl = cur_partition_table_->getSegmentTable(block_item->block_id);
+    if (segment_tbl == nullptr) {
+      LOG_ERROR("Can not find segment use block [%d], in path [%s]",
+                block_item->block_id, cur_partition_table_->GetPath().c_str());
+      return KStatus::FAIL;
+    }
+    if (filter.filterType == BlockFilterType::BFT_NULL) {
+      if (segment_tbl->isAllNotNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID}))
+        return true;
+    } else if (filter.filterType == BlockFilterType::BFT_NOTNULL) {
+      if (segment_tbl->isAllNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID}))
+        return true;
+    } else if (filter.filterType == BlockFilterType::BFT_SPAN) {
+      void* min_addr = segment_tbl->columnAggAddr(block_item->block_id, col_id, Sumfunctype::MIN);
+      void* max_addr = segment_tbl->columnAggAddr(block_item->block_id, col_id, Sumfunctype::MAX);
+      SpanValue min, max;
+      Defer defer{[&]() {
+        if (attrs_[col_id].type == DATATYPE::VARBINARY || attrs_[col_id].type == DATATYPE::VARSTRING) {
+          delete[] min.data;
+          delete[] max.data;
+        }
+      }};
+      switch (attrs_[col_id].type) {
+        case DATATYPE::BYTE:
+        case DATATYPE::BOOL:
+        case DATATYPE::CHAR:
+        case DATATYPE::BINARY:
+        case DATATYPE::STRING: {
+          min.data = static_cast<char*>(min_addr);
+          max.data = static_cast<char*>(max_addr);
+          min.len = max.len = attrs_[col_id].size;
+          break;
+        }
+        case DATATYPE::INT8: {
+          min.ival = (k_int64)(*(static_cast<k_int8*>(min_addr)));
+          max.ival = (k_int64)(*(static_cast<k_int8*>(max_addr)));
+          break;
+        }
+        case DATATYPE::INT16: {
+          min.ival = (k_int64)(*(static_cast<k_int16*>(min_addr)));
+          max.ival = (k_int64)(*(static_cast<k_int16*>(max_addr)));
+          break;
+        }
+        case DATATYPE::INT32:
+        case DATATYPE::TIMESTAMP: {
+          min.ival = (k_int64)(*(static_cast<k_int32*>(min_addr)));
+          max.ival = (k_int64)(*(static_cast<k_int32*>(max_addr)));
+          break;
+        }
+        case DATATYPE::INT64:
+        case DATATYPE::TIMESTAMP64:
+        case DATATYPE::TIMESTAMP64_MICRO:
+        case DATATYPE::TIMESTAMP64_NANO: {
+          min.ival = *static_cast<k_int64*>(min_addr);
+          max.ival = *static_cast<k_int64*>(max_addr);
+          break;
+        }
+        case DATATYPE::TIMESTAMP64_LSN:
+        case DATATYPE::TIMESTAMP64_LSN_MICRO:
+        case DATATYPE::TIMESTAMP64_LSN_NANO: {
+          min.ival = (*(static_cast<TimeStamp64LSN*>(min_addr))).ts64;
+          max.ival = (*(static_cast<TimeStamp64LSN*>(max_addr))).ts64;
+        }
+        case DATATYPE::FLOAT: {
+          min.dval = static_cast<double>(*static_cast<float*>(min_addr));
+          max.dval = static_cast<double>(*static_cast<float*>(max_addr));
+          break;
+        }
+        case DATATYPE::DOUBLE: {
+          min.dval = *static_cast<double*>(min_addr);
+          max.dval = *static_cast<double*>(max_addr);
+          break;
+        }
+        case DATATYPE::VARBINARY:
+        case DATATYPE::VARSTRING: {
+          MetricRowID row_id = block_item->getRowID(1);
+          std::shared_ptr<void> min_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MIN);
+          min.len = *(reinterpret_cast<uint16_t*>(min_agg_addr.get()));
+          min.data = new char[min.len];
+          memcpy(min.data, reinterpret_cast<char*>(min_agg_addr.get()) + kStringLenLen, min.len);
+
+          std::shared_ptr<void> max_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MAX);
+          max.len = *(reinterpret_cast<uint16_t*>(max_agg_addr.get()));
+          max.data = new char[max.len];
+          memcpy(max.data, reinterpret_cast<char*>(max_agg_addr.get()) + kStringLenLen, max.len);
+          break;
+        }
+        default:
+          break;
+      }
+      if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 KStatus TsStorageIterator::Init(bool is_reversed) {
@@ -301,7 +483,7 @@ KStatus TsRawDataIterator::Next(ResultSet* res, k_uint32* count, bool* is_finish
         return s;
       }
     }
-    LOG_DEBUG("block item[%u, %u] scan rows %u.", cur_block_item_->entity_id, cur_block_item_->block_id, *count);
+    //  LOG_DEBUG("block item[%u, %u] scan rows %u.", cur_block_item_->entity_id, cur_block_item_->block_id, *count);
     assert(cur_block_item_->publish_row_count <= cur_block_item_->alloc_row_count);
     // If the data query within the current BlockItem is completed, switch to the next block.
     if (cur_blockdata_offset_ > cur_block_item_->publish_row_count) {
@@ -310,8 +492,8 @@ KStatus TsRawDataIterator::Next(ResultSet* res, k_uint32* count, bool* is_finish
     }
     if (*count > 0) {
       KWDB_STAT_ADD(StStatistics::Get().it_num, *count);
-      LOG_DEBUG("res entityId is %u, entitygrp is %lu , count is %u, startTime is %ld, endTime is %ld",
-        entity_ids_[cur_entity_idx_], entity_group_id_, *count, ts_spans_.data()->begin, ts_spans_.data()->end);
+      //  LOG_DEBUG("res entityId is %u, entitygrp is %lu , count is %u, startTime is %ld, endTime is %ld",
+      //  entity_ids_[cur_entity_idx_], entity_group_id_, *count, ts_spans_.data()->begin, ts_spans_.data()->end);
       res->entity_index = {entity_group_id_, entity_ids_[cur_entity_idx_], subgroup_id_};
       return SUCCESS;
     }

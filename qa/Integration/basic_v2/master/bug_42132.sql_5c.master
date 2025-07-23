@@ -101,6 +101,8 @@ CREATE TABLE
                               | ts-table         | t2
                               | access mode      | metaTable
                               | filter           | id = 9
-(34 rows)
+                              | block filter[id] | [9 - 9]
+                              | block filter[e9] | NOT NULL
+(36 rows)
 > DROP DATABASE IF exists test_select_subquery cascade;
 DROP DATABASE

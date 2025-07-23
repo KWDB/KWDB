@@ -1015,6 +1015,9 @@ define TSScanPrivate {
     # TagFilter tag col filter exprs
     TagFilter Exprs
 
+    # BlockFilter ordinary col(except the ts col) filter exprs
+    BlockFilter FiltersExpr
+
     # PrimaryTagFilter primary tag col filter exprs
     PrimaryTagFilter Exprs
 

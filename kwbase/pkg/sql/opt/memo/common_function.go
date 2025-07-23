@@ -714,6 +714,30 @@ func CheckAggCanParallel(expr opt.Expr) (bool, bool) {
 	return false, false
 }
 
+// GetBlockFilter get block filters from ordinary col filters.
+func GetBlockFilter(expr opt.Expr, tabID opt.TableID) FiltersExpr {
+	var blockFilter FiltersExpr
+	if filters, ok := expr.(*FiltersExpr); ok {
+		for _, filter := range *filters {
+			if shouldAddBlockFilter(filter, tabID) {
+				blockFilter = append(blockFilter, filter)
+			}
+		}
+	}
+	return blockFilter
+}
+
+func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID) bool {
+	// TightConstraints is true if filter can be converted to constraints and filter is exactly equivalent to the constraints.
+	// filters can convert to blockFilter if TightConstraints is true
+	if !filter.scalar.TightConstraints {
+		return false
+	}
+	colID := filter.scalar.Constraints.Constraint(0).Columns.Get(0).ID()
+	// we should exclude it if column is timestamp column.
+	return colID != tabID.ColumnID(0)
+}
+
 // GetTagIndexKeyAndFilter get tag index key and tag index filters by metadata.
 func GetTagIndexKeyAndFilter(
 	private *TSScanPrivate, tagFilters *[]opt.Expr, m *Memo, filterCount int,
