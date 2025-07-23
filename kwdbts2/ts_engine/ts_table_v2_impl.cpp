@@ -196,7 +196,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     }
     s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, ts_col_type,
                             params.scan_cols, ts_scan_cols, params.agg_extend_cols,
-                            params.scan_agg_types, table_schema_mgr_,params.table_version,
+                            params.scan_agg_types, table_schema_mgr_, params.table_version,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
