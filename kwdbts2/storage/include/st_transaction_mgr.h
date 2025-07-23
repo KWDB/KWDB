@@ -117,6 +117,7 @@ class TSxMgr {
   }
 
   void eraseMtrID(const uint64_t mini_trans_id) {
+    std::unique_lock<std::shared_mutex> lock(map_mutex_);
     for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ) {
       if (it->second == mini_trans_id) {
         ts_trans_ids_.erase(it->first);

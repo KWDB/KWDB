@@ -63,12 +63,15 @@ KStatus TSxMgr::MtrBegin(kwdbts::kwdbContext_p ctx, uint64_t range_id, uint64_t 
                                            range_id, index);
   size_t wal_len = MTRBeginEntry::fixed_length;
   KStatus s;
+  map_mutex_.lock();
   if (ts_trans_ids_.find(tsx_id) == ts_trans_ids_.end()) {
     s = wal_mgr_->WriteWAL(ctx, wal_log, wal_len, mini_trans_id);
   } else {
+    map_mutex_.unlock();
     delete [] wal_log;
     return SUCCESS;
   }
+  map_mutex_.unlock();
 
   if (tsx_id != LogEntry::DEFAULT_TS_TRANS_ID) {
     map_mutex_.lock();
