@@ -8,6 +8,7 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
+#include <cassert>
 #include <limits>
 #include <cstring>
 #include <list>
@@ -88,6 +89,28 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, s
 TsStorageIteratorV2Impl::TsStorageIteratorV2Impl() {
 }
 
+// https://leetcode.cn/problems/merge-intervals/description/
+static std::vector<KwTsSpan> SortAndMergeSpan(const std::vector<KwTsSpan>& ts_spans) {
+  if (ts_spans.empty()) {
+    return {};
+  }
+  std::vector<KwTsSpan> sorted_spans = ts_spans;
+  std::sort(sorted_spans.begin(), sorted_spans.end(),
+            [](const KwTsSpan& a, const KwTsSpan& b) { return a.begin < b.begin; });
+  std::vector<KwTsSpan> merged_spans;
+  KwTsSpan merged_span = sorted_spans[0];
+  for (size_t i = 1; i < sorted_spans.size(); ++i) {
+    if (sorted_spans[i].begin <= merged_span.end) {
+      merged_span.end = std::max(merged_span.end, sorted_spans[i].end);
+      continue;
+    }
+    merged_spans.push_back(merged_span);
+    merged_span = sorted_spans[i];
+  }
+  merged_spans.push_back(merged_span);
+  return merged_spans;
+}
+
 TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                                   std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
                                                   std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
@@ -95,7 +118,7 @@ TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
                                                   uint32_t table_version) {
   vgroup_ = vgroup;
   entity_ids_ = entity_ids;
-  ts_spans_ = ts_spans;
+  ts_spans_ = SortAndMergeSpan(ts_spans);
   ts_col_type_ = ts_col_type;
   kw_scan_cols_ = kw_scan_cols;
   table_schema_mgr_ = table_schema_mgr;
@@ -269,21 +292,18 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                                          std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                                          std::vector<k_int32>& agg_extend_cols,
-                                          std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
-                                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version) :
-  TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
-                                                                            kw_scan_cols, ts_scan_cols, table_schema_mgr,
-                                                                            table_version),
-  scan_agg_types_(scan_agg_types),
-  last_ts_points_(ts_points),
-  agg_extend_cols_{agg_extend_cols} {
-}
+                                         std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
+                                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                                         std::vector<k_int32>& agg_extend_cols,
+                                         std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
+                                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version)
+    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, kw_scan_cols,
+                                                       ts_scan_cols, table_schema_mgr, table_version),
+      scan_agg_types_(scan_agg_types),
+      last_ts_points_(ts_points),
+      agg_extend_cols_{agg_extend_cols} {}
 
-TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {
-}
+TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {}
 
 inline bool PartitionLessThan(std::shared_ptr<const TsPartitionVersion>& a, std::shared_ptr<const TsPartitionVersion>& b) {
   return a->GetStartTime() < b->GetEndTime();

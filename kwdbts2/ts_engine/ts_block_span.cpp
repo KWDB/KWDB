@@ -197,7 +197,7 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
   if (s != KStatus::SUCCESS) {
     return s;
   }
-  for (int row_idx = start_row_; row_idx < start_row_ + nrow_; ++row_idx) {
+  for (int row_idx = 0; row_idx < nrow_; ++row_idx) {
     if (bitmap[row_idx] != DataFlags::kValid) {
       continue;
     }

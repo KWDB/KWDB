@@ -153,6 +153,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
   table->set_partition_interval(86400);
   table->set_ts_version(1);
   table->set_database_id(db_id);
+  table->set_hash_num(2000);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;
@@ -329,6 +330,7 @@ void ConstructRoachpbTableWithTypes(roachpb::CreateTsTable* meta, KTableKey tabl
   table->set_database_id(1);
   table->set_partition_interval(86400);
   table->set_ts_version(1);
+  table->set_hash_num(2000);
   meta->set_allocated_ts_table(table);
 
   for (int i = 0; i < metric_col.size(); i++) {
