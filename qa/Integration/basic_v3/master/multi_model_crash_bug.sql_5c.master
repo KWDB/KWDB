@@ -78,38 +78,36 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-           tree          |            field            |                                   description
--------------------------+-----------------------------+-----------------------------------------------------------------------------------
-                         | distributed                 | false
-                         | vectorized                  | false
-  batch-lookup-join      |                             |
-   │                     | type                        | inner
-   │                     | equality                    | (pipeline_name, column16, column17) = (measure_tag, measure_type, measure_style)
-   ├── render            |                             |
-   │    └── scan         |                             |
-   │                     | table                       | pipeline_info@primary
-   │                     | spans                       | FULL SCAN
-   └── group             |                             |
-        │                | engine type                 | time series
-        │                | aggregate 0                 | pipeline_name
-        │                | aggregate 1                 | pipe_start
-        │                | aggregate 2                 | pipe_end
-        │                | aggregate 3                 | count(measure_value)
-        │                | aggregate 4                 | avg(measure_value)
-        │                | group by                    | pipeline_name, pipe_start, pipe_end
-        │                | addSynchronizer             | true
-        └── render       |                             |
-             │           | engine type                 | time series
-             │           | measure_value               | measure_value
-             │           | pipeline_name               | pipeline_name
-             │           | pipe_start                  | pipe_start
-             │           | pipe_end                    | pipe_end
-             └── ts scan |                             |
-                         | ts-table                    | measurepoints
-                         | access mode                 | primaryHashTagScan
-                         | filter                      | measure_value >= 2.7
-                         | block filter[measure_value] | [2.7 - ]
-(29 rows)
+             tree             |            field            |                                   description
+------------------------------+-----------------------------+-----------------------------------------------------------------------------------
+                              | distributed                 | true
+                              | vectorized                  | false
+  group                       |                             |
+   │                          | aggregate 0                 | pipeline_name
+   │                          | aggregate 1                 | pipe_start
+   │                          | aggregate 2                 | pipe_end
+   │                          | aggregate 3                 | count(measure_value)
+   │                          | aggregate 4                 | avg(measure_value)
+   │                          | group by                    | pipeline_name, pipe_start, pipe_end
+   └── render                 |                             |
+        │                     | pipeline_name               | pipeline_name
+        │                     | pipe_start                  | pipe_start
+        │                     | pipe_end                    | pipe_end
+        │                     | measure_value               | measure_value
+        └── hash-join         |                             |
+             │                | type                        | inner
+             │                | equality                    | (measure_tag, measure_type, measure_style) = (pipeline_name, column16, column17)
+             ├── synchronizer |                             |
+             │    └── ts scan |                             |
+             │                | ts-table                    | measurepoints
+             │                | access mode                 | tableTableMeta
+             │                | filter                      | measure_value >= 2.7
+             │                | block filter[measure_value] | [2.7 - ]
+             └── render       |                             |
+                  └── scan    |                             |
+                              | table                       | pipeline_info@primary
+                              | spans                       | FULL SCAN
+(27 rows)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -129,7 +127,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -149,7 +150,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -169,7 +173,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -189,7 +196,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -209,7 +219,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -229,7 +242,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -249,7 +265,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -269,7 +288,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -289,7 +311,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -309,7 +334,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -329,7 +357,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -349,7 +380,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -369,7 +403,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,
@@ -389,7 +426,10 @@ WHERE mt.measure_tag = li.pipeline_name
   AND mt.measure_style = cast(li.lstyle as int)
   AND mt.measure_value >= 2.7
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
-ERROR: Error Code: 130
+  pipeline_name | pipe_start | pipe_end | count | avg
+----------------+------------+----------+-------+------
+  pipeline_1    | a          | aa       |     1 | 3.5
+(1 row)
 > set enable_multimodel=false;
 SET
 > drop database pipec_r cascade;
