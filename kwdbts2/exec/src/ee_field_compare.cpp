@@ -20,6 +20,36 @@
 
 namespace kwdbts {
 
+static k_int64 getRegexValue(k_bool negation, k_bool is_case, String strvalue1, String strvalue2) {
+  std::string str = std::string(strvalue1.getptr(), strvalue1.length_);
+  std::string partstr = std::string(strvalue2.getptr(), strvalue2.length_);
+  if (is_case) {
+    // Convert all letters in the string to lowercase
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+    std::transform(partstr.begin(), partstr.end(), partstr.begin(), [](unsigned char c) { return std::tolower(c); });
+  }
+  try {
+    std::regex pattern(partstr);
+    k_int64 result = 0;
+    if (std::regex_search(str, pattern)) {
+      result = 1;
+    }
+    if (negation) {
+      return !result;
+    }
+    return result;
+  } catch (std::regex_error &e) {
+    KString et = "regex_error";
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_REGEXP_MISMATCH, et.data());
+    return 0;
+  }
+}
+
+char *FieldFuncComparison::get_ptr(RowBatch *batch) {
+  intvalue_ = ValInt();
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldFuncEq::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {
@@ -97,6 +127,7 @@ Field *FieldFuncLess::field_to_copy() {
   return field;
 }
 
+
 k_int64 FieldFuncLessEq::ValInt() {
   COMPARE_CHECK_NULL;
   return cmp.compare(nullptr, nullptr, false, false) <= 0;
@@ -167,6 +198,11 @@ Field *FieldFuncGtEq::field_to_copy() {
   return field;
 }
 
+char *FieldFuncLike::get_ptr(RowBatch *batch) {
+  intvalue_ = ValInt();
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldFuncLike::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {
@@ -200,6 +236,55 @@ Field *FieldFuncLike::field_to_copy() {
   return field;
 }
 
+char *FieldCondAnd::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+
+  intvalue_ = 1;
+  for (auto it : list_) {
+    switch (it->get_storage_type()) {
+      case roachpb::DataType::TIMESTAMP:
+      case roachpb::DataType::TIMESTAMPTZ:
+      case roachpb::DataType::TIMESTAMP_MICRO:
+      case roachpb::DataType::TIMESTAMP_NANO:
+      case roachpb::DataType::TIMESTAMPTZ_MICRO:
+      case roachpb::DataType::TIMESTAMPTZ_NANO:
+      case roachpb::DataType::DATE:
+      case roachpb::DataType::BOOL:
+      case roachpb::DataType::SMALLINT:
+      case roachpb::DataType::INT:
+      case roachpb::DataType::BIGINT:
+      case roachpb::DataType::FLOAT:
+      case roachpb::DataType::DOUBLE:
+      case roachpb::DataType::CHAR:
+      case roachpb::DataType::NCHAR:
+      case roachpb::DataType::VARCHAR:
+      case roachpb::DataType::NVARCHAR:
+      case roachpb::DataType::BINARY:
+      case roachpb::DataType::VARBINARY: {
+        char *ptr = it->get_ptr(batch);
+        if (ptr == nullptr) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                        "could not parse \"\" field cond_and, get null value");
+          return const_cast<char *>("");
+        }
+        if (0 == it->ValInt(ptr)) {
+          intvalue_ = 0;
+          return reinterpret_cast<char *>(&intvalue_);
+        }
+        break;
+      }
+      default:
+        err = FAIL;
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func cond_and.");
+        break;
+    }
+  }
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldCondAnd::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {
@@ -231,6 +316,48 @@ Field *FieldCondAnd::field_to_copy() {
   return field;
 }
 
+char *FieldCondOr::get_ptr(RowBatch *batch) {
+  std::string ret = "";
+  char *ptrResult = nullptr;
+
+  switch (storage_type_) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE: {
+      intvalue_ = 0;
+      for (auto it : list_) {
+        char *ptr = it->get_ptr(batch);
+        if (ptr == nullptr) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                        "could not parse \"\" field cond_or, get null value");
+          return const_cast<char *>("");
+        }
+        if (it->ValInt(ptr)) {
+          intvalue_ = 1;
+          break;
+        }
+      }
+      ptrResult = reinterpret_cast<char *>(&intvalue_);
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func cond_or.");
+      return const_cast<char *>("");
+  }
+
+  return ptrResult;
+}
+
 k_int64 FieldCondOr::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {
@@ -250,22 +377,7 @@ k_int64 FieldCondOr::ValInt() {
 
 k_double64 FieldCondOr::ValReal() { return ValInt(); }
 
-String FieldCondOr::ValStr() {
-  char *ptr = get_ptr();
-  if (ptr) {
-    return FieldCond::ValStr(ptr);
-  } else {
-    std::string ret = "";
-    for (auto it : list_) {
-      String s = it->ValStr();
-      ret += std::string(s.c_str(), s.length_);
-    }
-    String s(storage_len_);
-    snprintf(s.ptr_, storage_len_ + 1, "%s", ret.c_str());
-    s.length_ = strlen(s.ptr_);
-    return s;
-  }
-}
+String FieldCondOr::ValStr() { return String(""); }
 
 Field *FieldCondOr::field_to_copy() {
   FieldCondOr *field = new FieldCondOr(*this);
@@ -283,6 +395,11 @@ FieldFuncOptNeg::~FieldFuncOptNeg() {
 void FieldFuncOptNeg::fix_fields(const std::list<Field **> &values,
                                  size_t count) {
   in_list_ = FieldInList::get_field_in_list(values, count);
+}
+
+char *FieldFuncIn::get_ptr(RowBatch *batch) {
+  intvalue_ = ValInt();
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncIn::ValInt() {
@@ -317,6 +434,11 @@ Field *FieldFuncIn::field_to_copy() {
   return field;
 }
 
+char *FieldCondIsNull::get_ptr(RowBatch *batch) {
+  intvalue_ = ValInt();
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldCondIsNull::ValInt() {
   char *ptr = get_ptr();
   if (nullptr != ptr) {
@@ -344,6 +466,11 @@ Field *FieldCondIsNull::field_to_copy() {
   return field;
 }
 
+char *FieldCondIsUnknown::get_ptr(RowBatch *batch) {
+  intvalue_ = ValInt();
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldCondIsUnknown::ValInt() {
   char *ptr = get_ptr();
   if (nullptr != ptr) {
@@ -369,6 +496,60 @@ Field *FieldCondIsUnknown::field_to_copy() {
   FieldCondIsUnknown *field = new FieldCondIsUnknown(*this);
 
   return field;
+}
+
+char *FieldCondIsNan::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  switch (args_[0]->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      char *ptr = args_[0]->get_ptr(batch);
+      if (ptr == nullptr) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" field isnan, get null value");
+        return const_cast<char *>("");
+      }
+      std::string uppercaseStr;
+      String s1 = args_[0]->ValStr(ptr);
+      std::string original = {s1.getptr(), s1.length_};
+      for (char c : original) {
+        uppercaseStr += std::toupper(c);
+      }
+      if (negation_) {
+        intvalue_ = !(uppercaseStr == "NAN");
+      } else {
+        intvalue_ = uppercaseStr == "NAN";
+      }
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func isnan.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldCondIsNan::ValInt() {
@@ -406,6 +587,57 @@ Field *FieldCondIsNan::field_to_copy() {
   return field;
 }
 
+char *FieldFuncRegex::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+
+  if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
+    return const_cast<char *>("");
+  }
+
+  switch (args_[0]->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      char *ptr0 = args_[0]->get_ptr(batch);
+      char *ptr1 = args_[1]->get_ptr(batch);
+      if ((ptr0 == nullptr) || (ptr1 == nullptr)) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" field regex, get null value");
+        return const_cast<char *>("");
+      }
+      String s0 = args_[0]->ValStr(ptr0);
+      String s1 = args_[1]->ValStr(ptr1);
+      intvalue_ = getRegexValue(negation_, is_case_, s0, s1);
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func regex.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldFuncRegex::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {
@@ -414,34 +646,7 @@ k_int64 FieldFuncRegex::ValInt() {
     if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
       return 0;
     }
-    std::string str =
-        std::string(args_[0]->ValStr().getptr(), args_[0]->ValStr().length_);
-    std::string partstr =
-        std::string(args_[1]->ValStr().getptr(), args_[1]->ValStr().length_);
-    if (is_case_) {
-      // Convert all letters in the string to lowercase
-      std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
-        return std::tolower(c);
-      });
-      std::transform(partstr.begin(), partstr.end(), partstr.begin(), [](unsigned char c) {
-        return std::tolower(c);
-      });
-    }
-    try {
-      std::regex pattern(partstr);
-      k_int64 result = 0;
-      if (std::regex_search(str, pattern)) {
-        result = 1;
-      }
-      if (negation_) {
-        return !result;
-      }
-      return result;
-    } catch (std::regex_error &e) {
-      KString et = "regex_error";
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_REGEXP_MISMATCH, et.data());
-      return 0;
-    }
+    return getRegexValue(negation_, is_case_, args_[0]->ValStr(), args_[1]->ValStr());
   }
 }
 
@@ -464,6 +669,60 @@ k_bool FieldFuncRegex::field_is_nullable() {
     return true;
   }
   return false;
+}
+
+char *FieldFuncAny::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  intvalue_ = 0;
+
+  for (size_t i = 0; i < arg_count_; i++) {
+    if (args_[i]->is_nullable()) {
+      continue;
+    }
+    char *ptr = args_[i]->get_ptr(batch);
+    if (ptr == nullptr) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                    "could not parse \"\" field func_any, get null value");
+      return const_cast<char *>("");
+    }
+    switch (args_[1]->get_storage_type()) {
+      case roachpb::DataType::TIMESTAMP:
+      case roachpb::DataType::TIMESTAMPTZ:
+      case roachpb::DataType::TIMESTAMP_MICRO:
+      case roachpb::DataType::TIMESTAMP_NANO:
+      case roachpb::DataType::TIMESTAMPTZ_MICRO:
+      case roachpb::DataType::TIMESTAMPTZ_NANO:
+      case roachpb::DataType::DATE:
+      case roachpb::DataType::BOOL:
+      case roachpb::DataType::SMALLINT:
+      case roachpb::DataType::INT:
+      case roachpb::DataType::BIGINT:
+      case roachpb::DataType::FLOAT:
+      case roachpb::DataType::DOUBLE:
+      case roachpb::DataType::CHAR:
+      case roachpb::DataType::BINARY:
+      case roachpb::DataType::NCHAR:
+      case roachpb::DataType::VARCHAR:
+      case roachpb::DataType::NVARCHAR:
+      case roachpb::DataType::VARBINARY: {
+        if (args_[i]->ValInt(ptr) == 1) {
+          intvalue_ = 1;
+          return reinterpret_cast<char *>(&intvalue_);
+        }
+        break;
+      }
+      default:
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func_any.");
+        err = FAIL;
+        break;
+    }
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncAny::ValInt() {
@@ -497,6 +756,59 @@ Field *FieldFuncAny::field_to_copy() {
   return field;
 }
 
+char *FieldFuncAll::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  intvalue_ = 1;
+
+  for (size_t i = 0; i < arg_count_; i++) {
+    if (args_[i]->is_nullable()) {
+      continue;
+    }
+    char *ptr = args_[i]->get_ptr(batch);
+    if (ptr == nullptr) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                    "could not parse \"\" field func all, get null value");
+      return const_cast<char *>("");
+    }
+    switch (args_[1]->get_storage_type()) {
+      case roachpb::DataType::TIMESTAMP:
+      case roachpb::DataType::TIMESTAMPTZ:
+      case roachpb::DataType::TIMESTAMP_MICRO:
+      case roachpb::DataType::TIMESTAMP_NANO:
+      case roachpb::DataType::TIMESTAMPTZ_MICRO:
+      case roachpb::DataType::TIMESTAMPTZ_NANO:
+      case roachpb::DataType::DATE:
+      case roachpb::DataType::BOOL:
+      case roachpb::DataType::SMALLINT:
+      case roachpb::DataType::INT:
+      case roachpb::DataType::BIGINT:
+      case roachpb::DataType::FLOAT:
+      case roachpb::DataType::DOUBLE:
+      case roachpb::DataType::CHAR:
+      case roachpb::DataType::BINARY:
+      case roachpb::DataType::NCHAR:
+      case roachpb::DataType::VARCHAR:
+      case roachpb::DataType::NVARCHAR:
+      case roachpb::DataType::VARBINARY: {
+        if (args_[i]->ValInt(ptr) != 1) {
+          intvalue_ = 0;
+          return reinterpret_cast<char *>(&intvalue_);
+        }
+        break;
+      }
+      default:
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func all.");
+        err = FAIL;
+        break;
+    }
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
 k_int64 FieldFuncAll::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {
@@ -526,6 +838,53 @@ Field *FieldFuncAll::field_to_copy() {
   FieldFuncAll *field = new FieldFuncAll(*this);
 
   return field;
+}
+
+char *FieldFuncNot::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field  func not, get null value");
+    return const_cast<char *>("");
+  }
+  intvalue_ = 0;
+  switch (args_[0]->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      if (args_[0]->ValInt(ptr) == 0) {
+        intvalue_ = 1;
+      }
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func not.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncNot::ValInt() {

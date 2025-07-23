@@ -2088,6 +2088,10 @@ func (m *sessionDataMutator) SetMultiModelEnabled(val bool) {
 	m.data.MultiModelEnabled = val
 }
 
+func (m *sessionDataMutator) SetTimeBucketEnabled(val bool) {
+	m.data.TimeBucketEnabled = val
+}
+
 func (m *sessionDataMutator) SetHashScanMode(val int) {
 	m.data.HashScanMode = val
 }

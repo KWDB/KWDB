@@ -60,8 +60,13 @@ class FieldFuncComparison : public FieldFuncBool {
     storage_len_ = sizeof(bool);
     cmp.set_cmp_func(&args_[0], &args_[1]);
   }
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   ArgComparator cmp;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncEq : public FieldFuncComparison {
@@ -168,8 +173,13 @@ class FieldFuncLike : public FieldLikeComparison {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldCond : public FieldFuncBool {
@@ -208,8 +218,12 @@ class FieldCondAnd : public FieldCond {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldCondOr : public FieldCond {
@@ -221,8 +235,14 @@ class FieldCondOr : public FieldCond {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 class FieldFuncOptNeg : public FieldFuncBool {
@@ -258,8 +278,12 @@ class FieldFuncIn : public FieldFuncOptNeg {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldCondIsNull : public FieldFuncBool {
@@ -277,10 +301,15 @@ class FieldCondIsNull : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
 
   k_bool negation_{0};
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldCondIsUnknown : public FieldFuncBool {
@@ -298,10 +327,15 @@ class FieldCondIsUnknown : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
 
   k_bool negation_{0};
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldCondIsNan : public FieldFuncBool {
@@ -319,10 +353,15 @@ class FieldCondIsNan : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
 
   k_bool negation_{0};
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncRegex : public FieldFuncBool {
@@ -340,6 +379,8 @@ class FieldFuncRegex : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
  protected:
@@ -347,6 +388,7 @@ class FieldFuncRegex : public FieldFuncBool {
 
   k_bool negation_{0};
   k_bool is_case_{0};
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncAny : public FieldFuncBool {
@@ -365,8 +407,13 @@ class FieldFuncAny : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncAll : public FieldFuncBool {
@@ -384,8 +431,13 @@ class FieldFuncAll : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncNot : public FieldFuncBool {
@@ -403,7 +455,12 @@ class FieldFuncNot : public FieldFuncBool {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
 
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 }  // namespace kwdbts
