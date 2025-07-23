@@ -466,9 +466,15 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
       LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
       return s;
     }
-    for (size_t i = 0; i < row_num_; i++) {
-      DataFlags flag = blk_bitmap[start_row_idx_+ i];
-      bitmap[i] = flag;
+    if (!version_conv_->blk_attrs_[scan_idx].isFlag(AINFO_NOT_NULL)) {
+      if (start_row_idx_ == 0 && row_num_ == block_->GetRowNum()) {
+        bitmap = blk_bitmap;
+      } else {
+        for (size_t i = 0; i < row_num_; i++) {
+          DataFlags flag = blk_bitmap[start_row_idx_+ i];
+          bitmap[i] = flag;
+        }
+      }
     }
     *value = blk_value + dest_type_size * start_row_idx_;
   } else {
