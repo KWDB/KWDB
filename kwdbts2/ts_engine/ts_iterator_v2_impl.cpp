@@ -120,6 +120,7 @@ TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
   entity_ids_ = entity_ids;
   ts_spans_ = SortAndMergeSpan(ts_spans);
   ts_col_type_ = ts_col_type;
+  ts_scan_cols_ = ts_scan_cols;
   kw_scan_cols_ = kw_scan_cols;
   table_schema_mgr_ = table_schema_mgr;
   table_version_ = table_version;
@@ -326,21 +327,43 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
-      case Sumfunctype::LASTTS:
-        if (last_ts_points_.empty()) {
-          if (last_map_.find(kw_scan_cols_[i]) == last_map_.end()) {
-            last_col_idxs_.push_back(i);
-            last_map_[kw_scan_cols_[i]] = i;
+      case Sumfunctype::LASTTS: {
+          k_int32 col_idx = (i < ts_scan_cols_.size()) ? ts_scan_cols_[i] : -1;
+          if (col_idx >= 0 && attrs_[col_idx].isFlag(AINFO_NOT_NULL)) {
+            if (scan_agg_types_[i] == Sumfunctype::LAST) {
+              scan_agg_types_[i] = Sumfunctype::LAST_ROW;
+            } else {
+              scan_agg_types_[i] = Sumfunctype::LASTROWTS;
+            }
+            has_last_row_col_ = true;
+          } else {
+            if (last_ts_points_.empty()) {
+              if (last_map_.find(kw_scan_cols_[i]) == last_map_.end()) {
+                last_col_idxs_.push_back(i);
+                last_map_[kw_scan_cols_[i]] = i;
+              }
+            } else {
+              last_col_idxs_.push_back(i);
+            }
           }
-        } else {
-          last_col_idxs_.push_back(i);
         }
         break;
       case Sumfunctype::FIRST:
-      case Sumfunctype::FIRSTTS:
-        if (first_map_.find(kw_scan_cols_[i]) == first_map_.end()) {
-          first_col_idxs_.push_back(i);
-          first_map_[kw_scan_cols_[i]] = i;
+      case Sumfunctype::FIRSTTS: {
+          k_int32 col_idx = (i < ts_scan_cols_.size()) ? ts_scan_cols_[i] : -1;
+          if (col_idx >= 0 && attrs_[col_idx].isFlag(AINFO_NOT_NULL)) {
+            if (scan_agg_types_[i] == Sumfunctype::FIRST) {
+              scan_agg_types_[i] = Sumfunctype::FIRST_ROW;
+            } else {
+              scan_agg_types_[i] = Sumfunctype::FIRSTROWTS;
+            }
+            has_first_row_col_ = true;
+          } else {
+            if (first_map_.find(kw_scan_cols_[i]) == first_map_.end()) {
+              first_col_idxs_.push_back(i);
+              first_map_[kw_scan_cols_[i]] = i;
+            }
+          }
         }
         break;
       case Sumfunctype::COUNT:
