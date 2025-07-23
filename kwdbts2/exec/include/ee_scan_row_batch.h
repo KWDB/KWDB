@@ -107,9 +107,13 @@ class ScanRowBatch : public RowBatch {
 
   ResultSet *GetResultSet() { return &res_; }
   k_uint32 *GetCount() { return &count_; }
+  k_uint32 GetEffectCount() { return effect_count_; }
   void AddSelection() override {
-    selection_.push_back({current_batch_no_, current_batch_line_});
-    effect_count_++;
+    if (effect_count_ == 0) {
+      selection_.reserve(count_);
+    }
+    selection_[effect_count_] = {current_batch_no_, current_batch_line_};
+    ++effect_count_;
   }
   Selection *GetSelection() { return &selection_; }
   KStatus Sort(Field **renders, const std::vector<k_uint32> &cols,
@@ -119,7 +123,9 @@ class ScanRowBatch : public RowBatch {
   void SetLimitOffset(k_uint32 limit, k_uint32 offset) override {}
   void SetTagToColOffset(k_uint32 offset) { tag_col_offset_ = offset; }
 
-  [[nodiscard]] bool hasFilter() const { return is_filter_; }
+  [[nodiscard]] bool HasFilter() override {
+    return effect_count_ > 0;
+  }
 
   virtual void CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_len,
                       roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt);

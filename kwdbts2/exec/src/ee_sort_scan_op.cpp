@@ -26,11 +26,11 @@ namespace kwdbts {
 SortScanOperator::SortScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
                                    TABLE* table, BaseOperator* input,
                                    int32_t processor_id)
-    : TableScanOperator(collection, spec, post, table, input, processor_id), spec_{spec} {}
+    : TableScanOperator(collection, spec, post, table, input, processor_id) {}
 
 SortScanOperator::SortScanOperator(const SortScanOperator& other,
                                    BaseOperator* input, int32_t processor_id)
-    : TableScanOperator(other, input, processor_id), spec_{other.spec_} {}
+    : TableScanOperator(other, input, processor_id) {}
 
 SortScanOperator::~SortScanOperator() {
   if (is_offset_opt_) {

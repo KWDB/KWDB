@@ -86,7 +86,7 @@ TEST_F(TestIterator, basic) {
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter1;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols,
             {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
@@ -110,7 +110,7 @@ TEST_F(TestIterator, basic) {
   TsStorageIterator* iter2;
   ts_span = {start_ts1, start_ts2 + 2 * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   is_finished = false;
   ResultSet res1{(k_uint32) scan_cols.size()}, res2{(k_uint32) scan_cols.size()};
@@ -172,7 +172,7 @@ TEST_F(TestIterator, disorder) {
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols,
                                    {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false), KStatus::SUCCESS);
 
   k_uint32 count;
@@ -235,7 +235,7 @@ TEST_F(TestIterator, multi_partition) {
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols,
                                    scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false), KStatus::SUCCESS);
 
   k_uint32 count;
@@ -312,7 +312,7 @@ TEST_F(TestIterator, aggregation1) {
   std::vector<Sumfunctype> scan_agg_types1 = {Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::SUM, Sumfunctype::COUNT};
 
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   ResultSet res1{(k_uint32) scan_cols.size()};
   k_uint32 count;
@@ -358,7 +358,7 @@ TEST_F(TestIterator, aggregation1) {
   KwTsSpan ts_span2 = {start_ts1, 5 * start_ts1};
   ts_span2 = ConvertMsToPrecision(ts_span2, ts_type);
   std::vector<Sumfunctype> scan_agg_types2 = {Sumfunctype::MAX, Sumfunctype::COUNT, Sumfunctype::COUNT, Sumfunctype::COUNT};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -380,7 +380,7 @@ TEST_F(TestIterator, aggregation1) {
   KwTsSpan ts_span3 = {0, 12000 * 1000};
   ts_span3 = ConvertMsToPrecision(ts_span3, ts_type);
   std::vector<Sumfunctype> scan_agg_types3 = {Sumfunctype::MIN, Sumfunctype::MAX, Sumfunctype::MAX, Sumfunctype::COUNT};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, ts_type, scan_cols, scan_cols, {}, scan_agg_types3, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types3, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res3{(k_uint32) scan_cols.size()};
@@ -401,7 +401,7 @@ TEST_F(TestIterator, aggregation1) {
   KwTsSpan ts_span4 = {0, 12000 * 1000};
   ts_span4 = ConvertMsToPrecision(ts_span4, ts_type);
   std::vector<Sumfunctype> scan_agg_types4 = {Sumfunctype::FIRST, Sumfunctype::LAST, Sumfunctype::FIRST, Sumfunctype::COUNT};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span4}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span4}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res4{(k_uint32) scan_cols.size()};
@@ -454,7 +454,7 @@ TEST_F(TestIterator, aggregation2) {
   std::vector<Sumfunctype> scan_agg_types1 = {Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::SUM};
 
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   ResultSet res1{(k_uint32) scan_cols.size()};
   k_uint32 count;
@@ -490,7 +490,7 @@ TEST_F(TestIterator, aggregation2) {
   KwTsSpan ts_span2 = {start_ts1, 5 * start_ts1};
   ts_span2 = ConvertMsToPrecision(ts_span2, ts_type);
   std::vector<Sumfunctype> scan_agg_types2 = {Sumfunctype::LAST, Sumfunctype::LAST_ROW, Sumfunctype::FIRST};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -518,7 +518,7 @@ TEST_F(TestIterator, aggregation2) {
   KwTsSpan ts_span3 = {0, 12000 * 1000};
   ts_span3 = ConvertMsToPrecision(ts_span3, ts_type);
   std::vector<Sumfunctype> scan_agg_types3 = {Sumfunctype::LAST, Sumfunctype::LAST, Sumfunctype::LAST_ROW};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, ts_type, scan_cols1, scan_cols1, {}, scan_agg_types3, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, {}, ts_type, scan_cols1, scan_cols1, {}, scan_agg_types3, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res3{(k_uint32) scan_cols.size()};
@@ -546,7 +546,7 @@ TEST_F(TestIterator, aggregation2) {
 
   TsStorageIterator* iter4;
   std::vector<Sumfunctype> scan_agg_types4 = {Sumfunctype::LAST, Sumfunctype::LAST_ROW, Sumfunctype::LAST};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols1, scan_cols1, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols1, scan_cols1, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res4{(k_uint32) scan_cols.size()};
@@ -568,7 +568,7 @@ TEST_F(TestIterator, aggregation2) {
 
   std::vector<Sumfunctype> scan_agg_types5 = {Sumfunctype::LASTTS, Sumfunctype::LASTROWTS, Sumfunctype::LASTTS};
   TsStorageIterator* iter5;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols1, scan_cols1, 
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols1, scan_cols1,
             {}, scan_agg_types5, 1, &iter5, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
@@ -631,7 +631,7 @@ TEST_F(TestIterator, sum_overflow) {
   std::vector<Sumfunctype> scan_agg_types1 = {Sumfunctype::MAX, Sumfunctype::SUM, Sumfunctype::SUM};
 
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   ResultSet res1{(k_uint32) scan_cols.size()};
   k_uint32 count;
@@ -656,7 +656,7 @@ TEST_F(TestIterator, sum_overflow) {
   delete[] data_value;
 
   TsStorageIterator* iter2;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   ResultSet res2{(k_uint32) scan_cols.size()};
   is_finished = false;
@@ -682,7 +682,7 @@ TEST_F(TestIterator, sum_overflow) {
   delete[] data_value;
 
   TsStorageIterator* iter3;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   ResultSet res3{(k_uint32) scan_cols.size()};
   is_finished = false;
@@ -731,7 +731,7 @@ TEST_F(TestIterator, last_row) {
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::LAST, Sumfunctype::FIRST, Sumfunctype::LAST_ROW, Sumfunctype::COUNT};
 
   TsStorageIterator* iter{nullptr};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
             KStatus::FAIL);  // no subgroup
   ResultSet res{(k_uint32) scan_cols.size()};
   k_uint32 count;
@@ -746,7 +746,7 @@ TEST_F(TestIterator, last_row) {
   data_value = nullptr;
 
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   ResultSet res1{(k_uint32) scan_cols.size()};
   bool is_finished = false;
@@ -785,7 +785,7 @@ TEST_F(TestIterator, last_row) {
   KwTsSpan ts_span2 = {start_ts1, 5 * start_ts1};
   ts_span2 = ConvertMsToPrecision(ts_span2, ts_type);
   std::vector<Sumfunctype> scan_agg_types2 = {Sumfunctype::LAST, Sumfunctype::LAST_ROW, Sumfunctype::FIRST, Sumfunctype::COUNT};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -816,7 +816,7 @@ TEST_F(TestIterator, last_row) {
   KwTsSpan ts_span3 = {0, 12000 * 1000};
   ts_span3 = ConvertMsToPrecision(ts_span3, ts_type);
   std::vector<Sumfunctype> scan_agg_types3 = {Sumfunctype::LAST, Sumfunctype::LAST, Sumfunctype::LAST_ROW, Sumfunctype::COUNT};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, ts_type, scan_cols, scan_cols, {}, scan_agg_types3, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types3, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res3{(k_uint32) scan_cols.size()};
@@ -838,7 +838,7 @@ TEST_F(TestIterator, last_row) {
 
   TsStorageIterator* iter4;
   std::vector<Sumfunctype> scan_agg_types4 = {Sumfunctype::LAST, Sumfunctype::LAST_ROW, Sumfunctype::LAST, Sumfunctype::COUNT};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res4{(k_uint32) scan_cols.size()};
@@ -867,7 +867,7 @@ TEST_F(TestIterator, last_row) {
   data_value = nullptr;
 
   TsStorageIterator* iter5;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter5, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter5, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res5{(k_uint32) scan_cols.size()};
@@ -889,7 +889,7 @@ TEST_F(TestIterator, last_row) {
 
   std::vector<Sumfunctype> scan_agg_types5 = {Sumfunctype::LASTTS, Sumfunctype::LASTROWTS, Sumfunctype::LASTTS, Sumfunctype::COUNT};
   TsStorageIterator* iter6;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types5, 1, &iter6, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types5, 1, &iter6, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res6{(k_uint32) scan_cols.size()};
@@ -946,7 +946,7 @@ TEST_F(TestIterator, fast_first_last) {
   std::vector<k_uint32> scan_cols = {0, 2, 2};
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::LAST, Sumfunctype::LASTTS, Sumfunctype::LAST};
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -983,7 +983,7 @@ TEST_F(TestIterator, fast_first_last) {
   KwTsSpan ts_span2 = {start_ts1, 5 * start_ts1};
   ts_span2 = ConvertMsToPrecision(ts_span2, ts_type);
   std::vector<Sumfunctype> scan_agg_types2 = {Sumfunctype::LAST, Sumfunctype::LASTROWTS, Sumfunctype::LASTTS};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -1010,7 +1010,7 @@ TEST_F(TestIterator, fast_first_last) {
   TsStorageIterator* iter3;
   KwTsSpan ts_span3 = {0, 12000 * 1000};
   ts_span3 = ConvertMsToPrecision(ts_span3, ts_type);
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types2, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res3{(k_uint32) scan_cols.size()};
@@ -1028,7 +1028,7 @@ TEST_F(TestIterator, fast_first_last) {
 
   TsStorageIterator* iter4;
   std::vector<Sumfunctype> scan_agg_types4 = {Sumfunctype::FIRST, Sumfunctype::FIRSTROWTS, Sumfunctype::FIRSTTS};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span3}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter4, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res4{(k_uint32) scan_cols.size()};
@@ -1052,7 +1052,7 @@ TEST_F(TestIterator, fast_first_last) {
   delete[] data_value;
 
   TsStorageIterator* iter5;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter5, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span2}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types4, 1, &iter5, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res5{(k_uint32) scan_cols.size()};
@@ -1110,7 +1110,7 @@ TEST_F(TestIterator, delete_data) {
   std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types,1 , &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types,1 , &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res1{(k_uint32) scan_cols.size()};
@@ -1125,7 +1125,7 @@ TEST_F(TestIterator, delete_data) {
   // Read aggregation result
   std::vector<Sumfunctype> scan_agg_types1 = {Sumfunctype::MIN, Sumfunctype::FIRST, Sumfunctype::COUNT, Sumfunctype::COUNT};
   TsStorageIterator* iter2;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -1169,7 +1169,7 @@ TEST_F(TestIterator, delete_data) {
   // Read raw data
   ResultSet res3{(k_uint32) scan_cols.size()};
   TsStorageIterator* iter3;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
   is_finished = false;
   ASSERT_EQ(iter3->Next(&res3, &count, &is_finished), KStatus::SUCCESS);
@@ -1181,7 +1181,7 @@ TEST_F(TestIterator, delete_data) {
 
   // Read aggregation result
   TsStorageIterator* iter4;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter4, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types1, 1, &iter4, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res4{(k_uint32) scan_cols.size()};
@@ -1236,7 +1236,7 @@ TEST_F(TestIterator, max_span) {
   std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   k_uint32 count;
@@ -1292,7 +1292,7 @@ TEST_F(TestIterator, multi_spans) {
   std::vector<k_uint32> scan_cols = {0, 1, 2, 3};
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_spans}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_spans}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   k_uint32 count;
@@ -1313,7 +1313,7 @@ TEST_F(TestIterator, multi_spans) {
   }
   scan_agg_types = {Sumfunctype::FIRST, Sumfunctype::LAST, Sumfunctype::SUM, Sumfunctype::COUNT};
   TsStorageIterator* agg_iter;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_spans}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &agg_iter, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_spans}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &agg_iter, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res1{(k_uint32) scan_cols.size()};
@@ -1375,7 +1375,7 @@ TEST_F(TestIterator, null_bitmap) {
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res1{(k_uint32) scan_cols.size()};
@@ -1435,7 +1435,7 @@ TEST_F(TestIterator, varchar) {
   std::vector<Sumfunctype> scan_agg_types;
   TsStorageIterator* iter1;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter1, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res1{(k_uint32) scan_cols.size()};
@@ -1467,7 +1467,7 @@ TEST_F(TestIterator, varchar) {
   // Test Aggregation Query
   TsStorageIterator* iter2;
   scan_agg_types = {Sumfunctype::SUM, Sumfunctype::SUM, Sumfunctype::MAX, Sumfunctype::COUNT, Sumfunctype::MIN};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter2, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter2, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res2{(k_uint32) scan_cols.size()};
@@ -1496,7 +1496,7 @@ TEST_F(TestIterator, varchar) {
                   Sumfunctype::LAST, Sumfunctype::LASTTS, Sumfunctype::LAST_ROW, Sumfunctype::LASTROWTS,
                   Sumfunctype::FIRST, Sumfunctype::FIRSTTS, Sumfunctype::FIRST_ROW, Sumfunctype::FIRSTROWTS,
                   Sumfunctype::LAST, Sumfunctype::LASTTS, Sumfunctype::LAST_ROW, Sumfunctype::LASTROWTS};
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter3, tbl_range, {}, false, false),
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter3, tbl_range, {}, false, false),
             KStatus::SUCCESS);
 
   ResultSet res3{(k_uint32) scan_cols.size()};
@@ -1567,7 +1567,7 @@ TEST_F(TestIterator, sorted_iter) {
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols,
                                    {}, scanaggtypes, 1, &iter, tbl_range, {}, false, true), KStatus::SUCCESS);
 
   k_uint32 count;
@@ -1626,9 +1626,25 @@ TEST_F(TestIterator, tstable) {
   TsIterator* iter1;
   std::vector<EntityResultIndex> entity_results;
   k_uint32 count;
+  std::vector<k_int32> agg_extend_cols;
+  std::vector<BlockFilter> block_filter;
+  std::vector<KwTsSpan> ts_spans = {ts_span};
+  IteratorParams params = {
+      .entity_ids = entity_results,
+      .ts_spans = ts_spans,
+      .block_filter = block_filter,
+      .scan_cols = scan_cols,
+      .agg_extend_cols = agg_extend_cols,
+      .scan_agg_types = scan_agg_types,
+      .table_version = 1,
+      .ts_points = {},
+      .reverse = false,
+      .sorted = false,
+      .offset = 0,
+      .limit = 0,
+  };
   ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter1, {}, false, false),
-            KStatus::SUCCESS);
+  ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
   ASSERT_EQ(iter1->Next(&res, &count), KStatus::SUCCESS);
@@ -1649,8 +1665,10 @@ TEST_F(TestIterator, tstable) {
   TsIterator* iter2;
   ts_span = {start_ts1, start_ts2 + 2 * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter2, {}, false, false),
-            KStatus::SUCCESS);
+  ts_spans.clear();
+  ts_spans = {ts_span};
+  params.ts_spans = ts_spans;
+  ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter2), KStatus::SUCCESS);
 
   ResultSet res1{(k_uint32) scan_cols.size()}, res2{(k_uint32) scan_cols.size()};
   ASSERT_EQ(iter2->Next(&res1, &count), KStatus::SUCCESS);
@@ -1714,8 +1732,25 @@ TEST_F(TestIterator, multi_thread) {
   TsIterator* iter;
   std::vector<EntityResultIndex> entity_results;
   k_uint32 count;
+  std::vector<k_int32> agg_extend_cols;
+  std::vector<BlockFilter> block_filter;
+  std::vector<KwTsSpan> ts_spans = {ts_span};
+  IteratorParams params = {
+      .entity_ids = entity_results,
+      .ts_spans = ts_spans,
+      .block_filter = block_filter,
+      .scan_cols = scan_cols,
+      .agg_extend_cols = agg_extend_cols,
+      .scan_agg_types = scan_agg_types,
+      .table_version = 1,
+      .ts_points = {},
+      .reverse = false,
+      .sorted = false,
+      .offset = 0,
+      .limit = 0,
+  };
   ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
-  ASSERT_EQ(ts_table->GetIterator(ctx_, entity_results, {ts_span}, scan_cols, {}, scan_agg_types, 1, &iter, {}, false, false), KStatus::SUCCESS);
+  ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter), KStatus::SUCCESS);
 
   atomic<int> next_time{0};
   const int k_threads_num = 10;
@@ -1790,7 +1825,7 @@ TEST_F(TestIterator, disorderCount) {
   std::vector<Sumfunctype> scanaggtypes = {Sumfunctype::COUNT};
   TsStorageIterator* iter;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols,
                                   {}, scanaggtypes, 1, &iter, tbl_range, {}, false, true), KStatus::SUCCESS);
 
   k_uint32 count;
@@ -1808,7 +1843,7 @@ TEST_F(TestIterator, disorderCount) {
 
   ts_span = {0, INT64_MAX};
   TsStorageIterator* iter2;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols,
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols,
                                    {}, scanaggtypes, 1, &iter2, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;
@@ -1828,7 +1863,7 @@ TEST_F(TestIterator, disorderCount) {
   ts_span = {start_ts, start_ts + write_count * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   TsStorageIterator* iter3;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter3, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;
@@ -1845,7 +1880,7 @@ TEST_F(TestIterator, disorderCount) {
   ts_span = {0, INT64_MAX};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   TsStorageIterator* iter4;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter4, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;
@@ -1899,7 +1934,7 @@ TEST_F(TestIterator, aggCount) {
   TsStorageIterator* iter;
 
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter, tbl_range, {}, false, true), KStatus::SUCCESS);
 
   k_uint32 count;
@@ -1919,7 +1954,7 @@ TEST_F(TestIterator, aggCount) {
   ts_span = {start_ts + 100 * 10, start_ts + 2500 * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   TsStorageIterator* iter2;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter2, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;
@@ -1938,7 +1973,7 @@ TEST_F(TestIterator, aggCount) {
   ASSERT_EQ(tbl_range->Count(ctx_, err_info), KStatus::SUCCESS);
   // scan partial data
   TsStorageIterator* iter3;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter3, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;
@@ -1997,7 +2032,7 @@ TEST_F(TestIterator, compressCount) {
   TsStorageIterator* iter;
 
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter, tbl_range, {}, false, true), KStatus::SUCCESS);
 
   k_uint32 count;
@@ -2017,7 +2052,7 @@ TEST_F(TestIterator, compressCount) {
   ts_span = {start_ts + 100 * 10, start_ts + 1500 * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   TsStorageIterator* iter2;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter2, tbl_range, {}, false, true), KStatus::SUCCESS);
   res.clear();
   is_finished = false;

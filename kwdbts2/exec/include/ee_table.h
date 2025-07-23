@@ -67,6 +67,7 @@ class TABLE {
   inline k_uint32 DataCount() const { return field_num_ - tag_num_; }
 
   inline k_uint32 TagCount() const { return tag_num_; }
+  k_uint32 PTagCount() const;
 
   inline void SetAccessMode(k_uint32 mode) { access_mode_ = mode; }
   k_uint32 GetAccessMode() const { return access_mode_; }
@@ -133,6 +134,7 @@ class TABLE {
   k_uint32 offset_{0};
   k_uint32 limit_{0};
   bool contain_tag_for_statistic{false};  // for statistic last_row
+  std::vector<BlockFilter> block_filters_;
 
  protected:
   // relational fields for multiple model processing

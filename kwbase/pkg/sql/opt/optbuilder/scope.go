@@ -1910,13 +1910,12 @@ func (s *scope) checkCol(e opt.ScalarExpr, minOrMax bool) bool {
 // 5.can only exist one min or one max.
 func (s *scope) CanApplyAggExtend(groupingColSet *opt.ColSet) bool {
 	helper := s.AggExHelper
-	groupingContainExtenCol := false
 	if groupingColSet != nil {
 		if s.AggExHelper.extendColSet.Difference(*groupingColSet).Empty() {
-			groupingContainExtenCol = true
+			return false
 		}
 	}
-	if s.checkAggExtendFlag(isSingleTsTable) && !s.checkAggExtendFlag(existOtherAgg) && s.checkAggExtendFlag(existNonAggCol) && !groupingContainExtenCol {
+	if s.checkAggExtendFlag(isSingleTsTable) && !s.checkAggExtendFlag(existOtherAgg) && s.checkAggExtendFlag(existNonAggCol) {
 		if helper.minCount == 1 && helper.maxCount == 1 {
 			return false
 		}

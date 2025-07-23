@@ -296,6 +296,7 @@ EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx,
       }
       k_int32 row = container_->NextLine();
       if (row < 0) {
+        is_done_ = true;
         break;
       }
       ++scanned_rows_;

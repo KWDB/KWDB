@@ -140,7 +140,7 @@ void ScanRowBatch::CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_le
     if (src == nullptr) {
       return;
     }
-    for (int row = 0; row < count_; row++) {
+    for (int row = 0; row < Count(); row++) {
       memcpy(dest + row * data_len, src, data_len);
     }
   } else {

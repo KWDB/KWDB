@@ -36,15 +36,9 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
   }
 
   // init tag iterator
-  std::shared_ptr<TsTable> ts_table;
-  s = ts_engine_->GetTsTable(ctx, table_id_, ts_table);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTsTable failed");
-    return KStatus::FAIL;
-  }
   ResultSet res(scan_tags.size());
   uint32_t count;
-  s = ts_table->GetTagList(ctx, {cur_entity_index_}, scan_tags, &res, &count, table_version_);
+  s = ts_table_->GetTagList(ctx, {cur_entity_index_}, scan_tags, &res, &count, table_version_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTagIterator failed");
     return KStatus::FAIL;
@@ -77,16 +71,18 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
   for (int tag_idx = 0; tag_idx < res.col_num_; ++tag_idx) {
     const Batch* col_batch = res.data[tag_idx][0];
     bool is_null = false;
-    s = col_batch->isNull(0, &is_null);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("tag col value isNull failed");
-      return s;
+    if (!tags_info[tag_idx].isPrimaryTag()) {
+      s = col_batch->isNull(0, &is_null);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("tag col value isNull failed");
+        return s;
+      }
     }
     if (is_null) {
-      set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
+      set_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx);
       continue;
     } else {
-      unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx + 1);
+      unset_null_bitmap(reinterpret_cast<unsigned char *>(tag_data.data()), tag_idx);
     }
     if (!tags_info[tag_idx].isPrimaryTag() && isVarLenType(tags_info[tag_idx].m_data_type)) {
       uint64_t offset = tag_data.size();
@@ -95,8 +91,9 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
       tag_data.append(reinterpret_cast<const char *>(&var_data_len), sizeof(uint16_t));
       tag_data.append(reinterpret_cast<const char *>(col_batch->getVarColData(0)), var_data_len);
     } else {
+      int null_bitmap_size = tags_info[tag_idx].isPrimaryTag() ? 0 : 1;
       memcpy(tag_data.data() + tag_value_bitmap_len_ + tags_info[tag_idx].m_offset,
-             col_batch->mem, tags_info[tag_idx].m_size);
+             reinterpret_cast<char*>(col_batch->mem) + null_bitmap_size, tags_info[tag_idx].m_size);
     }
   }
 
@@ -154,7 +151,13 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
 }
 
 KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
-  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, schema_);
+  ErrorInfo err_info;
+  KStatus s = ts_engine_->GetTsTable(ctx, table_id_, ts_table_, true, err_info, table_version_);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTsTable[%lu] failed, %s", table_id_, err_info.toString().c_str());
+    return KStatus::FAIL;
+  }
+  s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, schema_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id_);
     return KStatus::FAIL;
@@ -210,7 +213,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_
   cur_batch_data_.SetTableVersion(table_version_);
   // ptag
   uint32_t ptags_size = cur_entity_index_.p_tags_size;
-  cur_batch_data_.AddPrimaryTag({reinterpret_cast<char*>(cur_entity_index_.mem), ptags_size});
+  cur_batch_data_.AddPrimaryTag({reinterpret_cast<char*>(cur_entity_index_.mem.get()), ptags_size});
   // tag value
   KStatus s = GetTagValue(ctx);
   if (s != KStatus::SUCCESS) {
@@ -305,8 +308,7 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str,
-                                              std::shared_ptr<TsRawPayload>& payload_only_tag) {
+KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str) {
   tag_payload_str.clear();
   tag_payload_str.append(data->data, data->len);
   // update table version
@@ -317,10 +319,6 @@ KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* d
   // update tag type
   uint8_t tag_type = DataTagFlag::TAG_ONLY;
   memcpy(tag_payload_str.data() + TsBatchData::row_type_offset_, &tag_type, TsBatchData::row_type_size_);
-
-  std::vector<AttributeInfo> data_schema;
-  TSSlice payload_data = {tag_payload_str.data(), tag_payload_str.size()};
-  payload_only_tag = std::make_shared<TsRawPayload>(payload_data, data_schema);
   return KStatus::SUCCESS;
 }
 
@@ -379,9 +377,17 @@ KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, st
 
 KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version,
                                       TSSlice* data, uint32_t* row_num) {
+  // get or create ts table
+  ErrorInfo err_info;
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_->GetTsTable(ctx, table_id, ts_table, true, err_info, table_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTsTable[%lu] failed, %s", table_id, err_info.toString().c_str());
+    return KStatus::FAIL;
+  }
   // get table schema && create ts table
   std::shared_ptr<TsTableSchemaManager> schema = nullptr;
-  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+  s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id);
     return KStatus::FAIL;
@@ -394,6 +400,9 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   uint8_t row_type = *reinterpret_cast<uint8_t*>(data->data + TsBatchData::row_type_offset_);
   uint32_t block_span_data_offset = tags_data_offset + tags_data_size;
   uint32_t block_span_data_size = 0;
+  if (block_span_data_offset == data->len) {
+    row_type = DataTagFlag::TAG_ONLY;
+  }
   if (row_type == DataTagFlag::DATA_AND_TAG) {
     block_span_data_size = KUint32(data->data + block_span_data_offset);
   }
@@ -401,25 +410,16 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 
   TSSlice tag_slice = {data->data, tags_data_offset + tags_data_size};
   std::string tag_payload_str;
-  std::shared_ptr<TsRawPayload> payload_only_tag;
-  GetTagPayload(table_version, &tag_slice, tag_payload_str, payload_only_tag);
+  GetTagPayload(table_version, &tag_slice, tag_payload_str);
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
-  bool new_tag;
-  s = ts_engine_->GetEngineSchemaManager()->GetVGroup(ctx, table_id, payload_only_tag->GetPrimaryTag(),
-                                                              &vgroup_id, &entity_id, &new_tag);
+  uint16_t entity_cnt;
+  s = ts_engine_->InsertTagData(ctx, table_id, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
+                                vgroup_id, entity_id, &entity_cnt);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetVGroup failed, table_id[%lu], ptag[%s]", table_id, payload_only_tag->GetPrimaryTag().data);
-    return s;
-  }
-  if (new_tag) {
-    entity_id = ts_engine_->GetTsVGroup(vgroup_id - 1)->AllocateEntityID();
-    std::shared_ptr<TagTable> tag_table = schema->GetTagTable();
-    if (tag_table->InsertTagRecord(*payload_only_tag, vgroup_id, entity_id) < 0) {
-      LOG_ERROR("InsertTagRecord failed, table_id[%lu], ptag[%s]", table_id, payload_only_tag->GetPrimaryTag().data);
-      return KStatus::FAIL;
-    }
+    LOG_ERROR("InsertTagData[%lu] failed, %s", table_id, err_info.toString().c_str());
+    return KStatus::FAIL;
   }
 
   if (row_type == TAG_ONLY) {

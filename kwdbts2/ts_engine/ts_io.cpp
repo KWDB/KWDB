@@ -84,10 +84,12 @@ KStatus TsMMapAppendOnlyFile::Append(std::string_view data) {
     if (avail_space == 0) {
       auto s = UnmapCurrent();
       if (s == FAIL) {
+        LOG_ERROR("Append UnmapCurrent failed.");
         return FAIL;
       }
       s = MMapNew();
       if (s == FAIL) {
+        LOG_ERROR("Append MMapNew failed.");
         return FAIL;
       }
     }

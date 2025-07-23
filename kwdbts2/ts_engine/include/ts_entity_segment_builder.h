@@ -66,9 +66,11 @@ class TsEntitySegmentBlockItemFileBuilder {
   string file_path_;
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   TsBlockItemFileHeader header_;
+  bool override_ = false;
 
  public:
-  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path, bool override)
+      : file_path_(file_path), override_(override) {
     memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
@@ -84,9 +86,11 @@ class TsEntitySegmentBlockFileBuilder {
   string file_path_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
+  bool override_ = false;
 
  public:
-  explicit TsEntitySegmentBlockFileBuilder(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentBlockFileBuilder(const string& file_path, bool override)
+      : file_path_(file_path), override_(override) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -102,9 +106,11 @@ class TsEntitySegmentAggFileBuilder {
   string file_path_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
+  bool override_ = false;
 
  public:
-  explicit TsEntitySegmentAggFileBuilder(const string& file_path) : file_path_(file_path) {
+  explicit TsEntitySegmentAggFileBuilder(const string& file_path, bool override)
+    : file_path_(file_path), override_(override) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -214,15 +220,16 @@ class TsEntitySegmentBuilder {
     std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_header_file_num);
     entity_item_builder_ =
         std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
+    bool override = cur_entity_segment_ == nullptr ? true : false;
     // block header file
     std::string block_header_file_path = root_path + "/" + block_item_file_name;
-    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, override);
     // block data file
     std::string block_file_path = root_path + "/" + block_data_file_name;
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
+    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, override);
     // block agg file
     std::string agg_file_path = root_path + "/" + block_agg_file_name;
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
+    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, override);
   }
 
   TsEntitySegmentBuilder(const std::string& root_path,
@@ -236,15 +243,16 @@ class TsEntitySegmentBuilder {
     std::string entity_header_file_path = root_path + "/" + EntityHeaderFileName(entity_header_file_num);
     entity_item_builder_ =
       std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
+    bool override = cur_entity_segment_ == nullptr ? true : false;
     // block header file
     std::string block_header_file_path = root_path + "/" + block_item_file_name;
-    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path);
+    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, override);
     // block data file
     std::string block_file_path = root_path + "/" + block_data_file_name;
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path);
+    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, override);
     // block agg file
     std::string agg_file_path = root_path + "/" + block_agg_file_name;
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path);
+    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, override);
   }
 
   KStatus Open();

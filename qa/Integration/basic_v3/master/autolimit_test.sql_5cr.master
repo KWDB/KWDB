@@ -64,37 +64,38 @@ SET CLUSTER SETTING
                          | access mode | tableTableMeta
 (12 rows)
 > explain with with_table as (select * from test_ts.ts_table) select * from with_table where e1=1000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | time        | "time"
-   │                          | e1          | e1
-   │                          | e2          | e2
-   │                          | e3          | e3
-   │                          | e4          | e4
-   │                          | e5          | e5
-   │                          | e6          | e6
-   │                          | attr1       | attr1
-   │                          | attr2       | attr2
-   │                          | attr3       | attr3
-   │                          | attr4       | attr4
-   │                          | attr5       | attr5
-   │                          | attr6       | attr6
-   └── limit                  |             |
-        │                     | engine type | time series
-        │                     | count       | 10
-        └── synchronizer      |             |
-             └── limit        |             |
-                  │           | engine type | time series
-                  │           | count       | 10
-                  └── ts scan |             |
-                              | ts-table    | ts_table
-                              | access mode | tableTableMeta
-                              | filter      | e1 = 1000
-(28 rows)
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | time             | "time"
+   │                          | e1               | e1
+   │                          | e2               | e2
+   │                          | e3               | e3
+   │                          | e4               | e4
+   │                          | e5               | e5
+   │                          | e6               | e6
+   │                          | attr1            | attr1
+   │                          | attr2            | attr2
+   │                          | attr3            | attr3
+   │                          | attr4            | attr4
+   │                          | attr5            | attr5
+   │                          | attr6            | attr6
+   └── limit                  |                  |
+        │                     | engine type      | time series
+        │                     | count            | 10
+        └── synchronizer      |                  |
+             └── limit        |                  |
+                  │           | engine type      | time series
+                  │           | count            | 10
+                  └── ts scan |                  |
+                              | ts-table         | ts_table
+                              | access mode      | tableTableMeta
+                              | filter           | e1 = 1000
+                              | block filter[e1] | [1000 - 1000]
+(29 rows)
 > explain select e1 from test_ts.ts_table union select col1 from test.test1 order by e1;
              tree             |    field    |  description
 ------------------------------+-------------+----------------
@@ -224,10 +225,11 @@ SET CLUSTER SETTING
              │                | ts-table           | ts_table
              │                | access mode        | tableTableMeta
              │                | filter             | e1 < 2000
+             │                | block filter[e1]   | [ - 1999]
              └── scan         |                    |
                               | table              | test1@primary
                               | spans              | -/1999/#
-(18 rows)
+(19 rows)
 > explain select e2 from test_ts.ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1 order by e2;
                 tree               |       field        |  description
 -----------------------------------+--------------------+----------------

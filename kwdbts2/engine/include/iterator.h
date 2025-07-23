@@ -243,9 +243,10 @@ class TsStorageIterator {
  public:
   TsStorageIterator();
   TsStorageIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id, uint32_t subgroup_id,
-             vector<uint32_t>& entity_ids, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-             std::vector<uint32_t>& kw_scan_cols, std::vector<uint32_t>& ts_scan_cols,
-             uint32_t table_version);
+                    const vector<uint32_t>& entity_ids, const std::vector<KwTsSpan>& ts_spans,
+                    const std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
+                    const std::vector<uint32_t>& kw_scan_cols, const std::vector<uint32_t>& ts_scan_cols,
+                    uint32_t table_version);
 
   virtual ~TsStorageIterator();
 
@@ -308,6 +309,10 @@ class TsStorageIterator {
 
   void fetchBlockItems(k_uint32 entity_id);
 
+  bool matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype);
+
+  bool isBlockFiltered(BlockItem* block_item);
+
   void nextEntity() {
     cur_block_item_ = nullptr;
     cur_blockdata_offset_ = 1;
@@ -322,6 +327,7 @@ class TsStorageIterator {
   vector<uint32_t> entity_ids_{};
   // the data time range queried by the iterator
   std::vector<KwTsSpan> ts_spans_;
+  std::vector<BlockFilter> block_filter_;
   // column index
   std::vector<k_uint32> kw_scan_cols_;
   std::vector<k_uint32> ts_scan_cols_;
@@ -352,10 +358,13 @@ class TsStorageIterator {
 class TsRawDataIterator : public TsStorageIterator {
  public:
   TsRawDataIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id, uint32_t subgroup_id,
-                    vector<uint32_t>& entity_ids, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                    std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols, uint32_t table_version) :
-                    TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, ts_col_type,
-                               kw_scan_cols, ts_scan_cols, table_version) {}
+                    const vector<uint32_t>& entity_ids, const std::vector<KwTsSpan>& ts_spans,
+                    const std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
+                    const std::vector<k_uint32>& kw_scan_cols, const std::vector<k_uint32>& ts_scan_cols,
+                    uint32_t table_version)
+      : TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, block_filter, ts_col_type,
+                          kw_scan_cols, ts_scan_cols, table_version) {
+  }
 
   /**
    * @brief The internal implementation of the row data query interface returns the maximum number of consecutive data
@@ -373,11 +382,14 @@ class TsRawDataIterator : public TsStorageIterator {
 class TsSortedRowDataIterator : public TsStorageIterator {
  public:
   TsSortedRowDataIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id, uint32_t subgroup_id,
-                          vector<uint32_t>& entity_ids, std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                          uint32_t table_version, SortOrder order_type = ASC) :
-      TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, ts_col_type,
-                 kw_scan_cols, ts_scan_cols, table_version), order_type_(order_type) {}
+                          const vector<uint32_t>& entity_ids, const std::vector<KwTsSpan>& ts_spans,
+                          const std::vector<BlockFilter> block_filter, DATATYPE ts_col_type,
+                          const std::vector<k_uint32>& kw_scan_cols, const std::vector<k_uint32>& ts_scan_cols,
+                          uint32_t table_version, SortOrder order_type = ASC)
+      : TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, block_filter, ts_col_type,
+                          kw_scan_cols, ts_scan_cols, table_version),
+        order_type_(order_type) {
+  }
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
@@ -406,13 +418,15 @@ class TsSortedRowDataIterator : public TsStorageIterator {
 class TsAggIterator : public TsStorageIterator {
  public:
   TsAggIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id, uint32_t subgroup_id,
-                vector<uint32_t>& entity_ids, vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                std::vector<k_int32> ts_agg_extend_cols, std::vector<Sumfunctype>& scan_agg_types,
-                std::vector<timestamp64>& ts_points, uint32_t table_version) :
-                TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, ts_col_type,
-                                  kw_scan_cols, ts_scan_cols, table_version),
-                                  ts_agg_extend_cols_(ts_agg_extend_cols), scan_agg_types_(scan_agg_types) {
+                const vector<uint32_t>& entity_ids, const vector<KwTsSpan>& ts_spans,
+                const std::vector<BlockFilter> block_filter, DATATYPE ts_col_type,
+                const std::vector<k_uint32>& kw_scan_cols, const std::vector<k_uint32>& ts_scan_cols,
+                const std::vector<k_int32> ts_agg_extend_cols, const std::vector<Sumfunctype>& scan_agg_types,
+                std::vector<timestamp64>& ts_points, uint32_t table_version)
+      : TsStorageIterator(entity_group, entity_group_id, subgroup_id, entity_ids, ts_spans, block_filter, ts_col_type,
+                          kw_scan_cols, ts_scan_cols, table_version),
+        ts_agg_extend_cols_(ts_agg_extend_cols),
+        scan_agg_types_(scan_agg_types) {
     // When creating an aggregate query iterator, the elements of the ts_scan_cols_ and scan_agg_types_ arrays
     // correspond one-to-one, and their lengths must be consistent.
     assert(scan_agg_types_.empty() || ts_scan_cols_.size() == scan_agg_types_.size());

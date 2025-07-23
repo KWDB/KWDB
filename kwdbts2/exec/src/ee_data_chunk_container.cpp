@@ -53,8 +53,7 @@ KStatus DataChunkContainer::AddDataChunk(DataChunkPtr &data_chunk) {
     return KStatus::FAIL;
   }
   // copy data into mmap file
-  memcpy(reinterpret_cast<char*>(mmap_file_->memAddr()) + current_data_size_, data_chunk->GetData(),
-         data_chunk->Size());
+  memcpy(static_cast<char *>(mmap_file_->memAddr()) + current_data_size_, data_chunk->GetData(), data_chunk->Size());
   // reset the data chunk buffer to mmap file
   data_chunk->ResetDataPtr(reinterpret_cast<char*>(mmap_file_->memAddr()) + current_data_size_);
 

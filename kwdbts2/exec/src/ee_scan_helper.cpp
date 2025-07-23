@@ -83,8 +83,7 @@ EEIteratorErrCode ScanHelper::NextChunk(kwdbContext_p ctx,
 EEIteratorErrCode ScanHelper::Materialize(kwdbContext_p ctx,
                                           ScanRowBatch *rowbatch,
                                           DataChunkPtr &chunk) {
-  chunk->AddRowBatchData(ctx, rowbatch, op_->renders_,
-                         op_->batch_copy_ && !rowbatch->hasFilter());
+  chunk->AddRowBatchData(ctx, rowbatch, op_->renders_, op_->batch_copy_);
   return EEIteratorErrCode::EE_OK;
 }
 

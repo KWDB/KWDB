@@ -108,7 +108,7 @@ TEST_F(TestEngine, tagiterator) {
     // check entity id
     for (int idx = 0; idx < entity_id_list.size(); idx++) {
       ASSERT_EQ(entity_id_list[idx].mem != nullptr, true);
-      memcpy(&ptag, entity_id_list[idx].mem, sizeof(ptag));
+      memcpy(&ptag, entity_id_list[idx].mem.get(), sizeof(ptag));
       ASSERT_EQ(ptag, start_ts1+(idx+fetch_total_count)*100);
     }
     fetch_total_count += count;

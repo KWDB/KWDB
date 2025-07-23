@@ -312,7 +312,9 @@ CREATE INDEX
                | access mode         | tagHashIndex
                | filter              | (b = 1) AND (a > 100)
                | tag index filter[0] | t1 = 100
-(8 rows)
+               | block filter[b]     | [1 - 1]
+               | block filter[a]     | [101 - ]
+(10 rows)
 > explain select a,b,ptag1 from table1 where t1 = 100 and a > 10;
         tree        |        field        |  description
 --------------------+---------------------+----------------
@@ -329,7 +331,8 @@ CREATE INDEX
                     | access mode         | tagIndexTable
                     | filter              | a > 10
                     | tag index filter[0] | t1 = 100
-(13 rows)
+                    | block filter[a]     | [11 - ]
+(14 rows)
 > explain select a,b from table1 where t1 = 100 and ptag1 > 10;
         tree        |        field        |  description
 --------------------+---------------------+----------------
@@ -363,22 +366,24 @@ CREATE INDEX
                     | ptag filter[0] | ptag1 = 10
 (12 rows)
 > explain select a,b from table1 where t1 = 100 and ptag1 = 10 and a > 10 and b < 10;
-        tree        |     field      |      description
---------------------+----------------+------------------------
-                    | distributed    | true
-                    | vectorized     | false
-  synchronizer      |                |
-   └── render       |                |
-        │           | engine type    | time series
-        │           | a              | a
-        │           | b              | b
-        └── ts scan |                |
-                    | ts-table       | table1
-                    | access mode    | tagIndexTable
-                    | filter         | (a > 10) AND (b < 10)
-                    | tag filter[0]  | t1 = 100
-                    | ptag filter[0] | ptag1 = 10
-(13 rows)
+        tree        |      field      |      description
+--------------------+-----------------+------------------------
+                    | distributed     | true
+                    | vectorized      | false
+  synchronizer      |                 |
+   └── render       |                 |
+        │           | engine type     | time series
+        │           | a               | a
+        │           | b               | b
+        └── ts scan |                 |
+                    | ts-table        | table1
+                    | access mode     | tagIndexTable
+                    | filter          | (a > 10) AND (b < 10)
+                    | tag filter[0]   | t1 = 100
+                    | ptag filter[0]  | ptag1 = 10
+                    | block filter[a] | [11 - ]
+                    | block filter[b] | [ - 9]
+(15 rows)
 > explain select a from table2 where t1 = 100 and t2 = 200;
         tree        |        field        | description
 --------------------+---------------------+---------------
@@ -430,7 +435,9 @@ CREATE INDEX
                | filter              | (b = 1) AND (a > 100)
                | tag index filter[0] | t1 = 100
                | tag index filter[1] | t2 = 100
-(9 rows)
+               | block filter[b]     | [1 - 1]
+               | block filter[a]     | [101 - ]
+(11 rows)
 > explain select a,b,ptag1 from table2 where t1 = 100 and t2 = 300 and a > 10;
         tree        |        field        |  description
 --------------------+---------------------+----------------
@@ -448,7 +455,8 @@ CREATE INDEX
                     | filter              | a > 10
                     | tag index filter[0] | t1 = 100
                     | tag index filter[1] | t2 = 300
-(14 rows)
+                    | block filter[a]     | [11 - ]
+(15 rows)
 > explain select a,b from table2 where t1 = 100 and t2 =600 and ptag1 > 10;
         tree        |        field        |  description
 --------------------+---------------------+----------------
@@ -485,24 +493,26 @@ CREATE INDEX
                     | ptag filter[1] | ptag2 = 200
 (14 rows)
 > explain select a,b from table2 where t1 = 100 and ptag1 = 10 and a > 10 and b < 10 and t2 = 200 and ptag2 = 200;
-        tree        |     field      |      description
---------------------+----------------+------------------------
-                    | distributed    | true
-                    | vectorized     | false
-  synchronizer      |                |
-   └── render       |                |
-        │           | engine type    | time series
-        │           | a              | a
-        │           | b              | b
-        └── ts scan |                |
-                    | ts-table       | table2
-                    | access mode    | tagIndexTable
-                    | filter         | (a > 10) AND (b < 10)
-                    | tag filter[0]  | t1 = 100
-                    | tag filter[1]  | t2 = 200
-                    | ptag filter[0] | ptag1 = 10
-                    | ptag filter[1] | ptag2 = 200
-(15 rows)
+        tree        |      field      |      description
+--------------------+-----------------+------------------------
+                    | distributed     | true
+                    | vectorized      | false
+  synchronizer      |                 |
+   └── render       |                 |
+        │           | engine type     | time series
+        │           | a               | a
+        │           | b               | b
+        └── ts scan |                 |
+                    | ts-table        | table2
+                    | access mode     | tagIndexTable
+                    | filter          | (a > 10) AND (b < 10)
+                    | tag filter[0]   | t1 = 100
+                    | tag filter[1]   | t2 = 200
+                    | ptag filter[0]  | ptag1 = 10
+                    | ptag filter[1]  | ptag2 = 200
+                    | block filter[a] | [11 - ]
+                    | block filter[b] | [ - 9]
+(17 rows)
 > create table t2(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
 (ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, tag5 int not null) primary tags(ptag1);
 CREATE TABLE
@@ -581,7 +591,8 @@ CREATE INDEX
                | access mode         | tagHashIndex
                | filter              | c1 = 1
                | tag index filter[0] | tag1 = 100
-(8 rows)
+               | block filter[c1]    | [1 - 1]
+(9 rows)
 > explain select c1,tag1 from t2 where tag1 > 100 and tag4 = 400 and tag5 = 500 and c1 = 1;
         tree        |        field        |  description
 --------------------+---------------------+----------------
@@ -599,7 +610,8 @@ CREATE INDEX
                     | tag filter[0]       | tag1 > 100
                     | tag index filter[0] | tag4 = 400
                     | tag index filter[1] | tag5 = 500
-(14 rows)
+                    | block filter[c1]    | [1 - 1]
+(15 rows)
 > explain select c1,tag1,ptag1 from t2 where tag1 > 100 and tag4 = 400 and tag5 = 500 and c1 > 1;
            tree          |        field        |  description
 -------------------------+---------------------+----------------
@@ -623,7 +635,8 @@ CREATE INDEX
                          | tag filter[0]       | tag1 > 100
                          | tag index filter[0] | tag4 = 400
                          | tag index filter[1] | tag5 = 500
-(20 rows)
+                         | block filter[c1]    | [2 - ]
+(21 rows)
 > explain select c1,tag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and c1 > 1;
         tree        |        field        | description
 --------------------+---------------------+---------------
@@ -642,7 +655,8 @@ CREATE INDEX
                     | tag index filter[1] | tag5 = 500
                     | tag index filter[2] | tag1 = 100
                     | tag index filter[3] | tag2 = 200
-(15 rows)
+                    | block filter[c1]    | [2 - ]
+(16 rows)
 > explain select c1,tag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 in (500,600) and c1 = 1;
         tree        |        field        |    description
 --------------------+---------------------+---------------------
@@ -661,7 +675,8 @@ CREATE INDEX
                     | tag filter[1]       | tag5 IN (500, 600)
                     | tag index filter[0] | tag1 = 100
                     | tag index filter[1] | tag2 = 200
-(15 rows)
+                    | block filter[c1]    | [1 - 1]
+(16 rows)
 > explain select c1,tag1 from t2 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 = 300 and c1 = 1;
         tree        |        field        |     description
 --------------------+---------------------+----------------------
@@ -679,25 +694,27 @@ CREATE INDEX
                     | tag filter[0]       | tag1 IN (100, 1000)
                     | tag filter[1]       | tag2 IN (200, 2000)
                     | tag index filter[0] | tag3 = 300
-(14 rows)
+                    | block filter[c1]    | [1 - 1]
+(15 rows)
 > explain select c1,tag1 from t2 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 in (300,600) and c1 = 1;
-        tree        |     field     |     description
---------------------+---------------+----------------------
-                    | distributed   | true
-                    | vectorized    | false
-  synchronizer      |               |
-   └── render       |               |
-        │           | engine type   | time series
-        │           | c1            | c1
-        │           | tag1          | tag1
-        └── ts scan |               |
-                    | ts-table      | t2
-                    | access mode   | tableTableMeta
-                    | filter        | c1 = 1
-                    | tag filter[0] | tag1 IN (100, 1000)
-                    | tag filter[1] | tag2 IN (200, 2000)
-                    | tag filter[2] | tag3 IN (300, 600)
-(14 rows)
+        tree        |      field       |     description
+--------------------+------------------+----------------------
+                    | distributed      | true
+                    | vectorized       | false
+  synchronizer      |                  |
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | c1               | c1
+        │           | tag1             | tag1
+        └── ts scan |                  |
+                    | ts-table         | t2
+                    | access mode      | tableTableMeta
+                    | filter           | c1 = 1
+                    | tag filter[0]    | tag1 IN (100, 1000)
+                    | tag filter[1]    | tag2 IN (200, 2000)
+                    | tag filter[2]    | tag3 IN (300, 600)
+                    | block filter[c1] | [1 - 1]
+(15 rows)
 > explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and c1 > 1;
            tree          |        field        |  description
 -------------------------+---------------------+----------------
@@ -722,33 +739,35 @@ CREATE INDEX
                          | tag index filter[1] | tag5 = 500
                          | tag index filter[2] | tag1 = 100
                          | tag index filter[3] | tag2 = 200
-(21 rows)
-> explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and ptag1 = 1000 and c1 > 1;
-           tree          |     field      |  description
--------------------------+----------------+----------------
-                         | distributed    | true
-                         | vectorized     | false
-  render                 |                |
-   │                     | engine type    | time series
-   │                     | c1             | c1
-   │                     | tag1           | tag1
-   │                     | ptag1          | ptag1
-   └── synchronizer      |                |
-        └── render       |                |
-             │           | engine type    | time series
-             │           | c1             | c1
-             │           | ptag1          | ptag1
-             │           | tag1           | tag1
-             └── ts scan |                |
-                         | ts-table       | t2
-                         | access mode    | tagIndexTable
-                         | filter         | c1 > 1
-                         | tag filter[0]  | tag1 = 100
-                         | tag filter[1]  | tag2 = 200
-                         | tag filter[2]  | tag4 = 400
-                         | tag filter[3]  | tag5 = 500
-                         | ptag filter[0] | ptag1 = 1000
+                         | block filter[c1]    | [2 - ]
 (22 rows)
+> explain select c1,tag1,ptag1 from t2 where tag1 = 100 and tag2 = 200 and tag4 = 400 and tag5 = 500 and ptag1 = 1000 and c1 > 1;
+           tree          |      field       |  description
+-------------------------+------------------+----------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | c1               | c1
+   │                     | tag1             | tag1
+   │                     | ptag1            | ptag1
+   └── synchronizer      |                  |
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | c1               | c1
+             │           | ptag1            | ptag1
+             │           | tag1             | tag1
+             └── ts scan |                  |
+                         | ts-table         | t2
+                         | access mode      | tagIndexTable
+                         | filter           | c1 > 1
+                         | tag filter[0]    | tag1 = 100
+                         | tag filter[1]    | tag2 = 200
+                         | tag filter[2]    | tag4 = 400
+                         | tag filter[3]    | tag5 = 500
+                         | ptag filter[0]   | ptag1 = 1000
+                         | block filter[c1] | [2 - ]
+(23 rows)
 > explain select c1,tag1 from t2 where tag1 = 100 and ptag1 > 100 and c1 > 1;
         tree        |        field        |  description
 --------------------+---------------------+----------------
@@ -765,24 +784,26 @@ CREATE INDEX
                     | filter              | c1 > 1
                     | tag filter[0]       | ptag1 > 100
                     | tag index filter[0] | tag1 = 100
-(13 rows)
+                    | block filter[c1]    | [2 - ]
+(14 rows)
 > explain select c1,tag1 from t2 where tag1 = 100 and ptag1 = 100 and c1 > 1;
-        tree        |     field      |  description
---------------------+----------------+----------------
-                    | distributed    | true
-                    | vectorized     | false
-  synchronizer      |                |
-   └── render       |                |
-        │           | engine type    | time series
-        │           | c1             | c1
-        │           | tag1           | tag1
-        └── ts scan |                |
-                    | ts-table       | t2
-                    | access mode    | tagIndexTable
-                    | filter         | c1 > 1
-                    | tag filter[0]  | tag1 = 100
-                    | ptag filter[0] | ptag1 = 100
-(13 rows)
+        tree        |      field       |  description
+--------------------+------------------+----------------
+                    | distributed      | true
+                    | vectorized       | false
+  synchronizer      |                  |
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | c1               | c1
+        │           | tag1             | tag1
+        └── ts scan |                  |
+                    | ts-table         | t2
+                    | access mode      | tagIndexTable
+                    | filter           | c1 > 1
+                    | tag filter[0]    | tag1 = 100
+                    | ptag filter[0]   | ptag1 = 100
+                    | block filter[c1] | [2 - ]
+(14 rows)
 > explain select c1,tag1 from t2 where tag1 = 100 or c1 > 1;
       tree     |    field    |       description
 ---------------+-------------+---------------------------
@@ -918,21 +939,22 @@ CREATE INDEX
                     | tag index filter[1] | tag2 = 100
 (12 rows)
 > explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and c1 > 100;
-        tree        |     field     |         description
---------------------+---------------+-------------------------------
-                    | distributed   | true
-                    | vectorized    | false
-  synchronizer      |               |
-   └── render       |               |
-        │           | engine type   | time series
-        │           | c1            | c1
-        │           | tag1          | tag1
-        └── ts scan |               |
-                    | ts-table      | t2
-                    | access mode   | tableTableMeta
-                    | filter        | c1 > 100
-                    | tag filter[0] | (tag1 = 100) OR (tag2 = 100)
-(12 rows)
+        tree        |      field       |         description
+--------------------+------------------+-------------------------------
+                    | distributed      | true
+                    | vectorized       | false
+  synchronizer      |                  |
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | c1               | c1
+        │           | tag1             | tag1
+        └── ts scan |                  |
+                    | ts-table         | t2
+                    | access mode      | tableTableMeta
+                    | filter           | c1 > 100
+                    | tag filter[0]    | (tag1 = 100) OR (tag2 = 100)
+                    | block filter[c1] | [101 - ]
+(13 rows)
 > explain select c1,tag1 from t2 where (tag1 = 100 or tag2 = 100) and (tag1 = 200 or c1 > 100);
         tree        |     field     |         description
 --------------------+---------------+-------------------------------
@@ -1034,25 +1056,27 @@ CREATE INDEX
                     | tag filter[0]       | tag1 IN (100, 1000)
                     | tag filter[1]       | tag2 IN (200, 2000)
                     | tag index filter[0] | tag3 = 300
-(14 rows)
+                    | block filter[c1]    | [1 - 1]
+(15 rows)
 > explain select c1,tag1 from t3 where tag1 in (100,1000) and tag2 in (200,2000) and tag3 in ('300','600') and c1 = 1;
-        tree        |     field     |     description
---------------------+---------------+----------------------
-                    | distributed   | true
-                    | vectorized    | false
-  synchronizer      |               |
-   └── render       |               |
-        │           | engine type   | time series
-        │           | c1            | c1
-        │           | tag1          | tag1
-        └── ts scan |               |
-                    | ts-table      | t3
-                    | access mode   | tableTableMeta
-                    | filter        | c1 = 1
-                    | tag filter[0] | tag1 IN (100, 1000)
-                    | tag filter[1] | tag2 IN (200, 2000)
-                    | tag filter[2] | tag3 IN (300, 600)
-(14 rows)
+        tree        |      field       |     description
+--------------------+------------------+----------------------
+                    | distributed      | true
+                    | vectorized       | false
+  synchronizer      |                  |
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | c1               | c1
+        │           | tag1             | tag1
+        └── ts scan |                  |
+                    | ts-table         | t3
+                    | access mode      | tableTableMeta
+                    | filter           | c1 = 1
+                    | tag filter[0]    | tag1 IN (100, 1000)
+                    | tag filter[1]    | tag2 IN (200, 2000)
+                    | tag filter[2]    | tag3 IN (300, 600)
+                    | block filter[c1] | [1 - 1]
+(15 rows)
 > create table t5(ts timestamp not null, c1 int, c2 int, c3 varchar(10)) tags
 (ptag1 int not null, tag1 int not null, tag2 int not null, tag3 int not null, tag4 int not null, ptag5 int not null) primary tags(ptag1,ptag5);
 CREATE TABLE

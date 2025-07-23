@@ -775,3 +775,15 @@ create procedure p1(a int) $$ begin declare b int; declare c int; end;$$ begin s
 create procedure p1(a int) $$ begin declare b int; declare c int; select a,b,c; end$$;
 call p1(111);
 drop procedure p1;
+
+--【存储过程】类型不匹配时调用存储过程返回结果随机
+-- https://e.gitee.com/kaiwuDB/issues/table?issue=ICMUUI
+DROP DATABASE IF EXISTS test_procedure_my_rel CASCADE;
+create database test_procedure_my_rel;
+DROP PROCEDURE IF EXISTS test_procedure_my_rel.test_input_5;
+
+CREATE PROCEDURE test_procedure_my_rel.test_input_5(a INT2,b INT4,c INT8)
+    $$ BEGIN SELECT a,b,c;END $$ ;
+CALL test_procedure_my_rel.test_input_5(99.99,-1981.389,1982.193);
+CALL test_procedure_my_rel.test_input_5(99.99,-1981.389,1982.193);
+DROP DATABASE IF EXISTS test_procedure_my_rel CASCADE;
