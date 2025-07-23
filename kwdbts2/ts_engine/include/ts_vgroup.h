@@ -33,7 +33,7 @@ class TsEntitySegmentBuilder;
 
 enum class TsExclusiveStatus{
   NONE = 0,
-  COMPACTE,
+  COMPACT,
   WRITE_BATCH,
   VACUUM,
 };

@@ -308,8 +308,7 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str,
-                                              std::shared_ptr<TsRawPayload>& payload_only_tag) {
+KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str) {
   tag_payload_str.clear();
   tag_payload_str.append(data->data, data->len);
   // update table version
@@ -320,10 +319,6 @@ KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* d
   // update tag type
   uint8_t tag_type = DataTagFlag::TAG_ONLY;
   memcpy(tag_payload_str.data() + TsBatchData::row_type_offset_, &tag_type, TsBatchData::row_type_size_);
-
-  std::vector<AttributeInfo> data_schema;
-  TSSlice payload_data = {tag_payload_str.data(), tag_payload_str.size()};
-  payload_only_tag = std::make_shared<TsRawPayload>(payload_data, data_schema);
   return KStatus::SUCCESS;
 }
 
@@ -415,25 +410,16 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 
   TSSlice tag_slice = {data->data, tags_data_offset + tags_data_size};
   std::string tag_payload_str;
-  std::shared_ptr<TsRawPayload> payload_only_tag;
-  GetTagPayload(table_version, &tag_slice, tag_payload_str, payload_only_tag);
+  GetTagPayload(table_version, &tag_slice, tag_payload_str);
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
-  bool new_tag;
-  s = ts_engine_->GetEngineSchemaManager()->GetVGroup(ctx, table_id, payload_only_tag->GetPrimaryTag(),
-                                                              &vgroup_id, &entity_id, &new_tag);
+  uint16_t entity_cnt;
+  s = ts_engine_->InsertTagData(ctx, table_id, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
+                                vgroup_id, entity_id, &entity_cnt);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetVGroup failed, table_id[%lu], ptag[%s]", table_id, payload_only_tag->GetPrimaryTag().data);
-    return s;
-  }
-  if (new_tag) {
-    entity_id = ts_engine_->GetTsVGroup(vgroup_id - 1)->AllocateEntityID();
-    std::shared_ptr<TagTable> tag_table = schema->GetTagTable();
-    if (tag_table->InsertTagRecord(*payload_only_tag, vgroup_id, entity_id) < 0) {
-      LOG_ERROR("InsertTagRecord failed, table_id[%lu], ptag[%s]", table_id, payload_only_tag->GetPrimaryTag().data);
-      return KStatus::FAIL;
-    }
+    LOG_ERROR("InsertTagData[%lu] failed, %s", table_id, err_info.toString().c_str());
+    return KStatus::FAIL;
   }
 
   if (row_type == TAG_ONLY) {

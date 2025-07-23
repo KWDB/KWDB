@@ -50,7 +50,8 @@ const char schema_directory[]= "schema/";
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
                               options_(engine_options), flush_mgr_(vgroups_),
                               read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
-                              write_batch_worker_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK) {
+                              write_batch_worker_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
+                              insert_tag_lock_(RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -391,36 +392,32 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
-  std::shared_ptr<kwdbts::TsTable> ts_table;
-  ErrorInfo err_info;
-  uint32_t vgroup_id;
-  TSEntityID entity_id;
-  size_t payload_size = 0;
-  dedup_result->payload_num = payload_num;
-  dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
-  for (size_t i = 0; i < payload_num; i++) {
-    TsRawPayload p{payload_data[i]};
-    TSSlice primary_key = p.GetPrimaryTag();
-    auto tbl_version = p.GetTableVersion();
-    auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
-      return s;
-    }
-    bool new_tag;
+KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
+                                      bool write_wal, uint32_t& vgroup_id, TSEntityID& entity_id, uint16_t* inc_entity_cnt) {
+  bool new_tag;
+  TsRawPayload p{payload_data};
+  TSSlice primary_key = p.GetPrimaryTag();
+  RW_LATCH_S_LOCK(&insert_tag_lock_);
+  KStatus s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+  if (s != KStatus::SUCCESS) {
+    RW_LATCH_UNLOCK(&insert_tag_lock_);
+    return s;
+  }
+  RW_LATCH_UNLOCK(&insert_tag_lock_);
+  auto vgroup = GetVGroupByID(ctx, vgroup_id);
+  assert(vgroup != nullptr);
+  if (new_tag) {
+    RW_LATCH_X_LOCK(&insert_tag_lock_);
     s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
+      RW_LATCH_UNLOCK(&insert_tag_lock_);
       return s;
     }
-    auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    assert(vgroup != nullptr);
+    vgroup = GetVGroupByID(ctx, vgroup_id);
     if (new_tag) {
       if (options_.wal_level != WALMode::OFF && write_wal) {
         // no need lock, lock inside.
-        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data[i], vgroup_id);
+        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id);
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
           return s;
@@ -429,14 +426,41 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       entity_id = vgroup->AllocateEntityID();
       s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
+        RW_LATCH_UNLOCK(&insert_tag_lock_);
         return s;
       }
       inc_entity_cnt++;
     }
+    RW_LATCH_UNLOCK(&insert_tag_lock_);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  ErrorInfo err_info;
+  TSEntityID entity_id;
+  size_t payload_size = 0;
+  dedup_result->payload_num = payload_num;
+  dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
+  for (size_t i = 0; i < payload_num; i++) {
+    TsRawPayload p{payload_data[i]};
+    auto tbl_version = p.GetTableVersion();
+    auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
+      return s;
+    }
+    uint32_t vgroup_id;
+    s = InsertTagData(ctx, table_id, mtr_id, payload_data[i], write_wal, vgroup_id, entity_id, inc_entity_cnt);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("put tag data failed. table[%lu].", table_id);
+      return s;
+    }
+    auto vgroup = GetVGroupByID(ctx, vgroup_id);
     payload_size += p.GetData().len;
-    // s = ts_table->PutData(ctx, vgroup_id, &payload_data[i], 1,
-    //                       mtr_id, reinterpret_cast<uint16_t*>(&entity_id),
-    //                       inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule));
     s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, p, entity_id, mtr_id,
             inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {

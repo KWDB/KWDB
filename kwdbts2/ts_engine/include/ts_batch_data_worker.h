@@ -307,10 +307,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
 
   std::unordered_map<uint64_t, TS_LSN> vgroups_lsn_;
 
-  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> entity_segment_builders_;
-
-  KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str,
-                        std::shared_ptr<TsRawPayload>& payload_only_tag);
+  KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
   KStatus UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result);
 

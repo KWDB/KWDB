@@ -369,7 +369,7 @@ void TsVGroup::closeCompactThread() {
 }
 
 KStatus TsVGroup::Compact() {
-  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACTE)) {
+  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACT)) {
     sleep(1);
   }
   LOG_INFO("compact begin.");

@@ -73,6 +73,8 @@ class TSEngineV2Impl : public TSEngine {
   std::shared_ptr<TsBatchDataWorker> write_batch_data_worker_;
   KRWLatch write_batch_worker_lock_;
 
+  KRWLatch insert_tag_lock_;
+
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
  public:
@@ -120,6 +122,9 @@ class TSEngineV2Impl : public TSEngine {
     }
     return KStatus::SUCCESS;
   }
+
+  KStatus InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
+                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id, uint16_t* inc_entity_cnt);
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override;
