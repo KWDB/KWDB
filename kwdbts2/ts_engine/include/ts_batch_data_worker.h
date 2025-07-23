@@ -22,6 +22,7 @@
 #include "ts_common.h"
 #include "ts_const.h"
 #include "ts_entity_segment_builder.h"
+#include "ts_table.h"
 #include "ts_version.h"
 
 namespace kwdbts {
@@ -272,6 +273,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
   DATATYPE ts_col_type_;
   vector<EntityResultIndex> entity_indexes_;
+  std::shared_ptr<TsTable> ts_table_;
   std::shared_ptr<TsTableSchemaManager> schema_ = nullptr;
   std::shared_ptr<TsBlockSpanSortedIterator> block_spans_iterator_ = nullptr;
 
@@ -305,10 +307,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
 
   std::unordered_map<uint64_t, TS_LSN> vgroups_lsn_;
 
-  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> entity_segment_builders_;
-
-  KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str,
-                        std::shared_ptr<TsRawPayload>& payload_only_tag);
+  KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
   KStatus UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result);
 

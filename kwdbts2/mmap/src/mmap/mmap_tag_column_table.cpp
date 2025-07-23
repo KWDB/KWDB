@@ -998,11 +998,14 @@ int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::Enti
   record_ptr = entityIdStoreAddr(row);
   memcpy(&entity_id, record_ptr, sizeof(uint32_t));
   memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
+  char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
+  memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
+  std::shared_ptr<void> mem_ptr(mem, free);
   // LOG_DEBUG("entityid: %u, groupid: %u", entity_id, subgroup_id);
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id,
-                                                                 record_ptr + k_entity_group_id_size,
+                                                                 mem_ptr,
                                                                  primaryTagSize())));
   return 0;
 }
@@ -1023,11 +1026,14 @@ void MMapTagColumnTable::getHashedEntityIdByRownum(size_t row, uint32_t hps,
   record_ptr = entityIdStoreAddr(row);
   memcpy(&entity_id, record_ptr, sizeof(uint32_t));
   memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
+  char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
+  memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
+  std::shared_ptr<void> mem_ptr(mem, free);
   // LOG_DEBUG("entityid: %u, groupid: %u, hashid: %u", entity_id, subgroup_id, hps);
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex{m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id, hps,
-                                                                 record_ptr + k_entity_group_id_size,
+                                                                 mem_ptr,
                                                                  primaryTagSize()
                                                                  }));
   return ;

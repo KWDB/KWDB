@@ -736,7 +736,7 @@ KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityRe
 const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<k_uint32> scan_cols = {0};
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
-  uint32_t table_version = 1;
+  uint32_t table_version = table_schema_mgr_->GetCurrentVersion();
   TsIterator* iter = nullptr;
   Defer defer{[&]() {
     if (iter != nullptr) {

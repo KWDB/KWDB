@@ -46,6 +46,7 @@ struct TsRangeImgrationInfo {
   KTableKey table_id;
   uint32_t table_version;
   uint32_t package_id;
+  uint64_t imgrated_rows;
   std::shared_ptr<TsTable> table;
 };
 
@@ -71,6 +72,8 @@ class TSEngineV2Impl : public TSEngine {
   KRWLatch read_batch_workers_lock_;
   std::shared_ptr<TsBatchDataWorker> write_batch_data_worker_;
   KRWLatch write_batch_worker_lock_;
+
+  KRWLatch insert_tag_lock_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
@@ -120,12 +123,11 @@ class TSEngineV2Impl : public TSEngine {
     return KStatus::SUCCESS;
   }
 
+  KStatus InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
+                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id, uint16_t* inc_entity_cnt);
+
   KStatus
-  GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override {
-    // TODO(liumengzhen) check version
-    LOG_WARN("should not use GetMetaData any more.");
-    return KStatus::SUCCESS;
-  }
+  GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override;
 
   KStatus PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                     TSSlice* payload_data, int payload_num, uint64_t mtr_id) override;
@@ -224,10 +226,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 
-  void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override {
-    LOG_WARN("should not use GetTableIDList any more.");
-    exit(0);
-  }
+  void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override;
 
   KStatus UpdateSetting(kwdbContext_p ctx) override;
 
@@ -251,10 +250,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) override;
 
   KStatus GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) override;
-  KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) override {
-    LOG_WARN("should not use GetTableVersion any more.");
-    return KStatus::SUCCESS;
-  }
+  KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) override;
   KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override;
   static KStatus CloseTSEngine(kwdbContext_p ctx, TSEngine* engine) { return KStatus::SUCCESS; }
   KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value);

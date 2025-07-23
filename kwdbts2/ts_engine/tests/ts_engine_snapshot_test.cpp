@@ -724,3 +724,63 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) 
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 }
+
+// multi-snapshot
+TEST_F(TestEngineSnapshotImgrate, mulitSnapshot) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1007;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  int entity_num = 5;  // set larger to 50000
+  int thread_num = 0;  // set larger to 10
+  for (size_t i = 0; i < entity_num; i++) {
+    InsertData(ts_engine_src_, cur_table_id, 1 + i, 12345, 500);
+  }
+  // create table 1008
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < thread_num; i++) {
+    threads.push_back(std::thread([&](int idx){
+      KwTsSpan ts_span;
+      ts_span.begin = 12345 + i * (500 * 1000) / thread_num;
+      ts_span.begin = 12345 + (i + i) * (500 * 1000) / thread_num;
+      uint64_t desc_snapshot_id;
+      s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, ts_span, &desc_snapshot_id);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      uint64_t snapshot_id;
+      s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, ts_span, &snapshot_id);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+
+      // migrate data from 1007 to 1008
+      TSSlice snapshot_data{nullptr, 0};
+      do {
+        s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data);
+        ASSERT_EQ(s, KStatus::SUCCESS);
+        if (snapshot_data.data != nullptr) {
+          s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data);
+          ASSERT_EQ(s, KStatus::SUCCESS);
+          free(snapshot_data.data);
+        }
+      } while (snapshot_data.len > 0);
+      s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      s = ts_engine_desc_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+    }, i));
+  }
+  for (size_t i = 0; i < thread_num; i++) {
+    threads[i].join();
+  }
+  
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
