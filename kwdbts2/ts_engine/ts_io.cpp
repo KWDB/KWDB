@@ -79,9 +79,6 @@ KStatus TsMMapAppendOnlyFile::MMapNew() {
 KStatus TsMMapAppendOnlyFile::Append(std::string_view data) {
   size_t nleft = data.size();
   const char* src = data.data();
-  Defer defer{[&](){
-    LOG_INFO("file[%s] file size: %lu", path_.c_str(), file_size_);
-  }};
   while (nleft != 0) {
     size_t avail_space = mmap_end_ - dest_;
     if (avail_space == 0) {
