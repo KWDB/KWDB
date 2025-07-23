@@ -206,13 +206,13 @@ func neededMutationFetchCols(
 // needed columns from that. See the props.Relational.Rule.PruneCols comment for
 // more details.
 func (c *CustomFuncs) CanPruneCols(target memo.RelExpr, neededCols opt.ColSet) bool {
-	return !DerivePruneCols(target).SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneGapFill)
+	return !DerivePruneCols(target).SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneAgg)
 }
 
 // CanPruneAggCols returns true if one or more of the target aggregations is not
 // referenced and can be eliminated.
 func (c *CustomFuncs) CanPruneAggCols(target memo.AggregationsExpr, neededCols opt.ColSet) bool {
-	return !target.OutputCols().SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneGapFill)
+	return !target.OutputCols().SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneAgg)
 }
 
 // CanPruneMutationFetchCols returns true if there are any FetchCols that are
@@ -282,17 +282,18 @@ func (c *CustomFuncs) PruneAggCols(
 	imputationIndex := -1
 	for i := range target {
 		item := &target[i]
-		if item.Agg.Op() == opt.ImputationOp {
+		op := item.Agg.Op()
+		if op == opt.ImputationOp {
 			imputationIndex++
 		}
-		if item.Agg.Op() == opt.TimeBucketGapfillOp {
+		if op == opt.TimeBucketGapfillOp {
 			// the sql with time_bucket_gapfill() can not prune it, otherwise,
 			// the groupByExpr will be optimized to distinctExpr, the result will be incorrect.
 			// such as:
 			// select count(*) from (select interpolate(max), ... from ... group by ...);
 			// select e1 from (select interpolate(max), e1 ... from ... group by e1);
 			if !neededCols.Contains(item.Col) {
-				c.f.TSFlags |= opt.NotPruneGapFill
+				c.f.TSFlags |= opt.NotPruneAgg
 				return target
 			}
 		}
@@ -303,9 +304,22 @@ func (c *CustomFuncs) PruneAggCols(
 			// select time_bucket_gapfill(k_timestamp,'10s') as tb,interpolate(count(e2),null),interpolate(count(distinct(t1)),'null') from test_timebucket_gapfill1_rel.tb group by tb,e2,t1 order by tb,e2,t1
 			// ) group by tb1 order by tb1;
 			// When ImputationOp is eliminated, the added aggregation function should be deleted together.
-			if item.Agg.Op() == opt.ImputationOp && len(gp.Func) != 0 {
+			if op == opt.ImputationOp && len(gp.Func) != 0 {
 				gp.Func = append(gp.Func[:imputationIndex], gp.Func[imputationIndex+1:]...)
 				imputationIndex--
+			}
+
+			// can not prune the max col or min col when there have agg extend, because the calculation of agg extend depends on
+			// the results of max or min, if pruned, the calculation result will be incorrect.
+			// ex: SELECT id,k_timestamp,min(e12) from (SELECT id,k_timestamp,max(e12),e12,code10 from t1);
+			if op == opt.MaxOp || op == opt.MinOp {
+				for j := range target {
+					aggOp := target[j].Agg.Op()
+					if aggOp == opt.MaxExtendOp || aggOp == opt.MinExtendOp {
+						c.f.TSFlags |= opt.NotPruneAgg
+						return target
+					}
+				}
 			}
 		}
 	}

@@ -129,7 +129,7 @@ EEIteratorErrCode StorageHandler::TsNextAndFilter(
     if (null_filter) {
       thd->window_field_->restore();
     }
-    if (0 != row_batch->GetSelection()->size()) {
+    if (0 != row_batch->GetEffectCount()) {
       break;
     }
   }
@@ -218,10 +218,21 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
         Return(EEIteratorErrCode::EE_END_OF_RECORD);
       }
     }
-
-    ret = ts_table_->GetOffsetIterator(ctx, entities_, *ts_spans_, table_->scan_cols_,
-                                table_->table_version_, &ts_iterator, table_->offset_, table_->limit_,
-                                table_->is_reverse_);
+    IteratorParams params = {
+      .entity_ids = entities_,
+      .ts_spans = *ts_spans_,
+      .block_filter = table_->block_filters_,
+      .scan_cols = table_->scan_cols_,
+      .agg_extend_cols = table_->agg_extends_,
+      .scan_agg_types = table_->scan_real_agg_types_,
+      .table_version = table_->table_version_,
+      .ts_points = table_->scan_real_last_ts_points_,
+      .reverse = table_->is_reverse_,
+      .sorted = table_->ordered_scan_,
+      .offset = table_->offset_,
+      .limit = table_->limit_,
+    };
+    ret = ts_table_->GetOffsetIterator(ctx, params, &ts_iterator);
     if (KStatus::FAIL == ret) {
       Return(EEIteratorErrCode::EE_ERROR);
     }
@@ -289,13 +300,21 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
     Return(code);
   }
   if (nullptr == ts_iterator) {
-    std::vector<KwTsSpan> ts_spans;
-    ts_spans = *ts_spans_;
-    KStatus ret = ts_table_->GetIterator(
-        ctx, entities_, ts_spans, table_->scan_cols_, table_->agg_extends_,
-        table_->scan_real_agg_types_, table_->table_version_, &ts_iterator,
-        table_->scan_real_last_ts_points_, table_->is_reverse_,
-        table_->ordered_scan_);
+    IteratorParams params = {
+      .entity_ids = entities_,
+      .ts_spans = *ts_spans_,
+      .block_filter = table_->block_filters_,
+      .scan_cols = table_->scan_cols_,
+      .agg_extend_cols =  table_->agg_extends_,
+      .scan_agg_types = table_->scan_real_agg_types_,
+      .table_version = table_->table_version_,
+      .ts_points = table_->scan_real_last_ts_points_,
+      .reverse = table_->is_reverse_,
+      .sorted = table_->ordered_scan_,
+      .offset = table_->offset_,
+      .limit = table_->limit_,
+    };
+    KStatus ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       Return(code);
@@ -537,19 +556,29 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       if (it != table_->hash_points_spans_.end()) {
         for (auto const &ts_span : it->second) {
           ts_spans.push_back(ts_span);
-          // LOG_DEBUG(
-          //     "TSTable::GetIterator() entityID is %d, hashPoint is %d , ts_span.begin is %ld, "
-          //     "ts_span.end is %ld  \n",
-          //     entities[0].entityId, entities[0].hash_point, ts_span.begin, ts_span.end);
         }
       }
     }
 
     std::sort(entities_.begin(), entities_.end(), EntityLessThan);
-    ret = ts_table_->GetIterator(ctx, entities_, ts_spans, table_->scan_cols_, table_->agg_extends_,
-                                table_->scan_real_agg_types_, table_->table_version_,
-                                &ts_iterator, table_->scan_real_last_ts_points_,
-                                table_->is_reverse_, table_->ordered_scan_);
+
+    IteratorParams params = {
+      .entity_ids = entities_,
+      .ts_spans = ts_spans,
+      .block_filter = table_->block_filters_,
+      .scan_cols = table_->scan_cols_,
+      .agg_extend_cols = table_->agg_extends_,
+      .scan_agg_types = table_->scan_real_agg_types_,
+      .table_version = table_->table_version_,
+      .ts_points = table_->scan_real_last_ts_points_,
+      .reverse = table_->is_reverse_,
+      .sorted = table_->ordered_scan_,
+      .offset = table_->offset_,
+      .limit = table_->limit_,
+    };
+
+    ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
+
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,

@@ -315,11 +315,8 @@ Field *FieldInt::field_to_copy() {
 k_int64 FieldLonglong::ValInt() { return ValInt(get_ptr()); }
 
 k_int64 FieldLonglong::ValInt(char *ptr) {
-  k_int64 val = 0;
-
-  memcpy(&val, ptr, sizeof(k_int64));
-
-  return val;
+  k_int64* val_ptr = reinterpret_cast<k_int64*>(ptr);
+  return *val_ptr;
 }
 
 k_double64 FieldLonglong::ValReal() { return ValInt(); }
@@ -359,11 +356,7 @@ char *FieldTimestampTZ::get_ptr() {
 k_int64 FieldTimestampTZ::ValInt() { return ValInt(get_ptr()); }
 
 k_int64 FieldTimestampTZ::ValInt(char *ptr) {
-  k_int64 val = 0;
-
-  memcpy(&val, ptr, sizeof(k_int64));
-
-  return val;
+  return *reinterpret_cast<k_int64*>(ptr);
 }
 
 k_double64 FieldTimestampTZ::ValReal() { return ValInt(); }
@@ -428,14 +421,12 @@ k_int64 FieldDouble::ValInt() { return ValReal(); }
 
 k_int64 FieldDouble::ValInt(char *ptr) { return ValReal(ptr); }
 
-k_double64 FieldDouble::ValReal() { return ValReal(get_ptr()); }
+k_double64 FieldDouble::ValReal() {
+  return *reinterpret_cast<k_double64 *>(get_ptr());
+}
 
 k_double64 FieldDouble::ValReal(char *ptr) {
-  k_double64 val = 0.0f;
-
-  memcpy(&val, ptr, storage_len_);
-
-  return val;
+  return *reinterpret_cast<k_double64*>(ptr);
 }
 
 String FieldDouble::ValStr() {

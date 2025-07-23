@@ -34,7 +34,9 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -289,6 +291,15 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 			}
 			for i, fil := range n.TagIndexFilterArray {
 				v.expr(name, fmt.Sprintf("tag index filter[%d]", i), -1, fil)
+			}
+			for _, fil := range n.blockFilter {
+				colCount := n.Table.ColumnCount()
+				for i := 0; i < colCount; i++ {
+					if n.Table.Column(i).ColID() == cat.StableID(*fil.ColID) {
+						v.observer.attr(name, fmt.Sprintf("block filter[%s]", n.Table.Column(i).ColName()), execinfrapb.PrintBlockFilter(*fil))
+						break
+					}
+				}
 			}
 		}
 

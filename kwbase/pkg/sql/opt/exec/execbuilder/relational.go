@@ -29,11 +29,13 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/constraint"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
@@ -713,6 +715,11 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 		return execPlan{}, nil
 	}
 
+	blockFilter, blockErr := b.buildTSBlockFilter(scan.BlockFilter)
+	if blockErr != nil {
+		return execPlan{}, nil
+	}
+
 	if b.mem.CheckFlag(opt.DiffUseOrderScan) && b.mem.CheckFlag(opt.SingleMode) {
 		scan.OrderedScanType = opt.ForceOrderedScan
 	}
@@ -741,7 +748,7 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	}
 
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, rowCount)
+	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -1116,6 +1123,152 @@ func (b *Builder) buildVirtualScan(scan *memo.VirtualScanExpr) (execPlan, error)
 	}
 	res.root = root
 	return res, nil
+}
+
+// convert filters to list of columnSpans
+func (b *Builder) buildTSBlockFilter(exprs memo.FiltersExpr) ([]*execinfrapb.TSBlockFilter, error) {
+	blockFilter := make([]*execinfrapb.TSBlockFilter, len(exprs))
+	for i, filter := range exprs {
+		columnSpans, err := b.convertFilterToColumnSpans(filter)
+		if err != nil {
+			return nil, err
+		}
+		blockFilter[i] = columnSpans
+	}
+	return blockFilter, nil
+}
+
+// translate the constraint span of filter into columnSpans
+// constraint span represents the range between two composite keys. The end keys of the range can be inclusive or exclusive.
+// eg: @1 > 100 AND @1 <= 101:   (/100 - /101]
+// obtain column ID via constraint.Column, then convert all spans to columnSpans.
+func (b *Builder) convertFilterToColumnSpans(
+	filter memo.FiltersItem,
+) (*execinfrapb.TSBlockFilter, error) {
+	columnSpans := initTSBlockFilter()
+
+	if filter.ScalarProps().Constraints == nil {
+		return nil, errors.Newf("filter [%s] cannot convert to TSBlockFilter", filter.String())
+	}
+
+	if filter.ScalarProps().Constraints.Length() <= 0 {
+		return nil, errors.Newf("filter [%s] cannot convert to TSBlockFilter", filter.String())
+	}
+
+	// we only need to use firstConstraints,
+	// as otherConstraints is currently unused in the code and reserved for future feature extensions.
+	constraint := filter.ScalarProps().Constraints.Constraint(0)
+	if constraint.Columns.Count() <= 0 {
+		return nil, errors.New("column not exist")
+	}
+	var err error
+	// since a filter can only operate on a single column, we only get first column.
+	*columnSpans.ColID, err = b.mem.GetPhyColIDByMetaID(constraint.Columns.Get(0).ID())
+	if err != nil {
+		return nil, err
+	}
+
+	if constraint.Spans.Count() <= 0 {
+		return nil, errors.Newf("span of filter[%s] not exist", filter.String())
+	}
+	// span contains firstSpan and otherSpan, used to describe one or more constraints of a column.
+	// eg: e1 > 1000 => {firstSpan: (1000, -], otherSpan: nil}
+	//     e1 > 1000 and e1 != 1010 => {firstSpan: (1000, 1009], otherSpan: [1011, -]}
+	// we deal with first span
+	firstSpan := constraint.Spans.Get(0)
+	if filterType, ok := getFilterType(*firstSpan); ok {
+		*columnSpans.FilterType = filterType
+		// if filterType is TSBlockFilter_T_NOTNULL and not TSBlockFilter_T_NULL,
+		// we need not build span, AE can deal with filter through filterType.
+		return &columnSpans, nil
+	}
+	firstColumnSpan := convertSpanToColumnSpan(*firstSpan)
+	columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &firstColumnSpan)
+	// if otherSpans exists, we need deal with it.
+	if constraint.Spans.Count() > 1 {
+		for i := 1; i < constraint.Spans.Count(); i++ {
+			otherSpan := constraint.Spans.Get(i)
+			otherColumnSpan := convertSpanToColumnSpan(*otherSpan)
+			columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &otherColumnSpan)
+		}
+	}
+	return &columnSpans, nil
+}
+
+// is not null: start is DNull, startBoundary is ExcludeBoundary
+// is null: start and end are DNull, startBoundary and EndBoundary are IncludeBoundary
+// return true if the filter is "is not null" or "is null", otherwise false.
+func getFilterType(span constraint.Span) (execinfrapb.TSBlockFilterType, bool) {
+	if !span.StartKey().IsEmpty() && span.StartKey().IsNull() {
+		if bool(span.StartBoundary()) && span.EndKey().IsEmpty() {
+			return execinfrapb.TSBlockFilter_T_NOTNULL, true
+		} else if bool(!span.StartBoundary()) && !span.EndKey().IsEmpty() && span.EndKey().IsNull() && bool(!span.EndBoundary()) {
+			return execinfrapb.TSBlockFilter_T_NULL, true
+		}
+	}
+	return execinfrapb.TSBlockFilter_T_SPAN, false
+}
+
+// convert span to columnSpan
+// startKey is the beginning boundary of the span;
+// endKey is the terminating boundary of the span;
+// boundary indicates whether the interval is open or closed.
+func convertSpanToColumnSpan(span constraint.Span) execinfrapb.TSBlockFilter_Span {
+	var columnSpan execinfrapb.TSBlockFilter_Span
+	if !span.StartKey().IsEmpty() && !span.StartKey().IsNull() {
+		columnSpan.Start = new(string)
+		*columnSpan.Start = makeSpanKey(span.StartKey().Value(0))
+		columnSpan.StartBoundary = new(execinfrapb.TSBlockFilter_Span_SpanBoundary)
+		*columnSpan.StartBoundary = makeSpanBoundary(span.StartBoundary())
+	}
+	if !span.EndKey().IsEmpty() {
+		columnSpan.End = new(string)
+		*columnSpan.End = makeSpanKey(span.EndKey().Value(0))
+		columnSpan.EndBoundary = new(execinfrapb.TSBlockFilter_Span_SpanBoundary)
+		*columnSpan.EndBoundary = makeSpanBoundary(span.EndBoundary())
+	}
+	return columnSpan
+}
+
+const (
+	zeroFloat = 1e-20
+)
+
+// make start and end, construct the start and end of ColumnSpan based on different types.
+func makeSpanKey(datum tree.Datum) (key string) {
+	switch s := datum.(type) {
+	case *tree.DTimestampTZ:
+		key = strconv.FormatInt(s.UnixMilli(), 10)
+	case *tree.DTimestamp:
+		key = strconv.FormatInt(s.UnixMilli(), 10)
+	case *tree.DFloat:
+		// The constraint specifies that a value of 0 is represented as 1e-324,
+		// which introduces precision errors. Therefore, validation must be
+		// performed using float64 precision.
+		if math.Abs(float64(*s)) < zeroFloat {
+			key = "0"
+		} else {
+			key = s.String()
+		}
+	default:
+		key = s.String()
+	}
+	return
+}
+
+func makeSpanBoundary(inBound constraint.SpanBoundary) execinfrapb.TSBlockFilter_Span_SpanBoundary {
+	if inBound {
+		return execinfrapb.TSBlockFilter_Span_ExcludeBoundary
+	}
+	return execinfrapb.TSBlockFilter_Span_IncludeBoundary
+}
+
+// init TSBlockFilter
+func initTSBlockFilter() (columnSpans execinfrapb.TSBlockFilter) {
+	columnSpans.ColID = new(uint32)
+	columnSpans.FilterType = new(execinfrapb.TSBlockFilterType)
+	columnSpans.ColumnSpan = make([]*execinfrapb.TSBlockFilter_Span, 0)
+	return
 }
 
 // buildTypedExpr build expr as typed expr

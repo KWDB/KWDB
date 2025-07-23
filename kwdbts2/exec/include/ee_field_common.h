@@ -47,7 +47,7 @@ Field_result ResolveResultType(roachpb::DataType type);
 #define FLT_LESSEQUAL(_x, _y) (FLT_EQUAL((_x), (_y)) || ((_x) < (_y)))
 
 #define COMPARE_CHECK_NULL                                  \
-  if (args_[0]->is_nullable() || args_[1]->is_nullable()) { \
+  if (args_[0]->CheckNull() || args_[1]->CheckNull()) { \
     return 0;                                               \
   }
 #define NextByte(p, plen) ((p)++, (plen)--)

@@ -1432,14 +1432,105 @@ KStatus DataChunk::AddRecordByColumn(kwdbContext_p ctx, RowBatch* row_batch, Fie
   Return(KStatus::SUCCESS)
 }
 
+KStatus DataChunk::AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* row_batch, Field** renders) {
+  const k_uint32 start_row = count_;
+  for (k_uint32 col = 0; col < col_num_; ++col) {
+    Field* field = renders[col];
+    row_batch->ResetLine();
+    const k_uint32 total_rows = row_batch->Count();
+    const auto storage_len = field->get_storage_length();
+    const auto offset_storage_len = (field->get_num() == 0) ? storage_len + 8 : storage_len;
+    const auto col_idx_in_rs = field->getColIdxInRs();
+    const auto column_type = field->get_column_type();
+    const bool is_tag =
+        (column_type == roachpb::KWDBKTSColumn::TYPE_PTAG) || (column_type == roachpb::KWDBKTSColumn::TYPE_TAG);
+    const auto storage_type = field->get_storage_type();
+    const bool not_null = !field->is_allow_null();
+    const bool is_string = IsStringType(storage_type);
+
+    // Handle tag type (special logic)
+    if (is_tag) {
+      if (!not_null && row_batch->IsNull(col_idx_in_rs, column_type)) {
+        // If it's a tag column, nullable, and the current column is null, set the entire column to NULL.
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          SetNull(start_row + row, col);
+        }
+        continue;
+      }
+
+      if (is_string) {
+        // Tag and string type: all rows use the same value
+        kwdbts::String val = field->ValStr();
+        const char* mem = val.c_str();
+        const size_t len = val.length();
+
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          InsertData(start_row + row, col, const_cast<char*>(mem), len);
+        }
+      } else {
+        // non-string type: batch copy the entire column of data
+        k_uint32 col_offset = start_row * col_info_[col].fixed_storage_len + col_offset_[col];
+        row_batch->CopyColumnData(col_idx_in_rs, data_ + col_offset, storage_len, column_type, storage_type);
+      }
+      continue;
+    }
+
+    // Handle non-tag type
+    if (not_null) {
+      // not null
+      if (is_string) {
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          kwdbts::String val = field->ValStr();
+          InsertData(start_row + row, col, const_cast<char*>(val.c_str()), val.length());
+          row_batch->NextLine();
+        }
+      } else {
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          char* ptr = row_batch->GetData(col_idx_in_rs, offset_storage_len, column_type, storage_type);
+          InsertData(start_row + row, col, ptr, storage_len);
+          row_batch->NextLine();
+        }
+      }
+    } else {
+      // maybe null
+      if (is_string) {
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          if (row_batch->IsNull(col_idx_in_rs, column_type)) {
+            SetNull(start_row + row, col);
+          } else {
+            kwdbts::String val = field->ValStr();
+            InsertData(start_row + row, col, const_cast<char*>(val.c_str()), val.length());
+          }
+          row_batch->NextLine();
+        }
+      } else {
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          if (row_batch->IsNull(col_idx_in_rs, column_type)) {
+            SetNull(start_row + row, col);
+          } else {
+            char* ptr = row_batch->GetData(col_idx_in_rs, offset_storage_len, column_type, storage_type);
+            InsertData(start_row + row, col, ptr, storage_len);
+          }
+          row_batch->NextLine();
+        }
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus DataChunk::AddRowBatchData(kwdbContext_p ctx, RowBatch* row_batch, Field** renders, bool batch_copy) {
-  EnterFunc()
+  EnterFunc();
   KStatus status = KStatus::SUCCESS;
   if (row_batch == nullptr) {
-    Return(KStatus::FAIL)
+    Return(KStatus::FAIL);
   }
   if (batch_copy) {
-    status = AddRecordByColumn(ctx, row_batch, renders);
+    if (row_batch->HasFilter()) {
+      status = AddRecordByColumnWithSelection(ctx, row_batch, renders);
+    } else {
+      status = AddRecordByColumn(ctx, row_batch, renders);
+    }
   } else {
     for (k_uint32 col = 0; col < col_num_; ++col) {
       row_batch->ResetLine();
@@ -1448,7 +1539,7 @@ KStatus DataChunk::AddRowBatchData(kwdbContext_p ctx, RowBatch* row_batch, Field
     }
   }
   count_ += row_batch->Count();
-  Return(status)
+  Return(status);
 }
 
 /**

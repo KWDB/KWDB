@@ -102,6 +102,7 @@ class RowBatch{
   virtual void CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_len,
                               roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt) {}
   virtual void SetCount(k_uint32 count) {}
+  virtual bool HasFilter() { return false; }
 };
 
 };  // namespace kwdbts
