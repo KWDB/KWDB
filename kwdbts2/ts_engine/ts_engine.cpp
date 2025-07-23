@@ -1883,6 +1883,10 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
     memcpy(data_with_rownum, batch_data.data, batch_data.len);
   } else {
     *data = {nullptr, 0};
+    s = BatchJobFinish(ctx, ts_snapshot_info.id);
+    if (s == KStatus::FAIL) {
+      return s;
+    }
   }
   LOG_INFO("GetSnapshotNextBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
   return KStatus::SUCCESS;
