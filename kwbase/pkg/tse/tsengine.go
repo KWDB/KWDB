@@ -342,7 +342,7 @@ const TsWALLevelClusterSettingName = "ts.wal.wal_level"
 
 // TsWALLevel indicates the WAL level
 var TsWALLevel = settings.RegisterPublicIntSetting(
-	"ts.wal.wal_level",
+	TsWALLevelClusterSettingName,
 	"ts WAL level, default 2(flush)",
 	2,
 )
