@@ -212,6 +212,7 @@ class TsLastBlock : public TsBlock {
       s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
       if (s == FAIL) {
         LOG_ERROR("can not parse column data");
+        return FAIL;
       }
 
       column_blocks_[col_id].swap(colblock);
@@ -271,7 +272,7 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
       *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
       return ok ? SUCCESS : FAIL;
     }

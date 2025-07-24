@@ -18,6 +18,7 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_block.h"
+#include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
@@ -29,6 +30,7 @@ namespace kwdbts {
 
 KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   TableVersionInfo current_table_version{span->GetTableID(), span->GetTableVersion()};
+  bloom_filter_->Add(span->GetEntityID());
   while (span != nullptr && span->GetRowNum() != 0) {
     if (metric_block_builder_ == nullptr || current_table_version != table_version_) {
       std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
@@ -98,8 +100,26 @@ KStatus TsLastSegmentBuilder2::Finalize() {
     const auto& index = block_index_buffer_[i];
     EncodeBlockIndex(&buffer, index);
   }
+
+  std::vector<size_t> meta_block_offset;
+  std::vector<size_t> meta_block_size;
+
+  for (int i = 0; i < meta_blocks_.size(); ++i) {
+    std::string tmp;
+    meta_blocks_[i]->Serialize(&tmp);
+    if (!tmp.empty()) {
+      meta_block_offset.push_back(current_offset + buffer.size());
+      meta_block_size.push_back(tmp.size());
+    }
+    buffer.append(tmp);
+  }
+
   footer_.meta_block_idx_offset = current_offset + buffer.size();
-  footer_.n_meta_block = 0;
+  for (int i = 0; i < meta_block_offset.size(); ++i) {
+    PutFixed64(&buffer, meta_block_offset[i]);
+    PutFixed64(&buffer, meta_block_size[i]);
+  }
+  footer_.n_meta_block = meta_block_offset.size();
   EncodeFooter(&buffer, footer_);
   auto s = last_segment_file_->Append(buffer);
   last_segment_file_->Sync();

@@ -467,11 +467,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
     std::sort(sorted_spans.begin(), sorted_spans.end(),
               [](const std::shared_ptr<TsBlockSpan>& left, const std::shared_ptr<TsBlockSpan>& right) {
-                using Helper = std::tuple<TSTableID, TSEntityID, timestamp64, TS_LSN>;
-                auto left_helper =
-                    Helper(left->GetTableID(), left->GetEntityID(), left->GetFirstTS(), *left->GetLSNAddr(0));
-                auto right_helper =
-                    Helper(right->GetTableID(), right->GetEntityID(), right->GetFirstTS(), *right->GetLSNAddr(0));
+                using Helper = std::tuple<TSEntityID, timestamp64, TS_LSN>;
+                auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetLSNAddr(0));
+                auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetLSNAddr(0));
                 return left_helper < right_helper;
               });
   }

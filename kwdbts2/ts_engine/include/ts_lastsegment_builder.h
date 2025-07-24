@@ -48,10 +48,20 @@ class TsLastSegmentBuilder2 {
   TableVersionInfo table_version_ = {0, 0};  // initialized to invalid value
   uint64_t file_number_ = 0;
 
+  // bloom filter
+  std::unique_ptr<LastSegmentBloomFilter> bloom_filter_;
+
+  std::vector<LastSegmentMetaBlockBase*> meta_blocks_;
+
  public:
   TsLastSegmentBuilder2(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsAppendOnlyFile>&& last_segment,
                         uint64_t file_number)
-      : engine_schema_manager_(schema_mgr), last_segment_file_(std::move(last_segment)), file_number_(file_number) {}
+      : engine_schema_manager_(schema_mgr),
+        last_segment_file_(std::move(last_segment)),
+        file_number_(file_number),
+        bloom_filter_(std::make_unique<LastSegmentBloomFilter>()) {
+    meta_blocks_.push_back(bloom_filter_.get());
+  }
   KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
   KStatus Finalize();
   uint64_t GetFileNumber() const { return file_number_; }
