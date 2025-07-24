@@ -29,7 +29,7 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
   const auto& mgr = CompressorManager::GetInstance();
   // 1. Compress LSN
   TSSlice lsn_slice{reinterpret_cast<char*>(lsn_buffer_.data()), lsn_buffer_.size() * sizeof(TS_LSN)};
-  TsCompAlg lsn_alg = compress_ts_and_lsn ? TsCompAlg::kGorilla_64 : TsCompAlg::kPlain;
+  TsCompAlg lsn_alg = compress_ts_and_lsn ? TsCompAlg::kSimple8B_u64 : TsCompAlg::kPlain;
   auto ok = mgr.CompressData(lsn_slice, nullptr, count_, &compressed_data, lsn_alg, GenCompAlg::kPlain);
   if (!ok) {
     LOG_ERROR("compress lsn error");

@@ -73,6 +73,7 @@ inline KStatus DecodeBlockInfo(TSSlice slice, TsLastSegmentBlockInfo2* info) {
   if (slice.len != info->ncol * 14) {
     return FAIL;
   }
+  info->col_infos.resize(info->ncol);
   for (int i = 0; i < info->ncol; ++i) {
     GetFixed32(&slice, &info->col_infos[i].offset);
     GetFixed16(&slice, &info->col_infos[i].bitmap_len);

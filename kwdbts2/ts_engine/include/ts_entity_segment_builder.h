@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -204,6 +205,9 @@ class TsEntitySegmentBuilder {
   TsEntityItem cur_entity_item_;
 
   std::map<uint32_t, TsEntityItem> entity_items_;
+
+  std::deque<std::shared_ptr<TsBlockSpan>> cached_spans_;
+  size_t cached_count_ = 0;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,

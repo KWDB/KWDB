@@ -172,14 +172,9 @@ class TsLastBlock : public TsBlock {
     std::string timestamps_;
     std::string lsn_;
 
-    TsTableSchemaManager* table_schema_manager_;
-
    public:
-    ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo2* block_info, TsTableSchemaManager* table_schema_manager)
-        : file_(file),
-          block_info_(block_info),
-          column_blocks_(block_info->ncol),
-          table_schema_manager_{table_schema_manager} {}
+    ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo2* block_info)
+        : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
     KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
       {
         std::shared_lock lk{mu_};
@@ -193,7 +188,7 @@ class TsLastBlock : public TsBlock {
         *block = column_blocks_[col_id].get();
         return SUCCESS;
       }
-      auto offset = block_info_->block_offset + block_info_->entity_id_len + block_info_->lsn_len;
+      auto offset = block_info_->block_offset + block_info_->entity_id_len;
       offset += block_info_->col_infos[col_id].offset;
 
       const auto& col_info = block_info_->col_infos[col_id];
@@ -248,6 +243,7 @@ class TsLastBlock : public TsBlock {
         return FAIL;
       }
       bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
       return ok ? SUCCESS : FAIL;
     }
 
@@ -276,6 +272,7 @@ class TsLastBlock : public TsBlock {
         return FAIL;
       }
       bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
       return ok ? SUCCESS : FAIL;
     }
 
@@ -287,50 +284,34 @@ class TsLastBlock : public TsBlock {
           return SUCCESS;
         }
       }
-      std::vector<AttributeInfo> schema;
-      auto s = table_schema_manager_->GetColumnsExcludeDropped(schema);
+
+      auto offset = block_info_->block_offset += block_info_->entity_id_len;
+      offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
+      auto length = block_info_->col_infos[0].fixdata_len;
+      const auto& mgr = CompressorManager::GetInstance();
+      Arena arena;
+      TSSlice result;
+      char* buf = arena.Allocate(length);
+      auto s = file_->Read(offset, length, &result, buf);
       if (s == FAIL) {
         return FAIL;
       }
-      TsColumnBlock* col_block = nullptr;
-      s = GetColumnBlock(0, &col_block, schema);
-      if (s == FAIL) {
-        return FAIL;
-      }
-      std::unique_lock lk{mu_};
-      char* addr = col_block->GetColAddr();
-      auto n = col_block->GetRowNum();
-
-      timestamps_.resize(n * sizeof(timestamp64));
-      struct TSWithLSN {
-        timestamp64 ts;
-        TS_LSN lsn;
-      };
-
-      auto src_ts = reinterpret_cast<const TSWithLSN*>(addr);
-      auto dst_ts = reinterpret_cast<timestamp64*>(timestamps_.data());
-      for (int i = 0; i < n; ++i) {
-        dst_ts[i] = src_ts[i].ts;
-      }
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
       *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-      return SUCCESS;
+      return ok ? SUCCESS : FAIL;
     }
   };
-
-  std::shared_ptr<TsTableSchemaManager> table_schema_manager_;
 
   std::unique_ptr<ColumnCache> column_block_cache_;
 
  public:
   TsLastBlock(TsLastSegment* lastseg, int block_id, TsLastSegmentBlockIndex block_index,
-              TsLastSegmentBlockInfo2 block_info, std::shared_ptr<TsTableSchemaManager> table_schema_manager)
+              TsLastSegmentBlockInfo2 block_info)
       : lastsegment_(lastseg),
         block_id_(block_id),
         block_index_(block_index),
         block_info_(std::move(block_info)),
-        table_schema_manager_{std::move(table_schema_manager)},
-        column_block_cache_(
-            std::make_unique<ColumnCache>(lastsegment_->file_.get(), &block_info_, table_schema_manager_.get())) {}
+        column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), &block_info_)) {}
   ~TsLastBlock() = default;
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }

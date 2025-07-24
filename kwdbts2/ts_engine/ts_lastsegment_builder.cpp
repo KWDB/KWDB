@@ -29,43 +29,54 @@ namespace kwdbts {
 
 KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   TableVersionInfo current_table_version{span->GetTableID(), span->GetTableVersion()};
-  if (metric_block_builder_ == nullptr || current_table_version != table_version_) {
-    std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-    auto s = engine_schema_manager_->GetTableSchemaMgr(span->GetTableID(), table_schema_mgr);
+  while (span != nullptr && span->GetRowNum() != 0) {
+    if (metric_block_builder_ == nullptr || current_table_version != table_version_) {
+      std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+      auto s = engine_schema_manager_->GetTableSchemaMgr(span->GetTableID(), table_schema_mgr);
+      if (s == FAIL) {
+        return FAIL;
+      }
+      std::vector<AttributeInfo> col_schema;
+      s = table_schema_mgr->GetColumnsExcludeDropped(col_schema, span->GetTableVersion());
+      if (s == FAIL) {
+        return FAIL;
+      }
+      metric_block_builder_ = std::make_unique<TsMetricBlockBuilder>(col_schema);
+      block_index_collector_ = std::make_unique<BlockIndexCollector>(span->GetTableID(), span->GetTableVersion());
+      entity_id_buffer_.clear();
+      table_version_ = current_table_version;
+    }
+
+    std::shared_ptr<TsBlockSpan> back_span;
+    int extra_rows = metric_block_builder_->GetRowNum() + span->GetRowNum() - TsLastSegment::kNRowPerBlock;
+    if (extra_rows > 0) {
+      // split blockspan
+      span->SplitBack(extra_rows, back_span);
+    }
+
+    block_index_collector_->Collect(span.get());
+    auto s = metric_block_builder_->PutBlockSpan(span);
     if (s == FAIL) {
       return FAIL;
     }
-    std::vector<AttributeInfo> col_schema;
-    s = table_schema_mgr->GetColumnsExcludeDropped(col_schema, span->GetTableVersion());
-    if (s == FAIL) {
-      return FAIL;
+    entity_id_buffer_.reserve(entity_id_buffer_.size() + span->GetRowNum());
+    std::fill_n(std::back_inserter(entity_id_buffer_), span->GetRowNum(), span->GetEntityID());
+
+    if (metric_block_builder_->GetRowNum() == TsLastSegment::kNRowPerBlock) {
+      s = RecordAndWriteBlockToFile();
+      metric_block_builder_.reset();
     }
-    metric_block_builder_ = std::make_unique<TsMetricBlockBuilder>(col_schema);
-    block_index_collector_ = std::make_unique<BlockIndexCollector>(span->GetTableID(), span->GetTableVersion());
-    entity_id_buffer_.clear();
-    table_version_ = current_table_version;
-  }
-
-  block_index_collector_->Collect(span.get());
-  auto s = metric_block_builder_->PutBlockSpan(span);
-  if (s == FAIL) {
-    return FAIL;
-  }
-  entity_id_buffer_.reserve(entity_id_buffer_.size() + span->GetRowNum());
-  std::fill_n(std::back_inserter(entity_id_buffer_), span->GetRowNum(), span->GetEntityID());
-
-  if (metric_block_builder_->GetRowNum() >= TsLastSegment::kNRowPerBlock) {
-    s = RecordAndWriteBlockToFile();
-    metric_block_builder_.reset();
-    return s;
+    span = back_span;
   }
   return SUCCESS;
 }
 
 KStatus TsLastSegmentBuilder2::Finalize() {
-  auto s = RecordAndWriteBlockToFile();
-  if (s == FAIL) {
-    return FAIL;
+  if (metric_block_builder_ != nullptr) {
+    auto s = RecordAndWriteBlockToFile();
+    if (s == FAIL) {
+      return FAIL;
+    }
   }
   uint64_t current_offset = last_segment_file_->GetFileSize();
   assert(block_info_buffer_.size() == block_index_buffer_.size());
@@ -90,7 +101,7 @@ KStatus TsLastSegmentBuilder2::Finalize() {
   footer_.meta_block_idx_offset = current_offset + buffer.size();
   footer_.n_meta_block = 0;
   EncodeFooter(&buffer, footer_);
-  s = last_segment_file_->Append(buffer);
+  auto s = last_segment_file_->Append(buffer);
   last_segment_file_->Sync();
   last_segment_file_.reset();
   return s;
