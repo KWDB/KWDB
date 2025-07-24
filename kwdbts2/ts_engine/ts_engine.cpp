@@ -1017,6 +1017,12 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     logs.clear();
   }
 
+  s = wal_mgr_->SwitchNextFile();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to switch chk file.")
+    return s;
+  }
+
   // 2. read wal log from all vgroup
   for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
@@ -1067,11 +1073,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }
 
-  s = wal_mgr_->SwitchNextFile();
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to switch chk file.")
-    return s;
-  }
   // 4. rewrite wal log to chk file
 //  wal_mgr_ = nullptr;
 //  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
