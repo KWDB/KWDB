@@ -330,8 +330,8 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS: {
-          if ((last_ts_points_[i] == TsMaxMilliTimestamp || last_ts_points_[i] == TsMaxMicroTimestamp)
-              && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
+          if ((last_ts_points_.empty() || last_ts_points_[i] == TsMaxMilliTimestamp ||
+               last_ts_points_[i] == TsMaxMicroTimestamp) && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::LAST) {
               scan_agg_types_[i] = Sumfunctype::LAST_ROW;
             } else {
