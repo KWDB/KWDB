@@ -147,6 +147,7 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
       case DATATYPE::INT16:
       case DATATYPE::INT32:
       case DATATYPE::INT64:
+      case DATATYPE::TIMESTAMP:
       case DATATYPE::TIMESTAMP64:
       case DATATYPE::TIMESTAMP64_MICRO:
       case DATATYPE::TIMESTAMP64_NANO:
