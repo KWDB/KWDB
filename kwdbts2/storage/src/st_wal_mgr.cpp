@@ -992,7 +992,13 @@ bool WALMgr::NeedCheckpoint() {
 }
 
 KStatus WALMgr::SwitchNextFile() {
+  kwdbts::kwdbContext_p ctx;
   if (std::filesystem::exists(file_mgr_->getFilePath())) {
+    KStatus s = FlushWithoutLock(ctx);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to FlushWithoutLock.")
+      return FAIL;
+    }
     file_mgr_->Close();
     if (-1 == rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
@@ -1015,7 +1021,6 @@ KStatus WALMgr::SwitchNextFile() {
     return s;
   }
 
-  kwdbts::kwdbContext_p ctx;
   UpdateCheckpointWithoutFlush(ctx, first_lsn);
   UpdateFirstLSN(first_lsn);
   s = FlushWithoutLock(ctx);
