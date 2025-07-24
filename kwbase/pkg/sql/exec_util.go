@@ -689,6 +689,9 @@ type ExecutorConfig struct {
 
 	// ProcedureCache is the cache of procedures.
 	ProcedureCache *ProcedureCache
+
+	// CDCCoordinator is the coordinator of CDC.
+	CDCCoordinator execinfra.CDCCoordinator
 }
 
 // Three modes of activation

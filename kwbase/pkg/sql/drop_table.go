@@ -66,8 +66,6 @@ func (p *planner) DropTable(ctx context.Context, n *tree.DropTable) (planNode, e
 		tn := &n.Names[i]
 		droppedDesc, err := p.prepareDrop(ctx, tn, !n.IfExists, ResolveRequireTableDesc, n.DropBehavior == tree.DropCascade)
 		if err != nil {
-			//if strings.Contains(err.Error(), "")
-			fmt.Println(err.Error())
 			return nil, err
 		}
 		if droppedDesc == nil {
@@ -97,12 +95,18 @@ func (p *planner) DropTable(ctx context.Context, n *tree.DropTable) (planNode, e
 
 	for _, toDel := range td {
 		droppedDesc := toDel.desc
+
+		if err := p.canRemoveAllTableOwnedStreams(ctx, droppedDesc, n.DropBehavior); err != nil {
+			return nil, err
+		}
+
 		if droppedDesc.IsTSTable() {
 			if err := p.canDropInsTable(ctx, toDel.desc.ID); err != nil {
 				return nil, err
 			}
 			continue
 		}
+
 		for i := range droppedDesc.InboundFKs {
 			ref := &droppedDesc.InboundFKs[i]
 			if _, ok := td[ref.OriginTableID]; !ok {
@@ -395,6 +399,10 @@ func (p *planner) dropTableImpl(
 
 	err := p.removeTableComment(ctx, tableDesc)
 	if err != nil {
+		return droppedViews, err
+	}
+
+	if err := p.removeTableStreams(ctx, tableDesc); err != nil {
 		return droppedViews, err
 	}
 

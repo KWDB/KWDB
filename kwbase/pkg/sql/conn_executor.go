@@ -2907,11 +2907,26 @@ func (ex *connExecutor) SendDirectTsInsert(
 	res CommandResult,
 	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
 ) (useDeepRule bool, dedupRule int64, dedupRows int64) {
-	tsIns := tsInsertNodePool.Get().(*tsInsertNode)
-	for _, payloadVals := range payloadNodeMap {
-		tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-		tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+	var tsInsNode planNode
+	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
+	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
+	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
+		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
+		for _, payloadVals := range payloadNodeMap {
+			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		}
+		tsInsNode = tsIns
+	} else {
+		tsIns := tsInsertWithCDCNodePool.Get().(*tsInsertWithCDCNode)
+		for _, payloadVals := range payloadNodeMap {
+			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		}
+		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
+		tsInsNode = tsIns
 	}
+
 	cfg := ex.server.cfg
 	ex.planner.txn = evalCtx.Txn
 	ex.planner.execCfg = cfg
@@ -2932,7 +2947,7 @@ func (ex *connExecutor) SendDirectTsInsert(
 	var planCtx *PlanningCtx
 	distribute := false
 	distribute = shouldDistributePlan(
-		ctx, ex.sessionData.DistSQLMode, cfg.DistSQLPlanner, tsIns)
+		ctx, ex.sessionData.DistSQLMode, cfg.DistSQLPlanner, tsInsNode)
 	if distribute {
 		planCtx = cfg.DistSQLPlanner.NewPlanningCtx(ctx, exEvalCtx, ex.planner.txn)
 	} else {
@@ -2943,7 +2958,7 @@ func (ex *connExecutor) SendDirectTsInsert(
 	planCtx.stmtType = recv.stmtType
 
 	cleanup := cfg.DistSQLPlanner.PlanAndRun(
-		ctx, exEvalCtx, planCtx, ex.planner.txn, tsIns, recv, ex.planner.GetStmt(),
+		ctx, exEvalCtx, planCtx, ex.planner.txn, tsInsNode, recv, ex.planner.GetStmt(),
 	)
 	ex.sendDedupClientNotice(ctx, &ex.planner, recv)
 	useDeepRule = recv.useDeepRule

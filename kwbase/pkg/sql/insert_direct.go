@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -98,6 +99,49 @@ func GetInputValues(
 			continue
 		}
 		outputValues = append(outputValues, inputValues[row])
+	}
+
+	return outputValues, nil
+}
+
+// getPrepareInputValues convert data format form Bind to []tree.Datums.
+func getPrepareInputValues(
+	ptCtx tree.ParseTimeContext, bindCmd *BindStmt, inferredTypes []oid.Oid, di *DirectInsert,
+) ([]tree.Datums, error) {
+	qArgFormatCodes := bindCmd.ArgFormatCodes
+	if len(qArgFormatCodes) == 1 && di.RowNum > 1 {
+		fmtCode := qArgFormatCodes[0]
+		qArgFormatCodes = make([]pgwirebase.FormatCode, di.RowNum)
+		for i := range qArgFormatCodes {
+			qArgFormatCodes[i] = fmtCode
+		}
+	}
+	rowNum := di.RowNum / di.ColNum
+	outputValues := make([]tree.Datums, rowNum)
+	row := 0
+	col := 0
+	for i, arg := range bindCmd.Args {
+		if outputValues[row] == nil {
+			outputValues[row] = make(tree.Datums, di.ColNum)
+		}
+		k := tree.PlaceholderIdx(i)
+		t := inferredTypes[i]
+		if arg == nil {
+			// nil indicates a NULL argument value.
+			outputValues[row][col] = tree.DNull
+		} else {
+			d, err := pgwirebase.DecodeOidDatum(ptCtx, t, qArgFormatCodes[i], arg)
+			if err != nil {
+				return nil, pgerror.Wrapf(err, pgcode.ProtocolViolation,
+					"error in argument for %s", k)
+			}
+			outputValues[row][col] = d
+		}
+		col++
+		if col%di.ColNum == 0 {
+			col = 0
+			row++
+		}
 	}
 
 	return outputValues, nil
@@ -369,11 +413,15 @@ func parserString2Int(
 
 // BuildPayload is used to BuildPayloadForTsInsert
 func BuildPayload(
-	EvalContext *tree.EvalContext, priTagRowIdx []int, di *DirectInsert, dit DirectInsertTable,
+	evalCtx *tree.EvalContext,
+	priTagRowIdx []int,
+	di *DirectInsert,
+	dit DirectInsertTable,
+	cfg *ExecutorConfig,
 ) error {
 	payload, _, err := execbuilder.BuildPayloadForTsInsert(
-		EvalContext,
-		EvalContext.Txn,
+		evalCtx,
+		evalCtx.Txn,
 		di.InputValues,
 		priTagRowIdx,
 		di.PrettyCols,
@@ -388,22 +436,27 @@ func BuildPayload(
 	}
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
-	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
+	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{evalCtx.NodeID}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
+
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+		evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+
 	return nil
 }
 
 // BuildPreparePayload is used to BuildPayloadForTsInsert
 func BuildPreparePayload(
-	EvalContext *tree.EvalContext,
+	evalCtx *tree.EvalContext,
 	inputValues [][][]byte,
 	priTagRowIdx []int,
 	di *DirectInsert,
 	dit DirectInsertTable,
 	qargs [][]byte,
+	cfg *ExecutorConfig,
 ) error {
 	payload, _, err := execbuilder.BuildPreparePayloadForTsInsert(
-		EvalContext,
-		EvalContext.Txn,
+		evalCtx,
+		evalCtx.Txn,
 		inputValues,
 		priTagRowIdx,
 		di.PrettyCols,
@@ -421,6 +474,8 @@ func BuildPreparePayload(
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
 	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+		evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
 	return nil
 }
 
@@ -535,10 +590,11 @@ func BuildRowBytesForPrepareTsInsert(
 	Args [][]byte,
 	Dit DirectInsertTable,
 	di *DirectInsert,
-	EvalContext tree.EvalContext,
+	evalCtx tree.EvalContext,
 	table *sqlbase.ImmutableTableDescriptor,
 	nodeID roachpb.NodeID,
 	rowTimestamps []int64,
+	cfg *ExecutorConfig,
 ) error {
 	rowNum := di.RowNum / di.ColNum
 
@@ -648,8 +704,8 @@ func BuildRowBytesForPrepareTsInsert(
 
 	for _, priTagRowIdx := range priTagValMap {
 		payload, _, err := execbuilder.BuildPreparePayloadForTsInsert(
-			&EvalContext,
-			EvalContext.Txn,
+			&evalCtx,
+			evalCtx.Txn,
 			nil,
 			priTagRowIdx[:1],
 			di.PArgs.PrettyCols[:di.PArgs.PTagNum+di.PArgs.AllTagNum],
@@ -703,11 +759,12 @@ func BuildRowBytesForPrepareTsInsert(
 		})
 	}
 
-	di.PayloadNodeMap[int(EvalContext.NodeID)] = &sqlbase.PayloadForDistTSInsert{
+	di.PayloadNodeMap[int(evalCtx.NodeID)] = &sqlbase.PayloadForDistTSInsert{
 		NodeID:          nodeID,
 		PerNodePayloads: allPayloads,
 	}
-
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+		&evalCtx, uint64(table.ID), table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
 	return nil
 }
 
@@ -1570,9 +1627,9 @@ func GetPayloadMapForMuiltNode(
 	dit DirectInsertTable,
 	di *DirectInsert,
 	stmts parser.Statements,
-	EvalContext tree.EvalContext,
+	evalCtx tree.EvalContext,
 	table *sqlbase.ImmutableTableDescriptor,
-	nodeid roachpb.NodeID,
+	cfg *ExecutorConfig,
 ) error {
 	rowTimestamps := make([]int64, di.RowNum)
 
@@ -1591,8 +1648,8 @@ func GetPayloadMapForMuiltNode(
 	for _, priTagRowIdx := range priTagValMap {
 		// Payload is the encoding of a complete line, which is the first line in a line with the same ptag
 		payload, _, err := execbuilder.BuildPayloadForTsInsert(
-			&EvalContext,
-			EvalContext.Txn,
+			&evalCtx,
+			evalCtx.Txn,
 			inputValues,
 			priTagRowIdx[:1],
 			cols,
@@ -1655,11 +1712,14 @@ func GetPayloadMapForMuiltNode(
 	}
 
 	di.PayloadNodeMap = map[int]*sqlbase.PayloadForDistTSInsert{
-		int(EvalContext.NodeID): {
-			NodeID:          nodeid,
+		int(evalCtx.NodeID): {
+			NodeID:          evalCtx.NodeID,
 			PerNodePayloads: allPayloads,
 		},
 	}
+
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+		&evalCtx, uint64(tabID), table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
 
 	return nil
 }
@@ -2055,4 +2115,35 @@ func boolFormatBinary(Args [][]byte, idx int) error {
 		return nil
 	}
 	return pgerror.Newf(pgcode.Syntax, "unsupported binary bool: %x", Args[idx])
+}
+
+// buildCDCDataForDirectInsert builds DirectInsert data for cdc.
+func buildCDCDataForDirectInsert(
+	evalCtx *tree.EvalContext,
+	tableID uint64,
+	columns []sqlbase.ColumnDescriptor,
+	InputDatums []tree.Datums,
+	colIndex map[int]int,
+	cdcCoordinator execinfra.CDCCoordinator,
+) *sqlbase.CDCData {
+	if cdcCoordinator == nil {
+		return nil
+	}
+
+	if !cdcCoordinator.IsCDCEnabled(tableID) {
+		return nil
+	}
+
+	columnsPtr := make([]*sqlbase.ColumnDescriptor, len(columns))
+	for i := 0; i < len(columns); i++ {
+		columnsPtr[i] = &columns[i]
+	}
+
+	cdcData, payloadMaxTime := cdcCoordinator.CaptureData(
+		evalCtx, tableID, columnsPtr, InputDatums, colIndex)
+	return &sqlbase.CDCData{
+		TableID:      tableID,
+		MinTimestamp: payloadMaxTime,
+		PushData:     cdcData,
+	}
 }

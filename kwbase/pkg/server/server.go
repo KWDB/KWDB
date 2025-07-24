@@ -56,6 +56,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/blobs"
 	"gitee.com/kwbasedb/kwbase/pkg/blobs/blobspb"
+	"gitee.com/kwbasedb/kwbase/pkg/cdc"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
@@ -854,6 +855,11 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		gw.RegisterService(s.grpc.Server)
 	}
 
+	// initialize the CDC Coordinator to handle the connection from Pipe Job.
+	s.distSQLServer.CDCCoordinator = cdc.NewCoordinator(
+		s.st, s.grpc.Server, s.stopper, s.gossip, s.internalExecutor, s.status,
+	)
+
 	// TODO(andrei): We're creating an initServer even through the inspection of
 	// our engines in Server.Start() might reveal that we're already bootstrapped
 	// and so we don't need to accept a Bootstrap RPC. The creation of this server
@@ -973,6 +979,8 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 		GCJobNotifier:  gcJobNotifier,
 		ProcedureCache: sql.New(ctx, s.cfg.ProcedureCacheSize, sql.DefaultProcedureCacheShardNum),
+
+		CDCCoordinator: s.distSQLServer.CDCCoordinator,
 	}
 
 	execCfg.StartMode = sql.ChangeStartMode(s.cfg.StartMode)
@@ -1089,6 +1097,9 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		s.node.stores.IsMeta1Leaseholder,
 		sqlExecutorTestingKnobs,
 	)
+
+	s.distSQLServer.CDCCoordinator.SetDistInternalExecutor(tsPartitionInternalExecutor)
+
 	// init audit server
 	s.auditServer.InitLogHandler(event.InitEvents(ctx, s.execCfg, s.registry))
 	s.node.InitLogger(&execCfg)

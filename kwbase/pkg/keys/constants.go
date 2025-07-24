@@ -420,6 +420,8 @@ const (
 	EventLogTableID            = 56
 	ScheduledJobsTableID       = 57
 	UDRTableID                 = 58
+	KWDBCDCWatermarkTableID    = 60
+	KWDBStreamsTableID         = 61
 	// CommentType is type for system.comments
 	DatabaseCommentType = 0
 	TableCommentType    = 1

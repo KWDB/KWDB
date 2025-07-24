@@ -217,42 +217,46 @@ kwdb_ts_table                    BASE TABLE
 eventlog                         BASE TABLE
 scheduled_jobs                   BASE TABLE
 user_defined_routine             BASE TABLE
+kwdb_cdc_watermark               BASE TABLE
+kwdb_streams                     BASE TABLE
 
 query TTT
 SELECT * FROM [SHOW TABLES FROM system WITH COMMENT]
 ----
-namespace                        BASE TABLE         ·
-descriptor                       BASE TABLE         ·
-users                            BASE TABLE         ·
-zones                            BASE TABLE         ·
-settings                         BASE TABLE         ·
-lease                            BASE TABLE         ·
-audits                           BASE TABLE         ·
-rangelog                         BASE TABLE         ·
-ui                               BASE TABLE         ·
-jobs                             BASE TABLE         ·
-web_sessions                     BASE TABLE         ·
-table_statistics                 BASE TABLE         ·
-locations                        BASE TABLE         ·
-role_members                     BASE TABLE         ·
-comments                         BASE TABLE         ·
-replication_constraint_stats     BASE TABLE         ·
-replication_critical_localities  BASE TABLE         ·
-replication_stats                BASE TABLE         ·
-reports_meta                     BASE TABLE         ·
-namespace2                       BASE TABLE         ·
-protected_ts_meta                BASE TABLE         ·
-protected_ts_records             BASE TABLE         ·
-role_options                     BASE TABLE         ·
-statement_bundle_chunks          BASE TABLE         ·
-statement_diagnostics_requests   BASE TABLE         ·
-statement_diagnostics            BASE TABLE         ·
-kwdb_replication_info            BASE TABLE         ·
-bo_black_list                    BASE TABLE         ·
-kwdb_ts_table                    BASE TABLE         ·
-eventlog                         BASE TABLE         ·
-scheduled_jobs                   BASE TABLE         ·
-user_defined_routine             BASE TABLE         ·
+namespace                        BASE TABLE  ·
+descriptor                       BASE TABLE  ·
+users                            BASE TABLE  ·
+zones                            BASE TABLE  ·
+settings                         BASE TABLE  ·
+lease                            BASE TABLE  ·
+audits                           BASE TABLE  ·
+rangelog                         BASE TABLE  ·
+ui                               BASE TABLE  ·
+jobs                             BASE TABLE  ·
+web_sessions                     BASE TABLE  ·
+table_statistics                 BASE TABLE  ·
+locations                        BASE TABLE  ·
+role_members                     BASE TABLE  ·
+comments                         BASE TABLE  ·
+replication_constraint_stats     BASE TABLE  ·
+replication_critical_localities  BASE TABLE  ·
+replication_stats                BASE TABLE  ·
+reports_meta                     BASE TABLE  ·
+namespace2                       BASE TABLE  ·
+protected_ts_meta                BASE TABLE  ·
+protected_ts_records             BASE TABLE  ·
+role_options                     BASE TABLE  ·
+statement_bundle_chunks          BASE TABLE  ·
+statement_diagnostics_requests   BASE TABLE  ·
+statement_diagnostics            BASE TABLE  ·
+kwdb_replication_info            BASE TABLE  ·
+bo_black_list                    BASE TABLE  ·
+kwdb_ts_table                    BASE TABLE  ·
+eventlog                         BASE TABLE  ·
+scheduled_jobs                   BASE TABLE  ·
+user_defined_routine             BASE TABLE  ·
+kwdb_cdc_watermark               BASE TABLE  ·
+kwdb_streams                     BASE TABLE  ·
 
 query ITTT colnames
 SELECT node_id, user_name, application_name, active_queries

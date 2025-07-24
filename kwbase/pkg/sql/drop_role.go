@@ -240,6 +240,19 @@ func (n *DropRoleNode) startExec(params runParams) error {
 		if err != nil {
 			return err
 		}
+
+		// update the stream owner
+		_, err = params.extendedEvalCtx.ExecCfg.InternalExecutor.Exec(
+			params.ctx,
+			"reset-stream-owner",
+			params.p.txn,
+			`UPDATE system.kwdb_streams SET create_by='' WHERE create_by=$1`,
+			normalizedUsername,
+		)
+		if err != nil {
+			return err
+		}
+
 		params.p.SetAuditTarget(0, normalizedUsername, nil)
 	}
 

@@ -259,3 +259,20 @@ func (node *DropAudit) Format(ctx *FmtCtx) {
 	}
 	ctx.FormatNode(&node.Names)
 }
+
+// DropStream represents a DROP PIPE statement.
+type DropStream struct {
+	StreamName Name
+	IfExists   bool
+}
+
+var _ Statement = &DropStream{}
+
+// Format implements the NodeFormatter interface.
+func (node *DropStream) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP STREAM ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	node.StreamName.Format(ctx)
+}

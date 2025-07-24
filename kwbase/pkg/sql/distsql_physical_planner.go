@@ -624,7 +624,7 @@ func (dsp *DistSQLPlanner) checkSupportForNode(node planNode) (distRecommendatio
 	case *tsScanNode:
 		return shouldDistribute, nil
 
-	case *tsInsertNode:
+	case *tsInsertNode, *tsInsertWithCDCNode:
 		return shouldDistribute, nil
 
 	case *tsDeleteNode:
@@ -706,6 +706,22 @@ type PlanningCtx struct {
 
 	// pTagAllNotSplit a flag that primary tag not split by time
 	pTagAllNotSplit bool
+
+	// isStream used to build stream StreamReaderSpec
+	isStream bool
+	// streamSpec used to build stream StreamReaderSpec
+	streamSpec *execinfrapb.StreamReaderSpec
+
+	// cdcCtx used to build cdc filter
+	cdcCtx *CDCContext
+}
+
+// CDCContext used to build cdc filter.
+type CDCContext struct {
+	// metricsFilter the filter on metrics for CDC
+	metricsFilter execinfrapb.Expression
+	// metricsFilter the filter on tags for CDC
+	tagFilter []execinfrapb.Expression
 }
 
 var _ physicalplan.ExprContext = &PlanningCtx{}
@@ -2394,6 +2410,15 @@ func (dsp *DistSQLPlanner) createTSReaders(
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
+	} else if planCtx.isStream {
+		// construct StreamReaderSpec
+		_, tsColMap, resCols := buildTSColsAndTSColMap(n, columnIDSet)
+		err = p.buildPhyPlanForStreamReaders(
+			planCtx, n, planCtx.planner.execCfg.NodeID.Get(), tsColMap, resCols, typs, descColumnIDs,
+		)
+		if err != nil {
+			return PhysicalPlan{}, err
+		}
 	} else {
 		tsColMetas, tsColMap, resCols := buildTSColsAndTSColMap(n, columnIDSet)
 		err = p.buildPhyPlanForTagReaders(planCtx, n, &rangeSpans, tsColMetas, tsColMap, resCols, typs, descColumnIDs)
@@ -2462,19 +2487,34 @@ func (dsp *DistSQLPlanner) createTSInsert(
 	planCtx *PlanningCtx, n *tsInsertNode,
 ) (PhysicalPlan, error) {
 	if !planCtx.ExtendedEvalCtx.StartDistributeMode {
-		return createTsInsertNodeForSingeMode(n)
+		return createTsInsertNodeForSingleMode(n)
 	}
 	return createTsInsertNodeForDistributeMode(n)
 }
 
-func createTsInsertNodeForSingeMode(n *tsInsertNode) (PhysicalPlan, error) {
+// createTSInsert construct tsInsertSpec and processors.
+func (dsp *DistSQLPlanner) createTSInsertWithCDC(
+	planCtx *PlanningCtx, n *tsInsertWithCDCNode,
+) (PhysicalPlan, error) {
+	if !planCtx.ExtendedEvalCtx.StartDistributeMode {
+		return createTsInsertWithCDCNodeForSingleMode(n)
+	}
+	return createTsTsInsertWithCDCNodeForDistributeMode(n)
+}
+
+func createTsInsertNodeForSingleMode(n *tsInsertNode) (PhysicalPlan, error) {
 	var p PhysicalPlan
 	stageID := p.NewStageID()
 
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(n.nodeIDs))
 	p.Processors = make([]physicalplan.Processor, 0, len(n.nodeIDs))
 
-	// Construct a processor for the payload of each node.
+	if len(n.nodeIDs) > 1 {
+		// Panic when the length of n.nodeIDs is greater than 1 for single mode.
+		panic(errors.New("the length of n.nodeIDs is greater than 1 for single mode"))
+	}
+
+	// For SingleMode, n.nodeIDs only contain local node.
 	for i := 0; i < len(n.nodeIDs); i++ {
 		var tsInsert = &execinfrapb.TsInsertProSpec{}
 		tsInsert.PayLoad = make([][]byte, len(n.allNodePayloadInfos[i]))
@@ -2511,7 +2551,6 @@ func createTsInsertNodeForDistributeMode(n *tsInsertNode) (PhysicalPlan, error) 
 	p.Processors = make([]physicalplan.Processor, 0, len(n.nodeIDs))
 
 	// Construct a processor for the payload of each node.
-	// For distribute mode, n.nodeIDs only contain local node.
 	for i := 0; i < len(n.nodeIDs); i++ {
 		var tsInsert = &execinfrapb.TsInsertProSpec{}
 		payloadNum := len(n.allNodePayloadInfos[i])
@@ -4931,6 +4970,8 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 		}
 
 		addOutPutType, err = dsp.addTSAggregators(planCtx, &plan, n, pruneFinalAgg, addSynchronizer)
+	} else if planCtx.isStream {
+		err = dsp.addStreamAggregators(planCtx, &plan, n)
 	} else {
 		err = dsp.addAggregators(planCtx, &plan, n)
 	}
@@ -5262,6 +5303,13 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 			return PhysicalPlan{}, err
 		}
 
+		if planCtx.cdcCtx != nil && n.filter != nil {
+			planCtx.cdcCtx.metricsFilter, err = physicalplan.MakeExpression(
+				n.filter, planCtx, plan.PlanToStreamColMap, false, false)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+		}
 	case *synchronizerNode:
 		plan, err = dsp.createPlanForSynchronizer(planCtx, n)
 
@@ -5364,7 +5412,7 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 				)
 			}
 
-			if planCtx.IsLocal() && n.RelInfo.RelationalCols == nil {
+			if planCtx.IsLocal() && n.RelInfo.RelationalCols == nil && !planCtx.isStream {
 				// add output types
 				plan.AddTSOutputType(false)
 
@@ -5380,8 +5428,30 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 				plan.AddNoopToTsProcessors(dsp.nodeDesc.NodeID, true, false)
 			}
 		}
+
+		if planCtx.cdcCtx != nil {
+			for _, f := range n.PrimaryTagFilterArray {
+				exp, err := physicalplan.MakeExpression(f, planCtx, plan.PlanToStreamColMap, false, false)
+				if err != nil {
+					return PhysicalPlan{}, err
+				}
+				planCtx.cdcCtx.tagFilter = append(planCtx.cdcCtx.tagFilter, exp)
+			}
+
+			for _, f := range n.TagFilterArray {
+				exp, err := physicalplan.MakeExpression(f, planCtx, plan.PlanToStreamColMap, false, false)
+				if err != nil {
+					return PhysicalPlan{}, err
+				}
+				planCtx.cdcCtx.tagFilter = append(planCtx.cdcCtx.tagFilter, exp)
+			}
+		}
+
 	case *tsInsertNode:
 		plan, err = dsp.createTSInsert(planCtx, n)
+
+	case *tsInsertWithCDCNode:
+		plan, err = dsp.createTSInsertWithCDC(planCtx, n)
 
 	case *tsInsertSelectNode:
 		plan, err = dsp.createPlanForNode(planCtx, n.plan)
@@ -5419,8 +5489,9 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 			return PhysicalPlan{}, err
 		}
 
-		dsp.addSorters(&plan, n)
-
+		if !planCtx.isStream {
+			dsp.addSorters(&plan, n)
+		}
 	case *unaryNode:
 		plan, err = dsp.createPlanForUnary(planCtx, n)
 

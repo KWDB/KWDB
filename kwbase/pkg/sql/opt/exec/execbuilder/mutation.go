@@ -37,6 +37,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
@@ -192,12 +193,20 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 		tab.GetTableType() == tree.InstanceTable,
 		tsVersion,
 		hashNum,
+		b.CDCCoordinator,
 	)
 
 	if err != nil {
 		return execPlan{}, err
 	}
-	node, err := b.factory.ConstructTSInsert(payloadNodeMap)
+
+	var node exec.Node
+	if b.CDCCoordinator != nil && b.CDCCoordinator.IsCDCEnabled(uint64(tab.ID())) {
+		node, err = b.factory.ConstructTSInsertWithCDC(payloadNodeMap)
+	} else {
+		node, err = b.factory.ConstructTSInsert(payloadNodeMap)
+	}
+
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -228,6 +237,7 @@ func BuildInputForTSInsert(
 	isInsertInstTable bool,
 	tsVersion uint32,
 	hashNum uint64,
+	cdcCoordinator execinfra.CDCCoordinator,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, error) {
 	colIndexs := make(map[int]int, len(colIndexsInMemo))
 	for k, v := range colIndexsInMemo {
@@ -278,6 +288,11 @@ func BuildInputForTSInsert(
 		return nil, err
 	}
 
+	isStream := false
+	if cdcCoordinator != nil {
+		isStream = cdcCoordinator.IsCDCEnabled(uint64(tabID))
+	}
+
 	var inputDatums []tree.Datums
 
 	rowNum := len(InputRows)
@@ -291,7 +306,16 @@ func BuildInputForTSInsert(
 
 	// For insert in distributed cluster mode, the line format payload needs to be constructed.
 	if evalCtx.StartDistributeMode {
-		return BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
+		payloadNodeMap, err := BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
+		if isStream && err == nil {
+			cdcData, maxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexs)
+			payloadNodeMap[int(evalCtx.NodeID)].CDCData = &sqlbase.CDCData{
+				TableID:      uint64(tabID),
+				MinTimestamp: maxTime,
+				PushData:     cdcData,
+			}
+		}
+		return payloadNodeMap, err
 	}
 	// partition input data based on primary tag values
 	priTagValMap := make(map[string][]int)
@@ -395,6 +419,16 @@ func BuildInputForTSInsert(
 			payloadNodeMap[int(nodeID)] = &rowVal
 		}
 	}
+
+	if isStream && cdcCoordinator != nil {
+		cdcData, payloadMaxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexsInMemo)
+		payloadNodeMap[int(evalCtx.NodeID)].CDCData = &sqlbase.CDCData{
+			TableID:      uint64(tabID),
+			MinTimestamp: payloadMaxTime,
+			PushData:     cdcData,
+		}
+	}
+
 	return payloadNodeMap, nil
 }
 

@@ -35,6 +35,7 @@ kwdb_object_create_statement  SYSTEM VIEW
 kwdb_procedures               SYSTEM VIEW
 kwdb_retention                SYSTEM VIEW
 kwdb_schedules                SYSTEM VIEW
+kwdb_streams                  SYSTEM VIEW
 kwdb_tse_info                 SYSTEM VIEW
 leases                        SYSTEM VIEW
 node_build_info               SYSTEM VIEW

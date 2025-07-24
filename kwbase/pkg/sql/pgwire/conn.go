@@ -973,7 +973,8 @@ func (c *conn) handleSimpleQuery(
 				// According to the node mode processing
 				if !evalCtx.StartSinglenode {
 					// start
-					err = sql.GetPayloadMapForMuiltNode(ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg.NodeInfo.NodeID.Get())
+					err = sql.GetPayloadMapForMuiltNode(
+						ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg)
 				} else {
 					// single node mode
 					if di.InputValues, err = sql.GetInputValues(ctx, ptCtx, &dit.ColsDesc, &di, stmts); err != nil {
@@ -984,7 +985,7 @@ func (c *conn) handleSimpleQuery(
 					priTagValMap := sql.BuildpriTagValMap(di)
 					di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 					for _, idx := range priTagValMap {
-						if err = sql.BuildPayload(&evalCtx, idx, &di, dit); err != nil {
+						if err = sql.BuildPayload(&evalCtx, idx, &di, dit, cfg); err != nil {
 							return err
 						}
 					}
@@ -1195,6 +1196,7 @@ func getEvalContext(ctx context.Context, txn *kv.Txn, server *sql.Server) tree.E
 		SessionData:      &sd,
 		InternalExecutor: server.GetCFG().InternalExecutor,
 		Settings:         server.GetCFG().Settings,
+		NodeID:           server.GetCFG().NodeID.Get(),
 	}
 	return EvalContext
 }

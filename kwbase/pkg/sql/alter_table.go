@@ -132,6 +132,10 @@ func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode,
 		statsData[i] = typedExpr
 	}
 
+	if err = p.checkTableUsedByStream(ctx, uint64(tableDesc.ID), tableDesc.Name, n.Cmds, false); err != nil {
+		return nil, err
+	}
+
 	return &alterTableNode{
 		n:         n,
 		tableDesc: tableDesc,

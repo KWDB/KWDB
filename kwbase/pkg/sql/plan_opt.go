@@ -69,6 +69,7 @@ func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) 
 
 	switch stmt.AST.(type) {
 	case *tree.AlterIndex, *tree.AlterTable, *tree.AlterSequence, *tree.AlterSchedule,
+		*tree.AlterStream,
 		*tree.BeginTransaction,
 		*tree.CommentOnColumn, *tree.CommentOnDatabase, *tree.CommentOnIndex, *tree.CommentOnTable,
 		*tree.CommentOnProcedure,
@@ -77,7 +78,9 @@ func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) 
 		*tree.CreateSchedule,
 		*tree.CreateSequence,
 		*tree.CreateStats,
+		*tree.CreateStream,
 		*tree.Deallocate, *tree.Discard, *tree.DropDatabase, *tree.DropIndex,
+		*tree.DropStream,
 		*tree.DropTable, *tree.DropView, *tree.DropSequence,
 		*tree.Execute,
 		*tree.Grant, *tree.GrantRole,
@@ -224,6 +227,9 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	execFactory := makeExecFactory(p)
 	bld := execbuilder.New(&execFactory, execMemo, &opc.catalog, root, p.EvalContext())
 	bld.PhysType = layerType
+
+	bld.ForceFilterInME = p.forceFilterInME
+	bld.CDCCoordinator = p.execCfg.CDCCoordinator
 
 	plan, err := bld.Build(true)
 	if err != nil {

@@ -27,7 +27,10 @@
 package execinfra
 
 import (
+	"context"
+
 	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -40,6 +43,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
@@ -205,6 +210,9 @@ type ServerConfig struct {
 	// subsystem. It is queried during the GC process and in the handling of
 	// AdminVerifyProtectedTimestampRequest.
 	ProtectedTimestampProvider protectedts.Provider
+
+	// CDCCoordinator is the coordinator of CDC.
+	CDCCoordinator CDCCoordinator
 }
 
 // RuntimeStats is an interface through which the rowexec layer can get
@@ -308,4 +316,24 @@ func GetWorkMemLimit(config *ServerConfig) int64 {
 		limit = SettingWorkMemBytes.Get(&config.Settings.SV)
 	}
 	return limit
+}
+
+// CDCCoordinator is an interface through which the CDC components can get
+// metadata about CDC and send data to CDC task.
+type CDCCoordinator interface {
+	// IsCDCEnabled returns if it has a running CDC task based on the relation id.
+	IsCDCEnabled(tableID uint64) bool
+	// CaptureData filters and formats the captured data changes (aka CDC).
+	// It also computes the low-water mark in current CDC batch (array of inputDatums).
+	// The CDC batch (inputDatums) maybe include multiple data timestamps (parsed from user's INSERT statement).
+	CaptureData(evalCtx *tree.EvalContext, tableID uint64, columns []*sqlbase.ColumnDescriptor, inputDatums []tree.Datums, colIndex map[int]int) (data []*sqlbase.CDCPushData, maxTimestamp int64)
+	// SendRows sends the captured data changes (aka CDC) to Sink.
+	SendRows(tableInfo *execinfrapb.CDCData)
+	// LiveNodeIDList return live nodeID list.
+	LiveNodeIDList(ctx context.Context) ([]roachpb.NodeID, error)
+	// StopCDCByLocal stops the current CDC instance
+	StopCDCByLocal(tableID uint64, instanceID uint64, cdcType cdcpb.TSCDCInstanceType)
+	// DistInternalExecutor is used to run SQL with DistSQLAuto mode.
+	DistInternalExecutor() sqlutil.InternalExecutor
+	SetDistInternalExecutor(executor sqlutil.InternalExecutor)
 }

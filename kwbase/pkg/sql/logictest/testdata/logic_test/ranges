@@ -312,7 +312,9 @@ start_key                 start_pretty                   end_key                
 \xb7                      /Table/47                      \xc0                      /Table/56                      system         kwdb_ts_table                    ·           {1}       1
 \xc0                      /Table/56                      \xc1                      /Table/57                      system         eventlog                         ·           {1}       1
 \xc1                      /Table/57                      \xc2                      /Table/58                      system         scheduled_jobs                   ·           {1}       1
-\xc2                      /Table/58                      \xd689                    /Table/78/1                    system         user_defined_routine             ·           {1}       1
+\xc2                      /Table/58                      \xc4                      /Table/60                      system         user_defined_routine             ·           {1}       1
+\xc4                      /Table/60                      \xc5                      /Table/61                      system         kwdb_cdc_watermark               ·           {1}       1
+\xc5                      /Table/61                      \xd689                    /Table/78/1                    system         kwdb_streams                     ·           {1}       1
 \xd689                    /Table/78/1                    \xd68989                  /Table/78/1/1                  test           t                                ·           {1}       1
 \xd68989                  /Table/78/1/1                  \xd6898d89                /Table/78/1/5/1                test           t                                ·           {3,4}     3
 \xd6898d89                /Table/78/1/5/1                \xd6898d8a                /Table/78/1/5/2                test           t                                ·           {1,2,3}   1
@@ -373,7 +375,9 @@ start_key                 start_pretty                   end_key                
 \xb7                      /Table/47                      \xc0                      /Table/56                      system         kwdb_ts_table                    ·           {1}       1
 \xc0                      /Table/56                      \xc1                      /Table/57                      system         eventlog                         ·           {1}       1
 \xc1                      /Table/57                      \xc2                      /Table/58                      system         scheduled_jobs                   ·           {1}       1
-\xc2                      /Table/58                      \xd689                    /Table/78/1                    system         user_defined_routine             ·           {1}       1
+\xc2                      /Table/58                      \xc4                      /Table/60                      system         user_defined_routine             ·           {1}       1
+\xc4                      /Table/60                      \xc5                      /Table/61                      system         kwdb_cdc_watermark               ·           {1}       1
+\xc5                      /Table/61                      \xd689                    /Table/78/1                    system         kwdb_streams                     ·           {1}       1
 \xd689                    /Table/78/1                    \xd68989                  /Table/78/1/1                  test           t                                ·           {1}       1
 \xd68989                  /Table/78/1/1                  \xd6898d89                /Table/78/1/5/1                test           t                                ·           {3,4}     3
 \xd6898d89                /Table/78/1/5/1                \xd6898d8a                /Table/78/1/5/2                test           t                                ·           {1,2,3}   1
