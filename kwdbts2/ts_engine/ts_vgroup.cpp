@@ -370,10 +370,12 @@ void TsVGroup::closeCompactThread() {
 }
 
 KStatus TsVGroup::Compact() {
-  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACTE)) {
+  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACT)) {
     sleep(1);
   }
-  Defer defer([this]() { ResetTsExclusiveStatus(); });
+  Defer defer([this]() {
+    ResetTsExclusiveStatus();
+  });
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 

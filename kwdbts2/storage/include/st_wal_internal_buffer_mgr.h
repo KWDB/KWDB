@@ -67,6 +67,8 @@ class WALBufferMgr {
 
   KStatus flushInternal(bool flush_header);
 
+  KStatus flushWithoutLock(bool flush_header);
+
   /**
    * Update the checkpoint info of HeaderBlock
    * @param lsn checkpoint LSN
@@ -74,6 +76,8 @@ class WALBufferMgr {
    * @return
    */
   KStatus setHeaderBlockCheckpointInfo(TS_LSN checkpoint_lsn, uint32_t checkpoint_no);
+
+  KStatus setHeaderBlockFirstLSN(TS_LSN first_lsn);
 
   /**
    * Read multiple log entries

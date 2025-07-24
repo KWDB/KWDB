@@ -313,22 +313,23 @@ void TagRowBatch::Init(TABLE *table) {
       primary_tags_len += table->fields_[i]->get_storage_length();
     }
   }
-  for (k_int32 i = tag_col_offset_; i < table->field_num_; i++) {
-    if (table->fields_[i]->get_column_type() ==
-        roachpb::KWDBKTSColumn::TYPE_PTAG) {
-      tag_offsets_.emplace_back(primary_tags_len);
+  tag_offsets_.reserve(table->field_num_ - tag_col_offset_);
+  auto size = table_->scan_tags_.size();
+  for (k_int32 i = 0; i < size; i++) {
+    auto tag_id = table_->scan_tags_[i] + tag_col_offset_;
+    if (table->fields_[tag_id]->get_column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+      tag_offsets_[table_->scan_tags_[i]] = primary_tags_len;
     } else {
-      roachpb::DataType dt = table_->fields_[i]->get_sql_type();
-      if (((dt == roachpb::DataType::VARCHAR) ||
-           (dt == roachpb::DataType::NVARCHAR) ||
+      roachpb::DataType dt = table_->fields_[tag_id]->get_sql_type();
+      if (((dt == roachpb::DataType::VARCHAR) || (dt == roachpb::DataType::NVARCHAR) ||
            (dt == roachpb::DataType::VARBINARY))) {
-        tag_offsets_.emplace_back(sizeof(intptr_t) + 1);  // for varchar
+        tag_offsets_[table_->scan_tags_[i]] = (sizeof(intptr_t) + 1);  // for varchar
       } else {
-        tag_offsets_.emplace_back(table->fields_[i]->get_storage_length() + 1);
+        tag_offsets_[table_->scan_tags_[i]] = (table->fields_[tag_id]->get_storage_length() + 1);
       }
     }
   }
-  res_.setColumnNum(table_->scan_tags_.size());
+  res_.setColumnNum(size);
 }
 
 KStatus TagRowBatch::GetEntities(std::vector<EntityResultIndex> *entities) {
@@ -382,23 +383,14 @@ bool TagRowBatch::isAllDistributed() {
 void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
   current_pipe_no_ = 0;
   current_pipe_line_ = 0;
-  k_int32 remainder;
   if (EngineOptions::isSingleNode()) {
-    k_int32 entities_num_per_pipe;
-    if (isFilter_) {
-      entities_num_per_pipe = selection_.size() / pipe_degree;
-      remainder = selection_.size() % pipe_degree;
-    } else {
-      entities_num_per_pipe = entity_indexs_.size() / pipe_degree;
-      remainder = entity_indexs_.size() % pipe_degree;
-    }
+    k_int32 total_entities = isFilter_ ? selection_.size() : entity_indexs_.size();
+    k_int32 entities_num_per_pipe = total_entities / pipe_degree;
+    k_int32 remainder = total_entities % pipe_degree;
+    pipe_entity_num_.reserve(pipe_degree);
     for (k_int32 i = 0; i < pipe_degree; i++) {
-      int current_size = entities_num_per_pipe;
-      if (remainder > 0) {
-        current_size++;
-        remainder--;
-      }
-      pipe_entity_num_.emplace_back(current_size);
+      const int current_size = entities_num_per_pipe + (i < remainder ? 1 : 0);
+      pipe_entity_num_.push_back(current_size);
       if (current_size > 0) {
         valid_pipe_no_++;
       }
@@ -416,7 +408,7 @@ void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
     } else {
       for (size_t i = 0; i < entity_indexs_.size(); ++i) {
         k_uint32 key = entity_indexs_[i].hash_point;
-        // 如果映射中没有这个键，就创建一个新的vector
+        // If the key does not exist in the map, create a new vector.
         if (hash_entity_indexs_.find(key) == hash_entity_indexs_.end()) {
           hash_entity_indexs_[key] = std::vector<k_uint32>();
         }
@@ -429,15 +421,30 @@ void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
 KStatus TagRowBatch::SortByEntityIndex() {
   ResetLine();
   if (!isFilter_) {
+    selection_.reserve(count_);
     for (k_uint32 i = 0; i < count_; ++i) {
       AddSelection();
       NextLine();
     }
     ResetLine();
   }
-  auto bound_cmp = std::bind(&TagRowBatch::EntityLessThan, this,
-                             std::placeholders::_1, std::placeholders::_2);
-  std::sort(selection_.begin(), selection_.end(), bound_cmp);
+
+  // Use a lambda expression and directly access the entity_indexs_
+  // to avoid indirect access through function calls
+  const auto &entities = entity_indexs_;
+
+  std::sort(selection_.begin(), selection_.end(), [&entities](const TagSelection &a, const TagSelection &b) -> bool {
+    const auto &x = entities[a.entity_];
+    const auto &y = entities[b.entity_];
+    if (x.entityGroupId != y.entityGroupId) {
+      return x.entityGroupId < y.entityGroupId;
+    }
+    if (x.subGroupId != y.subGroupId) {
+      return x.subGroupId < y.subGroupId;
+    }
+    return x.entityId < y.entityId;
+  });
+
   return SUCCESS;
 }
 

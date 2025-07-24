@@ -3006,12 +3006,14 @@ func (c *CustomFuncs) GenerateTagTSScans(
 	}
 	private := *TSScanPrivate
 	// get primary tag value from filters
-	// eg: select a, b, c from ts1 where ptag = 10 and tag1 < 11 and a > 12;
+	// eg: select a, b, c from ts1 where ptag = 10 and tag1 < 11 and a > 12 and ts = now();
 	// get ptag = 10, split 10 for ptag value
-	// leaveFilter is  a > 12
+	// leaveFilter is a > 12, ts = now()
+	// blockFilter is a > 12
 	// tagFilters is tag1 < 11
 	// primaryTagFilters is ptag = 10
 	leaveFilter, tagFilters, primaryTagFilters := memo.GetPrimaryTagFilterValue(&private, &explicitFilters, c.e.mem)
+	TSScanPrivate.BlockFilter = memo.GetBlockFilter(leaveFilter, private.Table)
 	if tagFilters == nil && primaryTagFilters == nil {
 		// can not optimize when have not tag filter
 		return

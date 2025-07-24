@@ -94,7 +94,7 @@ TEST_F(TestEngineSnapshotTable, CreateSnapshot) {
   std::vector<Sumfunctype> scanaggtypes;
   TsStorageIterator* iter1;
   SubGroupID group_id = 1;
-  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, ts_type, scancols, scancols, {},
+  ASSERT_EQ(tbl_range->GetIterator(ctx_, group_id, {entity_id}, {ts_span}, {}, ts_type, scancols, scancols, {},
                                    scanaggtypes, 1, &iter1, tbl_range, {}, false, false),KStatus::SUCCESS);
   ResultSet res(scancols.size());
   k_uint32 count;

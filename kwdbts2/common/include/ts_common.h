@@ -404,11 +404,12 @@ struct EntityResultIndex {
   EntityResultIndex() {}
   EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId):
                       entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId) {}
-  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, void* mem, size_t p_tags_size) :
+  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId,
+                    std::shared_ptr<void> mem, size_t p_tags_size) :
                      entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
                      mem(mem), p_tags_size(p_tags_size) {}
   EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, uint32_t hash_point,
-                    void* mem, size_t p_tags_size) :
+                    std::shared_ptr<void> mem, size_t p_tags_size) :
                      entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
                      hash_point(hash_point), mem(mem), p_tags_size(p_tags_size) {}
   uint64_t entityGroupId{0};
@@ -417,7 +418,7 @@ struct EntityResultIndex {
   uint32_t hash_point{0};
   uint32_t index{0};
   uint32_t ts_version{0};
-  void* mem{nullptr};  // primaryTags address
+  std::shared_ptr<void> mem{nullptr};  // primaryTags address
   size_t p_tags_size{0};
 
   bool equalsWithoutMem(const EntityResultIndex& entity_index) {
@@ -1232,5 +1233,85 @@ inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t ha
   }
   return hash_val % hash_num;
 }
+
+struct SpanValue {
+  union {
+    k_int64 ival{0};
+    k_double64 dval;
+    char* data;
+  };
+  k_int32 len{0};
+};
+
+enum FilterSpanBoundary {
+  FSB_INCLUDE_BOUND = 0,  // include
+  FSB_EXCLUDE_BOUND,      // exclude
+  FSB_NONE                // none
+};
+
+/**
+ * @brief Defines a structure representing a filter span, used to specify
+ * filtering conditions for string or numerical ranges.
+ *
+ * This structure contains the left and right boundary values of the span, as
+ * well as the inclusion types of the left and right boundaries. It can be used
+ * to filter data that meets specific range criteria.
+ */
+struct FilterSpan {
+  SpanValue start;                   // left value
+  SpanValue end;                     // right value
+  FilterSpanBoundary startBoundary;  // left value type
+  FilterSpanBoundary endBoundary;    // right value type
+};
+
+enum BlockFilterType {
+  BFT_SPAN = 0,  // span
+  BFT_NULL,      // is null
+  BFT_NOTNULL    // is not null
+};
+
+/**
+ * @brief Defines a block filter structure used to store block-level filtering
+ * information.
+ *
+ * This structure contains a column ID, a filter type, and a series of filter
+ * spans. It can be used to apply conditional filtering to data blocks.
+ */
+struct BlockFilter {
+  k_uint32 colID;
+  BlockFilterType filterType;
+  std::vector<FilterSpan> spans;
+  void Reset() {
+    for (k_int32 i = 0; i < spans.size(); i++) {
+      if (spans[i].start.data) {
+        free(spans[i].start.data);
+        spans[i].start.data = nullptr;
+      }
+      if (spans[i].end.data) {
+        free(spans[i].end.data);
+        spans[i].end.data = nullptr;
+      }
+    }
+  }
+};
+
+/**
+ * @brief Defines a structure for iterator parameters, used to store various
+ * parameters required for an iterator to perform a scanning operation.
+ */
+struct IteratorParams {
+  std::vector<EntityResultIndex>& entity_ids;
+  std::vector<KwTsSpan>& ts_spans;
+  std::vector<BlockFilter>& block_filter;
+  std::vector<k_uint32>& scan_cols;
+  std::vector<k_int32>& agg_extend_cols;
+  std::vector<Sumfunctype>& scan_agg_types;
+  k_uint32 table_version;
+  std::vector<timestamp64> ts_points;
+  bool reverse;
+  bool sorted;
+  k_uint32 offset;
+  k_uint32 limit;
+};
 
 }  //  namespace kwdbts

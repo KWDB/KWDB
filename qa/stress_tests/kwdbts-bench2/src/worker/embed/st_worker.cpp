@@ -208,7 +208,24 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     EntityResultIndex e_idx{1, entity_index, 1};
     TsIterator* iter;
     ctx->ts_engine = st_inst_->GetTSEngine();
-    auto status = tablev2->GetNormalIterator(ctx, {e_idx}, ts_spans, scan_cols, {}, scan_agg_types, tbl_version, &iter, {}, false, false);
+    std::vector<EntityResultIndex> entity_ids = {e_idx};
+    std::vector<BlockFilter> block_filter;
+    std::vector<k_int32> agg_extend_cols;
+    IteratorParams params = {
+        .entity_ids = entity_ids,
+        .ts_spans = ts_spans,
+        .block_filter = block_filter,
+        .scan_cols = scan_cols,
+        .agg_extend_cols = agg_extend_cols,
+        .scan_agg_types = scan_agg_types,
+        .table_version = tbl_version,
+        .ts_points = {},
+        .reverse = false,
+        .sorted = false,
+        .offset = 0,
+        .limit = 0,
+    };
+    auto status = tablev2->GetNormalIterator(ctx, params, &iter);
     s = dump_zstatus("GetIterator", ctx, status);
     if (s.isNotOK()) {
       return s;
@@ -239,7 +256,7 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     vector<uint32_t> entity_ids = {entity_index};
     SubGroupID group_id = 1;
     TsStorageIterator* iter;
-    stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
+    stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
                         {}, false, false);
     s = dump_zstatus("GetIterator", ctx, stat);
     if (s.isNotOK()) {

@@ -70,10 +70,11 @@ class TsEntitySegmentBlockItemFileBuilder {
   uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   TsBlockItemFileHeader header_;
+  bool override_ = false;
 
  public:
-  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path, uint64_t file_number)
-      : file_path_(file_path), file_number_(file_number) {
+  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path, uint64_t file_number, bool override)
+      : file_path_(file_path), file_number_(file_number), override_(override) {
     memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
@@ -90,10 +91,11 @@ class TsEntitySegmentBlockFileBuilder {
   uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
+  bool override_ = false;
 
  public:
-  explicit TsEntitySegmentBlockFileBuilder(const string& file_path, uint64_t file_number)
-      : file_path_(file_path), file_number_(file_number) {
+  explicit TsEntitySegmentBlockFileBuilder(const string& file_path, uint64_t file_number, bool override)
+      : file_path_(file_path), file_number_(file_number), override_(override) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -110,10 +112,11 @@ class TsEntitySegmentAggFileBuilder {
   uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
+  bool override_ = false;
 
  public:
-  explicit TsEntitySegmentAggFileBuilder(const string& file_path, uint64_t file_number)
-      : file_path_(file_path), file_number_(file_number) {
+  explicit TsEntitySegmentAggFileBuilder(const string& file_path, uint64_t file_number, bool override)
+      : file_path_(file_path), file_number_(file_number), override_(override) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -222,7 +225,7 @@ class TsEntitySegmentBuilder {
     std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_header_file_num);
     entity_item_builder_ =
         std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
-
+    bool override = cur_entity_segment_ == nullptr ? true : false;
     uint64_t block_header_file_num;
     uint64_t datablock_file_num;
     uint64_t aggblock_file_num;
@@ -242,13 +245,13 @@ class TsEntitySegmentBuilder {
     // block header file
     std::string block_header_file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
     block_item_builder_ =
-        std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_header_file_num);
+        std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_header_file_num, override);
     // block data file
     std::string block_file_path = root_path_ / DataBlockFileName(datablock_file_num);
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, datablock_file_num);
+    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, datablock_file_num, override);
     // block agg file
     std::string agg_file_path = root_path_ / EntityAggFileName(aggblock_file_num);
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, aggblock_file_num);
+    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, aggblock_file_num, override);
   }
 
   TsEntitySegmentBuilder(const std::string& root_path, TsVersionManager* version_manager,

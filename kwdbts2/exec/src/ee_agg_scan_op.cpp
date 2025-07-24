@@ -36,11 +36,11 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
       break;
     }
 
-    for (k_int32 i = 0; i < table_reader_spec_.aggregator().aggregations_size(); ++i) {
-      aggregations_.push_back(table_reader_spec_.aggregator().aggregations(i));
+    for (k_int32 i = 0; i < spec_->aggregator().aggregations_size(); ++i) {
+      aggregations_.push_back(spec_->aggregator().aggregations(i));
     }
 
-    group_cols_size_ = table_reader_spec_.aggregator().group_cols_size();
+    group_cols_size_ = spec_->aggregator().group_cols_size();
     group_cols_ = static_cast<k_uint32 *>(malloc(group_cols_size_ * sizeof(k_uint32)));
     if (!group_cols_) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
@@ -48,7 +48,7 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
       break;
     }
     for (k_int32 i = 0; i < group_cols_size_; ++i) {
-      k_uint32 group_col = table_reader_spec_.aggregator().group_cols(i);
+      k_uint32 group_col = spec_->aggregator().group_cols(i);
       group_cols_[i] = group_col;
     }
     agg_source_target_col_map_ = static_cast<k_uint32 *>(malloc(num_ * sizeof(k_uint32)));

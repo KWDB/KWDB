@@ -185,4 +185,83 @@ KTimestampTz TimeAddDuration(KTimestampTz ts, k_int64 duration,
   return (k_int64)(mktime(&tm) * MILLISECOND_PER_SECOND);
 }
 
+std::string parseUnicode2Utf8(const std::string &str) {
+  std::string utf8str;
+  for (size_t i = 0; i < str.size(); i++) {
+    if (str[i] == '\\') {
+      if (i + 10 <= str.size() && str[i + 1] == 'U') {
+        // Parse unicode escape sequences
+        int codepoint = std::stoi(str.substr(i + 2, 8), nullptr, 16);
+        i += 9;
+        if (codepoint <= 0x7F) {
+          utf8str += static_cast<char>(codepoint);
+        } else if (codepoint <= 0x7FF) {
+          utf8str += static_cast<char>(0xC0 | ((codepoint >> 6) & 0x1F));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else if (codepoint <= 0xFFFF) {
+          utf8str += static_cast<char>(0xE0 | ((codepoint >> 12) & 0x0F));
+          utf8str += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else if (codepoint <= 0x10FFFF) {
+          utf8str += static_cast<char>(0xF0 | ((codepoint >> 18) & 0x07));
+          utf8str += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+          utf8str += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else {
+          // error
+          return str;
+        }
+      } else if (i + 4 < str.size() && str[i + 1] == 'u') {
+        // Parse unicode escape symbols
+        int codepoint = std::stoi(str.substr(i + 2, 4), nullptr, 16);
+        i += 5;
+        if (codepoint <= 0x7F) {
+          utf8str += static_cast<char>(codepoint);
+        } else if (codepoint <= 0x7FF) {
+          utf8str += static_cast<char>(0xC0 | ((codepoint >> 6) & 0x1F));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else if (codepoint <= 0xFFFF) {
+          utf8str += static_cast<char>(0xE0 | ((codepoint >> 12) & 0x0F));
+          utf8str += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else {
+          // error
+          return str;
+        }
+      } else if (i + 1 < str.size()) {
+        if (str[i + 1] != '\'') {
+          utf8str += str[i];
+        }
+        i++;
+        if (str[i] != '\\') {
+          utf8str += str[i];
+        }
+      } else {
+        utf8str += str[i];
+      }
+    } else {
+      utf8str += str[i];
+    }
+  }
+  utf8str.erase(std::remove(utf8str.begin(), utf8str.end(), '\0'),
+                utf8str.end());
+  return utf8str;
+}
+
+std::string parseHex2String(const std::string &hexStr) {
+  std::string asciiStr;
+  if ((hexStr.substr(0, 2) != "\\x")) {
+    return hexStr;
+  }
+  for (size_t i = 2; i < hexStr.length(); i += 2) {
+    // extract two characters (hexadecimal numbers)
+    std::string hexByte = hexStr.substr(i, 2);
+    // convert hexadecimal numbers to integers
+    int value = std::stoi(hexByte, nullptr, 16);
+    // Convert integers to characters and add them to the result string
+    asciiStr += static_cast<char>(value);
+  }
+  return asciiStr;
+}
+
 }  // namespace kwdbts

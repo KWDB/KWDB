@@ -79,8 +79,11 @@ class TableScanOperator : public BaseOperator {
   k_bool ResolveOffset();
   EEIteratorErrCode InitHelper(kwdbContext_p ctx);
 
- protected:
+ public:
+  TSReaderSpec* spec_{nullptr};
   TSPostProcessSpec* post_{nullptr};
+
+ protected:
   k_uint32 schema_id_{0};
   k_uint64 object_id_{0};
   std::vector<KwTsSpan> ts_kwspans_;

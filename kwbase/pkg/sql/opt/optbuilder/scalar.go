@@ -118,6 +118,7 @@ func (b *Builder) buildScalar(
 			// effectively constant) or it is part of a table and we are already
 			// grouping on the entire PK of that table.
 			g := inScope.groupby
+			canApplyAggExtend := inScope.CanApplyAggExtend(nil)
 			if !inScope.isOuterColumn(t.id) && !b.allowImplicitGroupingColumn(t.id, g) {
 				if inScope.AggExHelper.bType == buildProjection {
 					// 1. can apply agg extend, not need report error, eg:
@@ -125,7 +126,7 @@ func (b *Builder) buildScalar(
 					// 2. time_window used with first(ts) or last(ts), not need report error,
 					// because projection will add time_window_start(ts) or time_window_end(ts)
 					// eg: select last(ts),avg(e2) from test.t group by tag1, time_window(ts, '10min')
-					if !inScope.CanApplyAggExtend(nil) {
+					if !canApplyAggExtend {
 						panic(newGroupingError(&t.name))
 					} else {
 						inScope.AggExHelper.extendColSet.Add(t.id)
@@ -135,7 +136,7 @@ func (b *Builder) buildScalar(
 				}
 			}
 
-			if !inScope.CanApplyAggExtend(nil) {
+			if !canApplyAggExtend {
 				// We add a new grouping column; these show up both in aggInScope and
 				// aggOutScope.
 				//

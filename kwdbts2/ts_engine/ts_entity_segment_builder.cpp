@@ -43,7 +43,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
 
 KStatus TsEntitySegmentBlockItemFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -71,7 +71,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
 
 KStatus TsEntitySegmentBlockFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -95,7 +95,7 @@ KStatus TsEntitySegmentBlockFileBuilder::AppendBlock(const TSSlice& block, uint6
 
 KStatus TsEntitySegmentAggFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -804,17 +804,17 @@ TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, T
   uint64_t block_item_file_number = version_manager->NewFileNumber();
   std::string block_header_file_path = root / BlockHeaderFileName(block_item_file_number);
   block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path,
-                                                                              block_item_file_number);
+                                                                              block_item_file_number, false);
 
   // block data file
   uint64_t block_data_file_number = version_manager->NewFileNumber();
   std::string block_file_path = root / DataBlockFileName(block_data_file_number);
-  block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, block_data_file_number);
+  block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, block_data_file_number, false);
 
   // block agg file
   uint64_t agg_file_number = version_manager->NewFileNumber();
   std::string agg_file_path = root / EntityAggFileName(agg_file_number);
-  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, agg_file_number);
+  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, agg_file_number, false);
 }
 
 KStatus TsEntitySegmentVacuumer::Open() {

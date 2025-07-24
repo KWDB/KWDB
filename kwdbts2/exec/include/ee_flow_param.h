@@ -132,6 +132,8 @@ class ReaderPostResolve : public PostResolve {
     return outputcols_[index];
   }
 
+  EEIteratorErrCode ResolveBlockFilter(TSReaderSpec *spec);
+
  private:
   k_bool is_filter_{0};
   Field **renders_{nullptr};
