@@ -542,6 +542,11 @@ KStatus WALBufferMgr::setHeaderBlockCheckpointInfo(TS_LSN checkpoint_lsn, uint32
   return SUCCESS;
 }
 
+KStatus WALBufferMgr::setHeaderBlockFirstLSN(TS_LSN first_lsn) {
+  headerBlock_.setFirstLSN(first_lsn);
+  return SUCCESS;
+}
+
 KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
                                size_t length, TS_LSN& lsn_offset) {
   // In this method, buf_mutex is required to protect current block and the subsequent Block that may be used.
@@ -672,6 +677,44 @@ KStatus WALBufferMgr::flushInternal(bool flush_header) {
   }
 
   file_mgr_->Unlock();
+
+  begin_block_index_ = current_block_index_;
+  uint64_t end_block_no = buffer_[end_block_index_].getBlockNo();
+  for (int index = 0; index < blocks.size() - 1; index++) {
+    blocks[index]->reset(++end_block_no);
+  }
+
+  end_block_index_ = (end_block_index_ + blocks.size() - 1) % init_buffer_size_;
+
+  return s;
+}
+
+KStatus WALBufferMgr::flushWithoutLock(bool flush_header) {
+  vector<EntryBlock*> blocks;
+
+  if (buffer_[begin_block_index_].getDataLen() == 0) {
+    return SUCCESS;
+  }
+
+  if (begin_block_index_ != current_block_index_) {
+    size_t index = begin_block_index_;
+    do {
+      blocks.push_back(&buffer_[index]);
+      index = nextBlockIndex(index);
+    } while (index != current_block_index_);
+  }
+  // include the current block in flushing list.
+  blocks.push_back(currentBlock_);
+
+  // update the flushed lsn to ensure the recovery process loads the correct log records.
+  headerBlock_.setFlushedLsn(getCurrentLsn());
+
+  KStatus s = file_mgr_->writeBlocks(blocks, headerBlock_, flush_header);
+  if (s == FAIL) {
+    LOG_ERROR("Failed to flush the WAL logs to disk.")
+    file_mgr_->Unlock();
+    return FAIL;
+  }
 
   begin_block_index_ = current_block_index_;
   uint64_t end_block_no = buffer_[end_block_index_].getBlockNo();
@@ -893,8 +936,8 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       read_offset += sizeof(UpdateLogTagsEntry::offset_);
       memcpy(&length, read_buf + read_offset,
              sizeof(UpdateLogTagsEntry::length_));
-      read_offset += sizeof(DeleteLogTagsEntry::p_tag_len_);
-      memcpy(&old_len, read_buf + read_offset, sizeof(DeleteLogTagsEntry::tag_len_));
+      read_offset += sizeof(UpdateLogTagsEntry::length_);
+      memcpy(&old_len, read_buf + read_offset, sizeof(UpdateLogTagsEntry::old_len_));
       delete[] read_buf;
       read_buf = nullptr;
 

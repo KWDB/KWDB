@@ -256,6 +256,8 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value);
   void AlterTableCacheCapacity(int capacity)  override {}
 
+  KStatus SortWALFile(kwdbContext_p ctx);
+
   // init all engine.
   KStatus Init(kwdbContext_p ctx);
 

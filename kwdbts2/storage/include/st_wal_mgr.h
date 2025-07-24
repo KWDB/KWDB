@@ -44,7 +44,7 @@ class WALMgr {
    * @param ctx
    * @return
    */
-  KStatus Init(kwdbContext_p ctx);
+  KStatus Init(kwdbContext_p ctx, bool init_engine = false);
 
   /**
    * Write WAL log entry into WAL Buffer.
@@ -82,6 +82,8 @@ class WALMgr {
    */
   KStatus Flush(kwdbContext_p ctx);
 
+  KStatus FlushWithoutLock(kwdbContext_p ctx);
+
   /**
    * Synchronize data to disk by calling the FLush method of Tag tables and Metrics tables to ensure the
    * persistence of time-series data to save recovery time after an outage.
@@ -91,6 +93,8 @@ class WALMgr {
   KStatus CreateCheckpoint(kwdbContext_p ctx);
 
   KStatus CreateCheckpointWithoutFlush(kwdbContext_p ctx);
+
+  KStatus UpdateFirstLSN(TS_LSN first_lsn);
 
   KStatus UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn);
 
@@ -302,6 +306,11 @@ class WALMgr {
    */
   KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk);
 
+
+  TS_LSN GetFirstLSN();
+
+  KStatus ResetCurLSNAndFlushMeta(kwdbContext_p ctx, TS_LSN cur_lsn);
+
   /**
    *
    * @param logs
@@ -360,6 +369,10 @@ class WALMgr {
   */
   void CleanUp(kwdbContext_p ctx);
 
+  string GetWALFilePath() { return file_mgr_->getFilePath(); }
+
+  string GetWALChkFilePath() { return file_mgr_->getChkFilePath(); }
+
   /*
    *
    */
@@ -377,6 +390,8 @@ class WALMgr {
    */
 
   KStatus SwitchNextFile();
+
+  KStatus SwitchLastFile(kwdbContext_p ctx, TS_LSN last_lsn);
 
   /**
   * NeedCheckpoint
