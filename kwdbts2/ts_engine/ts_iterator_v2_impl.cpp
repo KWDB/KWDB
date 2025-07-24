@@ -328,8 +328,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS: {
-          k_int32 col_idx = (i < ts_scan_cols_.size()) ? ts_scan_cols_[i] : -1;
-          if (col_idx >= 0 && attrs_[col_idx].isFlag(AINFO_NOT_NULL)) {
+          if (attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::LAST) {
               scan_agg_types_[i] = Sumfunctype::LAST_ROW;
             } else {
@@ -350,8 +349,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         break;
       case Sumfunctype::FIRST:
       case Sumfunctype::FIRSTTS: {
-          k_int32 col_idx = (i < ts_scan_cols_.size()) ? ts_scan_cols_[i] : -1;
-          if (col_idx >= 0 && attrs_[col_idx].isFlag(AINFO_NOT_NULL)) {
+          if (attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::FIRST) {
               scan_agg_types_[i] = Sumfunctype::FIRST_ROW;
             } else {
