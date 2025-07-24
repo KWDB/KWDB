@@ -32,7 +32,7 @@ class WALMgr {
  public:
   WALMgr(const string& db_path, const KTableKey& table_id, uint64_t tbl_grp_id, EngineOptions* opt);
 
-  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt);
+  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt, bool read_chk = false);
 
   ~WALMgr();
 
@@ -44,7 +44,7 @@ class WALMgr {
    * @param ctx
    * @return
    */
-  KStatus Init(kwdbContext_p ctx, bool init_engine = false);
+  KStatus Init(kwdbContext_p ctx, bool init_engine = false, TS_LSN last_lsn = 0);
 
   /**
    * Write WAL log entry into WAL Buffer.
@@ -434,6 +434,7 @@ class WALMgr {
   std::fstream meta_file_;
   using WALMgrLatch = KLatch;
   WALMgrLatch* meta_mutex_;
+  bool read_chk_;
 //  TsVGroup* vg_{nullptr};
 };
 }  // namespace kwdbts

@@ -33,8 +33,8 @@ WALMgr::WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
 }
 
-WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt) :
-      db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt) {
+WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt, bool read_chk) :
+      db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt), read_chk_(read_chk) {
   wal_path_ = db_path_ + "/wal/" + vgrp_name + "/";
   file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt);
   buffer_mgr_ = KNEW WALBufferMgr(opt, file_mgr_);
@@ -89,7 +89,27 @@ KStatus WALMgr::Create(kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
+KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal, TS_LSN last_lsn) {
+  if (read_chk_) {
+    meta_ = {last_lsn, 0, 0, 0};
+    TS_LSN current_lsn = FetchCurrentLSN();
+    KStatus s = file_mgr_->Open();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to open the WAL file ")
+      s = file_mgr_->initWalFile(current_lsn);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to init a WAL file")
+        return s;
+      }
+    }
+
+    s = buffer_mgr_->init(current_lsn);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to initialize the WAL buffer with LSN %lu", current_lsn)
+      return s;
+    }
+    return SUCCESS;
+  }
   if (!IsExists(wal_path_)) {
     return Create(ctx);
   }
@@ -808,12 +828,6 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN sta
   if (status == KStatus::FAIL) {
     LOG_ERROR("Failed to read the WAL log.")
     file_mgr_->Unlock();
-    return status;
-  }
-  status = SwitchNextFile();
-  file_mgr_->Unlock();
-  if (status == KStatus::FAIL) {
-    LOG_ERROR("Failed to switch next WAL file.")
     return status;
   }
   return status;
