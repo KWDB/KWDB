@@ -22,6 +22,8 @@
 #include "ee_global.h"
 
 namespace kwdbts {
+int64_t TsMaxMilliTimestamp = 31556995200000;  // be associated with 'kwbase/pkg/sql/sem/tree/type_check.go'
+int64_t TsMaxMicroTimestamp = 31556995200000000;
 
 KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, shared_ptr<TsBlockSpan>& ts_blk_span,
                                     ResultSet* res, k_uint32* count) {
@@ -328,7 +330,8 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS: {
-          if (attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
+          if ((last_ts_points_[i] == TsMaxMilliTimestamp || last_ts_points_[i] == TsMaxMicroTimestamp)
+              && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::LAST) {
               scan_agg_types_[i] = Sumfunctype::LAST_ROW;
             } else {
