@@ -1041,6 +1041,20 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       LOG_ERROR("Failed to write end checkpoint wal.")
       return s;
     }
+
+    for (const auto &vgrp : vgroups_) {
+      s = vgrp->GetWALManager()->RemoveChkFile(ctx);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to Remove vgroup ChkFile.")
+        return s;
+      }
+    }
+    // 5. remove old chk file
+    s = wal_mgr_->RemoveChkFile(ctx);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to remove chk file.")
+      return s;
+    }
     return KStatus::SUCCESS;
   }
   std::vector<LogEntry*> logs;
