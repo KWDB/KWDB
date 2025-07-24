@@ -137,7 +137,7 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
         }
 
         if (filter_span.startBoundary != FSB_NONE) {
-          k_int32 max_len = std::max(max.len, filter_span.start.len);
+          k_int32 max_len = std::min(max.len, filter_span.start.len);
           ret = memcmp(max.data, filter_span.start.data, max_len);
           max_res = (ret == 0) ? (max.len - filter_span.start.len) : ret;
         }
@@ -146,7 +146,13 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
       case DATATYPE::INT8:
       case DATATYPE::INT16:
       case DATATYPE::INT32:
-      case DATATYPE::INT64: {
+      case DATATYPE::INT64:
+      case DATATYPE::TIMESTAMP64:
+      case DATATYPE::TIMESTAMP64_MICRO:
+      case DATATYPE::TIMESTAMP64_NANO:
+      case DATATYPE::TIMESTAMP64_LSN:
+      case DATATYPE::TIMESTAMP64_LSN_MICRO:
+      case DATATYPE::TIMESTAMP64_LSN_NANO: {
         min_res = (min.ival > filter_span.end.ival) ? 1 : ((min.ival < filter_span.end.ival) ? -1 : 0);
         max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
         break;
@@ -211,12 +217,18 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
       switch (attrs_[col_id].type) {
         case DATATYPE::BYTE:
         case DATATYPE::BOOL:
-        case DATATYPE::CHAR:
-        case DATATYPE::BINARY:
-        case DATATYPE::STRING: {
+        case DATATYPE::BINARY: {
           min.data = static_cast<char*>(min_addr);
           max.data = static_cast<char*>(max_addr);
           min.len = max.len = attrs_[col_id].size;
+          break;
+        }
+        case DATATYPE::CHAR:
+        case DATATYPE::STRING: {
+          min.data = static_cast<char*>(min_addr);
+          max.data = static_cast<char*>(max_addr);
+          min.len = strlen(min.data);
+          max.len = strlen(max.data);
           break;
         }
         case DATATYPE::INT8: {
