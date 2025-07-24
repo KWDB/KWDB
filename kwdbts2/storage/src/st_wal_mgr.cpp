@@ -89,9 +89,9 @@ KStatus WALMgr::Create(kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal, TS_LSN last_lsn) {
+KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal, WALMeta meta) {
   if (read_chk_) {
-    meta_ = {last_lsn, 0, 0, 0};
+    meta_ = meta;
     TS_LSN current_lsn = FetchCurrentLSN();
     KStatus s = file_mgr_->Open();
     if (s == KStatus::FAIL) {
@@ -847,6 +847,10 @@ KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& 
 
 KStatus WALMgr::ReadWALLogForTSx(char* ts_trans_id, std::vector<LogEntry*>& logs) {
   return SUCCESS;
+}
+
+WALMeta WALMgr::GetMeta() const {
+  return meta_;
 }
 
 TS_LSN WALMgr::FetchCurrentLSN() const {

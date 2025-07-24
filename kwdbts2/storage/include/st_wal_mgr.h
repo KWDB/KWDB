@@ -44,7 +44,7 @@ class WALMgr {
    * @param ctx
    * @return
    */
-  KStatus Init(kwdbContext_p ctx, bool init_engine = false, TS_LSN last_lsn = 0);
+  KStatus Init(kwdbContext_p ctx, bool init_engine = false, WALMeta meta = {});
 
   /**
    * Write WAL log entry into WAL Buffer.
@@ -335,6 +335,8 @@ class WALMgr {
    * @return
    */
   KStatus ReadWALLogForTSx(char* ts_trans_id, std::vector<LogEntry*>& logs);
+
+  WALMeta GetMeta() const;
 
   /**
    * Get current LSN
