@@ -53,6 +53,10 @@ func (r *tsTxnResumer) Resume(
 }
 
 // handleTsTxnRecord handles ts txn by txn record status.
+// It iterates over all ts txn records, and for each expired record:
+//   - Deletes the record if status is Committed or Aborted
+//   - Sends a rollback request if status is Pending
+//   - Sends a commit request if status is Prepared
 func (p *planner) handleTsTxnRecord(ctx context.Context) error {
 	// make ts txn record start key
 	startKey := roachpb.Key(keys.MakeTablePrefix(keys.TsTxnTableID))

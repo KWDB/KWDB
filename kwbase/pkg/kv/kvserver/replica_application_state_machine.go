@@ -406,9 +406,12 @@ type replicaAppBatch struct {
 	mutations    int
 	start        time.Time
 
-	tableID        uint64
-	rangeGroupID   uint64
-	TSTxnID        uint64
+	tableID      uint64
+	rangeGroupID uint64
+	TSTxnID      uint64
+	// needAutoCommit indicates whether to auto-commit after
+	// request execution. Default is true. Only set to false
+	// when atomicity is enabled and performing time-series inserts.
 	needAutoCommit bool
 }
 
