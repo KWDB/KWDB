@@ -1002,13 +1002,13 @@ KStatus WALMgr::SwitchNextFile() {
   }
 
   kwdbts::kwdbContext_p ctx;
-  s = UpdateCheckpointWithoutFlush(ctx, first_lsn);
+  UpdateCheckpointWithoutFlush(ctx, first_lsn);
+  UpdateFirstLSN(first_lsn);
+  s = FlushWithoutLock(ctx);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to WriteCheckpointWAL.")
+    LOG_ERROR("Failed to FlushWithoutLock.")
     return FAIL;
   }
-  UpdateFirstLSN(first_lsn);
-  FlushWithoutLock(ctx);
 
   return KStatus::SUCCESS;
 }

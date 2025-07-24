@@ -993,6 +993,55 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
    */
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
+  } else if (EngineOptions::isSingleNode()) {
+    std::vector<uint64_t> vgrp_lsn;
+    // 1. switch engine wal file
+    KStatus s = wal_mgr_->SwitchNextFile();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to switch chk file.")
+      return s;
+    }
+
+    // 2. switch vgroup wal file
+    for (const auto &vgrp : vgroups_) {
+      vgrp->GetWALManager()->Lock();
+      vgrp_lsn.emplace_back(vgrp->GetWALManager()->FetchCurrentLSN());
+      s = vgrp->GetWALManager()->SwitchNextFile();
+      if (s == KStatus::FAIL) {
+        vgrp->GetWALManager()->Unlock();
+        LOG_ERROR("Failed to switch vgroup chk file.")
+        return s;
+      }
+      vgrp->GetWALManager()->Unlock();
+    }
+
+    // 3. trig all vgroup flush
+    for (const auto &vgrp : vgroups_) {
+      s = vgrp->Flush();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to flush metric file.")
+        return s;
+      }
+    }
+
+    // 4. write end chkckpoint wal
+    TS_LSN end_lsn;
+    uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
+    char* v_lsn = new char[lsn_len];
+    int location = 0;
+    for (auto it : vgrp_lsn) {
+      memcpy(v_lsn + location, &it, sizeof(uint64_t));
+      location += sizeof(uint64_t);
+    }
+    auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+    s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
+    delete []end_chk_log;
+    delete []v_lsn;
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to write end checkpoint wal.")
+      return s;
+    }
+    return KStatus::SUCCESS;
   }
   std::vector<LogEntry*> logs;
   std::vector<LogEntry*> rewrite;
