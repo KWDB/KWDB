@@ -31,6 +31,7 @@
 #include "ts_io.h"
 #include "ts_segment.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_lastsegment_endec.h"
 
 namespace kwdbts {
 
@@ -72,51 +73,6 @@ class LastSegmentBloomFilter : public LastSegmentMetaBlockBase {
       filter.Serialize(dst);
     }
   }
-};
-
-// first 8 byte of `md5 -s kwdbts::TsLastSegment`
-// TODO(zzr) fix endian
-static constexpr uint64_t FOOTER_MAGIC = 0xcb2ffe9321847271;
-
-struct TsLastSegmentFooter {
-  uint64_t block_info_idx_offset, n_data_block;
-  uint64_t meta_block_idx_offset, n_meta_block;
-  uint8_t padding[16];
-  uint64_t file_version;
-  uint64_t magic_number;
-};
-static_assert(sizeof(TsLastSegmentFooter) == 64);
-static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter>);
-
-struct TsLastSegmentBlockIndex {
-  uint64_t offset, length;
-  uint64_t table_id;
-  uint32_t table_version, n_entity;
-  int64_t min_ts, max_ts;
-  uint64_t min_lsn, max_lsn;
-  uint64_t min_entity_id, max_entity_id;
-};
-
-struct TsLastSegmentBlockInfo {
-  uint64_t block_offset;
-  uint32_t nrow;
-  uint32_t ncol;
-  uint32_t var_offset;
-  uint32_t var_len;
-  struct ColInfo {
-    uint32_t offset;
-    uint16_t bitmap_len;
-    uint32_t data_len;
-  };
-  std::vector<ColInfo> col_infos;
-};
-const size_t LAST_SEGMENT_BLOCK_INFO_HEADER_SIZE = sizeof(uint64_t) + 4 * sizeof(uint32_t);
-const size_t LAST_SEGMENT_BLOCK_INFO_COL_INFO_SIZE =
-    sizeof(uint32_t) + sizeof(uint16_t) + sizeof(uint32_t);
-
-struct TsLastSegmentColumnBlock {
-  TsBitmap bitmap;
-  std::string buffer;
 };
 
 class TsLastSegment : public TsSegmentBase {
@@ -191,7 +147,7 @@ class TsLastSegment::TsLastSegBlockCache {
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>** block_indexes) const;
   KStatus GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const;
-  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const;
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo2** info) const;
   KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
 };
 
@@ -211,13 +167,13 @@ class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
  private:
   TsLastSegBlockCache* lastseg_cache_;
   std::vector<uint8_t> cache_flag_;
-  std::vector<TsLastSegmentBlockInfo> block_infos_;
+  std::vector<TsLastSegmentBlockInfo2> block_infos_;
   std::shared_mutex mu_;
 
  public:
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
       : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
-  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info);
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo2** info);
 };
 
 class TsLastSegment::TsLastSegBlockCache::BlockCache {

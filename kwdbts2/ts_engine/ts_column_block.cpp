@@ -56,11 +56,6 @@ void TsColumnBlockBuilder::AppendColumnBlock(TsColumnBlock& col) {
   count_ += col.GetRowNum();
 }
 
-KStatus TsColumnBlock::GetColAddr(char** value) {
-  *value = fixlen_data_.data();
-  return SUCCESS;
-}
-
 KStatus TsColumnBlock::GetColBitmap(TsBitmap& bitmap) {
   bitmap = bitmap_;
   return SUCCESS;
@@ -85,7 +80,7 @@ KStatus TsColumnBlock::GetValueSlice(int row_num, TSSlice& value) {
   return SUCCESS;
 }
 
-bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* info) {
+bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* info, bool compress) {
   std::string compressed_data;
   info->row_count = count_;
 
@@ -103,7 +98,7 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(col_schema_.type));
   if (isVarLenType(col_schema_.type)) {
     // varchar use Gorilla algorithm
-    first = TsCompAlg::kChimp_32;
+    first = compress ? TsCompAlg::kChimp_32 : TsCompAlg::kPlain;
     bitmap = nullptr;
   }
 
@@ -117,6 +112,11 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
     }
     input.data = reinterpret_cast<char*>(tmp_ts.data());
     input.len = tmp_ts.size() * sizeof(timestamp64);
+  }
+
+  if (!compress) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
   }
 
   bool ok = mgr.CompressData(input, bitmap, count_, &tmp, first, second);

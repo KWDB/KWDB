@@ -128,7 +128,7 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
 
     char buf[10240];
     TSSlice result;
-    file->Read(idx_block.offset, idx_block.length, &result, buf);
+    file->Read(idx_block.info_offset, idx_block.length, &result, buf);
     TsLastSegmentBlockInfo info;
     GetFixed64(&result, &info.block_offset);
     GetFixed32(&result, &info.nrow);

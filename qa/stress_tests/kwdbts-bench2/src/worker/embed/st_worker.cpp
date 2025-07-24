@@ -96,7 +96,7 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     s = dump_zstatus("PutData", ctx, stat);
     KWDB_DURATION(_row_put_time);
   }
-  delete[] payload.data;
+  free(payload.data);
   _row_sum += params_.BATCH_NUM;
   return s;
 }

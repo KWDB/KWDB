@@ -39,23 +39,22 @@ class TsMetricBlock {
 
  private:
   int count_;
-  std::string lsn_buffer_;
+  std::vector<TS_LSN> lsn_buffer_;
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
-  TsMetricBlock(int count, std::string&& lsn_buffer,
-                std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks)
-      : count_(count),
-        lsn_buffer_(std::move(lsn_buffer)),
-        column_blocks_(std::move(column_blocks)) {}
+  TsMetricBlock(int count, std::vector<TS_LSN>&& lsn_buffer, std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks)
+      : count_(count), lsn_buffer_(std::move(lsn_buffer)), column_blocks_(std::move(column_blocks)) {}
 
  public:
-  static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema,
-                                           TSSlice compressed_data,
+  static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema, TSSlice compressed_data,
                                            const TsMetricCompressInfo& compress_info,
                                            std::unique_ptr<TsMetricBlock>* metric_block);
   const TS_LSN* GetLSNAddr() const { return reinterpret_cast<const TS_LSN*>(lsn_buffer_.data()); }
+  const timestamp64* GetTSAddr() const { return reinterpret_cast<const timestamp64*>(column_blocks_[0]->GetColAddr()); }
+  int GetColNum() const { return column_blocks_.size(); }
+  int GetRowNum() const { return count_; }
 
-  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info);
+  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_lsn);
 };
 
 class TsMetricBlockBuilder {
@@ -67,17 +66,18 @@ class TsMetricBlockBuilder {
   std::vector<std::unique_ptr<TsColumnBlockBuilder>> column_block_builders_;
 
   int count_ = 0;
-  std::string lsn_buffer_;
+  std::vector<TS_LSN> lsn_buffer_;
 
  public:
   explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>& col_schemas)
-      : col_schemas_(col_schemas), column_block_builders_(col_schemas.size()) {
+      : col_schemas_(col_schemas), column_block_builders_(col_schemas_.size()) {
     for (size_t i = 0; i < col_schemas.size(); i++) {
-      column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>(col_schemas[i]);
+      column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>(col_schemas_[i]);
     }
   }
 
   KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
   std::unique_ptr<TsMetricBlock> GetMetricBlock();
+  int GetRowNum() const { return count_; }
 };
 }  // namespace kwdbts
