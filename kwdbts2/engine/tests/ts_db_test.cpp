@@ -194,7 +194,7 @@ TEST_F(TestDB, insert) {
   {
     // INSERT INTO benchmark.host_template VALUES ('host_0','x86', 510,56),('host_23','x86', 780,62);
     TSSlice payload;
-    TSStatus s = TSPutEntity(ts_db_, table_id, &payload, 0, kDefaultRange, 0);
+    TSStatus s = TSPutEntity(ts_db_, table_id, &payload, 0, kDefaultRange, 0, true);
     ASSERT_EQ(s.data, nullptr);
     free(s.data);
   }

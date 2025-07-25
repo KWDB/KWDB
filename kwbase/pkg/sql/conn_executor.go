@@ -65,6 +65,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/logtags"
+	"github.com/petermattis/goid"
 	"golang.org/x/net/trace"
 )
 
@@ -1260,6 +1261,8 @@ type connExecutor struct {
 	// any. This is printed by high-level panic recovery.
 	curStmt tree.Statement
 
+	goroutineID int64
+
 	sessionID ClusterWideID
 
 	// activated determines whether activate() was called already.
@@ -1492,6 +1495,7 @@ func (ex *connExecutor) run(
 	ex.ctxHolder.connCtx = ctx
 	ex.onCancelSession = onCancel
 
+	ex.goroutineID = goid.Get()
 	ex.sessionID = ex.generateID()
 	ex.server.cfg.SessionRegistry.register(ex.sessionID, ex)
 	ex.planner.extendedEvalCtx.setSessionID(ex.sessionID)
@@ -2625,6 +2629,7 @@ func (ex *connExecutor) serialize() serverpb.Session {
 		KvTxnID:         kvTxnID,
 		LastActiveQuery: lastActiveQuery,
 		ID:              ex.sessionID.GetBytes(),
+		GoroutineId:     ex.goroutineID,
 		AllocBytes:      ex.mon.AllocBytes(),
 		MaxAllocBytes:   ex.mon.MaximumBytes(),
 		ConnectionId:    "",

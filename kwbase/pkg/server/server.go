@@ -1890,13 +1890,6 @@ func (s *Server) Start(ctx context.Context) error {
 
 	setTse := func() (*tse.TsEngine, error) {
 		if s.cfg.Stores.Specs != nil && s.cfg.Stores.Specs[0].Path != "" && !s.cfg.ForbidCatchCoreDump {
-			tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
-				if !tse.TsRaftLogCombineWAL.Get(&s.st.SV) {
-					if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
-						log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
-					}
-				}
-			})
 			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create ts engine")
@@ -1907,6 +1900,20 @@ func (s *Server) Start(ctx context.Context) error {
 
 			s.node.storeCfg.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
+
+			tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
+				combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
+				s.tsEngine.SetWriteWAL(!combined)
+				if !combined {
+					if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
+						log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
+					}
+				}
+			})
+
+			tse.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
+				storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
+			})
 
 			tsDBCfg := tscoord.TsDBConfig{
 				KvDB:         s.db,
@@ -1923,6 +1930,8 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		return s.tsEngine, nil
 	}
+	// init sync period
+	storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
 	// Now that we have a monotonic HLC wrt previous incarnations of the process,
 	// init all the replicas. At this point *some* store has been bootstrapped or
 	// we're joining an existing cluster for the first time.

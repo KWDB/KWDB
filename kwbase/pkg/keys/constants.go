@@ -140,6 +140,8 @@ var (
 	localRangeLastVerificationTimestampSuffix = []byte("rlvt")
 	// LocalTsFlushedIndexSuffix is the suffix for the ts flushed index.
 	LocalTsFlushedIndexSuffix = []byte("tsf")
+	// LocalInconsistentSuffix is the suffix for the inconsistent flag.
+	LocalInconsistentSuffix = []byte("ics")
 
 	// 3. Range local keys
 	//

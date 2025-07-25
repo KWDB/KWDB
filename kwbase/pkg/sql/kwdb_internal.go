@@ -1198,6 +1198,7 @@ const sessionsSchemaPattern = `
 CREATE TABLE kwdb_internal.%s (
   node_id            INT8 NOT NULL,  -- the node on which the query is running
   session_id         STRING,         -- the ID of the session
+  goroutine_id       BIGINT,         -- the ID of the goroutine
   user_name          STRING,         -- the user running the query
   client_address     STRING,         -- the address of the client that issued the query
   application_name   STRING,         -- the name of the application as per SET application_name
@@ -1278,6 +1279,7 @@ func populateSessionsTable(
 		if err := addRow(
 			tree.NewDInt(tree.DInt(session.NodeID)),
 			sessionID,
+			tree.NewDInt(tree.DInt(session.GoroutineId)),
 			tree.NewDString(session.Username),
 			tree.NewDString(session.ClientAddress),
 			tree.NewDString(session.ApplicationName),
@@ -1302,6 +1304,7 @@ func populateSessionsTable(
 			if err := addRow(
 				tree.NewDInt(tree.DInt(rpcErr.NodeID)), // node ID
 				tree.DNull,                             // session ID
+				tree.DNull,                             // goroutine ID
 				tree.DNull,                             // username
 				tree.DNull,                             // client address
 				tree.DNull,                             // application name
