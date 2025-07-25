@@ -197,7 +197,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpa
     if (min == nullptr) {
       min = malloc(size);
       memcpy(min, current, size);
-    } else if (cmp( min, current, type, size) > 0) {
+    } else if (cmp(min, current, type, size) > 0) {
       memcpy(min, current, size);
     }
   }
