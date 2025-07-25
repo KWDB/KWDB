@@ -160,7 +160,8 @@ struct TSEngine {
    */
   virtual KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                          uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) = 0;
+                          uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true,
+                          const char* tsx_id = nullptr) = 0;
 
   /**
    * @brief Delete data of some specified entities within a specified time range by marking
@@ -418,7 +419,7 @@ struct TSEngine {
     * @return KStatus
     */
   virtual KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                             uint64_t range_id, uint64_t index, uint64_t& mtr_id) = 0;
+                             uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr) = 0;
 
   /**
     * @brief commit mini-transaction
@@ -429,7 +430,7 @@ struct TSEngine {
     * @return KStatus
     */
   virtual KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                              uint64_t range_group_id, uint64_t mtr_id) = 0;
+                              uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) = 0;
 
   /**
     * @brief rollback mini-transaction
@@ -439,9 +440,8 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) = 0;
-
+  virtual KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, uint64_t mtr_id,
+                                bool skip_log = false, const char* tsx_id = nullptr) = 0;
   /**
     * @brief begin one transaction.
     * @param[in] table_id  ID
@@ -604,7 +604,8 @@ class TSEngineImpl : public TSEngine {
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) override;
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true,
+                  const char* tsx_id = nullptr) override;
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
@@ -660,13 +661,13 @@ class TSEngineImpl : public TSEngine {
   KStatus Recover(kwdbContext_p ctx) override;
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                     uint64_t range_id, uint64_t index, uint64_t& mtr_id) override;
+                     uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr) override;
 
   KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                      uint64_t range_group_id, uint64_t mtr_id) override;
+                      uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
 
-  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
+  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, uint64_t mtr_id,
+                        bool skip_log = false, const char* tsx_id = nullptr) override;
 
   KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
 

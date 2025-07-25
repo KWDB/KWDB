@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,26 +15,32 @@
 // This software (KWDB) is licensed under Mulan PSL v2.
 // You can use this software according to the terms and conditions of the Mulan PSL v2.
 // You may obtain a copy of Mulan PSL v2 at:
-//          http://license.coscl.org.cn/MulanPSL2
+//
+//	http://license.coscl.org.cn/MulanPSL2
+//
 // THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-package tscoord
+package kvcoord
 
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
 
 // TsSender is a Sender to send TS requests to TS DB
@@ -45,6 +51,19 @@ type TsSender struct {
 	rpcContext   *rpc.Context
 	gossip       *gossip.Gossip
 	stopper      *stop.Stopper
+	// interceptorStack holds a chain of request interceptors (tsTxnHeartbeater and tsTxnCommitter).
+	interceptorStack []lockedSender
+	// interceptorAlloc preallocates interceptors including tsTxnHeartbeater and tsTxnCommitter
+	interceptorAlloc struct {
+		// tsTxnHeartbeater sends heartbeats for TS insert transactions
+		// to keep the transaction alive during async ingestion.
+		tsTxnHeartbeater
+		// tsTxnCommitter handles responses for TS insert transactions
+		// and decides whether to commit or rollback.
+		tsTxnCommitter
+	}
+	// setting provides access to cluster-wide settings.
+	setting *cluster.Settings
 }
 
 // TsDBConfig is config for building TsSender
@@ -56,6 +75,8 @@ type TsDBConfig struct {
 	Gossip       *gossip.Gossip
 	Stopper      *stop.Stopper
 	IsSingleNode bool
+	Setting      *cluster.Settings
+	NodeID       roachpb.NodeID
 }
 
 var _ kv.Sender = &TsSender{}
@@ -64,6 +85,7 @@ var _ kv.Sender = &TsSender{}
 func (s *TsSender) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	var isTsInsert bool
 	resp := &roachpb.BatchResponse{}
 	if s.isSingleNode {
 		rangeGroupID := uint64(1)
@@ -134,7 +156,7 @@ func (s *TsSender) Send(
 			}
 		}
 		if putPayload != nil {
-			dedupRes, entitiesAffect, err := s.tsEngine.PutData(1, putPayload, 0, true)
+			dedupRes, entitiesAffect, err := s.tsEngine.PutData(1, putPayload, 0, true, nil)
 			if err != nil {
 				// todo need to process dedupResult
 				return nil, &roachpb.Error{Message: err.Error()}
@@ -161,18 +183,23 @@ func (s *TsSender) Send(
 			r := ru.GetInner()
 			switch r.(type) {
 			case *roachpb.TsPutTagRequest,
-				*roachpb.TsDeleteRequest,
+				*roachpb.TsRowPutRequest:
+				isTsInsert = true
+				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+			case *roachpb.TsDeleteRequest,
 				*roachpb.TsDeleteEntityRequest,
 				*roachpb.TsDeleteMultiEntitiesDataRequest,
-				*roachpb.TsTagUpdateRequest,
-				*roachpb.TsRowPutRequest:
+				*roachpb.TsTagUpdateRequest:
 				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 			}
 		}
 	}
 
 	setConsistency()
-	return s.wrapped.Send(ctx, ba)
+	if !TsTxnAtomicityEnabled.Get(&s.setting.SV) || !isTsInsert {
+		return s.wrapped.Send(ctx, ba)
+	}
+	return s.interceptorStack[0].SendLocked(ctx, ba)
 }
 
 // DB is a database handle to a single ts cluster. A DB is safe for
@@ -193,8 +220,25 @@ func NewDB(cfg TsDBConfig) *DB {
 			gossip:       cfg.Gossip,
 			stopper:      cfg.Stopper,
 			isSingleNode: cfg.IsSingleNode,
+			setting:      cfg.Setting,
 		},
 	}
+	tsDB.tss.interceptorAlloc.tsTxnCommitter = tsTxnCommitter{
+		wrapped: cfg.Sender,
+		setting: cfg.Setting,
+		NodeID:  cfg.NodeID,
+		clock:   cfg.KvDB.Clock(),
+	}
+	tsDB.tss.interceptorAlloc.tsTxnHeartbeater = tsTxnHeartbeater{
+		wrapped:      &tsDB.tss.interceptorAlloc.tsTxnCommitter,
+		loopInterval: base.DefaultTxnHeartbeatInterval,
+		stopper:      cfg.Stopper,
+		clock:        cfg.KvDB.Clock(),
+		setting:      cfg.Setting,
+		NodeID:       cfg.NodeID,
+	}
+	tsDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.Locker = &syncutil.RWMutex{}
+	tsDB.tss.interceptorStack = []lockedSender{&tsDB.tss.interceptorAlloc.tsTxnHeartbeater, &tsDB.tss.interceptorAlloc.tsTxnCommitter}
 	return &tsDB
 }
 
@@ -215,6 +259,20 @@ func (db *DB) Run(ctx context.Context, b *kv.Batch) error {
 			return r.Err
 		}
 	}
+	if b.Txn() != nil && !db.tss.isSingleNode && b.IsTsInsert() && TsTxnAtomicityEnabled.Get(&db.tss.setting.SV) {
+		// initialize some fields of TsSender
+		newDB := db.Clone()
+		u := uuid.FastMakeV4()
+		var ranges roachpb.Spans
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.txn = b.Txn()
+		newDB.tss.interceptorAlloc.tsTxnCommitter.txn = b.Txn()
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.ranges = &ranges
+		newDB.tss.interceptorAlloc.tsTxnCommitter.ranges = &ranges
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.tsTxn.ID = u
+		newDB.tss.interceptorAlloc.tsTxnCommitter.tsTxn.ID = u
+		newDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.loopStarted = false
+		return kv.SendAndFill(ctx, newDB.Send, b)
+	}
 	return kv.SendAndFill(ctx, db.Send, b)
 }
 
@@ -224,6 +282,44 @@ func (db *DB) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
 	return db.kdb.SendUsingSender(ctx, ba, db.tss)
+}
+
+// Clone returns a shallow copy of DB with shared resources and deep-copied interceptor stack.
+func (db *DB) Clone() *DB {
+	if db == nil {
+		return nil
+	}
+	newDB := &DB{
+		kdb: db.kdb,
+		tss: &TsSender{
+			tsEngine:     db.tss.tsEngine,
+			wrapped:      db.tss.wrapped,
+			isSingleNode: db.tss.isSingleNode,
+			rpcContext:   db.tss.rpcContext,
+			gossip:       db.tss.gossip,
+			stopper:      db.tss.stopper,
+			setting:      db.tss.setting,
+		},
+	}
+
+	newDB.tss.interceptorAlloc.tsTxnCommitter = tsTxnCommitter{
+		wrapped: db.tss.interceptorAlloc.tsTxnCommitter.wrapped,
+		setting: db.tss.interceptorAlloc.tsTxnCommitter.setting,
+		NodeID:  db.tss.interceptorAlloc.tsTxnCommitter.NodeID,
+		clock:   db.tss.interceptorAlloc.tsTxnCommitter.clock,
+	}
+	newDB.tss.interceptorAlloc.tsTxnHeartbeater = tsTxnHeartbeater{
+		wrapped:      &newDB.tss.interceptorAlloc.tsTxnCommitter,
+		loopInterval: db.tss.interceptorAlloc.tsTxnHeartbeater.loopInterval,
+		stopper:      db.tss.interceptorAlloc.tsTxnHeartbeater.stopper,
+		clock:        db.tss.interceptorAlloc.tsTxnHeartbeater.clock,
+		setting:      db.tss.interceptorAlloc.tsTxnHeartbeater.setting,
+		NodeID:       db.tss.interceptorAlloc.tsTxnHeartbeater.NodeID,
+	}
+	newDB.tss.interceptorAlloc.tsTxnHeartbeater.mu.Locker = &syncutil.RWMutex{}
+	newDB.tss.interceptorStack = []lockedSender{&newDB.tss.interceptorAlloc.tsTxnHeartbeater, &newDB.tss.interceptorAlloc.tsTxnCommitter}
+
+	return newDB
 }
 
 // CreateTSTable create ts table

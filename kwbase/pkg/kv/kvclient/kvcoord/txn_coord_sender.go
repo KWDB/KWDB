@@ -910,6 +910,13 @@ func (tc *TxnCoordSender) TxnStatus() roachpb.TransactionStatus {
 	return tc.mu.txn.Status
 }
 
+// Transaction returns Transaction in TxnCoordSender.
+func (tc *TxnCoordSender) Transaction() roachpb.Transaction {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	return tc.mu.txn
+}
+
 // SetUserPriority is part of the client.TxnSender interface.
 func (tc *TxnCoordSender) SetUserPriority(pri roachpb.UserPriority) error {
 	tc.mu.Lock()

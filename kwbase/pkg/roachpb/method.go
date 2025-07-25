@@ -191,4 +191,8 @@ const (
 	TsRowPut
 	// TsPutTag insert only tag for an entity
 	TsPutTag
+	// TsRollbackTag insert only tag for an entity
+	TsRollbackTag
+	// TsCommitTag insert only tag for an entity
+	TsCommitTag
 )
