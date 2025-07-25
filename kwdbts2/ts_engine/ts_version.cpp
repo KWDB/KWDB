@@ -431,10 +431,10 @@ std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t
   return it->second;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitions() const {
-  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
+std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> TsVGroupVersion::GetPartitions() const {
+  std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> result;
   for (const auto &[k, v] : partitions_) {
-      result.push_back(v);
+      result[std::get<0>(k)].push_back(v);
   }
   return result;
 }

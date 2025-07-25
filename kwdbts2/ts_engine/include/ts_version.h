@@ -139,7 +139,7 @@ class TsVGroupVersion {
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
 
-  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions() const;
+  std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> GetPartitions() const;
 };
 
 enum class VersionUpdateType : uint8_t {
