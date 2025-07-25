@@ -106,7 +106,7 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
     std::vector<k_uint32> scan_cols = {0, 1};
     std::vector<Sumfunctype> scan_agg_types;
     do {
-      ASSERT_EQ(vgroup_->GetIterator(ctx_, {1}, {ts_span}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
+      ASSERT_EQ(vgroup_->GetIterator(ctx_, {1}, {ts_span}, {}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
                                     table_schema_mgr_, 1, &ts_iter, vgroup_, {}, false, false),
                 KStatus::SUCCESS);
       ResultSet res{(k_uint32)scan_cols.size()};
@@ -193,7 +193,7 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
       DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
       std::vector<k_uint32> scan_cols = {0, 1};
       std::vector<Sumfunctype> scan_agg_types;
-      ASSERT_EQ(vgroup->GetIterator(ctx_, {1}, {ts_span}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
+      ASSERT_EQ(vgroup->GetIterator(ctx_, {1}, {ts_span}, {}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
                                     table_schema_mgr_, 1, &ts_iter, vgroup, {}, false, false),
                 KStatus::SUCCESS);
       ResultSet res{(k_uint32)scan_cols.size()};
