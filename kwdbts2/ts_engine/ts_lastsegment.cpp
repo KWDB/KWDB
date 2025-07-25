@@ -216,6 +216,7 @@ class TsLastBlock : public TsBlock {
       }
 
       column_blocks_[col_id].swap(colblock);
+      *block = column_blocks_[col_id].get();
       return SUCCESS;
     }
 
@@ -286,7 +287,7 @@ class TsLastBlock : public TsBlock {
         }
       }
 
-      auto offset = block_info_->block_offset += block_info_->entity_id_len;
+      auto offset = block_info_->block_offset + block_info_->entity_id_len;
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
       const auto& mgr = CompressorManager::GetInstance();
@@ -356,7 +357,6 @@ class TsLastBlock : public TsBlock {
 
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {
-    assert(block_info_.ncol > 2);
     auto ts = GetTimestamps();
     if (ts == nullptr) {
       return INVALID_TS;
@@ -365,7 +365,6 @@ class TsLastBlock : public TsBlock {
   }
 
   uint64_t* GetLSNAddr(int row_num) override {
-    assert(block_info_.ncol > 2);
     auto seq_nos = GetLSN();
     if (seq_nos == nullptr) {
       LOG_ERROR("cannot get lsn addr");

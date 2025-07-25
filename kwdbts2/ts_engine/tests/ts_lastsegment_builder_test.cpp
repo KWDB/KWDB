@@ -23,6 +23,7 @@
 #include "mmap/mmap_entity_block_meta.h"
 #include "settings.h"
 #include "test_util.h"
+#include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"
 #include "ts_engine_schema_manager.h"
@@ -170,6 +171,13 @@ void LastSegmentReadWriteTest::IteratorCheck(TSTableID table_id, int expected_nr
     EXPECT_EQ(span->GetEntityID(), 1);
     EXPECT_EQ(span->GetTableID(), table_id);
     nrow += span->GetRowNum();
+
+    char *value;
+    TsBitmap bitmap;
+    auto s = span->GetFixLenColAddr(0, &value, bitmap);
+    ASSERT_EQ(s, SUCCESS);
+
+    EXPECT_EQ(bitmap.GetCount(), span->GetRowNum());
   }
 
   EXPECT_EQ(expected_nrow, nrow);
@@ -547,18 +555,18 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     char* value;
     TsBitmap bitmap;
     // TODO(zqh): hide the following code temporarily
-    // for (int icol = 0; icol < dtypes.size(); ++icol) {
-    //   if (!isVarLenType(res.metric_schema[icol].type)) {
-    //     auto ret = s->GetFixLenColAddr(icol, &value, bitmap);
-    //     ASSERT_EQ(ret, KStatus::SUCCESS);
-    //     for (int i = 0; i < s->GetRowNum(); ++i) {
-    //       TSSlice val;
-    //       val.len = res.metric_schema[icol].size;
-    //       val.data = value + val.len * i;
-    //       checker_funcs[dtypes[icol]](val);
-    //     }
-    //   }
-    // }
+    for (int icol = 0; icol < dtypes.size(); ++icol) {
+      if (!isVarLenType(res.metric_schema[icol].type)) {
+        auto ret = s->GetFixLenColAddr(icol, &value, bitmap);
+        ASSERT_EQ(ret, KStatus::SUCCESS);
+        for (int i = 0; i < s->GetRowNum(); ++i) {
+          TSSlice val;
+          val.len = res.metric_schema[icol].size;
+          val.data = value + val.len * i;
+          checker_funcs[dtypes[icol]](val);
+        }
+      }
+    }
   }
   EXPECT_EQ(idx + 1, dev_ids.size());
 

@@ -167,6 +167,21 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
   }
   RemovePrefix(&compressed_data, info.fixdata_len);
 
+  if (need_convert_ts(col_schema.type)) {
+    std::string tmp_data;
+    tmp_data.resize(info.row_count * 16);
+    struct TSWithLSN {
+      timestamp64 ts;
+      uint64_t lsn;
+    };
+    auto dst_ptr = reinterpret_cast<TSWithLSN*>(tmp_data.data());
+    auto src_ptr = reinterpret_cast<timestamp64*>(fixlen_data.data());
+    for (int i = 0; i < info.row_count; ++i) {
+      dst_ptr[i].ts = src_ptr[i];
+    }
+    fixlen_data.swap(tmp_data);
+  }
+
   // 3. Decompress Varchar
   TSSlice varlen_slice = compressed_data;
   assert(varlen_slice.len == info.vardata_len);
