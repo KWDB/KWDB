@@ -207,6 +207,7 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   std::vector<uint64_t> ignore;
   TS_LSN first_lsn = wal_manager_->GetFirstLSN();
   last_lsn = wal_manager_->FetchCurrentLSN();
+  WALMeta meta = wal_manager_->GetMeta();
   KStatus s = wal_manager_->SwitchNextFile();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to switch next WAL file.")
@@ -216,7 +217,7 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
 
   // new tmp wal mgr to read chk wal file
   WALMgr tmp_wal = WALMgr(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_, true);
-  tmp_wal.Init(ctx, false, wal_manager_->GetMeta());
+  tmp_wal.Init(ctx, false, meta);
   s = tmp_wal.ReadWALLog(logs, first_lsn, last_lsn, ignore);
   return s;
 }
