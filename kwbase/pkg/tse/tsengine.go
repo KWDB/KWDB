@@ -337,9 +337,12 @@ var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
 	},
 )
 
+// TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.
+const TsWALLevelClusterSettingName = "ts.wal.wal_level"
+
 // TsWALLevel indicates the WAL level
 var TsWALLevel = settings.RegisterPublicIntSetting(
-	"ts.wal.wal_level",
+	TsWALLevelClusterSettingName,
 	"ts WAL level, default 2(flush)",
 	2,
 )
@@ -722,7 +725,7 @@ func (r *TsEngine) PutEntity(
 
 // PutData write in tag data and write in ts data
 func (r *TsEngine) PutData(
-	tableID uint64, payload [][]byte, tsTxnID uint64, writeWAL bool,
+	tableID uint64, payload [][]byte, tsTxnID uint64, writeWAL bool, transactionID []byte,
 ) (DedupResult, EntitiesAffect, error) {
 	if len(payload) == 0 {
 		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
@@ -754,11 +757,25 @@ func (r *TsEngine) PutData(
 	var unorderedAffected C.uint32_t
 	var status C.TSStatus
 	if r.Version == "2" {
-		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+		if transactionID != nil {
+			cstr := C.CString(string(transactionID))
+			defer C.free(unsafe.Pointer(cstr))
+			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+		} else {
+			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+		}
 	} else {
-		status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+		if transactionID != nil {
+			cstr := C.CString(string(transactionID))
+			defer C.free(unsafe.Pointer(cstr))
+			status = C.TSPutDataExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+		} else {
+			status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+		}
 	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
@@ -777,7 +794,13 @@ func (r *TsEngine) PutData(
 
 // PutRowData 行存tags值和时序数据写入
 func (r *TsEngine) PutRowData(
-	tableID uint64, headerPrefix []byte, payload [][]byte, size int32, tsTxnID uint64, writeWAL bool,
+	tableID uint64,
+	headerPrefix []byte,
+	payload [][]byte,
+	size int32,
+	tsTxnID uint64,
+	writeWAL bool,
+	transactionID []byte,
 ) (DedupResult, EntitiesAffect, error) {
 	if len(payload) == 0 {
 		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
@@ -855,8 +878,16 @@ func (r *TsEngine) PutRowData(
 	var dedupResult C.DedupResult
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
-	status := C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-		&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+	} else {
+		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}
@@ -1788,12 +1819,20 @@ func (r *TsEngine) DeleteSnapshot(tableID uint64, snapshotID uint64) error {
 
 // MtrBegin BEGIN a TS mini-transaction
 func (r *TsEngine) MtrBegin(
-	tableID uint64, rangeGroupID uint64, rangeID uint64, index uint64,
+	tableID uint64, rangeGroupID uint64, rangeID uint64, index uint64, transactionID []byte,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
 	var miniTransID C.uint64_t
-	status := C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
-		C.uint64_t(index), &miniTransID)
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrBeginExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
+			C.uint64_t(index), &miniTransID, cstr)
+	} else {
+		status = C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
+			C.uint64_t(index), &miniTransID)
+	}
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to BEGIN a TS mini-transaction")
 	}
@@ -1801,9 +1840,18 @@ func (r *TsEngine) MtrBegin(
 }
 
 // MtrCommit COMMIT a TS mini-transaction
-func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID uint64) error {
+func (r *TsEngine) MtrCommit(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
 	r.checkOrWaitForOpen()
-	status := C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
+	} else {
+		status = C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	}
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to COMMIT a TS mini-transaction")
 	}
@@ -1811,9 +1859,18 @@ func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID ui
 }
 
 // MtrRollback ROLLBACK a TS mini-transaction
-func (r *TsEngine) MtrRollback(tableID uint64, rangeGroupID uint64, miniTransID uint64) error {
+func (r *TsEngine) MtrRollback(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
 	r.checkOrWaitForOpen()
-	status := C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
+	} else {
+		status = C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	}
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to ROLLBACK a TS mini-transaction")
 	}

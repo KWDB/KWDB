@@ -76,6 +76,12 @@ type Batch struct {
 	rowsBuf       []KeyValue
 	rowsStaticBuf [8]KeyValue
 	rowsStaticIdx int
+	isTsInsert    bool
+}
+
+// Txn returns the batch's transaction.
+func (b *Batch) Txn() *Txn {
+	return b.txn
 }
 
 // RawResponse returns the BatchResponse which was the result of a successful
@@ -884,4 +890,14 @@ func (b *Batch) addSSTable(
 	}
 	b.AppendReqs(req)
 	b.InitResult(1, 0, notRaw, nil)
+}
+
+// SetIsTsInsert set the isTsInsert of batch.
+func (b *Batch) SetIsTsInsert(isTsInsert bool) {
+	b.isTsInsert = isTsInsert
+}
+
+// IsTsInsert return the isTsInsert of batch.
+func (b *Batch) IsTsInsert() bool {
+	return b.isTsInsert
 }

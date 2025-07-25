@@ -14,7 +14,7 @@ CREATE TABLE t(x INT); INSERT INTO t(x) VALUES (1); CREATE INDEX ON t(x)
 # TODO (lucy): Update this if/when we decide to change how these jobs queued by
 # the startup migration are handled.
 query TTT
-SELECT job_type, description, user_name FROM [SHOW JOBS] WHERE description != 'updating privileges' AND job_type != 'SYNC META CACHE' AND job_type != 'RESTART HISTORY'
+SELECT job_type, description, user_name FROM [SHOW JOBS] WHERE description != 'updating privileges' AND job_type != 'SYNC META CACHE' AND job_type != 'RESTART HISTORY' AND job_type != 'TS TXN'
 ----
 SCHEMA CHANGE  CREATE INDEX ON test.public.t (x)  root
 
@@ -25,6 +25,7 @@ SCHEMA CHANGE  CREATE INDEX ON test.public.t (x)  root
 query TTT
 SELECT job_type, description, user_name FROM kwdb_internal.jobs WHERE description != 'updating privileges' AND job_type != 'SYNC META CACHE' AND job_type != 'RESTART HISTORY'
 ----
+TS TXN         handle ts txn record               root
 SCHEMA CHANGE  CREATE INDEX ON test.public.t (x)  root
 
 user testuser
@@ -74,6 +75,7 @@ user root
 query TTT
 SELECT job_type, description, user_name FROM [SHOW JOBS] WHERE description != 'updating privileges' AND job_type != 'SYNC META CACHE' AND job_type != 'RESTART HISTORY'
 ----
+TS TXN         handle ts txn record               root
 SCHEMA CHANGE  CREATE INDEX ON test.public.t (x)  root
 SCHEMA CHANGE  CREATE INDEX ON test.public.u (x)  testuser
 
@@ -84,5 +86,6 @@ SCHEMA CHANGE  CREATE INDEX ON test.public.u (x)  testuser
 query TTT
 SELECT job_type, description, user_name FROM kwdb_internal.jobs WHERE description != 'updating privileges' AND job_type != 'SYNC META CACHE' AND job_type != 'RESTART HISTORY'
 ----
+TS TXN         handle ts txn record               root
 SCHEMA CHANGE  CREATE INDEX ON test.public.t (x)  root
 SCHEMA CHANGE  CREATE INDEX ON test.public.u (x)  testuser

@@ -150,7 +150,20 @@ class TsVGroup {
 
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
+  uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
+    return tsx_manager_->getMtrID(ts_trans_id);
+  }
+
+  void SetMtrIDByTsxID(uint64_t uuid, const char* ts_trans_id) {
+    return tsx_manager_->insertMtrID(ts_trans_id, uuid);
+  }
+
+  bool IsExplict(uint64_t mini_trans_id) {
+    return tsx_manager_->IsExplict(mini_trans_id);
+  }
+
   KStatus Compact();
+
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);
@@ -255,7 +268,7 @@ class TsVGroup {
    *
    * @return KStatus
    */
-  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id);
+  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr);
 
   /**
    * @brief Submit the mini-transaction for the current EntityGroup.
@@ -263,7 +276,7 @@ class TsVGroup {
    *
    * @return KStatus
    */
-  KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id);
+  KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx_id = nullptr);
 
   /**
    * @brief Roll back the mini-transaction of the current EntityGroup.
@@ -271,7 +284,7 @@ class TsVGroup {
    *
    * @return KStatus
    */
-  KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false);
+  KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
   KStatus Vacuum();

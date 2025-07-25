@@ -1165,21 +1165,27 @@ KStatus TsVGroup::undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t 
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+KStatus TsVGroup::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
-  return tsx_manager_->MtrBegin(ctx, range_id, index, mtr_id);
+  return tsx_manager_->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
 }
 
-KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id) {
+KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx_id) {
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
-  return tsx_manager_->MtrCommit(ctx, mtr_id);
+  if (tsx_id != nullptr) {
+    mtr_id = tsx_manager_->getMtrID(tsx_id);
+  }
+  return tsx_manager_->MtrCommit(ctx, mtr_id, tsx_id);
 }
 
-KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip) {
+KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip, const char* tsx_id) {
   //  1. Write ROLLBACK log;
   KStatus s;
   if (!is_skip) {
-    s = tsx_manager_->MtrRollback(ctx, mtr_id);
+    if (tsx_id != nullptr) {
+      mtr_id = tsx_manager_->getMtrID(tsx_id);
+    }
+    s = tsx_manager_->MtrRollback(ctx, mtr_id, tsx_id);
     if (s == FAIL) {
       return s;
     }

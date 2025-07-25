@@ -1007,7 +1007,13 @@ func (c *conn) handleSimpleQuery(
 				}
 
 				// Send insert_direct information
-				return Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse)
+				if err = Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse); err != nil {
+					return err
+				}
+				if r.Err() != nil {
+					return r.err
+				}
+				return nil
 			}); err != nil {
 				return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
 			}
