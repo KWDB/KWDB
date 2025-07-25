@@ -89,27 +89,7 @@ KStatus WALMgr::Create(kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal, WALMeta meta) {
-  if (read_chk_) {
-    meta_ = meta;
-    TS_LSN current_lsn = FetchCurrentLSN();
-    KStatus s = file_mgr_->Open();
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to open the WAL file ")
-      s = file_mgr_->initWalFile(current_lsn);
-      if (s == KStatus::FAIL) {
-        LOG_ERROR("Failed to init a WAL file")
-        return s;
-      }
-    }
-
-    s = buffer_mgr_->init(current_lsn);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to initialize the WAL buffer with LSN %lu", current_lsn)
-      return s;
-    }
-    return SUCCESS;
-  }
+KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
   if (!IsExists(wal_path_)) {
     return Create(ctx);
   }
@@ -144,6 +124,27 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal, WALMeta meta) {
     return s;
   }
 
+  return SUCCESS;
+}
+
+KStatus WALMgr::InitForChk(kwdbContext_p ctx, WALMeta meta) {
+  meta_ = meta;
+  TS_LSN current_lsn = FetchCurrentLSN();
+  KStatus s = file_mgr_->Open();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to open the WAL file ")
+    s = file_mgr_->initWalFile(current_lsn);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to init a WAL file")
+      return s;
+    }
+  }
+
+  s = buffer_mgr_->init(current_lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to initialize the WAL buffer with LSN %lu", current_lsn)
+    return s;
+  }
   return SUCCESS;
 }
 

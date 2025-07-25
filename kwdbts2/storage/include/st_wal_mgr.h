@@ -44,7 +44,9 @@ class WALMgr {
    * @param ctx
    * @return
    */
-  KStatus Init(kwdbContext_p ctx, bool init_engine = false, WALMeta meta = WALMeta{});
+  KStatus Init(kwdbContext_p ctx, bool init_engine = false);
+
+  KStatus InitForChk(kwdbContext_p ctx, WALMeta meta);
 
   /**
    * Write WAL log entry into WAL Buffer.

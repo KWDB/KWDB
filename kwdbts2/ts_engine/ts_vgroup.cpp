@@ -217,7 +217,7 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
 
   // new tmp wal mgr to read chk wal file
   WALMgr tmp_wal = WALMgr(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_, true);
-  tmp_wal.Init(ctx, false, meta);
+  tmp_wal.InitForChk(ctx, meta);
   s = tmp_wal.ReadWALLog(logs, first_lsn, last_lsn, ignore);
   return s;
 }
