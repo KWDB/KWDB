@@ -1027,7 +1027,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     // 4. write end chkckpoint wal
     TS_LSN end_lsn;
     uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-    char* v_lsn = new char[lsn_len];
+    char v_lsn[lsn_len];
     int location = 0;
     for (auto it : vgrp_lsn) {
       memcpy(v_lsn + location, &it, sizeof(uint64_t));
@@ -1036,7 +1036,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
     s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
     delete []end_chk_log;
-    delete []v_lsn;
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to write end checkpoint wal.")
       return s;
@@ -1162,7 +1161,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 6.write EndWAL to chk file
   TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-  char* v_lsn = new char[lsn_len];
+  char v_lsn[lsn_len];
   int location = 0;
   for (auto it : vgrp_lsn) {
     memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
@@ -1171,7 +1170,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
   s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
-  delete []v_lsn;
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to write end checkpoint wal.")
     return s;
