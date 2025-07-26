@@ -127,13 +127,18 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   compressed_data.append(tmp);
 
   // 3. compress varchar data
-  tmp.clear();
-  ok = mgr.CompressVarchar({varchar_data_.data(), varchar_data_.size()}, &tmp, GenCompAlg::kSnappy);
-  if (!ok) {
-    return false;
+  if (!varchar_data_.empty()) {
+    tmp.clear();
+    auto comp_alg = compress ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
+    ok = mgr.CompressVarchar({varchar_data_.data(), varchar_data_.size()}, &tmp, comp_alg);
+    if (!ok) {
+      return false;
+    }
+    info->vardata_len = tmp.size();
+    compressed_data.append(tmp);
+  } else {
+    info->vardata_len = 0;
   }
-  info->vardata_len = tmp.size();
-  compressed_data.append(tmp);
   out->swap(compressed_data);
   return true;
 }
@@ -183,12 +188,14 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
   }
 
   // 3. Decompress Varchar
-  TSSlice varlen_slice = compressed_data;
-  assert(varlen_slice.len == info.vardata_len);
   std::string varlen_data;
-  ok = mgr.DecompressVarchar(varlen_slice, &varlen_data);
-  if (!ok) {
-    return KStatus::FAIL;
+  if (info.vardata_len != 0) {
+    TSSlice varlen_slice = compressed_data;
+    assert(varlen_slice.len == info.vardata_len);
+    ok = mgr.DecompressVarchar(varlen_slice, &varlen_data);
+    if (!ok) {
+      return KStatus::FAIL;
+    }
   }
   colblock->reset(new TsColumnBlock(col_schema, info.row_count, bitmap, fixlen_data, varlen_data));
   return SUCCESS;

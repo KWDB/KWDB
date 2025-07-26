@@ -131,8 +131,8 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
     LOG_ERROR("decompress lsn error");
     return FAIL;
   }
-  
-  if(decompressed_lsn_buffer.size() != compress_info.row_count * sizeof(TS_LSN)) {
+
+  if (decompressed_lsn_buffer.size() != compress_info.row_count * sizeof(TS_LSN)) {
     LOG_ERROR("decompress lsn size not match");
     return FAIL;
   }

@@ -120,6 +120,11 @@ class TsLastSegment : public TsSegmentBase {
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                         uint32_t scan_version) override;
 
+  KStatus GetBlockSpansNoBug(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                             std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version);
+  KStatus GetBlockSpansBug(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                           std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version);
+
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)
                          : true;  // always return true when bloom filter doesn't exist.
@@ -147,7 +152,7 @@ class TsLastSegment::TsLastSegBlockCache {
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>** block_indexes) const;
   KStatus GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const;
-  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo2** info) const;
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const;
   KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
 };
 
@@ -167,13 +172,13 @@ class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
  private:
   TsLastSegBlockCache* lastseg_cache_;
   std::vector<uint8_t> cache_flag_;
-  std::vector<TsLastSegmentBlockInfo2> block_infos_;
+  std::vector<TsLastSegmentBlockInfo> block_infos_;
   std::shared_mutex mu_;
 
  public:
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
       : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
-  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo2** info);
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info);
 };
 
 class TsLastSegment::TsLastSegBlockCache::BlockCache {

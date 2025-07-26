@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "data_type.h"
+#include "libkwdbts2.h"
 #include "ts_block.h"
 #include "ts_column_block.h"
 #include "ts_common.h"
@@ -79,5 +80,12 @@ class TsMetricBlockBuilder {
   KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
   std::unique_ptr<TsMetricBlock> GetMetricBlock();
   int GetRowNum() const { return count_; }
+  void Reset() {
+    count_ = 0;
+    lsn_buffer_.clear();
+    for (auto& builder : column_block_builders_) {
+      builder->Reset();
+    }
+  }
 };
 }  // namespace kwdbts

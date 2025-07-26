@@ -12,6 +12,7 @@
 #pragma once
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -43,8 +44,8 @@ class TsColumnBlock {
       : col_schema_(col_schema),
         count_(count),
         bitmap_(bitmap),
-        fixlen_data_(fixlen_data),
-        varchar_data_(varchar_data) {}
+        fixlen_data_(std::move(fixlen_data)),
+        varchar_data_(std::move(varchar_data)) {}
 
  public:
   static KStatus ParseCompressedColumnData(const AttributeInfo& col_schema, TSSlice compressed_data,
@@ -77,6 +78,13 @@ class TsColumnBlockBuilder {
 
   std::unique_ptr<TsColumnBlock> GetColumnBlock() const {
     return std::unique_ptr<TsColumnBlock>{new TsColumnBlock(col_schema_, count_, bitmap_, fixlen_data_, varchar_data_)};
+  }
+
+  void Reset() {
+    count_ = 0;
+    bitmap_ = TsBitmap();
+    fixlen_data_.clear();
+    varchar_data_.clear();
   }
 };
 

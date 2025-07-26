@@ -18,7 +18,7 @@ struct TsLastSegmentBlockIndex {
   uint64_t min_entity_id, max_entity_id;
 };
 
-struct TsLastSegmentBlockInfo2 {
+struct TsLastSegmentBlockInfo {
   uint64_t block_offset;
   uint32_t entity_id_len;
   uint32_t lsn_len;
@@ -47,7 +47,7 @@ struct TsLastSegmentFooter {
 static_assert(sizeof(TsLastSegmentFooter) == 64);
 static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter>);
 
-inline void EncodeBlockInfo(std::string* buf, const TsLastSegmentBlockInfo2& info) {
+inline void EncodeBlockInfo(std::string* buf, const TsLastSegmentBlockInfo& info) {
   PutFixed64(buf, info.block_offset);
   PutFixed32(buf, info.entity_id_len);
   PutFixed32(buf, info.lsn_len);
@@ -61,7 +61,7 @@ inline void EncodeBlockInfo(std::string* buf, const TsLastSegmentBlockInfo2& inf
   }
 }
 
-inline KStatus DecodeBlockInfo(TSSlice slice, TsLastSegmentBlockInfo2* info) {
+inline KStatus DecodeBlockInfo(TSSlice slice, TsLastSegmentBlockInfo* info) {
   if (slice.len < 24) {
     return FAIL;
   }

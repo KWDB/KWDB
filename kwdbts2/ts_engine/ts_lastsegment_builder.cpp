@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <tuple>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -66,7 +68,6 @@ KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
 
     if (metric_block_builder_->GetRowNum() == TsLastSegment::kNRowPerBlock) {
       s = RecordAndWriteBlockToFile();
-      metric_block_builder_.reset();
     }
     span = back_span;
   }
@@ -74,7 +75,7 @@ KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
 }
 
 KStatus TsLastSegmentBuilder2::Finalize() {
-  if (metric_block_builder_ != nullptr) {
+  if (metric_block_builder_ != nullptr && metric_block_builder_->GetRowNum() != 0) {
     auto s = RecordAndWriteBlockToFile();
     if (s == FAIL) {
       return FAIL;
@@ -96,9 +97,15 @@ KStatus TsLastSegmentBuilder2::Finalize() {
   footer_.n_data_block = nblock;
   footer_.file_version = 1;
   footer_.block_info_idx_offset = current_offset + buffer.size();
+
+  [[maybe_unused]] std::tuple<TSEntityID, timestamp64> prev{0, INT64_MIN};
   for (uint32_t i = 0; i < nblock; ++i) {
     const auto& index = block_index_buffer_[i];
     EncodeBlockIndex(&buffer, index);
+
+    std::tuple<TSEntityID, timestamp64> current{index.min_entity_id, index.min_ts};
+    // assert(current >= prev);
+    prev = current;
   }
 
   std::vector<size_t> meta_block_offset;
@@ -132,7 +139,7 @@ KStatus TsLastSegmentBuilder2::RecordAndWriteBlockToFile() {
   assert(entity_id_buffer_.size() == metric_block_builder_->GetRowNum());
   auto metric_block = metric_block_builder_->GetMetricBlock();
 
-  TsLastSegmentBlockInfo2 block_info;
+  TsLastSegmentBlockInfo block_info;
   block_info.ncol = metric_block->GetColNum();
   block_info.nrow = metric_block->GetRowNum();
   block_info.block_offset = last_segment_file_->GetFileSize();
@@ -180,6 +187,10 @@ KStatus TsLastSegmentBuilder2::RecordAndWriteBlockToFile() {
     block_info.col_infos[i].vardata_len = compress_info.column_compress_infos[i].vardata_len;
   }
   block_info_buffer_.push_back(std::move(block_info));
+
+  metric_block_builder_->Reset();
+  block_index_collector_->Reset();
+  entity_id_buffer_.clear();
   return SUCCESS;
 }
 

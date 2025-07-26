@@ -47,6 +47,7 @@ struct R {
   std::shared_ptr<TsEngineSchemaManager> schema_mgr;
   std::vector<AttributeInfo> metric_schema;
   std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsMemSegment> memseg;
 };
 
 class LastSegmentReadWriteTest : public testing::Test {
@@ -153,7 +154,7 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     char buf[10240];
     TSSlice result;
     rfile->Read(idx_block.info_offset, idx_block.length, &result, buf);
-    TsLastSegmentBlockInfo2 info;
+    TsLastSegmentBlockInfo info;
     ASSERT_EQ(DecodeBlockInfo(result, &info), SUCCESS);
     ASSERT_EQ(info.ncol, dtypes.size());
   }
@@ -243,6 +244,7 @@ R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   res.metric_schema = std::move(metric_schema);
   res.tag_schema = std::move(tag_schema);
   res.schema_mgr = mgr;
+  res.memseg = TsMemSegment::Create(12);
   return res;
 }
 
@@ -271,7 +273,7 @@ void PushPayloadToBuilder(R *builder, TSSlice *payload, TSTableID table_id, uint
   TsRawPayloadRowParser parser{builder->metric_schema};
   TsRawPayload p{*payload, builder->metric_schema};
 
-  auto memseg = TsMemSegment::Create(12);
+  auto memseg = builder->memseg;
 
   TSMemSegRowData row_data(1, table_id, version, entity_id);
   uint32_t row_num = p.GetRowCount();
@@ -282,15 +284,29 @@ void PushPayloadToBuilder(R *builder, TSSlice *payload, TSTableID table_id, uint
     row_data.SetData(row_ts, 0, p.GetRowData(i));
     memseg->AppendOneRow(row_data);
   }
+}
 
+void Finalize(R *builder) {
   std::list<shared_ptr<TsBlockSpan>> spans;
-  auto s = memseg->GetBlockSpans(spans, builder->schema_mgr.get());
+  auto s = builder->memseg->GetBlockSpans(spans, builder->schema_mgr.get());
   ASSERT_EQ(s, SUCCESS);
 
-  for (auto span : spans) {
+  std::vector<std::shared_ptr<TsBlockSpan>> spans_vec(spans.begin(), spans.end());
+
+  std::sort(spans_vec.begin(), spans_vec.end(),
+            [](const std::shared_ptr<TsBlockSpan> &left, const std::shared_ptr<TsBlockSpan> &right) {
+              using Helper = std::tuple<TSEntityID, timestamp64, TS_LSN>;
+              auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetLSNAddr(0));
+              auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetLSNAddr(0));
+              return left_helper < right_helper;
+            });
+
+  for (auto span : spans_vec) {
     s = builder->builder->PutBlockSpan(span);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
+  builder->builder->Finalize();
+  builder->builder.reset();
 }
 
 static void Int32Checker(TSSlice r) {
@@ -371,8 +387,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
     PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
     payloads.push_back(std::move(payload));
   }
-  res.builder->Finalize();
-  res.builder.reset();
+  Finalize(&res);
 
   std::shared_ptr<TsLastSegment> last_segment;
   OpenLastSegment(filename, &last_segment);
@@ -489,6 +504,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
 
   std::vector<TSEntityID> dev_ids{1, 2, 3, 4, 5, 19, 1239, 9913, 10311};
   std::vector<int> nrows{nrow_per_block, nrow_per_block, 3000, 6000, 300, 4000, 1000, 12335, 54321};
+
   ASSERT_EQ(dev_ids.size(), nrows.size());
   std::vector<FOO<decltype(GenRowPayloadWrapper)>::type> payloads;
   for (int i = 0; i < dev_ids.size(); ++i) {
@@ -499,8 +515,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
     payloads.push_back(std::move(payload));
   }
-  res.builder->Finalize();
-  res.builder.reset();
+  Finalize(&res);
 
   std::shared_ptr<TsLastSegment> last_segment;
   OpenLastSegment(filename, &last_segment);
@@ -669,8 +684,7 @@ TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
     PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
     payloads.push_back(std::move(payload));
   }
-  res.builder->Finalize();
-  res.builder.reset();
+  Finalize(&res);
 
   std::shared_ptr<TsLastSegment> last_segment;
   OpenLastSegment(filename, &last_segment);

@@ -15,6 +15,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <tuple>
+#include <limits>
 
 #include "data_type.h"
 #include "libkwdbts2.h"
@@ -41,7 +43,7 @@ class TsLastSegmentBuilder2 {
   std::unique_ptr<TsMetricBlockBuilder> metric_block_builder_;
 
   std::vector<TSEntityID> entity_id_buffer_;
-  std::vector<TsLastSegmentBlockInfo2> block_info_buffer_;
+  std::vector<TsLastSegmentBlockInfo> block_info_buffer_;
   std::vector<TsLastSegmentBlockIndex> block_index_buffer_;
 
   using TableVersionInfo = std::tuple<TSTableID, uint32_t>;
@@ -86,5 +88,7 @@ class TsLastSegmentBuilder2::BlockIndexCollector {
   BlockIndexCollector(TSTableID table_id, uint32_t version) : table_id_(table_id), version_(version) {}
   void Collect(TsBlockSpan* span);
   TsLastSegmentBlockIndex GetIndex() const;
+
+  void Reset() { new (this) BlockIndexCollector(table_id_, version_); }
 };
 }  // namespace kwdbts

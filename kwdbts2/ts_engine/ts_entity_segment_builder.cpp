@@ -522,10 +522,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
     }
 
     bool is_full = false;
-    auto before_cnt = cached_spans_.front()->GetRowNum();
     s = block_->Append(cached_spans_.front(), is_full);
-    auto after_cnt = cached_spans_.front()->GetRowNum();
-    cached_count_ -= (before_cnt - after_cnt);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
       return s;
@@ -536,6 +533,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
         return s;
       }
+      cached_count_ -= block_->GetRowNum();
       block_->Clear();
     }
   }
@@ -645,7 +643,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
       }
     }
   }
-  
+
   // 4. flush the last segment block
   if (builder_ != nullptr) {
     s = builder_->Finalize();
