@@ -737,7 +737,7 @@ func BuildRowBytesForPrepareTsInsert(
 
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
-		if !EvalContext.StartSinglenode {
+		if !evalCtx.StartSinglenode {
 			groupLen := len(priTagRowIdx)
 			groupBytes := make([][]byte, groupLen)
 			groupTimes := make([]int64, groupLen)
@@ -1709,7 +1709,7 @@ func GetPayloadMapForMuiltNode(
 		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
-		if !EvalContext.StartSinglenode {
+		if !evalCtx.StartSinglenode {
 			rowCount := len(priTagRowIdx)
 			groupRowBytes := make([][]byte, rowCount)
 			groupRowTime := make([]int64, rowCount)
