@@ -47,7 +47,7 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
 
   int left = payload_buffer_.buffer.size();
   data_block_builder_->Reset(table_id_, version_);
-  auto reserved_size = std::min<int>(payload_buffer_.buffer.size(), kNRowPerBlock);
+  int reserved_size = std::min<int>(payload_buffer_.buffer.size(), kNRowPerBlock);
   data_block_builder_->Reserve(reserved_size);
 
   if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
@@ -67,7 +67,7 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
         if (s != SUCCESS) return FAIL;
         data_block_builder_->Reset(table_id_, version_);
 
-        auto reserved_size = std::min<int>(left + 1, kNRowPerBlock);
+        reserved_size = std::min<int>(left + 1, kNRowPerBlock);
         data_block_builder_->Reserve(reserved_size);
       }
       last_entity_payload = &payload_buffer_.buffer[idx];
@@ -94,7 +94,7 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
           if (s != SUCCESS) return FAIL;
           data_block_builder_->Reset(table_id_, version_);
 
-          auto reserved_size = std::min<int>(left, kNRowPerBlock);
+          reserved_size = std::min<int>(left, kNRowPerBlock);
           data_block_builder_->Reserve(reserved_size);
         }
         last_entity_payload = &payload_buffer_.buffer[idx];
@@ -116,7 +116,7 @@ KStatus TsLastSegmentBuilder::FlushPayloadBuffer() {
         if (s != SUCCESS) return FAIL;
         data_block_builder_->Reset(table_id_, version_);
 
-        auto reserved_size = std::min<int>(left, kNRowPerBlock);
+        reserved_size = std::min<int>(left, kNRowPerBlock);
         data_block_builder_->Reserve(reserved_size);
       }
     }
@@ -132,14 +132,14 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
   cols_data_buffer_.sort();
   int kNRowPerBlock = TsLastSegment::kNRowPerBlock;
   std::shared_ptr<TsTableSchemaManager> table_mgr;
-  auto s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   schema_mgr_->GetTableSchemaMgr(table_id_, table_mgr);
   std::vector<AttributeInfo> data_schema;
   table_mgr->GetColumnsExcludeDropped(data_schema);
 
   int left = cols_data_buffer_.buffer.size();
   data_block_builder_->Reset(table_id_, version_);
-  auto reserved_size = std::min<int>(cols_data_buffer_.buffer.size(), kNRowPerBlock);
+  int reserved_size = std::min<int>(cols_data_buffer_.buffer.size(), kNRowPerBlock);
   data_block_builder_->Reserve(reserved_size);
 
   if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
@@ -156,11 +156,11 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
                                last_entity_col_data->col_data, last_entity_col_data->data_flags);
       if (data_block_builder_->GetNRows() % kNRowPerBlock == 0) {
         data_block_builder_->Finish();
-        auto s = WriteMetricBlock(data_block_builder_.get());
+        s = WriteMetricBlock(data_block_builder_.get());
         if (s != SUCCESS) return FAIL;
         data_block_builder_->Reset(table_id_, version_);
 
-        auto reserved_size = std::min<int>(left + 1, kNRowPerBlock);
+        reserved_size = std::min<int>(left + 1, kNRowPerBlock);
         data_block_builder_->Reserve(reserved_size);
       }
       last_entity_col_data = &cols_data_buffer_.buffer[idx];
@@ -185,7 +185,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
           if (s != SUCCESS) return FAIL;
           data_block_builder_->Reset(table_id_, version_);
 
-          auto reserved_size = std::min<int>(left, kNRowPerBlock);
+          reserved_size = std::min<int>(left, kNRowPerBlock);
           data_block_builder_->Reserve(reserved_size);
         }
         last_entity_col_data = &cols_data_buffer_.buffer[idx];
@@ -207,7 +207,7 @@ KStatus TsLastSegmentBuilder::FlushColDataBuffer() {
         if (s != SUCCESS) return FAIL;
         data_block_builder_->Reset(table_id_, version_);
 
-        auto reserved_size = std::min<int>(left, kNRowPerBlock);
+        reserved_size = std::min<int>(left, kNRowPerBlock);
         data_block_builder_->Reserve(reserved_size);
       }
     }
@@ -479,7 +479,7 @@ void TsLastSegmentBuilder::MetricBlockBuilder::Add(TSEntityID entity_id, TS_LSN 
   colblocks_[1]->Add({reinterpret_cast<char*>(&lsn), sizeof(lsn)});
   for (int i = 2; i < colblocks_.size(); ++i) {
     int col_id = i - 2;
-    TSSlice data;
+    data = TSSlice{};
     parser_->GetColValueAddr(metric_data, col_id, &data);
     bool is_null = parser_->IsColNull(metric_data, col_id);
     if (!isVarLenType(metric_schema_[col_id].type)) {

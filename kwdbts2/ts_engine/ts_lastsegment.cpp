@@ -89,7 +89,7 @@ static KStatus ReadColumnBitmap(TsRandomReadFile* file, const TsLastSegmentBlock
     BitmapCompAlg alg = static_cast<BitmapCompAlg>(ptr[0]);
     switch (alg) {
       case BitmapCompAlg::kPlain: {
-        size_t len = info.col_infos[col_id].bitmap_len - 1;
+        len = info.col_infos[col_id].bitmap_len - 1;
         *bitmap = std::make_unique<TsBitmap>(TSSlice{ptr + 1, len}, info.nrow);
         break;
       }
@@ -535,11 +535,11 @@ KStatus ColumnBlockCache::GetColBitmap(int actual_colid, const std::vector<Attri
 KStatus ColumnBlockCache::FormatColAddr(int actual_colid, char** value) {
   auto& data = *column_block_cache_[actual_colid].data;
   if (actual_colid - kColIDShift == 0) {
-    auto& data = timestamp_16_cache_;
-    *value = data.data();
+    auto& data_cache = timestamp_16_cache_;
+    *value = data_cache.data();
   } else {
-    auto& data = *column_block_cache_[actual_colid].data;
-    *value = data.data();
+    auto& data_cache = *column_block_cache_[actual_colid].data;
+    *value = data_cache.data();
   }
   return SUCCESS;
 }
@@ -857,7 +857,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   }
 
   std::vector<TsLastSegmentBlockIndex>* p_block_indices;
-  auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
+  KStatus s = block_cache_->GetAllBlockIndex(&p_block_indices);
   if (s == FAIL) {
     return FAIL;
   }
@@ -896,7 +896,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 
       if (block == nullptr || block->GetBlockID() != block_idx) {
         std::shared_ptr<TsBlock> tmp_block;
-        auto s = block_cache_->GetBlock(block_idx, &tmp_block);
+        s = block_cache_->GetBlock(block_idx, &tmp_block);
         if (s == FAIL) {
           return s;
         }
