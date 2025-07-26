@@ -32,7 +32,7 @@ import (
 // delegateShowSessions rewrites ShowSessions statement to select statement which returns
 // node_id, session_id, user_name... from kwdb_internal.node_sessions or kwdb_internal.cluster_sessions
 func (d *delegator) delegateShowSessions(n *tree.ShowSessions) (tree.Statement, error) {
-	const query = `SELECT node_id, session_id, user_name, client_address, application_name, active_queries, last_active_query, session_start, oldest_query_start FROM kwdb_internal.`
+	const query = `SELECT node_id, session_id, goroutine_id, user_name, client_address, application_name, active_queries, last_active_query, session_start, oldest_query_start FROM kwdb_internal.`
 	table := `node_sessions`
 	if n.Cluster {
 		table = `cluster_sessions`

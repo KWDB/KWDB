@@ -289,9 +289,6 @@ func (s *Store) processRaftSnapshotRequest(
 	return s.withReplicaForRequest(ctx, &snapHeader.RaftMessageRequest, func(
 		ctx context.Context, r *Replica,
 	) (pErr *roachpb.Error) {
-		log.Infof(ctx, "ProcessRaftSnapshotRequest RangeID is %s StartKey is %s, EndKey is %S, replica IsInitialized is %s, Snap IsInitialized is %s, "+
-			"SnapHeader is %s, inSnap is %s", r.RangeID, r.mu.state.Desc.StartKey.AsRawKey(), r.mu.state.Desc.EndKey.AsRawKey(),
-			r.IsInitialized(), inSnap.State.Desc.IsInitialized(), *snapHeader, inSnap)
 		if snapHeader.RaftMessageRequest.Message.Type != raftpb.MsgSnap {
 			log.Fatalf(ctx, "expected snapshot: %+v", snapHeader.RaftMessageRequest)
 		}

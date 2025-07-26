@@ -638,6 +638,12 @@ FieldFuncMath::FieldFuncMath(Field *left, Field *right,
   precheck_func = func.precheck_func;
   error_tag = func.error_tag;
 }
+
+char *FieldFuncMath::get_ptr(RowBatch *batch) {
+  strvalue_ = ValStr();
+  return reinterpret_cast<char *>(strvalue_.ptr_);
+}
+
 k_int64 FieldFuncMath::ValInt() {
   char *ptr = get_ptr();
   if (ptr) {

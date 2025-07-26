@@ -386,6 +386,11 @@ func (r *replicaRaftStorage) Snapshot() (raftpb.Snapshot, error) {
 	}, nil
 }
 
+// Inconsistent implements the Storage interface.
+func (r *replicaRaftStorage) Inconsistent() bool {
+	return r.mu.inconsistent
+}
+
 // raftSnapshotLocked requires that r.mu is held.
 func (r *Replica) raftSnapshotLocked() (raftpb.Snapshot, error) {
 	return (*replicaRaftStorage)(r).Snapshot()

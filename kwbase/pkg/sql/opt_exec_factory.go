@@ -1594,6 +1594,20 @@ func (ef *execFactory) ConstructTSInsert(
 	return tsIns, nil
 }
 
+func (ef *execFactory) ConstructTSInsertWithCDC(
+	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
+) (exec.Node, error) {
+	tsIns := tsInsertWithCDCNodePool.Get().(*tsInsertWithCDCNode)
+	for _, payloadVals := range payloadNodeMap {
+		tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+		tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		if tsIns.CDCData == nil {
+			tsIns.CDCData = payloadVals.CDCData
+		}
+	}
+	return tsIns, nil
+}
+
 func (ef *execFactory) ConstructTSDelete(
 	nodeIDs []roachpb.NodeID,
 	tblID uint64,

@@ -411,6 +411,23 @@ var varGen = map[string]sessionVar{
 		},
 	},
 
+	// KaiwuDB extension.
+	`enable_timebucket_opt`: {
+		GetStringVal: makePostgresBoolGetStringValFn(`enable_timebucket_opt`),
+		Set: func(_ context.Context, m *sessionDataMutator, s string) error {
+			b, err := parsePostgresBool(s)
+			if err != nil {
+				return err
+			}
+			m.SetTimeBucketEnabled(b)
+			return nil
+		},
+		Get: func(evalCtx *extendedEvalContext) string {
+			return formatBoolAsPostgresSetting(evalCtx.SessionData.TimeBucketEnabled)
+		},
+		GlobalDefault: globalFalse,
+	},
+
 	// CockroachDB extension.
 	`enable_zigzag_join`: {
 		GetStringVal: makePostgresBoolGetStringValFn(`enable_zigzag_join`),

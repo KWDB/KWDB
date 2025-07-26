@@ -534,6 +534,8 @@ message Session {
   int64 max_alloc_bytes = 11;
   // ID of the connection;
   string connection_id = 13;
+  // ID of the goroutine;
+  int64 goroutine_id = 14;
 }
 
 // An error wrapper object for ListSessionsResponse.

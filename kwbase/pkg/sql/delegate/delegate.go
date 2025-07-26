@@ -72,6 +72,9 @@ func TryDelegate(
 	case *tree.ShowSchedule:
 		return d.delegateShowSchedules(t)
 
+	case *tree.ShowStreams:
+		return d.delegateShowStreams(t)
+
 	case *tree.ShowCreate:
 		return d.delegateShowCreate(t)
 

@@ -960,6 +960,11 @@ func (b RangeIDPrefixBuf) TsFlushedIndexKey() roachpb.Key {
 	return append(b.unreplicatedPrefix(), LocalTsFlushedIndexSuffix...)
 }
 
+// InconsistentKey returns a system-local key for a inconsistent flag.
+func (b RangeIDPrefixBuf) InconsistentKey() roachpb.Key {
+	return append(b.unreplicatedPrefix(), LocalInconsistentSuffix...)
+}
+
 // ZoneKeyPrefix returns the key prefix for id's row in the system.zones table.
 func ZoneKeyPrefix(id uint32) roachpb.Key {
 	k := MakeTablePrefix(uint32(ZonesTableID))

@@ -55,6 +55,8 @@ class FieldFuncMath : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
  protected:
@@ -67,5 +69,6 @@ class FieldFuncMath : public FieldFunc {
   _double_fn double_func_;
   _precheck_fn precheck_func;
   KString error_tag;
+  String strvalue_{""};
 };
 }  // namespace kwdbts

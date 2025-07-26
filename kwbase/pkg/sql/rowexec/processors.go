@@ -163,6 +163,12 @@ func NewProcessor(
 		}
 		return newTsInserter(flowCtx, processorID, core.TsInsert, post, outputs[0])
 	}
+	if core.TsInsertWithCDC != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return newTsInserterWithCDC(flowCtx, processorID, core.TsInsertWithCDC, post, outputs[0])
+	}
 	if core.TsDelete != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err
@@ -227,6 +233,12 @@ func NewProcessor(
 			return nil, err
 		}
 		return newAggregator(flowCtx, processorID, core.Aggregator, inputs[0], post, outputs[0])
+	}
+	if core.StreamAggregator != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newStreamAggregator(flowCtx, processorID, core.StreamAggregator, inputs[0], post, outputs[0])
 	}
 	if core.MergeJoiner != nil {
 		if err := checkNumInOut(inputs, outputs, 2, 1); err != nil {
@@ -376,6 +388,13 @@ func NewProcessor(
 		}
 		return NewChangeFrontierProcessor(flowCtx, processorID, *core.ChangeFrontier, inputs[0], outputs[0])
 	}
+	if core.StreamReader != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return NewStreamReaderProcessor(flowCtx, processorID, core.StreamReader, post, outputs[0])
+	}
+
 	if core.ReplicationIngestionData != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err
@@ -436,3 +455,6 @@ var NewReplicationRecvDataProcessor func(*execinfra.FlowCtx, int32, execinfrapb.
 
 // NewReplicationRecvFrontierProcessor is implemented in the non-free (CCL) codebase and then injected here via runtime initialization.
 var NewReplicationRecvFrontierProcessor func(*execinfra.FlowCtx, int32, execinfrapb.ReplicationRecvFrontierSpec, execinfra.RowSource, *execinfrapb.PostProcessSpec, execinfra.RowReceiver) (execinfra.Processor, error)
+
+// NewStreamReaderProcessor is implemented in the enterprise codebase and then injected here via runtime initialization.
+var NewStreamReaderProcessor func(flowCtx *execinfra.FlowCtx, processorID int32, spec *execinfrapb.StreamReaderSpec, post *execinfrapb.PostProcessSpec, output execinfra.RowReceiver) (execinfra.Processor, error)
