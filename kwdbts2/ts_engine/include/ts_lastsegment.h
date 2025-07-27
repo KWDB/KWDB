@@ -120,11 +120,6 @@ class TsLastSegment : public TsSegmentBase {
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                         uint32_t scan_version) override;
 
-  KStatus GetBlockSpansNoBug(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                             std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version);
-  KStatus GetBlockSpansBug(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                           std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version);
-
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)
                          : true;  // always return true when bloom filter doesn't exist.

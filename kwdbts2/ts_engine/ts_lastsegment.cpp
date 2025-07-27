@@ -588,64 +588,8 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
   return SUCCESS;
 }
 
-KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                     std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
-  std::list<shared_ptr<TsBlockSpan>> bug_span;
-  auto s = GetBlockSpansBug(filter, bug_span, tbl_schema_mgr, scan_version);
-  assert(s == SUCCESS);
-  int bug_cnt = 0;
-  for(auto span : bug_span) {
-    bug_cnt += span->GetRowNum();
-  }
-
-  std::list<shared_ptr<TsBlockSpan>> nobug_span;
-  GetBlockSpansNoBug(filter, nobug_span, tbl_schema_mgr, scan_version);
-  assert(s == SUCCESS);
-  int nobug_cnt = 0;
-  for(auto span : nobug_span) {
-    nobug_cnt += span->GetRowNum();
-  }
-  assert(bug_cnt == nobug_cnt);
-  return GetBlockSpansNoBug(filter, block_spans, tbl_schema_mgr, scan_version);
-}
-
-KStatus TsLastSegment::GetBlockSpansNoBug(const TsBlockItemFilterParams& filter,
-                                          std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                          std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
-  std::vector<TsLastSegmentBlockIndex>* p_block_indices;
-  block_cache_->GetAllBlockIndex(&p_block_indices);
-  const auto& block_indices = *p_block_indices;
-  for (auto span : filter.spans_) {
-    for (int i = 0; i < footer_.n_data_block; ++i) {
-      if (block_indices[i].table_id != filter.table_id) {
-        continue;
-      }
-      std::shared_ptr<TsBlock> tmp_block;
-      auto s = block_cache_->GetBlock(i, &tmp_block);
-      if (s == FAIL) {
-        return s;
-      }
-      auto block = std::static_pointer_cast<TsLastBlock>(tmp_block);
-
-      auto ts = block->GetTimestamps();
-      auto entities = block->GetEntities();
-      auto lsn = block->GetLSN();
-
-      for (int k = 0; k < block->GetRowNum(); ++k) {
-        if (entities[k] != filter.entity_id) continue;
-        if (ts[k] < span.ts_span.begin || ts[k] > span.ts_span.end) continue;
-        if (lsn[k] < span.lsn_span.begin || lsn[k] > span.lsn_span.end) continue;
-        block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, k, 1,
-                                                            tbl_schema_mgr, scan_version));
-      }
-    }
-  }
-  return SUCCESS;
-}
-
 using EntityTsPoint = std::tuple<TSEntityID, timestamp64>;
-KStatus TsLastSegment::GetBlockSpansBug(const TsBlockItemFilterParams& filter,
+KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
   assert(block_cache_ != nullptr);
