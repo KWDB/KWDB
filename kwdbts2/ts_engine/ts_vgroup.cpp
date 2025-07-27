@@ -41,6 +41,7 @@
 #include "ts_iterator_v2_impl.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_mem_segment_mgr.h"
+#include "ts_std_utils.h"
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
 
@@ -439,14 +440,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     LOG_ERROR("cannot set status for mem segment.");
     return KStatus::FAIL;
   }
-  struct LastRowInfo {
-    TSTableID cur_table_id = 0;
-    uint32_t database_id = 0;
-    uint32_t cur_table_version = 0;
-    std::vector<AttributeInfo> info;
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-  };
-  LastRowInfo last_row_info;
 
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
@@ -494,7 +487,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
 
     std::shared_ptr<TsBlockSpan> current_span = span;
-    while (current_span != nullptr) {
+    while (current_span != nullptr && current_span->GetRowNum() != 0) {
       timestamp64 first_ts = convertTsToPTime(current_span->GetFirstTS(), static_cast<DATATYPE>(info[0].type));
       timestamp64 last_ts = convertTsToPTime(current_span->GetLastTS(), static_cast<DATATYPE>(info[0].type));
       auto partition = current->GetPartition(table_schema_manager->GetDbID(), first_ts);
@@ -527,18 +520,16 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         current_span = nullptr;
       } else {
         // split the span into two parts.
-        std::vector<int> iota_vec(current_span->GetRowNum());
-        std::iota(iota_vec.begin(), iota_vec.end(), 0);
-        auto split_it =
-            std::upper_bound(iota_vec.begin(), iota_vec.end(), partition->GetEndTime(), [&](timestamp64 val, int idx) {
-              return val < convertTsToPTime(current_span->GetTS(idx), static_cast<DATATYPE>(info[0].type));
-            });
+        // find the first row that satisfies current_span->GetTS(idx) => partition->GetEndTime()
+        int split_idx = *std::upper_bound(IndexRange{0}, IndexRange(current_span->GetRowNum()), partition->GetEndTime(),
+                                          [&](timestamp64 val, int idx) {
+                                            return val <= convertTsToPTime(current_span->GetTS(idx),
+                                                                          static_cast<DATATYPE>(info[0].type));
+                                          });
 
-        int split_idx = *split_it;
-        std::shared_ptr<TsBlockSpan> new_span;
-        current_span->SplitBack(split_idx, new_span);
-        span_to_flush = std::move(current_span);
-        current_span = std::move(new_span);
+        std::shared_ptr<TsBlockSpan> front_span;
+        current_span->SplitFront(split_idx, front_span);
+        span_to_flush = std::move(front_span);
       }
 
       auto it = builders2.find(partition);

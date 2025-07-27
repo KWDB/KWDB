@@ -65,7 +65,7 @@ KStatus TsColumnBlock::GetValueSlice(int row_num, TSSlice& value) {
   assert(row_num < count_);
   if (!isVarLenType(col_schema_.type)) {
     size_t offset = col_schema_.size * row_num;
-    assert(offset + col_schema_.size < fixlen_data_.size());
+    assert(offset + col_schema_.size <= fixlen_data_.size());
     value.data = fixlen_data_.data() + offset;
     value.len = col_schema_.size;
     return SUCCESS;

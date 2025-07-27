@@ -35,8 +35,12 @@ KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   bloom_filter_->Add(span->GetEntityID());
   while (span != nullptr && span->GetRowNum() != 0) {
     if (metric_block_builder_ == nullptr || current_table_version != table_version_) {
+      auto s = RecordAndWriteBlockToFile();
+      if(s == FAIL) {
+        return FAIL;
+      }
       std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-      auto s = engine_schema_manager_->GetTableSchemaMgr(span->GetTableID(), table_schema_mgr);
+      s = engine_schema_manager_->GetTableSchemaMgr(span->GetTableID(), table_schema_mgr);
       if (s == FAIL) {
         return FAIL;
       }
@@ -135,6 +139,9 @@ KStatus TsLastSegmentBuilder2::Finalize() {
 }
 
 KStatus TsLastSegmentBuilder2::RecordAndWriteBlockToFile() {
+  if(metric_block_builder_ == nullptr || metric_block_builder_->GetRowNum() == 0) {
+    return SUCCESS;
+  }
   assert(metric_block_builder_ != nullptr);
   assert(entity_id_buffer_.size() == metric_block_builder_->GetRowNum());
   auto metric_block = metric_block_builder_->GetMetricBlock();

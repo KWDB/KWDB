@@ -13,6 +13,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <vector>
 
 #include "kwdb_type.h"
@@ -407,6 +408,13 @@ void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, boo
 }
 
 KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr) {
+  int re_try_times = 0;
+  while (intent_row_num_.load() != written_row_num_.load()) {
+    if (++re_try_times % 10 == 0)
+      LOG_WARN("TsMemSegment intent_row_num_[%u] != written_row_num_[%u], sleep 1ms. times[%d].",
+               intent_row_num_.load(), written_row_num_.load(), re_try_times);
+    usleep(1000);
+  }
   InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
   iter.SeekToFirst();
 
@@ -440,8 +448,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
       }
     }
   } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
+    TSMemSegRowData* last_row_data = nullptr;
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* last_row_data = nullptr;
       TSMemSegRowData* cur_row = TSRowDataComparator::decode_key(iter.key());
       assert(cur_row != nullptr);
       if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(cur_row)) {

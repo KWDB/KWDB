@@ -591,7 +591,23 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
-  return GetBlockSpansBug(filter, block_spans, tbl_schema_mgr, scan_version);
+  std::list<shared_ptr<TsBlockSpan>> bug_span;
+  auto s = GetBlockSpansBug(filter, bug_span, tbl_schema_mgr, scan_version);
+  assert(s == SUCCESS);
+  int bug_cnt = 0;
+  for(auto span : bug_span) {
+    bug_cnt += span->GetRowNum();
+  }
+
+  std::list<shared_ptr<TsBlockSpan>> nobug_span;
+  GetBlockSpansNoBug(filter, nobug_span, tbl_schema_mgr, scan_version);
+  assert(s == SUCCESS);
+  int nobug_cnt = 0;
+  for(auto span : nobug_span) {
+    nobug_cnt += span->GetRowNum();
+  }
+  assert(bug_cnt == nobug_cnt);
+  return GetBlockSpansNoBug(filter, block_spans, tbl_schema_mgr, scan_version);
 }
 
 KStatus TsLastSegment::GetBlockSpansNoBug(const TsBlockItemFilterParams& filter,
@@ -682,6 +698,9 @@ KStatus TsLastSegment::GetBlockSpansBug(const TsBlockItemFilterParams& filter,
 
     for (auto it = begin_it; it != end_it; ++it) {
       assert(it->max_entity_id >= filter.entity_id && it->min_entity_id <= filter.entity_id);
+      if (it->table_id != filter.table_id) {
+        continue;
+      }
       //  we need to read the block to do futher filtering.
       int block_idx = it - block_indices.begin();
 
