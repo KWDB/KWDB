@@ -1165,14 +1165,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }
 
-  // 4. rewrite wal log to chk file
-//  wal_mgr_ = nullptr;
-//  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-//  s = wal_mgr_->ResetWAL(ctx, true);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
-//    return s;
-//  }
   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
@@ -1205,9 +1197,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return s;
   }
 
-  // 7. a). update checkpoint LSN .
-  //    b). trig all vgroup write checkpoint wal.
-  //    c). remove vgroup wal file.
+  // 7. remove vgroup wal file.
   for (const auto &vgrp : vgroups_) {
     TS_LSN lsn = 0;
     uint32_t vgrp_id = vgrp->GetVGroupID();
@@ -1218,7 +1208,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
       LOG_ERROR("Failed to find vgroup lsn from map.")
       return KStatus::FAIL;
     }
-    s = vgrp->UpdateLSN(ctx, lsn);
+    s = vgrp->RemoveChkFile(ctx);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to update vgroup checkpoint lsn.")
       return s;
