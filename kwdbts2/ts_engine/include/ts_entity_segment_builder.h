@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -24,6 +25,7 @@
 #include "ts_io.h"
 #include "ts_entity_segment.h"
 #include "ts_filename.h"
+#include "ts_lastsegment_builder.h"
 #include "ts_metric_block.h"
 #include "ts_version.h"
 
@@ -185,6 +187,8 @@ class TsEntitySegmentBuilder {
 
   KStatus WriteBlock(TsEntityKey& entity_key);
 
+  KStatus WriteCachedBlockSpan(TsEntityKey& entity_key);
+
   std::filesystem::path root_path_;
   TsEngineSchemaManager* schema_manager_;
   TsVersionManager* version_manager_;
@@ -197,13 +201,17 @@ class TsEntitySegmentBuilder {
   std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
-  std::shared_ptr<TsEntityBlockBuilder> block = nullptr;
+  std::unique_ptr<TsLastSegmentBuilder> builder_ = nullptr;
+  std::shared_ptr<TsEntityBlockBuilder> block_ = nullptr;
 
   std::shared_mutex mutex_;
 
   TsEntityItem cur_entity_item_;
 
   std::map<uint32_t, TsEntityItem> entity_items_;
+
+  std::deque<std::shared_ptr<TsBlockSpan>> cached_spans_;
+  size_t cached_count_ = 0;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,
