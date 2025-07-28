@@ -1057,7 +1057,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     // 4. write end chkckpoint wal
     TS_LSN end_lsn;
     uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-    char v_lsn[lsn_len];
+    auto v_lsn = std::make_unique<char[]>(lsn_len);
     int location = 0;
     for (auto it : vgrp_lsn) {
       memcpy(v_lsn + location, &it, sizeof(uint64_t));
@@ -1191,7 +1191,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 6.write EndWAL to chk file
   TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-  char v_lsn[lsn_len];
+  auto v_lsn = std::make_unique<char[]>(lsn_len);
   int location = 0;
   for (auto it : vgrp_lsn) {
     memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
