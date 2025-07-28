@@ -537,6 +537,9 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
       block_->Clear();
     }
   }
+  if (block_->HasData()) {
+    s = WriteBlock(entity_key);
+  }
   return s;
 }
 
