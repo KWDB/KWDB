@@ -270,7 +270,7 @@ type TsEngine struct {
 	opened   bool
 	openCh   chan struct{}
 	writeWAL bool
-	Version string
+	Version  string
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
