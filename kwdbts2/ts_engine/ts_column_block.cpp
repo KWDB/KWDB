@@ -154,7 +154,7 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
     BitmapCompAlg bitmap_alg = static_cast<BitmapCompAlg>(compressed_data.data[0]);
     if (bitmap_alg != BitmapCompAlg::kPlain) {
       LOG_ERROR("Unsupported bitmap compression algorithm: %d", static_cast<int>(bitmap_alg));
-      assert(false);
+      throw std::runtime_error("Unsupported bitmap compression algorithm");
       return FAIL;
     }
     RemovePrefix(&compressed_data, 1);
@@ -182,7 +182,7 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
   if (need_convert_ts(col_schema.type)) {
     if (fixlen_data.size() != info.row_count * 8) {
       LOG_ERROR("Invalid timestamp data size: %lu, count: %d", fixlen_data.size(), info.row_count);
-      assert(false);
+      throw std::runtime_error("Invalid timestamp data size");
       return FAIL;
     }
     std::string tmp_data;
