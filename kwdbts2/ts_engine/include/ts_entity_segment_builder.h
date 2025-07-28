@@ -201,7 +201,7 @@ class TsEntitySegmentBuilder {
   std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
-  std::unique_ptr<TsLastSegmentBuilder2> builder_ = nullptr;
+  std::unique_ptr<TsLastSegmentBuilder> builder_ = nullptr;
   std::shared_ptr<TsEntityBlockBuilder> block_ = nullptr;
 
   std::shared_mutex mutex_;

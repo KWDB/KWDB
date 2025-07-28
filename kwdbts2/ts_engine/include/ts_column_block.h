@@ -48,7 +48,7 @@ class TsColumnBlock {
         varchar_data_(std::move(varchar_data)) {}
 
  public:
-  static KStatus ParseCompressedColumnData(const AttributeInfo& col_schema, TSSlice compressed_data,
+  static KStatus ParseCompressedColumnData(const AttributeInfo col_schema, TSSlice compressed_data,
                                            const TsColumnCompressInfo& info, std::unique_ptr<TsColumnBlock>* colblock);
 
   bool GetCompressedData(std::string*, TsColumnCompressInfo*, bool compress);

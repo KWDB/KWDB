@@ -508,7 +508,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
           LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
           return s;
         }
-        builder_ = std::make_unique<TsLastSegmentBuilder2>(schema_manager_, std::move(last_segment), file_number);
+        builder_ = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
       }
       // Writes the incomplete data back to the last segment
       s = builder_->PutBlockSpan(cached_spans_.front());

@@ -30,13 +30,13 @@
 
 namespace kwdbts {
 
-KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
+KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   TableVersionInfo current_table_version{span->GetTableID(), span->GetTableVersion()};
   bloom_filter_->Add(span->GetEntityID());
   while (span != nullptr && span->GetRowNum() != 0) {
     if (metric_block_builder_ == nullptr || current_table_version != table_version_) {
       auto s = RecordAndWriteBlockToFile();
-      if(s == FAIL) {
+      if (s == FAIL) {
         return FAIL;
       }
       std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
@@ -78,7 +78,7 @@ KStatus TsLastSegmentBuilder2::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   return SUCCESS;
 }
 
-KStatus TsLastSegmentBuilder2::Finalize() {
+KStatus TsLastSegmentBuilder::Finalize() {
   if (metric_block_builder_ != nullptr && metric_block_builder_->GetRowNum() != 0) {
     auto s = RecordAndWriteBlockToFile();
     if (s == FAIL) {
@@ -138,8 +138,8 @@ KStatus TsLastSegmentBuilder2::Finalize() {
   return s;
 }
 
-KStatus TsLastSegmentBuilder2::RecordAndWriteBlockToFile() {
-  if(metric_block_builder_ == nullptr || metric_block_builder_->GetRowNum() == 0) {
+KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
+  if (metric_block_builder_ == nullptr || metric_block_builder_->GetRowNum() == 0) {
     return SUCCESS;
   }
   assert(metric_block_builder_ != nullptr);
@@ -201,7 +201,7 @@ KStatus TsLastSegmentBuilder2::RecordAndWriteBlockToFile() {
   return SUCCESS;
 }
 
-void TsLastSegmentBuilder2::BlockIndexCollector::Collect(TsBlockSpan* span) {
+void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
   max_entity_id_ = std::max(max_entity_id_, span->GetEntityID());
   min_entity_id_ = std::min(min_entity_id_, span->GetEntityID());
   max_ts_ = std::max(max_ts_, span->GetLastTS());
@@ -218,7 +218,7 @@ void TsLastSegmentBuilder2::BlockIndexCollector::Collect(TsBlockSpan* span) {
   max_lsn_ = std::max(max_lsn_, max_lsn);
 }
 
-TsLastSegmentBlockIndex TsLastSegmentBuilder2::BlockIndexCollector::GetIndex() const {
+TsLastSegmentBlockIndex TsLastSegmentBuilder::BlockIndexCollector::GetIndex() const {
   TsLastSegmentBlockIndex index;
   index.info_offset = 0;
   index.length = 0;

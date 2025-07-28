@@ -450,7 +450,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
-  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder2> builders2;
+  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders2;
   std::unordered_set<std::shared_ptr<const TsPartitionVersion>> new_created_partitions;
   TsVersionUpdate update;
 
@@ -551,11 +551,11 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
           return FAIL;
         }
 
-        auto result = builders2.insert({partition, TsLastSegmentBuilder2{schema_mgr_, std::move(last_segment),
+        auto result = builders2.insert({partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment),
                                                                          static_cast<uint32_t>(file_number)}});
         it = result.first;
       }
-      TsLastSegmentBuilder2& builder = it->second;
+      TsLastSegmentBuilder& builder = it->second;
       s = builder.PutBlockSpan(span_to_flush);
       if (s == FAIL) {
         LOG_ERROR("PutBlockSpan failed.");

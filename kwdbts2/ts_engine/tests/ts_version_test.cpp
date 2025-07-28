@@ -35,7 +35,7 @@ class TsVersionTest : public testing::Test {
     auto last_seg_filename = root / LastSegmentFileName(filenumber);
     std::unique_ptr<TsAppendOnlyFile> file;
     ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
-    TsLastSegmentBuilder2 builder(nullptr, std::move(file), filenumber);
+    TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
     ASSERT_EQ(builder.Finalize(), SUCCESS);
     update.AddLastSegment(par_id, filenumber);
     ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
@@ -52,7 +52,7 @@ class TsVersionTest : public testing::Test {
     auto last_seg_filename = root / LastSegmentFileName(filenumber);
     std::unique_ptr<TsAppendOnlyFile> file;
     ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
-    TsLastSegmentBuilder2 builder(nullptr, std::move(file), filenumber);
+    TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
     ASSERT_EQ(builder.Finalize(), SUCCESS);
     update.AddLastSegment(par_id, filenumber);
     ASSERT_GE(lastsegments.size(), 2);

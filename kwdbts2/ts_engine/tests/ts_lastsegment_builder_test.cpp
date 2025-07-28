@@ -43,7 +43,7 @@ std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,    Dat
                                       DataType::FLOAT,     DataType::DOUBLE, DataType::VARCHAR};
 
 struct R {
-  std::unique_ptr<TsLastSegmentBuilder2> builder;
+  std::unique_ptr<TsLastSegmentBuilder> builder;
   std::shared_ptr<TsEngineSchemaManager> schema_mgr;
   std::vector<AttributeInfo> metric_schema;
   std::vector<TagInfo> tag_schema;
@@ -99,7 +99,7 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
 
     std::unique_ptr<TsAppendOnlyFile> last_segment;
     env->NewAppendOnlyFile(filename, &last_segment);
-    TsLastSegmentBuilder2 builder(mgr.get(), std::move(last_segment), 0);
+    TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), 0);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{payload, metric_schema};
@@ -240,7 +240,7 @@ R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   std::unique_ptr<TsAppendOnlyFile> last_segment;
   env->NewAppendOnlyFile(filename, &last_segment);
   R res;
-  res.builder = std::make_unique<TsLastSegmentBuilder2>(mgr.get(), std::move(last_segment), 0);
+  res.builder = std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), 0);
   res.metric_schema = std::move(metric_schema);
   res.tag_schema = std::move(tag_schema);
   res.schema_mgr = mgr;

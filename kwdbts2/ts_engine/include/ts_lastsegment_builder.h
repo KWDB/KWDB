@@ -33,7 +33,7 @@
 
 namespace kwdbts {
 
-class TsLastSegmentBuilder2 {
+class TsLastSegmentBuilder {
  private:
   TsEngineSchemaManager* engine_schema_manager_;
   std::unique_ptr<TsAppendOnlyFile> last_segment_file_;
@@ -56,7 +56,7 @@ class TsLastSegmentBuilder2 {
   std::vector<LastSegmentMetaBlockBase*> meta_blocks_;
 
  public:
-  TsLastSegmentBuilder2(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsAppendOnlyFile>&& last_segment,
+  TsLastSegmentBuilder(TsEngineSchemaManager* schema_mgr, std::unique_ptr<TsAppendOnlyFile>&& last_segment,
                         uint64_t file_number)
       : engine_schema_manager_(schema_mgr),
         last_segment_file_(std::move(last_segment)),
@@ -72,7 +72,7 @@ class TsLastSegmentBuilder2 {
   KStatus RecordAndWriteBlockToFile();
 };
 
-class TsLastSegmentBuilder2::BlockIndexCollector {
+class TsLastSegmentBuilder::BlockIndexCollector {
  private:
   TSTableID table_id_;
   uint32_t version_;
