@@ -165,13 +165,48 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j4
+        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
+)
+
+
+# duckdb setup
+set(DUCKDB_VERSION 1.3.0)
+set(DUCKDB_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/duckdb-1.3.2")
+set(DUCKDB_BUILD_DIR "${DUCKDB_SOURCE_DIR}/build")
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    set(DUCKDB_PREFIX_DIR "${DUCKDB_BUILD_DIR}/debug")
+    set(DUCKDB_BUILD_TYPE "debug")
+else ()
+    set(DUCKDB_PREFIX_DIR "${DUCKDB_BUILD_DIR}/release")
+    set(DUCKDB_BUILD_TYPE "release")
+endif ()
+set(DUCKDB_OUTPUT_DIR "${DUCKDB_PREFIX_DIR}")
+message(STATUS "Setting up duckdb from source: ${DUCKDB_SOURCE_DIR} in ${DUCKDB_BUILD_TYPE} mode")
+
+include(ExternalProject)
+
+ExternalProject_Add(
+    duckdb
+    SOURCE_DIR "${DUCKDB_SOURCE_DIR}"
+    PREFIX "${DUCKDB_PREFIX_DIR}"
+    BINARY_DIR "${DUCKDB_BUILD_DIR}"
+    # CONFIGURE_COMMAND
+    #     ${CMAKE_COMMAND} -E copy_directory "${DUCKDB_SOURCE_DIR}" "${DUCKDB_BUILD_DIR}"
+    #     COMMAND cd "${DUCKDB_BUILD_DIR}" 
+    BUILD_COMMAND
+        cd "${DUCKDB_SOURCE_DIR}" && $(MAKE) "${DUCKDB_BUILD_TYPE}" -j
+    # BUILD_IN_SOURCE 0
+    INSTALL_COMMAND ""
+    #     ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
+    #     COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
+    #     COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
+    #     COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
 )
 
 set(MODULE_NAME kwdbts2)
@@ -237,6 +272,7 @@ set(TS_INCLUDE
         ../common/src/include
         third_party/gtest-1.8.1/fused-src
         third_party/brpc-1.9.0/src
+        ${DUCKDB_SOURCE_DIR}/src/include
         ${BRPC_OUTPUT_DIR}/include
         include
         roachpb
@@ -291,7 +327,26 @@ add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
 add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
-
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
+        ${DUCKDB_PREFIX_DIR}/tools/sqlite3_api_wrapper/libsqlite3_api_wrapper_static.a
+        ${DUCKDB_PREFIX_DIR}/src/libduckdb_static.a
+        ${DUCKDB_PREFIX_DIR}/third_party/utf8proc/libduckdb_utf8proc.a
+        ${DUCKDB_PREFIX_DIR}/third_party/mbedtls/libduckdb_mbedtls.a
+        ${DUCKDB_PREFIX_DIR}/third_party/libpg_query/libduckdb_pg_query.a
+        ${DUCKDB_PREFIX_DIR}/third_party/fmt/libduckdb_fmt.a
+        ${DUCKDB_PREFIX_DIR}/third_party/re2/libduckdb_re2.a
+        ${DUCKDB_PREFIX_DIR}/third_party/fastpforlib/libduckdb_fastpforlib.a
+        ${DUCKDB_PREFIX_DIR}/third_party/hyperloglog/libduckdb_hyperloglog.a
+        ${DUCKDB_PREFIX_DIR}/third_party/yyjson/libduckdb_yyjson.a
+        ${DUCKDB_PREFIX_DIR}/third_party/miniz/libduckdb_miniz.a
+        ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a
+        ${DUCKDB_PREFIX_DIR}/third_party/zstd/libduckdb_zstd.a
+        ${DUCKDB_PREFIX_DIR}/third_party/fsst/libduckdb_fsst.a
+        ${DUCKDB_PREFIX_DIR}/extension/jemalloc/libjemalloc_extension.a
+        ${DUCKDB_PREFIX_DIR}/extension/core_functions/libcore_functions_extension.a
+        ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
+        )
+target_link_libraries(${KWDBTS2_SERVER_LIB} PUBLIC ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a)
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
