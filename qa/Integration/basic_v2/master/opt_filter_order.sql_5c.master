@@ -497,8 +497,7 @@ INSERT 1
                                         | ts-table            | t1
                                         | access mode         | metaTable
                                         | use statistic       | true
-                                        | block filter[e2]    | NOT NULL
-(38 rows)
+(37 rows)
 > select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    order by e1;
   e1
 ------
@@ -793,8 +792,7 @@ INSERT 1
                                    | ts-table            | t1
                                    | access mode         | metaTable
                                    | use statistic       | true
-                                   | block filter[e2]    | NOT NULL
-(28 rows)
+(27 rows)
 > select e1 from d1.t1 as t2 where    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    or    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    order by e1;
   e1
 ------
@@ -1014,7 +1012,6 @@ INSERT 1
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e1]    | NOT NULL
    ├── subquery               |                     |
    │    │                     | id                  | @S2
    │    │                     | original sql        | (SELECT max(e1) FROM t1)
@@ -1029,7 +1026,6 @@ INSERT 1
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e1]    | NOT NULL
    ├── subquery               |                     |
    │    │                     | id                  | @S3
    │    │                     | original sql        | (SELECT avg(e2) FROM t1)
@@ -1111,7 +1107,7 @@ INSERT 1
                               | ts-table            | t1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-(122 rows)
+(120 rows)
 > SELECT * FROM t1
 WHERE
     (e1 > 10 AND e1 < 20 AND e2 > 20 AND e2 < 30 AND e3 > 30)
@@ -1218,7 +1214,6 @@ order by e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e2]    | NOT NULL
    └── subquery               |                     |
         │                     | id                  | @S2
         │                     | original sql        | (SELECT avg(e1) FROM t1)
@@ -1233,7 +1228,7 @@ order by e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-(43 rows)
+(42 rows)
 > SELECT * FROM t1
 WHERE
         e1 > (SELECT AVG(e1) FROM t1) AND e2 < (SELECT MAX(e2) FROM t1)
@@ -1410,7 +1405,6 @@ order by e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e3]    | NOT NULL
    └── subquery               |                     |
         │                     | id                  | @S3
         │                     | original sql        | (SELECT stddev(e5) FROM t1)
@@ -1422,7 +1416,7 @@ order by e1;
                   └── ts scan |                     |
                               | ts-table            | t1
                               | access mode         | metaTable
-(51 rows)
+(50 rows)
 > SELECT * FROM t1
 WHERE
             abs(e1 - (SELECT AVG(e1) FROM t1)) < 5 AND e2 > 20 AND e3 < (SELECT MAX(e3) FROM t1)
@@ -1477,7 +1471,6 @@ order by e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e3]    | NOT NULL
    ├── subquery               |                     |
    │    │                     | id                  | @S2
    │    │                     | original sql        | (SELECT avg(e5) FROM t1)
@@ -1545,8 +1538,7 @@ order by e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-                              | block filter[e3]    | NOT NULL
-(94 rows)
+(92 rows)
 > SELECT * FROM t1
 WHERE
             abs(e1 - (SELECT AVG(e1) FROM t1)) < 5 AND e2 > 20 AND e3 < (SELECT MAX(e3) FROM t1)
@@ -1602,7 +1594,6 @@ order by e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e3]    | NOT NULL
    ├── subquery               |                     |
    │    │                     | id                  | @S2
    │    │                     | original sql        | (SELECT avg(e5) FROM t1)
@@ -1668,8 +1659,7 @@ order by e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-                              | block filter[e3]    | NOT NULL
-(92 rows)
+(90 rows)
 > SELECT * FROM t1
 WHERE
             abs(e1 - (SELECT AVG(e1) FROM t1)) < 5 AND e2 > 20 AND e3 < (SELECT MAX(e3) FROM t1)
@@ -1893,8 +1883,7 @@ ORDER BY e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-                              | block filter[e2]    | NOT NULL
-(26 rows)
+(25 rows)
 > SELECT * FROM t1
 WHERE
     (e1 > 10 AND e2 < (SELECT MAX(e2) FROM t1))
@@ -1949,7 +1938,6 @@ ORDER BY e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e1]    | NOT NULL
    ├── subquery               |                     |
    │    │                     | id                  | @S2
    │    │                     | original sql        | (SELECT avg(e3) FROM t1)
@@ -1989,8 +1977,7 @@ ORDER BY e1;
                               | ts-table            | t1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-                              | block filter[tag2]  | NOT NULL
-(66 rows)
+(64 rows)
 > SELECT * FROM t1
 WHERE
     (e1 > (SELECT MIN(e1) FROM t1) AND e2 > 20)
@@ -2045,7 +2032,6 @@ ORDER BY e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e3]    | NOT NULL
    ├── subquery               |                     |
    │    │                     | id                  | @S2
    │    │                     | original sql        | (SELECT max(e5) FROM t1)
@@ -2060,7 +2046,6 @@ ORDER BY e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | use statistic       | true
-   │                          | block filter[e5]    | NOT NULL
    └── subquery               |                     |
         │                     | id                  | @S3
         │                     | original sql        | (SELECT avg(e2) FROM t1)
@@ -2075,7 +2060,7 @@ ORDER BY e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-(55 rows)
+(53 rows)
 > SELECT * FROM t1
 WHERE
     (e1 BETWEEN 10 AND 20 AND e2 < (SELECT AVG(e2) FROM t1))
@@ -2142,8 +2127,7 @@ ORDER BY e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-                              | block filter[e5]    | NOT NULL
-(40 rows)
+(39 rows)
 > SELECT * FROM t1
 WHERE
     (e1 > 15 AND abs(e2 - (SELECT AVG(e2) FROM t1)) < 5)
@@ -2194,7 +2178,6 @@ ORDER BY e1;
    │                     | ts-table            | t1
    │                     | access mode         | metaTable
    │                     | use statistic       | true
-   │                     | block filter[e2]    | NOT NULL
    └── subquery          |                     |
         │                | id                  | @S2
         │                | original sql        | (SELECT max(e3) FROM t1)
@@ -2209,8 +2192,7 @@ ORDER BY e1;
                          | ts-table            | t1
                          | access mode         | metaTable
                          | use statistic       | true
-                         | block filter[e3]    | NOT NULL
-(41 rows)
+(39 rows)
 > SELECT * FROM t1
 WHERE
     (e1 > 10 AND e2 = (SELECT MIN(e2) FROM t1))
@@ -2340,8 +2322,7 @@ ORDER BY e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-                              | block filter[e3]    | NOT NULL
-(51 rows)
+(50 rows)
 > SELECT * FROM t1
 WHERE
     (e1 > 15 AND e3 < (SELECT MIN(e3) FROM t1))
@@ -2392,7 +2373,6 @@ ORDER BY e1;
    │                     | ts-table            | t1
    │                     | access mode         | metaTable
    │                     | use statistic       | true
-   │                     | block filter[e5]    | NOT NULL
    └── subquery          |                     |
         │                | id                  | @S2
         │                | original sql        | (SELECT max(e2) FROM t1)
@@ -2407,8 +2387,7 @@ ORDER BY e1;
                          | ts-table            | t1
                          | access mode         | metaTable
                          | use statistic       | true
-                         | block filter[e2]    | NOT NULL
-(41 rows)
+(39 rows)
 > SELECT * FROM t1
 WHERE
     (e1 < 25 AND e2 != (SELECT MAX(e2) FROM t1))
