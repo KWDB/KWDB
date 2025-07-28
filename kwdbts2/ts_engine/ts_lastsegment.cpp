@@ -197,10 +197,10 @@ class TsLastBlock : public TsBlock {
 
       Arena arena;
       char* buf = arena.Allocate(length);
-      TSSlice result;
+      TSSlice result{nullptr, 0};
       auto s = file_->Read(offset, length, &result, buf);
-      if (s == FAIL) {
-        LOG_ERROR("cannot read column data from file");
+      if (s == FAIL || result.len != length) {
+        LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.len);
         return s;
       }
       TsColumnCompressInfo info;
@@ -212,7 +212,7 @@ class TsLastBlock : public TsBlock {
       std::unique_ptr<TsColumnBlock> colblock;
       s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
       if (s == FAIL) {
-        LOG_ERROR("can not parse column data");
+        LOG_ERROR("can not parse column data, col_id %d", col_id);
         return FAIL;
       }
 
@@ -288,6 +288,12 @@ class TsLastBlock : public TsBlock {
         }
       }
 
+      std::unique_lock lk{mu_};
+      if (!timestamps_.empty()) {
+        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+        return SUCCESS;
+      }
+
       auto offset = block_info_->block_offset + block_info_->entity_id_len;
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
@@ -324,6 +330,8 @@ class TsLastBlock : public TsBlock {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
+      LOG_ERROR("load column from %s failed block_id %d, col_id %d", lastsegment_->GetFilePath().c_str(), block_id_,
+                col_id);
       return FAIL;
     }
     return col_block->GetColBitmap(bitmap);
@@ -332,6 +340,8 @@ class TsLastBlock : public TsBlock {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
+      LOG_ERROR("load column from %s failed block_id %d, col_id %d", lastsegment_->GetFilePath().c_str(), block_id_,
+                col_id);
       return FAIL;
     }
     *value = col_block->GetColAddr();
@@ -341,6 +351,8 @@ class TsLastBlock : public TsBlock {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
+      LOG_ERROR("load column from %s failed block_id %d, col_id %d", lastsegment_->GetFilePath().c_str(), block_id_,
+                col_id);
       return FAIL;
     }
     return col_block->GetValueSlice(row_num, value);
@@ -350,7 +362,6 @@ class TsLastBlock : public TsBlock {
     TsBitmap bitmap;
     auto s = GetColBitmap(col_id, schema, bitmap);
     if (s == FAIL) {
-      LOG_ERROR("cannot get bitmap");
       return false;
     }
     return bitmap[row_num] == DataFlags::kNull;

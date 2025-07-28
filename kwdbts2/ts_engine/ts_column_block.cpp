@@ -16,6 +16,7 @@
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
@@ -143,21 +144,27 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   return true;
 }
 
-KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema,
-                                                 TSSlice compressed_data,
+KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema, TSSlice compressed_data,
                                                  const TsColumnCompressInfo& info,
                                                  std::unique_ptr<TsColumnBlock>* colblock) {
-  // 1. Decompress Bitmap
   assert(compressed_data.len == info.bitmap_len + info.fixdata_len + info.vardata_len);
-  BitmapCompAlg bitmap_alg = static_cast<BitmapCompAlg>(compressed_data.data[0]);
-  assert(bitmap_alg == BitmapCompAlg::kPlain);
-  RemovePrefix(&compressed_data, 1);
+  // 1. Decompress Bitmap
+  std::unique_ptr<TsBitmap> p_bitmap = nullptr;
+  if (info.bitmap_len != 0) {
+    BitmapCompAlg bitmap_alg = static_cast<BitmapCompAlg>(compressed_data.data[0]);
+    if (bitmap_alg != BitmapCompAlg::kPlain) {
+      LOG_ERROR("Unsupported bitmap compression algorithm: %d", static_cast<int>(bitmap_alg));
+      assert(false);
+      return FAIL;
+    }
+    RemovePrefix(&compressed_data, 1);
 
-  TSSlice bitmap_data;
-  bitmap_data.data = compressed_data.data;
-  bitmap_data.len = info.bitmap_len - 1;
-  TsBitmap bitmap(bitmap_data, info.row_count);
-  RemovePrefix(&compressed_data, bitmap_data.len);
+    TSSlice bitmap_data;
+    bitmap_data.data = compressed_data.data;
+    bitmap_data.len = info.bitmap_len - 1;
+    p_bitmap = std::make_unique<TsBitmap>(bitmap_data, info.row_count);
+    RemovePrefix(&compressed_data, bitmap_data.len);
+  }
 
   // 2. Decompress Metric
   TSSlice fixlen_slice;
@@ -165,7 +172,7 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
   fixlen_slice.len = info.fixdata_len;
   const auto& mgr = CompressorManager::GetInstance();
   std::string fixlen_data;
-  TsBitmap* pbitmap = isVarLenType(col_schema.type) ? nullptr : &bitmap;
+  TsBitmap* pbitmap = isVarLenType(col_schema.type) ? nullptr : p_bitmap.get();
   bool ok = mgr.DecompressData(fixlen_slice, pbitmap, info.row_count, &fixlen_data);
   if (!ok) {
     return KStatus::FAIL;
@@ -173,6 +180,11 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
   RemovePrefix(&compressed_data, info.fixdata_len);
 
   if (need_convert_ts(col_schema.type)) {
+    if (fixlen_data.size() != info.row_count * 8) {
+      LOG_ERROR("Invalid timestamp data size: %lu, count: %d", fixlen_data.size(), info.row_count);
+      assert(false);
+      return FAIL;
+    }
     std::string tmp_data;
     tmp_data.resize(info.row_count * 16);
     struct TSWithLSN {
@@ -197,7 +209,7 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo& col_schema
       return KStatus::FAIL;
     }
   }
-  colblock->reset(new TsColumnBlock(col_schema, info.row_count, bitmap, fixlen_data, varlen_data));
+  colblock->reset(new TsColumnBlock(col_schema, info.row_count, *p_bitmap, fixlen_data, varlen_data));
   return SUCCESS;
 }
 }  // namespace kwdbts
