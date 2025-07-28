@@ -369,9 +369,14 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::Compact(bool compact_all_last_segment, bool rewrite) {
+KStatus TsVGroup::Compact(bool compact_historical_partition, bool compact_all_last_segment, bool rewrite) {
   auto current = version_manager_->Current();
-  auto partitions = current->GetPartitionsToCompact();
+  std::vector<std::shared_ptr<const TsPartitionVersion>> partitions;
+  if (!compact_historical_partition) {
+    partitions = current->GetPartitionsToCompact();
+  } else {
+    partitions = current->GetHistoricalPartitions();
+  }
 
   // Compact partitions
   TsVersionUpdate update;
@@ -1193,6 +1198,16 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
 }
 
 KStatus TsVGroup::Vacuum() {
+  // compact
+  bool compact_historical_partition = true;
+  bool compact_all_last_segment = true;
+  bool rewrite = false;
+  KStatus s = Compact(compact_historical_partition, compact_all_last_segment, rewrite);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Vacuum failed, compact failed");
+    return s;
+  }
+
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
 
@@ -1203,7 +1218,7 @@ KStatus TsVGroup::Vacuum() {
     for (int i = 0; i < partitions.size() - 1; i++) {
       const auto& partition = partitions[i];
       bool need_vacuum = false;
-      auto s = partition->NeedVacuumEntitySegment(&need_vacuum);
+      s = partition->NeedVacuumEntitySegment(&need_vacuum);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
         continue;
@@ -1211,13 +1226,6 @@ KStatus TsVGroup::Vacuum() {
       if (!need_vacuum) {
         LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
         continue;
-      }
-      bool compact_all_last_segment = true;
-      bool rewrite = false;
-      s = Compact(compact_all_last_segment, rewrite);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Vacuum failed, compact failed");
-        return s;
       }
       if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
         continue;

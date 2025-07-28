@@ -421,6 +421,21 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetHistoricalPartitions() const {
+  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
+  std::shared_ptr<const TsPartitionVersion> partition = nullptr;
+  PartitionIdentifier partition_id;
+  for (const auto &[k, v] : partitions_) {
+    if (std::get<0>(k) != std::get<0>(partition_id)) {
+      partition_id = k;
+      partition = v;
+    } else if (partition != nullptr) {
+      result.push_back(partition);
+    }
+  }
+  return result;
+}
+
 std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
                                                                         timestamp64 target_time) const {
   timestamp64 start = GetPartitionStartTime(target_time, interval);
