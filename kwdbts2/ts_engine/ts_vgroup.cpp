@@ -965,25 +965,30 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
+  Defer defer([this]() {
+    ResetTsExclusiveStatus();
+  });
   std::unique_lock lock{builders_mutex_};
   for (auto& kv : write_batch_segment_builders_) {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       write_batch_segment_builders_.clear();
-      ResetTsExclusiveStatus();
       LOG_ERROR("Finish entity segment builder failed");
       return s;
     }
   }
   write_batch_segment_builders_.clear();
   version_manager_->ApplyUpdate(&update);
-  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {
   std::unique_lock lock{builders_mutex_};
+  for (auto& kv : write_batch_segment_builders_) {
+    kv.second->MarkDelete();
+  }
   write_batch_segment_builders_.clear();
+  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 

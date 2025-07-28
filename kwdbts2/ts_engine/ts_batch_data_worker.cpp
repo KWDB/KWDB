@@ -481,7 +481,7 @@ void TsWriteBatchDataWorker::Cancel(kwdbContext_p ctx) {
   for (const auto &vgroup : *vgroups) {
     KStatus s = vgroup->ClearWriteBatchData();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ClearWriteBatchData failed, job_id[%lu]", job_id_);
+      LOG_ERROR("ClearWriteBatchData failed, vgroup_id[%u], job_id[%lu]", vgroup->GetVGroupID(), job_id_);
     }
   }
 }

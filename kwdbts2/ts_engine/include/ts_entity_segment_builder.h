@@ -60,6 +60,8 @@ class TsEntitySegmentEntityItemFileBuilder {
 
   KStatus AppendEntityItem(TsEntityItem& entity_item);
 
+  void MarkDelete() { w_file_->MarkDelete(); }
+
   uint64_t GetFileNumber() { return file_number_; }
 };
 
@@ -270,6 +272,8 @@ class TsEntitySegmentBuilder {
   KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
 
   KStatus WriteBatchFinish(TsVersionUpdate *update);
+
+  void MarkDelete();
 };
 
 }  // namespace kwdbts

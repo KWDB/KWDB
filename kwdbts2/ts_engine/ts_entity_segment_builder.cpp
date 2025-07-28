@@ -34,6 +34,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("write entity item[id=%lu] failed.", entity_item.entity_id);
   }
+  assert(w_file_->GetFileSize() == entity_item.entity_id * sizeof(TsEntityItem));
   return s;
 }
 
@@ -62,6 +63,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFileBuilder append failed, file_path=%s", file_path_.c_str())
   }
+  assert((w_file_->GetFileSize() - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   return s;
 }
 
@@ -663,6 +665,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
   info.block_file_size = block_file_builder_->GetFileSize();
   info.header_b_size = block_item_builder_->GetFileSize();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  assert((info.header_b_size - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
@@ -782,8 +785,13 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   info.block_file_size = block_file_builder_->GetFileSize();
   info.header_b_size = block_item_builder_->GetFileSize();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  assert((info.header_b_size - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
+}
+
+void TsEntitySegmentBuilder::MarkDelete() {
+  entity_item_builder_->MarkDelete();
 }
 
 }  //  namespace kwdbts
