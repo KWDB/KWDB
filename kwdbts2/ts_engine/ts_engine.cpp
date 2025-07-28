@@ -1199,7 +1199,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
   // 7. remove vgroup wal file.
   for (const auto &vgrp : vgroups_) {
-    TS_LSN lsn = 0;
     uint32_t vgrp_id = vgrp->GetVGroupID();
     auto it = vgrp_lsn.find(vgrp_id);
     if (it != vgrp_lsn.end()) {
