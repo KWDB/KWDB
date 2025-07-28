@@ -1057,13 +1057,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     // 4. write end chkckpoint wal
     TS_LSN end_lsn;
     uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-    char v_lsn[lsn_len];
+    auto v_lsn = std::make_unique<char[]>(lsn_len);
     int location = 0;
     for (auto it : vgrp_lsn) {
-      memcpy(v_lsn + location, &it, sizeof(uint64_t));
+      memcpy(v_lsn.get() + location, &it, sizeof(uint64_t));
       location += sizeof(uint64_t);
     }
-    auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+    auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn.get());
     s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
     delete []end_chk_log;
     if (s == KStatus::FAIL) {
@@ -1191,13 +1191,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 6.write EndWAL to chk file
   TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-  char v_lsn[lsn_len];
+  auto v_lsn = std::make_unique<char[]>(lsn_len);
   int location = 0;
   for (auto it : vgrp_lsn) {
-    memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
+    memcpy(v_lsn.get() + location, &(it.second), sizeof(uint64_t));
     location += sizeof(uint64_t);
   }
-  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn.get());
   s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
   if (s == KStatus::FAIL) {
