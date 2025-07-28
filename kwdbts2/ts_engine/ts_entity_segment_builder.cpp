@@ -496,7 +496,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::Compact(bool rewrite, TsVersionUpdate* update) {
+KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update) {
   std::unique_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
@@ -521,7 +521,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool rewrite, TsVersionUpdate* update) {
     TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key != cur_entity_key) {
       if (block && block->HasData()) {
-        if (!rewrite || block->GetRowNum() >= EngineOptions::min_rows_per_block) {
+        if (call_by_vacuum || block->GetRowNum() >= EngineOptions::min_rows_per_block) {
           s = WriteBlock(entity_key);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
@@ -628,7 +628,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool rewrite, TsVersionUpdate* update) {
   }
   // 4. Writes the incomplete data back to the last segment or entity segment
   if (block && block->HasData()) {
-    if (rewrite) {
+    if (call_by_vacuum) {
       s = WriteBlock(entity_key);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")

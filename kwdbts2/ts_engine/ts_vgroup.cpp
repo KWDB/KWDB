@@ -418,7 +418,7 @@ KStatus TsVGroup::Compact(bool call_by_vacuum) {
         success = false;
         break;
       }
-      s = builder.Compact(!call_by_vacuum, &update);
+      s = builder.Compact(call_by_vacuum, &update);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
         success = false;
