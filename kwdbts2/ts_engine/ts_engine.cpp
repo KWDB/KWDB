@@ -104,6 +104,92 @@ TSEngineV2Impl::~TSEngineV2Impl() {
   SafeDeletePointer(tables_cache_);
 }
 
+KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
+  if (!IsExists(wal_mgr_->GetWALChkFilePath())) {
+    return KStatus::SUCCESS;
+  }
+  std::vector<LogEntry*> cur_eng_logs;
+  Defer defer_engine{[&]() {
+    for (auto& log : cur_eng_logs) {
+      delete log;
+    }
+  }};
+  std::vector<uint64_t> ignore;
+  bool is_end_chk = false;
+
+  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  auto res = wal_mgr_->ReadWALLog(cur_eng_logs, last_lsn, wal_mgr_->FetchCurrentLSN(), ignore);
+  if (!cur_eng_logs.empty()) {
+    if ((*cur_eng_logs.end())->getType() == WALLogType::END_CHECKPOINT) {
+      is_end_chk = true;
+    }
+  }
+  if (is_end_chk) {
+    if (wal_mgr_->RemoveChkFile(ctx) == KStatus::FAIL) {
+      LOG_ERROR("RemoveChkFile fail while Sorting WAL File.")
+      return KStatus::FAIL;
+    }
+    for (auto vgroup : vgroups_) {
+      if (vgroup->GetWALManager()->RemoveChkFile(ctx) == KStatus::FAIL) {
+        LOG_ERROR("Remove vgroup[%d] wal file fail while Sorting WAL File.", vgroup->GetVGroupID())
+        return KStatus::FAIL;
+      }
+    }
+  } else {
+    // remove engine cur, rename chk to cur, update meta
+    if (wal_mgr_->ResetCurLSNAndFlushMeta(ctx, last_lsn) == KStatus::FAIL) {
+      LOG_ERROR("ResetCurLSNAndFlushMeta failed.")
+      return KStatus::FAIL;
+    }
+    wal_mgr_.release();
+    auto cur_eng_path = options_.db_path + "/wal/engine/" + "kwdb_wal.cur";
+    auto chk_eng_path = options_.db_path + "/wal/engine/" + "kwdb_wal.chk";
+    if (Remove(cur_eng_path) == KStatus::FAIL) {
+      LOG_ERROR("Remove wal file fail while Sorting WAL File.")
+      return KStatus::FAIL;
+    }
+    if (-1 == rename(chk_eng_path.c_str(), cur_eng_path.c_str())) {
+      LOG_ERROR("Failed to rename WAL file.")
+      return KStatus::FAIL;
+    }
+    wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
+    res = wal_mgr_->Init(ctx);
+    if (res == KStatus::FAIL) {
+      LOG_ERROR("Failed to initialize WAL manager")
+      return res;
+    }
+
+    // append cur log to chk log, rename chk to cur
+    for (auto vgroup : vgroups_) {
+      if (!IsExists(vgroup->GetWALManager()->GetWALChkFilePath())) {
+        continue;
+      }
+      std::vector<LogEntry*> append_logs;
+      Defer defer_append{[&]() {
+        for (auto& log : append_logs) {
+          delete log;
+        }
+      }};
+      WALMgr* v_wal = vgroup->GetWALManager();
+      TS_LSN v_last_lsn = v_wal->GetFirstLSN();
+      std::vector<uint64_t> v_ignore;
+      if (v_wal->ReadWALLog(append_logs, v_last_lsn, v_wal->FetchCurrentLSN(), ignore) == KStatus::FAIL) {
+        LOG_ERROR("Failed to read WAL from vgroup file.")
+        return KStatus::FAIL;
+      }
+      if (v_wal->SwitchLastFile(ctx, v_last_lsn) == KStatus::FAIL) {
+        LOG_ERROR("Failed to SwitchLastFile vgroup file.")
+        return KStatus::FAIL;
+      }
+      if (v_wal->WriteIncompleteWAL(ctx, append_logs) == KStatus::FAIL) {
+        LOG_ERROR("Failed to WriteIncompleteWAL to vgroup wal file.")
+        return KStatus::FAIL;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   std::filesystem::path db_path{options_.db_path};
   assert(!db_path.empty());
@@ -134,6 +220,11 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   auto res = wal_mgr_->Init(ctx);
   if (res == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize WAL manager")
+    return res;
+  }
+
+  if (SortWALFile(ctx) != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to SortWALFile.")
     return res;
   }
 
@@ -438,7 +529,7 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
 
 KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal) {
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal, const char* tsx_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   TSEntityID entity_id;
@@ -454,6 +545,9 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       return s;
     }
     uint32_t vgroup_id;
+    if (tsx_id != nullptr) {
+      mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
+    }
     s = InsertTagData(ctx, table_id, mtr_id, payload_data[i], write_wal, vgroup_id, entity_id, inc_entity_cnt);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
@@ -660,27 +754,27 @@ std::shared_ptr<TsVGroup> TSEngineV2Impl::GetTsVGroup(uint32_t vgroup_id) {
 }
 
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                   uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+                                   uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-  return vgroup->MtrBegin(ctx, range_id, index, mtr_id);
+  return vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                                    uint64_t range_group_id, uint64_t mtr_id) {
+                                    uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-  return vgroup->MtrCommit(ctx, mtr_id);
+  return vgroup->MtrCommit(ctx, mtr_id, tsx_id);
 }
 
 KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log) {
+                                      uint64_t range_group_id, uint64_t mtr_id, bool skip_log, const char* tsx_id) {
   EnterFunc()
 //  1. Write ROLLBACK log;
 //  2. Backtrace WAL logs based on xID to the BEGIN log of the Mini-Transaction.
@@ -696,10 +790,13 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
 
   if (!skip_log) {
     auto vgroup = GetVGroupByID(ctx, 1);
-    s = vgroup->MtrRollback(ctx, mtr_id);
+    s = vgroup->MtrRollback(ctx, mtr_id, false, tsx_id);
     if (s == FAIL) {
       Return(s);
     }
+  }
+  if (tsx_id != nullptr && mtr_id == 0) {
+    return SUCCESS;
   }
 
   std::vector<LogEntry*> engine_wal_logs;
@@ -710,7 +807,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       delete log;
     }
   }};
-  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
+  s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->GetFirstLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
   if (s == FAIL && !engine_wal_logs.empty()) {
     Return(s)
   }
@@ -738,7 +835,6 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
       return KStatus::FAIL;
     }
   }
-
 
   // for range
   for (auto vgrp : vgroups_) {
@@ -927,6 +1023,68 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
    */
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
+  } else if (EngineOptions::isSingleNode()) {
+    std::vector<uint64_t> vgrp_lsn;
+    // 1. switch engine wal file
+    KStatus s = wal_mgr_->SwitchNextFile();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to switch chk file.")
+      return s;
+    }
+
+    // 2. switch vgroup wal file
+    for (const auto &vgrp : vgroups_) {
+      vgrp->GetWALManager()->Lock();
+      vgrp_lsn.emplace_back(vgrp->GetWALManager()->FetchCurrentLSN());
+      s = vgrp->GetWALManager()->SwitchNextFile();
+      if (s == KStatus::FAIL) {
+        vgrp->GetWALManager()->Unlock();
+        LOG_ERROR("Failed to switch vgroup chk file.")
+        return s;
+      }
+      vgrp->GetWALManager()->Unlock();
+    }
+
+    // 3. trig all vgroup flush
+    for (const auto &vgrp : vgroups_) {
+      s = vgrp->Flush();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to flush metric file.")
+        return s;
+      }
+    }
+
+    // 4. write end chkckpoint wal
+    TS_LSN end_lsn;
+    uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
+    char v_lsn[lsn_len];
+    int location = 0;
+    for (auto it : vgrp_lsn) {
+      memcpy(v_lsn + location, &it, sizeof(uint64_t));
+      location += sizeof(uint64_t);
+    }
+    auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+    s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
+    delete []end_chk_log;
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to write end checkpoint wal.")
+      return s;
+    }
+
+    for (const auto &vgrp : vgroups_) {
+      s = vgrp->GetWALManager()->RemoveChkFile(ctx);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to Remove vgroup ChkFile.")
+        return s;
+      }
+    }
+    // 5. remove old chk file
+    s = wal_mgr_->RemoveChkFile(ctx);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to remove chk file.")
+      return s;
+    }
+    return KStatus::SUCCESS;
   }
   std::vector<LogEntry*> logs;
   std::vector<LogEntry*> rewrite;
@@ -939,15 +1097,18 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   std::vector<uint64_t> vgroup_lsn;
-  s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
+  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to read wal log from chk file.")
+    LOG_ERROR("Failed to read wal log from chk file, with Last LSN [%lu] and Current LSN [%lu]",
+              last_lsn, wal_mgr_->FetchCurrentLSN())
     return s;
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
     logs.clear();
   }
+
   s = wal_mgr_->SwitchNextFile();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to switch chk file.")
@@ -1005,13 +1166,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 4. rewrite wal log to chk file
-  wal_mgr_ = nullptr;
-  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-  s = wal_mgr_->ResetWAL(ctx, true);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
-    return s;
-  }
+//  wal_mgr_ = nullptr;
+//  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
+//  s = wal_mgr_->ResetWAL(ctx, true);
+//  if (s == KStatus::FAIL) {
+//    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
+//    return s;
+//  }
   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
@@ -1030,7 +1191,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 6.write EndWAL to chk file
   TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-  char* v_lsn = new char[lsn_len];
+  char v_lsn[lsn_len];
   int location = 0;
   for (auto it : vgrp_lsn) {
     memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
@@ -1039,7 +1200,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
   s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
-  delete []v_lsn;
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to write end checkpoint wal.")
     return s;
@@ -1611,6 +1771,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   if (options_.wal_level == WALMode::OFF) {
     return KStatus::SUCCESS;
   }
+  LOG_INFO("Recover start.");
 
   // ddl recover
   KStatus s = recover(ctx);
@@ -1626,9 +1787,11 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     }
   }};
   std::vector<uint64_t> vgroup_lsn;
-  s = wal_mgr_->ReadWALLog(logs, wal_mgr_->FetchCheckpointLSN(), wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
+  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to ReadWALLog from chk file while recovering.")
+    LOG_ERROR("Failed to ReadWALLog from chk file while recovering, with Last LSN [%lu] and Current LSN [%lu].",
+              last_lsn, wal_mgr_->FetchCurrentLSN())
     return KStatus::FAIL;
   }
   if (vgroup_lsn.empty()) {
@@ -1651,13 +1814,17 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
 
-  // 3. apply redo log
+  // 3. apply redo log && insert MtrID
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
   std::vector<TS_LSN> rollback;
   for (auto wal_log : logs) {
     if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
       auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
       incomplete.insert(std::pair<TS_LSN, MTRBeginEntry *>(log->getXID(), log));
+      if (log->getTsxID().c_str() != LogEntry::DEFAULT_TS_TRANS_ID) {
+        vgroup_mtr->SetMtrIDByTsxID(log->getXID(), log->getTsxID().c_str());
+      }
     }
   }
 
@@ -1694,6 +1861,9 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   for (auto& it : incomplete) {
     TS_LSN mtr_id = it.first;
     auto log_entry = it.second;
+    if (vgroup_mtr->IsExplict(mtr_id)) {
+      break;
+    }
     uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
     if (it.second->getIndex() <= applied_index) {
       auto vgroup = GetVGroupByID(ctx, 1);
@@ -1703,6 +1873,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
       if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
     }
   }
+  LOG_INFO("Recover success.");
   return KStatus::SUCCESS;
 }
 

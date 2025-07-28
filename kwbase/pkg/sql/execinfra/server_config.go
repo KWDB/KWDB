@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/diskmap"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/protectedts"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
@@ -44,7 +45,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/fs"
-	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -159,7 +159,7 @@ type ServerConfig struct {
 	StatsRefresher *stats.Refresher
 
 	// TseDB is a handler for ts Data
-	TseDB *tscoord.DB
+	TseDB *kvcoord.DB
 
 	// VecFDSemaphore is a weighted semaphore that restricts the number of open
 	// file descriptors in the vectorized engine.

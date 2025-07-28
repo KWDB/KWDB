@@ -210,13 +210,20 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   // 2. switch new file
   wal_manager_->Lock();
   std::vector<uint64_t> ignore;
-  KStatus s = wal_manager_->ReadWALLogAndSwitchFile(logs, wal_manager_->FetchCheckpointLSN(),
-                                                    wal_manager_->FetchCurrentLSN(), ignore);
+  TS_LSN first_lsn = wal_manager_->GetFirstLSN();
   last_lsn = wal_manager_->FetchCurrentLSN();
-  wal_manager_->Unlock();
+  WALMeta meta = wal_manager_->GetMeta();
+  KStatus s = wal_manager_->SwitchNextFile();
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to ReadWALLogAndSwitchFile.")
+    LOG_ERROR("Failed to switch next WAL file.")
+    return s;
   }
+  wal_manager_->Unlock();
+
+  // new tmp wal mgr to read chk wal file
+  WALMgr tmp_wal = WALMgr(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_, true);
+  tmp_wal.InitForChk(ctx, meta);
+  s = tmp_wal.ReadWALLog(logs, first_lsn, last_lsn, ignore);
   return s;
 }
 
@@ -1181,21 +1188,27 @@ KStatus TsVGroup::undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t 
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+KStatus TsVGroup::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
-  return tsx_manager_->MtrBegin(ctx, range_id, index, mtr_id);
+  return tsx_manager_->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
 }
 
-KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id) {
+KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx_id) {
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
-  return tsx_manager_->MtrCommit(ctx, mtr_id);
+  if (tsx_id != nullptr) {
+    mtr_id = tsx_manager_->getMtrID(tsx_id);
+  }
+  return tsx_manager_->MtrCommit(ctx, mtr_id, tsx_id);
 }
 
-KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip) {
+KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip, const char* tsx_id) {
   //  1. Write ROLLBACK log;
   KStatus s;
   if (!is_skip) {
-    s = tsx_manager_->MtrRollback(ctx, mtr_id);
+    if (tsx_id != nullptr) {
+      mtr_id = tsx_manager_->getMtrID(tsx_id);
+    }
+    s = tsx_manager_->MtrRollback(ctx, mtr_id, tsx_id);
     if (s == FAIL) {
       return s;
     }

@@ -264,6 +264,10 @@ TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
                    bool writeWAL);
 
+TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
+                   uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
+                   bool writeWAL, const char* tsx_id);
+
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
 
 TSStatus TsDeleteEntities(TSEngine* engine, TSTableID table_id, TSSlice* primary_tags, size_t primary_tags_num,
@@ -287,6 +291,16 @@ TSStatus TSMtrBegin(TSEngine* engine, TSTableID table_id, uint64_t range_group_i
 TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id);
 
 TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id);
+
+
+TSStatus TSMtrBeginExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
+                    uint64_t range_id, uint64_t index, uint64_t* mtr_id, const char* tsx_id);
+
+TSStatus TSMtrCommitExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                     const char* tsx_id);
+
+TSStatus TSMtrRollbackExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                       const char* tsx_id);
 
 TSStatus TSxBegin(TSEngine* engine, TSTableID tableId, char* transaction_id);
 
@@ -343,6 +357,11 @@ TSStatus TSGetDataVolumeHalfTS(TSEngine* engine, TSTableID table_id, uint64_t be
 TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
                             RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
                             uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL);
+
+TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
+                                    RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                                    uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL,
+                                    const char* tsx_id);
 
 TSStatus TsTestGetAndAddSchemaVersion(TSEngine* engine, TSTableID table_id, uint64_t version);
 

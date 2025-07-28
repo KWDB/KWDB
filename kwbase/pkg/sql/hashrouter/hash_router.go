@@ -29,6 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -40,7 +41,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"github.com/cockroachdb/errors"
 )
@@ -73,7 +73,7 @@ type HRManager struct {
 	gossipMessage api.GossipEntityRangeGroupMessage
 	execConfig    *sql.ExecutorConfig
 	db            *kv.DB
-	tseDB         *tscoord.DB
+	tseDB         *kvcoord.DB
 	gossip        *gossip.Gossip
 	leaseMgr      *sql.LeaseManager
 	nodeLiveness  *kvserver.NodeLiveness
@@ -88,7 +88,7 @@ func NewHashRouterManager(
 	ctx context.Context,
 	cs *cluster.Settings,
 	db *kv.DB,
-	tseDB *tscoord.DB,
+	tseDB *kvcoord.DB,
 	execConfig *sql.ExecutorConfig,
 	gossip *gossip.Gossip,
 	leaseMgr *sql.LeaseManager,

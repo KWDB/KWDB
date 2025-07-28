@@ -67,7 +67,8 @@ class TSxMgr {
    * @param mini_trans_id[out] Mini-Transaction ID, the value is the LSN of the WAL log entry
    * @return
    */
-  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mini_trans_id);
+  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mini_trans_id,
+                   const char* tsx_id = nullptr);
 
   /**
    * Commit a Mini-transaction.
@@ -75,7 +76,7 @@ class TSxMgr {
    * @param mini_trans_id[out] Mini-Transaction ID, the value is the LSN of the WAL log entry
    * @return
    */
-  KStatus MtrCommit(kwdbContext_p ctx, uint64_t mini_trans_id);
+  KStatus MtrCommit(kwdbContext_p ctx, uint64_t mini_trans_id, const char* tsx_id = nullptr);
 
   /**
    * Rollback a Mini-transaction.
@@ -83,7 +84,7 @@ class TSxMgr {
    * @param mini_trans_id Mini-Transaction ID, the value is the LSN of the WAL log entry
    * @return
    */
-  KStatus MtrRollback(kwdbContext_p ctx, uint64_t mini_trans_id);
+  KStatus MtrRollback(kwdbContext_p ctx, uint64_t mini_trans_id, const char* tsx_id = nullptr);
 
   uint64_t getMtrID(const std::string& uuid) {
     uint64_t x_id = 0;
@@ -105,7 +106,18 @@ class TSxMgr {
     ts_trans_ids_.insert(std::make_pair(uuid, mini_trans_id));
   }
 
+  bool IsExplict(uint64_t  mini_trans_id) {
+    std::shared_lock<std::shared_mutex> lock(map_mutex_);
+    for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ++it) {
+      if (it->second == mini_trans_id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void eraseMtrID(const uint64_t mini_trans_id) {
+    std::unique_lock<std::shared_mutex> lock(map_mutex_);
     for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ) {
       if (it->second == mini_trans_id) {
         ts_trans_ids_.erase(it->first);

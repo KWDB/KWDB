@@ -113,6 +113,11 @@ func (m *MockTransactionalSender) TxnStatus() roachpb.TransactionStatus {
 	return m.txn.Status
 }
 
+// Transaction is part of the TxnSender interface.
+func (m *MockTransactionalSender) Transaction() roachpb.Transaction {
+	return m.txn
+}
+
 // SetUserPriority is part of the TxnSender interface.
 func (m *MockTransactionalSender) SetUserPriority(pri roachpb.UserPriority) error {
 	m.txn.Priority = roachpb.MakePriority(pri)
