@@ -260,7 +260,7 @@ class TsEntitySegmentBuilder {
 
   KStatus Open();
 
-  KStatus Compact(TsVersionUpdate* update);
+  KStatus Compact(bool rewrite, TsVersionUpdate* update);
 
   KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
 

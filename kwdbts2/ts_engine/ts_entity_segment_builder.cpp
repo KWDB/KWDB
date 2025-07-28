@@ -496,7 +496,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
+KStatus TsEntitySegmentBuilder::Compact(bool rewrite, TsVersionUpdate* update) {
   std::unique_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
@@ -521,7 +521,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
     TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key != cur_entity_key) {
       if (block && block->HasData()) {
-        if (block->GetRowNum() >= EngineOptions::min_rows_per_block) {
+        if (!rewrite || block->GetRowNum() >= EngineOptions::min_rows_per_block) {
           s = WriteBlock(entity_key);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")

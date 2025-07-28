@@ -369,7 +369,7 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::Compact() {
+KStatus TsVGroup::Compact(bool rewrite) {
   while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACT)) {
     sleep(1);
   }
@@ -409,7 +409,7 @@ KStatus TsVGroup::Compact() {
         success = false;
         break;
       }
-      s = builder.Compact(&update);
+      s = builder.Compact(rewrite, &update);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
         success = false;
@@ -1213,6 +1213,11 @@ KStatus TsVGroup::Vacuum() {
         LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
         continue;
       }
+      s = Compact(false);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, compact failed");
+        return s;
+      }
       if (!partition->TrySetBusy()) {
         continue;
       }
@@ -1231,16 +1236,16 @@ KStatus TsVGroup::Vacuum() {
       vacuumer->Open();
 
       std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
-      for (uint32_t i = 1; i <= max_entity_id; i++) {
+      for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
         TsEntityItem entity_item;
         bool found = false;
-        auto s = entity_segment->GetEntityItem(i, entity_item, found);
+        s = entity_segment->GetEntityItem(entity_id, entity_item, found);
         if (s != SUCCESS) {
           LOG_ERROR("Vacuum failed, GetEntityItem failed")
           return s;
         }
         if (!found || 0 == entity_item.cur_block_id) {
-          TsEntityItem empty_entity_item{i};
+          TsEntityItem empty_entity_item{entity_id};
           empty_entity_item.table_id = entity_item.table_id;
           s = vacuumer->AppendEntityItem(empty_entity_item);
           if (s != SUCCESS) {
@@ -1263,7 +1268,7 @@ KStatus TsVGroup::Vacuum() {
         }
         KwTsSpan ts_span = {start_ts, end_ts};
         TsScanFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_,
-                                  i, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, {ts_span}};
+                                  entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, {ts_span}};
         TsBlockItemFilterParams block_data_filter;
         s = partition->getFilter(filter, block_data_filter);
         if (s != KStatus::SUCCESS) {
@@ -1277,7 +1282,7 @@ KStatus TsVGroup::Vacuum() {
           LOG_ERROR("Vacuum failed, GetBlockSpans failed")
           return s;
         }
-        TsEntityItem cur_entity_item = {i};
+        TsEntityItem cur_entity_item = {entity_id};
         cur_entity_item.table_id = entity_item.table_id;
         for (auto& block_span : block_spans) {
           string data;

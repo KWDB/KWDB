@@ -162,7 +162,7 @@ class TsVGroup {
     return tsx_manager_->IsExplict(mini_trans_id);
   }
 
-  KStatus Compact();
+  KStatus Compact(bool rewrite = true);
 
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
