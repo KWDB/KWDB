@@ -369,7 +369,7 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::Compact(bool rewrite) {
+KStatus TsVGroup::Compact(bool compact_all_last_segment, bool rewrite) {
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 
@@ -385,7 +385,12 @@ KStatus TsVGroup::Compact(bool rewrite) {
       cur_partition->ResetStatus();
     }};
     // 1. Get all the last segments that need to be compacted.
-    auto last_segments = cur_partition->GetCompactLastSegments();
+    std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+    if (!compact_all_last_segment) {
+      last_segments = cur_partition->GetCompactLastSegments();
+    } else {
+      last_segments = cur_partition->GetAllLastSegments();
+    }
     auto entity_segment = cur_partition->GetEntitySegment();
 
     auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
@@ -1207,7 +1212,9 @@ KStatus TsVGroup::Vacuum() {
         LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
         continue;
       }
-      s = Compact(false);
+      bool compact_all_last_segment = true;
+      bool rewrite = false;
+      s = Compact(compact_all_last_segment, rewrite);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, compact failed");
         return s;
