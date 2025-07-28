@@ -607,15 +607,19 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   return KStatus::SUCCESS;
 }
 
-bool TsPartitionVersion::TrySetBusy() const {
-  bool expected = false;
-  if (is_compacting_vacuuming->compare_exchange_strong(expected, true)) {
+bool TsPartitionVersion::TrySetBusy(PartitionStatus desired) const {
+  PartitionStatus expected = PartitionStatus::None;
+  if (exclusive_status_->compare_exchange_strong(expected, desired)) {
     return true;
   }
   return false;
 }
 
-KStatus TsPartitionVersion::NeedVacuumEntiySegment(bool* need_vacuum) const {
+void TsPartitionVersion::ResetStatus() const {
+  exclusive_status_->store(PartitionStatus::None);
+}
+
+KStatus TsPartitionVersion::NeedVacuumEntitySegment(bool* need_vacuum) const {
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.
   KwLSNSpan span{0, UINT64_MAX};
@@ -626,10 +630,6 @@ KStatus TsPartitionVersion::NeedVacuumEntiySegment(bool* need_vacuum) const {
   }
   *need_vacuum = has_del_info;
   return KStatus::SUCCESS;
-}
-
-void TsPartitionVersion::ResetStatus() const {
-  is_compacting_vacuuming->store(false);
 }
 
 

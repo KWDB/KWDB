@@ -42,8 +42,9 @@ class TsVGroupVersion;
 class TsEntitySegment;
 
 enum class PartitionStatus : uint32_t {
-  kNone = 0,
-  kVacuuming,
+  None = 0,
+  Vacuuming,
+  Compacting,
 };
 
 class TsPartitionVersion {
@@ -59,14 +60,14 @@ class TsPartitionVersion {
 
   bool directory_created_ = false;
   bool memory_only_ = true;  // TODO(zzr): remove this field later
-  std::shared_ptr<std::atomic<bool>> is_compacting_vacuuming;
+  std::shared_ptr<std::atomic<PartitionStatus>> exclusive_status_;
 
   std::shared_ptr<TsDelItemManager> del_info_;
 
   // Only TsVersionManager can create TsPartitionVersion
   explicit TsPartitionVersion(PartitionIdentifier partition_info)
       : partition_info_(partition_info),
-        is_compacting_vacuuming(std::make_shared<std::atomic<bool>>(false)) {}
+        exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {}
 
  public:
   TsPartitionVersion(const TsPartitionVersion &) = default;
@@ -117,9 +118,9 @@ class TsPartitionVersion {
                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
                        bool skip_last = false, bool skip_entity = false) const;
 
-  bool TrySetBusy() const;
-  KStatus NeedVacuumEntiySegment(bool* need_vacuum) const;
+  bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
+  KStatus NeedVacuumEntitySegment(bool* need_vacuum) const;
 };
 
 class TsVGroupVersion {

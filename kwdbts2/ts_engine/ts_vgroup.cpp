@@ -370,12 +370,6 @@ void TsVGroup::closeCompactThread() {
 }
 
 KStatus TsVGroup::Compact(bool rewrite) {
-  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACT)) {
-    sleep(1);
-  }
-  Defer defer([this]() {
-    ResetTsExclusiveStatus();
-  });
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToCompact();
 
@@ -384,7 +378,12 @@ KStatus TsVGroup::Compact(bool rewrite) {
   std::atomic_bool success{true};
   for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
     const auto& cur_partition = *it;
-
+    if (!cur_partition->TrySetBusy(PartitionStatus::Compacting)) {
+      continue;
+    }
+    Defer defer{[&]() {
+      cur_partition->ResetStatus();
+    }};
     // 1. Get all the last segments that need to be compacted.
     auto last_segments = cur_partition->GetCompactLastSegments();
     auto entity_segment = cur_partition->GetEntitySegment();
@@ -895,9 +894,6 @@ KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice paylo
 
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                                  timestamp64 ts, DATATYPE ts_col_type, TSSlice data) {
-  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::WRITE_BATCH)) {
-    sleep(1);
-  }
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -947,14 +943,12 @@ KStatus TsVGroup::FinishWriteBatchData() {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       write_batch_segment_builders_.clear();
-      ResetTsExclusiveStatus();
       LOG_ERROR("Finish entity segment builder failed");
       return s;
     }
   }
   write_batch_segment_builders_.clear();
   version_manager_->ApplyUpdate(&update);
-  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 
@@ -1204,7 +1198,7 @@ KStatus TsVGroup::Vacuum() {
     for (int i = 0; i < partitions.size() - 1; i++) {
       const auto& partition = partitions[i];
       bool need_vacuum = false;
-      auto s = partition->NeedVacuumEntiySegment(&need_vacuum);
+      auto s = partition->NeedVacuumEntitySegment(&need_vacuum);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
         continue;
@@ -1218,7 +1212,7 @@ KStatus TsVGroup::Vacuum() {
         LOG_ERROR("Vacuum failed, compact failed");
         return s;
       }
-      if (!partition->TrySetBusy()) {
+      if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
         continue;
       }
       Defer defer{[&]() {
@@ -1334,7 +1328,7 @@ KStatus TsVGroup::Vacuum() {
           LOG_ERROR("Vacuum failed, AppendEntityItem failed")
           return s;
         }
-        entity_max_lsn.emplace_back(make_pair(i, cur_lsn));
+        entity_max_lsn.emplace_back(i, cur_lsn);
       }
       TsVersionUpdate update;
       auto info = vacuumer->GetHandleInfo();
