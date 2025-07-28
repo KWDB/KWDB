@@ -626,30 +626,39 @@ KStatus TsEntitySegmentBuilder::Compact(bool rewrite, TsVersionUpdate* update) {
       }
     }
   }
-  // 4. Writes the incomplete data back to the last segment
+  // 4. Writes the incomplete data back to the last segment or entity segment
   if (block && block->HasData()) {
-    // Create new last segment
-    if (builder == nullptr && block->GetRowNum() > 0) {
-      uint64_t file_number;
-      std::unique_ptr<TsAppendOnlyFile> last_segment;
-      s = NewLastSegmentFile(&last_segment, &file_number);
+    if (rewrite) {
+      s = WriteBlock(entity_key);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
         return s;
       }
-      builder = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
-    }
-    // Writes the incomplete data back to the last segment
-    for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
-      uint64_t lsn = block->GetLSN(row_idx);
-      std::vector<TSSlice> metric_value;
-      std::vector<DataFlags> data_flags;
-      block->GetMetricValue(row_idx, metric_value, data_flags);
-      s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, lsn, metric_value,
-                              data_flags);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
-        return s;
+      block->Clear();
+    } else {
+      // Create new last segment
+      if (builder == nullptr && block->GetRowNum() > 0) {
+        uint64_t file_number;
+        std::unique_ptr<TsAppendOnlyFile> last_segment;
+        s = NewLastSegmentFile(&last_segment, &file_number);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
+          return s;
+        }
+        builder = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
+      }
+      // Writes the incomplete data back to the last segment
+      for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
+        uint64_t lsn = block->GetLSN(row_idx);
+        std::vector<TSSlice> metric_value;
+        std::vector<DataFlags> data_flags;
+        block->GetMetricValue(row_idx, metric_value, data_flags);
+        s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, lsn, metric_value,
+                                data_flags);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
+          return s;
+        }
       }
     }
   }

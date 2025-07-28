@@ -138,7 +138,7 @@ class TsVGroup {
     return tsx_manager_->IsExplict(mini_trans_id);
   }
 
-  KStatus Compact(bool compact_historical_partition = false, bool compact_all_last_segment = false, bool rewrite = true);
+  KStatus Compact(bool call_by_vacuum = false);
 
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);

@@ -369,13 +369,13 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::Compact(bool compact_historical_partition, bool compact_all_last_segment, bool rewrite) {
+KStatus TsVGroup::Compact(bool call_by_vacuum) {
   auto current = version_manager_->Current();
   std::vector<std::shared_ptr<const TsPartitionVersion>> partitions;
-  if (!compact_historical_partition) {
+  if (!call_by_vacuum) {
     partitions = current->GetPartitionsToCompact();
   } else {
-    partitions = current->GetHistoricalPartitions();
+    partitions = current->GetPartitionsToVacuum();
   }
 
   // Compact partitions
@@ -391,7 +391,7 @@ KStatus TsVGroup::Compact(bool compact_historical_partition, bool compact_all_la
     }};
     // 1. Get all the last segments that need to be compacted.
     std::vector<std::shared_ptr<TsLastSegment>> last_segments;
-    if (!compact_all_last_segment) {
+    if (!call_by_vacuum) {
       last_segments = cur_partition->GetCompactLastSegments();
     } else {
       last_segments = cur_partition->GetAllLastSegments();
@@ -418,7 +418,7 @@ KStatus TsVGroup::Compact(bool compact_historical_partition, bool compact_all_la
         success = false;
         break;
       }
-      s = builder.Compact(rewrite, &update);
+      s = builder.Compact(!call_by_vacuum, &update);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
         success = false;
@@ -1199,10 +1199,7 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
 
 KStatus TsVGroup::Vacuum() {
   // compact
-  bool compact_historical_partition = true;
-  bool compact_all_last_segment = true;
-  bool rewrite = false;
-  KStatus s = Compact(compact_historical_partition, compact_all_last_segment, rewrite);
+  KStatus s = Compact(true);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Vacuum failed, compact failed");
     return s;

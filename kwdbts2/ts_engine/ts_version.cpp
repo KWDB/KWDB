@@ -421,7 +421,7 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetHistoricalPartitions() const {
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToVacuum() const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   std::shared_ptr<const TsPartitionVersion> partition = nullptr;
   PartitionIdentifier partition_id;
