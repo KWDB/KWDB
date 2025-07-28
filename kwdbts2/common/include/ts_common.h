@@ -487,35 +487,23 @@ inline timestamp64 intersectLength(timestamp64 start1, timestamp64 end1, timesta
   return min_end - max_start;
 }
 
-// [start, end] cross with spans
-inline bool isTimestampInSpans(const std::vector<KwTsSpan>& spans,
-                               timestamp64 start, timestamp64 end) {
-  for (auto& span : spans) {
-    if (start <= span.end && end >= span.begin) {
-      return true;
-    }
-  }
-  return false;
-}
+enum class TimestampCheckResult {
+  FullyContained = 0,
+  Overlapping = 1,
+  NonOverlapping = 2
+};
 
-// [start, end] include in spans
-inline bool isTimestampWithinSpans(const std::vector<KwTsSpan>& spans,
-                                   timestamp64 start, timestamp64 end) {
+inline TimestampCheckResult checkTimestampWithSpans(const std::vector<KwTsSpan>& spans,
+                                                    timestamp64 start, timestamp64 end) {
   for (auto& span : spans) {
     if (start >= span.begin && end <= span.end) {
-      return true;
+      return TimestampCheckResult::FullyContained;
+    }
+    if (start <= span.end && end >= span.begin) {
+      return TimestampCheckResult::Overlapping;
     }
   }
-  return false;
-}
-
-inline bool CheckIfTsInSpan(timestamp64 ts, std::vector<KwTsSpan>& ts_spans) {
-  for (auto& ts_span : ts_spans) {
-    if (ts >= ts_span.begin && ts <= ts_span.end) {
-      return true;
-    }
-  }
-  return false;
+  return TimestampCheckResult::NonOverlapping;
 }
 
 inline void getMaxAndMinTs(std::vector<KwTsSpan>& spans, timestamp64* min_ts,

@@ -150,6 +150,7 @@ message NoopCoreSpec {
   optional uint32 input_num = 1 [(gogoproto.nullable) = false];
   // Time series distributed operation type, default to TsSelect
   optional OperatorType TsOperator = 2 [(gogoproto.nullable) = false];
+  repeated bytes output_types = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
 // LocalPlanNodeSpec is the specification for a local planNode wrapping

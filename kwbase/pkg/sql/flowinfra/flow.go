@@ -29,7 +29,6 @@ import (
 	"sync"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
-	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/mutations"
@@ -92,16 +91,12 @@ type Flow interface {
 	// SetTS is used to tell if there is time-series flow bounded to the local flow.
 	SetTS(bool)
 
-	// SetPushDown is used to tell if there is time-series flow bounded to the local flow.
-	SetPushDown(bool)
+	// SetQueryShortCircuit is used to tell if there is time-series flow bounded to the local flow.
+	SetQueryShortCircuit(bool)
 	// SetVectorized is used to tell if there is vec flow.
 	SetVectorized(bool)
-	// SetFormat is used to tell if there is time-series flow bounded to the local flow.
-	SetFormat(bool)
-	// SetCloses is part of the Flow interface
-	SetCloses(closes int)
-	// SetRunProcedure is part of the Flow interface
-	SetRunProcedure(runProcedure bool)
+	// SetPipeLine is used to tell if there is pipeline model.
+	SetPipeLine(pipeline bool)
 	// Start starts the flow. Processors run asynchronously in their own goroutines.
 	// Wait() needs to be called to wait for the flow to finish.
 	// See Run() for a synchronous version.
@@ -194,12 +189,11 @@ type FlowBase struct {
 	startedGoroutines bool
 
 	// IsTimeSeries tells whether this flow is bounded by time-series execution.
-	isTimeSeries bool
-	AllPush      bool
-	Format       bool
-	isVectorized bool
-	RunProcedure bool
-	closes       int
+	isTimeSeries         bool
+	UseQueryShortCircuit bool
+	Format               bool
+	UsePipeLine          bool
+	isVectorized         bool
 
 	// inboundStreams are streams that receive data from other hosts; this map
 	// is to be passed to FlowRegistry.RegisterFlow.
@@ -285,75 +279,14 @@ func (f *FlowBase) SetVectorized(t bool) {
 	f.isVectorized = t
 }
 
-// SetPushDown is part of the Flow interface
-func (f *FlowBase) SetPushDown(allPush bool) {
-	f.AllPush = allPush
+// SetQueryShortCircuit is part of the Flow interface
+func (f *FlowBase) SetQueryShortCircuit(useQueryShortCircuit bool) {
+	f.UseQueryShortCircuit = useQueryShortCircuit
 }
 
-// SetFormat is part of the Flow interface
-func (f *FlowBase) SetFormat(format bool) {
-	f.Format = format
-}
-
-// SetCloses is part of the Flow interface
-func (f *FlowBase) SetCloses(closes int) {
-	f.closes = closes
-}
-
-// SetRunProcedure is part of the Flow interface
-func (f *FlowBase) SetRunProcedure(runProcedure bool) {
-	f.RunProcedure = runProcedure
-}
-
-var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
-	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", false,
-)
-
-// IsShortCircuitForPgEncode is part of the Flow interface.
-func (f *FlowBase) IsShortCircuitForPgEncode() bool {
-
-	// f.AllPush: Push other operators down to noop.
-	// f.Format: The flag for service output encoding format, true:FormatBinary, false:FormatText.
-	// The relational operator only has noop, and noop has no filtering conditions or output column pruning.
-	if pgEncodeShortCircuitEnabled.Get(&f.Cfg.Settings.SV) && len(f.processors) <= 1 &&
-		f.AllPush && !f.Format && len(f.TsTableReaders) == 1 && f.processors[0].IsShortCircuitForPgEncode() && !f.RunProcedure {
-		return true
-	}
-	return false
-}
-
-// VecIsShortCircuitForPgEncode is part of the Flow interface.
-func (f *FlowBase) VecIsShortCircuitForPgEncode(ctx context.Context) bool {
-	canShortCircuit := false
-	// f.AllPush: Push other operators down to noop.
-	// f.Format: The flag for service output encoding format, true:FormatBinary, false:FormatText.
-	// The relational operator only has noop, and noop has no filtering conditions or output column pruning.
-	if pgEncodeShortCircuitEnabled.Get(&f.Cfg.Settings.SV) && len(f.processors) <= 1 &&
-		f.AllPush && !f.Format {
-		canShortCircuit = true
-	}
-	return canShortCircuit && f.processors[0].SupportPgWire()
-}
-
-// VecShortCircuitForPgEncode is part of the Flow interface.
-func (f *FlowBase) VecShortCircuitForPgEncode(ctx context.Context) error {
-	m := f.processors[0]
-	m.Start(ctx)
-	for {
-		rev, code, err := m.NextPgWire()
-		if err != nil {
-			return err
-		}
-
-		if code == -1 {
-			return nil
-		}
-
-		err = m.Push(ctx, rev)
-		if err != nil {
-			return err
-		}
-	}
+// SetPipeLine is part of the Flow interface
+func (f *FlowBase) SetPipeLine(pipeline bool) {
+	f.UsePipeLine = pipeline
 }
 
 // ConcurrentExecution is part of the Flow interface.
@@ -570,36 +503,6 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
 	otherProcs := f.processors[:len(f.processors)-1]
 	if f.isTimeSeries {
-		if f.isVectorized {
-			if f.IsLocal() && f.VecIsShortCircuitForPgEncode(ctx) {
-				err := f.VecShortCircuitForPgEncode(ctx)
-				return err
-			}
-		}
-		if f.IsShortCircuitForPgEncode() {
-			// Output encoding optimization.
-			var closed int
-			f.TsTableReaders[0].(execinfra.Processor).Start(ctx)
-			for {
-				rev, code, err := f.TsTableReaders[0].(execinfra.Processor).NextPgWire()
-				if err != nil {
-					return err
-				}
-
-				if code == -1 {
-					closed++
-					if closed != f.closes {
-						continue
-					}
-					return nil
-				}
-
-				err = headProc.Push(ctx, rev)
-				if err != nil {
-					return err
-				}
-			}
-		}
 		if f.syncFlowConsumer == nil {
 			return nil
 		}
@@ -622,6 +525,11 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 
 		for _, s := range f.startables {
 			s.Start(ctx, &f.waitGroup, f.ctxCancel)
+		}
+
+		if f.UseQueryShortCircuit {
+			f.startedGoroutines = f.startedGoroutines || !f.IsLocal()
+			return headProc.RunShortCircuit(ctx, f.TsTableReaders[0])
 		}
 
 		if !f.isVectorized {
@@ -673,12 +581,6 @@ func (f *FlowBase) StartProcessor(ctx context.Context, doneFn func()) error {
 	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
 	otherProcs := f.processors[:len(f.processors)-1]
 	if f.isTimeSeries {
-		if f.isVectorized {
-			if f.IsLocal() && f.VecIsShortCircuitForPgEncode(ctx) {
-				err := f.VecShortCircuitForPgEncode(ctx)
-				return err
-			}
-		}
 		if f.syncFlowConsumer == nil {
 			return nil
 		}

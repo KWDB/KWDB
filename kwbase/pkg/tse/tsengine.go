@@ -180,6 +180,8 @@ type TsEngineConfig struct {
 	LogCfg         log.Config
 	ExtraOptions   []byte
 	IsSingleNode   bool
+	BRPCAddr       string
+	ClusterID      string
 }
 
 // TsQueryInfo the parameter and return value passed by the query
@@ -196,6 +198,7 @@ type TsQueryInfo struct {
 	// when the switch is on and the server starts with single node mode.
 	PushData *DataChunkGo
 	RowCount int
+	SQL      string
 	// PullData TsDataChunkToGo
 }
 
@@ -454,6 +457,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
 			},
 			nil,
 			C.uint64_t(0))
@@ -481,6 +486,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
@@ -960,6 +967,12 @@ func (r *TsEngine) tsExecute(
 	queryInfo.unique_id = C.int(tsQueryInfo.UniqueID)
 	queryInfo.time_zone = C.int(tsQueryInfo.TimeZone)
 	queryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
+	cTsSlice := C.TSSlice{
+		data: (*C.char)(C.CBytes([]byte(tsQueryInfo.SQL))),
+		len:  C.size_t(len(tsQueryInfo.SQL)),
+	}
+	defer C.free(unsafe.Pointer(cTsSlice.data))
+	queryInfo.sql = cTsSlice
 	// process push data for batch lookup join for multiple model processing
 	// only store the data chunk pointer into tsQueryInfo and push it down to tse
 	// when the switch is on and the server starts with single node mode.

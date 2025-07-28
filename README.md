@@ -82,6 +82,9 @@ KWDB 支持在 Linux 操作系统进行安装部署，下表列出了编译和�
 | libstdc++-static  | v7.3.0+ | 仅 GCC 和 G++ 7.3.0 版本需要增加此依赖。                     |
 | protobuf-compiler | any     |                                                              |
 | git               | any     |                                                              |
+| libprotoc-dev     | v3.6.1+ |- Ubuntu系统该依赖名为libprotoc-dev。<br/>- RHEL, CentOS, Kylin, UOS, AnolisOS系统该依赖名为libprotobuf-devel。 |
+| gflags            | V2.2.2  |                                                              |
+| libz4             | V1.9.2  |                                                              |
 
 **运行依赖：**
 

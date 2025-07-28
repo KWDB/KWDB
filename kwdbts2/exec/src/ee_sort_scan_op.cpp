@@ -24,13 +24,11 @@
 namespace kwdbts {
 
 SortScanOperator::SortScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
-                                   TABLE* table, BaseOperator* input,
-                                   int32_t processor_id)
-    : TableScanOperator(collection, spec, post, table, input, processor_id) {}
+                                   TABLE* table, int32_t processor_id)
+    : TableScanOperator(collection, spec, post, table, processor_id) {}
 
-SortScanOperator::SortScanOperator(const SortScanOperator& other,
-                                   BaseOperator* input, int32_t processor_id)
-    : TableScanOperator(other, input, processor_id) {}
+SortScanOperator::SortScanOperator(const SortScanOperator& other, int32_t processor_id)
+    : TableScanOperator(other, processor_id) {}
 
 SortScanOperator::~SortScanOperator() {
   if (is_offset_opt_) {
@@ -75,7 +73,7 @@ EEIteratorErrCode SortScanOperator::Init(kwdbContext_p ctx) {
     table_->offset_ = offset_;
     table_->limit_ = limit_;
 
-    order_field_ = param_.GetOutputField(ctx, idx);
+    order_field_ = param_.GetInputField(ctx, idx);
     code = InitOutputColInfo(output_fields_);
     if (code == EEIteratorErrCode::EE_ERROR) {
       break;
@@ -97,12 +95,16 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   code = TableScanOperator::Start(ctx);
   if (code != EEIteratorErrCode::EE_OK) {
-    return code;
+    Return(code);
   }
 
   auto start = std::chrono::high_resolution_clock::now();
   KWThdContext* thd = current_thd;
   StorageHandler* handler = handler_;
+
+  if (table_->hash_points_.empty() && thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_OK);
+  }
 
   if (CheckCancel(ctx) != SUCCESS) {
     Return(EEIteratorErrCode::EE_ERROR);
@@ -136,7 +138,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
       code = initContainer(ctx, data_chunk_, tmp_output_col_info_,
                             is_offset_opt_ ? output_col_num_ + 1 : output_col_num_, limit_ + cur_offset_);
       if (code != EEIteratorErrCode::EE_OK) {
-        return code;
+        Return(code);
       }
     }
 
@@ -152,7 +154,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
     code = initContainer(ctx, data_chunk_, tmp_output_col_info_,
                             is_offset_opt_ ? output_col_num_ + 1 : output_col_num_, 1);
     if (code != EEIteratorErrCode::EE_OK) {
-      return code;
+      Return(code);
     }
   }
 
@@ -168,36 +170,54 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
 EEIteratorErrCode SortScanOperator::Next(kwdbContext_p ctx,
                                          DataChunkPtr& chunk) {
   EnterFunc();
-  EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
+  EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
-  if (is_done_) {
-    Return(EEIteratorErrCode::EE_END_OF_RECORD);
-  }
 
-  if (!is_offset_opt_) {
-    chunk = std::move(data_chunk_);
-  } else {
-    code = initContainer(ctx, chunk, output_col_info_, output_col_num_, limit_);
-    if (code != EEIteratorErrCode::EE_OK) {
-      return code;
+  do {
+    if (table_->hash_points_.empty() && thd->IsRemote()) {
+      code = EEIteratorErrCode::EE_END_OF_RECORD;
+      break;
     }
-    if (data_chunk_->Count() > cur_offset_) {
-      chunk->CopyFrom(data_chunk_, cur_offset_, data_chunk_->Count() - 1, table_->is_reverse_);
+    if (is_done_) {
+      code = EEIteratorErrCode::EE_END_OF_RECORD;
+      break;
     }
-  }
 
-  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
-  is_done_ = true;
+    if (0 == data_chunk_->Count()) {
+      code = EEIteratorErrCode::EE_END_OF_RECORD;
+      break;
+    }
 
-  Return(EEIteratorErrCode::EE_OK);
+    if (!is_offset_opt_) {
+      chunk = std::move(data_chunk_);
+    } else {
+      if (data_chunk_->Count() > cur_offset_) {
+        code = initContainer(ctx, chunk, output_col_info_, output_col_num_, limit_);
+        if (code != EEIteratorErrCode::EE_OK) {
+          break;
+        }
+        chunk->CopyFrom(data_chunk_, cur_offset_, data_chunk_->Count() - 1, table_->is_reverse_);
+      } else {
+        code = EEIteratorErrCode::EE_END_OF_RECORD;
+        break;
+      }
+    }
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
+    is_done_ = true;
+  } while (0);
+
+  Return(code);
 }
 
-KStatus SortScanOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode SortScanOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  KStatus ret = input_->Close(ctx);
+  EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
+  if (childrens_[0] && !is_clone_) {
+    code = childrens_[0]->Close(ctx);
+  }
   Reset(ctx);
 
-  Return(ret);
+  Return(code);
 }
 
 EEIteratorErrCode SortScanOperator::Reset(kwdbContext_p ctx) {
@@ -222,12 +242,11 @@ EEIteratorErrCode SortScanOperator::Reset(kwdbContext_p ctx) {
 }
 
 BaseOperator* SortScanOperator::Clone() {
-  BaseOperator* input = input_->Clone();
-  if (input == nullptr) {
-    input = input_;
+  BaseOperator* iter = NewIterator<SortScanOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(childrens_[0]);
   }
-  BaseOperator* iter =
-      NewIterator<SortScanOperator>(*this, input, this->processor_id_);
+
   return iter;
 }
 

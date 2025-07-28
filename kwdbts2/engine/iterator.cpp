@@ -301,6 +301,7 @@ KStatus TsStorageIterator::Init(bool is_reversed) {
 // return -1 means all partition tables scan over.
 int TsStorageIterator::nextBlockItem(k_uint32 entity_id, timestamp64 ts) {
   cur_block_item_ = nullptr;
+  cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   // block_item_queue_ saves the BlockItem object pointer of the partition table for the current query
   // Calling the Next function once can retrieve data within a maximum of one BlockItem.
   // If a BlockItem query is completed, the next BlockItem object needs to be obtained:
@@ -328,17 +329,24 @@ int TsStorageIterator::nextBlockItem(k_uint32 entity_id, timestamp64 ts) {
     }
     cur_block_item_ = block_item_queue_.front();
     block_item_queue_.pop_front();
+    std::shared_ptr<MMapSegmentTable> segment_tbl = cur_partition_table_->getSegmentTable(cur_block_item_->block_id);
+    if (segment_tbl == nullptr) {
+      LOG_ERROR("Can not find segment use block [%u], in path [%s]",
+                cur_block_item_->block_id, cur_partition_table_->GetPath().c_str());
+      return NextBlkStatus::error;
+    }
+    timestamp64 min_ts, max_ts;
+    TsTimePartition::GetBlkMinMaxTs(cur_block_item_, segment_tbl.get(), min_ts, max_ts);
+    cur_block_ts_check_res_ = checkTimestampWithSpans(ts_spans_, min_ts, max_ts);
+    if (cur_block_ts_check_res_ == TimestampCheckResult::NonOverlapping) {
+      cur_block_item_ = nullptr;
+      cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
+      continue;
+    }
     if (ts != INVALID_TS) {
-      std::shared_ptr<MMapSegmentTable> segment_tbl = cur_partition_table_->getSegmentTable(cur_block_item_->block_id);
-      if (segment_tbl == nullptr) {
-        LOG_ERROR("Can not find segment use block [%u], in path [%s]",
-                  cur_block_item_->block_id, cur_partition_table_->GetPath().c_str());
-        return NextBlkStatus::error;
-      }
-      timestamp64 min_ts, max_ts;
-      TsTimePartition::GetBlkMinMaxTs(cur_block_item_, segment_tbl.get(), min_ts, max_ts);
       if ((is_reversed_ && max_ts < ts) || (!is_reversed_ && min_ts > ts)) {
         cur_block_item_ = nullptr;
+        cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
         continue;
       }
     }
@@ -350,6 +358,7 @@ int TsStorageIterator::nextBlockItem(k_uint32 entity_id, timestamp64 ts) {
     // all rows in block is deleted.
     if (cur_block_item_->isBlockEmpty()) {
       cur_block_item_ = nullptr;
+      cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
       continue;
     }
     return NextBlkStatus::find_one;
@@ -362,13 +371,11 @@ bool TsStorageIterator::getCurBlockSpan(BlockItem* cur_block, std::shared_ptr<MM
   *count = 0;
   // Sequential read optimization, if the maximum and minimum timestamps of a BlockItem are within the ts_span range,
   // there is no need to determine the timestamps for each BlockItem.
-  timestamp64 blk_min_ts, blk_max_ts;
-  TsTimePartition::GetBlkMinMaxTs(cur_block, segment_tbl.get(), blk_min_ts, blk_max_ts);
   if (cur_block->is_agg_res_available && cur_block->publish_row_count > 0
       && cur_block->publish_row_count == cur_block->alloc_row_count
       && cur_blockdata_offset_ == 1
       && cur_block->getDeletedCount() == 0
-      && isTimestampWithinSpans(ts_spans_, blk_min_ts, blk_max_ts)) {
+      && cur_block_ts_check_res_ == TimestampCheckResult::FullyContained) {
     has_data = true;
     *first_row = 1;
     *count = cur_block->publish_row_count;
@@ -484,6 +491,7 @@ KStatus TsRawDataIterator::Next(ResultSet* res, k_uint32* count, bool* is_finish
     if (cur_blockdata_offset_ > cur_block_item_->publish_row_count) {
       cur_blockdata_offset_ = 1;
       cur_block_item_ = nullptr;
+      cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
     }
     if (*count > 0) {
       KWDB_STAT_ADD(StStatistics::Get().it_num, *count);
@@ -845,6 +853,7 @@ KStatus TsAggIterator::findFirstDataByIter(timestamp64 ts) {
   partition_table_iter_->Reset();
   block_item_queue_.clear();
   cur_block_item_ = nullptr;
+  cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   while (true) {
     TsTimePartition* cur_pt = nullptr;
     partition_table_iter_->Next(&cur_pt);
@@ -885,8 +894,9 @@ KStatus TsAggIterator::findFirstDataByIter(timestamp64 ts) {
       }
       timestamp64 min_ts, max_ts;
       TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
+      cur_block_ts_check_res_ = checkTimestampWithSpans(ts_spans_, min_ts, max_ts);
       // If the time range of the BlockItem is not within the ts_span range, continue traversing the next BlockItem.
-      if (!isTimestampInSpans(ts_spans_, min_ts, max_ts)) {
+      if (cur_block_ts_check_res_ == TimestampCheckResult::NonOverlapping) {
         continue;
       }
       // first agg all filled. while just need ts that smaller than agg using max ts.
@@ -968,6 +978,7 @@ KStatus TsAggIterator::findLastDataByIter(timestamp64 ts) {
   partition_table_iter_->Reset(true);
   block_item_queue_.clear();
   cur_block_item_ = nullptr;
+  cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   while (true) {
     TsTimePartition* cur_pt = nullptr;
     partition_table_iter_->Next(&cur_pt);
@@ -1009,8 +1020,9 @@ KStatus TsAggIterator::findLastDataByIter(timestamp64 ts) {
       }
       timestamp64 min_ts, max_ts;
       TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
+      cur_block_ts_check_res_ = checkTimestampWithSpans(ts_spans_, min_ts, max_ts);
       // If the time range of the BlockItem is not within the ts_span range, continue traversing the next BlockItem.
-      if (!isTimestampInSpans(ts_spans_, min_ts, max_ts)) {
+      if (cur_block_ts_check_res_ == TimestampCheckResult::NonOverlapping) {
         continue;
       }
       // all agg is filled. so we just need ts that max than agg using ts.
@@ -1160,10 +1172,10 @@ KStatus TsAggIterator::countDataUseStatistics(ResultSet* res, k_uint32* count, t
     }
 
     EntityItem* entity_item = cur_pt->getEntityItem(entity_ids_[cur_entity_idx_]);
-    if (isTimestampWithinSpans(ts_spans_,
-                               convertSecondToPrecisionTS(cur_pt->minTimestamp(), ts_col_type_),
-                               convertSecondToPrecisionTS(cur_pt->maxTimestamp(), ts_col_type_)) &&
-        entity_item->count_block_id != 0) {
+    timestamp64 p_min_ts = convertSecondToPrecisionTS(cur_pt->minTimestamp(), ts_col_type_);
+    timestamp64 p_max_ts = convertSecondToPrecisionTS(cur_pt->maxTimestamp(), ts_col_type_);
+    if (checkTimestampWithSpans(ts_spans_, p_min_ts, p_max_ts) == TimestampCheckResult::FullyContained
+                                && entity_item->count_block_id != 0) {
       cur_pt->GetCountBlockItems(entity_ids_[cur_entity_idx_], entity_item->count_block_id, block_item_queue_);
       total_count += entity_item->row_written;
     } else {
@@ -1191,104 +1203,17 @@ KStatus TsAggIterator::countDataUseStatistics(ResultSet* res, k_uint32* count, t
       }
       timestamp64 min_ts, max_ts;
       TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
+      cur_block_ts_check_res_ = checkTimestampWithSpans(ts_spans_, min_ts, max_ts);
       // If the time range of the BlockItem is not within the ts_span range, continue traversing the next BlockItem.
-      if (!isTimestampInSpans(ts_spans_, min_ts, max_ts)) {
+      if (cur_block_ts_check_res_ == TimestampCheckResult::NonOverlapping) {
         continue;
       }
-      if (isTimestampWithinSpans(ts_spans_, min_ts, max_ts)) {
+      if (cur_block_ts_check_res_ == TimestampCheckResult::FullyContained) {
         total_count += block_item->getNonNullRowCount();
       } else {
         // Traverse all data of this BlockItem
         uint32_t cur_row_offset = 1;
         while (cur_row_offset <= block_item->alloc_row_count) {
-          bool is_deleted = !segment_tbl->IsRowVaild(block_item, cur_row_offset);
-          if (is_deleted) {
-            ++cur_row_offset;
-            continue;
-          }
-          // If the data in the cur_row_offset row is not within the ts_span range or has been deleted,
-          // continue to verify the data in the next row.
-          MetricRowID real_row = block_item->getRowID(cur_row_offset);
-          timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddr(real_row, 0));
-          if (!checkIfTsInSpan(cur_ts)) {
-            ++cur_row_offset;
-            continue;
-          }
-          ++cur_row_offset;
-          ++total_count;
-        }
-      }
-    }
-  }
-
-  if (total_count != 0) {
-    Batch* b = new AggBatch(malloc(sizeof(uint64_t)), 1, nullptr);
-    *static_cast<uint64_t*>(b->mem) = total_count;
-    b->is_new = true;
-    res->push_back(0, b);
-    res->entity_index = {entity_group_id_, entity_ids_[cur_entity_idx_], subgroup_id_};
-    *count = 1;
-  }
-  return SUCCESS;
-}
-
-KStatus TsAggIterator::countDataAllBlocks(ResultSet* res, k_uint32* count, timestamp64 ts) {
-  KWDB_DURATION(StStatistics::Get().agg_blocks);
-  *count = 0;
-  k_uint64 total_count = 0;
-  partition_table_iter_->Reset();
-  block_item_queue_.clear();
-  cur_block_item_ = nullptr;
-  while (true) {
-    TsTimePartition* cur_pt = nullptr;
-    partition_table_iter_->Next(&cur_pt);
-    block_item_queue_.clear();
-    if (cur_pt == nullptr) {
-      // all partition scan over.
-      break;
-    }
-    if (ts != INVALID_TS) {
-      if (!is_reversed_ && convertSecondToPrecisionTS(cur_pt->minTimestamp(), ts_col_type_) > ts) {
-        break;
-      } else if (is_reversed_ && convertSecondToPrecisionTS(cur_pt->maxTimestamp(), ts_col_type_) < ts) {
-        break;
-      }
-    }
-
-    cur_pt->GetAllBlockItems(entity_ids_[cur_entity_idx_], block_item_queue_);
-    auto entity_item = cur_pt->getEntityItem(entity_ids_[cur_entity_idx_]);
-    // Obtain the minimum timestamp for the current query entity.
-    // Once a record's timestamp is traversed to be equal to it,
-    // it indicates that the query result has been found and no additional data needs to be traversed.
-    timestamp64 min_entity_ts = entity_item->min_ts;
-    while (!block_item_queue_.empty()) {
-      BlockItem* block_item = block_item_queue_.front();
-      cur_block_item_ = block_item;
-      block_item_queue_.pop_front();
-      if (!block_item || !block_item->publish_row_count) {
-        continue;
-      }
-      // all rows in block is deleted.
-      if (block_item->isBlockEmpty()) {
-        continue;
-      }
-      std::shared_ptr<MMapSegmentTable> segment_tbl = cur_pt->getSegmentTable(block_item->block_id);
-      if (segment_tbl == nullptr) {
-        LOG_ERROR("Can not find segment use block [%u], in path [%s]", block_item->block_id, cur_pt->GetPath().c_str());
-        return KStatus::FAIL;
-      }
-      timestamp64 min_ts, max_ts;
-      TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
-      // If the time range of the BlockItem is not within the ts_span range, continue traversing the next BlockItem.
-      if (!isTimestampInSpans(ts_spans_, min_ts, max_ts)) {
-        continue;
-      }
-      if (isTimestampWithinSpans(ts_spans_, min_ts, max_ts)) {
-        total_count += block_item->getNonNullRowCount();
-      } else {
-        // Traverse all data of this BlockItem
-        uint32_t cur_row_offset = 1;
-        while (cur_row_offset <= block_item->publish_row_count) {
           bool is_deleted = !segment_tbl->IsRowVaild(block_item, cur_row_offset);
           if (is_deleted) {
             ++cur_row_offset;
@@ -1581,12 +1506,14 @@ KStatus TsAggIterator::traverseAllBlocks(ResultSet* res, k_uint32* count, timest
       if (cur_blockdata_offset_ > cur_block->alloc_row_count) {
         cur_blockdata_offset_ = 1;
         cur_block_item_ = nullptr;
+        cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
       }
       return SUCCESS;
     }
     if (cur_blockdata_offset_ > cur_block->alloc_row_count) {
       cur_blockdata_offset_ = 1;
       cur_block_item_ = nullptr;
+      cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
     }
   }
   return SUCCESS;
@@ -1769,6 +1696,7 @@ KStatus TsAggIterator::Next(ResultSet* res, k_uint32* count, bool* is_finished, 
   partition_table_iter_->Reset();
   block_item_queue_.clear();
   cur_block_item_ = nullptr;
+  cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   ResultSet result{(k_uint32) kw_scan_cols_.size()};
   // Continuously calling the traceAllBlocks function to obtain
   // the intermediate aggregation result of all data for the current query entity.
@@ -2411,9 +2339,10 @@ KStatus TsOffsetIterator::fetchBlockItems(uint32_t subgroup_id, uint32_t* cnt) {
     }
     timestamp64 min_ts, max_ts;
     TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
-    if (!isTimestampInSpans(ts_spans_, min_ts, max_ts) || !block_item->publish_row_count) {
+    TimestampCheckResult res = checkTimestampWithSpans(ts_spans_, min_ts, max_ts);
+    if (res == TimestampCheckResult::NonOverlapping || !block_item->publish_row_count) {
       continue;
-    } else if (isTimestampWithinSpans(ts_spans_, min_ts, max_ts) && !segment_tbl->HasRowNotValid(block_item)) {
+    } else if (res == TimestampCheckResult::FullyContained && !segment_tbl->HasRowNotValid(block_item)) {
       row_cnt += block_item->publish_row_count;
       filter_block_spans_.push_back(BlockSpan{block_item, 0, block_item->publish_row_count,
                                                  subgroup_id, min_ts, max_ts});
@@ -2424,7 +2353,8 @@ KStatus TsOffsetIterator::fetchBlockItems(uint32_t subgroup_id, uint32_t* cnt) {
       for (uint32_t i = 1; i <= block_item->publish_row_count; ++i) {
         MetricRowID row_id = block_item->getRowID(i);
         timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddr(row_id, 0));
-        if (!(CheckIfTsInSpan(cur_ts, ts_spans_)) || !segment_tbl->IsRowVaild(block_item, i)) {
+        if (checkTimestampWithSpans(ts_spans_, cur_ts, cur_ts) == TimestampCheckResult::NonOverlapping
+            || !segment_tbl->IsRowVaild(block_item, i)) {
           if (i > first_row) {
             row_cnt += (i - first_row);
             filter_block_spans_.push_back({block_item, first_row - 1, i - first_row, subgroup_id, min_ts, max_ts});

@@ -1,0 +1,40 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details. Created by liguoliang on 2022/07/18.
+#pragma once
+
+#include "ee_base_op.h"
+
+namespace kwdbts {
+
+class ResultCollectorOperator : public BaseOperator {
+ public:
+  ResultCollectorOperator() { }
+
+  EEIteratorErrCode Init(kwdbContext_p ctx) override;
+
+  EEIteratorErrCode Start(kwdbContext_p ctx) override;
+
+  EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
+
+  EEIteratorErrCode Reset(kwdbContext_p ctx) override;
+
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
+
+  KStatus BuildPipeline(PipelineGroup *pipeline, Processors *processor) override;
+
+  enum OperatorType Type() override { return OperatorType::OPERATOR_RESULT_COLLECTOR; }
+
+ private:
+  k_uint32 total_rows_{0};
+};
+
+
+}  // namespace kwdbts

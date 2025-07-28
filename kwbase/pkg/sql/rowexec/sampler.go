@@ -248,6 +248,11 @@ func (s *samplerProcessor) Run(ctx context.Context) execinfra.RowStats {
 	return execinfra.RowStats{}
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (s *samplerProcessor) RunShortCircuit(context.Context, execinfra.TSReader) error {
+	return nil
+}
+
 // TestingSamplerSleep introduces a sleep inside the sampler, every
 // <samplerProgressInterval>. Used to simulate a heavily throttled
 // run for testing.

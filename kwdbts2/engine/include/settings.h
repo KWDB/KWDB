@@ -51,6 +51,8 @@ struct EngineOptions {
   uint16_t thread_pool_size = 10;
   uint16_t task_queue_size = 1024;
   uint32_t buffer_pool_size = 4096;  // NEWPOOL_MAX_SIZE (4096)
+  std::string brpc_addr = "127.0.0.1:27257";
+  std::string cluster_id = "00000000-0000-0000-0000-000000000000";
   // 1MiB / 4KiB(BLOCK_SIZE) = 256
   [[nodiscard]] uint32_t GetBlockNumPerFile() const {
     return wal_file_size * 256 - 1;

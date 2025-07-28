@@ -121,13 +121,16 @@ func processInboundStreamHelper(
 	sendErrToConsumer := func(err error) {
 		if err != nil {
 			dst.Push(nil, &execinfrapb.ProducerMetadata{Err: err})
+			if f.isTimeSeries {
+				f.GetCancelFlowFn()()
+			}
 		}
 		dst.ProducerDone()
 	}
 
 	if firstMsg != nil {
 		if res := processProducerMessage(
-			ctx, stream, dst, &sd, &draining, firstMsg,
+			ctx, stream, dst, &sd, &draining, firstMsg, f.isTimeSeries,
 		); res.err != nil || res.consumerClosed {
 			sendErrToConsumer(res.err)
 			return res.err
@@ -166,7 +169,7 @@ func processInboundStreamHelper(
 			}
 
 			if res := processProducerMessage(
-				ctx, stream, dst, &sd, &draining, msg,
+				ctx, stream, dst, &sd, &draining, msg, f.isTimeSeries,
 			); res.err != nil || res.consumerClosed {
 				sendErrToConsumer(res.err)
 				errChan <- res.err
@@ -207,6 +210,7 @@ func processProducerMessage(
 	sd *StreamDecoder,
 	draining *bool,
 	msg *execinfrapb.ProducerMessage,
+	isTimeSeries bool,
 ) processMessageResult {
 	err := sd.AddMessage(ctx, msg)
 	if err != nil {
@@ -237,10 +241,23 @@ func processProducerMessage(
 			// Don't forward data rows when we're draining.
 			continue
 		}
+		// when isTimeSeries, local AE may get stuck.
+		// When receiving a remote ts error, need cancel locally.
+		// Cancel is called in sendErrToConsumer.
+		needReturn := false
+		if isTimeSeries && meta != nil && meta.Err != nil {
+			needReturn = true
+		}
 		switch dst.Push(row, meta) {
 		case execinfra.NeedMoreRows:
+			if needReturn {
+				return processMessageResult{err: meta.Err, consumerClosed: false}
+			}
 			continue
 		case execinfra.DrainRequested:
+			if needReturn {
+				return processMessageResult{err: meta.Err, consumerClosed: false}
+			}
 			// The rest of rows are not needed by the consumer. We'll send a drain
 			// signal to the producer and expect it to quickly send trailing
 			// metadata and close its side of the stream, at which point we also

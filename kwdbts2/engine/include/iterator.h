@@ -314,6 +314,7 @@ class TsStorageIterator {
 
   void nextEntity() {
     cur_block_item_ = nullptr;
+    cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
     cur_blockdata_offset_ = 1;
     block_item_queue_.clear();
     ++cur_entity_idx_;
@@ -342,6 +343,7 @@ class TsStorageIterator {
   // save the data offset within the BlockItem object being queried, used for traversal
   k_uint32 cur_blockdata_offset_ = 1;
   BlockItem* cur_block_item_ = nullptr;
+  TimestampCheckResult cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   k_uint32 cur_entity_idx_ = 0;
   MMapSegmentTableIterator* segment_iter_{nullptr};
   std::shared_ptr<TsEntityGroup> entity_group_;
@@ -459,6 +461,7 @@ class TsAggIterator : public TsStorageIterator {
    */
   void reset() {
     cur_block_item_ = nullptr;
+    cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
     cur_blockdata_offset_ = 1;
     ++cur_entity_idx_;
     first_last_row_.Reset();
@@ -558,8 +561,6 @@ class TsAggIterator : public TsStorageIterator {
   KStatus findFirstData(ResultSet* res, k_uint32* count, timestamp64 ts);
 
   KStatus countDataUseStatistics(ResultSet* res, k_uint32* count, timestamp64 ts);
-
-  KStatus countDataAllBlocks(ResultSet* res, k_uint32* count, timestamp64 ts);
 
   /**
    * @brief using iterator find last data info, store into first_last_row_

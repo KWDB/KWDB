@@ -22,7 +22,7 @@
 #include <unordered_map>
 
 #include "ee_base_op.h"
-#include "ee_flow_param.h"
+#include "ee_tag_scan_parser.h"
 #include "ee_tag_row_batch.h"
 #include "ee_rel_tag_row_batch.h"
 #include "ee_hash_tag_row_batch.h"
@@ -57,9 +57,11 @@ class HashTagScanOperator : public TagScanBaseOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
+  enum OperatorType Type() override {return OperatorType::OPERATOR_HASH_TAG_SCAN;}
+
   RowBatch* GetRowBatch(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
   KStatus GetEntities(kwdbContext_p ctx,
                       std::vector<EntityResultIndex>* entities,
@@ -118,10 +120,9 @@ class HashTagScanOperator : public TagScanBaseOperator {
 
  protected:
   TSTagReaderSpec* spec_{nullptr};
-  TSPostProcessSpec* post_{nullptr};
   k_uint64 object_id_{0};
   k_uint32 total_read_row_{0};  // total count
-  ReaderPostResolve param_;
+  TsTagScanParser param_;
   // Filter for tag data scan.
   Field* filter_{nullptr};
   /**

@@ -1369,7 +1369,7 @@ int TagTable::initPrevEntityRowData(ErrorInfo& err_info) {
         for (int idx = 0; idx < entity_id_list.size(); idx++) {
           uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id_list[idx].entityId) << 32) | entity_id_list[idx].subGroupId;
           if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t), it.first, row) < 0) {
-            LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", it.first, row);
+            LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %d ", it.first, row);
             src_tag_partition_tbl->stopRead();
             return -1;
           }
