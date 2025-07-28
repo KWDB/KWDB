@@ -33,10 +33,10 @@ WALMgr::WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
 }
 
-WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt) :
-      db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt) {
+WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt, bool read_chk) :
+      db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt), read_chk_(read_chk) {
   wal_path_ = db_path_ + "/wal/" + vgrp_name + "/";
-  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt);
+  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt, read_chk);
   buffer_mgr_ = KNEW WALBufferMgr(opt, file_mgr_);
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
 }
@@ -124,6 +124,27 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
     return s;
   }
 
+  return SUCCESS;
+}
+
+KStatus WALMgr::InitForChk(kwdbContext_p ctx, WALMeta meta) {
+  meta_ = meta;
+  TS_LSN current_lsn = FetchCurrentLSN();
+  KStatus s = file_mgr_->Open();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to open the WAL file ")
+    s = file_mgr_->initWalFile(current_lsn);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to init a WAL file")
+      return s;
+    }
+  }
+
+  s = buffer_mgr_->init(current_lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to initialize the WAL buffer with LSN %lu", current_lsn)
+    return s;
+  }
   return SUCCESS;
 }
 
@@ -810,12 +831,6 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN sta
     file_mgr_->Unlock();
     return status;
   }
-  status = SwitchNextFile();
-  file_mgr_->Unlock();
-  if (status == KStatus::FAIL) {
-    LOG_ERROR("Failed to switch next WAL file.")
-    return status;
-  }
   return status;
 }
 
@@ -833,6 +848,10 @@ KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& 
 
 KStatus WALMgr::ReadWALLogForTSx(char* ts_trans_id, std::vector<LogEntry*>& logs) {
   return SUCCESS;
+}
+
+WALMeta WALMgr::GetMeta() const {
+  return meta_;
 }
 
 TS_LSN WALMgr::FetchCurrentLSN() const {
@@ -978,7 +997,13 @@ bool WALMgr::NeedCheckpoint() {
 }
 
 KStatus WALMgr::SwitchNextFile() {
+  kwdbts::kwdbContext_p ctx;
   if (std::filesystem::exists(file_mgr_->getFilePath())) {
+    KStatus s = FlushWithoutLock(ctx);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to FlushWithoutLock.")
+      return FAIL;
+    }
     file_mgr_->Close();
     if (-1 == rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
@@ -1001,14 +1026,13 @@ KStatus WALMgr::SwitchNextFile() {
     return s;
   }
 
-  kwdbts::kwdbContext_p ctx;
-  s = UpdateCheckpointWithoutFlush(ctx, first_lsn);
+  UpdateCheckpointWithoutFlush(ctx, first_lsn);
+  UpdateFirstLSN(first_lsn);
+  s = FlushWithoutLock(ctx);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to WriteCheckpointWAL.")
+    LOG_ERROR("Failed to FlushWithoutLock.")
     return FAIL;
   }
-  UpdateFirstLSN(first_lsn);
-  FlushWithoutLock(ctx);
 
   return KStatus::SUCCESS;
 }
