@@ -11,6 +11,7 @@
 
 #include "ts_entity_segment_builder.h"
 #include <utility>
+#include "settings.h"
 #include "ts_agg.h"
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_filename.h"
@@ -511,8 +512,9 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
         builder_ = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
       }
       // Writes the incomplete data back to the last segment
+      auto row_num = cached_spans_.front()->GetRowNum();
       s = builder_->PutBlockSpan(cached_spans_.front());
-      cached_count_ -= cached_spans_.front()->GetRowNum();
+      cached_count_ -= row_num;
       cached_spans_.pop_front();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
@@ -553,6 +555,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
 }
 
 KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
+  // assert(EngineOptions::min_rows_per_block < EngineOptions::max_rows_per_block);
   std::unique_lock lock{mutex_};
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};

@@ -76,6 +76,7 @@ class TsEntitySegmentTest : public ::testing::Test {
 
 TEST_F(TsEntitySegmentTest, simpleInsert) {
   EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
   int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
@@ -264,6 +265,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
   EngineOptions::g_dedup_rule = DedupRule::KEEP;
   EngineOptions::max_compact_num = 20;
   EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
   int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
