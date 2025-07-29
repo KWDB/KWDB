@@ -35,6 +35,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("write entity item[id=%lu] failed.", entity_item.entity_id);
   }
+  assert(w_file_->GetFileSize() == entity_item.entity_id * sizeof(TsEntityItem));
   return s;
 }
 
@@ -63,6 +64,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFileBuilder append failed, file_path=%s", file_path_.c_str())
   }
+  assert((w_file_->GetFileSize() - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   return s;
 }
 
@@ -233,11 +235,15 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // init col agg offsets to agg buffer, exclude lsn col
   uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
   agg_buffer.resize(agg_header_size);
+  // min lsn && max lsn
+  TS_LSN min_lsn = UINT64_MAX;
+  TS_LSN max_lsn = 0;
 
   // write column block data and column agg
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
+    size_t d_size = col_idx == 0 ? 8 : metric_schema_[col_idx - 1].size;
     bool has_bitmap = col_idx > 1;
     bool is_var_col = isVarLenType(d_type);
 
@@ -291,6 +297,15 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     memcpy(data_buffer.data() + col_idx * sizeof(uint32_t), &(block_info_.col_block_offset[col_idx]), sizeof(uint32_t));
     // calculate aggregate
     if (0 == col_idx) {
+      for (int row_idx = 0; row_idx < n_rows_; ++row_idx) {
+        TS_LSN* lsn = reinterpret_cast<TS_LSN *>(block.buffer.data() + row_idx * sizeof(TS_LSN));
+        if (min_lsn > *lsn) {
+          min_lsn = *lsn;
+        }
+        if (max_lsn < *lsn) {
+          max_lsn = *lsn;
+        }
+      }
       continue;
     }
     string col_agg;
@@ -354,6 +369,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   blk_item.n_rows = n_rows_;
   blk_item.max_ts = max_ts;
   blk_item.min_ts = min_ts;
+  blk_item.max_lsn = max_lsn;
+  blk_item.min_lsn = min_lsn;
   blk_item.block_len = data_buffer.size();
   blk_item.agg_len = agg_buffer.size();
 
@@ -380,6 +397,8 @@ void TsEntityBlockBuilder::Clear() {
   block_info_.col_agg_offset.resize(n_cols_ - 1);
   block_info_.col_block_offset.clear();
   block_info_.col_block_offset.resize(n_cols_);
+  min_lsn_ = UINT64_MAX;
+  max_lsn_ = 0;
 }
 
 KStatus TsEntitySegmentBuilder::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* file,
@@ -675,11 +694,12 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update) {
   info.block_file_size = block_file_builder_->GetFileSize();
   info.header_b_size = block_item_builder_->GetFileSize();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  assert((info.header_b_size - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
+KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice block_data) {
   std::unique_lock lock{mutex_};
   auto it = entity_items_.find(entity_id);
   if (it == entity_items_.end()) {
@@ -709,6 +729,8 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
                          + (n_cols - 1) * sizeof(uint32_t)) + sizeof(uint32_t) * n_cols;
   block_item.min_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::min_ts_offset_in_span_data_);
   block_item.max_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
+  block_item.min_lsn = lsn;
+  block_item.max_lsn = lsn;
   block_item.agg_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size + block_item.block_len
                        + (n_cols - 2) * sizeof(uint32_t))  + sizeof(uint32_t) * (n_cols - 1);
 
@@ -794,8 +816,13 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   info.block_file_size = block_file_builder_->GetFileSize();
   info.header_b_size = block_item_builder_->GetFileSize();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  assert((info.header_b_size - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
+}
+
+void TsEntitySegmentBuilder::MarkDelete() {
+  entity_item_builder_->MarkDelete();
 }
 
 }  //  namespace kwdbts

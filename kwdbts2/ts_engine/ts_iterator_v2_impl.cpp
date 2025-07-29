@@ -25,8 +25,8 @@ namespace kwdbts {
 int64_t TsMaxMilliTimestamp = 31556995200000;  // be associated with 'kwbase/pkg/sql/sem/tree/type_check.go'
 int64_t TsMaxMicroTimestamp = 31556995200000000;
 
-KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, shared_ptr<TsBlockSpan>& ts_blk_span,
-                                    ResultSet* res, k_uint32* count) {
+KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const vector<AttributeInfo> attrs,
+                                    shared_ptr<TsBlockSpan>& ts_blk_span, ResultSet* res, k_uint32* count) {
   *count = ts_blk_span->GetRowNum();
   KStatus ret;
   for (int i = 0; i < kw_scan_cols.size(); ++i) {
@@ -46,14 +46,16 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, s
         TsBitmap ts_bitmap;
         char* value;
         char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap);
+        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap, false);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
         }
-        for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_bitmap[row_idx] != DataFlags::kValid) {
-            set_null_bitmap(bitmap, row_idx);
+        if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL)) {
+          for (int row_idx = 0; row_idx < *count; ++row_idx) {
+            if (ts_bitmap[row_idx] != DataFlags::kValid) {
+              set_null_bitmap(bitmap, row_idx);
+            }
           }
         }
         memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
@@ -276,7 +278,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       }
       if (!is_done && !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
         // Found a block span which might contain satisfied rows.
-        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, block_span, res, count);
+        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
@@ -1574,7 +1576,7 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
   // Return one block span data each time.
   shared_ptr<TsBlockSpan> ts_block = block_spans_.front();
   block_spans_.pop_front();
-  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, ts_block, res, count);
+  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, ts_block, res, count);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
     return KStatus::FAIL;

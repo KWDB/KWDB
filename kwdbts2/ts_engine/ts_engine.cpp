@@ -34,7 +34,7 @@ int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
-size_t EngineOptions::min_rows_per_block = EngineOptions::max_rows_per_block;
+size_t EngineOptions::min_rows_per_block = 4096;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -499,9 +499,11 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
   assert(vgroup != nullptr);
   if (new_tag) {
     RW_LATCH_X_LOCK(&insert_tag_lock_);
+    Defer defer{[&](){
+      RW_LATCH_UNLOCK(&insert_tag_lock_);
+    }};
     s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
-      RW_LATCH_UNLOCK(&insert_tag_lock_);
       return s;
     }
     vgroup = GetVGroupByID(ctx, vgroup_id);
@@ -517,12 +519,10 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
       entity_id = vgroup->AllocateEntityID();
       s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
-        RW_LATCH_UNLOCK(&insert_tag_lock_);
         return s;
       }
       inc_entity_cnt++;
     }
-    RW_LATCH_UNLOCK(&insert_tag_lock_);
   }
   return KStatus::SUCCESS;
 }
@@ -1165,14 +1165,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }
 
-  // 4. rewrite wal log to chk file
-//  wal_mgr_ = nullptr;
-//  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-//  s = wal_mgr_->ResetWAL(ctx, true);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
-//    return s;
-//  }
   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
@@ -1205,20 +1197,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return s;
   }
 
-  // 7. a). update checkpoint LSN .
-  //    b). trig all vgroup write checkpoint wal.
-  //    c). remove vgroup wal file.
+  // 7. remove vgroup wal file.
   for (const auto &vgrp : vgroups_) {
-    TS_LSN lsn = 0;
-    uint32_t vgrp_id = vgrp->GetVGroupID();
-    auto it = vgrp_lsn.find(vgrp_id);
-    if (it != vgrp_lsn.end()) {
-      lsn = it->second;
-    } else {
-      LOG_ERROR("Failed to find vgroup lsn from map.")
-      return KStatus::FAIL;
-    }
-    s = vgrp->UpdateLSN(ctx, lsn);
+    s = vgrp->RemoveChkFile(ctx);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to update vgroup checkpoint lsn.")
       return s;
@@ -2180,6 +2161,10 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
       snapshots_[snapshot_id].imgrated_rows);
     }
     snapshots_.erase(snapshot_id);
+  }
+  auto s = BatchJobFinish(ctx, snapshot_id);
+  if (s == KStatus::SUCCESS) {
+    return s;
   }
   LOG_INFO("DeleteSnapshot succeeded, snapshot[%lu]", snapshot_id);
   return KStatus::SUCCESS;

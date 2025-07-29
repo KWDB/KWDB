@@ -170,7 +170,7 @@ class TsVGroup {
 
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload);
 
-  KStatus UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn);
+  KStatus RemoveChkFile(kwdbContext_p ctx);
 
   KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
@@ -216,7 +216,7 @@ class TsVGroup {
   const std::vector<KwTsSpan>& ts_spans);
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
+                         timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();
 

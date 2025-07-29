@@ -184,20 +184,13 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
-  // 1.UpdateLSN
+KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
   wal_manager_->Lock();
   Defer defer{[&]() {
     wal_manager_->Unlock();
   }};
-  KStatus s = wal_manager_->UpdateCheckpointWithoutFlush(ctx, chk_lsn);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to WriteCheckpointWAL.")
-    return FAIL;
-  }
-  wal_manager_->Flush(ctx);
-  // 2. remove chk file
-  s = wal_manager_->RemoveChkFile(ctx);
+  // remove chk file
+  KStatus s = wal_manager_->RemoveChkFile(ctx);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to RemoveChkFile.")
     return FAIL;
@@ -239,7 +232,7 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   // }
 
   KStatus s =
-      wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(), wal_manager_->FetchCurrentLSN(), ignore);
+      wal_manager_->ReadWALLog(logs, wal_manager_->GetFirstLSN(), wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
   wal_manager_->Unlock();
   if (s == KStatus::FAIL) {
@@ -917,7 +910,7 @@ KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice paylo
 }
 
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                                 timestamp64 ts, DATATYPE ts_col_type, TSSlice data) {
+                                 timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data) {
   while (!TrySetTsExclusiveStatus(TsExclusiveStatus::WRITE_BATCH)) {
     sleep(1);
   }
@@ -960,30 +953,35 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       builder = it->second;
     }
   }
-  return builder->WriteBatch(entity_id, table_version, data);
+  return builder->WriteBatch(entity_id, table_version, lsn, data);
 }
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
+  Defer defer([this]() {
+    ResetTsExclusiveStatus();
+  });
   std::unique_lock lock{builders_mutex_};
   for (auto& kv : write_batch_segment_builders_) {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       write_batch_segment_builders_.clear();
-      ResetTsExclusiveStatus();
       LOG_ERROR("Finish entity segment builder failed");
       return s;
     }
   }
   write_batch_segment_builders_.clear();
   version_manager_->ApplyUpdate(&update);
-  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {
   std::unique_lock lock{builders_mutex_};
+  for (auto& kv : write_batch_segment_builders_) {
+    kv.second->MarkDelete();
+  }
   write_batch_segment_builders_.clear();
+  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 
