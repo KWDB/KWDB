@@ -62,6 +62,7 @@ class TsVGroup {
 
   EngineOptions engine_options_;
 
+  std::shared_mutex* engine_wal_level_mutex_ = nullptr;
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
@@ -85,7 +86,7 @@ class TsVGroup {
   TsVGroup() = delete;
 
   TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
-           bool enable_compact_thread = true);
+           std::shared_mutex* engine_mutex, bool enable_compact_thread = true);
 
   ~TsVGroup();
 
@@ -107,6 +108,30 @@ class TsVGroup {
   TSEntityID GetMaxEntityID() const;
 
   void InitEntityID(TSEntityID entity_id);
+
+  void LockLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->lock();
+    }
+  }
+
+  void UnLockLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->unlock();
+    }
+  }
+
+  void LockSharedLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->lock_shared();
+    }
+  }
+
+  void UnLockSharedLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->unlock_shared();
+    }
+  }
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
 

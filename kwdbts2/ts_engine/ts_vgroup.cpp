@@ -44,13 +44,14 @@ namespace kwdbts {
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
-                   bool enable_compact_thread)
+                   std::shared_mutex* engine_mutex, bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
       path_(std::filesystem::path(engine_options.db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
+      engine_wal_level_mutex_(engine_mutex),
       version_manager_(std::make_unique<TsVersionManager>(engine_options.io_env, path_)),
       enable_compact_thread_(enable_compact_thread) {}
 
@@ -101,11 +102,13 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
                           TSEntityID entity_id, TSSlice* payload, bool write_wal) {
   TS_LSN current_lsn = 1;
   if (engine_options_.wal_level != WALMode::OFF && write_wal) {
+    LockSharedLevelMutex();
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
     wal_manager_->Lock();
     current_lsn = wal_manager_->FetchCurrentLSN();
     KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn, vgroup_id_);
+    UnLockSharedLevelMutex();
     if (s == KStatus::FAIL) {
       wal_manager_->Unlock();
       return s;
@@ -813,16 +816,21 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     return KStatus::FAIL;
   }
   auto tag_table = tb_schema_manager->GetTagTable();
-  TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
-  if (UNLIKELY(nullptr == tag_pack)) {
-    return KStatus::FAIL;
+  if (engine_options_.wal_level != WALMode::OFF) {
+    TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
+    if (UNLIKELY(nullptr == tag_pack)) {
+      return KStatus::FAIL;
+    }
+    LockSharedLevelMutex();
+    s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_);
+    UnLockSharedLevelMutex();
+    delete tag_pack;
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("WriteDeleteTagWAL failed.");
+      return s;
+    }
   }
-  s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_);
-  delete tag_pack;
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("WriteDeleteTagWAL failed.");
-    return s;
-  }
+
   // if any error, end the delete loop and return ERROR to the caller.
   // Delete tag and its index
   ErrorInfo err_info;
@@ -849,12 +857,18 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
   std::vector<DelRowSpan> dtp_list;
-  TS_LSN current_lsn;
-  KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("WriteDeleteTagWAL failed.");
-    return s;
+  // todo(xy): need to initialize lsn if wal_level = off
+  TS_LSN current_lsn = 0;
+  if (engine_options_.wal_level != WALMode::OFF) {
+    LockSharedLevelMutex();
+    KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
+    UnLockSharedLevelMutex();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("WriteDeleteTagWAL failed.");
+      return s;
+    }
   }
+
   // delete current entity metric datas.
   return DeleteData(ctx, tbl_id, e_id, current_lsn, ts_spans);
 }
@@ -1292,10 +1306,18 @@ KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN 
 
 KStatus TsVGroup::MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
+  LockSharedLevelMutex();
+  Defer defer{[&]() {
+    UnLockSharedLevelMutex();
+  }};
   return tsx_manager_->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
 }
 
 KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx_id) {
+  LockSharedLevelMutex();
+  Defer defer{[&]() {
+    UnLockSharedLevelMutex();
+  }};
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   if (tsx_id != nullptr) {
     mtr_id = tsx_manager_->getMtrID(tsx_id);
@@ -1304,6 +1326,10 @@ KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx
 }
 
 KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip, const char* tsx_id) {
+  LockSharedLevelMutex();
+  Defer defer{[&]() {
+    UnLockSharedLevelMutex();
+  }};
   //  1. Write ROLLBACK log;
   KStatus s;
   if (!is_skip) {

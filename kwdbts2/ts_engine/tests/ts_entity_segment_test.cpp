@@ -63,9 +63,10 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
 
     kwdbContext_t ctx;
     EngineOptions opts;
+    std::shared_mutex wal_level_mutex;
     EngineOptions::mem_segment_max_size = INT32_MAX;
     opts.db_path = "db001-123";
-    auto vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), false);
+    auto vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), &wal_level_mutex, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
 
     for (int i = 0; i < 10; ++i) {
