@@ -139,6 +139,9 @@ class TsEntityBlockBuilder {
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
 
+  TS_LSN min_lsn_ = UINT64_MAX;
+  TS_LSN max_lsn_ = 0;
+
  public:
   TsEntityBlockBuilder() = delete;
   TsEntityBlockBuilder(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
@@ -269,7 +272,7 @@ class TsEntitySegmentBuilder {
 
   KStatus Compact(TsVersionUpdate *update);
 
-  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
+  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice data);
 
   KStatus WriteBatchFinish(TsVersionUpdate *update);
 

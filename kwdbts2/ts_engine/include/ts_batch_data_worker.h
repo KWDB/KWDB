@@ -214,7 +214,7 @@ class TsBatchData {
       block_span_data_size_ = data_.size() - block_span_data_offset_;
       memcpy(data_.data() + block_span_data_offset_, &block_span_data_size_, sizeof(block_span_data_size_));
       SetRowType(DataTagFlag::DATA_AND_TAG);
-      uint32_t block_span_row_num_offset = block_span_data_offset_ + 2 * sizeof(uint32_t) + 2 * sizeof(timestamp64);
+      uint32_t block_span_row_num_offset = block_span_data_offset_ + n_rows_offset_in_span_data_;
       uint32_t row_num = *reinterpret_cast<uint64_t*>(data_.data() + block_span_row_num_offset);
       SetRowCount(row_num);
     } else {

@@ -216,7 +216,7 @@ class TsVGroup {
   const std::vector<KwTsSpan>& ts_spans);
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
+                         timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();
 

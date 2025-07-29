@@ -453,7 +453,9 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   assert(!attrs.empty());
   DATATYPE ts_col_type = static_cast<DATATYPE>(attrs[0].type);
   s = ts_engine_->GetTsVGroup(vgroup_id - 1)->WriteBatchData(ctx, table_id, table_version,
-                                                             entity_id, ts, ts_col_type, new_block_data);
+                                                             entity_id, ts, ts_col_type,
+                                                             vgroups_lsn_[vgroup_id - 1],
+                                                             new_block_data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", table_id, entity_id);
     return KStatus::FAIL;
