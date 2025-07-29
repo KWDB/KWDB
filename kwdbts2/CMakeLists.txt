@@ -189,24 +189,15 @@ endif ()
 set(DUCKDB_OUTPUT_DIR "${DUCKDB_PREFIX_DIR}")
 message(STATUS "Setting up duckdb from source: ${DUCKDB_SOURCE_DIR} in ${DUCKDB_BUILD_TYPE} mode")
 
-include(ExternalProject)
-
 ExternalProject_Add(
     duckdb
     SOURCE_DIR "${DUCKDB_SOURCE_DIR}"
     PREFIX "${DUCKDB_PREFIX_DIR}"
     BINARY_DIR "${DUCKDB_BUILD_DIR}"
-    # CONFIGURE_COMMAND
-    #     ${CMAKE_COMMAND} -E copy_directory "${DUCKDB_SOURCE_DIR}" "${DUCKDB_BUILD_DIR}"
-    #     COMMAND cd "${DUCKDB_BUILD_DIR}" 
     BUILD_COMMAND
         cd "${DUCKDB_SOURCE_DIR}" && $(MAKE) "${DUCKDB_BUILD_TYPE}" -j
-    # BUILD_IN_SOURCE 0
+    # the below line is intended to bypass the "install" action driven by explicit "install" target
     INSTALL_COMMAND ""
-    #     ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
-    #     COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
-    #     COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
-    #     COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
 )
 
 set(MODULE_NAME kwdbts2)
@@ -323,8 +314,14 @@ endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
 
-# Set brpc library dependency
+# Set brpc and duckdb library dependency
 add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
+add_dependencies(${KWDBTS2_SERVER_LIB} duckdb)
+# the asan and ubsan checking in duckdb is disable.  One might need to turn on this
+# in case he needs this testing.
+# if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+#     target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ubsan asan)
+# endif ()
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
@@ -346,6 +343,7 @@ target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
         ${DUCKDB_PREFIX_DIR}/extension/core_functions/libcore_functions_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
         )
+
 target_link_libraries(${KWDBTS2_SERVER_LIB} PUBLIC ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a)
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
@@ -438,4 +436,10 @@ add_custom_target(cov
 add_custom_target(memcheck
     COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/shell/code_memcheck.sh ${CMAKE_BINARY_DIR}
     COMMAND ${CMAKE_BINARY_DIR}/code_memcheck.sh ${CMAKE_BINARY_DIR}
+)
+
+add_custom_target(
+    clean-all
+    COMMAND make -C "${PROJECT_SOURCE_DIR}/../kwbase/" clean
+    COMMAND make -C "${DUCKDB_SOURCE_DIR}"  clean
 )
