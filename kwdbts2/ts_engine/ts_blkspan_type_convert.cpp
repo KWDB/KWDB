@@ -494,7 +494,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
     char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * row_num_));
     if (allc_mem == nullptr) {
       LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * row_num_);
-      return KStatus::SUCCESS;
+      return FAIL;
     }
     memset(allc_mem, 0, dest_type_size * row_num_);
     alloc_mems_.push_back(allc_mem);
