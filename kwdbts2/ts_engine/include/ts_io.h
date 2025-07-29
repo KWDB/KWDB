@@ -43,11 +43,16 @@ enum TsFileStatus {
 
 class TsAppendOnlyFile {
  protected:
+  bool delete_after_free = false;  // remove it later
   const std::string path_;
 
  public:
   explicit TsAppendOnlyFile(const std::string& path) : path_(path) {}
-  virtual ~TsAppendOnlyFile() {}
+  virtual ~TsAppendOnlyFile() {
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
+  }
 
   virtual KStatus Append(std::string_view) = 0;
   KStatus Append(TSSlice slice) { return this->Append(std::string_view{slice.data, slice.len}); }
@@ -59,6 +64,8 @@ class TsAppendOnlyFile {
   virtual KStatus Flush() = 0;
 
   virtual KStatus Close() = 0;
+
+  void MarkDelete() { delete_after_free = true; }
 };
 
 class TsRandomReadFile {
