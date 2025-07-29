@@ -521,6 +521,8 @@ TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level);
 
 TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id);
 
+TSStatus TSFlushVGroups(TSEngine* engine);
+
 bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 
 int __attribute__((weak)) goPrepareFlush();

@@ -551,6 +551,8 @@ struct TSEngine {
   */
   virtual KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) = 0;
 
+  virtual KStatus FlushVGroups(kwdbContext_p ctx) = 0;
+
   /**
    * @brief Alter table cache capacity.
    * @param ctx
@@ -712,6 +714,8 @@ class TSEngineImpl : public TSEngine {
   KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) override;
 
   KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override;
+
+  KStatus FlushVGroups(kwdbContext_p ctx) override;
 
   virtual KStatus Init(kwdbContext_p ctx);
 

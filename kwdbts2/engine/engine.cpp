@@ -1691,6 +1691,10 @@ KStatus TSEngineImpl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineImpl::FlushVGroups(kwdbContext_p ctx) {
+  return SUCCESS;
+}
+
 bool AggCalculator::isnull(size_t row) {
   if (!bitmap_) {
     return false;
