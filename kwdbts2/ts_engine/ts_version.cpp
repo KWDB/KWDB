@@ -400,7 +400,7 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
     if (dbid == target_dbid) {
       // check if current partition is cross with ts_spans.
       if (checkTimestampWithSpans(ts_spans, v->GetTsColTypeStartTime(ts_type), v->GetTsColTypeEndTime(ts_type))
-           == TimestampCheckResult::FullyContained) {
+           < TimestampCheckResult::NonOverlapping) {
         result.push_back(v);
       }
     }
