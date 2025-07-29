@@ -546,6 +546,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
       return s;
     }
     cached_count_ -= row_num;
+    block_->Clear();
   }
   assert(cached_count_ == 0);
   return s;
