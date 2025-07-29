@@ -36,6 +36,7 @@ class TsEntitySegmentTest : public ::testing::Test {
 
 TEST_F(TsEntitySegmentTest, simpleInsert) {
   EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
   using namespace roachpb;
   int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
@@ -254,6 +255,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
   EngineOptions::g_dedup_rule = DedupRule::KEEP;
   EngineOptions::max_compact_num = 20;
   EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
   using namespace roachpb;
   int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
@@ -261,23 +263,38 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
   {
     System("rm -rf schema");
     System("rm -rf db001-123");
-    CreateTsTable meta;
-    TSTableID table_id = 123;
+    CreateTsTable meta1;
+    TSTableID table_id1 = 123;
     ConstructRoachpbTableWithTypes(
-        &meta, table_id, {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT, DataType::VARCHAR});
+        &meta1, table_id1, {DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT, DataType::VARCHAR});
     auto mgr = std::make_unique<TsEngineSchemaManager>("schema");
     mgr->Init(nullptr);
-    auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+    auto s = mgr->CreateTable(nullptr, 1, table_id1, &meta1);
     ASSERT_EQ(s, KStatus::SUCCESS);
-    std::shared_ptr<TsTableSchemaManager> schema_mgr;
-    s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+    std::shared_ptr<TsTableSchemaManager> schema_mgr1;
+    s = mgr->GetTableSchemaMgr(table_id1, schema_mgr1);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    std::vector<AttributeInfo> metric_schema1;
+    s = schema_mgr1->GetMetricMeta(1, metric_schema1);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    std::vector<TagInfo> tag_schema1;
+    s = schema_mgr1->GetTagMeta(1, tag_schema1);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    TSTableID table_id2 = 124;
+    CreateTsTable meta2;
+    ConstructRoachpbTableWithTypes(
+      &meta2, table_id1, {DataType::TIMESTAMP, DataType::BIGINT, DataType::VARCHAR});
+    s = mgr->CreateTable(nullptr, 1, table_id2, &meta2);
     ASSERT_EQ(s, KStatus::SUCCESS);
-    std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
+    std::shared_ptr<TsTableSchemaManager> schema_mgr2;
+    s = mgr->GetTableSchemaMgr(table_id2, schema_mgr2);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    std::vector<AttributeInfo> metric_schema2;
+    s = schema_mgr2->GetMetricMeta(1, metric_schema2);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    std::vector<TagInfo> tag_schema2;
+    s = schema_mgr2->GetTagMeta(1, tag_schema2);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     kwdbContext_t ctx;
@@ -289,6 +306,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
+      TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
+      auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
+      auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
       TsRawPayloadRowParser parser{metric_schema};
       TsRawPayload p{payload, metric_schema};
@@ -304,6 +324,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
+      TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
+      auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
+      auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
       TsRawPayloadRowParser parser{metric_schema};
       TsRawPayload p{payload, metric_schema};
@@ -326,6 +349,10 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
 
     int sum = 0;
     for (int i = 0; i < 10; ++i) {
+      TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
+      auto schema_mgr = i % 2 == 0 ? schema_mgr1 : schema_mgr2;
+      auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
+      auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
       {
         // scan [500, INT64_MAX]
         std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
@@ -342,23 +369,35 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
           char *ts_col;
           s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           std::vector<char *> col_values;
-          col_values.resize(3);
+          col_values.resize(metric_schema.size() - 1);
           s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
-            EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
-            EXPECT_LE(*(double *)(col_values[1] + idx * 8), 1024 * 1024);
-            EXPECT_LE(*(int64_t *)(col_values[2] + idx * 8), 10240);
-            kwdbts::DataFlags flag;
-            TSSlice data;
-            s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+          if (i % 2 == 0) {
             EXPECT_EQ(s, KStatus::SUCCESS);
-            string str(data.data, 10);
-            EXPECT_EQ(str, "varstring_");
+            s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+            s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+          }
+          for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
+            if (i % 2 == 0) {
+              EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+              EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+              EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+              kwdbts::DataFlags flag;
+              TSSlice data;
+              s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+              EXPECT_EQ(s, KStatus::SUCCESS);
+              string str(data.data, 10);
+              EXPECT_EQ(str, "varstring_");
+            } else {
+              EXPECT_LE(*(int64_t *) (col_values[0] + idx * 8), 10240);
+              kwdbts::DataFlags flag;
+              TSSlice data;
+              s = block_span->GetVarLenTypeColAddr(idx, 2, flag, data);
+              EXPECT_EQ(s, KStatus::SUCCESS);
+              string str(data.data, 10);
+              EXPECT_EQ(str, "varstring_");
+            }
           }
           row_idx += block_span->GetRowNum();
         }
@@ -380,23 +419,35 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
           s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           std::vector<char *> col_values;
-          col_values.resize(3);
+          col_values.resize(metric_schema.size() - 1);
           s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
-            EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
-            EXPECT_LE(*(double *)(col_values[1] + idx * 8), 1024 * 1024);
-            EXPECT_LE(*(int64_t *)(col_values[2] + idx * 8), 10240);
-            kwdbts::DataFlags flag;
-            TSSlice data;
-            s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+          if (i % 2 == 0) {
+            s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
-            string str(data.data, 10);
-            EXPECT_EQ(str, "varstring_");
+            s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+          }
+          for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
+            if (i % 2 == 0) {
+              EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+              EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+              EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+              kwdbts::DataFlags flag;
+              TSSlice data;
+              s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+              EXPECT_EQ(s, KStatus::SUCCESS);
+              string str(data.data, 10);
+              EXPECT_EQ(str, "varstring_");
+            } else {
+              EXPECT_LE(*(int64_t *) (col_values[0] + idx * 8), 10240);
+              kwdbts::DataFlags flag;
+              TSSlice data;
+              s = block_span->GetVarLenTypeColAddr(idx, 2, flag, data);
+              EXPECT_EQ(s, KStatus::SUCCESS);
+              string str(data.data, 10);
+              EXPECT_EQ(str, "varstring_");
+            }
           }
           row_idx += block_span->GetRowNum();
         }
@@ -418,23 +469,35 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
           char *ts_col;
           s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           std::vector<char *> col_values;
-          col_values.resize(3);
+          col_values.resize(metric_schema.size() - 1);
           s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
-          EXPECT_EQ(s, KStatus::SUCCESS);
-          for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
-            EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
-            EXPECT_LE(*(double *)(col_values[1] + idx * 8), 1024 * 1024);
-            EXPECT_LE(*(int64_t *)(col_values[2] + idx * 8), 10240);
-            kwdbts::DataFlags flag;
-            TSSlice data;
-            s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+          if (i % 2 == 0) {
+            s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
-            string str(data.data, 10);
-            EXPECT_EQ(str, "varstring_");
+            s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+            EXPECT_EQ(s, KStatus::SUCCESS);
+          }
+          for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
+            if (i % 2 == 0) {
+              EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
+              EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
+              EXPECT_LE(*(int64_t *) (col_values[2] + idx * 8), 10240);
+              kwdbts::DataFlags flag;
+              TSSlice data;
+              s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+              EXPECT_EQ(s, KStatus::SUCCESS);
+              string str(data.data, 10);
+              EXPECT_EQ(str, "varstring_");
+            } else {
+              EXPECT_LE(*(int64_t *) (col_values[0] + idx * 8), 10240);
+              kwdbts::DataFlags flag;
+              TSSlice data;
+              s = block_span->GetVarLenTypeColAddr(idx, 2, flag, data);
+              EXPECT_EQ(s, KStatus::SUCCESS);
+              string str(data.data, 10);
+              EXPECT_EQ(str, "varstring_");
+            }
           }
           row_idx += block_span->GetRowNum();
         }
@@ -449,6 +512,8 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     ASSERT_EQ(result.size(), 1);
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
+        TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
+        auto schema_mgr = i % 2 == 0 ? schema_mgr1 : schema_mgr2;
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;

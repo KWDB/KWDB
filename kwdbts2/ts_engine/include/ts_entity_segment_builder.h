@@ -60,6 +60,8 @@ class TsEntitySegmentEntityItemFileBuilder {
 
   KStatus AppendEntityItem(TsEntityItem& entity_item);
 
+  void MarkDelete() { w_file_->MarkDelete(); }
+
   uint64_t GetFileNumber() { return file_number_; }
 };
 
@@ -136,6 +138,9 @@ class TsEntityBlockBuilder {
 
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
+
+  TS_LSN min_lsn_ = UINT64_MAX;
+  TS_LSN max_lsn_ = 0;
 
  public:
   TsEntityBlockBuilder() = delete;
@@ -267,9 +272,11 @@ class TsEntitySegmentBuilder {
 
   KStatus Compact(TsVersionUpdate *update);
 
-  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
+  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice data);
 
   KStatus WriteBatchFinish(TsVersionUpdate *update);
+
+  void MarkDelete();
 };
 
 }  // namespace kwdbts

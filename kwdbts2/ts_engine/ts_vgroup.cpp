@@ -910,7 +910,7 @@ KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice paylo
 }
 
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                                 timestamp64 ts, DATATYPE ts_col_type, TSSlice data) {
+                                 timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data) {
   while (!TrySetTsExclusiveStatus(TsExclusiveStatus::WRITE_BATCH)) {
     sleep(1);
   }
@@ -953,30 +953,35 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       builder = it->second;
     }
   }
-  return builder->WriteBatch(entity_id, table_version, data);
+  return builder->WriteBatch(entity_id, table_version, lsn, data);
 }
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
+  Defer defer([this]() {
+    ResetTsExclusiveStatus();
+  });
   std::unique_lock lock{builders_mutex_};
   for (auto& kv : write_batch_segment_builders_) {
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       write_batch_segment_builders_.clear();
-      ResetTsExclusiveStatus();
       LOG_ERROR("Finish entity segment builder failed");
       return s;
     }
   }
   write_batch_segment_builders_.clear();
   version_manager_->ApplyUpdate(&update);
-  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {
   std::unique_lock lock{builders_mutex_};
+  for (auto& kv : write_batch_segment_builders_) {
+    kv.second->MarkDelete();
+  }
   write_batch_segment_builders_.clear();
+  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 

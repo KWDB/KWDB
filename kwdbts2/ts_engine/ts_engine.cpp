@@ -34,7 +34,7 @@ int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
-size_t EngineOptions::min_rows_per_block = 1000;
+size_t EngineOptions::min_rows_per_block = 4096;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -499,9 +499,11 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
   assert(vgroup != nullptr);
   if (new_tag) {
     RW_LATCH_X_LOCK(&insert_tag_lock_);
+    Defer defer{[&](){
+      RW_LATCH_UNLOCK(&insert_tag_lock_);
+    }};
     s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
-      RW_LATCH_UNLOCK(&insert_tag_lock_);
       return s;
     }
     vgroup = GetVGroupByID(ctx, vgroup_id);
@@ -517,12 +519,10 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
       entity_id = vgroup->AllocateEntityID();
       s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
-        RW_LATCH_UNLOCK(&insert_tag_lock_);
         return s;
       }
       inc_entity_cnt++;
     }
-    RW_LATCH_UNLOCK(&insert_tag_lock_);
   }
   return KStatus::SUCCESS;
 }
@@ -2161,6 +2161,10 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
       snapshots_[snapshot_id].imgrated_rows);
     }
     snapshots_.erase(snapshot_id);
+  }
+  auto s = BatchJobFinish(ctx, snapshot_id);
+  if (s == KStatus::SUCCESS) {
+    return s;
   }
   LOG_INFO("DeleteSnapshot succeeded, snapshot[%lu]", snapshot_id);
   return KStatus::SUCCESS;
