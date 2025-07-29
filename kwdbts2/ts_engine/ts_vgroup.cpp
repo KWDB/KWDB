@@ -884,14 +884,6 @@ const std::vector<KwTsSpan>& ts_spans) {
   return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
 }
 
-KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
-  return KStatus::SUCCESS;
-}
-
-KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload) {
-  return KStatus::SUCCESS;
-}
-
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                                  timestamp64 ts, DATATYPE ts_col_type, TSSlice data) {
   while (!TrySetTsExclusiveStatus(TsExclusiveStatus::WRITE_BATCH)) {
@@ -1094,11 +1086,6 @@ KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::strin
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn, uint32_t group_id,
-                                uint32_t entity_id, TSSlice& tags) {
-  return KStatus::SUCCESS;
-}
-
 KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};
   auto table_id = p.GetTableID();
@@ -1137,30 +1124,169 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TS
       LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
       return KStatus::FAIL;
     }
-  } else {
-    assert(vgroup_id == this->GetVGroupID());
   }
   return s;
 }
 
+KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& payload) {
+  TsRawPayload p(payload);
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
+
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+    return s;
+  }
+
+  ErrorInfo err_info;
+  uint32_t entity_id, group_id;
+  if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, group_id)) {
+    LOG_WARN("undoPutTag: can not find primary tag[%s].", primary_key.data)
+    return KStatus::SUCCESS;
+  }
+
+  int res = tag_table->InsertForUndo(group_id, entity_id, primary_key);
+  if (res < 0) {
+    LOG_ERROR("undoPutTag: InsertForUndo failed, primary tag[%s]", primary_key.data)
+    return KStatus::FAIL;
+  }
+  return SUCCESS;
+}
+
 KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
-  return KStatus::SUCCESS;
+  TsRawPayload p(payload);
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
+
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+    return s;
+  }
+
+  ErrorInfo err_info;
+  uint32_t entity_id, group_id;
+  if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, group_id)) {
+    LOG_WARN("redoUpdateTag: can not find primary tag[%s].", primary_key.data)
+    return KStatus::SUCCESS;
+  }
+  int res;
+  res = tag_table->UpdateForRedo(group_id, entity_id, primary_key, p);
+  if (res < 0) {
+    LOG_ERROR("redoUpdateTag: UpdateForRedo failed, primary tag[%s].", primary_key.data)
+    return KStatus::FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload) {
+  TsRawPayload p(payload);
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
+
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+    return s;
+  }
+
+  ErrorInfo err_info;
+  uint32_t entity_id, group_id;
+  if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, group_id)) {
+    LOG_WARN("undoUpdateTag: can not find primary tag[%s].", primary_key.data)
+    return KStatus::SUCCESS;
+  }
+
+  if (tag_table->UpdateForUndo(group_id, entity_id, p.GetHashPoint(), primary_key, old_payload) < 0) {
+    LOG_ERROR("undoUpdateTag: UpdateForUndo failed, primary tag[%s].", primary_key.data)
+    return KStatus::FAIL;
+  }
+
+  return SUCCESS;
 }
 
 KStatus TsVGroup::redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
-                                uint32_t entity_id, TSSlice& payload) {
+                                uint32_t entity_id, TSSlice& tags) {
+  TsRawPayload p(tags);
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
+
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+    return s;
+  }
+
+  ErrorInfo err_info;
+  if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, group_id)) {
+    LOG_WARN("redoDeleteTag: can not find primary tag[%s].", primary_key.data)
+    return KStatus::SUCCESS;
+  }
+
+  int res = tag_table->DeleteForRedo(group_id, entity_id, primary_tag, tags);
+  if (res) {
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::redoCreateHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version) {
-  return KStatus::SUCCESS;
-}
+KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn, uint32_t group_id,
+                                uint32_t entity_id, TSSlice& tags) {
+  TsRawPayload p(tags);
+  auto table_id = p.GetTableID();
+  TSSlice primary_key = p.GetPrimaryTag();
 
-KStatus TsVGroup::undoCreateHashIndex(uint32_t index_id, uint32_t ts_version) { return KStatus::SUCCESS; }
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TagTable> tag_table;
+  s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
+    return s;
+  }
 
-KStatus TsVGroup::redoDropHashIndex(uint32_t index_id, uint32_t ts_version) { return KStatus::SUCCESS; }
-
-KStatus TsVGroup::undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version) {
+  ErrorInfo err_info;
+  if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, group_id)) {
+    LOG_WARN("redoDeleteTag: can not find primary tag[%s].", primary_key.data)
+    return KStatus::SUCCESS;
+  }
+  int res = tag_table->DeleteForUndo(group_id, entity_id, p.GetHashPoint(), primary_tag, tags);
+  if (res < 0) {
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 

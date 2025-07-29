@@ -224,10 +224,6 @@ class TsVGroup {
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
-  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
-
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload);
-
   /**
    * @brief undoPut undo a put operation. This function is used to undo a previously executed put operation.
    *
@@ -246,18 +242,14 @@ class TsVGroup {
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
+  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& payload);
+
   KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
+
   KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
-                        uint32_t entity_id, TSSlice& payload);
-
-  KStatus redoCreateHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
-
-  KStatus undoCreateHashIndex(uint32_t index_id, uint32_t ts_version);
-
-  KStatus redoDropHashIndex(uint32_t index_id, uint32_t ts_version);
-
-  KStatus undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
+                        uint32_t entity_id, TSSlice& tags);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.

@@ -602,6 +602,17 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
+    // get old payload
+    TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
+    if (UNLIKELY(nullptr == tag_pack)) {
+      return KStatus::FAIL;
+    }
+    s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData());
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
+      return s;
+    }
+
     err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
