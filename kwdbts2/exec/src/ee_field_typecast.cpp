@@ -640,7 +640,7 @@ String FieldTypeCastReal<T>::ValStr() {
 }
 
 FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
-                                         KString &output_type)
+                                         const KString &output_type)
     : FieldTypeCast(field) {
   return_type_ = KWDBTypeFamily::StringFamily;
   if (output_type.find("VARCHAR") != std::string::npos) {
@@ -708,7 +708,7 @@ FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
       break;
     default:
       KString msg =
-        "invalid type " + field_->get_storage_type();
+          "invalid type " + std::to_string(field_->get_storage_type());
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
                                   msg.c_str());
       break;
@@ -837,7 +837,7 @@ String FieldTypeCastString::ValStr() {
 }
 
 FieldTypeCastTimestamptz2String::FieldTypeCastTimestamptz2String(
-    Field *field, k_uint32 field_length, KString &output_type, k_int8 time_zone)
+    Field *field, k_uint32 field_length, const KString &output_type, k_int8 time_zone)
     : FieldTypeCast(field) {
   return_type_ = KWDBTypeFamily::StringFamily;
   // storage_type_ = roachpb::DataType::CHAR;

@@ -12,16 +12,18 @@
 #include <pthread.h>
 #include <list>
 #include <utility>
+#include <string>
 
 #include "ee_row_batch.h"
 #include "ee_parallel_group.h"
 #include "kwdb_type.h"
+#include "ee_pipeline_task.h"
 
 namespace kwdbts {
 class KWThdContext {
  private:
   RowBatch* row_batch_{nullptr};
-  ParallelGroup* parallel_group_{nullptr};
+  PipelineTask *pipeline_task_{nullptr};
   k_uint64 thd_id_{0};
   IChunk* data_chunk_{nullptr};
   TsNextRetState next_state_;
@@ -36,16 +38,15 @@ class KWThdContext {
     row_batch_ = ptr;
   }
 
-  void SetParallelGroup(ParallelGroup* ptr) {
-    parallel_group_ = ptr;
+  void SetPipelineTask(PipelineTask *ptr) {
+    pipeline_task_ = ptr;
   }
 
   void Reset() {}
   RowBatch* GetRowBatch() { return row_batch_; }
-  ParallelGroup* GetParallelGroup() { return parallel_group_; }
   k_uint32 GetDegree() {
-    if (parallel_group_) {
-      return parallel_group_->GetDegree();
+    if (pipeline_task_) {
+      return pipeline_task_->GetDegree();
     }
     return 1;
   }
@@ -60,6 +61,17 @@ class KWThdContext {
   void SetCountForLimit(std::atomic<k_int64>* count_for_limit) {
     count_for_limit_ = count_for_limit;
   }
+  void SetSQL(std::string sql) {
+    sql_ = sql;
+  }
+
+  void SetRemote(bool is_remote) {
+    is_remote_ = is_remote;
+  }
+
+  bool IsRemote() {
+    return is_remote_;
+  }
 
   void Copy(KWThdContext *thd) {
     SetPgEncode(thd->GetPgEncode());
@@ -67,6 +79,8 @@ class KWThdContext {
     SetCountForLimit(thd->GetCountForLimit());
     wtyp_ = thd->wtyp_;
     window_field_ = thd->window_field_;
+    sql_ = thd->sql_;
+    is_remote_ = thd->is_remote_;
     window_start_field_ = thd->window_start_field_;
     window_end_field_ = thd->window_end_field_;
   }
@@ -76,6 +90,8 @@ class KWThdContext {
   bool auto_quit_{false};
   WindowGroupType wtyp_{WindowGroupType::EE_WGT_UNKNOWN};
   Field* window_field_{nullptr};
+  std::string sql_;
+  bool is_remote_{false};
   Field* window_start_field_{nullptr};
   Field* window_end_field_{nullptr};
 };

@@ -20,32 +20,26 @@
 
 namespace kwdbts {
 
-BaseAggregator::BaseAggregator(TsFetcherCollection* collection, BaseOperator* input, TSAggregatorSpec* spec,
+BaseAggregator::BaseAggregator(TsFetcherCollection* collection, TSAggregatorSpec* spec,
                                   TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
-    : BaseOperator(collection, table, processor_id),
+    : BaseOperator(collection, table, post, processor_id),
       spec_{spec},
-      post_{post},
-      param_(input, spec, post, table, this),
+      param_(spec, post, table, this),
       group_type_(spec->type()),
-      input_{input},
       offset_(post->offset()),
-      limit_(post->limit()),
-      input_fields_{input->OutputFields()} {
+      limit_(post->limit()) {
   for (k_int32 i = 0; i < spec_->aggregations_size(); ++i) {
     aggregations_.push_back(spec_->aggregations(i));
   }
 }
 
-BaseAggregator::BaseAggregator(const BaseAggregator& other, BaseOperator* input, int32_t processor_id)
+BaseAggregator::BaseAggregator(const BaseAggregator& other, int32_t processor_id)
     : BaseOperator(other),
       spec_(other.spec_),
-      post_(other.post_),
-      param_(input, other.spec_, other.post_, other.table_, this),
+      param_(other.spec_, other.post_, other.table_, this),
       group_type_(other.spec_->type()),
-      input_{input},
       offset_(other.offset_),
-      limit_(other.limit_),
-      input_fields_{input->OutputFields()} {
+      limit_(other.limit_) {
   for (k_int32 i = 0; i < other.spec_->aggregations_size(); ++i) {
     aggregations_.push_back(spec_->aggregations(i));
   }
@@ -57,6 +51,7 @@ BaseAggregator::~BaseAggregator() {}
 KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
   EnterFunc();
   KStatus status = KStatus::SUCCESS;
+  std::vector<Field*>& input_fields = childrens_[0]->OutputFields();
 
   k_uint32 max_or_min_index = 0;
   // all agg func
@@ -69,9 +64,9 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
       case Sumfunctype::MAX: {
         k_uint32 argIdx = agg.col_idx(0);
 
-        k_uint32 len = input_fields_[argIdx]->get_storage_length();
+        k_uint32 len = input_fields[argIdx]->get_storage_length();
         max_or_min_index = i;
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
             agg_func = make_unique<MaxAggregate<k_bool>>(i, argIdx, len);
             break;
@@ -118,10 +113,9 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::MIN: {
         k_uint32 argIdx = agg.col_idx(0);
-
-        k_uint32 len = input_fields_[argIdx]->get_storage_length();
+        k_uint32 len = input_fields[argIdx]->get_storage_length();
         max_or_min_index = i;
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
             agg_func = make_unique<MinAggregate<k_bool>>(i, argIdx, len);
             break;
@@ -168,9 +162,9 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::ANY_NOT_NULL: {
         k_uint32 argIdx = agg.col_idx(0);
-        k_uint32 len = input_fields_[argIdx]->get_storage_length();
+        k_uint32 len = input_fields[argIdx]->get_storage_length();
 
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
             agg_func = make_unique<AnyNotNullAggregate<k_bool>>(i, argIdx, len);
             break;
@@ -227,7 +221,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
 
         k_uint32 len = param_.aggs_[i]->get_storage_length();
 
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::SMALLINT:
             agg_func = make_unique<SumAggregate<k_int16, k_decimal>>(i, argIdx, len);
             break;
@@ -281,7 +275,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 argIdx = agg.col_idx(0);
         k_uint32 tsIdx = agg.col_idx(1);
         k_int64 time = agg.timestampconstant(0);
-        k_uint32 len = fixLength(input_fields_[argIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
         if (IsStringType(param_.aggs_[i]->get_storage_type())) {
           agg_func = make_unique<LastAggregate<true>>(i, argIdx, tsIdx, time, len + STRING_WIDE);
         } else if (param_.aggs_[i]->get_storage_type() == roachpb::DataType::DECIMAL) {
@@ -299,7 +293,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         }
         LOG_DEBUG("LASTTS aggregations argument column : %u\n", argIdx);
         k_int64 time = agg.timestampconstant(0);
-        k_uint32 len = fixLength(input_fields_[tsIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[tsIdx]->get_storage_length());
         agg_func = make_unique<LastTSAggregate>(i, argIdx, tsIdx, time, len);
         break;
       }
@@ -307,7 +301,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 argIdx = agg.col_idx(0);
         k_uint32 tsIdx = agg.col_idx(1);
 
-        k_uint32 len = fixLength(input_fields_[argIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
 
         if (IsStringType(param_.aggs_[i]->get_storage_type())) {
           agg_func = make_unique<LastRowAggregate<true>>(i, argIdx, tsIdx, len + STRING_WIDE);
@@ -325,7 +319,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
           tsIdx = agg.col_idx(1);
         }
 
-        k_uint32 len = fixLength(input_fields_[tsIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[tsIdx]->get_storage_length());
         agg_func = make_unique<LastRowTSAggregate>(i, argIdx, tsIdx, len);
         break;
       }
@@ -333,7 +327,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 argIdx = agg.col_idx(0);
         k_uint32 tsIdx = agg.col_idx(1);
 
-        k_uint32 len = fixLength(input_fields_[argIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
 
         if (IsStringType(param_.aggs_[i]->get_storage_type())) {
           agg_func = make_unique<FirstAggregate<true>>(i, argIdx, tsIdx, len + STRING_WIDE);
@@ -351,7 +345,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
           tsIdx = agg.col_idx(1);
         }
 
-        k_uint32 len = fixLength(input_fields_[tsIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[tsIdx]->get_storage_length());
         agg_func = make_unique<FirstTSAggregate>(i, argIdx, tsIdx, len);
         break;
       }
@@ -359,7 +353,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 argIdx = agg.col_idx(0);
         k_uint32 tsIdx = agg.col_idx(1);
 
-        k_uint32 len = fixLength(input_fields_[argIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
         if (IsStringType(param_.aggs_[i]->get_storage_type())) {
           agg_func = make_unique<FirstRowAggregate<true>>(i, argIdx, tsIdx, len + STRING_WIDE);
         } else if (param_.aggs_[i]->get_storage_type() == roachpb::DataType::DECIMAL) {
@@ -376,7 +370,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
           tsIdx = agg.col_idx(1);
         }
 
-        k_uint32 len = fixLength(input_fields_[tsIdx]->get_storage_length());
+        k_uint32 len = fixLength(input_fields[tsIdx]->get_storage_length());
 
         agg_func = make_unique<FirstRowTSAggregate>(i, argIdx, tsIdx, len);
         break;
@@ -390,7 +384,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 argIdx = agg.col_idx(0);
 
         k_uint32 len = param_.aggs_[i]->get_storage_length();
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::SMALLINT:
             agg_func = make_unique<AVGRowAggregate<k_int16>>(i, argIdx, len);
             break;
@@ -425,7 +419,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         roachpb::DataType storage_type = roachpb::DataType::BIGINT;
         if (agg.col_idx_size() > 1) {
           argIdx = agg.col_idx(1);
-          storage_type = input_fields_[argIdx]->get_storage_type();
+          storage_type = input_fields[argIdx]->get_storage_type();
         } else if (agg.col_idx_size() > 0) {
           TSAggregatorSpec_Expression a = agg.arguments(0);
           string s = *a.mutable_expr();
@@ -472,14 +466,14 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
           TSAggregatorSpec_Expression a = agg.arguments(0);
           time = *a.mutable_expr();
         }
-        agg_func = make_unique<ElapsedAggregate>(i, argIdx, time, input_fields_[argIdx]->get_storage_type(), len);
+        agg_func = make_unique<ElapsedAggregate>(i, argIdx, time, input_fields[argIdx]->get_storage_type(), len);
         break;
       }
       case Sumfunctype::MAX_EXTEND: {
         k_uint32 argIdx = agg.col_idx(0);
         k_uint32 argIdx2 = agg.col_idx(1);
-        k_uint32 len2 = input_fields_[argIdx2]->get_storage_length();
-        auto storage_type2 = input_fields_[argIdx2]->get_storage_type();
+        k_uint32 len2 = input_fields[argIdx2]->get_storage_length();
+        auto storage_type2 = input_fields[argIdx2]->get_storage_type();
         if (storage_type2 == roachpb::DataType::CHAR ||
             storage_type2 == roachpb::DataType::VARCHAR ||
             storage_type2 == roachpb::DataType::NCHAR ||
@@ -490,7 +484,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         } else if (storage_type2 == roachpb::DataType::DECIMAL) {
           len2 += BOOL_WIDE;
         }
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
             agg_func = make_unique<MaxExtendAggregate<k_bool>>(i, argIdx, len2, argIdx2);
             break;
@@ -541,8 +535,8 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
       case Sumfunctype::MIN_EXTEND: {
         k_uint32 argIdx = agg.col_idx(0);
         k_uint32 argIdx2 = agg.col_idx(1);
-        k_uint32 len2 = input_fields_[argIdx2]->get_storage_length();
-        auto storage_type2 = input_fields_[argIdx2]->get_storage_type();
+        k_uint32 len2 = input_fields[argIdx2]->get_storage_length();
+        auto storage_type2 = input_fields[argIdx2]->get_storage_type();
         if (storage_type2 == roachpb::DataType::CHAR ||
             storage_type2 == roachpb::DataType::VARCHAR ||
             storage_type2 == roachpb::DataType::NCHAR ||
@@ -553,7 +547,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         } else if (storage_type2 == roachpb::DataType::DECIMAL) {
           len2 += BOOL_WIDE;
         }
-        switch (input_fields_[argIdx]->get_storage_type()) {
+        switch (input_fields[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
             agg_func = make_unique<MinExtendAggregate<k_bool>>(i, argIdx, len2, argIdx2);
             break;
@@ -625,8 +619,9 @@ EEIteratorErrCode BaseAggregator::Init(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
 
   do {
+    param_.AddInput(childrens_[0]);
     // init subquery iterator
-    code = input_->Init(ctx);
+    code = childrens_[0]->Init(ctx);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -635,21 +630,21 @@ EEIteratorErrCode BaseAggregator::Init(kwdbContext_p ctx) {
     param_.RenderSize(ctx, &num_);
 
     // resolve render
-    code = param_.ResolveRender(ctx, &renders_, num_);
+    code = param_.ParserRender(ctx, &renders_, num_);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("ResolveRender() error\n");
       break;
     }
 
     // resolve having
-    code = param_.ResolveFilter(ctx, &having_filter_, false);
+    code = param_.ParserFilter(ctx, &having_filter_);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("Resolve having clause error\n");
       break;
     }
 
     // dispose Output Fields
-    code = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+    code = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("ResolveOutputFields() failed\n");
       break;
@@ -689,8 +684,8 @@ EEIteratorErrCode BaseAggregator::Init(kwdbContext_p ctx) {
     }
     agg_null_offset_ = agg_row_size_;
     agg_row_size_ += (param_.aggs_size_ + 7) / 8;
-
-    for (auto field : input_fields_) {
+    std::vector<Field*>& input_fields = childrens_[0]->OutputFields();
+    for (auto field : input_fields) {
       col_types_.push_back(field->get_storage_type());
       col_lens_.push_back(field->get_storage_length());
     }
@@ -764,17 +759,17 @@ void BaseAggregator::InitFirstLastTimeStamp(DatumRowPtr ptr) {
   }
 }
 
-KStatus BaseAggregator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode BaseAggregator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  KStatus ret = input_->Close(ctx);
   Reset(ctx);
+  EEIteratorErrCode code = childrens_[0]->Close(ctx);
 
-  Return(ret);
+  Return(code);
 }
 
 EEIteratorErrCode BaseAggregator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-  input_->Reset(ctx);
+  childrens_[0]->Reset(ctx);
   Return(EEIteratorErrCode::EE_OK);
 }
 
@@ -804,24 +799,10 @@ KStatus BaseAggregator::accumulateRowIntoBucket(kwdbContext_p ctx, DatumRowPtr b
   Return(KStatus::SUCCESS);
 }
 
-///////////////// HashAggregateOperator //////////////////////
-
-HashAggregateOperator::HashAggregateOperator(TsFetcherCollection* collection, BaseOperator* input,
-                                             TSAggregatorSpec* spec,
-                                             TSPostProcessSpec* post,
-                                             TABLE* table,
-                                             int32_t processor_id)
-    : BaseAggregator(collection, input, spec, post, table, processor_id) {}
-
-HashAggregateOperator::HashAggregateOperator(const HashAggregateOperator& other,
-                                             BaseOperator* input,
-                                             int32_t processor_id)
-    : BaseAggregator(other, input, processor_id) {}
-
 HashAggregateOperator::~HashAggregateOperator() {
   //  delete input
   if (is_clone_) {
-    delete input_;
+    delete childrens_[0];
   }
 
   SafeDeletePointer(ht_);
@@ -836,9 +817,10 @@ EEIteratorErrCode HashAggregateOperator::Init(kwdbContext_p ctx) {
   }
   std::vector<roachpb::DataType> group_types;
   std::vector<k_uint32> group_lens;
+  std::vector<Field*>& input_fields = childrens_[0]->OutputFields();
   for (auto& col : group_cols_) {
-    group_lens.push_back(input_fields_[col]->get_storage_length());
-    group_types.push_back(input_fields_[col]->get_storage_type());
+    group_lens.push_back(input_fields[col]->get_storage_length());
+    group_types.push_back(input_fields[col]->get_storage_type());
   }
   ht_ = KNEW LinearProbingHashTable(group_types, group_lens, agg_row_size_);
   if (ht_ == nullptr || ht_->Resize() < 0) {
@@ -857,7 +839,7 @@ EEIteratorErrCode HashAggregateOperator::Start(kwdbContext_p ctx) {
   // set current offset
   cur_offset_ = offset_;
 
-  code = input_->Start(ctx);
+  code = childrens_[0]->Start(ctx);
   if (EEIteratorErrCode::EE_OK != code) {
     Return(code);
   }
@@ -896,9 +878,14 @@ EEIteratorErrCode HashAggregateOperator::Next(kwdbContext_p ctx,
   if (getAggResults(ctx, chunk) != KStatus::SUCCESS) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
-  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
   auto end = std::chrono::high_resolution_clock::now();
   fetcher_.Update(0, (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, chunk->Count());
+
+  if (0 == chunk->Count()) {
+    chunk = nullptr;
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
 
   Return(EEIteratorErrCode::EE_OK);
 }
@@ -963,7 +950,7 @@ KStatus HashAggregateOperator::accumulateRows(kwdbContext_p ctx) {
   for (;;) {
     DataChunkPtr chunk = nullptr;
     // read a batch of data
-    code = input_->Next(ctx, chunk);
+    code = childrens_[0]->Next(ctx, chunk);
     auto start = std::chrono::high_resolution_clock::now();
     if (code != EEIteratorErrCode::EE_OK) {
       if (code == EEIteratorErrCode::EE_END_OF_RECORD ||
@@ -974,7 +961,8 @@ KStatus HashAggregateOperator::accumulateRows(kwdbContext_p ctx) {
       LOG_ERROR("Failed to fetch data from child operator, return code = %d.\n", code);
       Return(KStatus::FAIL);
     }
-
+    // LOG_ERROR("begin to print HashAggregateOperator child chunk data :");
+    // chunk->DebugPrintData();
     accumulateBatch(ctx, chunk.get());
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(chunk->Count(), (end - start).count(), 0, 0, 0, 0);
@@ -1062,30 +1050,33 @@ KStatus HashAggregateOperator::getAggResults(kwdbContext_p ctx,
 }
 
 BaseOperator* HashAggregateOperator::Clone() {
-  BaseOperator* input = input_->Clone();
+  BaseOperator* input = childrens_[0]->Clone();
   if (input == nullptr) {
-    input = input_;
+    return nullptr;
   }
-  BaseOperator* iter = NewIterator<HashAggregateOperator>(*this, input, this->processor_id_);
+  BaseOperator* iter = NewIterator<HashAggregateOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(input);
+  } else {
+    delete input;
+  }
   return iter;
 }
 
 
 ///////////////// OrderedAggregateOperator //////////////////////
 
-OrderedAggregateOperator::OrderedAggregateOperator(TsFetcherCollection* collection, BaseOperator* input,
+OrderedAggregateOperator::OrderedAggregateOperator(TsFetcherCollection* collection,
                                                    TSAggregatorSpec* spec,
                                                    TSPostProcessSpec* post,
                                                    TABLE* table,
                                                    int32_t processor_id)
-    : BaseAggregator(collection, input, spec, post, table, processor_id) {
+    : BaseAggregator(collection, spec, post, table, processor_id) {
   append_additional_timestamp_ = false;
 }
 
-OrderedAggregateOperator::OrderedAggregateOperator(const OrderedAggregateOperator& other,
-                                                   BaseOperator* input,
-                                                   int32_t processor_id)
-    : BaseAggregator(other, input, processor_id) {
+OrderedAggregateOperator::OrderedAggregateOperator(const OrderedAggregateOperator& other, int32_t processor_id)
+    : BaseAggregator(other, processor_id) {
   append_additional_timestamp_ = false;
 }
 
@@ -1093,7 +1084,7 @@ OrderedAggregateOperator::~OrderedAggregateOperator() {
   SafeDeleteArray(agg_output_col_info_);
   //  delete input
   if (is_clone_) {
-    delete input_;
+    delete childrens_[0];
   }
 }
 
@@ -1142,7 +1133,7 @@ EEIteratorErrCode OrderedAggregateOperator::Init(kwdbContext_p ctx) {
 
 EEIteratorErrCode OrderedAggregateOperator::Start(kwdbContext_p ctx) {
   EnterFunc();
-  EEIteratorErrCode code = input_->Start(ctx);
+  EEIteratorErrCode code = childrens_[0]->Start(ctx);
   // set current offset
   cur_offset_ = offset_;
   Return(code);
@@ -1158,7 +1149,7 @@ EEIteratorErrCode OrderedAggregateOperator::Next(kwdbContext_p ctx, DataChunkPtr
   do {
     DataChunkPtr input_chunk = nullptr;
     // read a batch of data from sub operator
-    code = input_->Next(ctx, input_chunk);
+    code = childrens_[0]->Next(ctx, input_chunk);
     start = std::chrono::high_resolution_clock::now();
     if (code != EEIteratorErrCode::EE_OK) {
       if (code == EEIteratorErrCode::EE_END_OF_RECORD ||
@@ -1231,7 +1222,7 @@ EEIteratorErrCode OrderedAggregateOperator::Next(kwdbContext_p ctx, DataChunkPtr
 
   if (!output_queue_.empty()) {
     chunk = std::move(output_queue_.front());
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(read_row_num, (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, chunk->Count());
@@ -1392,12 +1383,17 @@ KStatus OrderedAggregateOperator::getAggResult(kwdbContext_p ctx, DataChunkPtr& 
 }
 
 BaseOperator* OrderedAggregateOperator::Clone() {
-  BaseOperator* input = input_->Clone();
+  BaseOperator* input = childrens_[0]->Clone();
   if (input == nullptr) {
-    input = input_;
+    return nullptr;
   }
 
-  BaseOperator* iter = NewIterator<OrderedAggregateOperator>(*this, input, processor_id_);
+  BaseOperator* iter = NewIterator<OrderedAggregateOperator>(*this, processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(input);
+  } else {
+    delete input;
+  }
   return iter;
 }
 

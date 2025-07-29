@@ -53,13 +53,12 @@ type Processor interface {
 	// Run is the main loop of the processor.
 	Run(context.Context) RowStats
 
+	RunShortCircuit(context.Context, TSReader) (err error)
+
 	// RunTS is the main loop of the kwdbprocessor
 	RunTS(ctx context.Context)
 	Push(ctx context.Context, res []byte) error
 	Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
-	NextPgWire() (val []byte, code int, err error)
-	SupportPgWire() bool
-	IsShortCircuitForPgEncode() bool
 	Start(ctx context.Context) context.Context
 }
 
@@ -898,6 +897,11 @@ func (pb *ProcessorBase) Run(ctx context.Context) RowStats {
 	return pb.Out.output.GetStats()
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (pb *ProcessorBase) RunShortCircuit(context.Context, TSReader) error {
+	return nil
+}
+
 // Push is part of the processor interface.
 func (pb *ProcessorBase) Push(ctx context.Context, res []byte) error {
 	err := pb.Out.output.PushPGResult(ctx, res)
@@ -905,21 +909,6 @@ func (pb *ProcessorBase) Push(ctx context.Context, res []byte) error {
 		return err
 	}
 	return nil
-}
-
-// NextPgWire is part of the processor interface.
-func (pb *ProcessorBase) NextPgWire() (val []byte, code int, err error) {
-	return nil, 0, nil
-}
-
-// SupportPgWire is part of the processor interface
-func (pb *ProcessorBase) SupportPgWire() bool {
-	return false
-}
-
-// IsShortCircuitForPgEncode is part of the processor interface.
-func (pb *ProcessorBase) IsShortCircuitForPgEncode() bool {
-	return false
 }
 
 // Start is part of the processor interface.

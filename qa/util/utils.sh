@@ -104,9 +104,11 @@ function start_single_node() {
   local listenport=${2:-26257}
   local http_port=${3:-8080}
   local host_ip=${4:-127.0.102.145}
+  local brpc_port=${5:-28257}
   rm -fr ${DEPLOY_ROOT}/${store}
   ${KWBIN} start-single-node --insecure --listen-addr=${host_ip}:${listenport} \
     --http-addr=${host_ip}:${http_port} \
+    --brpc-addr=${host_ip}:${brpc_port} \
     --store=${DEPLOY_ROOT}/${store} \
     --pid-file=${DEPLOY_ROOT}/${store}/kwbase.pid \
     --background
@@ -178,6 +180,7 @@ function _cluster_start_() {
   local tcp_port_start=${4:-26257}
   local http_port_start=${5:-8080}
   local host_ip=${6:-127.0.102.145}
+  local brpc_port_start=${7:-28257}
 
   local address=""
 
@@ -187,11 +190,13 @@ function _cluster_start_() {
     rm -fr ${DEPLOY_ROOT}/${name_prefix}${idx}
     echo_info "starting cluster node: ${name_prefix}${idx}"
     local laddr=${host_ip}:$(($tcp_port_start+$idx-1))
+    local baddr=${host_ip}:$(($brpc_port_start+$idx-1))
     local haddr=${host_ip}:$(($http_port_start+$idx-1))
     ${KWBIN} \
     ${mode} --insecure \
     --listen-addr=${laddr} \
     --http-addr=${haddr} \
+    --brpc-addr=${baddr} \
     --store=${DEPLOY_ROOT}/${name_prefix}${idx} \
     --locality=region=CN-100000-0$(printf "%02d" ${idx}) \
     --join=${host_ip}:${tcp_port_start} \

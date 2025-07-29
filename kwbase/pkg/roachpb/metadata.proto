@@ -378,6 +378,7 @@ message NodeDescriptor {
   optional string start_mode = 11 [(gogoproto.nullable) = false];
   optional int32 node_status = 12 [(gogoproto.nullable) = false];
   repeated RangeIndex range_index = 13 [(gogoproto.nullable) = false];
+  optional util.UnresolvedAddr brpc_address = 14 [(gogoproto.nullable) = false];
 }
 
 // RangeIndex use to store all replica applied index

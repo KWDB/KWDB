@@ -63,6 +63,10 @@ typedef k_uint64 KTableKey;
 typedef k_uint32 KDatabaseId;
 // The id of table
 typedef k_uint64 KTableId;
+// The id of query id
+typedef k_int64 KQueryId;
+// The id of processor id
+typedef k_int32 KProcessorId;
 
 // the log level of log report
 typedef enum LogSeverity { DEBUG = 0, INFO, WARN, ERROR, FATAL } LogSeverity;

@@ -212,6 +212,11 @@ func (s *sampleAggregator) Run(ctx context.Context) execinfra.RowStats {
 	return execinfra.RowStats{}
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (s *sampleAggregator) RunShortCircuit(context.Context, execinfra.TSReader) error {
+	return nil
+}
+
 // RunTS is part of the Processor interface.
 func (s *sampleAggregator) RunTS(ctx context.Context) {
 	s.input.Start(ctx)

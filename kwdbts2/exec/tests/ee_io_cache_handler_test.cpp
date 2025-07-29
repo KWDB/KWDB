@@ -18,12 +18,16 @@
 #include "gtest/gtest.h"
 #include "kwdb_type.h"
 #include "me_metadata.pb.h"
+#include "ee_exec_pool.h"
 
 using namespace kwdbts;  // NOLINT
 #define USER_BUFFER_SIZE 268435456
 class IOCacheHandlerTest : public ::testing::Test {
  protected:
-  void SetUp() override { handler = new IOCacheHandler(MAX_FILE_SIZE); }
+  void SetUp() override {
+    ExecPool::GetInstance().db_path_ = "./";
+    handler = new IOCacheHandler(MAX_FILE_SIZE);
+  }
 
   void TearDown() override { delete handler; }
 

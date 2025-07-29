@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "ee_base_op.h"
-#include "ee_flow_param.h"
+#include "ee_tag_scan_parser.h"
 #include "ee_tag_row_batch.h"
 #include "kwdb_consts.h"
 #include "kwdb_type.h"
@@ -33,11 +33,16 @@ namespace kwdbts {
 class TagScanBaseOperator : public BaseOperator {
  public:
   TagScanBaseOperator(TsFetcherCollection *collection,
-                      TABLE* table, int32_t processor_id) : BaseOperator(collection, table, processor_id) {}
+                      TABLE* table, TSPostProcessSpec* post, int32_t processor_id)
+      : BaseOperator(collection, table, post, processor_id) {}
   virtual KStatus GetEntities(kwdbContext_p ctx,
                       std::vector<EntityResultIndex>* entities,
                       TagRowBatchPtr* row_batch_ptr) = 0;
   bool IsHasTagFilter() { return filter_ != nullptr; }
+
+  KStatus CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) override {
+    return KStatus::SUCCESS;
+  }
 
  protected:
   Field* filter_{nullptr};
@@ -69,7 +74,9 @@ class TagScanOperator : public TagScanBaseOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_TAG_SCAN;}
 
   RowBatch* GetRowBatch(kwdbContext_p ctx) override;
 
@@ -82,14 +89,13 @@ class TagScanOperator : public TagScanBaseOperator {
 
  protected:
   TSTagReaderSpec* spec_{nullptr};
-  TSPostProcessSpec* post_{nullptr};
   k_uint32 schema_id_{0};
   k_uint64 object_id_{0};
   k_uint32 examined_rows_{0};   // valid row count
   k_uint32 total_read_row_{0};  // total count
   char* data_{nullptr};
   k_uint32 count_{0};
-  ReaderPostResolve param_;
+  TsTagScanParser param_;
   TagRowBatchPtr tag_rowbatch_{nullptr};
   StorageHandler* handler_{nullptr};
 

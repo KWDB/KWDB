@@ -32,6 +32,15 @@ message TSFlowSpec {
   optional int32 gateway = 3;
 
   repeated TSProcessorSpec processors = 2;
+
+  optional int64 queryID = 4;
+  
+  repeated string brpcAddrs = 5;
+
+  optional bool isDist = 6;
+
+  // when useQueryShortCircuit
+  optional bool useQueryShortCircuit = 7;
 }
 
 // Each processor has the following components:
@@ -76,6 +85,9 @@ message TSProcessorSpec {
   // diagrams and linking information like tracing spans and log messages to
   // processors.
   optional int32 processor_id = 5;
+
+  // final_ts_processor is true representing the processor is the last AE operator.
+  optional bool final_ts_processor = 6;
 }
 
 // StreamEndpointType type
@@ -106,10 +118,11 @@ message TSStreamEndpointSpec {
   // For SYNC_RESPONSE streams, the ID is unused.
   optional int32 stream_id = 2;
 
-  optional StreamEndpointType s_type = 3;
-
   // Node ID of the target host, only used for outgoing REMOTE streams.
-  optional int32 target_node_id = 4;
+  optional int32 target_node_id = 3;
+
+  // Processor ID of target processor.
+  optional int32 dest_processor = 4;
 }
 
 message TSInputSyncSpec {
@@ -143,6 +156,7 @@ message TSOutputRouterSpec {
     // Each row is sent to one stream, chosen according to preset boundaries
     // for the values of certain columns of the row.
     BY_RANGE = 3;
+    BY_GATHER = 4;
   }
   optional Type type = 1;
   repeated TSStreamEndpointSpec streams = 2;

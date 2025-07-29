@@ -61,7 +61,8 @@ const (
 	defaultAddr     = ":" + DefaultPort
 	defaultHTTPAddr = ":" + DefaultHTTPPort
 	defaultSQLAddr  = ":" + DefaultPort
-
+	DefaultBRPCPort = "27257"
+	DefaultBRPVAddr = ":" + DefaultBRPCPort
 	// NetworkTimeout is the timeout used for network operations.
 	NetworkTimeout = 3 * time.Second
 
@@ -193,6 +194,9 @@ type Config struct {
 	// route to an interface that Addr is listening on.
 	AdvertiseAddr string
 
+	// BRPCAddr is the address for AE rpc.
+	BRPCAddr string
+
 	// ClusterName is the name used as a sanity check when a node joins
 	// an uninitialized cluster, or when an uninitialized node joins an
 	// initialized cluster. The initial RPC handshake verifies that the
@@ -295,6 +299,7 @@ func (cfg *Config) InitDefaults() {
 	cfg.User = defaultUser
 	cfg.Addr = defaultAddr
 	cfg.AdvertiseAddr = cfg.Addr
+	cfg.BRPCAddr = DefaultBRPVAddr
 	cfg.HTTPAddr = defaultHTTPAddr
 	cfg.DisableTLSForHTTP = false
 	cfg.HTTPAdvertiseAddr = ""
