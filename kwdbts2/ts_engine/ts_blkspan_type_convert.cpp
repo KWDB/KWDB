@@ -515,7 +515,9 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
       std::shared_ptr<void> new_mem;
       int err_code = ConvertDataTypeToMem(scan_idx, dest_type_size, orig_value.data, orig_value.len, &new_mem);
       if (err_code < 0) {
-        bitmap[i] = DataFlags::kNull;
+        if (!version_conv_->blk_attrs_[scan_idx].isFlag(AINFO_NOT_NULL)) {
+          bitmap[i] = DataFlags::kNull;
+        }
       } else {
         memcpy(allc_mem + dest_type_size * i, new_mem.get(), dest_type_size);
       }
