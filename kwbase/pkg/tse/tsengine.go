@@ -38,7 +38,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"time"
 	"unsafe"
@@ -439,11 +438,6 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		walLevel = 2
 	} else {
 		walLevel = 1
-	}
-	if _, ok := envutil.EnvString("KW_WAL_LEVEL", 0); ok {
-		if err := os.Setenv("KW_WAL_LEVEL", fmt.Sprintf("%d", walLevel)); err != nil {
-			return errors.Wrapf(err, "failed adjust env KW_WAL_LEVEL to %d", walLevel)
-		}
 	}
 
 	walBufferSize := TsWALBufferSize.Get(&r.cfg.Settings.SV) >> 20

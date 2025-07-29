@@ -55,14 +55,6 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   EngineOptions opts;
   std::string ts_store_path(dir.data, dir.len);
   opts.db_path = ts_store_path + "/tsdb";
-  // TODO(rongtianyang): set wal level by cluster setting rather than env val.
-  // If cluster setting support Dynamic-Update, cancel this env val.
-  char* wal_env = getenv("KW_WAL_LEVEL");
-  if (wal_env != nullptr) {
-    opts.wal_level = *wal_env - '0';
-  } else {
-    opts.wal_level = options.wal_level;
-  }
   EngineOptions::is_single_node_ = options.is_single_node;
   opts.wal_buffer_size = options.wal_buffer_size;
   opts.wal_file_size = options.wal_file_size;

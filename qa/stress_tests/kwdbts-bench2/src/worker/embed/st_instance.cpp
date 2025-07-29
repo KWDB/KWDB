@@ -86,9 +86,7 @@ void StInstance::ParseInputParams() {
 }
 
 void StInstance::SetInputParams(const std::string& key, const std::string& value) {
-  if (key == "KW_WAL_LEVEL") {
-    ts_opts_.wal_level = atoi(value.c_str());
-  } else if (key == "KW_IOT_INTERVAL") {
+  if (key == "KW_IOT_INTERVAL") {
     setenv("KW_IOT_INTERVAL", value.c_str(), 1);
   } else if (key == "KW_PARTITION_ROWS") {
     setenv("KW_PARTITION_ROWS", value.c_str(), 0);
