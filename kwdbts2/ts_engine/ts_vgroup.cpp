@@ -184,20 +184,13 @@ KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prima
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn) {
-  // 1.UpdateLSN
+KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
   wal_manager_->Lock();
   Defer defer{[&]() {
     wal_manager_->Unlock();
   }};
-  KStatus s = wal_manager_->UpdateCheckpointWithoutFlush(ctx, chk_lsn);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to WriteCheckpointWAL.")
-    return FAIL;
-  }
-  wal_manager_->Flush(ctx);
-  // 2. remove chk file
-  s = wal_manager_->RemoveChkFile(ctx);
+  // remove chk file
+  KStatus s = wal_manager_->RemoveChkFile(ctx);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to RemoveChkFile.")
     return FAIL;
@@ -239,7 +232,7 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   // }
 
   KStatus s =
-      wal_manager_->ReadWALLog(logs, wal_manager_->FetchCheckpointLSN(), wal_manager_->FetchCurrentLSN(), ignore);
+      wal_manager_->ReadWALLog(logs, wal_manager_->GetFirstLSN(), wal_manager_->FetchCurrentLSN(), ignore);
   last_lsn = wal_manager_->FetchCurrentLSN();
   wal_manager_->Unlock();
   if (s == KStatus::FAIL) {
