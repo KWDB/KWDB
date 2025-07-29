@@ -528,18 +528,26 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
       return s;
     }
     if (is_full) {
+      auto row_num = block_->GetRowNum();
       s = WriteBlock(entity_key);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
         return s;
       }
-      cached_count_ -= block_->GetRowNum();
+      cached_count_ -= row_num;
       block_->Clear();
     }
   }
   if (block_->HasData()) {
+    auto row_num = block_->GetRowNum();
     s = WriteBlock(entity_key);
+    if (s == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
+      return s;
+    }
+    cached_count_ -= row_num;
   }
+  assert(cached_count_ == 0);
   return s;
 }
 
