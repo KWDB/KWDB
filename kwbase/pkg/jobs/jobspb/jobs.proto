@@ -36,6 +36,7 @@ import "sql/sqlbase/structured.proto";
 import "util/hlc/timestamp.proto";
 import "sql/sqlbase/me_metadata.proto";
 import "roachpb/metadata.proto";
+import "cdc/cdcpb/cdc.proto";
 
 message Lease {
   option (gogoproto.equal) = true;
@@ -254,7 +255,7 @@ message ImportDetails {
   bool with_comment = 15;
   string database_comment = 16;
   repeated string privileges = 17;
-  bool writeWAL =18;
+  bool writeWAL = 18;
 }
 
 message ImportProgress {
@@ -531,18 +532,18 @@ message SqlScheduleProgress {
 message SyncMetaCacheDetails {
   // Represents the DDL type of KWDB.
   int32 type = 1 ;
-  sqlbase.DatabaseDescriptor database_desc = 2 [(gogoproto.nullable) = false,(gogoproto.customname) = "Database"];
-  sqlbase.TableDescriptor table_desc = 3 [(gogoproto.nullable) = false,(gogoproto.customname) = "SNTable"];
-  sqlbase.CreateCTable create_ctable = 4 [(gogoproto.nullable) = false,(gogoproto.customname) = "CTable"];
-  sqlbase.ColumnDescriptor alter_tag = 5 [(gogoproto.nullable) = false,(gogoproto.customname) = "AlterTag"];
+  sqlbase.DatabaseDescriptor database_desc = 2 [(gogoproto.nullable) = false, (gogoproto.customname) = "Database"];
+  sqlbase.TableDescriptor table_desc = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "SNTable"];
+  sqlbase.CreateCTable create_ctable = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "CTable"];
+  sqlbase.ColumnDescriptor alter_tag = 5 [(gogoproto.nullable) = false, (gogoproto.customname) = "AlterTag"];
   // DROP info
-  repeated sqlbase.DeleteMeMsg drop_me_info = 6 [(gogoproto.nullable) = false,(gogoproto.customname) = "DropMEInfo"];
+  repeated sqlbase.DeleteMeMsg drop_me_info = 6 [(gogoproto.nullable) = false, (gogoproto.customname) = "DropMEInfo"];
   int32 old_field = 7 [deprecated = true];
-  repeated CSTable create_child_table = 8 [(gogoproto.nullable) = false,(gogoproto.customname) = "CreateChildInfo"];
-  SetTag set_tag = 9 [(gogoproto.nullable) = false,(gogoproto.customname) = "SetTag"];
-  repeated sqlbase.TableDescriptor drop_db_info = 10 [(gogoproto.nullable) = false,(gogoproto.customname) = "DropDBInfo"];
+  repeated CSTable create_child_table = 8 [(gogoproto.nullable) = false, (gogoproto.customname) = "CreateChildInfo"];
+  SetTag set_tag = 9 [(gogoproto.nullable) = false, (gogoproto.customname) = "SetTag"];
+  repeated sqlbase.TableDescriptor drop_db_info = 10 [(gogoproto.nullable) = false, (gogoproto.customname) = "DropDBInfo"];
   bool do_nothing = 11 [(gogoproto.customname) = "DoNothing"];
-  sqlbase.ColumnDescriptor original_Column = 12 [(gogoproto.nullable) = false,(gogoproto.customname) = "OriginColumn"];
+  sqlbase.ColumnDescriptor original_Column = 12 [(gogoproto.nullable) = false, (gogoproto.customname) = "OriginColumn"];
   // MutationID is currently used for online ADD COLUMN/DROP COLUMN/ALTER TYPE of TS table.
   uint32 mutation_id = 13 [(gogoproto.customname) = "MutationID", (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase.MutationID"];
   // CreateOrAlterTagIndex is currently used for create/alter tag index of TS table.
@@ -554,13 +555,13 @@ message SetTag {
   int64 table_id = 2;
   string db_name = 3;
   repeated string tag_name = 4;
-  string tag_value= 5;
+  string tag_value = 5;
 }
 
 message CSTable {
   sqlbase.TableDescriptor table_desc = 1 [(gogoproto.nullable) = false];
   sqlbase.CreateCTable create_ctable = 2 [(gogoproto.nullable) = false];
-  bool is_pre=3;
+  bool is_pre = 3;
 }
 
 // TODO: Maybe we need to track the progress of syncMetaCache job.
@@ -629,11 +630,12 @@ message Payload {
     SyncMetaCacheDetails syncMetaCache = 22;
     ReplicationStreamDetails replicationStream = 23;
     ReplicationIngestionDetails replicationIngestion = 24;
-    RestartDetails restartHistory =26;
+    RestartDetails restartHistory = 26;
     ExportDetails export = 27;
     SqlScheduleDetails sqlSchedule = 28;
     ReplicaRebanalceDetails replicaRebalance = 29;
-    TsTxnDetails tsTxn = 30;
+    StreamDetails stream = 30;
+    TsTxnDetails tsTxn = 31;
   }
 }
 
@@ -656,11 +658,12 @@ message Progress {
     SyncMetaCacheProgress syncMetaCache = 17;
     ReplicationStreamProgress replicationStream = 18;
     ReplicationIngestionProgress replicationIngest = 19;
-    RestartHistoryProgress restarthistory =20;
-    ExportProgress export =21;
+    RestartHistoryProgress restarthistory = 20;
+    ExportProgress export = 21;
     SqlScheduleProgress sqlSchedule = 22;
     ReplicaRebanalceProgress replicaRebalance = 23;
-    TsTxnProgress tsTxn = 24;
+    StreamProgress stream = 24;
+    TsTxnProgress tsTxn = 25;
   }
 }
 
@@ -687,7 +690,8 @@ enum Type {
   STATISTICS = 16 [(gogoproto.enumvalue_customname) = "TypeStatistics"];
   SQL_SCHEDULE = 17 [(gogoproto.enumvalue_customname) = "TypeSqlSchedule"];
   REPLICA_REBALANCE = 18 [(gogoproto.enumvalue_customname) = "TypeReplicaRebanalce"];
-  TS_TXN = 19 [(gogoproto.enumvalue_customname) = "TypeTsTxn"];
+  STREAM = 19 [(gogoproto.enumvalue_customname) = "TypeStream"];
+  TS_TXN = 20 [(gogoproto.enumvalue_customname) = "TypeTsTxn"];
 }
 
 message Job {
@@ -757,3 +761,12 @@ message ExportDetails {
   int64 time = 1;
 }
 
+message StreamDetails {
+  cdcpb.StreamMetadata stream_metadata = 1;
+  repeated int32 active_node_list = 2;
+  repeated bytes target_table_col_types = 3 [(gogoproto.customname) = "TargetTableColTypes", (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
+}
+
+message StreamProgress {
+
+}

@@ -43,7 +43,7 @@ select kt::char, ktz::char, kt::nchar, ktz::nchar,kt::char(10), ktz::char(10), k
 select i2::int2, i2::int4, i2::int8, i4::int2, i4::int4, i4::int8, i8::int2, i8::int4, i8::int8 from ts_db.t1;
 select i2::float4, i2::double, i4::float4, i4::double, i8::float4, i8::double from ts_db.t1;
 
-select f4::int2, f4::int4, f4::int8, d::int2, d::int4, d::int8 from ts_db.t1;
+select b::int2, b::int4, b::int8, d::int2, d::int4, d::int8 from ts_db.t1;
 
 
 insert into ts_db.t1 values ('2022-01-02 11:22:33.456+08:00', '2022-01-02 11:22:33.456+08:00' , -32768,-2147483648,-9223372036854774808,-9223372036854774808.1,-9223372036854774808.1,'1','1','1','2e3','2e3',false,1);
@@ -54,15 +54,15 @@ select i4::int2 from ts_db.t1;
 select i8::int2 from ts_db.t1;
 select i8::int4 from ts_db.t1;
 
-select f4::int2 from ts_db.t1;
-select f4::int4 from ts_db.t1;
+select b::int2 from ts_db.t1;
+select b::int4 from ts_db.t1;
 select d::int2 from ts_db.t1;
 select d::int4 from ts_db.t1;
 
 select i2::char, i4::char,i8::char, i2::nchar, i4::nchar, i8::nchar, i2::char(10), i4::char(10), i8::char(10),i2::nchar(10), i4::nchar(10), i8::nchar(10), i2::varchar, i4::varchar, i8::varchar, i2::nvarchar, i4::nvarchar, i8::nvarchar from ts_db.t1;
-select f4::char, d::char, f4::nchar, d::nchar, f4::char(10), d::char(10), f4::nchar(10), d::nchar(10), f4::varchar, d::varchar, f4::nvarchar, d::nvarchar from ts_db.t1;
+select d::char, d::nchar, d::char(10), d::nchar(10),  d::varchar, d::nvarchar from ts_db.t1;
 
-select f4::double, d::float4 from ts_db.t1;
+select d::float4 from ts_db.t1;
 
 insert into ts_db.t1 values ('2022-01-04 11:22:33.456+08:00', '2022-01-04 11:22:33.456+08:00' , 1,1,1,1.0,1.0,'3','3','3','3.3e3','2.3e3',true,1);
 insert into ts_db.t1 values ('2022-01-05 11:22:33.456+08:00', '2022-01-05 11:22:33.456+08:00' , 1,1,1,1.0,1.0,'3','3','3','3.3e-3','3.3e-3',true,1);

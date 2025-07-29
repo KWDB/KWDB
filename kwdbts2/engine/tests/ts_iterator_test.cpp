@@ -1159,7 +1159,7 @@ TEST_F(TestIterator, delete_data) {
   uint64_t delete_count = 0;
   KwTsSpan span{1, start_ts1 + 10};
   span = ConvertMsToPrecision(span, ts_type);
-  ASSERT_EQ(tbl_range->DeleteData(ctx_, primary_tag, 0, {span}, nullptr, &delete_count, 0, false), KStatus::SUCCESS);
+  ASSERT_EQ(tbl_range->DeleteData(ctx_, primary_tag, 0, {span}, nullptr, &delete_count, 0, false, true), KStatus::SUCCESS);
   ASSERT_EQ(delete_count, 2 + row_num_);  // delete 7 rows
 
   delete[] data_value1;

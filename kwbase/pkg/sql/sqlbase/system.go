@@ -178,7 +178,7 @@ CREATE TABLE system.settings (
 const (
 	LeaseTableSchema = `
 CREATE TABLE system.lease (
-  "descID"   INT8,
+	"descID"   INT8,
   version    INT8,
   "nodeID"   INT8,
   expiration TIMESTAMP,
@@ -380,6 +380,37 @@ create table system.statement_diagnostics(
 		PRIMARY KEY (audit_name),
 		FAMILY (audit_name)
 	);`
+
+	StreamsTableSchema = `
+CREATE TABLE kwdb_streams (
+		id INT8 NOT NULL DEFAULT unique_rowid(),
+		name STRING NOT NULL,
+		create_by STRING NOT NULL,
+		create_at TIMESTAMP NOT NULL,
+		status STRING NOT NULL,
+		target_table_id INT8 NOT NULL,
+		source_table_id INT8 NOT NULL,
+		job_id INT8 NOT NULL,
+		parameters JSONB NOT NULL,
+		run_info JSONB NOT NULL,
+		CONSTRAINT "primary" PRIMARY KEY (id ASC),
+		UNIQUE INDEX unique_name_idx (name ASC),
+		FAMILY "primary" (id),
+		FAMILY fam_2_id (name, create_by, create_at, status, target_table_id, source_table_id, job_id, parameters, run_info)
+);`
+
+	CDCWatermarkTableSchema = `
+CREATE TABLE kwdb_cdc_watermark (
+		table_id INT8 NOT NULL,
+		task_id INT8 NOT NULL,
+		task_type INT8 NOT NULL,
+		internal_type INT8 NOT NULL,
+		low_watermark INT8 NOT NULL,
+		client_id UUID NULL,
+		CONSTRAINT "primary" PRIMARY KEY (table_id ASC, task_id ASC, task_type ASC, internal_type ASC),
+		FAMILY "primary" (table_id, task_id, task_type, internal_type),
+		FAMILY fam_2_id (low_watermark, client_id)
+);`
 )
 
 func pk(name string) IndexDescriptor {
@@ -454,6 +485,8 @@ var SystemAllowedPrivileges = map[ID]privilege.List{
 	keys.MLJobsTableID:              {privilege.DROP},
 	keys.MLPrivilegesTableID:        {privilege.DROP},
 	keys.KWDBShowJobsTableID:        {privilege.DROP},
+	keys.KWDBCDCWatermarkTableID:    privilege.ReadWriteData,
+	keys.KWDBStreamsTableID:         privilege.ReadWriteData,
 }
 
 // Helpers used to make some of the TableDescriptor literals below more concise.
@@ -1836,6 +1869,91 @@ var (
 		FormatVersion:  InterleavedFormatVersion,
 		NextMutationID: 1,
 	}
+
+	// CDCWatermarkTable is the descriptor for the cdc watermark table.
+	CDCWatermarkTable = TableDescriptor{
+		Name:                    "kwdb_cdc_watermark",
+		ID:                      keys.KWDBCDCWatermarkTableID,
+		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.KWDBCDCWatermarkTableID]),
+		ParentID:                keys.SystemDatabaseID,
+		UnexposedParentSchemaID: keys.PublicSchemaID,
+		Version:                 1,
+		Columns: []ColumnDescriptor{
+			{Name: "table_id", ID: 1, Type: *types.Int},
+			{Name: "task_id", ID: 2, Type: *types.Int},
+			{Name: "task_type", ID: 3, Type: *types.Int},
+			{Name: "internal_type", ID: 4, Type: *types.Int},
+			{Name: "low_watermark", ID: 5, Type: *types.Int},
+			{Name: "client_id", ID: 6, Type: *types.Uuid, Nullable: true},
+		},
+		NextColumnID: 7,
+		Families: []ColumnFamilyDescriptor{
+			{Name: "primary", ID: 0, ColumnNames: []string{"table_id", "task_id", "task_type", "internal_type"}, ColumnIDs: []ColumnID{1, 2, 3, 4}},
+			{Name: "fam_2_id", ID: 1, ColumnNames: []string{
+				"low_watermark", "client_id",
+			}, ColumnIDs: []ColumnID{5, 6}},
+		},
+		PrimaryIndex: IndexDescriptor{
+			Name:             "primary",
+			ID:               1,
+			Unique:           true,
+			ColumnNames:      []string{"table_id", "task_id", "task_type", "internal_type"},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC, IndexDescriptor_ASC, IndexDescriptor_ASC, IndexDescriptor_ASC},
+			ColumnIDs:        []ColumnID{1, 2, 3, 4},
+			Version:          SecondaryIndexFamilyFormatVersion,
+		},
+		NextFamilyID:   2,
+		NextIndexID:    2,
+		FormatVersion:  InterleavedFormatVersion,
+		NextMutationID: 1,
+	}
+
+	// StreamsTable is the descriptor for the pipe table.
+	StreamsTable = TableDescriptor{
+		Name:                    "kwdb_streams",
+		ID:                      keys.KWDBStreamsTableID,
+		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.KWDBStreamsTableID]),
+		ParentID:                keys.SystemDatabaseID,
+		UnexposedParentSchemaID: keys.PublicSchemaID,
+		Version:                 1,
+		Columns: []ColumnDescriptor{
+			{Name: "id", ID: 1, Type: *types.Int, DefaultExpr: &uniqueRowIDString, Nullable: false},
+			{Name: "name", ID: 2, Type: *types.String},
+			{Name: "create_by", ID: 3, Type: *types.String},
+			{Name: "create_at", ID: 4, Type: *types.Timestamp},
+			{Name: "status", ID: 5, Type: *types.String},
+			{Name: "target_table_id", ID: 6, Type: *types.Int},
+			{Name: "source_table_id", ID: 7, Type: *types.Int},
+			{Name: "job_id", ID: 8, Type: *types.Int},
+			{Name: "parameters", ID: 9, Type: *types.Jsonb},
+			{Name: "run_info", ID: 10, Type: *types.Jsonb},
+		},
+		NextColumnID: 11,
+		Families: []ColumnFamilyDescriptor{
+			{Name: "primary", ID: 0, ColumnNames: []string{"id"}, ColumnIDs: []ColumnID{1}},
+			{Name: "fam_2_id", ID: 1, ColumnNames: []string{
+				"name", "create_by", "create_at", "status", "target_table_id", "source_table_id",
+				"job_id", "parameters", "run_info",
+			}, ColumnIDs: []ColumnID{2, 3, 4, 5, 6, 7, 8, 9, 10}},
+		},
+		PrimaryIndex: pk("id"),
+		Indexes: []IndexDescriptor{
+			{
+				Name:             "unique_name_idx",
+				ID:               2,
+				Unique:           true,
+				ColumnNames:      []string{"name"},
+				ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+				ColumnIDs:        []ColumnID{2},
+				Version:          SecondaryIndexFamilyFormatVersion,
+				ExtraColumnIDs:   []ColumnID{1},
+			},
+		},
+		NextFamilyID:   2,
+		NextIndexID:    3,
+		FormatVersion:  InterleavedFormatVersion,
+		NextMutationID: 1,
+	}
 )
 
 // Create a kv pair for the zone config for the given key and config value.
@@ -1902,6 +2020,8 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(keys.SystemDatabaseID, &BoBlackListTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &KWDBTsTableTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &ScheduledJobsTable)
+	target.AddDescriptor(keys.SystemDatabaseID, &CDCWatermarkTable)
+	target.AddDescriptor(keys.SystemDatabaseID, &StreamsTable)
 }
 
 // addSystemDatabaseToSchema populates the supplied MetadataSchema with the

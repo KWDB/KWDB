@@ -1425,13 +1425,24 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 	// were not persisted to disk, it wouldn't be a problem because raft does not
 	// infer the that entries are persisted on the node that sends a snapshot.
 	commitStart := timeutil.Now()
-	if err := batch.Commit(rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV), storage.TsCommitType); err != nil {
+	sync := rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV)
+	if err := batch.Commit(sync, storage.TsCommitType); err != nil {
 		const expl = "while committing batch"
 		return stats, expl, errors.Wrap(err, expl)
 	}
 	if rd.MustSync {
 		elapsed := timeutil.Since(commitStart)
 		r.store.metrics.RaftLogCommitLatency.RecordValue(elapsed.Nanoseconds())
+	}
+	if sync {
+		if r.mu.inconsistent != storage.IsAsyncWrite() {
+			r.mu.inconsistent = storage.IsAsyncWrite()
+			if err = r.mu.stateLoader.SetInconsistent(ctx, r.Engine(), r.mu.inconsistent); err != nil {
+				const expl = "while set inconsistent"
+				return stats, expl, errors.Wrap(err, expl)
+			}
+			log.Infof(ctx, "set inconsistent to %v", r.mu.inconsistent)
+		}
 	}
 
 	if len(rd.Entries) > 0 {

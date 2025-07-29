@@ -568,7 +568,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
 
 // TODO(wal): add WAL
 KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id) {
+                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   uint32_t vgroup_id;
@@ -1302,7 +1302,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
 
 KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                         HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                        uint64_t mtr_id) {
+                        uint64_t mtr_id, bool writeWAL) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1311,12 +1311,12 @@ KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
+  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, writeWAL);
 }
 
 KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                     std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                    uint64_t mtr_id) {
+                    uint64_t mtr_id, bool writeWAL) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1325,11 +1325,11 @@ KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id,
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
+  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id, writeWAL);
 }
 
 KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
+                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, bool writeWAL) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);

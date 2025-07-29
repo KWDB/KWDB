@@ -123,6 +123,9 @@ type RelExpr interface {
 
 	// ResetAddSynchronizer reset need add synchronizer to ts engine
 	ResetAddSynchronizer()
+
+	// Rebuild rebuild expr
+	Rebuild() RelExpr
 }
 
 // ScalarPropsExpr is implemented by scalar expressions which cache scalar
@@ -778,4 +781,46 @@ type TagIndexInfo struct {
 	IndexID   []uint32
 	// TagIndexValues tag index key values
 	TagIndexValues []map[uint32][]string
+}
+
+// RebuildExprs if the subexpression contains identical expressions, it needs to be rebuilt.
+// cache Exprs in exprMap, checking for existence on each method call.
+// return newExpr and flag indicating whether to rebuild the expr.
+func RebuildExprs(expr opt.Expr, exprMap map[interface{}]struct{}) (opt.Expr, bool) {
+	var newExpr opt.Expr
+	flag := false
+	if _, ok := exprMap[expr]; ok {
+		// if the expr hits the Map, all subExprs need to be rebuilt,
+		// so there's no need to further traverse and process the subExprs.
+		newExpr = RebuildExpr(expr)
+		flag = true
+	} else {
+		if _, ok1 := expr.(opt.ScalarExpr); !ok1 {
+			exprMap[expr] = struct{}{}
+		}
+		childCount := expr.ChildCount()
+		if childCount > 0 {
+			for i := 0; i < childCount; i++ {
+				child := expr.Child(i)
+				newChild, childFlag := RebuildExprs(child, exprMap)
+				if e, ok1 := expr.(opt.MutableExpr); ok1 && childFlag {
+					e.SetChild(i, newChild)
+				}
+			}
+		}
+		newExpr = expr
+	}
+	return newExpr, flag
+}
+
+// RebuildExpr rebuild expr
+func RebuildExpr(expr opt.Expr) opt.Expr {
+	switch e := expr.(type) {
+	case RelExpr:
+		return e.Rebuild()
+	case opt.ScalarExpr:
+		return e.Rebuild()
+	default:
+		return expr
+	}
 }

@@ -173,6 +173,11 @@ func (p *planner) DropDatabase(ctx context.Context, n *tree.DropDatabase) (planN
 		if err := p.prepareDropWithTableDesc(ctx, tableDesc); err != nil {
 			return nil, err
 		}
+
+		if err := p.canRemoveAllTableOwnedStreams(ctx, tableDesc, n.DropBehavior); err != nil {
+			return nil, err
+		}
+
 		// Recursively check permissions on all dependent views, since some may
 		// be in different databases.
 		for _, ref := range tableDesc.DependedOnBy {

@@ -607,3 +607,9 @@ func (f *stubFactory) ProcessTSInsertWithSort(
 ) (exec.Node, bool) {
 	return struct{}{}, false
 }
+
+func (f *stubFactory) ConstructTSInsertWithCDC(
+	_ map[int]*sqlbase.PayloadForDistTSInsert,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
