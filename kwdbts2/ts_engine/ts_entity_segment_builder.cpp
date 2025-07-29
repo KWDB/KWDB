@@ -606,26 +606,6 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       block->Clear();
     }
   }
-  if (cur_entity_item_.entity_id != 0) {
-    entity_item_builder_->AppendEntityItem(cur_entity_item_);
-  }
-  if (cur_entity_segment_) {
-    uint64_t max_entity_id = cur_entity_segment_->GetEntityNum();
-    for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id <= max_entity_id; ++entity_id) {
-      cur_entity_item_ = {entity_id};
-      bool is_exist = true;
-      s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
-      if (s != KStatus::SUCCESS && is_exist) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
-        return s;
-      }
-      s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
-        return s;
-      }
-    }
-  }
   // 4. Writes the incomplete data back to the last segment or entity segment
   if (block && block->HasData()) {
     if (call_by_vacuum) {
@@ -659,6 +639,26 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
           LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
           return s;
         }
+      }
+    }
+  }
+  if (cur_entity_item_.entity_id != 0) {
+    entity_item_builder_->AppendEntityItem(cur_entity_item_);
+  }
+  if (cur_entity_segment_) {
+    uint64_t max_entity_id = cur_entity_segment_->GetEntityNum();
+    for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id <= max_entity_id; ++entity_id) {
+      cur_entity_item_ = {entity_id};
+      bool is_exist = true;
+      s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
+      if (s != KStatus::SUCCESS && is_exist) {
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
+        return s;
+      }
+      s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
+        return s;
       }
     }
   }
