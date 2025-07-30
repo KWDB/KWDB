@@ -1198,10 +1198,10 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
 }
 
 KStatus TsVGroup::Vacuum() {
-  // compact
+  // force compact historical partition
   KStatus s = Compact(true);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Vacuum failed, compact failed");
+    LOG_ERROR("Vacuum VGroup[%d] failed, Compact failed", vgroup_id_);
     return s;
   }
 
@@ -1235,6 +1235,9 @@ KStatus TsVGroup::Vacuum() {
       if (entity_segment == nullptr) {
         continue;
       }
+
+      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld] begin", vgroup_id_, partition->GetStartTime(),
+                                                                partition->GetEndTime());
       auto max_entity_id = entity_segment->GetEntityNum();
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
 
@@ -1340,17 +1343,20 @@ KStatus TsVGroup::Vacuum() {
           LOG_ERROR("Vacuum failed, AppendEntityItem failed")
           return s;
         }
-        entity_max_lsn.emplace_back(i, cur_lsn);
+        entity_max_lsn.emplace_back(entity_id, cur_lsn);
       }
       TsVersionUpdate update;
       auto info = vacuumer->GetHandleInfo();
       update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
       vacuumer.reset();
       version_manager_->ApplyUpdate(&update);
+
       s = partition->RmDeleteItems(entity_max_lsn);
       if (s != KStatus::SUCCESS) {
         LOG_INFO("delete delitem failed. can ignore this.");
       }
+      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld] succeeded", vgroup_id_, partition->GetStartTime(),
+                                                                partition->GetEndTime());
     }
   }
   return KStatus::SUCCESS;

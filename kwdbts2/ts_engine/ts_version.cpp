@@ -643,7 +643,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(bool* need_vacuum) const {
     LOG_ERROR("HasValidDelItem failed.");
     return s;
   }
-  *need_vacuum = has_del_info;
+  *need_vacuum = has_del_info && (entity_segment_ != nullptr);
   return KStatus::SUCCESS;
 }
 
