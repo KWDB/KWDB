@@ -293,7 +293,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     EngineOptions::mem_segment_max_size = INT32_MAX;
     std::shared_mutex wal_level_mutex;
     opts.db_path = "db001-123";
-    auto vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), &wal_level_mutex, false);
+    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
     vgroup->Init(&ctx);
 
     for (int i = 0; i < 10; ++i) {
