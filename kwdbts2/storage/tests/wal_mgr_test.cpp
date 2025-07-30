@@ -515,8 +515,6 @@ TEST_F(TestWALManager, TestWALRead) {
 TEST_F(TestWALManager, TestWALSyncInsert) {
   opts_.wal_level = 2;
   opts_.wal_buffer_size = 1;
-  opts_.wal_file_size = 2;
-  opts_.wal_file_in_group = 10;
   auto wal2 = new WALMgr(kDbPath + "/", table_id_, kTestRange.range_group_id + 1, &opts_);
   wal2->Init(ctx_);
 
