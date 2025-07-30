@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <list>
@@ -26,11 +27,11 @@
 #include "kwdb_type.h"
 #include "mmap/mmap_entity_block_meta.h"
 #include "settings.h"
+#include "ts_common.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_segment.h"
-#include "ts_time_partition.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -109,6 +110,8 @@ class TsVGroupVersion {
   std::map<PartitionIdentifier, std::shared_ptr<const TsPartitionVersion>> partitions_;
   std::shared_ptr<MemSegList> valid_memseg_;
 
+  TS_LSN max_lsn_ = 0;
+
  public:
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid,
     const std::vector<KwTsSpan>& ts_spans, DATATYPE ts_type) const;
@@ -117,6 +120,8 @@ class TsVGroupVersion {
 
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
+
+  TS_LSN GetMaxLSN() const { return max_lsn_; }
 };
 
 enum class VersionUpdateType : uint8_t {
@@ -128,6 +133,8 @@ enum class VersionUpdateType : uint8_t {
 
   kSetEntitySegment = 5,
   kNextFileNumber = 6,
+
+  kMaxLSN = 7,
 };
 
 class TsVersionUpdate {
@@ -160,6 +167,9 @@ class TsVersionUpdate {
   bool has_next_file_number_ = false;
   uint64_t next_file_number_ = 0;
 
+  bool has_max_lsn_ = false;
+  TS_LSN max_lsn_ = 0;
+
   bool need_record_ = false;
 
   std::set<PartitionIdentifier> updated_partitions_;
@@ -175,7 +185,8 @@ class TsVersionUpdate {
 
  public:
   bool Empty() const {
-    return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_mem_segments_ || has_entity_segment_);
+    return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_mem_segments_ ||
+             has_entity_segment_ || has_max_lsn_);
   }
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
@@ -191,6 +202,13 @@ class TsVersionUpdate {
     has_new_lastseg_ = true;
     need_record_ = true;
   }
+
+  void SetMaxLSN(TS_LSN lsn) {
+    max_lsn_ = std::max(max_lsn_, lsn);
+    has_max_lsn_ = true;
+    need_record_ = true;
+  }
+
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
