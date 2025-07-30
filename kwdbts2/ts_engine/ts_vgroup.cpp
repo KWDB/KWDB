@@ -502,7 +502,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       if (!partition->HasDirectoryCreated() && new_created_partitions.find(partition) == new_created_partitions.end()) {
         // create directory for partition.
         auto path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-        auto s = env->NewDirectory(path);
+        s = env->NewDirectory(path);
         if (s != SUCCESS) {
           LOG_ERROR("cannot create directory for partition.");
           return FAIL;
@@ -541,7 +541,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         uint64_t file_number = version_manager_->NewFileNumber();
         auto path =
             this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier()) / LastSegmentFileName(file_number);
-        auto s = env->NewAppendOnlyFile(path, &last_segment);
+        s = env->NewAppendOnlyFile(path, &last_segment);
         if (s == FAIL) {
           LOG_ERROR("cannot create last segment file.");
           return FAIL;
