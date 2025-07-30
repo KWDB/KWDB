@@ -625,6 +625,7 @@ func (tis *tsInsertSelecter) runTSInsert(
 			insTable.TableType == tree.InstanceTable,
 			uint32(insTable.TsTable.TsVersion),
 			insTable.TsTable.HashNum,
+			nil,
 		)
 		if err != nil {
 			return false, 0, err
@@ -655,4 +656,66 @@ func (tis *tsInsertSelecter) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerM
 func (tis *tsInsertSelecter) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
 	tis.InternalClose()
+}
+
+// tsInserterWithCDC builds on tsInserter with CDC data added.
+type tsInserterWithCDC struct {
+	tsInserter
+	// cdcData is captured by CDC, and need to send by CDC task.
+	cdcData execinfrapb.CDCData
+}
+
+func newTsInserterWithCDC(
+	flowCtx *execinfra.FlowCtx,
+	processorID int32,
+	tsInsertSpec *execinfrapb.TsInsertWithCDCProSpec,
+	post *execinfrapb.PostProcessSpec,
+	output execinfra.RowReceiver,
+) (*tsInserterWithCDC, error) {
+	tsi := &tsInserterWithCDC{
+		tsInserter: tsInserter{
+			nodeID:                   flowCtx.NodeID,
+			rowNums:                  tsInsertSpec.RowNums,
+			payload:                  tsInsertSpec.PayLoad,
+			primaryTagKey:            tsInsertSpec.PrimaryTagKey,
+			payloadPrefix:            tsInsertSpec.PayloadPrefix,
+			payloadForDistributeMode: tsInsertSpec.AllPayload,
+		},
+		cdcData: tsInsertSpec.CDCData,
+	}
+
+	if err := tsi.Init(
+		tsi,
+		post,
+		[]types.T{*types.Int},
+		flowCtx,
+		processorID,
+		output,
+		nil,
+		execinfra.ProcStateOpts{
+			// We don't pass tr.input as an inputToDrain; tr.input is just an adapter
+			// on top of a Fetcher; draining doesn't apply to it. Moreover, Andrei
+			// doesn't trust that the adapter will do the right thing on a Next() call
+			// after it had previously returned an error.
+			InputsToDrain:        nil,
+			TrailingMetaCallback: nil,
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	return tsi, nil
+}
+
+func (tri *tsInserterWithCDC) Start(ctx context.Context) context.Context {
+	var res context.Context
+	if !tri.EvalCtx.StartDistributeMode {
+		res = startForSingleMode(ctx, &tri.tsInserter)
+	} else {
+		res = startForDistributeMode(ctx, &tri.tsInserter)
+	}
+
+	tri.FlowCtx.Cfg.CDCCoordinator.SendRows(&tri.cdcData)
+
+	return res
 }

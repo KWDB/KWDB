@@ -461,8 +461,8 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, 
   return s;
 }
 
-KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                TSSlice* payload, int payload_num, uint64_t mtr_id) {
+KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id, TSSlice *payload,
+                                int payload_num, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s;
   s = GetTsTable(ctx, table_id, table);
@@ -489,7 +489,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
       LOG_ERROR("PutEntity failed, GetEntityGroup failed %lu", range_group_id)
       return s;
     }
-    s = table_range->PutEntity(ctx, payload[i], mtr_id);
+    s = table_range->PutEntity(ctx, payload[i], mtr_id, writeWAL);
     if (s == KStatus::FAIL) {
       LOG_ERROR("PutEntity failed, table id: %lu, range group id: %lu", table->GetTableId(), range_group_id)
       return s;
@@ -541,34 +541,35 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                      HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                      uint64_t mtr_id) {
+KStatus TSEngineImpl::DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                      HashIdSpan &hash_span, const std::vector<KwTsSpan> &ts_spans,
+                                      uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table);
   if (s == KStatus::FAIL) {
     LOG_ERROR("DeleteRangeData failed: GetTsTable failed, table id [%lu]", table_id)
     return s;
   }
-  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
+  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, false);
   return s;
 }
 
-KStatus TSEngineImpl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                 std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                 uint64_t mtr_id) {
+KStatus TSEngineImpl::DeleteData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                 std::string &primary_tag, const std::vector<KwTsSpan> &ts_spans,
+                                 uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table);
   if (s == KStatus::FAIL) {
     LOG_ERROR("DeleteData failed: GetTsTable failed, table id [%lu]", table_id)
     return s;
   }
-  s = table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
+  s = table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id, writeWAL);
   return s;
 }
 
-KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                     std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
+KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                     std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id,
+                                     bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s;
 
@@ -586,7 +587,7 @@ KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_i
   }
 
   if (table_range) {
-    s = table_range->DeleteEntities(ctx, primary_tags, count, mtr_id);
+    s = table_range->DeleteEntities(ctx, primary_tags, count, mtr_id, writeWAL);
     if (s == KStatus::FAIL) {
       return s;
     } else {

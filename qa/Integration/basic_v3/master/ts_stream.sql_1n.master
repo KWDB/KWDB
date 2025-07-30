@@ -1,0 +1,1671 @@
+> drop database if exists stream_db_fvt cascade;
+DROP DATABASE
+> create ts database stream_db_fvt;
+CREATE TS DATABASE
+> drop database if exists stream_db_fvt_out cascade;
+DROP DATABASE
+> create ts database stream_db_fvt_out;
+CREATE TS DATABASE
+> drop database if exists stream_db_fvt_out1 cascade;
+DROP DATABASE
+> create database stream_db_fvt_out1;
+CREATE DATABASE
+> drop database if exists stream_db_fvt1 cascade;
+DROP DATABASE
+> create ts database stream_db_fvt1;
+CREATE TS DATABASE
+> drop database if exists stream_db_fvt2 cascade;
+DROP DATABASE
+> create ts database stream_db_fvt2;
+CREATE TS DATABASE
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS select * from stream_db_fvt.cpu where usage_user > 50;
+ERROR: relation "stream_db_fvt_out.cpu_stream_out" does not exist
+SQLSTATE: 42P01
+> create table stream_db_fvt_out.cpu_stream_out
+(
+    w_begin              timestamptz not null,
+    w_end                timestamptz not null,
+    usage_user_avg       bigint      not null,
+    usage_system_avg     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_stream_out2
+(
+    w_begin              timestamptz not null,
+    w_end                timestamptz not null,
+    usage_user_avg       bigint      not null,
+    usage_system_avg     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS select * from stream_db_fvt.cpu where usage_user > 50;
+ERROR: relation "stream_db_fvt.cpu" does not exist
+SQLSTATE: 42P01
+> create table stream_db_fvt.cpu
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS select * from stream_db_fvt.cpu where usage_user > 50;
+ERROR: the output number of stream query doesn't match the target table: expected 22, got 6
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: the first select clause of stream query must be the first_row(k_timestamp) of aggregation function time_window
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: the second select clause of stream query must be the last_row(k_timestamp) of aggregation function time_window
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream2 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> select name,target_table_name,options,query,status,create_by,error_message from [show streams];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+  test_stream2 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(2 rows)
+> create stream test_stream3 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: relation "cpu_stream_out" does not exist
+SQLSTATE: 42P01
+> use stream_db_fvt_out;
+SET
+> create stream test_stream3 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream3];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream3 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> create stream test_stream4 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: relation "cpu" does not exist
+SQLSTATE: 42P01
+> use stream_db_fvt;
+SET
+> create stream test_stream4 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: relation "cpu_stream_out" does not exist
+SQLSTATE: 42P01
+> create stream test_stream4 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream4];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream4 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> select name,target_table_name,options,query,status,create_by,error_message from [show streams];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+  test_stream2 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+  test_stream3 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+  test_stream4 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"24h","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(4 rows)
+> create stream test_stream2 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: stream "test_stream2" already exists
+SQLSTATE: 42710
+> create stream if not exists test_stream2 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream5 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: should provide alias name for all output columns in the select list of stream query
+> create stream test_stream5 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT hostname as hostname, max(usage_user) as usage_user_avg, first(k_timestamp) as w_begin, max(usage_system) as usage_system_avg, last(k_timestamp) as w_end, count(*) as count FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: the first select clause of stream query must be the first_row(k_timestamp) of aggregation function time_window
+> create stream test_stream5 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, hostname as hostname, count(*) as count, max(usage_system) as usage_system_avg, max(usage_user) as usage_user_avg FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream0 into stream_db_fvt.cpu with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: cannot use the table "stream_db_fvt.cpu" as both source and target table of stream
+> create stream test_stream0 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT last_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: the first select clause of stream query must be the first_row(k_timestamp) of aggregation function time_window
+> create stream test_stream0 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), first_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+ERROR: the second select clause of stream query must be the last_row(k_timestamp) of aggregation function time_window
+> create stream test_stream6 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT * from stream_db_fvt_out.cpu_stream_out where abs(count)=3 or max(count)>3;
+ERROR: aggregate functions are not allowed in WHERE
+SQLSTATE: 42803
+> create stream test_stream6 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT * from stream_db_fvt_out.cpu_stream_out where count/0>2;
+ERROR: division by zero
+SQLSTATE: 22012
+> create stream test_stream6 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT * from stream_db_fvt_out.cpu_stream_out a where random()>2 && (SELECT count(*) from stream_db_fvt_out.cpu_stream_out b where a.w_begin=b.w_begin) > 0;
+ERROR: unsupported comparison operator: <bool> && <bool>
+SQLSTATE: 22023
+> create stream test_stream7 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT w_begin,w_end,usage_user_avg,usage_system_avg,max(count),hostname from stream_db_fvt_out.cpu_stream_out where count+usage_user_avg>3;
+ERROR: unsupported stream query: "SELECT w_begin, w_end, usage_user_avg, usage_system_avg, max(count), hostname FROM stream_db_fvt_out.public.cpu_stream_out WHERE (count + usage_user_avg) > 3"
+> create stream test_stream7 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT w_begin,w_end,usage_user_avg,usage_system_avg,count/0,hostname from stream_db_fvt_out.cpu_stream_out;
+ERROR: division by zero
+SQLSTATE: 22012
+> create stream test_stream7 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT w_begin,w_end,abs(usage_user_avg)+usage_system_avg,usage_system_avg,random(),hostname from stream_db_fvt_out.cpu_stream_out;
+ERROR: stream output type is not compatible with target table, column name: "count", source type: "float", target type: "int"
+> create stream test_stream8 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT * from stream_db_fvt_out.cpu_stream_out where 2>1 order by w_begin;
+ERROR: cannot use ORDER BY clause in stream query
+> create stream test_stream8 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT * from (select * from stream_db_fvt_out.cpu_stream_out);
+ERROR: failed to extract source table name for stream query: SELECT * FROM (SELECT * FROM stream_db_fvt_out.cpu_stream_out)
+> create stream test_stream8 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT * from kwdb_internal.kwdb_streams;
+ERROR: stream is only used on ts table
+SQLSTATE: 42809
+> create stream test_stream8 into kwdb_internal.kwdb_streams with options (enable='off') AS SELECT * from stream_db_fvt_out.cpu_stream_out;
+ERROR: descriptor not found
+> create stream test_stream8 into stream_db_fvt_out.cpu_stream_out2 with options (enable='off') AS SELECT a.* from stream_db_fvt_out.cpu_stream_out a,stream_db_fvt_out.cpu_stream_out b where a.w_begin=b.w_begin;
+ERROR: failed to extract source table name for stream query: SELECT a.* FROM stream_db_fvt_out.cpu_stream_out AS a, stream_db_fvt_out.cpu_stream_out AS b WHERE a.w_begin = b.w_begin
+> alter stream test_stream1 set max_delay='1m';
+ERROR: too small max_delay: 1m
+> alter stream test_stream1 set max_delay='20m';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"20m","sync_time":"1m","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set max_delay='1';
+ERROR: too small max_delay: 1
+> alter stream test_stream1 set max_delay='0';
+ERROR: unexpected value "0" for stream option "max_delay", the minimal value is 1 Second
+SQLSTATE: 22023
+> alter stream test_stream1 set max_delay='0s';
+ERROR: unexpected value "0s" for stream option "max_delay", the minimal value is 1 Second
+SQLSTATE: 22023
+> alter stream test_stream1 set max_delay='1s';
+ERROR: too small max_delay: 1s
+> alter stream test_stream1 set max_delay='1d';
+ALTER STREAM
+> alter stream test_stream1 set max_delay='1aaa';
+ERROR: unexpected value "1aaa" for stream option "max_delay" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set sync_time='30s';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set sync_time='1';
+ERROR: unexpected value "1" for stream option "sync_time" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set sync_time='0s';
+ERROR: unexpected value "0s" for stream option "sync_time", the minimal value is 1 Second
+SQLSTATE: 22023
+> alter stream test_stream1 set sync_time='1s';
+ERROR: too small sync_time: 1s
+> alter stream test_stream1 set sync_time='1d';
+ERROR: unexpected value "1d" for stream option "sync_time" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set sync_time='1aaa';
+ERROR: unexpected value "1aaa" for stream option "sync_time" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set process_history='on';
+ALTER STREAM
+> alter stream test_stream1 set process_history='On';
+ALTER STREAM
+> alter stream test_stream1 set process_history='oN';
+ALTER STREAM
+> alter stream test_stream1 set process_history='ON';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                      options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"on","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set process_history='OFF';
+ALTER STREAM
+> alter stream test_stream1 set process_history='OfF';
+ALTER STREAM
+> alter stream test_stream1 set process_history='oFF';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set process_history='yes';
+ERROR: unexpected value "yes" for stream option "process_history" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set process_history='no';
+ERROR: unexpected value "no" for stream option "process_history" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set ignore_expired='off';
+ALTER STREAM
+> alter stream test_stream1 set ignore_expired='oFF';
+ALTER STREAM
+> alter stream test_stream1 set ignore_expired='OFF';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                        |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"off","ignore_update":"on","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set ignore_expired='on';
+ALTER STREAM
+> alter stream test_stream1 set ignore_expired='On';
+ALTER STREAM
+> alter stream test_stream1 set ignore_expired='oN';
+ALTER STREAM
+> alter stream test_stream1 set ignore_expired='ON';
+ALTER STREAM
+> alter stream test_stream1 set ignore_expired='yes';
+ERROR: unexpected value "yes" for stream option "ignore_expired" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set ignore_expired='No';
+ERROR: unexpected value "No" for stream option "ignore_expired" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set ignore_update='off';
+ALTER STREAM
+> alter stream test_stream1 set ignore_update='oFF';
+ALTER STREAM
+> alter stream test_stream1 set ignore_update='OFF';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                        |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"off","max_retries":"5","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set ignore_update='ON';
+ALTER STREAM
+> alter stream test_stream1 set ignore_update='On';
+ALTER STREAM
+> alter stream test_stream1 set ignore_update='oN';
+ALTER STREAM
+> alter stream test_stream1 set ignore_update='YES';
+ERROR: unexpected value "YES" for stream option "ignore_update" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set ignore_update='NO';
+ERROR: unexpected value "NO" for stream option "ignore_update" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set max_retries='10';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                        |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"10","checkpoint_interval":"10s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set max_retries='0';
+ALTER STREAM
+> alter stream test_stream1 set max_retries='-1';
+ERROR: unexpected value "-1" for stream option "max_retries" (expected nonnegative 'Integer', for example, '10')
+SQLSTATE: 22023
+> alter stream test_stream1 set checkpoint_interval='5s';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                      options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"0","checkpoint_interval":"5s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set checkpoint_interval='0s';
+ERROR: unexpected value "0s" for stream option "checkpoint_interval", the minimal value is 1 Second
+SQLSTATE: 22023
+> alter stream test_stream1 set checkpoint_interval='1day';
+ERROR: unexpected value "1day" for stream option "checkpoint_interval" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set checkpoint_interval='25aaa';
+ERROR: unexpected value "25aaa" for stream option "checkpoint_interval" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set heartbeat_interval='2s';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                      options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"0","checkpoint_interval":"5s","heartbeat_interval":"2s","recalculate_delay_rounds":"10","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set heartbeat_interval='2ms';
+ERROR: unexpected value "2ms" for stream option "heartbeat_interval", the minimal value is 1 Second
+SQLSTATE: 22023
+> alter stream test_stream1 set heartbeat_interval='2min';
+ERROR: unexpected value "2min" for stream option "heartbeat_interval" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set heartbeat_interval='2aaa';
+ERROR: unexpected value "2aaa" for stream option "heartbeat_interval" (expected 'Time Duration', for example, '20s')
+SQLSTATE: 22023
+> alter stream test_stream1 set recalculate_delay_rounds='20';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                      options                                                                                                                       |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"0","checkpoint_interval":"5s","heartbeat_interval":"2s","recalculate_delay_rounds":"20","buffer_size":"2GiB"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set recalculate_delay_rounds='200';
+ALTER STREAM
+> alter stream test_stream1 set recalculate_delay_rounds='-1';
+ERROR: unexpected value "-1" for stream option "recalculate_delay_rounds" (expected nonnegative 'Integer', for example, '10')
+SQLSTATE: 22023
+> alter stream test_stream1 set recalculate_delay_rounds='0';
+ALTER STREAM
+> alter stream test_stream1 set buffer_size='1024Mib';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                       options                                                                                                                        |                                                                                                  query                                                                                                   | status  | create_by | error_message
+---------------+-----------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"0","checkpoint_interval":"5s","heartbeat_interval":"2s","recalculate_delay_rounds":"0","buffer_size":"1024mib"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | NULL
+(1 row)
+> alter stream test_stream1 set buffer_size='1Mib';
+ALTER STREAM
+> alter stream test_stream1 set buffer_size='0';
+ERROR: unexpected value "0" for stream option "buffer_size", the minimal value is 1MiByte
+SQLSTATE: 22023
+> alter stream test_stream1 set buffer_size='1Gib';
+ALTER STREAM
+> alter stream test_stream1 set buffer_size='aaa';
+ERROR: unexpected value "aaa" for stream option "buffer_size" (expected 'Bytes Size', for example, '16Mb')
+SQLSTATE: 22023
+> alter stream test_stream1 set enable='aaa';
+ERROR: unexpected value "aaa" for stream option "enable" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set enable='Yes';
+ERROR: unexpected value "Yes" for stream option "enable" (expected 'on/off')
+SQLSTATE: 22023
+> alter stream test_stream1 set enable='On';
+ALTER STREAM
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                     options                                                                                                                      |                                                                                                  query                                                                                                   | status | create_by | error_message
+---------------+-----------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+-----------+----------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"on","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"0","checkpoint_interval":"5s","heartbeat_interval":"2s","recalculate_delay_rounds":"0","buffer_size":"1gib"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Enable | root      |
+(1 row)
+> alter table stream_db_fvt_out.cpu_stream_out drop column w_begin;
+ERROR: relation "cpu_stream_out" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt_out.cpu_stream_out drop column count;
+ERROR: relation "cpu_stream_out" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt_out.cpu_stream_out add column count_a int;
+ERROR: relation "cpu_stream_out" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt.cpu drop column k_timestamp;
+ERROR: relation "cpu" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt.cpu drop column usage_user;
+ERROR: relation "cpu" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt.cpu drop column usage_guest;
+ERROR: relation "cpu" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt.cpu add column usage_user_a int;
+ERROR: relation "cpu" is used by stream [ test_stream1 ]
+> alter stream test_stream1 set enable='OFF';
+ALTER STREAM
+> alter table stream_db_fvt_out.cpu_stream_out add column count_a int;
+ERROR: relation "cpu_stream_out" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> alter table stream_db_fvt.cpu add column usage_user_b int;
+ALTER TABLE
+> select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
+      name     |            target_table_name            |                                                                                                                      options                                                                                                                      |                                                                                                  query                                                                                                   | status  | create_by |                 error_message
+---------------+-----------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+-----------+------------------------------------------------
+  test_stream1 | stream_db_fvt_out.public.cpu_stream_out | {"enable":"off","max_delay":"1d","sync_time":"30s","process_history":"off","ignore_expired":"on","ignore_update":"on","max_retries":"0","checkpoint_interval":"5s","heartbeat_interval":"2s","recalculate_delay_rounds":"0","buffer_size":"1gib"} | SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.public.cpu WHERE 1 = 1 GROUP BY time_window(k_timestamp, '1m'), hostname | Disable | root      | stream "test_stream1" is stopped successfully
+(1 row)
+> drop table stream_db_fvt_out.cpu_stream_out;
+ERROR: relation "cpu_stream_out" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> drop table stream_db_fvt.cpu;
+ERROR: relation "cpu" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
+> drop stream test_stream1;
+DROP STREAM
+> drop table stream_db_fvt_out.cpu_stream_out;
+ERROR: relation "cpu_stream_out" is used by stream [ test_stream2, test_stream3, test_stream4, test_stream5 ]
+> drop table stream_db_fvt.cpu;
+ERROR: relation "cpu" is used by stream [ test_stream2, test_stream3, test_stream4, test_stream5 ]
+> drop stream test_stream2;
+DROP STREAM
+> drop stream test_stream3;
+DROP STREAM
+> drop stream test_stream4;
+DROP STREAM
+> drop stream test_stream5;
+DROP STREAM
+> drop table stream_db_fvt_out.cpu_stream_out;
+DROP TABLE
+> drop table stream_db_fvt_out.cpu_stream_out2;
+DROP TABLE
+> drop table stream_db_fvt.cpu;
+DROP TABLE
+> select name,target_table_name,options,query,status,create_by,error_message from [show streams];
+  name | target_table_name | options | query | status | create_by | error_message
+-------+-------------------+---------+-------+--------+-----------+----------------
+(0 rows)
+> create table stream_db_fvt_out.cpu_stream_out
+(
+    w_begin              timestamptz not null,
+    w_end                timestamptz not null,
+    usage_user_avg       bigint      not null,
+    usage_system_avg     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_stream_out2
+(
+    w_begin              timestamptz not null,
+    w_end                timestamptz not null,
+    usage_user_avg       bigint      not null,
+    usage_system_avg     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_stream_out3
+(
+    k_timestamp          timestamptz not null,
+    usage_user_system    bigint      not null,
+    usage_idel_nice      bigint      not null,
+    usage_iowait_irq     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_stream_out
+(
+    k_timestamp          timestamp not null,
+    usage_user_system    decimal    ,
+    usage_idel_nice      decimal    ,
+    usage_iowait_irq     decimal    ,
+    hostname             char(30)    not null
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_stream_out1
+(
+    k_timestamp          timestamptz(3) not null,
+    usage_user_system    decimal    ,
+    usage_idel_nice      decimal    ,
+    usage_iowait_irq     decimal    ,
+    hostname             char(30)    not null
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_stream_out2
+(
+    k_timestamp          timestamp(6) not null,
+    usage_user_system    decimal    ,
+    usage_idel_nice      decimal    ,
+    usage_iowait_irq     decimal    ,
+    hostname             char(30)    not null
+);
+CREATE TABLE
+> create table stream_db_fvt.cpu
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create stream test_stream1 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream2 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY COUNT_WINDOW(5), hostname;
+CREATE STREAM
+> create stream test_stream3 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY SESSION_WINDOW(k_timestamp, '5m'), hostname;
+CREATE STREAM
+> create stream test_stream4 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY EVENT_WINDOW(usage_user > 50, usage_system < 20), hostname;
+CREATE STREAM
+> create stream test_stream5 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY STATE_WINDOW(usage_idle), hostname;
+CREATE STREAM
+> create stream test_stream6 into stream_db_fvt_out.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt.cpu GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> CREATE STREAM test_stream7 INTO stream_db_fvt_out.cpu_stream_out3 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='1m',SYNC_TIME='30s',HEARTBEAT_INTERVAL='1000ms',BUFFER_SIZE='1024kib') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu;
+CREATE STREAM
+> CREATE STREAM test_stream8 INTO stream_db_fvt_out1.cpu_stream_out WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='1m',SYNC_TIME='30s',HEARTBEAT_INTERVAL='1000ms',BUFFER_SIZE='1024kib') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu;
+ERROR: stream output type is not compatible with target table, column name: "k_timestamp", source type: "timestamptz", target type: "timestamp"
+> CREATE STREAM test_stream8 INTO stream_db_fvt_out1.cpu_stream_out1 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='1m',SYNC_TIME='30s',HEARTBEAT_INTERVAL='1000ms',BUFFER_SIZE='1024kib') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu;
+CREATE STREAM
+> create table stream_db_fvt_out.cpu_stream_out10
+(
+    w_begin              timestamptz not null,
+    w_end                timestamptz not null,
+    usage_user_avg       bigint      not null,
+    usage_system_avg     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_stream_out11
+(
+    w_begin              timestamptz not null,
+    w_end                timestamptz not null,
+    usage_user_avg       bigint      not null,
+    usage_system_avg     bigint      not null,
+    count                bigint      not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_stream_out10
+(
+    w_begin              timestamptz(3) not null,
+    w_end                timestamptz(3) not null,
+    usage_user_avg       decimal        not null,
+    usage_system_avg     decimal        not null,
+    count                decimal        not null,
+    hostname             char(30)    not null
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_stream_out11
+(
+    w_begin              timestamptz(3) not null,
+    w_end                timestamptz(3) not null,
+    usage_user_avg       decimal        not null,
+    usage_system_avg     decimal        not null,
+    count                decimal        not null,
+    hostname             char(30)    not null
+);
+CREATE TABLE
+> create table stream_db_fvt1.cpu10
+(
+    k_timestamp      timestamp(3) not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create stream test_stream10 into stream_db_fvt_out.cpu_stream_out10 with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt1.cpu10 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream11 into stream_db_fvt_out.cpu_stream_out11 with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt1.cpu10 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream12 into stream_db_fvt_out1.cpu_stream_out10 with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt1.cpu10 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream13 into stream_db_fvt_out1.cpu_stream_out11 with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM stream_db_fvt1.cpu10 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> drop table stream_db_fvt_out.cpu_stream_out10;
+ERROR: relation "cpu_stream_out10" is used by stream [ test_stream10 ]
+> drop table stream_db_fvt_out.cpu_stream_out10 cascade;
+DROP TABLE
+> drop table stream_db_fvt_out1.cpu_stream_out10;
+ERROR: relation "cpu_stream_out10" is used by stream [ test_stream12 ]
+> drop table stream_db_fvt_out1.cpu_stream_out10 cascade;
+DROP TABLE
+> drop table stream_db_fvt1.cpu10;
+ERROR: relation "cpu10" is used by stream [ test_stream11, test_stream13 ]
+> drop table stream_db_fvt1.cpu10 cascade;
+DROP TABLE
+> show stream test_stream10;
+  name | target_table_name | options | query | status | create_at | create_by | start_time | end_time | error_message
+-------+-------------------+---------+-------+--------+-----------+-----------+------------+----------+----------------
+(0 rows)
+> show stream test_stream11;
+  name | target_table_name | options | query | status | create_at | create_by | start_time | end_time | error_message
+-------+-------------------+---------+-------+--------+-----------+-----------+------------+----------+----------------
+(0 rows)
+> show stream test_stream12;
+  name | target_table_name | options | query | status | create_at | create_by | start_time | end_time | error_message
+-------+-------------------+---------+-------+--------+-----------+-----------+------------+----------+----------------
+(0 rows)
+> show stream test_stream13;
+  name | target_table_name | options | query | status | create_at | create_by | start_time | end_time | error_message
+-------+-------------------+---------+-------+--------+-----------+-----------+------------+----------+----------------
+(0 rows)
+> use stream_db_fvt_out;
+SET
+> show tables;
+     table_name    |    table_type
+-------------------+--------------------
+  cpu_stream_out   | TIME SERIES TABLE
+  cpu_stream_out11 | TIME SERIES TABLE
+  cpu_stream_out2  | TIME SERIES TABLE
+  cpu_stream_out3  | TIME SERIES TABLE
+(4 rows)
+> use stream_db_fvt_out1;
+SET
+> show tables;
+     table_name    | table_type
+-------------------+-------------
+  cpu_stream_out   | BASE TABLE
+  cpu_stream_out1  | BASE TABLE
+  cpu_stream_out11 | BASE TABLE
+  cpu_stream_out2  | BASE TABLE
+(4 rows)
+> use stream_db_fvt1;
+SET
+> show tables;
+  table_name | table_type
+-------------+-------------
+(0 rows)
+> create table stream_db_fvt_out.cpu_stream_out20
+(
+    w_begin          timestamptz not null,
+    w_end            timestamptz not null,
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint,
+    timestamp1       timestamp,
+    timestamp2       timestamp(3),
+    timestamp3       timestamp(6),
+    timestamp4       timestamp(9),
+    timestamp5       timestamptz,
+    timestamp6       timestamptz(3),
+    timestamp7       timestamptz(6),
+    timestamp8       timestamptz(9),
+    int1             int,
+    int2             int2,
+    int3             int4,
+    int4             int8,
+    float1           float,
+    float2           float4,
+    float3           float8,
+    bool1            bool,
+    s1               CHAR(1023),
+    s2               NCHAR(255),
+    s3               VARCHAR(4096),
+    s4               CHAR,
+    s5               CHAR(255),
+    s6               NCHAR,
+    s7               NVARCHAR(4096),
+    s8               VARCHAR(1023),
+    s9               NVARCHAR(200),
+    s10              NCHAR(255),
+    s11              CHAR(200),
+    s12              VARBYTES,
+    s13              VARBYTES(60),
+    s14              VARCHAR,
+    s15              NVARCHAR
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_stream_out21
+(
+    w_begin          timestamptz(3) not null,
+    w_end            timestamptz(3) not null,
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint,
+    timestamp1       timestamp,
+    timestamp2       timestamp(3),
+    timestamp3       timestamp(6),
+    timestamp5       timestamptz,
+    timestamp6       timestamptz(3),
+    timestamp7       timestamptz(6),
+    int1             int,
+    int2             int2,
+    int3             int4,
+    int4             int8,
+    float1           float,
+    float2           float4,
+    float3           float8,
+    decimal1         decimal,
+    bool1            bool,
+    s1               CHAR(1023),
+    s2               NCHAR(255),
+    s3               VARCHAR(4096),
+    s4               CHAR,
+    s5               CHAR(255),
+    s6               NCHAR,
+    s7               NVARCHAR(4096),
+    s8               VARCHAR(1023),
+    s9               NVARCHAR(200),
+    s10              NCHAR(255),
+    s11              CHAR(200),
+    s12              VARBYTES,
+    s14              VARCHAR,
+    s15              NVARCHAR,
+    hostname         char(30) not null
+);
+CREATE TABLE
+> create table stream_db_fvt1.cpu20
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint,
+    timestamp1       timestamp,
+    timestamp2       timestamp(3),
+    timestamp3       timestamp(6),
+    timestamp4       timestamp(9),
+    timestamp5       timestamptz,
+    timestamp6       timestamptz(3),
+    timestamp7       timestamptz(6),
+    timestamp8       timestamptz(9),
+    int1             int,
+    int2             int2,
+    int3             int4,
+    int4             int8,
+    float1           float,
+    float2           float4,
+    float3           float8,
+    bool1            bool,
+    s1               CHAR(1023),
+    s2               NCHAR(255),
+    s3               VARCHAR(4096),
+    s4               CHAR,
+    s5               CHAR(255),
+    s6               NCHAR,
+    s7               NVARCHAR(4096),
+    s8               VARCHAR(1023),
+    s9               NVARCHAR(200),
+    s10              NCHAR(255),
+    s11              CHAR(200),
+    s12              VARBYTES,
+    s13              VARBYTES(60),
+    s14              VARCHAR,
+    s15              NVARCHAR
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create stream test_stream200 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream201 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream202 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp3", source type: "timestamp(3)", target type: "timestamp(6)"
+> create stream test_stream203 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp4", source type: "timestamp(3)", target type: "timestamp(9)"
+> create stream test_stream204 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream205 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream206 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp3", source type: "timestamp(3)", target type: "timestamp(6)"
+> create stream test_stream207 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp4", source type: "timestamp(3)", target type: "timestamp(9)"
+> create stream test_stream208 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamp(6)", target type: "timestamp(3)"
+> create stream test_stream209 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp2", source type: "timestamp(6)", target type: "timestamp(3)"
+> create stream test_stream210 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream211 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp4", source type: "timestamp(6)", target type: "timestamp(9)"
+> create stream test_stream212 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamp(9)", target type: "timestamp(3)"
+> create stream test_stream213 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp2", source type: "timestamp(9)", target type: "timestamp(3)"
+> create stream test_stream214 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp3", source type: "timestamp(9)", target type: "timestamp(6)"
+> create stream test_stream215 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream216 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamp", target type: "timestamptz"
+> create stream test_stream217 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamptz", target type: "timestamp"
+> create stream test_stream220 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream221 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream222 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp7", source type: "timestamptz(3)", target type: "timestamptz(6)"
+> create stream test_stream223 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp8", source type: "timestamptz(3)", target type: "timestamptz(9)"
+> create stream test_stream224 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream225 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream226 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp7", source type: "timestamptz(3)", target type: "timestamptz(6)"
+> create stream test_stream227 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp8", source type: "timestamptz(3)", target type: "timestamptz(9)"
+> create stream test_stream228 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamptz(6)", target type: "timestamptz(3)"
+> create stream test_stream229 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp6", source type: "timestamptz(6)", target type: "timestamptz(3)"
+> create stream test_stream230 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream231 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp8", source type: "timestamptz(6)", target type: "timestamptz(9)"
+> create stream test_stream232 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamptz(9)", target type: "timestamptz(3)"
+> create stream test_stream233 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp6", source type: "timestamptz(9)", target type: "timestamptz(3)"
+> create stream test_stream234 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp7", source type: "timestamptz(9)", target type: "timestamptz(6)"
+> create stream test_stream235 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream240 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream241 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream242 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream243 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream244 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream245 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream246 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream247 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream248 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream249 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream250 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream251 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream252 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream253 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream254 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream255 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream260 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as float1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream261 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as float2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream262 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as float3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream263 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as float1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream264 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as float2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream265 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as float3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream266 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as float1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream267 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as float2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream268 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as float3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream270 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream271 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream272 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream273 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream274 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream275 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream276 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream277 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream278 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s9, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream279 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s10, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream280 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s11, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream281 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s12, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "s12", source type: "char", target type: "varbytes"
+> create stream test_stream282 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s13, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "s13", source type: "char", target type: "varbytes"
+> create stream test_stream283 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s14, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream284 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s15, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream290 into stream_db_fvt_out.cpu_stream_out20 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(bool1) as bool1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> drop table stream_db_fvt_out.cpu_stream_out20 cascade;
+DROP TABLE
+> create stream test_stream200 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamp(3)", target type: "timestamp(6)"
+> create stream test_stream201 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream202 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp3", source type: "timestamp(3)", target type: "timestamp(6)"
+> create stream test_stream203 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp4" doesn't exist in target table
+> create stream test_stream204 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamp(3)", target type: "timestamp(6)"
+> create stream test_stream205 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream206 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp3", source type: "timestamp(3)", target type: "timestamp(6)"
+> create stream test_stream207 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp2) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp4" doesn't exist in target table
+> create stream test_stream208 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream209 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp2", source type: "timestamp(6)", target type: "timestamp(3)"
+> create stream test_stream210 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream211 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp3) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp4" doesn't exist in target table
+> create stream test_stream212 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamp(9)", target type: "timestamp(6)"
+> create stream test_stream213 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp2", source type: "timestamp(9)", target type: "timestamp(3)"
+> create stream test_stream214 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp3", source type: "timestamp(9)", target type: "timestamp(6)"
+> create stream test_stream215 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp4) as timestamp4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp4" doesn't exist in target table
+> create stream test_stream216 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp1) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamp", target type: "timestamptz"
+> create stream test_stream217 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp1", source type: "timestamptz", target type: "timestamp"
+> create stream test_stream220 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamptz(3)", target type: "timestamptz(6)"
+> create stream test_stream221 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream222 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp7", source type: "timestamptz(3)", target type: "timestamptz(6)"
+> create stream test_stream223 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp5) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp8" doesn't exist in target table
+> create stream test_stream224 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamptz(3)", target type: "timestamptz(6)"
+> create stream test_stream225 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream226 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp7", source type: "timestamptz(3)", target type: "timestamptz(6)"
+> create stream test_stream227 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp6) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp8" doesn't exist in target table
+> create stream test_stream228 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream229 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp6", source type: "timestamptz(6)", target type: "timestamptz(3)"
+> create stream test_stream230 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream231 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp7) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp8" doesn't exist in target table
+> create stream test_stream232 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp5", source type: "timestamptz(9)", target type: "timestamptz(6)"
+> create stream test_stream233 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp6", source type: "timestamptz(9)", target type: "timestamptz(3)"
+> create stream test_stream234 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "timestamp7", source type: "timestamptz(9)", target type: "timestamptz(6)"
+> create stream test_stream235 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, max(timestamp8) as timestamp8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "timestamp8" doesn't exist in target table
+> create stream test_stream240 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream241 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int2" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream242 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream243 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream243 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int1) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream244 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream245 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int2" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream246 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream247 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream247 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int2) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream248 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream249 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int2" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream250 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream251 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream251 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int3) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream252 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream253 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int2" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream254 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream255 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as int4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "int" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream255 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(int4) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream260 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as float1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream261 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as float2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream262 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as float3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream262 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float1) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream263 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as float1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream264 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as float2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream265 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as float3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream265 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float2) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream266 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as float1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream267 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as float2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float4" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream268 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as float3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type "float" is not supported by stream query, should use 'Decimal' in target table
+> create stream test_stream268 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(float3) as decimal1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream270 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream271 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s2, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream272 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s3, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream273 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s4, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream274 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s5, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream275 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s6, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream276 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s7, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream277 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s8, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream278 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s9, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream279 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s10, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream280 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s11, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream281 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s12, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: stream output type is not compatible with target table, column name: "s12", source type: "char", target type: "varbytes"
+> create stream test_stream282 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s13, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+ERROR: the column "s13" doesn't exist in target table
+> create stream test_stream283 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s14, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream284 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(s1) as s15, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> create stream test_stream290 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(bool1) as bool1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> drop table stream_db_fvt_out1.cpu_stream_out21 cascade;
+DROP TABLE
+> create table stream_db_fvt.cpu_normal
+(
+    k_timestamp      timestamp(6) not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bigint    not null,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_normal
+(
+    k_timestamp          timestamp(6) not null,
+    usage_user_system    bigint       not null,
+    usage_idel_nice      bigint       not null,
+    usage_iowait_irq     float        not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_normal
+(
+    k_timestamp          timestamptz not null,
+    usage_user_system    decimal,
+    usage_idel_nice      decimal,
+    usage_iowait_irq     decimal,
+    hostname             char(30)    not null,
+    PRIMARY KEY (k_timestamp ASC, hostname ASC)
+);
+CREATE TABLE
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:00.123456789', 58, 8, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', 'beijing', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:10.123456789', 58, 33, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:20.123456789', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', 'shanghai', '', '', '', '', '', '', '', '');
+INSERT 1
+> CREATE STREAM cpu_stream_normal_1 INTO stream_db_fvt_out.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal where usage_system>11;
+CREATE STREAM
+> CREATE STREAM cpu_stream_normal_2 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal ;
+ERROR:  cannot use 'process_history'='on' on non-ts target table
+> CREATE STREAM cpu_stream_normal_3 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal where usage_system>11;
+CREATE STREAM
+> CREATE STREAM cpu_stream_normal_4 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='1500ms',heartbeat_interval='2s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal;
+ERROR: the checkpoint interval should be larger than the heartbeat interval
+> select pg_sleep(2);
+  pg_sleep
+------------
+    true
+(1 row)
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:30.123456789', 58, 10, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:40.123456789', 58, 55, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:50.123456789', 58, 66, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:01:00.123456789', 58, 12, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:01:10.123456789', 58, 77, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:01:20.123456789', 58, 88, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:10:00.123456789', 58, 3, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> select pg_sleep(5);
+  pg_sleep
+------------
+    true
+(1 row)
+> select * from stream_db_fvt_out.cpu_avg_normal order by k_timestamp,hostname;
+            k_timestamp            | usage_user_system | usage_idel_nice |  usage_iowait_irq  | hostname
+-----------------------------------+-------------------+-----------------+--------------------+-----------
+  2023-05-31 10:00:10.123457+00:00 |                91 |            1464 | 0.3492063492063492 | host_0
+  2023-05-31 10:00:20.123457+00:00 |               102 |            1464 | 0.3492063492063492 | host_1
+  2023-05-31 10:00:40.123457+00:00 |               113 |            1464 | 0.3492063492063492 | host_0
+  2023-05-31 10:00:50.123457+00:00 |               124 |            1464 | 0.3492063492063492 | host_0
+  2023-05-31 10:01:00.123457+00:00 |                70 |            1464 | 0.3492063492063492 | host_0
+  2023-05-31 10:01:10.123457+00:00 |               135 |            1525 | 0.3492063492063492 | host_0
+  2023-05-31 10:01:20.123457+00:00 |               146 |            1464 | 0.3492063492063492 | host_0
+(7 rows)
+> select * from stream_db_fvt_out1.cpu_avg_normal order by k_timestamp,hostname;
+            k_timestamp            | usage_user_system | usage_idel_nice |    usage_iowait_irq    | hostname
+-----------------------------------+-------------------+-----------------+------------------------+-----------
+  2023-05-31 10:00:40.123457+00:00 |               113 |            1464 | 0.34920634920634920635 | host_0
+  2023-05-31 10:00:50.123457+00:00 |               124 |            1464 | 0.34920634920634920635 | host_0
+  2023-05-31 10:01:00.123457+00:00 |                70 |            1464 | 0.34920634920634920635 | host_0
+  2023-05-31 10:01:10.123457+00:00 |               135 |            1525 | 0.34920634920634920635 | host_0
+  2023-05-31 10:01:20.123457+00:00 |               146 |            1464 | 0.34920634920634920635 | host_0
+(5 rows)
+> drop table stream_db_fvt.cpu_normal cascade;
+DROP TABLE
+> drop table stream_db_fvt_out.cpu_avg_normal cascade;
+DROP TABLE
+> drop table stream_db_fvt_out1.cpu_avg_normal cascade;
+DROP TABLE
+> create table stream_db_fvt.cpu_agg
+(
+    k_timestamp      timestamp(6) not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bigint    not null,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg1
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg2
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg3
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg4
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg5
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg6
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg7
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg1
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null,
+    PRIMARY KEY (w_begin ASC, hostname ASC)
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg2
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6)   not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg3
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6)   not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null,
+    PRIMARY KEY (w_begin ASC, hostname ASC)
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg4
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null,
+    PRIMARY KEY (w_begin ASC, hostname ASC)
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg5
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null,
+    PRIMARY KEY (w_begin ASC, hostname ASC)
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg6
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null,
+    PRIMARY KEY (w_begin ASC, hostname ASC)
+);
+CREATE TABLE
+> create table stream_db_fvt_out1.cpu_avg_agg7
+(
+    w_begin              timestamptz(6)   not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       decimal     not null,
+    usage_system_avg     decimal     not null,
+    count                decimal     not null,
+    hostname             char(30)    not null,
+    PRIMARY KEY (w_begin ASC, hostname ASC)
+);
+CREATE TABLE
+> set cluster setting ts.stream.max_active_number=20;
+SET CLUSTER SETTING
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:00.123456789', 58, 30, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', 'beijing', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:10.123456789', 58, 33, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:10.123456789', 58, 0, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', 'shanghai', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:20.123456789', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', 'shanghai', '', '', '', '', '', '', '', '');
+INSERT 1
+> CREATE STREAM cpu_stream_agg_ts_1 INTO stream_db_fvt_out.cpu_avg_agg1 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_2 INTO stream_db_fvt_out.cpu_avg_agg2 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system+usage_system>0 GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_3 INTO stream_db_fvt_out.cpu_avg_agg3 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE abs(usage_system)>0 GROUP BY COUNT_WINDOW(5), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_4 INTO stream_db_fvt_out.cpu_avg_agg4 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>-1 GROUP BY SESSION_WINDOW(k_timestamp, '5m'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_5 INTO stream_db_fvt_out.cpu_avg_agg5 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system not in (0,100) GROUP BY EVENT_WINDOW(usage_user > 50, usage_system < 20), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_6 INTO stream_db_fvt_out.cpu_avg_agg6 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY STATE_WINDOW(usage_idle), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_7 INTO stream_db_fvt_out.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
+ERROR: missing time_bucket or window function in GROUP BY cluster
+> CREATE STREAM cpu_stream_agg_rel_1 INTO stream_db_fvt_out1.cpu_avg_agg1 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_rel_2 INTO stream_db_fvt_out1.cpu_avg_agg2 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_rel_3 INTO stream_db_fvt_out1.cpu_avg_agg3 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY COUNT_WINDOW(5), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_rel_4 INTO stream_db_fvt_out1.cpu_avg_agg4 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY SESSION_WINDOW(k_timestamp, '5m'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_rel_5 INTO stream_db_fvt_out1.cpu_avg_agg5 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY EVENT_WINDOW(usage_user > 50, usage_system < 20), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_rel_6 INTO stream_db_fvt_out1.cpu_avg_agg6 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY STATE_WINDOW(usage_idle), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_rel_7 INTO stream_db_fvt_out1.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
+ERROR: missing time_bucket or window function in GROUP BY cluster
+> select pg_sleep(2);
+  pg_sleep
+------------
+    true
+(1 row)
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:30.123456789', 58, 10, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:40.123456789', 58, 55, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:50.123456789', 58, 66, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:00.123456789', 58, 12, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:05.123456789', 58, 0, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:10.123456789', 58, 77, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:20.123456789', 58, 88, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:10:00.123456789', 58, 3, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg
+values ('2023-05-31 10:20:00', 58, 3, 25, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg
+values ('2023-05-31 10:30:00', 58, 3, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg
+values ('2023-05-31 10:00:26', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> INSERT INTO stream_db_fvt.cpu_agg
+values ('2023-05-31 10:00:26', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
+INSERT 1
+> select pg_sleep(15);
+  pg_sleep
+------------
+    true
+(1 row)
+> select * from stream_db_fvt_out.cpu_avg_agg1 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:00:50.123457+00:00 |             58 |               46 |     5 | host_0
+  2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:00:30.123457+00:00 |             58 |               33 |     3 | host_1
+  2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               59 |     3 | host_0
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(6 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg2 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:00:50.123457+00:00 |             58 |               46 |     5 | host_0
+  2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:00:30.123457+00:00 |             58 |               33 |     3 | host_1
+  2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               59 |     3 | host_0
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(6 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg3 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:00:50.123457+00:00 |             58 |               46 |     5 | host_0
+  2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:20:00+00:00        |             58 |               25 |     4 | host_1
+  2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:30:00+00:00        |             58 |               37 |     5 | host_0
+(3 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg4 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               45 |     9 | host_0
+  2023-05-31 10:00:10.123457+00:00 | 2023-05-31 10:00:30.123457+00:00 |             58 |               25 |     4 | host_1
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(5 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg5 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:01:00.123457+00:00 |             58 |               40 |     6 | host_0
+  2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:00:30.123457+00:00 |             58 |               33 |     3 | host_1
+  2023-05-31 10:01:10.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |               56 |     3 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(5 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg6 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:01:00.123457+00:00 |             58 |               40 |     6 | host_0
+  2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:00:30.123457+00:00 |             58 |               33 |     3 | host_1
+  2023-05-31 10:01:10.123457+00:00 | 2023-05-31 10:01:10.123457+00:00 |             58 |               77 |     1 | host_0
+  2023-05-31 10:01:20.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               88 |     1 | host_0
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:30:00+00:00        |             58 |                3 |     2 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+(6 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg7 order by w_begin, hostname;
+  w_begin | w_end | usage_user_avg | usage_system_avg | count | hostname
+----------+-------+----------------+------------------+-------+-----------
+(0 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg1 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:50.123457+00:00 |             58 |               55 |     3 | host_0
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:30.123457+00:00 |             58 |               27 |     2 | host_1
+  2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               59 |     3 | host_0
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(6 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg2 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:50.123457+00:00 |             58 |               55 |     3 | host_0
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:30.123457+00:00 |             58 |               27 |     2 | host_1
+  2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               59 |     3 | host_0
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(6 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg3 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg |   usage_system_avg    | count | hostname
+-----------------------------------+----------------------------------+----------------+-----------------------+-------+-----------
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:01:10.123457+00:00 |             58 |                  50.8 |     5 | host_0
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                    19 |     3 | host_1
+  2023-05-31 10:01:20.123457+00:00 | 2023-05-31 10:30:00+00:00        |             58 | 31.333333333333333333 |     3 | host_0
+(3 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg4 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:01:20.123457+00:00 |             58 |               57 |     6 | host_0
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:30.123457+00:00 |             58 |               27 |     2 | host_1
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(5 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg5 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:01:00.123457+00:00 |             58 |            44.25 |     4 | host_0
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:30.123457+00:00 |             58 |               27 |     2 | host_1
+  2023-05-31 10:01:10.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |               56 |     3 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+(5 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg6 order by w_begin, hostname;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:01:00.123457+00:00 |             58 |            44.25 |     4 | host_0
+  2023-05-31 10:00:26+00:00        | 2023-05-31 10:00:30.123457+00:00 |             58 |               27 |     2 | host_1
+  2023-05-31 10:01:10.123457+00:00 | 2023-05-31 10:01:10.123457+00:00 |             58 |               77 |     1 | host_0
+  2023-05-31 10:01:20.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               88 |     1 | host_0
+  2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:30:00+00:00        |             58 |                3 |     2 | host_0
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+(6 rows)
+> select * from stream_db_fvt_out1.cpu_avg_agg7 order by w_begin, hostname;
+  w_begin | w_end | usage_user_avg | usage_system_avg | count | hostname
+----------+-------+----------------+------------------+-------+-----------
+(0 rows)
+> drop database if exists stream_db_fvt cascade;
+DROP DATABASE
+> create ts database stream_db_fvt;
+CREATE TS DATABASE
+> drop database if exists stream_db_fvt_out cascade;
+DROP DATABASE
+> create ts database stream_db_fvt_out;
+CREATE TS DATABASE
+> drop database if exists stream_db_fvt_out1 cascade;
+DROP DATABASE
+> create database stream_db_fvt_out1;
+CREATE DATABASE
+> show streams;
+  name | target_table_name | options | query | status | create_at | create_by | start_time | end_time | error_message
+-------+-------------------+---------+-------+--------+-----------+-----------+------------+----------+----------------
+(0 rows)

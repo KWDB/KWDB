@@ -1,0 +1,120 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+
+syntax = "proto2";
+// Beware! This package name must not be changed, even though it doesn't match
+// the Go package name, because it defines the Protobuf message names which
+// can't be changed without breaking backward compatibility.
+package kwbase.cdcpb;
+option go_package = "cdcpb";
+
+import "roachpb/errors.proto";
+import "gogoproto/gogo.proto";
+
+// CDCCoordinator defines a gRPC server in each node that will be used to manage the lifecycle of CDC.
+service CDCCoordinator {
+  rpc StartTsCDC (TsChangeDataCaptureRequest) returns (stream TsChangeDataCaptureEvent) {}
+  rpc StopTsCDC (TsChangeDataCaptureStop) returns (Empty){}
+}
+
+enum TSCDCInstanceType {
+  Stream = 0;
+  Pipe = 1;
+  Publication = 2;
+  Subscription = 3;
+}
+
+message Empty {}
+
+// CDCColumns contains the output columns of CDC.
+message CDCColumns{
+  // The ID list of columns that need to be captured in CDC, where these IDs are come from table descriptor.
+  repeated uint32 cdc_column_ids = 1[(gogoproto.customname) = "CDCColumnIDs"];
+  // The indexes of columns in table descriptor.
+  repeated uint32 cdc_column_indexes = 2[(gogoproto.customname) = "CDCColumnIndexes"];
+  // The data types of columns in table descriptor.
+  repeated bytes cdc_types = 3 [(gogoproto.customname) = "CDCTypes", (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
+  // The names of columns in table descriptor.
+  repeated string cdc_column_Names = 4[(gogoproto.customname) = "CDCColumnNames"];
+  // Is it necessary to retrieve tags during the CDC process.
+  optional bool need_normal_tags = 5;
+}
+
+// A TsChangeDataCaptureRequest sends the CDC metadata to every available node.
+message TsChangeDataCaptureRequest {
+  // The instance type of CDC task.
+  required TSCDCInstanceType instance_type = 1 [(gogoproto.nullable) = false];
+  // The output columns of CDC.
+  optional CDCColumns cdc_columns = 2[(gogoproto.customname) = "CDCColumns"];
+  // The stream metadata.
+  optional StreamMetadata stream_metadata = 3;
+}
+
+// TsChangeDataCaptureStop contains the information that will be used to stop a CDC.
+message TsChangeDataCaptureStop {
+  // The instance type of CDC task.
+  required TSCDCInstanceType instance_type = 1 [(gogoproto.nullable) = false];
+  // The table id of CDC table.
+  required uint64  table_id = 2 [(gogoproto.nullable) = false, (gogoproto.customname) = "TableID"];
+  // The id of stream or other feature using CDC.
+  required uint64 instance_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "InstanceID"];
+}
+
+// A TsChangeDataCaptureEvent combines all types of CDC events.
+message TsChangeDataCaptureEvent {
+  option (gogoproto.onlyone) = true;
+  optional TsChangeDataCaptureValue      val = 1;
+  optional TsChangeDataCaptureHeartbeat  heartbeat = 2;
+  optional TsChangeDataCaptureStop       stop = 3;
+  optional TsChangeDataCaptureError      error = 9;
+}
+
+// TsChangeDataCaptureValue contains the data with low-water mark captured by CDC.
+message TsChangeDataCaptureValue {
+  // The timestamp of data from CDC.
+  optional int64  ts = 1 [(gogoproto.nullable) = false];
+  // The data from CDC.
+  repeated bytes  val = 2;
+  // The table id of data from CDC.
+  required uint64 table_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "TableID"];
+}
+
+// TsChangeDataCaptureHeartbeat contains the low-water mark that will send to CDC client.
+message TsChangeDataCaptureHeartbeat {
+  // The node id of heartbeat.
+  required int32  node_id = 1 [(gogoproto.nullable) = false, (gogoproto.customname) = "NodeID"];
+  // The watermark of heartbeat.
+  optional int64  local_water_mark = 2 [(gogoproto.nullable) = false];
+  // The table id of heartbeat.
+  required uint64 table_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "TableID"];
+}
+
+// TsChangeDataCaptureError contains the possible error message that will persist by CDC client.
+message TsChangeDataCaptureError {
+  optional roachpb.Error error = 1 [(gogoproto.nullable) = false];
+}
+
+// Metadata used to initialize a CDC task for Stream
+message StreamMetadata {
+  // The stream id.
+  required uint64 id = 1 [(gogoproto.nullable) = false, (gogoproto.customname) = "ID"];
+  // The stream name.
+  required string name = 2 [(gogoproto.nullable) = false];
+  // If stream is enable.
+  required bool   enable = 3 [(gogoproto.nullable) = false];
+  // The stream parameters.
+  required string parameters = 4 [(gogoproto.nullable) = false];
+  // The metrics filter for cdc.
+  optional bytes metrics_filter = 5;
+  // The tag filter for cdc.
+  repeated bytes tag_filter = 6;
+}

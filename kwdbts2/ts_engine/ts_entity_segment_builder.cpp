@@ -10,14 +10,17 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_entity_segment_builder.h"
+#include <utility>
 #include <sys/types.h>
 #include <cstdint>
 
+#include "settings.h"
 #include "ts_agg.h"
 #include "ts_batch_data_worker.h"
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
+#include "ts_batch_data_worker.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_version.h"
 
@@ -38,6 +41,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("write entity item[id=%lu] failed.", entity_item.entity_id);
   }
+  assert(w_file_->GetFileSize() == entity_item.entity_id * sizeof(TsEntityItem));
   return s;
 }
 
@@ -66,6 +70,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFileBuilder append failed, file_path=%s", file_path_.c_str())
   }
+  assert((w_file_->GetFileSize() - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   return s;
 }
 
@@ -236,11 +241,15 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // init col agg offsets to agg buffer, exclude lsn col
   uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
   agg_buffer.resize(agg_header_size);
+  // min lsn && max lsn
+  TS_LSN min_lsn = UINT64_MAX;
+  TS_LSN max_lsn = 0;
 
   // write column block data and column agg
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
+    size_t d_size = col_idx == 0 ? 8 : metric_schema_[col_idx - 1].size;
     bool has_bitmap = col_idx > 1;
     bool is_var_col = isVarLenType(d_type);
 
@@ -294,6 +303,15 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     memcpy(data_buffer.data() + col_idx * sizeof(uint32_t), &(block_info_.col_block_offset[col_idx]), sizeof(uint32_t));
     // calculate aggregate
     if (0 == col_idx) {
+      for (int row_idx = 0; row_idx < n_rows_; ++row_idx) {
+        TS_LSN* lsn = reinterpret_cast<TS_LSN *>(block.buffer.data() + row_idx * sizeof(TS_LSN));
+        if (min_lsn > *lsn) {
+          min_lsn = *lsn;
+        }
+        if (max_lsn < *lsn) {
+          max_lsn = *lsn;
+        }
+      }
       continue;
     }
     string col_agg;
@@ -357,6 +375,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   blk_item.n_rows = n_rows_;
   blk_item.max_ts = max_ts;
   blk_item.min_ts = min_ts;
+  blk_item.max_lsn = max_lsn;
+  blk_item.min_lsn = min_lsn;
   blk_item.block_len = data_buffer.size();
   blk_item.agg_len = agg_buffer.size();
 
@@ -452,7 +472,7 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
   string data_buffer;
   string agg_buffer;
   TsEntitySegmentBlockItem block_item;
-  KStatus s = block->GetCompressData(block_item, data_buffer, agg_buffer);
+  KStatus s = block_->GetCompressData(block_item, data_buffer, agg_buffer);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block compress data failed.")
     return s;
@@ -496,128 +516,16 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update) {
-  std::unique_lock lock{mutex_};
-  KStatus s;
-  shared_ptr<TsBlockSpan> block_span{nullptr};
-  bool is_finished = false;
-  std::unique_ptr<TsLastSegmentBuilder> builder = nullptr;
-  // 1. Traverse the last segment data and write the data to the block segment
-  TsBlockSpanSortedIterator iter(block_spans_, EngineOptions::g_dedup_rule);
-  iter.Init();
-  TsEntityKey entity_key;
-  std::vector<std::shared_ptr<TsEntityBlockBuilder>> cached_blocks;
-  while (true) {
-    if (!block_span || block_span->GetRowNum() == 0) {
-      s = iter.Next(block_span, &is_finished);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, iterate last segments failed.")
-        return s;
-      }
-      if (is_finished) {
-        break;
-      }
-    }
-    TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
-    if (entity_key != cur_entity_key) {
-      if (block && block->HasData()) {
-        if (call_by_vacuum || block->GetRowNum() >= EngineOptions::min_rows_per_block) {
-          s = WriteBlock(entity_key);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
-            return s;
-          }
-          block->Clear();
-        } else {
-          // Create new last segment
-          if (builder == nullptr && block->GetRowNum() > 0) {
-            uint64_t file_number;
-            std::unique_ptr<TsAppendOnlyFile> last_segment;
-            s = NewLastSegmentFile(&last_segment, &file_number);
-            if (s != KStatus::SUCCESS) {
-              LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
-              return s;
-            }
-            builder = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
-          }
-          // Writes the incomplete data back to the last segment
-          for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
-            uint64_t lsn = block->GetLSN(row_idx);
-            std::vector<TSSlice> metric_value;
-            std::vector<DataFlags> data_flags;
-            block->GetMetricValue(row_idx, metric_value, data_flags);
-            s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, lsn,
-                                    metric_value, data_flags);
-            if (s != KStatus::SUCCESS) {
-              LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
-              return s;
-            }
-          }
-          if (builder != nullptr) {
-            cached_blocks.push_back(block);
-            if (entity_key.table_id != cur_entity_key.table_id ||
-                entity_key.table_version != cur_entity_key.table_version) {
-              s = builder->FlushBuffer();
-              if (s != KStatus::SUCCESS) {
-                LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder flush buffer failed.")
-                return s;
-              }
-              cached_blocks.clear();
-            }
-          }
-        }
-      }
-      // Get the metric schema
-      std::vector<AttributeInfo> metric_schema;
-      if (block == nullptr || entity_key.table_id != cur_entity_key.table_id ||
-          entity_key.table_version != cur_entity_key.table_version) {
-        std::shared_ptr<MMapMetricsTable> table_schema_;
-        s = schema_manager_->GetTableMetricSchema({}, block_span->GetTableID(), block_span->GetTableVersion(),
-                                                  &table_schema_);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("get table schema failed. table id: %lu, table version: %u.", block_span->GetTableID(),
-                    block_span->GetTableVersion());
-          return s;
-        }
-        metric_schema = table_schema_->getSchemaInfoExcludeDropped();
-      } else {
-        metric_schema = block->GetMetricSchema();
-      }
-      // init the block segment block
-      block = std::make_shared<TsEntityBlockBuilder>(block_span->GetTableID(), block_span->GetTableVersion(),
-                                                     block_span->GetEntityID(), metric_schema);
-      entity_key = cur_entity_key;
+KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
+  KStatus s = KStatus::SUCCESS;
+  while (!cached_spans_.empty()) {
+    if (cached_spans_.front()->GetRowNum() == 0) {
+      cached_spans_.pop_front();
+      continue;
     }
 
-    // write data to block buffer
-    bool is_full = false;
-    s = block->Append(block_span, is_full);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
-      return s;
-    }
-    // flush block if full
-    if (is_full) {
-      s = WriteBlock(entity_key);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
-        return s;
-      }
-      block->Clear();
-    }
-  }
-  // 4. Writes the incomplete data back to the last segment or entity segment
-  if (block && block->HasData()) {
-    if (call_by_vacuum) {
-      s = WriteBlock(entity_key);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
-        return s;
-      }
-      block->Clear();
-    } else {
-      // Create new last segment
-      if (builder == nullptr && block->GetRowNum() > 0) {
+    if (cached_count_ < EngineOptions::min_rows_per_block) {
+      if (builder_ == nullptr) {
         uint64_t file_number;
         std::unique_ptr<TsAppendOnlyFile> last_segment;
         s = NewLastSegmentFile(&last_segment, &file_number);
@@ -625,23 +533,134 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
           LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
           return s;
         }
-        builder = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
+        builder_ = std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
       }
       // Writes the incomplete data back to the last segment
-      for (uint32_t row_idx = 0; row_idx < block->GetRowNum(); ++row_idx) {
-        uint64_t lsn = block->GetLSN(row_idx);
-        std::vector<TSSlice> metric_value;
-        std::vector<DataFlags> data_flags;
-        block->GetMetricValue(row_idx, metric_value, data_flags);
-        s = builder->PutColData(entity_key.table_id, entity_key.table_version, entity_key.entity_id, lsn, metric_value,
-                                data_flags);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
-          return s;
-        }
+      auto row_num = cached_spans_.front()->GetRowNum();
+      s = builder_->PutBlockSpan(cached_spans_.front());
+      cached_count_ -= row_num;
+      cached_spans_.pop_front();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
+        return s;
       }
+      continue;
+    }
+
+    bool is_full = false;
+    s = block_->Append(cached_spans_.front(), is_full);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
+      return s;
+    }
+    if (is_full) {
+      auto row_num = block_->GetRowNum();
+      s = WriteBlock(entity_key);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
+        return s;
+      }
+      cached_count_ -= row_num;
+      block_->Clear();
     }
   }
+  if (block_->HasData()) {
+    auto row_num = block_->GetRowNum();
+    s = WriteBlock(entity_key);
+    if (s == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
+      return s;
+    }
+    cached_count_ -= row_num;
+    block_->Clear();
+  }
+  assert(cached_count_ == 0);
+  return s;
+}
+
+KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update) {
+  std::unique_lock lock{mutex_};
+  KStatus s;
+  shared_ptr<TsBlockSpan> block_span{nullptr};
+  bool is_finished = false;
+  // 1. Traverse the last segment data and write the data to the block segment
+  std::vector<std::list<shared_ptr<TsBlockSpan>>> block_spans;
+  block_spans.resize(last_segments_.size());
+  for (int i = 0; i < last_segments_.size(); ++i) {
+    s = last_segments_[i]->GetBlockSpans(block_spans[i], schema_manager_);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block spans failed.")
+      return s;
+    }
+  }
+  TsBlockSpanSortedIterator iter(block_spans, EngineOptions::g_dedup_rule);
+  block_spans.clear();
+  iter.Init();
+  TsEntityKey entity_key;
+  while (true) {
+    s = iter.Next(block_span, &is_finished);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, iterate last segments failed.")
+      return s;
+    }
+    if (is_finished) {
+      break;
+    }
+    TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
+    if (entity_key == TsEntityKey{}) {
+      entity_key = cur_entity_key;
+      std::shared_ptr<MMapMetricsTable> table_schema_;
+      s = schema_manager_->GetTableMetricSchema({}, entity_key.table_id, entity_key.table_version, &table_schema_);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("get table schema failed. table id: %lu, table version: %u.", block_span->GetTableID(),
+                  block_span->GetTableVersion());
+        return s;
+      }
+      std::vector<AttributeInfo> metric_schema = table_schema_->getSchemaInfoExcludeDropped();
+      block_ = std::make_shared<TsEntityBlockBuilder>(entity_key.table_id, entity_key.table_version,
+                                                     entity_key.entity_id, metric_schema);
+    }
+    if (cur_entity_key == entity_key) {
+      cached_count_ += block_span->GetRowNum();
+      cached_spans_.push_back(std::move(block_span));
+      continue;
+    }
+
+    s = WriteCachedBlockSpan(entity_key);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
+      return s;
+    }
+
+    std::vector<AttributeInfo> metric_schema;
+    if (entity_key.table_id != cur_entity_key.table_id ||
+        entity_key.table_version != cur_entity_key.table_version) {
+      std::shared_ptr<MMapMetricsTable> table_schema_;
+      s = schema_manager_->GetTableMetricSchema({}, cur_entity_key.table_id, cur_entity_key.table_version,
+                                                &table_schema_);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("get table schema failed. table id: %lu, table version: %u.", cur_entity_key.table_id,
+                  cur_entity_key.table_version);
+        return s;
+      }
+      metric_schema = table_schema_->getSchemaInfoExcludeDropped();
+    } else {
+      metric_schema = block_->GetMetricSchema();
+    }
+
+    block_ = std::make_shared<TsEntityBlockBuilder>(cur_entity_key.table_id, cur_entity_key.table_version,
+                                                   cur_entity_key.entity_id, metric_schema);
+    entity_key = cur_entity_key;
+    cached_count_ += block_span->GetRowNum();
+    cached_spans_.push_back(std::move(block_span));
+  }
+
+  s = WriteCachedBlockSpan(entity_key);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
+    return s;
+  }
+
   if (cur_entity_item_.entity_id != 0) {
     entity_item_builder_->AppendEntityItem(cur_entity_item_);
   }
@@ -662,14 +681,16 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       }
     }
   }
-  // 5. flush the last segment block
-  if (builder != nullptr) {
-    s = builder->Finalize();
+
+  // 4. flush the last segment block
+  if (builder_ != nullptr) {
+    s = builder_->Finalize();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
+      LOG_ERROR(
+        "TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
       return s;
     }
-    update->AddLastSegment(partition_id_, builder->GetFileNumber());
+    update->AddLastSegment(partition_id_, builder_->GetFileNumber());
   }
 
   EntitySegmentHandleInfo info;
@@ -677,11 +698,12 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
   info.datablock_info = block_file_builder_->GetFileInfo();
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  assert((info.header_b_info.length - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   update->SetEntitySegment(partition_id_, info, false);
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice block_data) {
+KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice block_data) {
   std::unique_lock lock{mutex_};
   auto it = entity_items_.find(entity_id);
   if (it == entity_items_.end()) {
@@ -711,6 +733,8 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
                          + (n_cols - 1) * sizeof(uint32_t)) + sizeof(uint32_t) * n_cols;
   block_item.min_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::min_ts_offset_in_span_data_);
   block_item.max_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
+  block_item.min_lsn = lsn;
+  block_item.max_lsn = lsn;
   block_item.agg_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size + block_item.block_len
                        + (n_cols - 2) * sizeof(uint32_t))  + sizeof(uint32_t) * (n_cols - 1);
 
@@ -796,8 +820,13 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   info.datablock_info = block_file_builder_->GetFileInfo();
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
+  assert((info.header_b_info.length - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
   update->SetEntitySegment(partition_id_, info, false);
   return KStatus::SUCCESS;
+}
+
+void TsEntitySegmentBuilder::MarkDelete() {
+  entity_item_builder_->MarkDelete();
 }
 
 TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager)

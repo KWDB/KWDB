@@ -65,6 +65,8 @@ func buildOpaque(
 		plan, err = p.AlterTSDatabase(ctx, n)
 	case *tree.AlterIndex:
 		plan, err = p.AlterIndex(ctx, n)
+	case *tree.AlterStream:
+		plan, err = p.AlterStream(ctx, n)
 	case *tree.AlterTable:
 		plan, err = p.AlterTable(ctx, n)
 	case *tree.AlterRole:
@@ -109,6 +111,8 @@ func buildOpaque(
 		plan, err = p.CreateSequence(ctx, n)
 	case *tree.CreateStats:
 		plan, err = p.CreateStatistics(ctx, n)
+	case *tree.CreateStream:
+		plan, err = p.CreateStream(ctx, n)
 	case *tree.CreateAudit:
 		plan, err = p.CreateAudit(ctx, n)
 	case *tree.Deallocate:
@@ -123,6 +127,8 @@ func buildOpaque(
 		plan, err = p.DropRole(ctx, n)
 	case *tree.DropSchema:
 		plan, err = p.DropSchema(ctx, n)
+	case *tree.DropStream:
+		plan, err = p.DropStream(ctx, n)
 	case *tree.DropTable:
 		plan, err = p.DropTable(ctx, n)
 	case *tree.DropFunction:
@@ -212,6 +218,7 @@ func init() {
 	for _, stmt := range []tree.Statement{
 		&tree.AlterTSDatabase{},
 		&tree.AlterIndex{},
+		&tree.AlterStream{},
 		&tree.AlterTable{},
 		&tree.AlterSequence{},
 		&tree.AlterRole{},
@@ -230,6 +237,7 @@ func init() {
 		&tree.CreateSchema{},
 		&tree.CreateSequence{},
 		&tree.CreateStats{},
+		&tree.CreateStream{},
 		&tree.CreateRole{},
 		&tree.CreateAudit{},
 		&tree.Deallocate{},
@@ -238,6 +246,7 @@ func init() {
 		&tree.DropIndex{},
 		&tree.DropSchema{},
 		&tree.DropSchedule{},
+		&tree.DropStream{},
 		&tree.DropTable{},
 		&tree.DropView{},
 		&tree.DropRole{},

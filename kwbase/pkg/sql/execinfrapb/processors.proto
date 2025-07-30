@@ -39,6 +39,7 @@ import "sql/execinfrapb/processors_sql.proto";
 import "sql/execinfrapb/processors_bulk_io.proto";
 import "sql/execinfrapb/processors_changefeeds.proto";
 import "sql/execinfrapb/processors_table_stats.proto";
+import "sql/execinfrapb/kwdb_struct.proto";
 import "gogoproto/gogo.proto";
 
 // Each processor has the following components:
@@ -133,6 +134,10 @@ message ProcessorCoreUnion {
   // BatchLookupJoinerSpec only be used for multiple model processing
   // when the switch is on and the server starts with single node mode.
   optional BatchLookupJoinerSpec batchLookupJoiner = 42;
+
+  optional TsInsertWithCDCProSpec tsInsertWithCDC = 43;
+  optional StreamReaderSpec streamReader = 44;
+  optional StreamAggregatorSpec streamAggregator = 45;
 
   reserved 6, 12;
 }

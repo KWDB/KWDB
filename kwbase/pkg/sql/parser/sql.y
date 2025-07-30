@@ -762,7 +762,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %token <str> SERIALIZABLE SERVER SERVICE SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
 
-%token <str> START STARTTIME STATISTICS STATUS STDIN STRICT STRING STORE STORED STORING SUBSTRING SUCCESS
+%token <str> START STARTTIME STATISTICS STATUS STDIN STREAM STREAMS STRICT STRING STORE STORED STORING SUBSTRING SUCCESS
 %token <str> SYMMETRIC SYNTAX SYSTEM SUBSCRIPTION
 
 %token <str> TABLE TABLES TAG TAGS TAG_TABLE TAG_ONLY TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
@@ -816,6 +816,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> alter_sequence_stmt
 %type <tree.Statement> alter_database_stmt
 %type <tree.Statement> alter_schedule_stmt
+%type <tree.Statement> alter_stream_stmt
 %type <tree.Statement> alter_range_stmt
 %type <tree.Statement> alter_partition_stmt
 %type <tree.Statement> alter_role_stmt
@@ -895,6 +896,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_schedule_for_sql_stmt
+%type <tree.Statement> create_stream_stmt
 %type <tree.Statement> create_table_stmt
 %type <tree.Statement> create_table_as_stmt
 //%type <tree.Statement> create_super_table_stmt
@@ -921,6 +923,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
 %type <tree.Statement> drop_procedure_stmt
+%type <tree.Statement> drop_stream_stmt
 %type <tree.Statement> drop_table_stmt
 %type <tree.Statement> drop_view_stmt
 %type <tree.Statement> drop_sequence_stmt
@@ -992,6 +995,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> show_sessions_stmt
 %type <tree.Statement> show_savepoint_stmt
 %type <tree.Statement> show_stats_stmt
+%type <tree.Statement> show_streams_stmt
 %type <tree.Statement> show_syntax_stmt
 %type <tree.Statement> show_tables_stmt
 %type <tree.Statement> show_procedures_stmt
@@ -1068,7 +1072,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <str> db_object_name_component transaction_name
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
 %type <*tree.UnresolvedObjectName> procedure_name
-%type <str> schema_name schedule_name audit_name function_name argument_name cursor_name
+%type <str> schema_name schedule_name stream_name audit_name function_name argument_name cursor_name
 %type <[]string> schema_name_list function_name_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star last_column
@@ -1434,6 +1438,7 @@ alter_ddl_stmt:
 | alter_partition_stmt
 | alter_schedule_stmt  // EXTEND WITH HELP: ALTER SCHEDULE
 | alter_procedure_stmt // EXTEND WITH HELP: ALTER PROCEDURE
+| alter_stream_stmt		 // EXTEND WITH HELP: ALTER STREAM
 
 // %Help: ALTER TABLE - change the definition of a table
 // %Category: DDL
@@ -2723,6 +2728,7 @@ create_ddl_stmt:
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
 | create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
+| create_stream_stmt   // EXTEND WITH HELP: CREATE STREAM
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
 | create_table_as_stmt // EXTEND WITH HELP: CREATE TABLE
 | create_ts_table_stmt // EXTEND WITH HELP: CREATE TABLE
@@ -3002,6 +3008,37 @@ create_schedule_for_sql_stmt:
 	}
 | CREATE SCHEDULE error // SHOW HELP: CREATE SCHEDULE FOR SQL
 
+// %Help: CREATE STREAM - create a new stream
+// %Category: DDL
+// %Text:
+// CREATE STREAM [IF NOT EXISTS] <stream_name> INTO <table_name> [ WITH OPTIONS <option> [= <value>] [, ...] ] AS <query>
+//
+// %SeeAlso: ALTER STREAM, DROP STREAM, SHOW STREAMS
+create_stream_stmt:
+  CREATE STREAM stream_name INTO table_name opt_with_options AS select_stmt
+  {
+  	name := $5.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreateStream {
+      StreamName: 	tree.Name($3),
+      Table:        name,
+      Options: 			$6.kvOptions(),
+      Query:        $8.slct(),
+      IfNotExists:  false,
+    }
+  }
+| CREATE STREAM IF NOT EXISTS stream_name INTO table_name opt_with_options AS select_stmt
+    {
+    	name := $8.unresolvedObjectName().ToTableName()
+      $$.val = &tree.CreateStream {
+        StreamName: 	tree.Name($6),
+        Table:        name,
+        Options: 			$9.kvOptions(),
+        Query:        $11.slct(),
+        IfNotExists:  true,
+      }
+    }
+| CREATE STREAM error // SHOW HELP: CREATE STREAM
+
 // %Help: DELETE - delete rows from a table
 // %Category: DML
 // %Text: DELETE FROM <tablename> [WHERE <expr>]
@@ -3062,6 +3099,7 @@ drop_ddl_stmt:
 | drop_view_stmt     // EXTEND WITH HELP: DROP VIEW
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
 | drop_schema_stmt   // EXTEND WITH HELP: DROP SCHEMA
+| drop_stream_stmt   // EXTEND WITH HELP: DROP STREAM
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
 
@@ -3197,6 +3235,27 @@ drop_schema_stmt:
     }
   }
 | DROP SCHEMA error // SHOW HELP: DROP SCHEMA
+
+// %Help: DROP STREAM - remove a stream
+// %Category: DDL
+// %Text: DROP STREAM [IF EXISTS] <stream_name>
+// %SeeAlso: CREATE STREAM, ALTER STREAM, SHOW STREAMS
+drop_stream_stmt:
+  DROP STREAM stream_name
+  {
+    $$.val = &tree.DropStream{
+      StreamName: tree.Name($3),
+      IfExists: false,
+    }
+  }
+| DROP STREAM IF EXISTS stream_name
+  {
+    $$.val = &tree.DropStream{
+      StreamName: tree.Name($5),
+      IfExists: true,
+    }
+  }
+| DROP STREAM error // SHOW HELP: DROP STREAM
 
 schema_name_list:
   schema_name
@@ -4036,6 +4095,7 @@ show_stmt:
 | show_session_stmt         // EXTEND WITH HELP: SHOW SESSION
 | show_sessions_stmt        // EXTEND WITH HELP: SHOW SESSIONS
 | show_stats_stmt           // EXTEND WITH HELP: SHOW STATISTICS
+| show_streams_stmt         // EXTEND WITH HELP: SHOW STREAMS
 | show_syntax_stmt          // EXTEND WITH HELP: SHOW SYNTAX
 | show_tables_stmt          // EXTEND WITH HELP: SHOW TABLES
 | show_procedures_stmt      // EXTEND WITH HELP: SHOW PROCEDURES
@@ -4133,6 +4193,28 @@ show_stats_stmt:
     $$.val = &tree.ShowTableStats{Table: $7.unresolvedObjectName(), UsingJSON: true}
   }
 | SHOW STATISTICS error // SHOW HELP: SHOW STATISTICS
+
+// %Help: SHOW STREAMS - list streams
+// %Category: DDL
+// %Text:
+// SHOW STREAMS
+// SHOW STREAM <stream_name>
+// %SeeAlso: ALTER STREAM, CREATE STREAM, DROP STREAM
+show_streams_stmt:
+  SHOW STREAMS
+  {
+    $$.val = &tree.ShowStreams{
+      ShowAll:  true,
+    }
+  }
+| SHOW STREAM stream_name
+  {
+    $$.val = &tree.ShowStreams{
+      ShowAll:    false,
+      StreamName: tree.Name($3),
+    }
+  }
+| SHOW STREAMS error // SHOW HELP: SHOW STREAMS
 
 // %Help: SHOW HISTOGRAM - display histogram (experimental)
 // %Category: Experimental
@@ -6420,6 +6502,29 @@ alter_schedule_stmt:
        }
    }
 | ALTER SCHEDULE error // SHOW HELP: ALTER SCHEDULE
+
+// %Help: ALTER STREAM - alter stream
+// %Category: DDL
+// %Text:
+// ALTER STREAM <stream_name> SET OPTIONS <option> [= <value>] [, ...]
+//
+// %SeeAlso: CREATE STREAM, DROP STREAM, SHOW STREAMS
+alter_stream_stmt:
+  ALTER STREAM stream_name SET OPTIONS '(' kv_option_list ')'
+  {
+    $$.val = &tree.AlterStream {
+			StreamName:		tree.Name($3),
+      Options: 			$7.kvOptions(),
+    }
+  }
+| ALTER STREAM stream_name SET kv_option_list
+  {
+    $$.val = &tree.AlterStream {
+			StreamName:		tree.Name($3),
+      Options: 			$5.kvOptions(),
+    }
+  }
+| ALTER STREAM error // SHOW HELP: ALTER STREAM
 
 opt_description:
   string_or_placeholder
@@ -12470,6 +12575,8 @@ schedule_name:         name
 
 cursor_name:					 name
 
+stream_name:           name
+
 argument_name:         name
 
 standalone_index_name: db_object_name
@@ -12978,6 +13085,8 @@ unreserved_keyword:
 | STORE
 | STORED
 | STORING
+| STREAM
+| STREAMS
 | STRICT
 | STRING
 | SUBSCRIPTION

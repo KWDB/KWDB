@@ -163,44 +163,71 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 	// group.
 	r.mu.internalRaftGroup = nil
 
+	r.mu.inconsistent, _ = r.mu.stateLoader.LoadInconsistent(ctx, r.Engine())
+
 	var err error
 	if r.mu.state, err = r.mu.stateLoader.Load(ctx, r.Engine(), desc); err != nil {
 		return err
 	}
+	r.mu.lastIndex, err = r.mu.stateLoader.LoadLastIndex(ctx, r.Engine())
+	if err != nil {
+		return err
+	}
+	r.mu.lastTerm = invalidLastTerm
 	if r.isTsLocked() {
 		// if we use the mode that raft log combines with WAL to guarantee the data integrity,
 		// we need to adjust applied index with ts flushed index.
-		needAdjustAppliedIndex := false
+		var hasTsFlushedIndex bool
 		if isInit {
 			// start node, TsRaftLogCombineWAL is unavailable yet, check r.mu.tsFlushedIndex
 			r.mu.tsFlushedIndex, err = r.mu.stateLoader.LoadTsFlushedIndex(ctx, r.Engine())
 			if err != nil {
 				return err
 			}
-			needAdjustAppliedIndex = r.mu.tsFlushedIndex > 0
+			hasTsFlushedIndex = r.mu.tsFlushedIndex > 0
 		} else {
 			// create replica, r.mu.tsFlushedIndex is not set and TsRaftLogCombineWAL
 			// is available, directly check TsRaftLogCombineWAL
-			needAdjustAppliedIndex = tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
-		}
-		if needAdjustAppliedIndex {
-			log.Infof(ctx, "init %v, truncate index is %d, tsFlushedIndex is %d, RaftAppliedIndex is %d",
-				isInit, r.mu.state.TruncatedState.Index, r.mu.tsFlushedIndex, r.mu.state.RaftAppliedIndex)
-			// just created, set r.mu.state.TruncatedState.Index to r.mu.tsFlushedIndex
-			if r.mu.tsFlushedIndex == 0 {
+			hasTsFlushedIndex = tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
+			if hasTsFlushedIndex && r.mu.tsFlushedIndex == 0 {
+				// just created, set r.mu.state.TruncatedState.Index to r.mu.tsFlushedIndex
 				r.mu.tsFlushedIndex = r.mu.state.TruncatedState.Index
 				if err := r.mu.stateLoader.SetTsFlushedIndex(ctx, r.Engine(), r.mu.tsFlushedIndex); err != nil {
 					log.Warningf(ctx, "failed SetTsFlushedIndex, err: %v", err)
 				}
 			}
-			if r.mu.state.RaftAppliedIndex != r.mu.tsFlushedIndex {
-				// only set RaftAppliedIndex to tsFlushedIndex when node starts.
-				log.Infof(ctx, "set RaftAppliedIndex to %d", r.mu.tsFlushedIndex)
-				r.mu.state.RaftAppliedIndex = r.mu.tsFlushedIndex
-				if _, err := r.mu.stateLoader.Save(ctx, r.Engine(), r.mu.state, stateloader.TruncatedStateUnreplicated); err != nil {
-					log.Warningf(ctx, "failed Save ReplicaState, err: %v", err)
-				}
+		}
+		hs, err := r.mu.stateLoader.LoadHardState(ctx, r.store.Engine())
+		// For uninitialized ranges, membership is unknown at this point.
+		if err != nil {
+			log.Errorf(ctx, "failed get hard state,err: %+v", err)
+			return err
+		}
+		log.Infof(ctx, "init %v, truncate index is %d, tsFlushedIndex is %d, RaftAppliedIndex is %d, lastIndex: %d, "+
+			"hardState: %s, inconsistent: %v", isInit, r.mu.state.TruncatedState.Index, r.mu.tsFlushedIndex,
+			r.mu.state.RaftAppliedIndex, r.mu.lastIndex, hs, r.mu.inconsistent)
+		if hasTsFlushedIndex && r.mu.tsFlushedIndex < r.mu.state.RaftAppliedIndex {
+			// only set RaftAppliedIndex to tsFlushedIndex when node starts.
+			r.mu.state.RaftAppliedIndex = r.mu.tsFlushedIndex
+			if _, err := r.mu.stateLoader.Save(ctx, r.Engine(), r.mu.state, stateloader.TruncatedStateUnreplicated); err != nil {
+				log.Warningf(ctx, "failed Save ReplicaState, err: %v", err)
 			}
+		}
+		if hs.Commit < r.mu.state.RaftAppliedIndex {
+			hs.Commit = r.mu.state.RaftAppliedIndex
+			if hs.Term > r.mu.state.TruncatedState.Term {
+				hs.Vote = 0
+			}
+			hs.Term = r.mu.state.TruncatedState.Term
+			if err = r.mu.stateLoader.SetHardState(ctx, r.Engine(), hs); err != nil {
+				log.Errorf(ctx, "failed set hard state,err: %+v", err)
+				return err
+			}
+		}
+		if r.mu.lastIndex < r.mu.state.TruncatedState.Index {
+			r.mu.lastIndex = r.mu.state.TruncatedState.Index
+		} else if r.mu.lastIndex < r.mu.state.RaftAppliedIndex {
+			r.mu.lastIndex = r.mu.state.RaftAppliedIndex
 		}
 	}
 	if isInit {
@@ -209,11 +236,6 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 			ApplyIndex: int64(r.mu.state.RaftAppliedIndex),
 		})
 	}
-	r.mu.lastIndex, err = r.mu.stateLoader.LoadLastIndex(ctx, r.Engine())
-	if err != nil {
-		return err
-	}
-	r.mu.lastTerm = invalidLastTerm
 
 	// Ensure that we're not trying to load a replica with a different ID than
 	// was used to construct this Replica.

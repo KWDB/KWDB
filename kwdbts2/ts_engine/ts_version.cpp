@@ -53,12 +53,12 @@ static const int64_t interval = 3600 * 24 * 10;  // 10 days.
 // timestamp = -2, return -3
 // timestamp = -3, return -3
 // timestamp = -4, return -6
-static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t interval) {
+static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t ts_interval) {
   bool negative = timestamp < 0;
   timestamp64 tmp = timestamp + negative;
-  int64_t index = tmp / interval;
+  int64_t index = tmp / ts_interval;
   index -= negative;
-  return index * interval;
+  return index * ts_interval;
 }
 
 void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
@@ -114,13 +114,14 @@ KStatus TsVersionManager::Recover() {
   current_ = std::make_shared<TsVGroupVersion>();
 
   auto current_path = root_path_ / CurrentVersionName();
+  KStatus s;
   if (!std::filesystem::exists(current_path)) {
     //  Brand new database, create current version
     uint64_t log_file_number = 0;
     auto update_path = root_path_ / VersionUpdateName(log_file_number);
     {
       std::unique_ptr<TsAppendOnlyFile> current_file;
-      auto s = env_->NewAppendOnlyFile(current_path, &current_file);
+      s = env_->NewAppendOnlyFile(current_path, &current_file);
       if (s == FAIL) {
         LOG_ERROR("can not create current version file");
         return FAIL;
@@ -132,7 +133,7 @@ KStatus TsVersionManager::Recover() {
       }
     }
     std::unique_ptr<TsAppendOnlyFile> update_log_file;
-    auto s = env_->NewAppendOnlyFile(update_path, &update_log_file);
+    s = env_->NewAppendOnlyFile(update_path, &update_log_file);
     if (s == FAIL) {
       LOG_ERROR("can not create update log file");
       return FAIL;
@@ -145,7 +146,7 @@ KStatus TsVersionManager::Recover() {
 
   // Database exists, recover from current version
   std::unique_ptr<TsRandomReadFile> rfile;
-  auto s = env_->NewRandomReadFile(root_path_ / CurrentVersionName(), &rfile);
+  s = env_->NewRandomReadFile(root_path_ / CurrentVersionName(), &rfile);
   if (s == FAIL) {
     LOG_ERROR("can not open current version file");
     return FAIL;
@@ -189,7 +190,7 @@ KStatus TsVersionManager::Recover() {
   // construct a new logger_
   {
     std::unique_ptr<TsAppendOnlyFile> new_log_file;
-    auto s =
+    s =
         env_->NewAppendOnlyFile(root_path_ / VersionUpdateName(next_logfile_number), &new_log_file, true /*overwrite*/);
     if (s == FAIL) {
       LOG_ERROR("can not create new update log file");
@@ -587,7 +588,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   ts_block_spans->clear();
   // get block span in mem segment
   for (auto& mem : GetAllMemSegments()) {
-    auto s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+    s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
       return s;
@@ -597,7 +598,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     // get block span in last segment
     std::vector<std::shared_ptr<TsLastSegment>> last_segs = GetAllLastSegments();
     for (auto& last_seg : last_segs) {
-      auto s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+      s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpans of mem segment failed.");
         return s;
@@ -611,7 +612,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
       // entity segment not exist
       return KStatus::SUCCESS;
     }
-    auto s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans,
+    s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans,
              tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");

@@ -142,8 +142,8 @@ struct TSEngine {
    *
    * @return KStatus
    */
-  virtual KStatus PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                            TSSlice* payload_data, int payload_num, uint64_t mtr_id) = 0;
+  virtual KStatus PutEntity(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                            TSSlice *payload_data, int payload_num, uint64_t mtr_id, bool writeWAL) = 0;
 
   /**
    * @brief Entity Tag value and time series data writing. Tag value modification is not supported.
@@ -174,9 +174,9 @@ struct TSEngine {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                             HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                             uint64_t mtr_id) = 0;
+  virtual KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                  HashIdSpan &hash_span, const std::vector<KwTsSpan> &ts_spans,
+                                  uint64_t *count, uint64_t mtr_id, bool writeWAL) = 0;
 
   /**
    * @brief Mark the deletion of time series data within the specified range.
@@ -189,9 +189,9 @@ struct TSEngine {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                             std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                             uint64_t mtr_id) = 0;
+  virtual KStatus DeleteData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                             std::string &primary_tag, const std::vector<KwTsSpan> &ts_spans, uint64_t *count,
+                             uint64_t mtr_id, bool writeWAL) = 0;
 
   /**
    * @brief Batch delete Entity and sequential data.
@@ -203,8 +203,9 @@ struct TSEngine {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                 std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) = 0;
+  virtual KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                 std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id,
+                                 bool writeWAL) = 0;
 
   /**
   * @brief get batch data in tmp memroy
@@ -603,24 +604,24 @@ class TSEngineImpl : public TSEngine {
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override;
 
-  KStatus PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                    TSSlice* payload_data, int payload_num, uint64_t mtr_id) override;
+  KStatus PutEntity(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id, TSSlice *payload_data,
+                    int payload_num, uint64_t mtr_id, bool writeWAL) override;
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
                   uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true,
                   const char* tsx_id = nullptr) override;
 
-  KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                          HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                          uint64_t mtr_id) override;
+  KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id, HashIdSpan &hash_span,
+                          const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id,
+                          bool writeWAL) override;
 
-  KStatus DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                     std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                     uint64_t mtr_id) override;
+  KStatus DeleteData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id, std::string &primary_tag,
+                     const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL) override;
 
-  KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) override;
+  KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                         std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id,
+                         bool writeWAL) override;
 
   KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override;
 

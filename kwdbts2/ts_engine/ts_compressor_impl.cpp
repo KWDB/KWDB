@@ -353,7 +353,7 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   utype prev = v, prev_lead_idx = 0;
   for (int i = 1; i < count; ++i) {
-    bool ok = reader.ReadBits(2, &v);
+    ok = reader.ReadBits(2, &v);
     if (!ok) {
       return false;
     }

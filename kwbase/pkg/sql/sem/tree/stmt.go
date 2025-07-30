@@ -211,6 +211,18 @@ func (*AlterIndex) StatTargetType() string { return "INDEX" }
 func (*AlterIndex) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterStream) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*AlterStream) StatOp() string { return "ALTER" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterStream) StatementTag() string { return "ALTER STREAM" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*AlterStream) StatTargetType() string { return "STREAM" }
+
+// StatementType implements the Statement interface.
 func (*AlterTable) StatementType() StatementType { return DDL }
 
 // StatOp implements the StatOp interface.
@@ -536,6 +548,18 @@ func (*CreateSchema) StatTargetType() string { return "SCHEMA" }
 
 // modifiesSchema implements the canModifySchema interface.
 func (*CreateSchema) modifiesSchema() bool { return true }
+
+// StatementType implements the Statement interface.
+func (*CreateStream) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreateStream) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateStream) StatementTag() string { return "CREATE STREAM" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreateStream) StatTargetType() string { return "STREAM" }
 
 // StatementType implements the Statement interface.
 func (n *CreateTable) StatementType() StatementType {
@@ -931,6 +955,18 @@ func (*DropIndex) StatementTag() string { return "DROP INDEX" }
 
 // StatTargetType implements the StatTargetType interface.
 func (*DropIndex) StatTargetType() string { return "INDEX" }
+
+// StatementType implements the Statement interface.
+func (*DropStream) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*DropStream) StatOp() string { return "DROP" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropStream) StatementTag() string { return "DROP STREAM" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*DropStream) StatTargetType() string { return "STREAM" }
 
 // StatementType implements the Statement interface.
 func (*DropTable) StatementType() StatementType { return DDL }
@@ -1900,6 +1936,18 @@ func (*ShowSessions) StatementTag() string { return "SHOW SESSIONS" }
 func (*ShowSessions) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowStreams) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowStreams) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of the statement.
+func (*ShowStreams) StatementTag() string { return "SHOW STREAMS" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowStreams) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowTableStats) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -2234,6 +2282,7 @@ func (*ValuesClause) StatementTag() string { return "VALUES" }
 
 func (n *AlterTSDatabase) String() string                { return AsString(n) }
 func (n *AlterIndex) String() string                     { return AsString(n) }
+func (n *AlterStream) String() string                    { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
 func (n *AlterTableCmds) String() string                 { return AsString(n) }
 func (n *AlterTableAddColumn) String() string            { return AsString(n) }
@@ -2272,6 +2321,7 @@ func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
 func (n *CreateSchema) String() string                   { return AsString(n) }
 func (n *CreateSequence) String() string                 { return AsString(n) }
+func (n *CreateStream) String() string                   { return AsString(n) }
 func (n *CreateFunction) String() string                 { return AsString(n) }
 func (n *CreateStats) String() string                    { return AsString(n) }
 func (n *CreateView) String() string                     { return AsString(n) }
@@ -2281,6 +2331,7 @@ func (n *DropDatabase) String() string                   { return AsString(n) }
 func (n *DropIndex) String() string                      { return AsString(n) }
 func (n *DropSchedule) String() string                   { return AsString(n) }
 func (n *DropSchema) String() string                     { return AsString(n) }
+func (n *DropStream) String() string                     { return AsString(n) }
 func (n *DropTable) String() string                      { return AsString(n) }
 func (n *DropView) String() string                       { return AsString(n) }
 func (n *DropSequence) String() string                   { return AsString(n) }
@@ -2370,6 +2421,7 @@ func (n *ShowSavepointStatus) String() string            { return AsString(n) }
 func (n *ShowSchemas) String() string                    { return AsString(n) }
 func (n *ShowSequences) String() string                  { return AsString(n) }
 func (n *ShowSessions) String() string                   { return AsString(n) }
+func (n *ShowStreams) String() string                    { return AsString(n) }
 func (n *ShowSyntax) String() string                     { return AsString(n) }
 func (n *ShowTableStats) String() string                 { return AsString(n) }
 func (n *ShowTables) String() string                     { return AsString(n) }

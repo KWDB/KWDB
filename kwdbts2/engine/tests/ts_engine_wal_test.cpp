@@ -381,7 +381,7 @@ TEST_F(TestEngineWAL, DeleteData) {
   uint64_t count = 0;
   KwTsSpan span{1, ts + 10,};
   auto pt = getPrimaryTag(meta, payload);
-  s = ts_engine_->DeleteData(ctx_, cur_table_id, kTestRange.range_group_id, pt, {ConvertMsToPrecision(span, ts_type)}, &count, mtr_id);
+  s = ts_engine_->DeleteData(ctx_, cur_table_id, kTestRange.range_group_id, pt, {ConvertMsToPrecision(span, ts_type)}, &count, mtr_id, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2 + row_num_);  // delete 12 rows
 
@@ -448,7 +448,7 @@ TEST_F(TestEngineWAL, DeleteDataRollback) {
   uint64_t count = 0;
   KwTsSpan span{1, ts + 10,};
   auto pt = getPrimaryTag(meta, payload);
-  s = ts_engine_->DeleteData(ctx_, cur_table_id, kTestRange.range_group_id, pt, {ConvertMsToPrecision(span, ts_type)}, &count, mtr_id);
+  s = ts_engine_->DeleteData(ctx_, cur_table_id, kTestRange.range_group_id, pt, {ConvertMsToPrecision(span, ts_type)}, &count, mtr_id, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2 + row_num_);
   // after delete
@@ -507,7 +507,7 @@ TEST_F(TestEngineWAL, DeleteEntities) {
 
   uint64_t del_cnt;
   auto pt = getPrimaryTag(meta, payload);
-  s = ts_engine_->DeleteEntities(ctx_, cur_table_id, kTestRange.range_group_id, {pt}, &del_cnt, mtr_id);
+  s = ts_engine_->DeleteEntities(ctx_, cur_table_id, kTestRange.range_group_id, {pt}, &del_cnt, mtr_id, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, row_num_);
 
@@ -569,7 +569,7 @@ TEST_F(TestEngineWAL, DeleteEntitiesRollback) {
 
   uint64_t del_cnt;
   auto pt = getPrimaryTag(meta, payload);
-  s = ts_engine_->DeleteEntities(ctx_, cur_table_id, kTestRange.range_group_id, {pt}, &del_cnt, mtr_id);
+  s = ts_engine_->DeleteEntities(ctx_, cur_table_id, kTestRange.range_group_id, {pt}, &del_cnt, mtr_id, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, row_num_);
 
@@ -620,7 +620,7 @@ TEST_F(TestEngineWAL, updateTag) {
     k_uint32 p_len = 0;
     data_value = GenSomePayloadData(ctx_, row_num_, p_len, start_ts1 + i * 100, &meta, 10, 1, false);
     TSSlice payload1{data_value, p_len};
-    ASSERT_EQ(ts_engine_->PutEntity(ctx_, cur_table_id, kTestRange.range_group_id, &payload1, 1, 0), KStatus::SUCCESS);
+    ASSERT_EQ(ts_engine_->PutEntity(ctx_, cur_table_id, kTestRange.range_group_id, &payload1, 1, 0, true), KStatus::SUCCESS);
     delete[] data_value;
   }
 
@@ -724,14 +724,14 @@ TEST_F(TestEngineWAL, EngineApi) {
   uint64_t count = 0;
   KwTsSpan span{1, start_ts + 10,};
 
-  s = ts_engine_->DeleteData(ctx_, cur_table_id, kTestRange.range_group_id, pt, {ConvertMsToPrecision(span, ts_type)}, &count, mtr_id);
+  s = ts_engine_->DeleteData(ctx_, cur_table_id, kTestRange.range_group_id, pt, {ConvertMsToPrecision(span, ts_type)}, &count, mtr_id, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2);
   ASSERT_EQ(GetTableRows(cur_table_id, ranges, {1, start_ts + 10000}, 2), row_num_ * 2 - 2);
 
   // delete entities
   uint64_t del_cnt;
-  s = ts_engine_->DeleteEntities(ctx_, cur_table_id, kTestRange.range_group_id, {pt2}, &del_cnt, mtr_id);
+  s = ts_engine_->DeleteEntities(ctx_, cur_table_id, kTestRange.range_group_id, {pt2}, &del_cnt, mtr_id, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, row_num_);
 

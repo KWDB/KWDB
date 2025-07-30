@@ -42,12 +42,11 @@ struct TsEntitySegmentBlockItem {
   uint32_t n_rows = 0;
   timestamp64 min_ts = INT64_MAX;
   timestamp64 max_ts = INT64_MIN;
+  TS_LSN min_lsn = UINT64_MAX;
+  TS_LSN max_lsn = 0;
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
-  uint16_t non_null_row_count = 0;    // the number of non-null rows
-  bool is_agg_res_available = false;  //  agg for block is valid.
-  char reserved[49] = {0};            // reserved for user-defined information.
-  // todo(liangbo01) add lsn to filter quickyly
+  char reserved[36] = {0};            // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");

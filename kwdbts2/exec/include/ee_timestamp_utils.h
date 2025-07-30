@@ -312,4 +312,117 @@ inline bool convertTimePrecision(k_int64* val, roachpb::DataType in_type,
   }
   return KFALSE;
 }
+
+inline k_double64 getExtract(k_int64 intvalue, String strvalue, roachpb::DataType datetype, KWDBTypeFamily returntype,
+                             k_int8 timezone) {
+  CKTime ckTime = getCKTime(intvalue, datetype, timezone);
+  k_int64 res = 0;
+  struct tm ltm;
+  if (returntype == KWDBTypeFamily::TimestampTZFamily) {
+    ckTime.t_timespec.tv_sec += ckTime.t_abbv;
+  }
+  gmtime_r(&ckTime.t_timespec.tv_sec, &ltm);
+  KString item = replaceTimeUnit({strvalue.getptr(), strvalue.length_});
+  if (item == "ns") {
+    return ckTime.t_timespec.tv_nsec;
+  } else if (item == "us") {
+    return static_cast<double>(ckTime.t_timespec.tv_nsec) / 1000;
+  } else if (item == "ms") {  //  second field, in milliseconds, containing decimals
+    return static_cast<double>(ckTime.t_timespec.tv_nsec) / 1000000;
+  } else if (item == "s") {  // containing decimals，in
+                             // secondes，containing decimals
+    return static_cast<double>(ltm.tm_sec) + ckTime.t_timespec.tv_nsec / 1000000000;
+  } else if (item == "epoch") {  // seconds since 1970-01-01 00:00:00 UTC
+    res = ckTime.t_timespec.tv_sec;
+  } else if (item == "m") {  // minute (0-59)
+    res = ltm.tm_min;
+  } else if (item == "h") {  // hour (0-23)
+    res = ltm.tm_hour;
+  } else if (item == "d") {  // on the day of the month (1-31)
+    res = ltm.tm_mday;
+  } else if (item == "dow" || item == "dofweek") {  // what day of the week, Sunday (0) to
+                                                    // Saturday (6)
+    res = ltm.tm_wday;
+  } else if (item == "isodow") {  // Day of the week based on ISO 8601, Monday
+                                  // (1) to Sunday (7)
+    if (ltm.tm_wday == 0) {
+      res = 7;
+    } else {
+      res = ltm.tm_wday;
+    }
+  } else if (item == "doy" || item == "dofyear") {  // on which day of the year, ranging from
+                                                    // 1 to 366
+    res = ltm.tm_yday + 1;
+  } else if (item == "julian") {
+    if (ltm.tm_mon > 2) {
+      ltm.tm_mon++;
+      ltm.tm_year += 4800;
+    } else {
+      ltm.tm_mon += 13;
+      ltm.tm_year += 4799;
+    }
+
+    k_int64 century = ltm.tm_year / 100;
+    res = ltm.tm_year * 365 - 32167;
+    res += ltm.tm_year / 4 - century + century / 4;
+    res += 7834 * ltm.tm_mon / 256 + ltm.tm_yday;
+    res += ltm.tm_hour * 3600 + ltm.tm_min * 60 + ltm.tm_sec;
+    return static_cast<double>(res) + ckTime.t_timespec.tv_nsec / 1000000000;
+  } else if (item == "w") {  // ISO 8601
+    k_int32 weekday = 0;
+    if (ltm.tm_wday == 0) {
+      weekday = 7;
+    } else {
+      weekday = ltm.tm_wday;
+    }
+    k_int64 wd = ltm.tm_yday + 4 - weekday;
+    res = (wd / 7) + 1;
+  } else if (item == "n") {  // month，1-12
+    res = ltm.tm_mon + 1;
+  } else if (item == "quarter") {  // quarter
+    if (ltm.tm_mon <= 2) {
+      res = 1;
+    } else if (ltm.tm_mon <= 5) {
+      res = 2;
+    } else if (ltm.tm_mon <= 8) {
+      res = 3;
+    } else {
+      res = 4;
+    }
+  } else if (item == "y") {  // yes
+    res = ltm.tm_year + 1900;
+  } else if (item == "isoy") {  // year based on ISO 8601 "isoyear"
+    res = ltm.tm_year + 1900;
+    // The last week of each year is the week of the last Thursday of the year
+    k_int32 weekday = 0;
+    if (ltm.tm_wday == 0) {
+      weekday = 7;
+    } else {
+      weekday = ltm.tm_wday;
+    }
+    if (ltm.tm_yday < 7 && weekday > 4) {
+      res -= 1;
+    }
+    if (ltm.tm_yday > 362 && weekday < 4) {
+      res += 1;
+    }
+  } else if (item == "decade") {  // year/10
+    res = (ltm.tm_year + 1900) / 10;
+  } else if (item == "century") {  // century
+    res = (ltm.tm_year + 1900) / 100 + 1;
+  } else if (item == "millennium") {  // millennium
+    res = (ltm.tm_year + 1900) / 1000 + 1;
+  } else if (item == "timezone") {  // time zone offset from UTC, in seconds
+    res = ltm.tm_gmtoff;
+  } else if (item == "timezone_m") {  // The minute portion of the time
+                                      // zone offset "timezone_minute"
+    res = ltm.tm_gmtoff / 60;
+  } else if (item == "timezone_h") {  // The hourly portion of the time zone
+                                      // offset "timezone_hour"
+    res = ltm.tm_gmtoff / 60 * 60;
+  }
+
+  return static_cast<double>(res);
+}
+
 }  // namespace kwdbts

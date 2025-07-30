@@ -25,8 +25,8 @@ namespace kwdbts {
 int64_t TsMaxMilliTimestamp = 31556995200000;  // be associated with 'kwbase/pkg/sql/sem/tree/type_check.go'
 int64_t TsMaxMicroTimestamp = 31556995200000000;
 
-KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, shared_ptr<TsBlockSpan>& ts_blk_span,
-                                    ResultSet* res, k_uint32* count) {
+KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const vector<AttributeInfo> attrs,
+                                    shared_ptr<TsBlockSpan>& ts_blk_span, ResultSet* res, k_uint32* count) {
   *count = ts_blk_span->GetRowNum();
   KStatus ret;
   for (int i = 0; i < kw_scan_cols.size(); ++i) {
@@ -46,14 +46,16 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, s
         TsBitmap ts_bitmap;
         char* value;
         char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap);
+        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap, false);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
         }
-        for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          if (ts_bitmap[row_idx] != DataFlags::kValid) {
-            set_null_bitmap(bitmap, row_idx);
+        if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL)) {
+          for (int row_idx = 0; row_idx < *count; ++row_idx) {
+            if (ts_bitmap[row_idx] != DataFlags::kValid) {
+              set_null_bitmap(bitmap, row_idx);
+            }
           }
         }
         memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
@@ -276,7 +278,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       }
       if (!is_done && !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
         // Found a block span which might contain satisfied rows.
-        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, block_span, res, count);
+        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
@@ -643,12 +645,12 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
         if (!c.blk_span->IsVarLenType(col_idx)) {
           char* value = nullptr;
           TsBitmap bitmap;
-          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap);
+          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap, false);
           if (ret != KStatus::SUCCESS) {
             return ret;
           }
 
-          if (bitmap[c.row_idx] != DataFlags::kValid) {
+          if (!attrs_[col_idx].isFlag(AINFO_NOT_NULL) && bitmap[c.row_idx] != DataFlags::kValid) {
             final_agg_data_[i] = {nullptr, 0};
           } else {
             final_agg_data_[i].len = col_idx == 0 ? 16 : c.blk_span->GetColSize(col_idx);
@@ -1028,7 +1030,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       char* value = nullptr;
       TsBitmap bitmap;
-      auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap);
+      auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetFixLenColAddr failed.");
         return s;
@@ -1036,7 +1038,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
       int32_t size = kw_col_idx == 0 ? 16 : block_span->GetColSize(kw_col_idx);
       for (row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[row_idx] != DataFlags::kValid) {
+        if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
           continue;
         }
         void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1122,7 +1124,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
         TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap);
+        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1130,7 +1132,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
         int32_t size = kw_col_idx == 0 ? 16 : block_span->GetColSize(kw_col_idx);
         for (row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (bitmap[row_idx] != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1250,7 +1252,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
         TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap);
+        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1258,7 +1260,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
         int32_t size = kw_col_idx == 0 ? 16 : block_span->GetColSize(kw_col_idx);
         for (row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (bitmap[row_idx] != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1574,7 +1576,7 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
   // Return one block span data each time.
   shared_ptr<TsBlockSpan> ts_block = block_spans_.front();
   block_spans_.pop_front();
-  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, ts_block, res, count);
+  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, ts_block, res, count);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
     return KStatus::FAIL;

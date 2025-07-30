@@ -12,7 +12,9 @@ SELECT * FROM system.namespace
 1   29  descriptor                       3
 1   29  eventlog                         56
 1   29  jobs                             15
+1   29  kwdb_cdc_watermark               60
 1   29  kwdb_replication_info            42
+1   29  kwdb_streams                     61
 1   29  kwdb_ts_table                    47
 1   29  lease                            11
 1   29  locations                        21

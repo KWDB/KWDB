@@ -511,6 +511,9 @@ type RocksDB struct {
 		committing bool
 		groupSize  int
 		pending    []*rocksDBBatch
+
+		tsGroupSize int
+		pendingTs   []*rocksDBBatch
 	}
 
 	syncer struct {
@@ -518,6 +521,14 @@ type RocksDB struct {
 		cond    sync.Cond
 		closed  bool
 		pending []*rocksDBBatch
+	}
+
+	asyncer struct {
+		syncutil.Mutex
+		cond    sync.Cond
+		closed  bool
+		closeCh chan interface{}
+		waiting bool
 	}
 
 	iters struct {
@@ -687,11 +698,15 @@ func (r *RocksDB) open() error {
 
 	r.commit.cond.L = &r.commit.Mutex
 	r.syncer.cond.L = &r.syncer.Mutex
+	r.asyncer.cond.L = &r.asyncer.Mutex
+	r.asyncer.closeCh = make(chan interface{})
+	r.asyncer.waiting = true
 	r.iters.m = make(map[*rocksDBIterator][]byte)
 
 	// NB: The sync goroutine acts as a check that the RocksDB instance was
 	// properly closed as the goroutine will leak otherwise.
 	go r.syncLoop()
+	go r.asyncLoop()
 	return nil
 }
 
@@ -747,6 +762,52 @@ func (r *RocksDB) syncLoop() {
 	}
 }
 
+func (r *RocksDB) asyncLoop() {
+	s := &r.asyncer
+	s.Lock()
+
+	var lastSync time.Time
+	timer := timeutil.NewTimer()
+	defer timer.Stop()
+
+	for {
+		if s.waiting && !s.closed {
+			s.cond.Wait()
+		}
+
+		if s.closed {
+			s.Unlock()
+			return
+		}
+
+		s.waiting = true
+
+		s.Unlock()
+
+		// Linux only guarantees we'll be notified of a writeback error once
+		// during a sync call. After sync fails once, we cannot rely on any
+		// future data written to WAL being crash-recoverable. That's because
+		// any future writes will be appended after a potential corruption in
+		// the WAL, and RocksDB's recovery terminates upon encountering any
+		// corruption. So, we must not call `DBSyncWAL` again after it has
+		// failed once.
+		if r.cfg.Dir != "" {
+			lastSync = timeutil.Now()
+			C.DBSyncWAL(r.rdb)
+		}
+
+		timer.Reset(syncPeriod - timeutil.Since(lastSync))
+		select {
+		case <-s.closeCh:
+			return
+		case <-timer.C:
+			timer.Read = true
+		}
+
+		s.Lock()
+	}
+}
+
 // Close closes the database by deallocating the underlying handle.
 func (r *RocksDB) Close() {
 	if r.rdb == nil {
@@ -782,6 +843,12 @@ func (r *RocksDB) Close() {
 	r.syncer.closed = true
 	r.syncer.cond.Signal()
 	r.syncer.Unlock()
+
+	close(r.asyncer.closeCh)
+	r.asyncer.Lock()
+	r.asyncer.closed = true
+	r.asyncer.cond.Signal()
+	r.asyncer.Unlock()
 }
 
 // CreateCheckpoint creates a RocksDB checkpoint in the given directory (which
@@ -2053,20 +2120,24 @@ func (r *rocksDBBatch) Commit(syncCommit bool, commitType BatchCommitType) error
 	c.Lock()
 
 	var leader bool
+	pendings := &c.pending
+	asyncWAL := false
 	if commitType == TsCommitType {
-		c.pending, c.groupSize, leader = makeBatchGroup(c.pending, r, c.groupSize, tsMaxBatchGroupSize)
+		c.pendingTs, c.tsGroupSize, leader = makeBatchGroup(c.pendingTs, r, c.tsGroupSize, tsMaxBatchGroupSize)
+		pendings = &c.pendingTs
+		asyncWAL = asyncWrite
 	} else if commitType == NormalCommitType {
 		c.pending, c.groupSize, leader = makeBatchGroup(c.pending, r, c.groupSize, maxBatchGroupSize)
 	}
 	if leader {
 		// We're the leader of our group. Wait for any running commit to finish and
 		// for our batch to make it to the head of the pending queue.
-		for c.committing || c.pending[0] != r {
+		for c.committing || (*pendings)[0] != r {
 			c.cond.Wait()
 		}
 
 		var pending []*rocksDBBatch
-		pending, c.pending = nextBatchGroup(c.pending)
+		pending, *pendings = nextBatchGroup(*pendings)
 		c.committing = true
 		c.Unlock()
 
@@ -2115,6 +2186,10 @@ func (r *rocksDBBatch) Commit(syncCommit bool, commitType BatchCommitType) error
 				b.commitErr = err
 				b.commitWG.Done()
 			} else {
+				if asyncWAL {
+					b.commitErr = err
+					b.commitWG.Done()
+				}
 				syncing = append(syncing, b)
 			}
 		}
@@ -2122,15 +2197,27 @@ func (r *rocksDBBatch) Commit(syncCommit bool, commitType BatchCommitType) error
 		if len(syncing) > 0 {
 			// The commit was successful and one or more of the batches requires
 			// syncing: notify the sync goroutine.
-			s := &r.parent.syncer
-			s.Lock()
-			if len(s.pending) == 0 {
-				s.pending = syncing
+			if asyncWAL {
+				// only use asyncer when need write WAL async, and asyncer will
+				// always not respond for the commitWG.
+				s := &r.parent.asyncer
+				s.Lock()
+				if s.waiting {
+					s.waiting = false
+					s.cond.Signal()
+				}
+				s.Unlock()
 			} else {
-				s.pending = append(s.pending, syncing...)
+				s := &r.parent.syncer
+				s.Lock()
+				if len(s.pending) == 0 {
+					s.pending = syncing
+				} else {
+					s.pending = append(s.pending, syncing...)
+				}
+				s.cond.Signal()
+				s.Unlock()
 			}
-			s.cond.Signal()
-			s.Unlock()
 		}
 	} else {
 		c.Unlock()

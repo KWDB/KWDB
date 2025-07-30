@@ -5828,6 +5828,35 @@ end
 limit 37;
 ---------- fix ZDP-45935 end ----------
 
+---------- fix ICIPEO start ----------
+set statement_timeout='1s';
+
+select
+    1
+from
+    (
+        select
+            ref_1.e5 as c2
+        from
+            test_vacuum.t1 as ref_0
+                inner join test_vacuum.t1 as ref_1
+                           on (
+                               EXISTS (
+                                       select
+                                           ref_0.code10 as c0
+                                       from
+                                           test_vacuum.t1 as ref_2 ))) as subq_0
+where cast(nullif(case when EXISTS (
+        select 1 from
+            test_vacuum.t1 as ref_3
+        where EXISTS (
+                      select 1 from
+                          test_vacuum.t1 as ref_4
+                      where subq_0.c2 = ref_3.code3)) then null else null end, null) as oid) < 1;
+
+---------- fix ICIPEO end ----------
+
+
 -- delete data
 set cluster setting ts.parallel_degree=default;
 use defaultdb;

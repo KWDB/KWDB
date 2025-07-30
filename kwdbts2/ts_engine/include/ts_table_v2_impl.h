@@ -126,7 +126,7 @@ class TsTableV2Impl : public TsTable {
     *
     * @return KStatus
     */
-  virtual KStatus TSxClean(kwdbContext_p ctx);
+  KStatus TSxClean(kwdbContext_p ctx) override;
 
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                              const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
@@ -176,7 +176,8 @@ class TsTableV2Impl : public TsTable {
    * @return
    */
   KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
-                                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) override;
+                                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                                  uint64_t mtr_id, bool writeWAL) override;
 
   /**
    * @brief Delete data based on the primary tag and timestamp range.
@@ -188,12 +189,14 @@ class TsTableV2Impl : public TsTable {
    * @return KStatus
    */
   KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
-                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) override;
+                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id,
+                             bool writeWAL) override;
 
   KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);
   KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
-  KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<EntityResultIndex>& entity_store);
+  KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                vector<EntityResultIndex>& entity_store) override;
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;

@@ -689,6 +689,9 @@ type ExecutorConfig struct {
 
 	// ProcedureCache is the cache of procedures.
 	ProcedureCache *ProcedureCache
+
+	// CDCCoordinator is the coordinator of CDC.
+	CDCCoordinator execinfra.CDCCoordinator
 }
 
 // Three modes of activation
@@ -2086,6 +2089,10 @@ func (m *sessionDataMutator) SetForceSavepointRestart(val bool) {
 
 func (m *sessionDataMutator) SetMultiModelEnabled(val bool) {
 	m.data.MultiModelEnabled = val
+}
+
+func (m *sessionDataMutator) SetTimeBucketEnabled(val bool) {
+	m.data.TimeBucketEnabled = val
 }
 
 func (m *sessionDataMutator) SetHashScanMode(val int) {

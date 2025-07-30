@@ -18,8 +18,8 @@ extern int g_engine_version;
 
 namespace kwdbts {
 
-WALFileMgr::WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt)
-    : wal_path_(std::move(wal_path)), table_id_(table_id), opt_(opt) {
+WALFileMgr::WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt, bool read_chk)
+    : wal_path_(std::move(wal_path)), table_id_(table_id), opt_(opt), read_chk_(read_chk) {
   file_mutex_ = new WALFileMgrFileLatch(LATCH_ID_WALFILEMGR_FILE_MUTEX);
 }
 
