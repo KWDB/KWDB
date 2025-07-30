@@ -48,16 +48,16 @@
 namespace kwdbts {
 
 // todo(liangbo01) using normal path for mem_segment.
-TsVGroup::TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
                    std::shared_mutex* engine_mutex, bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
-      path_(std::filesystem::path(engine_options.db_path) / VGroupDirName(vgroup_id)),
+      path_(std::filesystem::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
-      version_manager_(std::make_unique<TsVersionManager>(engine_options.io_env, path_)),
+      version_manager_(std::make_unique<TsVersionManager>(engine_options->io_env, path_)),
       enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {
@@ -66,7 +66,7 @@ TsVGroup::~TsVGroup() {
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
-  auto s = engine_options_.io_env->NewDirectory(path_);
+  auto s = engine_options_->io_env->NewDirectory(path_);
   if (s == FAIL) {
     LOG_ERROR("Failed to create directory: %s", path_.c_str());
     return s;
@@ -79,7 +79,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   }
   initCompactThread();
 
-  wal_manager_ = std::make_unique<WALMgr>(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_);
+  wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_);
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
   auto res = wal_manager_->Init(ctx);
   if (res == KStatus::FAIL) {
@@ -106,7 +106,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
                           TSEntityID entity_id, TSSlice* payload, bool write_wal) {
   TS_LSN current_lsn = 1;
-  if (engine_options_.wal_level != WALMode::OFF && write_wal) {
+  if (engine_options_->wal_level != WALMode::OFF && write_wal) {
     LockSharedLevelMutex();
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
@@ -127,7 +127,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     }
   }
   // TODO(limeng04): import and export current lsn that temporarily use wal
-  if (engine_options_.wal_level != WALMode::OFF && !write_wal) {
+  if (engine_options_->wal_level != WALMode::OFF && !write_wal) {
     current_lsn = wal_manager_->FetchCurrentLSN();
   }
   std::list<TSMemSegRowData> rows;
@@ -217,7 +217,7 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   wal_manager_->Unlock();
 
   // new tmp wal mgr to read chk wal file
-  WALMgr tmp_wal = WALMgr(engine_options_.db_path, VGroupDirName(vgroup_id_), &engine_options_, true);
+  WALMgr tmp_wal = WALMgr(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_, true);
   tmp_wal.InitForChk(ctx, meta);
   s = tmp_wal.ReadWALLog(logs, first_lsn, last_lsn, ignore);
   return s;
@@ -833,7 +833,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     return KStatus::FAIL;
   }
   auto tag_table = tb_schema_manager->GetTagTable();
-  if (engine_options_.wal_level != WALMode::OFF) {
+  if (engine_options_->wal_level != WALMode::OFF) {
     TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
@@ -876,7 +876,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
   std::vector<DelRowSpan> dtp_list;
   // todo(xy): need to initialize lsn if wal_level = off
   TS_LSN current_lsn = 0;
-  if (engine_options_.wal_level != WALMode::OFF) {
+  if (engine_options_->wal_level != WALMode::OFF) {
     LockSharedLevelMutex();
     KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
     UnLockSharedLevelMutex();

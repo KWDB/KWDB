@@ -60,7 +60,7 @@ class TsVGroup {
   // mutex for initialize/allocate/get max_entity_id_
   mutable std::mutex entity_id_mutex_;
 
-  EngineOptions engine_options_;
+  EngineOptions* engine_options_ = nullptr;
 
   std::shared_mutex* engine_wal_level_mutex_ = nullptr;
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
@@ -85,7 +85,7 @@ class TsVGroup {
  public:
   TsVGroup() = delete;
 
-  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+  TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
            std::shared_mutex* engine_mutex, bool enable_compact_thread = true);
 
   ~TsVGroup();

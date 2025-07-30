@@ -65,7 +65,7 @@ class TsEntitySegmentTest : public ::testing::Test {
     std::shared_mutex wal_level_mutex;
     mgr->Init(nullptr);
     opts.db_path = "db001-123";
-    vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), &wal_level_mutex, false);
+    vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
   }
 };

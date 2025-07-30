@@ -202,7 +202,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get(),
+    auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(),
                                              &wal_level_mutex_);
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
