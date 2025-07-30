@@ -163,7 +163,7 @@ ExternalProject_Add(
     BINARY_DIR "${BRPC_BUILD_DIR}"
     CONFIGURE_COMMAND
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
-        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include --libs=/usr/lib
+        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
         cd "${BRPC_BUILD_DIR}" && $(MAKE) -j$(nproc)
     BUILD_IN_SOURCE 0
@@ -367,7 +367,7 @@ endif ()
 
 # Older versions of gcc required an explicit link to stdc++fs
 if (CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.1)
-        target_link_libraries(${KWDBTS2_SERVER_LIB} stdc++fs)
+        target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE stdc++fs)
 endif ()
 
 INSTALL(TARGETS ${KWDBTS2_SERVER_LIB}
