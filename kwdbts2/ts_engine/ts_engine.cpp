@@ -229,7 +229,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
-
+  LOG_INFO("TS engine WAL level is: %d", options_.wal_level);
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   auto res = wal_mgr_->Init(ctx);
   if (res == KStatus::FAIL) {
