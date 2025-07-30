@@ -1893,9 +1893,7 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
 
   if (GetClusterSetting(ctx, "ts.wal.wal_level", &value) == SUCCESS) {
     if (std::stoll(value) != options_.wal_level) {
-      for (auto vgroup : vgroups_) {
-        vgroup->LockLevelMutex();
-      }
+      wal_level_mutex_.lock();
       // wlock all vgroup rwlock
       KStatus s = CreateCheckpoint(ctx);
       if (s == KStatus::FAIL) {
@@ -1903,9 +1901,7 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
       }
       options_.wal_level = std::stoll(value);
       LOG_INFO("update wal level to %hhu", options_.wal_level)
-      for (auto vgroup : vgroups_) {
-        vgroup->UnLockLevelMutex();
-      }
+      wal_level_mutex_.unlock();
       // unlock
     }
   }
