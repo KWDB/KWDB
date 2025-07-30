@@ -282,6 +282,8 @@ type Replica struct {
 		tsFlushedIndex uint64
 		// prepare for tsFlushedIndex.
 		tsPrepareFlushedIndex uint64
+		// inconsistent indicate whether the replica has inconsistent data.
+		inconsistent bool
 		// A map of raft log index of pending snapshots to deadlines.
 		// Used to prohibit raft log truncations that would leave a gap between
 		// the snapshot and the new first index. The map entry has a zero

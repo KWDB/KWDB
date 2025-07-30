@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
@@ -1532,4 +1533,97 @@ func (txn *Txn) SetIsoLevel(isoLevel enginepb.Level) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	return txn.mu.sender.SetIsoLevel(isoLevel)
+}
+
+// WriteTsTxnRecord writes a ts transaction record under a dedicated key.
+// This function wraps the operation in a transaction to ensure atomicity.
+func (db *DB) WriteTsTxnRecord(ctx context.Context, record *roachpb.TsTxnRecord) error {
+	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
+		key := keys.MakeTxnRecordKey(record.ID)
+		b := Batch{}
+		value, err := protoutil.Marshal(record)
+		if err != nil {
+			return err
+		}
+		b.Put(key, value)
+		if err = txn.Run(ctx, &b); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetTsTxnRecord retrieves a ts transaction record by transaction ID.
+// If the record exists, it returns true along with the deserialized record.
+// If the record does not exist, it returns false and a nil record.
+func (db *DB) GetTsTxnRecord(
+	ctx context.Context, txnID uuid.UUID,
+) (bool, *roachpb.TsTxnRecord, error) {
+	var res roachpb.TsTxnRecord
+	var isExists bool
+	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
+		key := keys.MakeTxnRecordKey(txnID)
+		keyValue, err := txn.Get(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !keyValue.Exists() {
+			return nil
+		}
+		isExists = true
+		err = protoutil.Unmarshal(keyValue.ValueBytes(), &res)
+		if err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return false, nil, err
+	}
+	return isExists, &res, nil
+}
+
+// ScanAndWriteTsTxnRecord attempts to fetch an existing transaction record by ID,
+// and either creates a new one or updates the heartbeat timestamp of the existing record.
+// It returns the latest version of the transaction record as observed during the read phase.
+func (db *DB) ScanAndWriteTsTxnRecord(
+	ctx context.Context, txnRecord *roachpb.TsTxnRecord,
+) (bool, *roachpb.TsTxnRecord, error) {
+	var res roachpb.TsTxnRecord
+	var isExists bool
+	if err := db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
+		var newTxn *roachpb.TsTxnRecord
+		key := keys.MakeTxnRecordKey(txnRecord.ID)
+		log.VEventf(ctx, 2, "get txn record when heartbeat loop, txn id: %v\n", txnRecord.ID)
+		keyValue, err := txn.Get(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !keyValue.Exists() {
+			newTxn = txnRecord
+		} else {
+			err = protoutil.Unmarshal(keyValue.ValueBytes(), &res)
+			if err != nil {
+				return err
+			}
+			newTxn = &res
+			newTxn.LastHeartbeat = txnRecord.LastHeartbeat
+		}
+		log.VEventf(ctx, 2, "write txn record when heartbeat loop, txn id: %v, txn status: %v\n", txnRecord.ID, txnRecord.Status)
+		b := Batch{}
+		value, err := protoutil.Marshal(newTxn)
+		if err != nil {
+			return err
+		}
+		b.Put(key, value)
+		if err = txn.Run(ctx, &b); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return false, nil, err
+	}
+	return isExists, &res, nil
 }

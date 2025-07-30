@@ -25,6 +25,7 @@
 package execbuilder
 
 import (
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
@@ -82,6 +83,13 @@ type Builder struct {
 
 	// IsDDL is set to true if the statement contains DDL.
 	IsDDL bool
+
+	// ForceFilterInME is set to true if forcing filtering in ME and preventing pushdown to tsengine.
+	// This is used for CDC filtering.
+	ForceFilterInME bool
+	// CDCCoordinator is used to check weather the table with CDC task
+	// and capture and construct CDC data while constructing the payload.
+	CDCCoordinator execinfra.CDCCoordinator
 
 	// PhysType used in time series query to mark which engine the query is for.
 	PhysType tree.PhysicalLayerType

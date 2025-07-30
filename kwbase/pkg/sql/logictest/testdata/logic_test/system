@@ -17,7 +17,9 @@ comments                         BASE TABLE
 descriptor                       BASE TABLE
 eventlog                         BASE TABLE
 jobs                             BASE TABLE
+kwdb_cdc_watermark               BASE TABLE
 kwdb_replication_info            BASE TABLE
+kwdb_streams                     BASE TABLE
 kwdb_ts_table                    BASE TABLE
 lease                            BASE TABLE
 locations                        BASE TABLE
@@ -47,6 +49,29 @@ zones                            BASE TABLE
 query I rowsort
 SELECT id FROM system.descriptor
 ----
+31
+32
+33
+34
+35
+36
+42
+46
+47
+56
+57
+58
+60
+24
+25
+26
+27
+28
+30
+61
+75
+76
+77
 1
 2
 3
@@ -62,27 +87,6 @@ SELECT id FROM system.descriptor
 20
 21
 23
-24
-25
-26
-27
-28
-30
-31
-32
-33
-34
-35
-36
-42
-46
-47
-56
-57
-58
-75
-76
-77
 
 # Verify we can read "protobuf" columns.
 query I
@@ -242,6 +246,16 @@ system  public  jobs                             root    GRANT
 system  public  jobs                             root    INSERT
 system  public  jobs                             root    SELECT
 system  public  jobs                             root    UPDATE
+system  public  kwdb_cdc_watermark               admin   DELETE
+system  public  kwdb_cdc_watermark               admin   GRANT
+system  public  kwdb_cdc_watermark               admin   INSERT
+system  public  kwdb_cdc_watermark               admin   SELECT
+system  public  kwdb_cdc_watermark               admin   UPDATE
+system  public  kwdb_cdc_watermark               root    DELETE
+system  public  kwdb_cdc_watermark               root    GRANT
+system  public  kwdb_cdc_watermark               root    INSERT
+system  public  kwdb_cdc_watermark               root    SELECT
+system  public  kwdb_cdc_watermark               root    UPDATE
 system  public  kwdb_replication_info            admin   DELETE
 system  public  kwdb_replication_info            admin   GRANT
 system  public  kwdb_replication_info            admin   INSERT
@@ -252,6 +266,16 @@ system  public  kwdb_replication_info            root    GRANT
 system  public  kwdb_replication_info            root    INSERT
 system  public  kwdb_replication_info            root    SELECT
 system  public  kwdb_replication_info            root    UPDATE
+system  public  kwdb_streams                     admin   DELETE
+system  public  kwdb_streams                     admin   GRANT
+system  public  kwdb_streams                     admin   INSERT
+system  public  kwdb_streams                     admin   SELECT
+system  public  kwdb_streams                     admin   UPDATE
+system  public  kwdb_streams                     root    DELETE
+system  public  kwdb_streams                     root    GRANT
+system  public  kwdb_streams                     root    INSERT
+system  public  kwdb_streams                     root    SELECT
+system  public  kwdb_streams                     root    UPDATE
 system  public  kwdb_ts_table                    admin   DELETE
 system  public  kwdb_ts_table                    admin   GRANT
 system  public  kwdb_ts_table                    admin   INSERT

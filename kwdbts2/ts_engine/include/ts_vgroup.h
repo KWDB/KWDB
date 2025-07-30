@@ -150,14 +150,27 @@ class TsVGroup {
 
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
+  uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
+    return tsx_manager_->getMtrID(ts_trans_id);
+  }
+
+  void SetMtrIDByTsxID(uint64_t uuid, const char* ts_trans_id) {
+    return tsx_manager_->insertMtrID(ts_trans_id, uuid);
+  }
+
+  bool IsExplict(uint64_t mini_trans_id) {
+    return tsx_manager_->IsExplict(mini_trans_id);
+  }
+
   KStatus Compact();
+
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);
 
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload);
 
-  KStatus UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn);
+  KStatus RemoveChkFile(kwdbContext_p ctx);
 
   KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
@@ -203,7 +216,7 @@ class TsVGroup {
   const std::vector<KwTsSpan>& ts_spans);
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
+                         timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();
 
@@ -255,7 +268,7 @@ class TsVGroup {
    *
    * @return KStatus
    */
-  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id);
+  KStatus MtrBegin(kwdbContext_p ctx, uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr);
 
   /**
    * @brief Submit the mini-transaction for the current EntityGroup.
@@ -263,7 +276,7 @@ class TsVGroup {
    *
    * @return KStatus
    */
-  KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id);
+  KStatus MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx_id = nullptr);
 
   /**
    * @brief Roll back the mini-transaction of the current EntityGroup.
@@ -271,7 +284,7 @@ class TsVGroup {
    *
    * @return KStatus
    */
-  KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false);
+  KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
  private:

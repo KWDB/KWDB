@@ -53,7 +53,7 @@ TEST(ColumnBlockBuilder, FixLen) {
   // compress & decompress
   TsColumnCompressInfo compress_info;
   std::string out;
-  EXPECT_EQ(col_block1->GetCompressedData(&out, &compress_info), SUCCESS);
+  EXPECT_EQ(col_block1->GetCompressedData(&out, &compress_info, true), SUCCESS);
 
   std::unique_ptr<TsColumnBlock> col_block2;
   ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
@@ -61,22 +61,20 @@ TEST(ColumnBlockBuilder, FixLen) {
             SUCCESS);
 
   {
-    char *value = nullptr;
+    const char *value = col_block1->GetColAddr();
     TsBitmap bitmap;
-    EXPECT_EQ(col_block1->GetColAddr(&value), SUCCESS);
     EXPECT_EQ(col_block1->GetColBitmap(bitmap), SUCCESS);
-    int64_t *data1 = reinterpret_cast<int64_t *>(value);
+    const int64_t *data1 = reinterpret_cast<const int64_t *>(value);
     for (int i = 0; i < full_data.size(); ++i) {
       EXPECT_EQ(data1[i], full_data[i]);
       EXPECT_EQ(bitmap[i], full_bitmaps[i]);
     }
   }
   {
-    char *value = nullptr;
+    const char *value = col_block2->GetColAddr();
     TsBitmap bitmap;
-    EXPECT_EQ(col_block2->GetColAddr(&value), SUCCESS);
     EXPECT_EQ(col_block2->GetColBitmap(bitmap), SUCCESS);
-    int64_t *data1 = reinterpret_cast<int64_t *>(value);
+    const int64_t *data1 = reinterpret_cast<const int64_t *>(value);
     for (int i = 0; i < full_data.size(); ++i) {
       if (bitmap[i] == kValid) {
         EXPECT_EQ(data1[i], full_data[i]);
@@ -89,17 +87,16 @@ TEST(ColumnBlockBuilder, FixLen) {
   builder2.AppendColumnBlock(*col_block2);
   auto col_block3 = builder2.GetColumnBlock();
   EXPECT_EQ(col_block3->GetRowNum(), std::accumulate(block_len.begin(), block_len.end(), 0) * 2);
-  ASSERT_EQ(col_block3->GetCompressedData(&out, &compress_info), SUCCESS);
+  ASSERT_EQ(col_block3->GetCompressedData(&out, &compress_info, true), SUCCESS);
   std::unique_ptr<TsColumnBlock> col_block4;
   ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
                                                      compress_info, &col_block4),
             SUCCESS);
   {
-    char *value = nullptr;
+    const char *value = col_block3->GetColAddr();
     TsBitmap bitmap;
-    EXPECT_EQ(col_block3->GetColAddr(&value), SUCCESS);
     EXPECT_EQ(col_block3->GetColBitmap(bitmap), SUCCESS);
-    int64_t *data1 = reinterpret_cast<int64_t *>(value);
+    const int64_t *data1 = reinterpret_cast<const int64_t *>(value);
     for (int i = 0; i < full_data.size() * 2; ++i) {
       if (bitmap[i] == kValid) {
         EXPECT_EQ(data1[i], full_data[i % full_data.size()]);
@@ -108,11 +105,10 @@ TEST(ColumnBlockBuilder, FixLen) {
   }
 
   {
-    char *value = nullptr;
+    const char *value = col_block4->GetColAddr();
     TsBitmap bitmap;
-    EXPECT_EQ(col_block4->GetColAddr(&value), SUCCESS);
     EXPECT_EQ(col_block4->GetColBitmap(bitmap), SUCCESS);
-    int64_t *data1 = reinterpret_cast<int64_t *>(value);
+    const int64_t *data1 = reinterpret_cast<const int64_t *>(value);
     for (int i = 0; i < full_data.size() * 2; ++i) {
       if (bitmap[i] == kValid) {
         EXPECT_EQ(data1[i], full_data[i % full_data.size()]);
@@ -171,7 +167,7 @@ TEST(ColumnBlockBuilder, VarLen) {
   // compress & decompress
   TsColumnCompressInfo compress_info;
   std::string out;
-  EXPECT_EQ(col_block1->GetCompressedData(&out, &compress_info), SUCCESS);
+  EXPECT_EQ(col_block1->GetCompressedData(&out, &compress_info, true), SUCCESS);
 
   std::unique_ptr<TsColumnBlock> col_block2;
   ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
@@ -210,7 +206,7 @@ TEST(ColumnBlockBuilder, VarLen) {
   builder2.AppendColumnBlock(*col_block2);
   auto col_block3 = builder2.GetColumnBlock();
   EXPECT_EQ(col_block3->GetRowNum(), std::accumulate(block_len.begin(), block_len.end(), 0) * 2);
-  ASSERT_EQ(col_block3->GetCompressedData(&out, &compress_info), SUCCESS);
+  ASSERT_EQ(col_block3->GetCompressedData(&out, &compress_info, true), SUCCESS);
   std::unique_ptr<TsColumnBlock> col_block4;
   ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
                                                      compress_info, &col_block4),

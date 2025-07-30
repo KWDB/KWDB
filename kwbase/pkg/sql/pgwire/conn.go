@@ -976,11 +976,13 @@ func (c *conn) handleSimpleQuery(
 				r := c.allocCommandResult()
 				*r = commandResult{conn: c, typ: commandComplete}
 
+				// According to the node mode processing
 				if !evalCtx.StartSinglenode || unqis.GetEngineVersion() == "2" {
-					// start && single-node KW_ENGINE_VERSION=2 (行存)
-					err = sql.GetPayloadMapForMuiltNode(ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg.NodeInfo.NodeID.Get())
+					// start
+					err = sql.GetPayloadMapForMuiltNode(
+						ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg)
 				} else if unqis.GetEngineVersion() == "1" {
-					// single-node KW_ENGINE_VERSION=1 (列存)(默认值为1)
+					// single node mode
 					if di.InputValues, err = sql.GetInputValues(ctx, ptCtx, &dit.ColsDesc, &di, stmts); err != nil {
 						return err
 					}
@@ -989,7 +991,7 @@ func (c *conn) handleSimpleQuery(
 					priTagValMap := sql.BuildpriTagValMap(di)
 					di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 					for _, idx := range priTagValMap {
-						if err = sql.BuildPayload(&evalCtx, idx, &di, dit); err != nil {
+						if err = sql.BuildPayload(&evalCtx, idx, &di, dit, cfg); err != nil {
 							return err
 						}
 					}
@@ -1007,7 +1009,13 @@ func (c *conn) handleSimpleQuery(
 				}
 
 				// Send insert_direct information
-				return Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse)
+				if err = Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse); err != nil {
+					return err
+				}
+				if r.Err() != nil {
+					return r.err
+				}
+				return nil
 			}); err != nil {
 				return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
 			}
@@ -1202,6 +1210,7 @@ func getEvalContext(ctx context.Context, txn *kv.Txn, server *sql.Server) tree.E
 		SessionData:      &sd,
 		InternalExecutor: server.GetCFG().InternalExecutor,
 		Settings:         server.GetCFG().Settings,
+		NodeID:           server.GetCFG().NodeID.Get(),
 	}
 	return EvalContext
 }

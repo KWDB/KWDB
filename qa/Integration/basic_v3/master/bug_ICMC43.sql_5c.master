@@ -1,0 +1,31 @@
+> set cluster setting sql.hashrouter.partition_coefficient_num=1;
+SET CLUSTER SETTING
+> Create ts database index_tag_test_ts_1;
+CREATE TS DATABASE
+> Create table index_tag_test_ts_1.t1(k_timestamp timestamp not null,e1 int) tags
+    (a int not null, b int, c int, d int, e int )primary tags(a) with hash(5);
+CREATE TABLE
+> use index_tag_test_ts_1;
+SET
+> create index index_tag_1 on index_tag_test_ts_1.t1(e);
+CREATE INDEX
+> drop index index_tag_1;
+DROP INDEX
+> select range_type, database_name, table_name from kwdb_internal.ranges_no_leases where database_name='index_tag_test_ts_1';
+  range_type |    database_name    | table_name
+-------------+---------------------+-------------
+  TS_RANGE   | index_tag_test_ts_1 | t1
+  TS_RANGE   | index_tag_test_ts_1 | t1
+  TS_RANGE   | index_tag_test_ts_1 | t1
+  TS_RANGE   | index_tag_test_ts_1 | t1
+  TS_RANGE   | index_tag_test_ts_1 | t1
+(5 rows)
+> drop database index_tag_test_ts_1;
+DROP DATABASE
+> set cluster setting sql.hashrouter.partition_coefficient_num=DEFAULT;
+SET CLUSTER SETTING
+> show cluster setting sql.hashrouter.partition_coefficient_num;
+  sql.hashrouter.partition_coefficient_num
+--------------------------------------------
+                                       400
+(1 row)

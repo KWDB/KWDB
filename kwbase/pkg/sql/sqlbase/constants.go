@@ -164,6 +164,7 @@ const (
 	CrdbInternalKWDBAttributeValueTableID
 	CrdbInternalKWDBObjectCreateStatementID
 	CrdbInternalKWDBObjectRetentionID
+	CrdbInternalKWDBStreamsTableID
 	CrdbInternalTSEInfoID
 	InformationSchemaID
 	InformationSchemaAdministrableRoleAuthorizationsID
@@ -242,7 +243,8 @@ const (
 	CrdbInternalKWDBSchedulesTableID
 	CrdbInternalKWDBFunctionsTableID
 	KwdbInternalKWDBProceduresTableID
-	MinVirtualID = KwdbInternalKWDBProceduresTableID
+	CrdbInternalTSTransactionRecordID
+	MinVirtualID = CrdbInternalTSTransactionRecordID
 )
 
 const (

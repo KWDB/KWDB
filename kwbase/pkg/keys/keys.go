@@ -748,6 +748,13 @@ func MakeSequenceKey(tableID uint32) []byte {
 	return key
 }
 
+// MakeTxnRecordKey returns the key used to store the value of a transaction record.
+func MakeTxnRecordKey(id uuid.UUID) []byte {
+	key := MakeTablePrefix(TsTxnTableID)
+	key = encoding.EncodeUntaggedUUIDValue(key, id)
+	return key
+}
+
 // GetRowPrefixLength returns the length of the row prefix of the key. A table
 // key's row prefix is defined as the maximal prefix of the key that is also a
 // prefix of every key for the same row. (Any key with this maximal prefix is
@@ -951,6 +958,11 @@ func (b RangeIDPrefixBuf) RangeLastReplicaGCTimestampKey() roachpb.Key {
 // TsFlushedIndexKey returns a system-local key for a ts flushed index.
 func (b RangeIDPrefixBuf) TsFlushedIndexKey() roachpb.Key {
 	return append(b.unreplicatedPrefix(), LocalTsFlushedIndexSuffix...)
+}
+
+// InconsistentKey returns a system-local key for a inconsistent flag.
+func (b RangeIDPrefixBuf) InconsistentKey() roachpb.Key {
+	return append(b.unreplicatedPrefix(), LocalInconsistentSuffix...)
 }
 
 // ZoneKeyPrefix returns the key prefix for id's row in the system.zones table.

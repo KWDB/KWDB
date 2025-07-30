@@ -140,6 +140,8 @@ var (
 	localRangeLastVerificationTimestampSuffix = []byte("rlvt")
 	// LocalTsFlushedIndexSuffix is the suffix for the ts flushed index.
 	LocalTsFlushedIndexSuffix = []byte("tsf")
+	// LocalInconsistentSuffix is the suffix for the inconsistent flag.
+	LocalInconsistentSuffix = []byte("ics")
 
 	// 3. Range local keys
 	//
@@ -420,6 +422,9 @@ const (
 	EventLogTableID            = 56
 	ScheduledJobsTableID       = 57
 	UDRTableID                 = 58
+	TsTxnTableID               = 59 // TsTxnTableID used for ts transaction record
+	KWDBCDCWatermarkTableID    = 60
+	KWDBStreamsTableID         = 61
 	// CommentType is type for system.comments
 	DatabaseCommentType = 0
 	TableCommentType    = 1

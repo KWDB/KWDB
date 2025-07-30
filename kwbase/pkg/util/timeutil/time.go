@@ -25,6 +25,7 @@
 package timeutil
 
 import (
+	"errors"
 	"strings"
 	"time"
 )
@@ -70,6 +71,37 @@ func SubTimes(after time.Time, before time.Time) int64 {
 // Unix wraps time.Unix ensuring that the result is in UTC instead of Local.
 func Unix(sec, nsec int64) time.Time {
 	return time.Unix(sec, nsec).UTC()
+}
+
+// FromUnixMilli returns the local Time corresponding to the given Unix time,
+// msec milliseconds since January 1, 1970 UTC.
+func FromUnixMilli(msec int64) time.Time {
+	return Unix(msec/1e3, (msec%1e3)*1e6)
+}
+
+// FromTimestamp convert timestamp and precision to time.
+func FromTimestamp(ts int64, precision int32) time.Time {
+	switch precision {
+	case 0:
+		return Unix(ts, 0)
+	case 3:
+		return Unix(ts/1e3, (ts%1e3)*1e6)
+	case 6:
+		return Unix(ts/1e6, (ts%1e6)*1e3)
+	case 9:
+		return Unix(ts/1e9, ts%1e9)
+	default:
+		panic(errors.New("precision invalid"))
+	}
+}
+
+// ToUnixMilli returns t as a Unix time, the number of milliseconds elapsed since
+// January 1, 1970 UTC. The result is undefined if the Unix time in
+// milliseconds cannot be represented by an int64 (a date more than 292 million
+// years before or after 1970). The result does not depend on the
+// location associated with t.
+func ToUnixMilli(t time.Time) int64 {
+	return t.Unix()*1e3 + int64(t.Round(time.Millisecond).Nanosecond())/1e6
 }
 
 // SleepUntil sleeps until the given time. The current time is

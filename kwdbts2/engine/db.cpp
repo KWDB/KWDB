@@ -377,15 +377,15 @@ TSStatus TSTableAutonomy(TSEngine* engine, TSTableID table_id) {
 #endif
 }
 
-TSStatus TSPutEntity(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num, RangeGroup range_group,
-                     uint64_t mtr_id) {
+TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
+                     uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->PutEntity(ctx_p, table_id, range_group.range_group_id, payload, payload_num, mtr_id);
+  s = engine->PutEntity(ctx_p, tableId, range_group.range_group_id, payload, payload_num, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("PutEntity Error!");
   }
@@ -413,6 +413,32 @@ TSStatus TSPutData(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_
   uint64_t tmp_range_group_id = 1;
   s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload, payload_num, mtr_id,
                       inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream ss;
+    ss << tmp_range_group_id;
+    return ToTsStatus("PutData Error! RangeGroup:" + ss.str());
+  }
+  return TSStatus{nullptr, 0};
+}
+
+// TSPutDataExplicit is used for time-series data insertion with distributed transaction support.
+TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num,
+                           RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                           uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
+  KWDB_DURATION(StStatistics::Get().ts_put);
+  // The CGO calls the interface, and the GO layer code will call this interface to write data
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  // Parsing table_id from payload
+  TSTableID tmp_table_id = *reinterpret_cast<uint64_t*>(payload[0].data + Payload::table_id_offset_);
+  // Parse range_group_id from payload
+  uint64_t tmp_range_group_id = 1;
+  s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload, payload_num, mtr_id,
+                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
   if (s != KStatus::SUCCESS) {
     std::ostringstream ss;
     ss << tmp_range_group_id;
@@ -454,8 +480,8 @@ TSStatus TSGetWaitThreadNum(TSEngine* engine, void* resp) {
   return kTsSuccess;
 }
 
-TSStatus TsDeleteEntities(TSEngine* engine, TSTableID table_id, TSSlice* primary_tags, size_t primary_tags_num,
-                          uint64_t range_group_id, uint64_t* count, uint64_t mtr_id) {
+TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
+                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -466,15 +492,15 @@ TSStatus TsDeleteEntities(TSEngine* engine, TSTableID table_id, TSSlice* primary
   for (size_t i = 0; i < primary_tags_num; ++i) {
     p_tags.emplace_back(primary_tags[i].data, primary_tags[i].len);
   }
-  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id);
+  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteEntities Error!");
   }
   return kTsSuccess;
 }
 
-TSStatus TsDeleteRangeData(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                      HashIdSpan hash_span, KwTsSpans ts_spans, uint64_t* count, uint64_t mtr_id) {
+TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -482,15 +508,15 @@ TSStatus TsDeleteRangeData(TSEngine* engine, TSTableID table_id, uint64_t range_
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id);
+  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteRangeData Error!");
   }
   return kTsSuccess;
 }
 
-TSStatus TsDeleteData(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                      TSSlice primary_tag, KwTsSpans ts_spans, uint64_t* count, uint64_t mtr_id) {
+TSStatus TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag,
+                      KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -499,7 +525,7 @@ TSStatus TsDeleteData(TSEngine* engine, TSTableID table_id, uint64_t range_group
   }
   std::string p_tag(primary_tag.data, primary_tag.len);
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id);
+  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteData Error!");
   }
@@ -585,6 +611,51 @@ TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_grou
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   s = engine->TSMtrRollback(ctx_p, table_id, range_group_id, mtr_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Failed to rollback the TS mini-transaction!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TSMtrBeginExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
+                    uint64_t range_id, uint64_t index, uint64_t* mtr_id, const char* tsx_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->TSMtrBegin(ctx_p, table_id, range_group_id, range_id, index, *mtr_id, tsx_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Failed to begin the TS mini-transaction!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TSMtrCommitExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                             const char* tsx_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->TSMtrCommit(ctx_p, table_id, range_group_id, mtr_id, tsx_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Failed to commit the TS mini-transaction!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TSMtrRollbackExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                       const char* tsx_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->TSMtrRollback(ctx_p, table_id, range_group_id, mtr_id, false, tsx_id);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Failed to rollback the TS mini-transaction!");
   }
@@ -1013,6 +1084,63 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
     // todo(liangbo01) current interface dedup result no support multi-payload insert.
     s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
                         inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+    if (s != KStatus::SUCCESS) {
+      std::ostringstream ss;
+      ss << tmp_range_group_id;
+      return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
+    }
+  }
+  return kTsSuccess;
+}
+
+TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
+                            RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                            uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  // input parameter table_id is not correct, not use this parameter anymore.
+  // Parsing table_id from payload
+  TSTableID tmp_table_id = *reinterpret_cast<uint64_t*>(payload_row[0].data + Payload::table_id_offset_);
+  // Parse range_group_id from payload
+  uint64_t tmp_range_group_id = *reinterpret_cast<uint16_t*>(payload_row[0].data + Payload::hash_point_id_offset_);
+
+  std::shared_ptr<TsTable> ts_tb;
+  s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("GetTsTable Error!");
+  }
+  if (g_engine_version == 1) {
+    for (size_t i = 0; i < payload_num; i++) {
+      TSSlice payload;
+      s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
+      if (s != KStatus::SUCCESS) {
+        uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
+        if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
+          LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
+          return ToTsStatus("CheckAndAddSchemaVersion Error!");
+        }
+        if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
+          LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
+          return ToTsStatus("ConvertRowTypePayload Error!");
+        }
+      }
+      Defer defer([&](){ free(payload.data); });
+      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
+                          inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
+      if (s != KStatus::SUCCESS) {
+        std::ostringstream ss;
+        ss << tmp_range_group_id;
+        return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
+      }
+    }
+  } else {
+    // todo(liangbo01) current interface dedup result no support multi-payload insert.
+    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
+                        inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
     if (s != KStatus::SUCCESS) {
       std::ostringstream ss;
       ss << tmp_range_group_id;

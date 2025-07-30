@@ -535,6 +535,7 @@ func (ex *connExecutor) execPreparedirectBind(
 				SessionData:      &sd,
 				InternalExecutor: ex.server.GetCFG().InternalExecutor,
 				Settings:         ex.server.GetCFG().Settings,
+				NodeID:           ex.server.GetCFG().NodeID.Get(),
 			}
 			EvalContext.StartSinglenode = (ex.server.GetCFG().StartMode == StartSingleNode)
 			if err := GetColsInfo(ctx, EvalContext, &ps.PrepareInsertDirect.Dit.ColsDesc, ins, &di, &ps.PrepareMetadata.Statement); err != nil {
@@ -543,6 +544,17 @@ func (ex *connExecutor) execPreparedirectBind(
 			di.RowNum, di.ColNum = len(bindCmd.Args), len(di.IDMap)
 			di.PArgs.TSVersion = uint32(table.TsTable.TsVersion)
 			ptCtx := tree.NewParseTimeContext(ex.state.sqlTimestamp.In(ex.sessionData.DataConversion.Location))
+
+			// When the table has the pipe enabled, bind data needs to be converted into datums for filter.
+			if ex.server.GetCFG().CDCCoordinator != nil {
+				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) {
+					di.InputValues, err = getPrepareInputValues(ptCtx, &bindCmd, ps.InferredTypes, &di)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 			// Calculate rowTimestamps and save the value of the timestamp column
 			inputValues, rowTimestamps, err := TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
 			if err != nil {
@@ -550,9 +562,11 @@ func (ex *connExecutor) execPreparedirectBind(
 			}
 
 			if !EvalContext.StartSinglenode || ex.kwengineversion == "2" {
-				// start && single-node KW_ENGINE_VERSION=2 (Row-stored)
+				//start mode
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
-				if err = BuildRowBytesForPrepareTsInsert(ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, EvalContext, table, cfg.NodeInfo.NodeID.Get(), rowTimestamps); err != nil {
+				if err = BuildRowBytesForPrepareTsInsert(
+					ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, EvalContext, table,
+					cfg.NodeInfo.NodeID.Get(), rowTimestamps, ex.server.GetCFG()); err != nil {
 					return err
 				}
 
@@ -562,7 +576,7 @@ func (ex *connExecutor) execPreparedirectBind(
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				for _, priTagRowIdx := range priTagValMap {
 					if err = BuildPreparePayload(&EvalContext, inputValues, priTagRowIdx,
-						&di, ps.PrepareInsertDirect.Dit, bindCmd.Args); err != nil {
+						&di, ps.PrepareInsertDirect.Dit, bindCmd.Args, ex.server.GetCFG()); err != nil {
 						return err
 					}
 				}

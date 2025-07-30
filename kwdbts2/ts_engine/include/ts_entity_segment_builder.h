@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -24,6 +25,7 @@
 #include "ts_io.h"
 #include "ts_entity_segment.h"
 #include "ts_filename.h"
+#include "ts_lastsegment_builder.h"
 #include "ts_metric_block.h"
 #include "ts_version.h"
 
@@ -57,6 +59,8 @@ class TsEntitySegmentEntityItemFileBuilder {
   KStatus Open();
 
   KStatus AppendEntityItem(TsEntityItem& entity_item);
+
+  void MarkDelete() { w_file_->MarkDelete(); }
 
   uint64_t GetFileNumber() { return file_number_; }
 };
@@ -135,6 +139,9 @@ class TsEntityBlockBuilder {
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
 
+  TS_LSN min_lsn_ = UINT64_MAX;
+  TS_LSN max_lsn_ = 0;
+
  public:
   TsEntityBlockBuilder() = delete;
   TsEntityBlockBuilder(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
@@ -185,6 +192,8 @@ class TsEntitySegmentBuilder {
 
   KStatus WriteBlock(TsEntityKey& entity_key);
 
+  KStatus WriteCachedBlockSpan(TsEntityKey& entity_key);
+
   std::filesystem::path root_path_;
   TsEngineSchemaManager* schema_manager_;
   TsVersionManager* version_manager_;
@@ -197,13 +206,17 @@ class TsEntitySegmentBuilder {
   std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
   std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
-  std::shared_ptr<TsEntityBlockBuilder> block = nullptr;
+  std::unique_ptr<TsLastSegmentBuilder> builder_ = nullptr;
+  std::shared_ptr<TsEntityBlockBuilder> block_ = nullptr;
 
   std::shared_mutex mutex_;
 
   TsEntityItem cur_entity_item_;
 
   std::map<uint32_t, TsEntityItem> entity_items_;
+
+  std::deque<std::shared_ptr<TsBlockSpan>> cached_spans_;
+  size_t cached_count_ = 0;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,
@@ -259,9 +272,11 @@ class TsEntitySegmentBuilder {
 
   KStatus Compact(TsVersionUpdate *update);
 
-  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TSSlice data);
+  KStatus WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice data);
 
   KStatus WriteBatchFinish(TsVersionUpdate *update);
+
+  void MarkDelete();
 };
 
 }  // namespace kwdbts

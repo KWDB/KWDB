@@ -29,7 +29,10 @@ import (
 	"sync"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -432,4 +435,171 @@ func firstLockingIndex(ba *roachpb.BatchRequest) (int, *roachpb.Error) {
 		}
 	}
 	return -1, nil
+}
+
+// TsTxnAtomicityEnabled is a cluster setting that controls whether ts insert should guarantee atomicity.
+var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
+	"ts.txn.atomicity_enabled",
+	"if enabled, the atomicity of time-series transactions will be guaranteed",
+	false,
+)
+
+// tsTxnHeartbeater maintains the liveness of a ts insert transaction by periodically sending heartbeats.
+// Unlike the standard txnHeartbeater, tsTxnHeartbeater directly writes
+// to KV to persist heartbeat information and maintain the ts transaction record.
+// It cooperates with tsTxnCommitter via the signalCh. Once the transaction finished and status is pending,
+// tsTxnCommitter sends a TxnSignal to notify tsTxnHeartbeater to stop the heartbeat loop.
+type tsTxnHeartbeater struct {
+	log.AmbientContext
+	wrapped      lockedSender // The next sender in the interceptor stack.
+	txn          *kv.Txn      // Used for scanning and writing ts txn record.
+	loopInterval time.Duration
+	stopper      *stop.Stopper
+	clock        *hlc.Clock
+	mu           struct {
+		sync.Locker
+		loopStarted bool   // Indicates whether the heartbeat loop has started.
+		loopCancel  func() // Function to cancel the running heartbeat loop.
+		loopStop    bool   // Indicates whether the heartbeat loop need to stop.
+	}
+	ranges  *roachpb.Spans        // The key spans involved in the transaction.
+	tsTxn   roachpb.TsTransaction // TS transaction metadata to be maintained.
+	setting *cluster.Settings
+	NodeID  roachpb.NodeID
+}
+
+// setWrapped implements the txnInterceptor interface.
+func (h *tsTxnHeartbeater) setWrapped(wrapped lockedSender) { h.wrapped = wrapped }
+
+// SendLocked is part of the txnInterceptor interface.
+func (h *tsTxnHeartbeater) SendLocked(
+	ctx context.Context, ba roachpb.BatchRequest,
+) (*roachpb.BatchResponse, *roachpb.Error) {
+
+	var tsTxn roachpb.TsTransaction
+	tsTxn.ID = h.tsTxn.ID
+	ba.TsTransaction = &tsTxn
+	for _, ru := range ba.Requests {
+		var span roachpb.Span
+		r := ru.GetInner()
+		switch tdr := r.(type) {
+		case *roachpb.TsPutTagRequest:
+			span.Key = tdr.Key
+			span.EndKey = tdr.EndKey
+			*h.ranges = append(*h.ranges, span)
+			tdr.TsTransaction = &tsTxn
+		case *roachpb.TsRowPutRequest:
+			span.Key = tdr.Key
+			span.EndKey = tdr.EndKey
+			*h.ranges = append(*h.ranges, span)
+			tdr.TsTransaction = &tsTxn
+		default:
+			panic(roachpb.NewErrorf("unexpected request type %T", tdr))
+		}
+	}
+
+	if h.txn != nil && !h.mu.loopStarted {
+		if err := h.startHeartbeatLoopLocked(ctx); err != nil {
+			return nil, roachpb.NewError(err)
+		}
+	}
+	br, pErr := h.wrapped.SendLocked(ctx, ba)
+	h.mu.loopStop = true
+	return br, pErr
+}
+
+// startHeartbeatLoopLocked starts a heartbeat loop in a different goroutine.
+func (h *tsTxnHeartbeater) startHeartbeatLoopLocked(ctx context.Context) error {
+	if h.mu.loopStarted {
+		log.Fatal(ctx, "attempting to start a second heartbeat loop")
+	}
+	log.VEventf(ctx, 2, "coordinator spawns heartbeat loop")
+	h.mu.loopStarted = true
+	h.AmbientContext.AddLogTag("txn-hb", h.tsTxn.ID)
+	hbCtx := h.AnnotateCtx(context.Background())
+	hbCtx = opentracing.ContextWithSpan(hbCtx, opentracing.SpanFromContext(ctx))
+	hbCtx, h.mu.loopCancel = context.WithCancel(hbCtx)
+	_, err := h.heartbeatTsTxn(ctx)
+	if err != nil {
+		return err
+	}
+	return h.stopper.RunAsyncTask(hbCtx, "kv.TsSender: ts heartbeat loop", h.heartbeatLoop)
+}
+
+func (h *tsTxnHeartbeater) cancelHeartbeatLoopLocked() {
+	// If the heartbeat loop has already started, cancel it.
+	if h.heartbeatLoopRunningLocked() {
+		h.mu.loopCancel()
+		h.mu.loopCancel = nil
+	}
+}
+
+func (h *tsTxnHeartbeater) heartbeatLoopRunningLocked() bool {
+	return h.mu.loopCancel != nil
+}
+
+// heartbeatLoop periodically start recording ts txn record and updating last heartbeat in
+// ts txn record , stopping in the event the transaction is aborted or committed .
+func (h *tsTxnHeartbeater) heartbeatLoop(ctx context.Context) {
+	defer func() {
+		h.mu.Lock()
+		h.cancelHeartbeatLoopLocked()
+		h.mu.Unlock()
+	}()
+
+	var tickChan <-chan time.Time
+	{
+		ticker := time.NewTicker(h.loopInterval)
+		tickChan = ticker.C
+		defer ticker.Stop()
+	}
+
+	// Loop with ticker for periodic heartbeats.
+	for {
+		select {
+		case <-tickChan:
+			if !h.heartbeat(ctx) {
+				// The heartbeat noticed a finalized transaction,
+				// so shut down the heartbeat loop.
+				return
+			}
+		case <-ctx.Done():
+			// Transaction finished normally.
+			return
+		case <-h.stopper.ShouldQuiesce():
+			return
+		}
+	}
+}
+
+func (h *tsTxnHeartbeater) heartbeat(ctx context.Context) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	// The heartbeat loop might have raced with the cancelation of the heartbeat.
+	if ctx.Err() != nil {
+		return false
+	}
+	record, err := h.heartbeatTsTxn(ctx)
+	if err != nil {
+		log.VEventf(ctx, 2, "heartbeat failed: %s", err)
+	}
+	// Tear down the heartbeat loop if the response transaction is finalized.
+	if (record != nil && record.Status.IsFinalized()) || h.mu.loopStop {
+		return false
+	}
+	return true
+}
+
+func (h *tsTxnHeartbeater) heartbeatTsTxn(ctx context.Context) (*roachpb.TsTxnRecord, error) {
+	record := &roachpb.TsTxnRecord{}
+	record.ID = h.tsTxn.ID
+	record.Status = roachpb.PENDING
+	record.LastHeartbeat = h.clock.Now()
+	record.Spans = append(record.Spans, *h.ranges...)
+	_, txnRecord, err := h.txn.DB().ScanAndWriteTsTxnRecord(ctx, record)
+	if err != nil {
+		return txnRecord, err
+	}
+	return txnRecord, nil
 }

@@ -130,22 +130,23 @@ class TSEngineV2Impl : public TSEngine {
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override;
 
   KStatus PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                    TSSlice* payload_data, int payload_num, uint64_t mtr_id) override;
+                    TSSlice* payload_data, int payload_num, uint64_t mtr_id, bool writeWAL) override;
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true) override;
+                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true,
+                  const char* tsx_id = nullptr) override;
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                          uint64_t mtr_id) override;
+                          uint64_t mtr_id, bool writeWAL) override;
 
   KStatus DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                     uint64_t mtr_id) override;
+                     uint64_t mtr_id, bool writeWAL) override;
 
   KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) override;
+                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, bool writeWAL) override;
 
   KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override {
     LOG_WARN("should not use GetBatchRepr any more.");
@@ -200,13 +201,13 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id);
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                     uint64_t range_id, uint64_t index, uint64_t& mtr_id) override;
+                     uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr) override;
 
   KStatus TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                      uint64_t range_group_id, uint64_t mtr_id) override;
+                      uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id = nullptr) override;
 
-  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                        uint64_t range_group_id, uint64_t mtr_id, bool skip_log = false) override;
+  KStatus TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id, uint64_t mtr_id,
+                        bool skip_log = false, const char* tsx_id = nullptr) override;
 
   /**
  * @brief DDL WAL recover.
@@ -255,6 +256,8 @@ class TSEngineV2Impl : public TSEngine {
   static KStatus CloseTSEngine(kwdbContext_p ctx, TSEngine* engine) { return KStatus::SUCCESS; }
   KStatus GetClusterSetting(kwdbContext_p ctx, const std::string& key, std::string* value);
   void AlterTableCacheCapacity(int capacity)  override {}
+
+  KStatus SortWALFile(kwdbContext_p ctx);
 
   // init all engine.
   KStatus Init(kwdbContext_p ctx);

@@ -45,6 +45,8 @@ var _ Details = RestartDetails{}
 var _ Details = ExportDetails{}
 var _ Details = SqlScheduleDetails{}
 var _ Details = ReplicaRebanalceDetails{}
+var _ Details = StreamDetails{}
+var _ Details = TsTxnDetails{}
 
 // ProgressDetails is a marker interface for job progress details proto structs.
 type ProgressDetails interface{}
@@ -59,6 +61,8 @@ var _ ProgressDetails = RestartHistoryProgress{}
 var _ ProgressDetails = ExportProgress{}
 var _ ProgressDetails = SqlScheduleProgress{}
 var _ ProgressDetails = ReplicaRebanalceProgress{}
+var _ ProgressDetails = StreamProgress{}
+var _ ProgressDetails = TsTxnProgress{}
 
 // Type returns the payload's job type.
 func (p *Payload) Type() Type {
@@ -100,6 +104,10 @@ func DetailsType(d isPayload_Details) Type {
 		return TypeSqlSchedule
 	case *Payload_ReplicaRebalance:
 		return TypeReplicaRebanalce
+	case *Payload_Stream:
+		return TypeStream
+	case *Payload_TsTxn:
+		return TypeTsTxn
 	default:
 		panic(fmt.Sprintf("Payload.Type called on a payload with an unknown details type: %T", d))
 	}
@@ -142,6 +150,10 @@ func WrapProgressDetails(details ProgressDetails) interface {
 		return &Progress_SqlSchedule{SqlSchedule: &d}
 	case ReplicaRebanalceProgress:
 		return &Progress_ReplicaRebalance{ReplicaRebalance: &d}
+	case StreamProgress:
+		return &Progress_Stream{Stream: &d}
+	case TsTxnProgress:
+		return &Progress_TsTxn{TsTxn: &d}
 	default:
 		panic(fmt.Sprintf("WrapProgressDetails: unknown details type %T", d))
 	}
@@ -175,6 +187,10 @@ func (p *Payload) UnwrapDetails() Details {
 		return *d.SqlSchedule
 	case *Payload_ReplicaRebalance:
 		return *d.ReplicaRebalance
+	case *Payload_Stream:
+		return *d.Stream
+	case *Payload_TsTxn:
+		return *d.TsTxn
 	default:
 		return nil
 	}
@@ -248,6 +264,10 @@ func WrapPayloadDetails(details Details) interface {
 		return &Payload_SqlSchedule{SqlSchedule: &d}
 	case ReplicaRebanalceDetails:
 		return &Payload_ReplicaRebalance{ReplicaRebalance: &d}
+	case StreamDetails:
+		return &Payload_Stream{Stream: &d}
+	case TsTxnDetails:
+		return &Payload_TsTxn{TsTxn: &d}
 	default:
 		panic(fmt.Sprintf("jobs.WrapPayloadDetails: unknown details type %T", d))
 	}

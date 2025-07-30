@@ -32,7 +32,7 @@ class WALMgr {
  public:
   WALMgr(const string& db_path, const KTableKey& table_id, uint64_t tbl_grp_id, EngineOptions* opt);
 
-  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt);
+  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt, bool read_chk = false);
 
   ~WALMgr();
 
@@ -44,7 +44,9 @@ class WALMgr {
    * @param ctx
    * @return
    */
-  KStatus Init(kwdbContext_p ctx);
+  KStatus Init(kwdbContext_p ctx, bool init_engine = false);
+
+  KStatus InitForChk(kwdbContext_p ctx, WALMeta meta);
 
   /**
    * Write WAL log entry into WAL Buffer.
@@ -82,6 +84,8 @@ class WALMgr {
    */
   KStatus Flush(kwdbContext_p ctx);
 
+  KStatus FlushWithoutLock(kwdbContext_p ctx);
+
   /**
    * Synchronize data to disk by calling the FLush method of Tag tables and Metrics tables to ensure the
    * persistence of time-series data to save recovery time after an outage.
@@ -91,6 +95,8 @@ class WALMgr {
   KStatus CreateCheckpoint(kwdbContext_p ctx);
 
   KStatus CreateCheckpointWithoutFlush(kwdbContext_p ctx);
+
+  KStatus UpdateFirstLSN(TS_LSN first_lsn);
 
   KStatus UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn);
 
@@ -302,6 +308,11 @@ class WALMgr {
    */
   KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk);
 
+
+  TS_LSN GetFirstLSN();
+
+  KStatus ResetCurLSNAndFlushMeta(kwdbContext_p ctx, TS_LSN cur_lsn);
+
   /**
    *
    * @param logs
@@ -326,6 +337,8 @@ class WALMgr {
    * @return
    */
   KStatus ReadWALLogForTSx(char* ts_trans_id, std::vector<LogEntry*>& logs);
+
+  WALMeta GetMeta() const;
 
   /**
    * Get current LSN
@@ -360,6 +373,10 @@ class WALMgr {
   */
   void CleanUp(kwdbContext_p ctx);
 
+  string GetWALFilePath() { return file_mgr_->getFilePath(); }
+
+  string GetWALChkFilePath() { return file_mgr_->getChkFilePath(); }
+
   /*
    *
    */
@@ -377,6 +394,8 @@ class WALMgr {
    */
 
   KStatus SwitchNextFile();
+
+  KStatus SwitchLastFile(kwdbContext_p ctx, TS_LSN last_lsn);
 
   /**
   * NeedCheckpoint
@@ -419,6 +438,7 @@ class WALMgr {
   std::fstream meta_file_;
   using WALMgrLatch = KLatch;
   WALMgrLatch* meta_mutex_;
+  bool read_chk_;
 //  TsVGroup* vg_{nullptr};
 };
 }  // namespace kwdbts

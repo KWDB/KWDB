@@ -1060,13 +1060,13 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"cast", 1, []uint32{uint32(oid.T_int2)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(oid.T_int4)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(oid.T_float8)}, PosProject, true, TypeConstAndColumn},
-	{"cast", 1, []uint32{uint32(oid.T_float4)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(oid.T_timestamp)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(oid.T_timestamptz)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(oid.T_bpchar)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(types.T_nchar)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(types.T_nvarchar)}, PosProject, true, TypeConstAndColumn},
 	{"cast", 1, []uint32{uint32(oid.T_varchar)}, PosProject, true, TypeConstAndColumn},
+	{"cast", 1, []uint32{uint32(oid.T_bool)}, PosProject, true, TypeConstAndColumn},
 	{"case", 3, []uint32{uint32(oid.T_bool), uint32(oid.T_anyelement), uint32(oid.T_anyelement)}, PosWhereAndProject, true, TypeConstAndColumn},
 	{"coalesce", 1, []uint32{uint32(oid.T_anyelement)}, PosWhereAndProject, true, TypeConstAndColumn},
 	// char builtin
@@ -3284,6 +3284,41 @@ func InitScheduleForKWDB(ctx context.Context, db *kv.DB, ie sqlutil.InternalExec
 			}
 		}
 		return nil
+	})
+}
+
+// InitTsTxnJob creates a handle ts txn job when server start.
+func InitTsTxnJob(
+	ctx context.Context, db *kv.DB, ie sqlutil.InternalExecutor, registry *jobs.Registry,
+) error {
+	return db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		stmt := `select job_type, status from kwdb_internal.jobs`
+		rows, err := ie.Query(
+			ctx, `select jobs`, txn, stmt)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			// if there is already arunning job, do nothing
+			if tree.MustBeDString(row[0]) == "TS TXN" && tree.MustBeDString(row[1]) == "running" {
+				return nil
+			}
+		}
+		// Create a Job to handle ts txn record.
+		tsTxnDetail := jobspb.TsTxnDetails{}
+		jobRecord := jobs.Record{
+			Description:   "handle ts txn record",
+			Username:      "root",
+			Details:       tsTxnDetail,
+			Progress:      jobspb.TsTxnProgress{},
+			NonCancelable: true,
+		}
+		_, err = registry.CreateJobWithTxn(ctx, jobRecord, txn)
+		if err != nil {
+			return err
+		}
+		return nil
+
 	})
 }
 
