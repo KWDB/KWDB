@@ -35,6 +35,7 @@ kwdb_object_create_statement  SYSTEM VIEW
 kwdb_procedures               SYSTEM VIEW
 kwdb_retention                SYSTEM VIEW
 kwdb_schedules                SYSTEM VIEW
+kwdb_streams                  SYSTEM VIEW
 kwdb_tse_info                 SYSTEM VIEW
 leases                        SYSTEM VIEW
 node_build_info               SYSTEM VIEW
@@ -179,15 +180,15 @@ SELECT  * FROM kwdb_internal.cluster_transactions WHERE node_id < 0
 ----
 id  node_id  session_id  start  txn_string  application_name
 
-query ITTTTTTTTTTTT colnames
+query ITTTTTTTTTTTTT colnames
 SELECT * FROM kwdb_internal.node_sessions WHERE node_id < 0
 ----
-node_id  session_id  user_name  client_address  application_name  active_queries  last_active_query  session_start  oldest_query_start  kv_txn  alloc_bytes  max_alloc_bytes  connection_id
+node_id  session_id  goroutine_id  user_name  client_address  application_name  active_queries  last_active_query  session_start  oldest_query_start  kv_txn  alloc_bytes  max_alloc_bytes  connection_id
 
-query ITTTTTTTTTTTT colnames
+query ITTTTTTTTTTTTT colnames
 SELECT * FROM kwdb_internal.cluster_sessions WHERE node_id < 0
 ----
-node_id  session_id  user_name  client_address  application_name  active_queries  last_active_query  session_start  oldest_query_start  kv_txn  alloc_bytes  max_alloc_bytes  connection_id
+node_id  session_id  goroutine_id  user_name  client_address  application_name  active_queries  last_active_query  session_start  oldest_query_start  kv_txn  alloc_bytes  max_alloc_bytes  connection_id
 
 query TTTT colnames
 SELECT * FROM kwdb_internal.builtin_functions WHERE function = ''

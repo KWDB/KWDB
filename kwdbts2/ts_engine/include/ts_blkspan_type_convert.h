@@ -79,7 +79,7 @@ class TSBlkDataTypeConvert {
   int32_t GetColType(uint32_t scan_idx);
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
   KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);

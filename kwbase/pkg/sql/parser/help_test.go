@@ -100,6 +100,8 @@ func TestContextualHelp(t *testing.T) {
 		{`ALTER SCHEDULE ??`, `ALTER SCHEDULE`},
 		//{`ALTER PARTITION p OF INDEX tbl@idx ??`, `ALTER PARTITION`},
 
+		{`ALTER STREAM ??`, `ALTER STREAM`},
+
 		{`CANCEL ??`, `CANCEL`},
 		{`CANCEL JOB ??`, `CANCEL JOBS`},
 		{`CANCEL JOBS ??`, `CANCEL JOBS`},
@@ -142,6 +144,8 @@ func TestContextualHelp(t *testing.T) {
 
 		{`CREATE SCHEDULE ??`, `CREATE SCHEDULE FOR SQL`},
 		{`CREATE SEQUENCE ??`, `CREATE SEQUENCE`},
+
+		{`CREATE STREAM ??`, `CREATE STREAM`},
 
 		{`CREATE FUNCTION ??`, `CREATE FUNCTION`},
 		{`RESUME SCHEDULE ??`, `RESUME SCHEDULE`},
@@ -204,6 +208,8 @@ func TestContextualHelp(t *testing.T) {
 		{`DROP SEQUENCE blah ??`, `DROP SEQUENCE`},
 		{`DROP SEQUENCE IF ??`, `DROP SEQUENCE`},
 		{`DROP SEQUENCE IF EXISTS blih, bloh ??`, `DROP SEQUENCE`},
+
+		{`DROP STREAM ??`, `DROP STREAM`},
 
 		{`DROP TABLE blah ??`, `DROP TABLE`},
 		{`DROP TABLE IF ??`, `DROP TABLE`},
@@ -355,6 +361,8 @@ func TestContextualHelp(t *testing.T) {
 
 		{`SHOW SEQUENCES FROM ??`, `SHOW SEQUENCES`},
 		{`SHOW SEQUENCES FROM blah ??`, `SHOW SEQUENCES`},
+
+		{`SHOW STREAMS ??`, `SHOW STREAMS`},
 
 		{`SHOW TABLES FROM ??`, `SHOW TABLES`},
 		{`SHOW TABLES FROM blah ??`, `SHOW TABLES`},

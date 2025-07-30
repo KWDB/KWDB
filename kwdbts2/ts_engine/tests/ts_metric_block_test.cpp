@@ -1,5 +1,6 @@
 #if false
 #include "ts_metric_block.h"
+
 #include <gtest/gtest.h>
 
 #include <cstddef>
@@ -15,7 +16,6 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
-
 
 using namespace kwdbts;
 
@@ -80,20 +80,17 @@ class UnitTestBlock : public TsBlock {
     return -1;
   }
 
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
-                     char** value) override {
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override {
     assert(col_id < schema_.size());
     assert(!isVarLenType(schema_[col_id].type));
     *value = data_[col_id].data();
     return KStatus::SUCCESS;
   }
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
-                       TsBitmap& bitmap) override {
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override {
     bitmap = bitmaps_[col_id];
     return KStatus::SUCCESS;
   }
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
-                        TSSlice& value) override {
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override {
     assert(col_id < schema_.size());
     if (isVarLenType(schema_[col_id].type)) {
       value.data = var_data_[col_id][row_num].data();
@@ -110,8 +107,7 @@ class UnitTestBlock : public TsBlock {
   }
 };
 
-std::shared_ptr<TsBlock> CreateBlock(int row_count, const std::vector<AttributeInfo>& schema,
-                                     size_t seed) {
+std::shared_ptr<TsBlock> CreateBlock(int row_count, const std::vector<AttributeInfo>& schema, size_t seed) {
   auto block = std::make_shared<UnitTestBlock>(row_count, schema, seed);
   assert(block != nullptr);
   block->Init();
@@ -135,7 +131,7 @@ static std::vector<AttributeInfo> GetSchema() {
 TEST(UnitTestBlock, BasicRW) {
   auto schema = GetSchema();
   auto block = CreateBlock(100, schema, 0);
-  TsBlockSpan span{1, block, 0, 100};
+  TsBlockSpan span{1, block, 0, 100, nullptr, 0};
   char* data;
   TsBitmap bitmap;
   auto s = span.GetFixLenColAddr(0, &data, bitmap);
@@ -151,7 +147,7 @@ TEST(MetricBlockBuilder, build) {
   auto block = CreateBlock(100, schema, 0);
   auto span = std::make_shared<TsBlockSpan>(1, block, 0, 100);
   TsMetricBlockBuilder builder{schema};
-  for(int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     auto s = builder.PutBlockSpan(span);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -159,7 +155,7 @@ TEST(MetricBlockBuilder, build) {
 
   std::string output;
   TsMetricCompressInfo info;
-  auto s = metric_block->GetCompressedData(&output, &info);
+  auto s = metric_block->GetCompressedData(&output, &info, true);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   auto lsn = metric_block->GetLSNAddr();
@@ -168,5 +164,4 @@ TEST(MetricBlockBuilder, build) {
     EXPECT_EQ(lsn[i], expected_lsn[i % 100]);
   }
 }
-
-#endif 
+#endif

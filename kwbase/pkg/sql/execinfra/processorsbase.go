@@ -342,6 +342,59 @@ func (h *ProcOutputHelper) ProcessRow(
 	return h.outputRow, h.rowIdx < h.maxRowIdx, nil
 }
 
+// ProcessRowForStream processes row for stream.
+func (h *ProcOutputHelper) ProcessRowForStream(
+	ctx context.Context, row sqlbase.EncDatumRow,
+) (_ sqlbase.EncDatumRow, moreRowsOK bool, _ error) {
+	if h.rowIdx >= h.maxRowIdx {
+		return nil, false, nil
+	}
+
+	if h.filter != nil && !h.Gapfill {
+		// Filtering.
+		passes, err := h.filter.EvalFilter(row)
+		if err != nil {
+			return nil, false, err
+		}
+		if !passes {
+			if log.V(4) {
+				log.Infof(ctx, "filtered out row %s", row.String(h.filter.Types))
+			}
+			return nil, true, nil
+		}
+	}
+	h.rowIdx++
+	if h.rowIdx <= h.offset {
+		// Suppress row.
+		return nil, true, nil
+	}
+
+	if len(h.renderExprs) > 0 {
+		// Rendering.
+		for i := range h.renderExprs {
+			datum, err := h.renderExprs[i].Eval(row)
+			if err != nil {
+				// for any error, set the output value to NULL
+				log.Errorf(ctx, "failed to process output column(index '%d') with error: %v, set it to NULL", i, err)
+				h.outputRow[i] = sqlbase.DatumToEncDatum(&h.OutputTypes[i], tree.DNull)
+			} else {
+				h.outputRow[i] = sqlbase.DatumToEncDatum(&h.OutputTypes[i], datum)
+			}
+		}
+	} else if h.outputCols != nil {
+		// Projection.
+		for i, col := range h.outputCols {
+			h.outputRow[i] = row[col]
+		}
+	} else {
+		// No rendering or projection.
+		return row, h.rowIdx < h.maxRowIdx, nil
+	}
+
+	// If this row satisfies the limit, the caller is told to drain.
+	return h.outputRow, h.rowIdx < h.maxRowIdx, nil
+}
+
 // ProcessRowWithOutLimit only use filter to filter row.
 func (h *ProcOutputHelper) ProcessRowWithOutLimit(
 	ctx context.Context, row sqlbase.EncDatumRow,

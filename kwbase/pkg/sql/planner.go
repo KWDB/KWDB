@@ -227,6 +227,11 @@ type planner struct {
 	// TsInScopeFlag is true if there is a TS table in query
 	TsInScopeFlag bool
 
+	// forceFilterInME used to pass to the optimizer
+	// It is true if forcing filtering in ME and preventing pushdown to tsengine.
+	// This is used for CDC filtering.
+	forceFilterInME bool
+
 	Kwengineversion string
 }
 

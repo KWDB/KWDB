@@ -55,6 +55,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/json"
@@ -129,6 +130,7 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBSchedulesTableID:        kwdbInternalKWDBSchedulesTable,
 		sqlbase.CrdbInternalKWDBObjectCreateStatementID: kwdbInternalKWDBObjectCreateStatement,
 		sqlbase.CrdbInternalKWDBObjectRetentionID:       kwdbInternalKWDBObjectRetention,
+		sqlbase.CrdbInternalKWDBStreamsTableID:          kwdbInternalKWDBStreamTable,
 		sqlbase.CrdbInternalTSEInfoID:                   kwdbInternalTSEngineInfo,
 		sqlbase.CrdbInternalTSTransactionRecordID:       kwdbInternalTSTransactionRecord,
 	},
@@ -1197,6 +1199,7 @@ const sessionsSchemaPattern = `
 CREATE TABLE kwdb_internal.%s (
   node_id            INT8 NOT NULL,  -- the node on which the query is running
   session_id         STRING,         -- the ID of the session
+  goroutine_id       BIGINT,         -- the ID of the goroutine
   user_name          STRING,         -- the user running the query
   client_address     STRING,         -- the address of the client that issued the query
   application_name   STRING,         -- the name of the application as per SET application_name
@@ -1277,6 +1280,7 @@ func populateSessionsTable(
 		if err := addRow(
 			tree.NewDInt(tree.DInt(session.NodeID)),
 			sessionID,
+			tree.NewDInt(tree.DInt(session.GoroutineId)),
 			tree.NewDString(session.Username),
 			tree.NewDString(session.ClientAddress),
 			tree.NewDString(session.ApplicationName),
@@ -1301,6 +1305,7 @@ func populateSessionsTable(
 			if err := addRow(
 				tree.NewDInt(tree.DInt(rpcErr.NodeID)), // node ID
 				tree.DNull,                             // session ID
+				tree.DNull,                             // goroutine ID
 				tree.DNull,                             // username
 				tree.DNull,                             // client address
 				tree.DNull,                             // application name
@@ -4006,6 +4011,104 @@ CREATE TABLE kwdb_internal.kwdb_tse_info (
 			return err
 		}
 
+		return nil
+	},
+}
+
+var kwdbInternalKWDBStreamTable = virtualSchemaTable{
+	comment: "kwdb streams info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_streams (
+  name           		       STRING,
+  target_table_name        STRING,
+  options                  STRING,
+  query	  					       STRING,
+  status						       STRING,
+  create_at					       TIMESTAMP,
+  create_by					       STRING,
+  start_time   			       TIMESTAMP,
+  end_time					       TIMESTAMP,
+  error_message            String
+)
+`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		query := `SELECT id,name,create_by,create_at,status,target_table_id,job_id,parameters,run_info FROM system.kwdb_streams`
+		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-streams", p.txn, query)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			name := tree.MustBeDString(row[1])
+			createBy := tree.MustBeDString(row[2])
+			createAt := tree.MustBeDTimestamp(row[3])
+			status := tree.MustBeDString(row[4])
+
+			params := tree.MustBeDJSON(row[7]).JSON
+			streamRun := tree.MustBeDJSON(row[8]).JSON
+
+			streamParas, err := sqlutil.UnmarshalStreamParameters(params)
+			if err != nil {
+				return err
+			}
+
+			streamOpts, err := sqlutil.MarshalStreamOptions(&streamParas.Options)
+
+			if err != nil {
+				return err
+			}
+
+			tableName := streamParas.TargetTable.Table
+			databaseName := streamParas.TargetTable.Database
+			schemaName := streamParas.TargetTable.Schema
+			table := databaseName + "." + schemaName + "." + tableName
+
+			query := streamParas.StreamSink.SQL
+
+			runInfo, err := sqlutil.UnmarshalStreamRunInfo(streamRun)
+			if err != nil {
+				return err
+			}
+
+			var start, end, errMsg tree.Datum
+			lastRunIndex := len(runInfo) - 1
+			if lastRunIndex > -1 {
+				startTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].StartTime)
+				if err != nil {
+					start = tree.DNull
+				} else {
+					start = tree.MakeDTimestamp(startTime, time.Microsecond)
+				}
+
+				endTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].EndTime)
+				if err != nil {
+					end = tree.DNull
+				} else {
+					end = tree.MakeDTimestamp(endTime, time.Microsecond)
+				}
+
+				errMsg = tree.NewDString(runInfo[lastRunIndex].ErrorMessage)
+			} else {
+				start = tree.DNull
+				end = tree.DNull
+				errMsg = tree.DNull
+			}
+
+			if err := addRow(
+				&name,
+				tree.NewDString(table),
+				tree.NewDString(streamOpts),
+				tree.NewDString(query),
+				&status,
+				&createAt,
+				&createBy,
+				start,
+				end,
+				errMsg,
+			); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 }

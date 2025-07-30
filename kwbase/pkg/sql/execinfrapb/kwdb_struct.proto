@@ -24,6 +24,8 @@ import "sql/sqlbase/structured.proto";
 
 import "sql/execinfrapb/processors_sql.proto";
 
+import "cdc/cdcpb/cdc.proto";
+
 // TableDescArray is a slice of TableDesc.
 message TableDescArray {
   repeated TableDesc table = 1 [(gogoproto.nullable) = false];
@@ -119,6 +121,8 @@ message TSProcessorCoreUnion {
   optional DistinctSpec distinct = 11;
 
   optional WindowerSpec window = 12;
+
+  optional StreamReaderSpec streamReader = 13;
 }
 
 // TSSynchronizerSpec operator
@@ -330,4 +334,22 @@ message TSPostProcessSpec {
   optional bool projection = 7 [(gogoproto.nullable) = false];
 
   optional uint32 commandlimit = 8 [(gogoproto.nullable) = false];
+}
+
+// StreamReaderSpec contains the specification for a stream metadata that will used to process the captured change data.
+message StreamReaderSpec {
+  optional cdcpb.StreamMetadata metadata = 1;
+  optional int64 job_id = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customname) = "JobID"
+  ];
+  optional cdcpb.CDCColumns cdc_columns = 3 [(gogoproto.customname) = "CDCColumns"];
+
+  repeated uint32 orderingColumnIDs = 4[(gogoproto.customname) = "OrderingColumnIDs"];
+  repeated bytes target_col_types = 5 [(gogoproto.customname) = "TargetColTypes", (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
+}
+
+message StreamAggregatorSpec{
+  optional cdcpb.StreamMetadata metadata = 1;
+  optional AggregatorSpec agg_spec = 2;
 }

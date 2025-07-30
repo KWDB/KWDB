@@ -96,6 +96,22 @@ func (t *tsInsertNode) Close(ctx context.Context) {
 	tsInsertNodePool.Put(t)
 }
 
+type tsInsertWithCDCNode struct {
+	tsInsertNode
+	CDCData *sqlbase.CDCData
+}
+
+func (t *tsInsertWithCDCNode) Close(ctx context.Context) {
+	*t = tsInsertWithCDCNode{}
+	tsInsertWithCDCNodePool.Put(t)
+}
+
+var tsInsertWithCDCNodePool = sync.Pool{
+	New: func() interface{} {
+		return &tsInsertWithCDCNode{}
+	},
+}
+
 var _ planNode = &tsInsertNode{}
 var _ planNodeFastPath = &tsInsertNode{}
 

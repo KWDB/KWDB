@@ -811,3 +811,21 @@ func iterateOnReader(
 	}
 	return nil
 }
+
+var syncPeriod time.Duration
+var asyncWrite bool
+
+// SetSyncPeriod sets syncPeriod
+func SetSyncPeriod(period time.Duration) {
+	if period > 100*time.Millisecond {
+		asyncWrite = true
+		syncPeriod = period
+	} else {
+		asyncWrite = false
+	}
+}
+
+// IsAsyncWrite returns whether write raft log to disk async.
+func IsAsyncWrite() bool {
+	return asyncWrite
+}

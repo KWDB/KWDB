@@ -141,6 +141,8 @@ func TestSystemTableLiterals(t *testing.T) {
 		{keys.StatementDiagnosticsTableID, sqlbase.StatementDiagnosticsTableSchema, sqlbase.StatementDiagnosticsTable},
 		{keys.ScheduledJobsTableID, sqlbase.ScheduledJobsTableSchema, sqlbase.ScheduledJobsTable},
 		{keys.UDRTableID, sqlbase.UDRTableSchema, sqlbase.UDRTable},
+		{keys.KWDBCDCWatermarkTableID, sqlbase.CDCWatermarkTableSchema, sqlbase.CDCWatermarkTable},
+		{keys.KWDBStreamsTableID, sqlbase.StreamsTableSchema, sqlbase.StreamsTable},
 	} {
 		privs := *test.pkg.Privileges
 		gen, err := sql.CreateTestTableDescriptor(

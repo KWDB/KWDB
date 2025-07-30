@@ -480,6 +480,145 @@ KStatus getConcatType(const std::list<Field *> &fields,
   return SUCCESS;
 }
 
+static String GetEncodeValue(String &strvalue1, String &strvalue2) {
+  std::string data = std::string(strvalue1.getptr(), strvalue1.length_);
+  std::string str = std::string(strvalue2.getptr(), strvalue2.length_);
+  std::string format;
+  for (char c : str) {
+    format += std::toupper(c);
+  }
+  if (format == "HEX") {
+    std::stringstream ss;
+    for (unsigned char c : data) {
+      ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+    }
+    String s(ss.str().length());
+    snprintf(s.getptr(), ss.str().length() + 1, "%s", ss.str().c_str());
+    s.length_ = ss.str().length();
+    return s;
+  } else if (format == "ESCAPE") {
+    std::stringstream ss;
+    for (unsigned char c : data) {
+      if (c == '\\') {
+        ss << "\\\\";
+      } else if (c < 32 || c >= 127) {
+        ss << '\\' << static_cast<char>('0' + (c >> 6)) << static_cast<char>('0' + ((c >> 3) & 7))
+           << static_cast<char>('0' + (c & 7));
+      } else {
+        ss << c;
+      }
+    }
+    String s(ss.str().length());
+    snprintf(s.getptr(), ss.str().length() + 1, "%s", ss.str().c_str());
+    s.length_ = ss.str().length();
+    return s;
+  } else {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
+                                  "only 'hex', 'escape' formats are supported for encode()");
+    return String("");
+  }
+}
+
+static String GetDecodeValue(String &strvalue1, String &strvalue2) {
+  std::string data = std::string(strvalue1.getptr(), strvalue1.length_);
+  std::string str = std::string(strvalue2.getptr(), strvalue2.length_);
+  std::string format;
+  for (char c : str) {
+    format += std::toupper(c);
+  }
+  if (format == "HEX") {
+    std::string result;
+    if (data.length() % 2 == 1) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "encoding/hex: invalid input parameter");
+      return String("");
+    }
+    for (size_t i = 0; i + 1 < data.length(); i += 2) {
+      if (!isxdigit(data[i]) || !isxdigit(data[i + 1])) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "encoding/hex: invalid input parameter");
+        return String("");
+      }
+      unsigned char byte = std::stoi(data.substr(i, 2), nullptr, 16);
+      result += byte;  // add to result
+    }
+    String s(result.length());
+    snprintf(s.getptr(), result.length() + 1, "%s", result.c_str());
+    s.length_ = result.length();
+    return s;
+  } else if (format == "ESCAPE") {
+    std::stringstream ss;
+    for (size_t i = 0; i < data.size(); i++) {
+      char ch = data[i];
+      if (ch != '\\') {
+        ss << ch;
+        continue;
+      }
+      if (i >= data.size() - 1) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_ESCAPE_SEQUENCE,
+                                      "bytea encoded value ends with escape character");
+        return String("");
+      }
+      if (data[i + 1] == '\\') {
+        ss << '\\';
+        i++;
+        continue;
+      }
+      if (i + 3 >= data.size()) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_ESCAPE_SEQUENCE,
+                                      "bytea encoded value ends with incomplete escape sequence");
+        return String("");
+      }
+      unsigned char b = 0;
+      for (int j = 1; j <= 3; j++) {
+        char octDigit = data[i + j];
+        if (octDigit < '0' || octDigit > '7' || (j == 1 && octDigit > '3')) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_ESCAPE_SEQUENCE, "invalid bytea escape sequence");
+          return String("");
+        }
+        b = (b << 3) | (octDigit - '0');
+      }
+      ss << b;
+      i += 3;
+    }
+    String s(ss.str().length());
+    snprintf(s.getptr(), ss.str().length() + 1, "%s", ss.str().c_str());
+    s.length_ = ss.str().length();
+    return s;
+  } else {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
+                                  "only 'hex', 'escape' formats are supported for decode()");
+    return String("");
+  }
+}
+
+static String GetChrValue(k_int64 ascii, k_uint32 storagelen) {
+  std::string result;
+  if (ascii < 0) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
+                                  "input value must be >= 0");
+    return String("");
+  }
+  if (ascii > 1114111) {
+    EEPgErrorInfo::SetPgErrorInfo(
+        ERRCODE_INVALID_PARAMETER_VALUE,
+        "input value must be <= 1114111 (maximum Unicode code point)");
+    return String("");
+  }
+  if (ascii <= 0x7F) {  // 1 byte encoding
+    result += static_cast<char>(ascii);
+  } else if (ascii <= 0x7FF) {  // 2 byte encoding
+    result += static_cast<char>((ascii >> 6) | 0xC0);
+    result += static_cast<char>((ascii & 0x3F) | 0x80);
+  } else {  // 3 byte encoding
+    result += static_cast<char>((ascii >> 12) | 0xE0);
+    result += static_cast<char>(((ascii >> 6) & 0x3F) | 0x80);
+    result += static_cast<char>((ascii & 0x3F) | 0x80);
+  }
+  String s(storagelen);
+  snprintf(s.getptr(), storagelen + 1, "%s", result.c_str());
+  s.length_ = result.length();
+  return s;
+}
+
 const FieldStringFuncion funcs[] = {
     {
         .name = "ltrim",
@@ -577,6 +716,29 @@ FieldFuncString::FieldFuncString(const KString &name,
   }
 }
 
+char *FieldFuncString::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  switch (storage_type_) {
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      strvalue_ = func_(args_, arg_count_);
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func string.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(strvalue_.ptr_);
+}
 k_int64 FieldFuncString::ValInt() { return 0; }
 
 k_double64 FieldFuncString::ValReal() { return 0.0; }
@@ -593,6 +755,51 @@ String FieldFuncString::ValStr() {
 Field *FieldFuncString::field_to_copy() {
   FieldFuncString *field = new FieldFuncString(*this);
   return field;
+}
+
+char *FieldFuncLength::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field length, get null value");
+    return const_cast<char *>("");
+  }
+  String s = args_[0]->ValStr(ptr);
+  switch (args_[0]->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+      intvalue_ = strLength(std::string(s.getptr(), s.length_));
+      break;
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY:
+      intvalue_ = s.size();
+      break;
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func length.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncLength::ValInt() {
@@ -621,6 +828,34 @@ Field *FieldFuncLength::field_to_copy() {
   FieldFuncLength *field = new FieldFuncLength(*this);
 
   return field;
+}
+
+char *FieldFuncGetBit::get_ptr(RowBatch *batch) {
+  intvalue_ = 0;
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field get bit, get null value");
+    return const_cast<char *>("");
+  }
+
+  String s = args_[0]->ValStr(ptr);
+  std::string str = std::string(s.ptr_, s.length_);
+  std::vector<unsigned char> byteArray(str.begin(), str.end());
+  int index = args_[0]->ValInt(ptr);
+  // exceed array length
+  if (index < 0 || index >= 8 * byteArray.size()) {
+    EEPgErrorInfo::SetPgErrorInfo(
+        ERRCODE_INVALID_PARAMETER_VALUE,
+        ("bit index " + std::to_string(index) + "out of valid range (0..)" + std::to_string(8 * byteArray.size() - 1))
+            .c_str());
+    return reinterpret_cast<char *>(&intvalue_);
+  }
+  if ((byteArray[index / 8] & (1 << (8 - 1 - (index) % 8))) != 0) {
+    intvalue_ = 1;
+  }
+
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncGetBit::ValInt() {
@@ -661,6 +896,45 @@ Field *FieldFuncGetBit::field_to_copy() {
   FieldFuncGetBit *field = new FieldFuncGetBit(*this);
   return field;
 }
+
+char *FieldFuncInitCap::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+
+  if (sizeof(args_) == 0) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "can not use init_cap with an empty string");
+    return const_cast<char *>("");
+  }
+
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field init_cap, get null value");
+    return const_cast<char *>("");
+  }
+
+  switch (storage_type_) {
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      strvalue_ = args_[0]->ValStr(ptr);
+      strvalue_.ptr_[0] = std::toupper(strvalue_.ptr_[0]);
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func init_cap.");
+      err = FAIL;
+      break;
+  }
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(strvalue_.ptr_);
+}
+
 k_int64 FieldFuncInitCap::ValInt() { return 0; }
 
 k_double64 FieldFuncInitCap::ValReal() { return 0.0; }
@@ -688,6 +962,38 @@ Field *FieldFuncInitCap::field_to_copy() {
   return field;
 }
 
+char *FieldFuncChr::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field chr, get null value");
+    return const_cast<char *>("");
+  }
+  k_int64 ascii = args_[0]->ValInt(ptr);
+  switch (storage_type_) {
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      strvalue_ = GetChrValue(ascii, storage_len_);
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func chr.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return const_cast<char *>(strvalue_.ptr_);
+}
+
 k_int64 FieldFuncChr::ValInt() { return 0; }
 
 k_double64 FieldFuncChr::ValReal() { return 0.0; }
@@ -695,42 +1001,53 @@ k_double64 FieldFuncChr::ValReal() { return 0.0; }
 String FieldFuncChr::ValStr() {
   char *ptr = get_ptr();
   k_int64 ascii;
-  std::string result;
   if (ptr) {
     return FieldFunc::ValStr(ptr);
   } else {
     ascii = args_[0]->ValInt();
   }
-  if (ascii < 0) {
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                  "input value must be >= 0");
-    return String("");
-  }
-  if (ascii > 1114111) {
-    EEPgErrorInfo::SetPgErrorInfo(
-        ERRCODE_INVALID_PARAMETER_VALUE,
-        "input value must be <= 1114111 (maximum Unicode code point)");
-    return String("");
-  }
-  if (ascii <= 0x7F) {  // 1 byte encoding
-    result += static_cast<char>(ascii);
-  } else if (ascii <= 0x7FF) {  // 2 byte encoding
-    result += static_cast<char>((ascii >> 6) | 0xC0);
-    result += static_cast<char>((ascii & 0x3F) | 0x80);
-  } else {  // 3 byte encoding
-    result += static_cast<char>((ascii >> 12) | 0xE0);
-    result += static_cast<char>(((ascii >> 6) & 0x3F) | 0x80);
-    result += static_cast<char>((ascii & 0x3F) | 0x80);
-  }
-  String s(storage_len_);
-  snprintf(s.getptr(), storage_len_ + 1, "%s", result.c_str());
-  s.length_ = result.length();
-  return s;
+  return GetChrValue(ascii, storage_len_);
 }
 
 Field *FieldFuncChr::field_to_copy() {
   FieldFuncChr *field = new FieldFuncChr(*this);
   return field;
+}
+
+char *FieldFuncEncode::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+
+  switch (storage_type_) {
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      char *ptr0 = args_[0]->get_ptr(batch);
+      char *ptr1 = args_[1]->get_ptr(batch);
+      if ((ptr0 == nullptr) || (ptr1 == nullptr)) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" field encode, get null value");
+        return const_cast<char *>("");
+      }
+
+      String s0 = args_[0]->ValStr(ptr0);
+      String s1 = args_[1]->ValStr(ptr1);
+      strvalue_ = GetEncodeValue(s0, s1);
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func encode.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(strvalue_.ptr_);
 }
 
 k_int64 FieldFuncEncode::ValInt() { return 0; }
@@ -744,51 +1061,48 @@ String FieldFuncEncode::ValStr() {
   } else {
     String s0 = args_[0]->ValStr();
     String s1 = args_[1]->ValStr();
-    std::string data = std::string(s0.getptr(), s0.length_);
-    std::string str = std::string(s1.getptr(), s1.length_);
-    std::string format;
-    for (char c : str) {
-      format += std::toupper(c);
-    }
-    if (format == "HEX") {
-      std::stringstream ss;
-      for (unsigned char c : data) {
-        ss << std::hex << std::setw(2) << std::setfill('0')
-           << static_cast<int>(c);
-      }
-      String s(ss.str().length());
-      snprintf(s.getptr(), ss.str().length() + 1, "%s", ss.str().c_str());
-      s.length_ = ss.str().length();
-      return s;
-    } else if (format == "ESCAPE") {
-      std::stringstream ss;
-      for (unsigned char c : data) {
-        if (c == '\\') {
-          ss << "\\\\";
-        } else if (c < 32 || c >= 127) {
-          ss << '\\' << static_cast<char>('0' + (c >> 6))
-             << static_cast<char>('0' + ((c >> 3) & 7))
-             << static_cast<char>('0' + (c & 7));
-        } else {
-          ss << c;
-        }
-      }
-      String s(ss.str().length());
-      snprintf(s.getptr(), ss.str().length() + 1, "%s", ss.str().c_str());
-      s.length_ = ss.str().length();
-      return s;
-    } else {
-      EEPgErrorInfo::SetPgErrorInfo(
-          ERRCODE_INVALID_PARAMETER_VALUE,
-          "only 'hex', 'escape' formats are supported for encode()");
-      return String("");
-    }
+    return GetEncodeValue(s0, s1);
   }
 }
 
 Field *FieldFuncEncode::field_to_copy() {
   FieldFuncEncode *field = new FieldFuncEncode(*this);
   return field;
+}
+
+char *FieldFuncDecode::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+
+  switch (storage_type_) {
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      char *ptr0 = args_[0]->get_ptr(batch);
+      char *ptr1 = args_[1]->get_ptr(batch);
+      if ((ptr0 == nullptr) || (ptr1 == nullptr)) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" field decode, get null value");
+        return const_cast<char *>("");
+      }
+      String s0 = args_[0]->ValStr(ptr0);
+      String s1 = args_[1]->ValStr(ptr1);
+      strvalue_ = GetDecodeValue(s0, s1);
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field func decode.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(&strvalue_.ptr_);
 }
 
 k_int64 FieldFuncDecode::ValInt() { return 0; }
@@ -802,87 +1116,25 @@ String FieldFuncDecode::ValStr() {
   } else {
     String s0 = args_[0]->ValStr();
     String s1 = args_[1]->ValStr();
-    std::string data = std::string(s0.getptr(), s0.length_);
-    std::string str = std::string(s1.getptr(), s1.length_);
-    std::string format;
-    for (char c : str) {
-      format += std::toupper(c);
-    }
-    if (format == "HEX") {
-      std::string result;
-      if (data.length() % 2 == 1) {
-        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                      "encoding/hex: invalid input parameter");
-        return String("");
-      }
-      for (size_t i = 0; i + 1 < data.length(); i += 2) {
-        if (!isxdigit(data[i]) || !isxdigit(data[i + 1])) {
-          EEPgErrorInfo::SetPgErrorInfo(
-              ERRCODE_INVALID_PARAMETER_VALUE,
-              "encoding/hex: invalid input parameter");
-          return String("");
-        }
-        unsigned char byte = std::stoi(data.substr(i, 2), nullptr, 16);
-        result += byte;  // add to result
-      }
-      String s(result.length());
-      snprintf(s.getptr(), result.length() + 1, "%s", result.c_str());
-      s.length_ = result.length();
-      return s;
-    } else if (format == "ESCAPE") {
-      std::stringstream ss;
-      for (size_t i = 0; i < data.size(); i++) {
-        char ch = data[i];
-        if (ch != '\\') {
-          ss << ch;
-          continue;
-        }
-        if (i >= data.size() - 1) {
-          EEPgErrorInfo::SetPgErrorInfo(
-              ERRCODE_INVALID_ESCAPE_SEQUENCE,
-              "bytea encoded value ends with escape character");
-          return String("");
-        }
-        if (data[i + 1] == '\\') {
-          ss << '\\';
-          i++;
-          continue;
-        }
-        if (i + 3 >= data.size()) {
-          EEPgErrorInfo::SetPgErrorInfo(
-              ERRCODE_INVALID_ESCAPE_SEQUENCE,
-              "bytea encoded value ends with incomplete escape sequence");
-          return String("");
-        }
-        unsigned char b = 0;
-        for (int j = 1; j <= 3; j++) {
-          char octDigit = data[i + j];
-          if (octDigit < '0' || octDigit > '7' || (j == 1 && octDigit > '3')) {
-            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_ESCAPE_SEQUENCE,
-                                          "invalid bytea escape sequence");
-            return String("");
-          }
-          b = (b << 3) | (octDigit - '0');
-        }
-        ss << b;
-        i += 3;
-      }
-      String s(ss.str().length());
-      snprintf(s.getptr(), ss.str().length() + 1, "%s", ss.str().c_str());
-      s.length_ = ss.str().length();
-      return s;
-    } else {
-      EEPgErrorInfo::SetPgErrorInfo(
-          ERRCODE_INVALID_PARAMETER_VALUE,
-          "only 'hex', 'escape' formats are supported for decode()");
-      return String("");
-    }
+    return GetDecodeValue(s0, s1);
   }
 }
 
 Field *FieldFuncDecode::field_to_copy() {
   FieldFuncDecode *field = new FieldFuncDecode(*this);
   return field;
+}
+
+char *FieldFuncBitLength::get_ptr(RowBatch *batch) {
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field bit length, get null value");
+    return const_cast<char *>("");
+  }
+
+  intvalue_ = args_[0]->ValStr(ptr).size() * 8;
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncBitLength::ValInt() {
@@ -906,6 +1158,19 @@ String FieldFuncBitLength::ValStr() {
 Field *FieldFuncBitLength::field_to_copy() {
   FieldFuncBitLength *field = new FieldFuncBitLength(*this);
   return field;
+}
+
+char *FieldFuncOctetLength::get_ptr(RowBatch *batch) {
+  char *ptr = args_[0]->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" field octet length, get null value");
+    return const_cast<char *>("");
+  }
+
+  intvalue_ = args_[0]->ValStr(ptr).size();
+
+  return reinterpret_cast<char *>(&intvalue_);
 }
 
 k_int64 FieldFuncOctetLength::ValInt() {

@@ -679,7 +679,7 @@ func TestShowSessions(t *testing.T) {
 
 	// We'll skip "internal" sessions, as those are unpredictable.
 	var showSessions = fmt.Sprintf(`
-	select node_id, (now() - session_start)::float from
+	select node_id, goroutine_id, (now() - session_start)::float from
 		[show cluster sessions] where application_name not like '%s%%'
 	`, sqlbase.InternalAppNamePrefix)
 
@@ -694,12 +694,16 @@ func TestShowSessions(t *testing.T) {
 		count++
 
 		var nodeID int
+		var goroutineID int64
 		var delta float64
-		if err := rows.Scan(&nodeID, &delta); err != nil {
+		if err := rows.Scan(&nodeID, &goroutineID, &delta); err != nil {
 			t.Fatal(err)
 		}
 		if nodeID < 1 || nodeID > 2 {
 			t.Fatalf("invalid node ID: %d", nodeID)
+		}
+		if goroutineID == 0 {
+			t.Fatalf("invalid goroutine ID: %d", goroutineID)
 		}
 
 		// The delta measures how long ago or in the future (in seconds) the start
@@ -718,18 +722,19 @@ func TestShowSessions(t *testing.T) {
 		report, err := func() (string, error) {
 			result := "Active sessions (results might have changed since the test checked):\n"
 			rows, err = conn.Query(`
-				select active_queries, last_active_query, application_name
+				select goroutine_id, active_queries, last_active_query, application_name
 					from [show cluster sessions]`)
 			if err != nil {
 				return "", err
 			}
 			var q, lq, name string
+			var goroutineID int64
 			for rows.Next() {
-				if err := rows.Scan(&q, &lq, &name); err != nil {
+				if err := rows.Scan(&goroutineID, &q, &lq, &name); err != nil {
 					return "", err
 				}
-				result += fmt.Sprintf("app: %q, query: %q, last query: %s",
-					name, q, lq)
+				result += fmt.Sprintf("goroutine_id: %d, app: %q, query: %q, last query: %s",
+					goroutineID, name, q, lq)
 			}
 			if err := rows.Close(); err != nil {
 				return "", err

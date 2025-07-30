@@ -58,7 +58,13 @@ class FieldFuncPlus : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncMinus : public FieldFuncOp {
@@ -70,7 +76,13 @@ class FieldFuncMinus : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncMult : public FieldFuncOp {
@@ -82,7 +94,13 @@ class FieldFuncMult : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{1};
+  k_double64 doublevalue_{1.0};
 };
 
 class FieldFuncDivide : public FieldFuncOp {
@@ -97,10 +115,16 @@ class FieldFuncDivide : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
  protected:
   k_bool field_is_nullable() override;
+
+ protected:
+  k_int64 intvalue_{1};
+  k_double64 doublevalue_{1.0};
 };
 
 class FieldFuncDividez : public FieldFuncOp {
@@ -112,10 +136,16 @@ class FieldFuncDividez : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
  protected:
   k_bool field_is_nullable() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncRemainder : public FieldFuncOp {
@@ -127,7 +157,13 @@ class FieldFuncRemainder : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncPercent : public FieldFuncOp {
@@ -139,10 +175,16 @@ class FieldFuncPercent : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
  protected:
   k_bool field_is_nullable() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncPower : public FieldFuncOp {
@@ -154,7 +196,13 @@ class FieldFuncPower : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncMod : public FieldFuncOp {
@@ -166,7 +214,13 @@ class FieldFuncMod : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncAndCal : public FieldFuncOp {
@@ -178,7 +232,13 @@ class FieldFuncAndCal : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncOrCal : public FieldFuncOp {
@@ -190,7 +250,13 @@ class FieldFuncOrCal : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncNotCal : public FieldFuncOp {
@@ -202,7 +268,13 @@ class FieldFuncNotCal : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncLeftShift : public FieldFuncOp {
@@ -214,7 +286,13 @@ class FieldFuncLeftShift : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncRightShift : public FieldFuncOp {
@@ -226,7 +304,13 @@ class FieldFuncRightShift : public FieldFuncOp {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class  FieldFuncTimeBucket : public FieldFuncOp {
@@ -300,6 +384,8 @@ class FieldFuncCastCheckTs : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
  private:
@@ -307,6 +393,10 @@ class FieldFuncCastCheckTs : public FieldFunc {
 
  private:
   DATATYPE datatype_{DATATYPE::NO_TYPE};
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncCurrentDate : public FieldFunc {
@@ -323,7 +413,12 @@ class FieldFuncCurrentDate : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncCurrentTimeStamp : public FieldFunc {
@@ -345,10 +440,14 @@ class FieldFuncCurrentTimeStamp : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
   k_int8 time_zone_{0};
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncDateTrunc : public FieldFunc {
@@ -380,6 +479,8 @@ class FieldFuncDateTrunc : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   k_bool is_nullable() override;
   Field *field_to_copy() override;
   KString unit_;
@@ -390,6 +491,10 @@ class FieldFuncDateTrunc : public FieldFunc {
   k_int8 time_zone_;
   k_bool is_unit_const_{false};
   k_bool is_null_value_{false};
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncExtract : public FieldFunc {
@@ -406,10 +511,15 @@ class FieldFuncExtract : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
   k_int8 time_zone_;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncExpStrftime : public FieldFunc {
@@ -484,8 +594,12 @@ class FieldFuncExpStrftime : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  String strvalue_{""};
 };
 
 class FieldFuncTimeOfDay : public FieldFunc {
@@ -502,10 +616,15 @@ class FieldFuncTimeOfDay : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
   k_int8 time_zone;
+
+ protected:
+  k_int64 intvalue_{0};
+  String strvalue_{""};
 };
 
 class FieldFuncNow : public FieldFunc {
@@ -522,8 +641,12 @@ class FieldFuncNow : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncRandom : public FieldFunc {
@@ -539,8 +662,12 @@ class FieldFuncRandom : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldFuncWidthBucket : public FieldFunc {
@@ -556,8 +683,12 @@ class FieldFuncWidthBucket : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncAge : public FieldFunc {
@@ -578,9 +709,14 @@ class FieldFuncAge : public FieldFunc {
 
   k_int64 ValInt() override;
   k_double64 ValReal() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   String ValStr() override;
-
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  String strvalue_{""};
 };
 
 class FieldFuncCase : public FieldFunc {
@@ -615,10 +751,17 @@ class FieldFuncCase : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   k_bool is_condition_met() override;
   Field *field_to_copy() override;
   k_bool is_nullable() override;
   bool condition_met{0};
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 class FieldFuncThen : public FieldFuncCase {
@@ -629,10 +772,17 @@ class FieldFuncThen : public FieldFuncCase {
 
   k_int64 ValInt() override;
   k_double64 ValReal() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   String ValStr() override;
   k_bool is_condition_met() override;
   Field *field_to_copy() override;
   k_bool is_nullable() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 class FieldFuncElse : public FieldFunc {
@@ -648,9 +798,16 @@ class FieldFuncElse : public FieldFunc {
 
   k_int64 ValInt() override;
   k_double64 ValReal() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   String ValStr() override;
   k_bool is_condition_met() override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 class FieldFuncCrc32C : public FieldFunc {
@@ -666,8 +823,12 @@ class FieldFuncCrc32C : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncCrc32I : public FieldFunc {
@@ -683,8 +844,12 @@ class FieldFuncCrc32I : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncFnv32 : public FieldFunc {
@@ -700,8 +865,12 @@ class FieldFuncFnv32 : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncFnv32a : public FieldFunc {
@@ -717,8 +886,12 @@ class FieldFuncFnv32a : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncFnv64 : public FieldFunc {
@@ -734,8 +907,12 @@ class FieldFuncFnv64 : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncFnv64a : public FieldFunc {
@@ -751,8 +928,12 @@ class FieldFuncFnv64a : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncCoalesce : public FieldFunc {
@@ -789,7 +970,14 @@ class FieldFuncCoalesce : public FieldFunc {
   k_double64 ValReal() override;
   String ValStr() override;
   k_bool is_nullable() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 struct DiffInfo {
@@ -828,12 +1016,18 @@ class FieldFuncDiff : public FieldFunc {
 
   k_int64 ValInt() override;
   k_double64 ValReal() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   String ValStr() override;
   Field *field_to_copy() override;
   k_bool is_nullable() override;
 
  public:
   DiffInfo diff_info_;
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
 };
 
 }  // namespace kwdbts

@@ -841,3 +841,22 @@ func (n *ShowAudits) Format(ctx *FmtCtx) {
 		ctx.WriteString(n.Enable)
 	}
 }
+
+// ShowStreams represents a SHOW STREAMS statement.
+type ShowStreams struct {
+	ShowAll    bool
+	StreamName Name
+}
+
+var _ Statement = &ShowStreams{}
+
+// Format implements the NodeFormatter interface.
+func (n *ShowStreams) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW ")
+	if n.ShowAll {
+		ctx.WriteString("STREAMS")
+		return
+	}
+	ctx.WriteString("STREAM ")
+	n.StreamName.Format(ctx)
+}

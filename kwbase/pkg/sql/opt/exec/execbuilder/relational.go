@@ -1304,7 +1304,7 @@ func (b *Builder) buildSelect(sel *memo.SelectExpr) (execPlan, bool, error) {
 	var leaveFilter memo.FiltersExpr
 	// self can not push but some filter can push
 	_, ok := sel.Input.(*memo.TSScanExpr)
-	if !sel.IsTSEngine() && sel.Input.IsTSEngine() && ok {
+	if !sel.IsTSEngine() && sel.Input.IsTSEngine() && ok && !b.ForceFilterInME {
 		for i := range sel.Filters {
 			if sel.Filters[i].IsTSEngine() {
 				pushFilter = append(pushFilter, sel.Filters[i])
@@ -1354,18 +1354,20 @@ func (b *Builder) buildSelect(sel *memo.SelectExpr) (execPlan, bool, error) {
 
 	// MakeTSSpans will remove some filters when can be changed to span, but can not change the original memo expr.
 	filters := sel.Filters
-	filterChangeToSpan := b.factory.MakeTSSpans(&filters, input.root, b.mem)
 
 	tsTableID := b.factory.FindTsScanNode(input.root, b.mem)
 	tableGroupIndex := b.mem.MultimodelHelper.GetTableIndexFromGroup(tsTableID)
 
-	// All filters have been converted to span, no need to build a filter node.
-	if filterChangeToSpan {
-		err := b.processInsideoutForSelect(sel, &input, tableGroupIndex)
-		if err != nil {
-			return execPlan{}, false, err
+	if !b.ForceFilterInME {
+		filterChangeToSpan := b.factory.MakeTSSpans(&filters, input.root, b.mem)
+		// All filters have been converted to span, no need to build a filter node.
+		if filterChangeToSpan {
+			err := b.processInsideoutForSelect(sel, &input, tableGroupIndex)
+			if err != nil {
+				return execPlan{}, false, err
+			}
+			return input, true, nil
 		}
-		return input, true, nil
 	}
 
 	filter, err := b.buildScalar(&ctx, &filters)
@@ -1377,7 +1379,8 @@ func (b *Builder) buildSelect(sel *memo.SelectExpr) (execPlan, bool, error) {
 	res := execPlan{outputCols: input.outputCols}
 	reqOrder := res.reqOrdering(sel)
 
-	res.root, err = b.factory.ConstructFilter(input.root, filter, reqOrder, sel.IsTSEngine())
+	// When building a pipe filter, do not exec in tsEngine.
+	res.root, err = b.factory.ConstructFilter(input.root, filter, reqOrder, sel.IsTSEngine() && !b.ForceFilterInME)
 	if err != nil {
 		return execPlan{}, true, err
 	}

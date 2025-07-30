@@ -163,6 +163,7 @@ type Memo struct {
 	multiModelReorderJoinsLimit int
 	hashScanMode                int
 	MultiModelEnabled           bool
+	TimeBucketEnabled           bool
 	zigzagJoinEnabled           bool
 	optimizerFKs                bool
 	safeUpdates                 bool
@@ -526,6 +527,7 @@ func (m *Memo) Init(evalCtx *tree.EvalContext) {
 	m.insertFastPath = evalCtx.SessionData.InsertFastPath
 	m.maxPushLimitNumber = evalCtx.SessionData.MaxPushLimitNumber
 	m.insideOutRowRatio = evalCtx.SessionData.InsideOutRowRatio
+	m.TimeBucketEnabled = evalCtx.SessionData.TimeBucketEnabled
 	if evalCtx.Settings != nil {
 		m.tsOrderedScan = opt.TSOrderedTable.Get(&evalCtx.Settings.SV)
 		m.tsCanPushAllProcessor = opt.PushdownAll.Get(&evalCtx.Settings.SV)
@@ -716,7 +718,8 @@ func (m *Memo) IsStale(
 		m.tsQueryOptMode != opt.TSQueryOptMode.Get(&evalCtx.Settings.SV) ||
 		m.tsForcePushGroupToTSEngine == stats.AutomaticTsStatisticsClusterMode.Get(&evalCtx.Settings.SV) ||
 		m.maxPushLimitNumber != evalCtx.SessionData.MaxPushLimitNumber ||
-		m.insideOutRowRatio != evalCtx.SessionData.InsideOutRowRatio {
+		m.insideOutRowRatio != evalCtx.SessionData.InsideOutRowRatio ||
+		m.TimeBucketEnabled != evalCtx.SessionData.TimeBucketEnabled {
 		return true, nil
 	}
 
@@ -2010,7 +2013,9 @@ func (m *Memo) checkProject(source *ProjectExpr) (ret CrossEngCheckResults) {
 			if proj.Element.Op() == opt.FunctionOp {
 				f := proj.Element.(*FunctionExpr)
 				if f.Name != tree.FuncTimeBucket {
-					ret.canTimeBucketOptimize = false
+					if !m.TimeBucketEnabled {
+						ret.canTimeBucketOptimize = false
+					}
 				} else {
 					ret.canTimeBucketOptimize = !findTimeBucket
 					if v, ok := m.CheckHelper.PushHelper.Find(proj.Col); ok {
@@ -2025,7 +2030,9 @@ func (m *Memo) checkProject(source *ProjectExpr) (ret CrossEngCheckResults) {
 					//m.CheckHelper.orderedCols.Add(proj.Col)
 				}
 			} else {
-				ret.canTimeBucketOptimize = false
+				if !m.TimeBucketEnabled {
+					ret.canTimeBucketOptimize = false
+				}
 			}
 		}
 	}
@@ -2310,14 +2317,17 @@ func (m *Memo) checkFilterOptTimeBucket(expr opt.Expr) bool {
 // input is the child expr of group by expr
 func (m *Memo) checkOptTimeBucketFlag(input RelExpr, optTimeBucket *bool) {
 	checkProject := func(pro *ProjectExpr) {
+		findTimeBucket := false
 		for _, v := range pro.Projections {
 			if tb, ok := m.CheckHelper.PushHelper.Find(v.Col); ok {
-				if !tb.IsTimeBucket {
-					*optTimeBucket = false
+				if tb.IsTimeBucket {
+					findTimeBucket = true
 				}
-			} else {
-				*optTimeBucket = false
 			}
+		}
+
+		if !findTimeBucket {
+			*optTimeBucket = false
 		}
 	}
 	if project, ok := input.(*ProjectExpr); ok {

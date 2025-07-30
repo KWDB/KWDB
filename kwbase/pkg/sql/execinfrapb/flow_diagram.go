@@ -102,6 +102,10 @@ func (*TsInsertProSpec) summary() (string, []string) {
 	return "TsInsert", []string{}
 }
 
+func (*TsInsertWithCDCProSpec) summary() (string, []string) {
+	return "TsInsertWithCDC", []string{}
+}
+
 // summary implements the diagramCellType interface.
 func (*TsCreateTableProSpec) summary() (string, []string) {
 	return "TsCreateTable", []string{}
