@@ -603,4 +603,6 @@ explain select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1;
 
 select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1;
 
+select e1 from d1.t1 where e2 > 0 and e4 = '44' order by e1 limit 1 offset 6;
+
 drop database if exists d1 cascade;
