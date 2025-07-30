@@ -145,9 +145,6 @@ class TsEntityBlockBuilder {
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
 
-  TS_LSN min_lsn_ = UINT64_MAX;
-  TS_LSN max_lsn_ = 0;
-
  public:
   TsEntityBlockBuilder() = delete;
   TsEntityBlockBuilder(uint32_t table_id, uint32_t table_version, uint64_t entity_id,
@@ -196,7 +193,7 @@ class TsEntitySegmentBuilder {
 
   KStatus WriteBlock(TsEntityKey& entity_key);
 
-  KStatus WriteCachedBlockSpan(TsEntityKey& entity_key);
+  KStatus WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key);
 
   std::filesystem::path root_path_;
   TsEngineSchemaManager* schema_manager_;

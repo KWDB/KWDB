@@ -516,7 +516,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
+KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key) {
   KStatus s = KStatus::SUCCESS;
   while (!cached_spans_.empty()) {
     if (cached_spans_.front()->GetRowNum() == 0) {
@@ -524,7 +524,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key) {
       continue;
     }
 
-    if (cached_count_ < EngineOptions::min_rows_per_block) {
+    if (!call_by_vacuum && cached_count_ < EngineOptions::min_rows_per_block) {
       if (builder_ == nullptr) {
         uint64_t file_number;
         std::unique_ptr<TsAppendOnlyFile> last_segment;
@@ -626,7 +626,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       continue;
     }
 
-    s = WriteCachedBlockSpan(entity_key);
+    s = WriteCachedBlockSpan(call_by_vacuum, entity_key);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
       return s;
@@ -655,7 +655,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     cached_spans_.push_back(std::move(block_span));
   }
 
-  s = WriteCachedBlockSpan(entity_key);
+  s = WriteCachedBlockSpan(call_by_vacuum, entity_key);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
     return s;

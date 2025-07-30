@@ -45,6 +45,7 @@ enum class PartitionStatus : uint32_t {
   None = 0,
   Vacuuming,
   Compacting,
+  BatchDataWriting,
 };
 
 class TsPartitionVersion {

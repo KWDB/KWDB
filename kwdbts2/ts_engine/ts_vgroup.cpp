@@ -382,17 +382,21 @@ KStatus TsVGroup::Compact(bool call_by_vacuum) {
     partitions = current->GetPartitionsToVacuum();
   }
 
+  Defer defer{[&]() {
+    for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
+      const auto &cur_partition = *it;
+      cur_partition->ResetStatus();
+    }
+  }};
+
   // Compact partitions
   TsVersionUpdate update;
   std::atomic_bool success{true};
   for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
     const auto& cur_partition = *it;
-    if (!cur_partition->TrySetBusy(PartitionStatus::Compacting)) {
-      continue;
+    while (!cur_partition->TrySetBusy(PartitionStatus::Compacting)) {
+      sleep(1);
     }
-    Defer defer{[&]() {
-      cur_partition->ResetStatus();
-    }};
     // 1. Get all the last segments that need to be compacted.
     std::vector<std::shared_ptr<TsLastSegment>> last_segments;
     if (!call_by_vacuum) {
@@ -404,18 +408,11 @@ KStatus TsVGroup::Compact(bool call_by_vacuum) {
 
     auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
 
-    std::list<std::shared_ptr<TsBlockSpan>> all_lastseg_spans;
-    for (const auto& last_segment : last_segments) {
-      std::list<std::shared_ptr<TsBlockSpan>> spans;
-      last_segment->GetBlockSpans(spans, schema_mgr_);
-      all_lastseg_spans.splice(all_lastseg_spans.end(), std::move(spans));
-    }
-
     // 2. Build the column block.
     {
       TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
                                      cur_partition->GetPartitionIdentifier(), entity_segment,
-                                     std::move(all_lastseg_spans));
+                                     last_segments);
       KStatus s = builder.Open();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
@@ -942,7 +939,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
     std::unique_lock lock{builders_mutex_};
     auto it = write_batch_segment_builders_.find(partition_id);
     if (it == write_batch_segment_builders_.end()) {
-      while (!partition->TrySetBusy(PartitionStatus::WriteBatch)) {
+      while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
         sleep(1);
       }
       auto entity_segment = partition->GetEntitySegment();
@@ -1241,6 +1238,7 @@ KStatus TsVGroup::Vacuum() {
     LOG_ERROR("Vacuum VGroup[%d] failed, Compact failed", vgroup_id_);
     return s;
   }
+  return KStatus::SUCCESS;
 
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
