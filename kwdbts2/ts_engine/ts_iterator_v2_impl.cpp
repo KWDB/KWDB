@@ -645,12 +645,12 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
         if (!c.blk_span->IsVarLenType(col_idx)) {
           char* value = nullptr;
           TsBitmap bitmap;
-          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap);
+          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap, false);
           if (ret != KStatus::SUCCESS) {
             return ret;
           }
 
-          if (bitmap[c.row_idx] != DataFlags::kValid) {
+          if (!attrs_[col_idx].isFlag(AINFO_NOT_NULL) && bitmap[c.row_idx] != DataFlags::kValid) {
             final_agg_data_[i] = {nullptr, 0};
           } else {
             final_agg_data_[i].len = col_idx == 0 ? 16 : c.blk_span->GetColSize(col_idx);
@@ -1030,7 +1030,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       char* value = nullptr;
       TsBitmap bitmap;
-      auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap);
+      auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetFixLenColAddr failed.");
         return s;
@@ -1038,7 +1038,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
       int32_t size = kw_col_idx == 0 ? 16 : block_span->GetColSize(kw_col_idx);
       for (row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (bitmap[row_idx] != DataFlags::kValid) {
+        if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
           continue;
         }
         void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1124,7 +1124,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
         TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap);
+        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1132,7 +1132,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
         int32_t size = kw_col_idx == 0 ? 16 : block_span->GetColSize(kw_col_idx);
         for (row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (bitmap[row_idx] != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1252,7 +1252,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
         TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap);
+        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1260,7 +1260,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
         int32_t size = kw_col_idx == 0 ? 16 : block_span->GetColSize(kw_col_idx);
         for (row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (bitmap[row_idx] != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
