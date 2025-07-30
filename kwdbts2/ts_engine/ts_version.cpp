@@ -965,6 +965,9 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
   update->has_next_file_number_ = all_updates_.has_next_file_number_;
   update->next_file_number_ = all_updates_.next_file_number_;
 
+  update->has_max_lsn_ = all_updates_.has_max_lsn_;
+  update->max_lsn_ = all_updates_.max_lsn_;
+
   update->need_record_ = true;
 }
 
