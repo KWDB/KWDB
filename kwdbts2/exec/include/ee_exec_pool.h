@@ -24,7 +24,9 @@
 #define EE_ENABLE_PARALLEL 1
 
 namespace kwdbts {
+
 class TimerEventPool;
+class PipelineTaskPoller;
 /**
  * @brief the scheduling class
  */
@@ -35,6 +37,8 @@ class ExecPool {
    *
    */
   TimerEventPool *timer_event_pool_{nullptr};
+
+  PipelineTaskPoller *pipeline_task_poller_{nullptr};
 
   typedef std::deque<ExecTaskPtr> TaskQueue;
   /**
@@ -122,6 +126,8 @@ class ExecPool {
    * @param no_check : if true, don't check if the queue is filled
    */
   KStatus PushTask(ExecTaskPtr task_ptr, bool no_check = false);
+
+  KStatus PushBlockedTask(ExecTaskPtr task_ptr);
   /**
   * @brief add timed tasks
   *

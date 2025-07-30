@@ -183,6 +183,20 @@ func (dsp *DistSQLPlanner) setupFlows(
 	if len(flows) > 1 {
 		resultChan = make(chan runnerResult, len(flows)-1)
 	}
+
+	usePipeline := false
+	for _, f := range flows {
+		// pipeline not support vectorized now.
+		if f.TsInfo.UsePipeline {
+			usePipeline = true
+			setupReq.EvalContext.Vectorize = int32(sessiondata.VectorizeOff)
+			break
+		}
+	}
+	if usePipeline {
+		return dsp.setupPipeFlows(ctx, evalCtx, setupReq, flows, thisNodeID, recv, localState, resultChan)
+	}
+
 	if evalCtx.SessionData.VectorizeMode != sessiondata.VectorizeOff {
 		if !vectorizeThresholdMet && (evalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto) {
 			// Vectorization is not justified for this flow because the expected
@@ -295,9 +309,72 @@ func (dsp *DistSQLPlanner) setupFlows(
 	localReq := setupReq
 	localReq.Flow = *flows[thisNodeID]
 	defer physicalplan.ReleaseSetupFlowRequest(&localReq)
-	ctx, flow, err := dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Mon, &localReq, recv, localState, plan.AllProcessorsExecInTSEngine)
+	ctx, flow, err := dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Mon, &localReq, recv, localState)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	return ctx, flow, nil
+}
+
+// setupPipeFlows setup all flows, first setup gateway flow.
+func (dsp *DistSQLPlanner) setupPipeFlows(
+	ctx context.Context,
+	evalCtx *extendedEvalContext,
+	setupReq execinfrapb.SetupFlowRequest,
+	flows map[roachpb.NodeID]*execinfrapb.FlowSpec,
+	thisNodeID roachpb.NodeID,
+	recv *DistSQLReceiver,
+	localState distsql.LocalState,
+	resultChan chan runnerResult,
+) (context.Context, flowinfra.Flow, error) {
+	// Set up the flow on this node.
+	localReq := setupReq
+	localReq.Flow = *flows[thisNodeID]
+	defer physicalplan.ReleaseSetupFlowRequest(&localReq)
+	ctx, flow, err := dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Mon, &localReq, recv, localState)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for nodeID, flowSpec := range flows {
+		if nodeID == thisNodeID {
+			// Skip this node.
+			continue
+		}
+		req := setupReq
+		req.Flow = *flowSpec
+		runReq := runnerRequest{
+			ctx:        ctx,
+			nodeDialer: dsp.nodeDialer,
+			flowReq:    &req,
+			nodeID:     nodeID,
+			resultChan: resultChan,
+		}
+		defer physicalplan.ReleaseSetupFlowRequest(&req)
+
+		// Send out a request to the workers; if no worker is available, run
+		// directly.
+		select {
+		case dsp.runnerChan <- runReq:
+		default:
+			runReq.run()
+		}
+	}
+
+	var firstErr error
+	// Now wait for all the flows to be scheduled on remote nodes. Note that we
+	// are not waiting for the flows themselves to complete.
+	for i := 0; i < len(flows)-1; i++ {
+		res := <-resultChan
+		if firstErr == nil {
+			firstErr = res.err
+		}
+		// TODO(radu): accumulate the flows that we failed to set up and move them
+		// into the local flow.
+	}
+	if firstErr != nil {
+		return nil, nil, firstErr
 	}
 
 	return ctx, flow, nil
@@ -372,7 +449,7 @@ func (dsp *DistSQLPlanner) GetFlow(
 		return nil, ctx
 	}
 
-	flows := plan.GenerateFlowSpecs(dsp.nodeDesc.NodeID /* gateway */)
+	flows := plan.GenerateFlowSpecs(dsp.nodeDesc.NodeID /* gateway */, dsp.gossip)
 	if _, ok := flows[dsp.nodeDesc.NodeID]; !ok {
 		recv.SetError(errors.Errorf("expected to find gateway flow"))
 		return nil, ctx
@@ -394,7 +471,8 @@ func (dsp *DistSQLPlanner) GetFlow(
 	recv.resultToStreamColMap = plan.PlanToStreamColMap
 
 	vectorizedThresholdMet := !planCtx.hasBatchLookUpJoin && supportVectorizedThreshold &&
-		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold && !planCtx.useQueryShortCircuit
+		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold &&
+		plan.UseQueryShortCircuit == physicalplan.ForbidQueryShortCircuit
 
 	if len(flows) == 1 {
 		// We ended up planning everything locally, regardless of whether we
@@ -406,13 +484,6 @@ func (dsp *DistSQLPlanner) GetFlow(
 		recv.SetError(err)
 		return flow, ctx
 	}
-	if flow != nil && planCtx.planner != nil && planCtx.planner.stmt != nil {
-		flow.SetRunProcedure(planCtx.planner.stmt.AST.StatOp() == "CALL")
-	}
-	if plan.AllProcessorsExecInTSEngine {
-		flow.SetCloses(plan.Closes)
-	}
-
 	if finishedSetupFn != nil {
 		finishedSetupFn()
 	}
@@ -918,7 +989,8 @@ func (r *DistSQLReceiver) Push(
 		if meta.Err != nil {
 			// Check if the error we just received should take precedence over a
 			// previous error (if any).
-			if roachpb.ErrPriority(meta.Err) > roachpb.ErrPriority(r.resultWriter.Err()) {
+			if roachpb.ErrPriority(meta.Err) > roachpb.ErrPriority(r.resultWriter.Err()) ||
+				strings.Contains(r.resultWriter.Err().Error(), "cancel") {
 				if r.txn != nil {
 					if err, ok := errors.If(meta.Err, func(err error) (v interface{}, ok bool) {
 						v, ok = err.(*roachpb.UnhandledRetryableError)
@@ -1186,7 +1258,7 @@ func (dsp *DistSQLPlanner) planAndRunSubquery(
 	}
 	subqueryPlanCtx.runningSubquery = true
 	dsp.FinalizePlan(subqueryPlanCtx, &subqueryPhysPlan)
-
+	subqueryPhysPlan.UseOriginalFlow = true
 	// TODO(arjun): #28264: We set up a row container, wrap it in a row
 	// receiver, and use it and serialize the results of the subquery. The type
 	// of the results stored in the container depends on the type of the subquery.

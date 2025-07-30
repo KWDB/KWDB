@@ -121,6 +121,8 @@ typedef struct {
   uint32_t buffer_pool_size;
   TsLogOptions lg_opts;
   bool is_single_node;
+  TSSlice brpc_addr;
+  TSSlice cluster_id;
   const char* engine_version;
 } TSOptions;
 
@@ -203,6 +205,7 @@ typedef struct _QueryInfo {
   // when the switch is on and the server starts with single node mode.
   void* relBatchData;
   int32_t relRowCount;
+  TSSlice sql;
   DataInfo vectorize_data;
 } QueryInfo;
 

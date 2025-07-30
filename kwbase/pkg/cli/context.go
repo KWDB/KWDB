@@ -319,6 +319,7 @@ var startCtx struct {
 	serverSSLCertsDir      string
 	serverCertPrincipalMap []string
 	serverListenAddr       string
+	serverListenBRPCAddr   string
 
 	// if specified, this forces the HTTP listen addr to localhost
 	// and disables TLS on the HTTP listener.

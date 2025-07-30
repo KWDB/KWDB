@@ -108,14 +108,6 @@ func (sp *csvWriter) IsShortCircuitForPgEncode() bool {
 	return false
 }
 
-func (sp *csvWriter) NextPgWire() (val []byte, code int, err error) {
-	return nil, 0, nil
-}
-
-func (sp *csvWriter) SupportPgWire() bool {
-	return false
-}
-
 func (sp *csvWriter) Start(ctx context.Context) context.Context {
 	return nil
 }
@@ -483,6 +475,11 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 	execinfra.DrainAndClose(
 		ctx, sp.output, err, func(context.Context) {} /* pushTrailingMeta */, sp.input)
 	return execinfra.RowStats{}
+}
+
+// RunShortCircuit is part of the Processor interface.
+func (sp *csvWriter) RunShortCircuit(context.Context, execinfra.TSReader) error {
+	return nil
 }
 
 // fieldSQLResolve used to handle special column contents when exporting SQL files

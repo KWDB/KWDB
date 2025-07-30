@@ -50,9 +50,8 @@ void AssignDataToRow(SampledRow *row, Field *render, bool is_null, KWDBTypeFamil
   }
 }
 
-TsSamplerOperator::TsSamplerOperator(TsFetcherCollection* collection, TABLE* table, BaseOperator* input,
-                                     int32_t processor_id):
-  BaseOperator(collection, table, processor_id), input_(input) {}
+TsSamplerOperator::TsSamplerOperator(TsFetcherCollection* collection, TABLE* table, int32_t processor_id):
+  BaseOperator(collection, table, nullptr, processor_id) {}
 
 KStatus TsSamplerOperator::setup(const TSSamplerSpec* tsInfo) {
   KStatus code = FAIL;
@@ -149,7 +148,6 @@ KStatus TsSamplerOperator::setup(const TSSamplerSpec* tsInfo) {
     sketchCol_ = total_columns + 4;
     bucketIDCol_ = total_columns + 5;
     bucketNumRowsCol_ = total_columns + 6;
-    LOG_DEBUG("tsSamplerOperator setup success and table id is %lu in create statistics", input_->table()->object_id_);
     code = SUCCESS;
   }
   return code;
@@ -165,12 +163,12 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Metrics>(kwdbContext_p ctx) {
 
   std::vector<byte> buf;
   while (true) {
-    code = input_->Next(ctx);
+    code = childrens_[0]->Next(ctx);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
 
-    RowBatch* row_batch = input_->GetRowBatch(ctx);
+    RowBatch* row_batch = childrens_[0]->GetRowBatch(ctx);
     row_batch->ResetLine();
     const k_uint32 lines = row_batch->Count();
     for (k_uint32 line = 0; line < lines; ++line) {
@@ -186,12 +184,12 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Metrics>(kwdbContext_p ctx) {
         }
 
         // Adds a row to the sketch and updates row counts.
-        sk.addRow(input_, row_batch);
+        sk.addRow(childrens_[0], row_batch);
 
         // TODO(zh): Optimize reservoir sampling
         if (sk.histogram) {
           SampledRow row{};
-          Field* render = input_->GetRender(static_cast<int>(col_idx));
+          Field* render = childrens_[0]->GetRender(static_cast<int>(col_idx));
           bool isNull = row_batch->IsNull(render->getColIdxInRs(), normalCol_sketches_[i].column_type);
           AssignDataToRow(&row, render, isNull, outRetrunTypes_[col_idx]);
           // Randomly generated rankings
@@ -213,7 +211,7 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Metrics>(kwdbContext_p ctx) {
     }
   } else {
     LOG_ERROR("scanning normal column data fails in %lu table during statistics collection",
-              input_->table()->object_id_)
+              childrens_[0]->table()->object_id_)
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                   "scanning normal column data fail during statistics collection");
     Return(EE_ERROR);
@@ -229,12 +227,13 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Tag>(kwdbContext_p ctx) {
   if (!current_thd) {
     Return(code)
   }
-  auto* tableScanOp = dynamic_cast<TableScanOperator*>(input_);
+  auto* tableScanOp = dynamic_cast<TableScanOperator*>(childrens_[0]);
   if (!tableScanOp) {
     Return(code)
   }
 
-  BaseOperator* tagOp = tableScanOp->GetInput();
+  std::vector<BaseOperator*> childrens = tableScanOp->GetChildren();
+  BaseOperator* tagOp = childrens[0];
   if (!tagOp) {
     Return(code)
   }
@@ -280,7 +279,7 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Tag>(kwdbContext_p ctx) {
   }
 
   if (code == EE_END_OF_RECORD) {
-    total_sample_rows_ += primary_tag_sketches_.size() + tag_sketches_.size();;
+    total_sample_rows_ += primary_tag_sketches_.size() + tag_sketches_.size();
     if (!normalCol_sketches_.empty()) {
       tagScanOp->Reset(ctx);
       code = tagScanOp->Start(ctx);
@@ -290,7 +289,7 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Tag>(kwdbContext_p ctx) {
     }
   } else {
     LOG_ERROR("scanning tag columns data fails in %lu table during statistics collection",
-                input_->table()->object_id_)
+                childrens_[0]->table()->object_id_)
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                   "scanning tag columns data fail during statistics collection");
     Return(EE_ERROR);
@@ -358,7 +357,7 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<SortedHistogram>(kwdbContext_p ctx
 void TsSamplerOperator::AddData(const vector<optional<DataVariant>>& row_data, DataChunkPtr& chunk) {
   if (row_data.size() != chunk->ColumnNum()) {
     LOG_ERROR("out row size exceeds elements with table %lu during getting sample result in create statistics",
-              input_->table()->object_id_)
+              childrens_[0]->table()->object_id_)
     return;
   }
 
@@ -447,21 +446,18 @@ EEIteratorErrCode TsSamplerOperator::Init(kwdbContext_p ctx) {
   EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
   do {
     // Pre-initialize lower-level operators
-    ret = input_->Init(ctx);
+    ret = childrens_[0]->Init(ctx);
     if (EEIteratorErrCode::EE_OK != ret) {
       break;
     }
 
-    Field** renders = input_->GetRender();
-    k_uint32 num = input_->GetRenderSize();
+    std::vector<Field *> &output_fields = childrens_[0]->OutputFields();
+    k_uint32 num = output_fields.size();
     // Resolve outCols type and store length
     for (int i = 0; i < num; ++i) {
-      if (!renders[i]) {
-        Return(EE_ERROR)
-      }
-      outRetrunTypes_.emplace_back(renders[i]->get_return_type());
-      outStorageTypes_.emplace_back(renders[i]->get_storage_type());
-      outLens_.emplace_back(renders[i]->get_storage_length());
+      outRetrunTypes_.emplace_back(output_fields[i]->get_return_type());
+      outStorageTypes_.emplace_back(output_fields[i]->get_storage_type());
+      outLens_.emplace_back(output_fields[i]->get_storage_length());
     }
     // Append extra columns
     // Rank col / SketchIdx col / NumRows col / NullRows col
@@ -498,6 +494,11 @@ EEIteratorErrCode TsSamplerOperator::Init(kwdbContext_p ctx) {
     auto *ts_engine = static_cast<TSEngine *>(ctx->ts_engine);
     if (ts_engine)
       res = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_);
+    if (res != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to get ts table for table %lu", table_->object_id_);
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
+                                    "Failed to get ts table");
+    }
     ret = res == KStatus::SUCCESS ? EEIteratorErrCode::EE_OK: EEIteratorErrCode::EE_ERROR;
   } while (false);
 
@@ -510,7 +511,7 @@ EEIteratorErrCode TsSamplerOperator::Start(kwdbContext_p ctx) {
   EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
   KStatus code;
   do {
-    ret = input_->Start(ctx);
+    ret = childrens_[0]->Start(ctx);
     if (EEIteratorErrCode::EE_OK != ret) {
       break;
     }
@@ -521,7 +522,7 @@ EEIteratorErrCode TsSamplerOperator::Start(kwdbContext_p ctx) {
 
 EEIteratorErrCode TsSamplerOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   EnterFunc();
-  LOG_DEBUG("start collecting timeseries table %lu statistics", input_->table()->object_id_);
+  LOG_DEBUG("start collecting timeseries table %lu statistics", childrens_[0]->table()->object_id_);
   LOG_DEBUG("normal columns num: %zu; primary key columns num: %zu", normalCol_sketches_.size(),
              primary_tag_sketches_.size());
   KWThdContext *thd = current_thd;
@@ -563,9 +564,9 @@ EEIteratorErrCode TsSamplerOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
   if (ret != SUCCESS) {
     Return(EE_ERROR);
   }
-  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
   is_done_ = true;
-  LOG_DEBUG("complete collecting timeseries table %lu statistics", input_->table()->object_id_);
+  LOG_DEBUG("complete collecting timeseries table %lu statistics", childrens_[0]->table()->object_id_);
   Return(EE_OK);
 }
 
@@ -630,7 +631,7 @@ KStatus TsSamplerOperator::ProcessSketches(kwdbContext_p ctx, const std::vector<
     sketchVal = sk.sketch->MarshalBinary();
     if (sketchVal.size() > MAX_SKETCH_LEN) {
       // Avoid over length
-      LOG_ERROR("sketch column over length when scanning table %lu", input_->table()->object_id_)
+      LOG_ERROR("sketch column over length when scanning table %lu", childrens_[0]->table()->object_id_)
       char buffer[256];
       snprintf(buffer, sizeof(buffer), "sketch column %u over length during statistics collection. ", sk.sketchIdx);
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE, buffer);
@@ -646,12 +647,12 @@ KStatus TsSamplerOperator::ProcessSketches(kwdbContext_p ctx, const std::vector<
   Return(SUCCESS)
 }
 
-KStatus TsSamplerOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode TsSamplerOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  KStatus ret = input_->Close(ctx);
+  EEIteratorErrCode code = childrens_[0]->Close(ctx);
   Reset(ctx);
 
-  Return(ret);
+  Return(code);
 }
 
 k_uint32 TsSamplerOperator::GetSampleSize() const {
@@ -675,7 +676,7 @@ std::vector<SketchSpec> TsSamplerOperator::GetSketches<PrimaryTag>() const {
 
 EEIteratorErrCode TsSamplerOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-  input_->Reset(ctx);
+  childrens_[0]->Reset(ctx);
 
   Return(EEIteratorErrCode::EE_OK)
 }

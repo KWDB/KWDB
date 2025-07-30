@@ -24,6 +24,37 @@ class SpecBase {
 
   virtual void PrepareFlowSpec(TSFlowSpec& flow) = 0;
 
+  void PrepareInputOutputSpec(TSFlowSpec& flow) {
+    k_uint32 operator_size = flow.processors_size();
+    for (k_uint32 i = 0; i < operator_size; ++i) {
+      auto* processor = flow.mutable_processors(i);
+      // input
+      if (i != 0) {
+        TSInputSyncSpec *input_spec = processor->add_input();
+        input_spec->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
+        TSStreamEndpointSpec *stream_spec = input_spec->add_streams();
+        stream_spec->set_type(StreamEndpointType::LOCAL);
+        stream_spec->set_stream_id(i - 1);
+        stream_spec->set_target_node_id(0);
+        stream_spec->set_dest_processor(processor->processor_id());
+      }
+
+      // output
+      TSOutputRouterSpec *output_spec = processor->add_output();
+      output_spec->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_PASS_THROUGH);
+      TSStreamEndpointSpec *output_stream_spec = output_spec->add_streams();
+      output_stream_spec->set_type(StreamEndpointType::LOCAL);
+      output_stream_spec->set_stream_id(i);
+      output_stream_spec->set_target_node_id(0);
+      if (i != operator_size - 1) {
+        output_stream_spec->set_dest_processor(flow.mutable_processors(i + 1)->processor_id());
+      } else {
+        output_stream_spec->set_dest_processor(processor->processor_id() + 1);
+        processor->set_final_ts_processor(true);
+      }
+    }
+  }
+
  protected:
   void PrepareTagReaderProcessor(TSFlowSpec& flow, int processor_id) {
     auto* tag_read_processor = flow.add_processors();
@@ -37,19 +68,10 @@ class SpecBase {
     tag_reader->set_accessmode(TSTableReadMode::tableTableMeta);
     tag_reader_core->set_allocated_tagreader(tag_reader);
     tag_reader->set_uniontype(0);
-    
+
     auto tag_post = KNEW TSPostProcessSpec();
     initTagReaderPostSpec(*tag_post);
     tag_read_processor->set_allocated_post(tag_post);
-
-    auto* tag_reader_output = tag_read_processor->add_output();
-    tag_reader_output->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_PASS_THROUGH);
-
-    auto* tag_reader_stream = tag_reader_output->add_streams();
-    tag_reader_stream->set_type(StreamEndpointType::LOCAL);
-    tag_reader_stream->set_s_type(StreamEndpointType::LOCAL);
-    tag_reader_stream->set_stream_id(processor_id);
-    tag_reader_stream->set_target_node_id(0);
   }
 
   void PrepareTableReaderProcessor(TSFlowSpec& flow, int processor_id) {
@@ -58,12 +80,6 @@ class SpecBase {
 
     auto table_reader_input = table_read_processor->add_input();
     table_reader_input->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
-
-    auto table_reader_stream = table_reader_input->add_streams();
-    table_reader_stream->set_stream_id(processor_id - 1);
-    table_reader_stream->set_type(StreamEndpointType::LOCAL);
-    table_reader_stream->set_s_type(StreamEndpointType::LOCAL);
-    table_reader_stream->set_target_node_id(0);
 
     auto table_reader_core = KNEW TSProcessorCoreUnion();
     table_read_processor->set_allocated_core(table_reader_core);
@@ -82,29 +98,11 @@ class SpecBase {
     auto reader_post = KNEW TSPostProcessSpec();
     initTableReaderPostSpec(*reader_post);
     table_read_processor->set_allocated_post(reader_post);
-
-    auto* reader_output = table_read_processor->add_output();
-    reader_output->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_PASS_THROUGH);
-
-    auto* reader_stream = reader_output->add_streams();
-    reader_stream->set_stream_id(processor_id);
-    reader_stream->set_type(StreamEndpointType::LOCAL);
-    reader_stream->set_s_type(StreamEndpointType::LOCAL);
-    reader_stream->set_target_node_id(0);
   }
 
   void PrepareSynchronizerProcessor(TSFlowSpec& flow, int processor_id) {
     auto* synchronizer = flow.add_processors();
     synchronizer->set_processor_id(processor_id);
-
-    auto sync_input = synchronizer->add_input();
-    sync_input->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
-
-    auto sync_stream = sync_input->add_streams();
-    sync_stream->set_type(StreamEndpointType::LOCAL);
-    sync_stream->set_s_type(StreamEndpointType::LOCAL);
-    sync_stream->set_stream_id(processor_id - 1);
-    sync_stream->set_target_node_id(0);
 
     auto sync_core = KNEW TSProcessorCoreUnion();
     synchronizer->set_allocated_core(sync_core);
@@ -117,27 +115,42 @@ class SpecBase {
     initOutputTypes(*sync_post);
 
     synchronizer->set_allocated_post(sync_post);
+  }
 
-    auto sync_output = synchronizer->add_output();
-    auto sync_output_stream = sync_output->add_streams();
-    sync_output_stream->set_stream_id(processor_id);
-    sync_output_stream->set_type(StreamEndpointType::LOCAL);
-    sync_output_stream->set_s_type(StreamEndpointType::LOCAL);
-    sync_output_stream->set_target_node_id(0);
+  void PrepareDistinctProcessor(TSFlowSpec& flow, int processor_id) {
+    auto* distinct_processor = flow.add_processors();
+    distinct_processor->set_processor_id(processor_id);
+
+    auto distinct_core = KNEW TSProcessorCoreUnion();
+    distinct_processor->set_allocated_core(distinct_core);
+
+    auto *spec = KNEW DistinctSpec();
+    spec->add_distinct_columns(1);
+    distinct_core->set_allocated_distinct(spec);
+
+    auto *post = KNEW TSPostProcessSpec();
+    post->add_outputcols(1);
+    post->add_outputtypes(KWDBTypeFamily::IntFamily);
+    distinct_processor->set_allocated_post(post);
+  }
+
+  void PrepareNoopProcessor(TSFlowSpec& flow, int processor_id) {
+    auto* noop_processor = flow.add_processors();
+    noop_processor->set_processor_id(processor_id);
+
+    auto noop_core = KNEW TSProcessorCoreUnion();
+    noop_processor->set_allocated_core(noop_core);
+
+    auto noop = KNEW TSNoopSpec();
+    noop_core->set_allocated_noop(noop);
+
+    auto *post = KNEW TSPostProcessSpec();
+    noop_processor->set_allocated_post(post);
   }
 
   void PrepareSorterProcessor(TSFlowSpec& flow, int processor_id) {
     auto* sorter_processor = flow.add_processors();
     sorter_processor->set_processor_id(processor_id);
-
-    auto sorter_input = sorter_processor->add_input();
-    sorter_input->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
-
-    auto sorter_stream = sorter_input->add_streams();
-    sorter_stream->set_type(StreamEndpointType::LOCAL);
-    sorter_stream->set_s_type(StreamEndpointType::LOCAL);
-    sorter_stream->set_stream_id(processor_id - 1);
-    sorter_stream->set_target_node_id(0);
 
     auto sorter_core = KNEW TSProcessorCoreUnion();
     sorter_processor->set_allocated_core(sorter_core);
@@ -151,7 +164,7 @@ class SpecBase {
     col1->set_direction(TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC);
 
     auto col2 = ordering->add_columns();
-    col2->set_col_idx(11);
+    col2->set_col_idx(4);
     col2->set_direction(TSOrdering_Column_Direction::TSOrdering_Column_Direction_ASC);
 
     sorter->set_allocated_output_ordering(ordering);
@@ -160,27 +173,11 @@ class SpecBase {
     initOutputTypes(*sorter_post);
 
     sorter_processor->set_allocated_post(sorter_post);
-
-    auto sorter_output = sorter_processor->add_output();
-    auto sorter_output_stream = sorter_output->add_streams();
-    sorter_output_stream->set_stream_id(processor_id);
-    sorter_output_stream->set_type(StreamEndpointType::LOCAL);
-    sorter_output_stream->set_s_type(StreamEndpointType::LOCAL);
-    sorter_output_stream->set_target_node_id(0);
   }
 
   void PrepareAggProcessor(TSFlowSpec& flow, int processor_id) {
     auto* agg_processor = flow.add_processors();
     agg_processor->set_processor_id(processor_id);
-
-    auto agg_input = agg_processor->add_input();
-    agg_input->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
-
-    auto agg_stream = agg_input->add_streams();
-    agg_stream->set_stream_id(processor_id - 1);
-    agg_stream->set_type(StreamEndpointType::LOCAL);
-    agg_stream->set_s_type(StreamEndpointType::LOCAL);
-    agg_stream->set_target_node_id(0);
 
     auto agg_core = KNEW TSProcessorCoreUnion();
     agg_processor->set_allocated_core(agg_core);
@@ -194,15 +191,6 @@ class SpecBase {
     agg_post_ = KNEW TSPostProcessSpec();
     initAggOutputTypes(*agg_post_);
     agg_processor->set_allocated_post(agg_post_);
-
-    auto* reader_output = agg_processor->add_output();
-    reader_output->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_PASS_THROUGH);
-
-    auto* reader_stream = reader_output->add_streams();
-    reader_stream->set_stream_id(processor_id);
-    reader_stream->set_type(StreamEndpointType::LOCAL);
-    reader_stream->set_s_type(StreamEndpointType::LOCAL);
-    reader_stream->set_target_node_id(0);
   }
 
   // include all columns of TSBS in the Tag Reader Spec.
@@ -215,27 +203,37 @@ class SpecBase {
     ts_col->set_storage_len(8);
     ts_col->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
 
-    // metrics column
-    for (int i = 0; i < 10; i++) {
-      auto metrics_col = spec.add_colmetas();
-      metrics_col->set_storage_type(roachpb::DataType::BIGINT);
-      metrics_col->set_storage_len(8);
-      metrics_col->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
-    }
+    ts_col = spec.add_colmetas();
+    ts_col->set_storage_type(roachpb::DataType::SMALLINT);
+    ts_col->set_storage_len(2);
+    ts_col->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
+
+    ts_col = spec.add_colmetas();
+    ts_col->set_storage_type(roachpb::DataType::INT);
+    ts_col->set_storage_len(4);
+    ts_col->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
+
+    ts_col = spec.add_colmetas();
+    ts_col->set_storage_type(roachpb::DataType::VARCHAR);
+    ts_col->set_storage_len(30);
+    ts_col->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
 
     // primary tag
     auto p_tag = spec.add_colmetas();
-    p_tag->set_storage_type(roachpb::DataType::CHAR);
-    p_tag->set_storage_len(30);
+    p_tag->set_storage_type(roachpb::DataType::TIMESTAMP);
+    p_tag->set_storage_len(8);
     p_tag->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_PTAG);
 
     // normal tags
-    for (int i = 0; i < 9; i++) {
-      auto tag_col = spec.add_colmetas();
-      tag_col->set_storage_type(roachpb::DataType::CHAR);
-      tag_col->set_storage_len(30);
-      tag_col->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
-    }
+    p_tag = spec.add_colmetas();
+    p_tag->set_storage_type(roachpb::DataType::INT);
+    p_tag->set_storage_len(4);
+    p_tag->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
+
+    p_tag = spec.add_colmetas();
+    p_tag->set_storage_type(roachpb::DataType::VARCHAR);
+    p_tag->set_storage_len(30);
+    p_tag->set_column_type(roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
 
     spec.set_tableid(table_id_);
     spec.set_accessmode(TSTableReadMode::metaTable);
@@ -244,14 +242,16 @@ class SpecBase {
   // include all columns of TSBS in the Tag Reader Post Spec.
   virtual void initTagReaderPostSpec(TSPostProcessSpec& post) {
     // primary tag
-    post.add_outputcols(11);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_outputcols(4);
+    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
 
     // normal tag
-    for (int i = 0; i < 9; i++) {
-      post.add_outputcols(i + 12);
-      post.add_outputtypes(KWDBTypeFamily::StringFamily);
-    }
+    post.add_outputcols(5);
+    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+
+    post.add_outputcols(6);
+    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+
     post.set_projection(true);
   }
 
@@ -262,10 +262,15 @@ class SpecBase {
     post.add_outputtypes(KWDBTypeFamily::TimestampTZFamily);
 
     // metrics columns
-    for (int i = 0; i < 10; i++) {
-      post.add_outputcols(i + 1);
-      post.add_outputtypes(KWDBTypeFamily::IntFamily);
-    }
+    post.add_outputcols(1);
+    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+
+    post.add_outputcols(2);
+    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+
+    post.add_outputcols(3);
+    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+
     initTagReaderPostSpec(post);
     post.set_projection(true);
   }
@@ -274,19 +279,13 @@ class SpecBase {
   virtual void initOutputTypes(TSPostProcessSpec& post) {
     // timestamp columns
     post.add_outputtypes(TimestampTZFamily);
-
-    // metrics columns
-    for (int i = 0; i < 10; i++) {
-      post.add_outputtypes(IntFamily);
-    }
-
-    // primary tag
+    post.add_outputtypes(IntFamily);
+    post.add_outputtypes(IntFamily);
     post.add_outputtypes(StringFamily);
 
-    // normal tag
-    for (int i = 0; i < 9; i++) {
-      post.add_outputtypes(StringFamily);
-    }
+    post.add_outputtypes(TimestampFamily);
+    post.add_outputtypes(IntFamily);
+    post.add_outputtypes(StringFamily);
   }
 
   // subclass needs to provide the Agg Function list, refer to class SpecAgg.
@@ -307,15 +306,14 @@ class SpecBase {
 // select * from benchmark.cpu order by usage_system desc,hostname;
 // only scan primary tag to simplify the spec
 class SpecSelectWithSort : public SpecBase {
-
  public:
   explicit SpecSelectWithSort(k_uint64 table_id) : SpecBase(table_id) {}
 
   void PrepareFlowSpec(TSFlowSpec& flow) override {
-    //tag reader
+    // tag reader
     PrepareTagReaderProcessor(flow, 0);
 
-    //table reader
+    // table reader
     PrepareTableReaderProcessor(flow, 1);
 
     // synchronizer
@@ -355,14 +353,14 @@ class SpecAgg : public SpecBase {
   // include hostname in the Tag Reader Spec.
   void initTagReaderPostSpec(TSPostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(11);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_outputcols(4);
+    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
   void initTableReaderPostSpec(TSPostProcessSpec& post) override {
     // metrics columns
-    for (int i = 1; i <= 4; i++) {
+    for (int i = 1; i <= 2; i++) {
       post.add_outputcols(i);
       post.add_outputtypes(KWDBTypeFamily::IntFamily);
     }
@@ -376,10 +374,8 @@ class SpecAgg : public SpecBase {
     // metrics columns
     post.add_outputtypes(IntFamily);
     post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
     // primary tag
-    post.add_outputtypes(StringFamily);
+    post.add_outputtypes(TimestampFamily);
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {
@@ -387,7 +383,7 @@ class SpecAgg : public SpecBase {
 
     auto agg1 = agg.add_aggregations();
     agg1->set_func(TSAggregatorSpec_Func::TSAggregatorSpec_Func_ANY_NOT_NULL);
-    agg1->add_col_idx(4);
+    agg1->add_col_idx(2);
 
     // MIN min(usage_user)
     auto agg2 = agg.add_aggregations();
@@ -402,18 +398,18 @@ class SpecAgg : public SpecBase {
     // SUM sum(usage_idle)
     auto agg4 = agg.add_aggregations();
     agg4->set_func(TSAggregatorSpec_Func::TSAggregatorSpec_Func_SUM);
-    agg4->add_col_idx(2);
+    agg4->add_col_idx(0);
 
     // COUNT count(usage_nice)
     auto agg5 = agg.add_aggregations();
     agg5->set_func(TSAggregatorSpec_Func::TSAggregatorSpec_Func_COUNT);
-    agg5->add_col_idx(3);
+    agg5->add_col_idx(1);
   }
 
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
   void initAggOutputTypes(TSPostProcessSpec& post) override {
     // primary tag
-    post.add_outputtypes(StringFamily);
+    post.add_outputtypes(TimestampFamily);
 
     // metrics columns
     post.add_outputtypes(IntFamily);
@@ -452,8 +448,8 @@ class AggScanSpec : public SpecAgg {
   // include hostname in the Tag Reader Spec.
   void initTagReaderPostSpec(TSPostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(11);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_outputcols(4);
+    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
@@ -465,7 +461,7 @@ class AggScanSpec : public SpecAgg {
     post.add_outputcols(1);
     post.add_outputtypes(KWDBTypeFamily::IntFamily);
 
-    post.add_outputcols(11);
+    post.add_outputcols(3);
     post.add_outputtypes(KWDBTypeFamily::StringFamily);
 
 //    post.set_filter(
@@ -483,7 +479,7 @@ class AggScanSpec : public SpecAgg {
     post.add_outputtypes(TimestampTZFamily);
     post.add_outputtypes(IntFamily);
     // primary tag
-    post.add_outputtypes(StringFamily);
+    post.add_outputtypes(TimestampFamily);
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {
@@ -507,7 +503,7 @@ class AggScanSpec : public SpecAgg {
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
   void initAggOutputTypes(TSPostProcessSpec& post) override {
     // primary tag
-    post.add_outputtypes(StringFamily);
+    post.add_outputtypes(TimestampFamily);
 
     // metrics columns
     post.add_outputtypes(TimestampTZFamily);
@@ -559,7 +555,6 @@ class HashTagScanSpec : public SpecBase {
 
     auto* tag_reader_stream = tag_reader_output->add_streams();
     tag_reader_stream->set_type(StreamEndpointType::LOCAL);
-    tag_reader_stream->set_s_type(StreamEndpointType::LOCAL);
     tag_reader_stream->set_stream_id(processor_id);
     tag_reader_stream->set_target_node_id(0);
   }
@@ -655,6 +650,38 @@ class HashTagScanSpec : public SpecBase {
 
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
   void initAggOutputTypes(TSPostProcessSpec& post) override {}
+};
+
+
+class TestDistinctSpec : public SpecBase {
+ public:
+  using SpecBase::SpecBase;
+
+  void PrepareFlowSpec(TSFlowSpec& flow) override {
+    PrepareTagReaderProcessor(flow, 0);
+
+    PrepareTableReaderProcessor(flow, 1);
+
+    PrepareSynchronizerProcessor(flow, 2);
+
+    PrepareDistinctProcessor(flow, 3);
+  }
+
+  void initAggFuncs(TSAggregatorSpec& agg) override {}
+
+  // subclass needs to define the Output types, refer to class SpecAgg.
+  void initAggOutputTypes(TSPostProcessSpec& post) override {}
+};
+
+class TestNoopSpec : public AggScanSpec {
+ public:
+  using AggScanSpec::AggScanSpec;
+
+  void PrepareFlowSpec(TSFlowSpec& flow) override {
+    AggScanSpec::PrepareFlowSpec(flow);
+
+    PrepareNoopProcessor(flow, 4);
+  }
 };
 
 }  // namespace kwdbts

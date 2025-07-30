@@ -37,7 +37,7 @@
 namespace kwdbts {
 
 enum TsFileStatus {
-  NOT_READY = 0,
+  UNREADY = 0,
   READY = 1,
 };
 

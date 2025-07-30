@@ -62,6 +62,7 @@ import (
 //     flags logic, because some tests to not use the flag logic at all.
 var serverListenPort, serverSocketDir string
 var serverAdvertiseAddr, serverAdvertisePort string
+var serverBRPCAddr, serverBRPCPort string
 var serverSQLAddr, serverSQLPort string
 var serverSQLAdvertiseAddr, serverSQLAdvertisePort string
 var serverHTTPAddr, serverHTTPPort string
@@ -74,6 +75,9 @@ func initPreFlagsDefaults() {
 	serverSocketDir = ""
 	serverAdvertiseAddr = ""
 	serverAdvertisePort = ""
+
+	serverBRPCAddr = ""
+	serverBRPCPort = ""
 
 	serverSQLAddr = ""
 	serverSQLPort = ""
@@ -333,6 +337,7 @@ func init() {
 		// Server flags.
 		VarFlag(f, addrSetter{&startCtx.serverListenAddr, &serverListenPort}, cliflags.ListenAddr)
 		VarFlag(f, addrSetter{&serverAdvertiseAddr, &serverAdvertisePort}, cliflags.AdvertiseAddr)
+		VarFlag(f, addrSetter{&serverBRPCAddr, &serverBRPCPort}, cliflags.BRPCAddr)
 		VarFlag(f, addrSetter{&serverSQLAddr, &serverSQLPort}, cliflags.ListenSQLAddr)
 		VarFlag(f, addrSetter{&serverSQLAdvertiseAddr, &serverSQLAdvertisePort}, cliflags.SQLAdvertiseAddr)
 		VarFlag(f, addrSetter{&serverHTTPAddr, &serverHTTPPort}, cliflags.ListenHTTPAddr)
@@ -886,6 +891,14 @@ func extraServerFlagInit(cmd *cobra.Command) error {
 		serverAdvertisePort = serverListenPort
 	}
 	serverCfg.AdvertiseAddr = net.JoinHostPort(serverAdvertiseAddr, serverAdvertisePort)
+
+	if serverBRPCAddr == "" {
+		serverBRPCAddr = startCtx.serverListenBRPCAddr
+	}
+	if serverBRPCPort == "" {
+		serverBRPCPort = base.DefaultBRPCPort
+	}
+	serverCfg.BRPCAddr = net.JoinHostPort(serverBRPCAddr, serverBRPCPort)
 
 	// Fill in the defaults for --sql-addr.
 	if serverSQLAddr == "" {

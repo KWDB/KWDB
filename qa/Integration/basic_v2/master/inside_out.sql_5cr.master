@@ -109,34 +109,33 @@ SET
   15.5
 (1 row)
 > explain select max(measure_value) from db_pipec.t_point p,pipec_r.station_info s where p.station_sn=s.station_sn;
-             tree             |            field            |          description
-------------------------------+-----------------------------+--------------------------------
-                              | distributed                 | true
-                              | vectorized                  | false
-  group                       |                             |
-   │                          | aggregate 0                 | max(max)
-   │                          | scalar                      |
-   └── render                 |                             |
-        │                     | max                         | max
-        └── hash-join         |                             |
-             │                | type                        | inner
-             │                | equality                    | (station_sn) = (station_sn)
-             │                | left cols are key           |
-             │                | right cols are key          |
-             ├── group        |                             |
-             │    │           | engine type                 | time series
-             │    │           | aggregate 0                 | station_sn
-             │    │           | aggregate 1                 | max(measure_value)
-             │    │           | group by                    | station_sn
-             │    │           | addSynchronizer             | true
-             │    └── ts scan |                             |
-             │                | ts-table                    | t_point
-             │                | access mode                 | tableTableMeta
-             │                | block filter[measure_value] | NOT NULL
-             └── scan         |                             |
-                              | table                       | station_info@station_sn_index
-                              | spans                       | FULL SCAN
-(25 rows)
+             tree             |       field        |          description
+------------------------------+--------------------+--------------------------------
+                              | distributed        | true
+                              | vectorized         | false
+  group                       |                    |
+   │                          | aggregate 0        | max(max)
+   │                          | scalar             |
+   └── render                 |                    |
+        │                     | max                | max
+        └── hash-join         |                    |
+             │                | type               | inner
+             │                | equality           | (station_sn) = (station_sn)
+             │                | left cols are key  |
+             │                | right cols are key |
+             ├── group        |                    |
+             │    │           | engine type        | time series
+             │    │           | aggregate 0        | station_sn
+             │    │           | aggregate 1        | max(measure_value)
+             │    │           | group by           | station_sn
+             │    │           | addSynchronizer    | true
+             │    └── ts scan |                    |
+             │                | ts-table           | t_point
+             │                | access mode        | tableTableMeta
+             └── scan         |                    |
+                              | table              | station_info@station_sn_index
+                              | spans              | FULL SCAN
+(24 rows)
 > select max(measure_value) from db_pipec.t_point p,pipec_r.station_info s where p.station_sn=s.station_sn group by pipeline_sn order by pipeline_sn;
   max
 --------
@@ -187,34 +186,33 @@ SET
   11.5
 (1 row)
 > explain select max(measure_value) from (select * from db_pipec.t_point where station_sn='d1') p,pipec_r.station_info s where p.station_sn=s.station_sn;
-             tree             |            field            |          description
-------------------------------+-----------------------------+--------------------------------
-                              | distributed                 | true
-                              | vectorized                  | false
-  group                       |                             |
-   │                          | aggregate 0                 | max(max)
-   │                          | scalar                      |
-   └── render                 |                             |
-        │                     | max                         | max
-        └── lookup-join       |                             |
-             │                | table                       | station_info@primary
-             │                | type                        | inner
-             │                | equality                    | (any_not_null) = (station_sn)
-             │                | equality cols are key       |
-             │                | parallel                    |
-             └── group        |                             |
-                  │           | engine type                 | time series
-                  │           | aggregate 0                 | max(measure_value)
-                  │           | aggregate 1                 | any_not_null(station_sn)
-                  │           | pushLocalAggToScan          | true
-                  │           | addSynchronizer             | true
-                  └── ts scan |                             |
-                              | ts-table                    | t_point
-                              | access mode                 | tableTableMeta
-                              | use statistic               | true
-                              | tag filter[0]               | station_sn = 'd1'
-                              | block filter[measure_value] | NOT NULL
-(25 rows)
+             tree             |         field         |          description
+------------------------------+-----------------------+--------------------------------
+                              | distributed           | true
+                              | vectorized            | false
+  group                       |                       |
+   │                          | aggregate 0           | max(max)
+   │                          | scalar                |
+   └── render                 |                       |
+        │                     | max                   | max
+        └── lookup-join       |                       |
+             │                | table                 | station_info@primary
+             │                | type                  | inner
+             │                | equality              | (any_not_null) = (station_sn)
+             │                | equality cols are key |
+             │                | parallel              |
+             └── group        |                       |
+                  │           | engine type           | time series
+                  │           | aggregate 0           | max(measure_value)
+                  │           | aggregate 1           | any_not_null(station_sn)
+                  │           | pushLocalAggToScan    | true
+                  │           | addSynchronizer       | true
+                  └── ts scan |                       |
+                              | ts-table              | t_point
+                              | access mode           | tableTableMeta
+                              | use statistic         | true
+                              | tag filter[0]         | station_sn = 'd1'
+(24 rows)
 > select max(measure_value) from (select * from db_pipec.t_point where station_sn='d1' limit 10) p,pipec_r.station_info s where p.station_sn=s.station_sn;
   max
 --------
@@ -254,76 +252,74 @@ SET
   11.5
 (1 row)
 > explain select max(measure_value) from (select measure_value,station_sn from db_pipec.t_point where station_sn='d1' group by sub_com_sn,measure_value,station_sn order by sub_com_sn ) p,pipec_r.station_info s where p.station_sn=s.station_sn;
-                tree               |            field            |         description
------------------------------------+-----------------------------+------------------------------
-                                   | distributed                 | true
-                                   | vectorized                  | false
-  group                            |                             |
-   │                               | aggregate 0                 | max(measure_value)
-   │                               | scalar                      |
-   └── render                      |                             |
-        │                          | measure_value               | measure_value
-        └── lookup-join            |                             |
-             │                     | table                       | station_info@primary
-             │                     | type                        | inner
-             │                     | equality                    | (station_sn) = (station_sn)
-             │                     | equality cols are key       |
-             │                     | parallel                    |
-             └── distinct          |                             |
-                  │                | distinct on                 | measure_value, sub_com_sn
-                  └── synchronizer |                             |
-                       └── ts scan |                             |
-                                   | ts-table                    | t_point
-                                   | access mode                 | tableTableMeta
-                                   | tag filter[0]               | station_sn = 'd1'
-                                   | block filter[measure_value] | NOT NULL
-(21 rows)
+                tree               |         field         |         description
+-----------------------------------+-----------------------+------------------------------
+                                   | distributed           | true
+                                   | vectorized            | false
+  group                            |                       |
+   │                               | aggregate 0           | max(measure_value)
+   │                               | scalar                |
+   └── render                      |                       |
+        │                          | measure_value         | measure_value
+        └── lookup-join            |                       |
+             │                     | table                 | station_info@primary
+             │                     | type                  | inner
+             │                     | equality              | (station_sn) = (station_sn)
+             │                     | equality cols are key |
+             │                     | parallel              |
+             └── distinct          |                       |
+                  │                | distinct on           | measure_value, sub_com_sn
+                  └── synchronizer |                       |
+                       └── ts scan |                       |
+                                   | ts-table              | t_point
+                                   | access mode           | tableTableMeta
+                                   | tag filter[0]         | station_sn = 'd1'
+(20 rows)
 > select max(measure_value) from (select * from db_pipec.t_point p,pipec_r.pipeline_info pi where p.pipeline_sn=pi.pipeline_sn) p,pipec_r.station_info s where p.station_sn=s.station_sn;
   max
 --------
   15.5
 (1 row)
 > explain select max(measure_value) from (select * from db_pipec.t_point p,pipec_r.pipeline_info pi where p.pipeline_sn=pi.pipeline_sn) p,pipec_r.station_info s where p.station_sn=s.station_sn;
-                       tree                       |            field            |           description
---------------------------------------------------+-----------------------------+----------------------------------
-                                                  | distributed                 | true
-                                                  | vectorized                  | false
-  group                                           |                             |
-   │                                              | aggregate 0                 | any_not_null(max)
-   │                                              | scalar                      |
-   └── render                                     |                             |
-        │                                         | max                         | max
-        └── limit                                 |                             |
-             │                                    | count                       | 1
-             └── lookup-join                      |                             |
-                  │                               | table                       | station_info@primary
-                  │                               | type                        | inner
-                  │                               | equality                    | (station_sn) = (station_sn)
-                  │                               | equality cols are key       |
-                  │                               | parallel                    |
-                  └── sort                        |                             |
-                       │                          | order                       | -max
-                       └── hash-join              |                             |
-                            │                     | type                        | inner
-                            │                     | equality                    | (pipeline_sn) = (pipeline_sn)
-                            │                     | right cols are key          |
-                            ├── filter            |                             |
-                            │    │                | filter                      | max IS NOT NULL
-                            │    └── group        |                             |
-                            │         │           | engine type                 | time series
-                            │         │           | aggregate 0                 | station_sn
-                            │         │           | aggregate 1                 | pipeline_sn
-                            │         │           | aggregate 2                 | max(measure_value)
-                            │         │           | group by                    | station_sn, pipeline_sn
-                            │         │           | addSynchronizer             | true
-                            │         └── ts scan |                             |
-                            │                     | ts-table                    | t_point
-                            │                     | access mode                 | tableTableMeta
-                            │                     | block filter[measure_value] | NOT NULL
-                            └── scan              |                             |
-                                                  | table                       | pipeline_info@pipeline_sn_index
-                                                  | spans                       | FULL SCAN
-(37 rows)
+                       tree                       |         field         |           description
+--------------------------------------------------+-----------------------+----------------------------------
+                                                  | distributed           | true
+                                                  | vectorized            | false
+  group                                           |                       |
+   │                                              | aggregate 0           | any_not_null(max)
+   │                                              | scalar                |
+   └── render                                     |                       |
+        │                                         | max                   | max
+        └── limit                                 |                       |
+             │                                    | count                 | 1
+             └── lookup-join                      |                       |
+                  │                               | table                 | station_info@primary
+                  │                               | type                  | inner
+                  │                               | equality              | (station_sn) = (station_sn)
+                  │                               | equality cols are key |
+                  │                               | parallel              |
+                  └── sort                        |                       |
+                       │                          | order                 | -max
+                       └── hash-join              |                       |
+                            │                     | type                  | inner
+                            │                     | equality              | (pipeline_sn) = (pipeline_sn)
+                            │                     | right cols are key    |
+                            ├── filter            |                       |
+                            │    │                | filter                | max IS NOT NULL
+                            │    └── group        |                       |
+                            │         │           | engine type           | time series
+                            │         │           | aggregate 0           | station_sn
+                            │         │           | aggregate 1           | pipeline_sn
+                            │         │           | aggregate 2           | max(measure_value)
+                            │         │           | group by              | station_sn, pipeline_sn
+                            │         │           | addSynchronizer       | true
+                            │         └── ts scan |                       |
+                            │                     | ts-table              | t_point
+                            │                     | access mode           | tableTableMeta
+                            └── scan              |                       |
+                                                  | table                 | pipeline_info@pipeline_sn_index
+                                                  | spans                 | FULL SCAN
+(36 rows)
 > select max(measure_value) from  pipec_r.pipeline_info pi,pipec_r.station_info s,db_pipec.t_point p,pipec_r.point_info pf
 where p.station_sn=s.station_sn and p.pipeline_sn=pi.pipeline_sn and p.point_sn=pf.point_sn;
   max
@@ -332,53 +328,52 @@ where p.station_sn=s.station_sn and p.pipeline_sn=pi.pipeline_sn and p.point_sn=
 (1 row)
 > explain select max(measure_value) from  pipec_r.pipeline_info pi,pipec_r.station_info s,db_pipec.t_point p,pipec_r.point_info pf
         where p.station_sn=s.station_sn and p.pipeline_sn=pi.pipeline_sn and p.point_sn=pf.point_sn;
-                          tree                         |            field            |            description
--------------------------------------------------------+-----------------------------+------------------------------------
-                                                       | distributed                 | true
-                                                       | vectorized                  | false
-  group                                                |                             |
-   │                                                   | aggregate 0                 | any_not_null(max)
-   │                                                   | scalar                      |
-   └── render                                          |                             |
-        │                                              | max                         | max
-        └── limit                                      |                             |
-             │                                         | count                       | 1
-             └── lookup-join                           |                             |
-                  │                                    | table                       | point_info@primary
-                  │                                    | type                        | inner
-                  │                                    | equality                    | (point_sn) = (point_sn)
-                  │                                    | equality cols are key       |
-                  │                                    | parallel                    |
-                  └── lookup-join                      |                             |
-                       │                               | table                       | pipeline_info@pipeline_sn_index
-                       │                               | type                        | inner
-                       │                               | equality                    | (pipeline_sn) = (pipeline_sn)
-                       │                               | equality cols are key       |
-                       │                               | parallel                    |
-                       └── sort                        |                             |
-                            │                          | order                       | -max
-                            └── hash-join              |                             |
-                                 │                     | type                        | inner
-                                 │                     | equality                    | (station_sn) = (station_sn)
-                                 │                     | right cols are key          |
-                                 ├── filter            |                             |
-                                 │    │                | filter                      | max IS NOT NULL
-                                 │    └── group        |                             |
-                                 │         │           | engine type                 | time series
-                                 │         │           | aggregate 0                 | point_sn
-                                 │         │           | aggregate 1                 | station_sn
-                                 │         │           | aggregate 2                 | pipeline_sn
-                                 │         │           | aggregate 3                 | max(measure_value)
-                                 │         │           | group by                    | point_sn, station_sn, pipeline_sn
-                                 │         │           | addSynchronizer             | true
-                                 │         └── ts scan |                             |
-                                 │                     | ts-table                    | t_point
-                                 │                     | access mode                 | tableTableMeta
-                                 │                     | block filter[measure_value] | NOT NULL
-                                 └── scan              |                             |
-                                                       | table                       | station_info@station_sn_index
-                                                       | spans                       | FULL SCAN
-(44 rows)
+                          tree                         |         field         |            description
+-------------------------------------------------------+-----------------------+------------------------------------
+                                                       | distributed           | true
+                                                       | vectorized            | false
+  group                                                |                       |
+   │                                                   | aggregate 0           | any_not_null(max)
+   │                                                   | scalar                |
+   └── render                                          |                       |
+        │                                              | max                   | max
+        └── limit                                      |                       |
+             │                                         | count                 | 1
+             └── lookup-join                           |                       |
+                  │                                    | table                 | point_info@primary
+                  │                                    | type                  | inner
+                  │                                    | equality              | (point_sn) = (point_sn)
+                  │                                    | equality cols are key |
+                  │                                    | parallel              |
+                  └── lookup-join                      |                       |
+                       │                               | table                 | pipeline_info@pipeline_sn_index
+                       │                               | type                  | inner
+                       │                               | equality              | (pipeline_sn) = (pipeline_sn)
+                       │                               | equality cols are key |
+                       │                               | parallel              |
+                       └── sort                        |                       |
+                            │                          | order                 | -max
+                            └── hash-join              |                       |
+                                 │                     | type                  | inner
+                                 │                     | equality              | (station_sn) = (station_sn)
+                                 │                     | right cols are key    |
+                                 ├── filter            |                       |
+                                 │    │                | filter                | max IS NOT NULL
+                                 │    └── group        |                       |
+                                 │         │           | engine type           | time series
+                                 │         │           | aggregate 0           | point_sn
+                                 │         │           | aggregate 1           | station_sn
+                                 │         │           | aggregate 2           | pipeline_sn
+                                 │         │           | aggregate 3           | max(measure_value)
+                                 │         │           | group by              | point_sn, station_sn, pipeline_sn
+                                 │         │           | addSynchronizer       | true
+                                 │         └── ts scan |                       |
+                                 │                     | ts-table              | t_point
+                                 │                     | access mode           | tableTableMeta
+                                 └── scan              |                       |
+                                                       | table                 | station_info@station_sn_index
+                                                       | spans                 | FULL SCAN
+(43 rows)
 > select max(p.measure_value) from  (select * from db_pipec.t_point p,pipec_r.pipeline_info pi where p.pipeline_sn=pi.pipeline_sn ) p,
 (select * from db_pipec.t_point p,pipec_r.point_info pf where p.point_sn=pf.point_sn) p1;
   max
@@ -387,41 +382,40 @@ where p.station_sn=s.station_sn and p.pipeline_sn=pi.pipeline_sn and p.point_sn=
 (1 row)
 > explain select max(p.measure_value) from  (select * from db_pipec.t_point p,pipec_r.pipeline_info pi where p.pipeline_sn=pi.pipeline_sn ) p,
                                           (select * from db_pipec.t_point p,pipec_r.point_info pf where p.point_sn=pf.point_sn) p1;
-                tree               |            field            |           description
------------------------------------+-----------------------------+----------------------------------
-                                   | distributed                 | true
-                                   | vectorized                  | false
-  group                            |                             |
-   │                               | aggregate 0                 | max(measure_value)
-   │                               | scalar                      |
-   └── render                      |                             |
-        │                          | measure_value               | measure_value
-        └── cross-join             |                             |
-             │                     | type                        | cross
-             ├── hash-join         |                             |
-             │    │                | type                        | inner
-             │    │                | equality                    | (point_sn) = (point_sn)
-             │    │                | right cols are key          |
-             │    ├── synchronizer |                             |
-             │    │    └── ts scan |                             |
-             │    │                | ts-table                    | t_point
-             │    │                | access mode                 | tableTableMeta
-             │    └── scan         |                             |
-             │                     | table                       | point_info@primary
-             │                     | spans                       | FULL SCAN
-             └── hash-join         |                             |
-                  │                | type                        | inner
-                  │                | equality                    | (pipeline_sn) = (pipeline_sn)
-                  │                | right cols are key          |
-                  ├── synchronizer |                             |
-                  │    └── ts scan |                             |
-                  │                | ts-table                    | t_point
-                  │                | access mode                 | tableTableMeta
-                  │                | block filter[measure_value] | NOT NULL
-                  └── scan         |                             |
-                                   | table                       | pipeline_info@pipeline_sn_index
-                                   | spans                       | FULL SCAN
-(32 rows)
+                tree               |       field        |           description
+-----------------------------------+--------------------+----------------------------------
+                                   | distributed        | true
+                                   | vectorized         | false
+  group                            |                    |
+   │                               | aggregate 0        | max(measure_value)
+   │                               | scalar             |
+   └── render                      |                    |
+        │                          | measure_value      | measure_value
+        └── cross-join             |                    |
+             │                     | type               | cross
+             ├── hash-join         |                    |
+             │    │                | type               | inner
+             │    │                | equality           | (point_sn) = (point_sn)
+             │    │                | right cols are key |
+             │    ├── synchronizer |                    |
+             │    │    └── ts scan |                    |
+             │    │                | ts-table           | t_point
+             │    │                | access mode        | tableTableMeta
+             │    └── scan         |                    |
+             │                     | table              | point_info@primary
+             │                     | spans              | FULL SCAN
+             └── hash-join         |                    |
+                  │                | type               | inner
+                  │                | equality           | (pipeline_sn) = (pipeline_sn)
+                  │                | right cols are key |
+                  ├── synchronizer |                    |
+                  │    └── ts scan |                    |
+                  │                | ts-table           | t_point
+                  │                | access mode        | tableTableMeta
+                  └── scan         |                    |
+                                   | table              | pipeline_info@pipeline_sn_index
+                                   | spans              | FULL SCAN
+(31 rows)
 > SELECT li.pipeline_name,
        li.pipe_start,
        li.pipe_end,

@@ -679,7 +679,7 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 
 // CreateTsEngine create ts engine
 func (cfg *Config) CreateTsEngine(
-	ctx context.Context, stopper *stop.Stopper,
+	ctx context.Context, stopper *stop.Stopper, clusterID string,
 ) (*tse.TsEngine, error) {
 
 	threadPoolSize, err := strconv.Atoi(cfg.ThreadPoolSize)
@@ -706,6 +706,8 @@ func (cfg *Config) CreateTsEngine(
 		BufferPoolSize: bufferPoolSize,
 		LogCfg:         cfg.LogConfig,
 		IsSingleNode:   GetSingleNodeModeFlag(cfg.ModeFlag),
+		BRPCAddr:       cfg.BRPCAddr,
+		ClusterID:      clusterID,
 	}
 	tsDB, err := tse.NewTsEngine(ctx, tsConfig, stopper)
 	if err != nil {

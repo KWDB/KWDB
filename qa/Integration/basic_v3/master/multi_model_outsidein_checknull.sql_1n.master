@@ -72,28 +72,27 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | false
-                                   | vectorized          | false
-  render                           |                     |
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── batch-lookup-join      |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | hashTagScan
-                                   | block filter[state] | NOT NULL
-(19 rows)
+                tree               |    field    |        description
+-----------------------------------+-------------+-----------------------------
+                                   | distributed | false
+                                   | vectorized  | false
+  render                           |             |
+   └── sort                        |             |
+        │                          | order       | +"time",+station_sn
+        └── batch-lookup-join      |             |
+             │                     | type        | inner
+             │                     | equality    | (expected_state) = (state)
+             ├── scan              |             |
+             │                     | table       | station_info@primary
+             │                     | spans       | FULL SCAN
+             │                     | filter      | expected_state IS NOT NULL
+             └── filter            |             |
+                  │                | filter      | state IS NOT NULL
+                  └── synchronizer |             |
+                       └── ts scan |             |
+                                   | ts-table    | firegases
+                                   | access mode | hashTagScan
+(18 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -424,46 +423,45 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |        description
-----------------------------------------+---------------------+-----------------------------
-                                        | distributed         | false
-                                        | vectorized          | false
-  sort                                  |                     |
-   │                                    | order               | +work_area_sn
-   └── batch-lookup-join                |                     |
-        │                               | type                | inner
-        │                               | equality            | (expected_state) = (state)
-        ├── scan                        |                     |
-        │                               | table               | station_info@primary
-        │                               | spans               | FULL SCAN
-        │                               | filter              | expected_state IS NOT NULL
-        └── group                       |                     |
-             │                          | engine type         | time series
-             │                          | aggregate 0         | work_area_sn
-             │                          | aggregate 1         | avg(value)
-             │                          | aggregate 2         | avg(standard_val)
-             │                          | aggregate 3         | sum(second_val)
-             │                          | aggregate 4         | count(standard_val)
-             │                          | aggregate 5         | count(state)
-             │                          | aggregate 6         | count(station_name)
-             │                          | group by            | work_area_sn
-             │                          | addSynchronizer     | true
-             └── render                 |                     |
-                  │                     | engine type         | time series
-                  │                     | value               | value
-                  │                     | state               | state
-                  │                     | second_val          | second_val
-                  │                     | station_name        | station_name
-                  │                     | work_area_sn        | work_area_sn
-                  │                     | standard_val        | standard_val
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | hashTagScan
-                                        | block filter[state] | NOT NULL
-(37 rows)
+                  tree                  |      field       |        description
+----------------------------------------+------------------+-----------------------------
+                                        | distributed      | false
+                                        | vectorized       | false
+  sort                                  |                  |
+   │                                    | order            | +work_area_sn
+   └── batch-lookup-join                |                  |
+        │                               | type             | inner
+        │                               | equality         | (expected_state) = (state)
+        ├── scan                        |                  |
+        │                               | table            | station_info@primary
+        │                               | spans            | FULL SCAN
+        │                               | filter           | expected_state IS NOT NULL
+        └── group                       |                  |
+             │                          | engine type      | time series
+             │                          | aggregate 0      | work_area_sn
+             │                          | aggregate 1      | avg(value)
+             │                          | aggregate 2      | avg(standard_val)
+             │                          | aggregate 3      | sum(second_val)
+             │                          | aggregate 4      | count(standard_val)
+             │                          | aggregate 5      | count(state)
+             │                          | aggregate 6      | count(station_name)
+             │                          | group by         | work_area_sn
+             │                          | addSynchronizer  | true
+             └── render                 |                  |
+                  │                     | engine type      | time series
+                  │                     | value            | value
+                  │                     | state            | state
+                  │                     | second_val       | second_val
+                  │                     | station_name     | station_name
+                  │                     | work_area_sn     | work_area_sn
+                  │                     | standard_val     | standard_val
+                  └── filter            |                  |
+                       │                | filter           | state IS NOT NULL
+                       └── synchronizer |                  |
+                            └── ts scan |                  |
+                                        | ts-table         | firegases
+                                        | access mode      | hashTagScan
+(36 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -597,48 +595,47 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.second_val = s.standard_val and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |                     description
-----------------------------------------+---------------------+-------------------------------------------------------
-                                        | distributed         | false
-                                        | vectorized          | false
-  batch-lookup-join                     |                     |
-   │                                    | type                | inner
-   │                                    | equality            | (standard_val, expected_state) = (second_val, state)
-   ├── scan                             |                     |
-   │                                    | table               | station_info@primary
-   │                                    | spans               | FULL SCAN
-   │                                    | filter              | expected_state IS NOT NULL
-   └── group                            |                     |
-        │                               | engine type         | time series
-        │                               | aggregate 0         | work_area_sn
-        │                               | aggregate 1         | avg(value)
-        │                               | aggregate 2         | avg(standard_val)
-        │                               | aggregate 3         | sum(second_val)
-        │                               | aggregate 4         | count(standard_val)
-        │                               | aggregate 5         | count(state)
-        │                               | aggregate 6         | count(station_name)
-        │                               | group by            | work_area_sn
-        │                               | ordered             | +work_area_sn
-        │                               | addSynchronizer     | true
-        └── render                      |                     |
-             │                          | engine type         | time series
-             │                          | value               | value
-             │                          | state               | state
-             │                          | second_val          | second_val
-             │                          | station_name        | station_name
-             │                          | work_area_sn        | work_area_sn
-             │                          | standard_val        | standard_val
-             └── sort                   |                     |
-                  │                     | engine type         | time series
-                  │                     | order               | +work_area_sn
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | hashTagScan
-                                        | block filter[state] | NOT NULL
-(39 rows)
+                  tree                  |      field       |                     description
+----------------------------------------+------------------+-------------------------------------------------------
+                                        | distributed      | false
+                                        | vectorized       | false
+  batch-lookup-join                     |                  |
+   │                                    | type             | inner
+   │                                    | equality         | (standard_val, expected_state) = (second_val, state)
+   ├── scan                             |                  |
+   │                                    | table            | station_info@primary
+   │                                    | spans            | FULL SCAN
+   │                                    | filter           | expected_state IS NOT NULL
+   └── group                            |                  |
+        │                               | engine type      | time series
+        │                               | aggregate 0      | work_area_sn
+        │                               | aggregate 1      | avg(value)
+        │                               | aggregate 2      | avg(standard_val)
+        │                               | aggregate 3      | sum(second_val)
+        │                               | aggregate 4      | count(standard_val)
+        │                               | aggregate 5      | count(state)
+        │                               | aggregate 6      | count(station_name)
+        │                               | group by         | work_area_sn
+        │                               | ordered          | +work_area_sn
+        │                               | addSynchronizer  | true
+        └── render                      |                  |
+             │                          | engine type      | time series
+             │                          | value            | value
+             │                          | state            | state
+             │                          | second_val       | second_val
+             │                          | station_name     | station_name
+             │                          | work_area_sn     | work_area_sn
+             │                          | standard_val     | standard_val
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +work_area_sn
+                  └── filter            |                  |
+                       │                | filter           | state IS NOT NULL
+                       └── synchronizer |                  |
+                            └── ts scan |                  |
+                                        | ts-table         | firegases
+                                        | access mode      | hashTagScan
+(38 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -670,55 +667,54 @@ FROM my_timeseries_db.firegases ts,
     GROUP BY s.work_area_sn) as t
 WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
-                       tree                       |        field        |        description
---------------------------------------------------+---------------------+-----------------------------
-                                                  | distributed         | false
-                                                  | vectorized          | false
-  render                                          |                     |
-   └── sort                                       |                     |
-        │                                         | order               | +value
-        └── batch-lookup-join                     |                     |
-             │                                    | type                | inner
-             │                                    | equality            | (work_area_sn) = (adr)
-             │                                    | left cols are key   |
-             ├── batch-lookup-join                |                     |
-             │    │                               | type                | inner
-             │    │                               | equality            | (expected_state) = (state)
-             │    ├── scan                        |                     |
-             │    │                               | table               | station_info@primary
-             │    │                               | spans               | FULL SCAN
-             │    │                               | filter              | expected_state IS NOT NULL
-             │    └── group                       |                     |
-             │         │                          | engine type         | time series
-             │         │                          | aggregate 0         | work_area_sn
-             │         │                          | aggregate 1         | avg(value)
-             │         │                          | aggregate 2         | avg(standard_val)
-             │         │                          | aggregate 3         | sum(second_val)
-             │         │                          | aggregate 4         | count(standard_val)
-             │         │                          | aggregate 5         | count(state)
-             │         │                          | aggregate 6         | count(station_name)
-             │         │                          | group by            | work_area_sn
-             │         │                          | addSynchronizer     | true
-             │         └── render                 |                     |
-             │              │                     | engine type         | time series
-             │              │                     | value               | value
-             │              │                     | state               | state
-             │              │                     | second_val          | second_val
-             │              │                     | station_name        | station_name
-             │              │                     | work_area_sn        | work_area_sn
-             │              │                     | standard_val        | standard_val
-             │              └── filter            |                     |
-             │                   │                | filter              | state IS NOT NULL
-             │                   └── synchronizer |                     |
-             │                        └── ts scan |                     |
-             │                                    | ts-table            | firegases
-             │                                    | access mode         | hashTagScan
-             │                                    | block filter[state] | NOT NULL
-             └── synchronizer                     |                     |
-                  └── ts scan                     |                     |
-                                                  | ts-table            | firegases
-                                                  | access mode         | primaryHashTagScan
-(46 rows)
+                       tree                       |       field       |        description
+--------------------------------------------------+-------------------+-----------------------------
+                                                  | distributed       | false
+                                                  | vectorized        | false
+  render                                          |                   |
+   └── sort                                       |                   |
+        │                                         | order             | +value
+        └── batch-lookup-join                     |                   |
+             │                                    | type              | inner
+             │                                    | equality          | (work_area_sn) = (adr)
+             │                                    | left cols are key |
+             ├── batch-lookup-join                |                   |
+             │    │                               | type              | inner
+             │    │                               | equality          | (expected_state) = (state)
+             │    ├── scan                        |                   |
+             │    │                               | table             | station_info@primary
+             │    │                               | spans             | FULL SCAN
+             │    │                               | filter            | expected_state IS NOT NULL
+             │    └── group                       |                   |
+             │         │                          | engine type       | time series
+             │         │                          | aggregate 0       | work_area_sn
+             │         │                          | aggregate 1       | avg(value)
+             │         │                          | aggregate 2       | avg(standard_val)
+             │         │                          | aggregate 3       | sum(second_val)
+             │         │                          | aggregate 4       | count(standard_val)
+             │         │                          | aggregate 5       | count(state)
+             │         │                          | aggregate 6       | count(station_name)
+             │         │                          | group by          | work_area_sn
+             │         │                          | addSynchronizer   | true
+             │         └── render                 |                   |
+             │              │                     | engine type       | time series
+             │              │                     | value             | value
+             │              │                     | state             | state
+             │              │                     | second_val        | second_val
+             │              │                     | station_name      | station_name
+             │              │                     | work_area_sn      | work_area_sn
+             │              │                     | standard_val      | standard_val
+             │              └── filter            |                   |
+             │                   │                | filter            | state IS NOT NULL
+             │                   └── synchronizer |                   |
+             │                        └── ts scan |                   |
+             │                                    | ts-table          | firegases
+             │                                    | access mode       | hashTagScan
+             └── synchronizer                     |                   |
+                  └── ts scan                     |                   |
+                                                  | ts-table          | firegases
+                                                  | access mode       | primaryHashTagScan
+(45 rows)
 > SELECT *
 FROM my_timeseries_db.firegases ts,
     (SELECT s.work_area_sn,
@@ -1070,22 +1066,22 @@ CREATE TS DATABASE
 > CREATE TABLE my_timeseries_db_v2.firegases (
   "time" TIMESTAMPTZ NOT NULL,
   second_val FLOAT8 NULL
-)
+) 
 TAGS (
   adr INT NOT NULL,
   state VARCHAR(20) NULL,
-  int2_val INT2 NULL,
-  int4_val INT4 NULL,
-  int_val INT NULL,
-  float4_val FLOAT4 NULL,
-  float_val FLOAT8 NULL,
-  bool_val BOOL NULL
-)
+  int2_val INT2 NULL,      
+  int4_val INT4 NULL,      
+  int_val INT NULL,        
+  float4_val FLOAT4 NULL,  
+  float_val FLOAT8 NULL,   
+  bool_val BOOL NULL       
+) 
 PRIMARY TAGS (
   adr
 );
 CREATE TABLE
-> INSERT INTO my_timeseries_db_v2.firegases ("time", int2_val, int4_val, int_val, float4_val, float_val, bool_val, adr, state, second_val) VALUES
+> INSERT INTO my_timeseries_db_v2.firegases ("time", int2_val, int4_val, int_val, float4_val, float_val, bool_val, adr, state, second_val) VALUES 
   ('2024-09-01 10:00:00+00', 10, 1000, 10000, 22.5, 22.5, TRUE, 1, 'active', 25.0),
   ('2024-09-01 10:05:00+00', 20, 2000, 20000, 18.5, NULL, FALSE, 2, 'inactive', NULL),
   ('2024-09-01 10:10:00+00', NULL, 3000, NULL, 30.0, 30.0, TRUE, 3, 'pending', 30.0),
@@ -1107,9 +1103,9 @@ CREATE DATABASE
   bool_val BOOL NULL                      -- Using BOOL
 );
 CREATE TABLE
-> INSERT INTO my_relation_db_v2.station_info VALUES
+> INSERT INTO my_relation_db_v2.station_info VALUES 
   (1, 'Station One', 1, 10, 10000, 'active', 22.5, 20.0, TRUE),   -- 添加 float 列
-  (2, 'Station Two', 2, NULL, 200, 'inactive', 10.0, 5.0, FALSE),
+  (2, 'Station Two', 2, NULL, 200, 'inactive', 10.0, 5.0, FALSE), 
   (3, 'Station Three', NULL, 3000, NULL, 'pending', 35.0, 30.0, TRUE),
   (4, 'Station Four', NULL, NULL, 40000, 'pending', NULL, 15.0, NULL),
   (5, 'Station Five', 40, 6000, 500, NULL, 15.5, 12.5, TRUE),
@@ -1120,7 +1116,7 @@ CREATE STATISTICS
 > CREATE STATISTICS _stats_ FROM my_relation_db_v2.station_info;
 CREATE STATISTICS
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
              tree             |    field    |           description
@@ -1142,7 +1138,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
             time            | second_val | station_sn | station_name | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr | state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -1150,7 +1146,7 @@ ORDER BY f."time";
   2024-09-01 10:15:00+00:00 |         15 |          5 | Station Five |                40 |              6000 |              500 | NULL           |                15.5 |               12.5 |   true   |   4 | active |       40 | NULL     |   40000 | NULL       |        15 |   NULL
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
              tree             |    field    |           description
@@ -1172,7 +1168,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -1181,7 +1177,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          5 | Station Five  |                40 |              6000 |              500 | NULL           |                15.5 |               12.5 |   true   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (2 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
@@ -1204,7 +1200,7 @@ ORDER BY f."time";
                               | access mode       | primaryHashTagScan
 (16 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -1217,7 +1213,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          6 | Station Six   | NULL              | NULL              | NULL             | NULL           | NULL                | NULL               |  false   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (6 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
              tree             |    field    |             description
@@ -1239,7 +1235,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
             time            | second_val | station_sn | station_name | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr | state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -1247,7 +1243,7 @@ ORDER BY f."time";
   2024-09-01 10:00:00+00:00 |         25 |          1 | Station One  |                 1 |                10 |            10000 | active         |                22.5 |                 20 |   true   |   1 | active |       10 |     1000 |   10000 |       22.5 |      22.5 |   true
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
              tree             |    field    |            description
@@ -1269,7 +1265,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -1337,7 +1333,7 @@ ORDER BY f."time";
   2024-09-01 10:15:00+00:00 |         15 |          4 | Station Four  | NULL              | NULL              |            40000 | pending        | NULL                |                 15 |   NULL   |   4 | active  |       40 | NULL     |   40000 | NULL       |        15 |   NULL
 (2 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.bool_val = s.bool_val
 ORDER BY f."time";
              tree             |    field    |       description
@@ -1359,7 +1355,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.bool_val = s.bool_val
 ORDER BY f."time", s.station_sn, f.float_val, f.int_val, f.adr;
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -1385,28 +1381,27 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | false
-                                   | vectorized          | false
-  render                           |                     |
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── batch-lookup-join      |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | hashTagScan
-                                   | block filter[state] | NOT NULL
-(19 rows)
+                tree               |    field    |        description
+-----------------------------------+-------------+-----------------------------
+                                   | distributed | false
+                                   | vectorized  | false
+  render                           |             |
+   └── sort                        |             |
+        │                          | order       | +"time",+station_sn
+        └── batch-lookup-join      |             |
+             │                     | type        | inner
+             │                     | equality    | (expected_state) = (state)
+             ├── scan              |             |
+             │                     | table       | station_info@primary
+             │                     | spans       | FULL SCAN
+             │                     | filter      | expected_state IS NOT NULL
+             └── filter            |             |
+                  │                | filter      | state IS NOT NULL
+                  └── synchronizer |             |
+                       └── ts scan |             |
+                                   | ts-table    | firegases
+                                   | access mode | hashTagScan
+(18 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -1737,46 +1732,45 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |        description
-----------------------------------------+---------------------+-----------------------------
-                                        | distributed         | false
-                                        | vectorized          | false
-  sort                                  |                     |
-   │                                    | order               | +work_area_sn
-   └── batch-lookup-join                |                     |
-        │                               | type                | inner
-        │                               | equality            | (expected_state) = (state)
-        ├── scan                        |                     |
-        │                               | table               | station_info@primary
-        │                               | spans               | FULL SCAN
-        │                               | filter              | expected_state IS NOT NULL
-        └── group                       |                     |
-             │                          | engine type         | time series
-             │                          | aggregate 0         | work_area_sn
-             │                          | aggregate 1         | avg(value)
-             │                          | aggregate 2         | avg(standard_val)
-             │                          | aggregate 3         | sum(second_val)
-             │                          | aggregate 4         | count(standard_val)
-             │                          | aggregate 5         | count(state)
-             │                          | aggregate 6         | count(station_name)
-             │                          | group by            | work_area_sn
-             │                          | addSynchronizer     | true
-             └── render                 |                     |
-                  │                     | engine type         | time series
-                  │                     | value               | value
-                  │                     | state               | state
-                  │                     | second_val          | second_val
-                  │                     | station_name        | station_name
-                  │                     | work_area_sn        | work_area_sn
-                  │                     | standard_val        | standard_val
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | hashTagScan
-                                        | block filter[state] | NOT NULL
-(37 rows)
+                  tree                  |      field       |        description
+----------------------------------------+------------------+-----------------------------
+                                        | distributed      | false
+                                        | vectorized       | false
+  sort                                  |                  |
+   │                                    | order            | +work_area_sn
+   └── batch-lookup-join                |                  |
+        │                               | type             | inner
+        │                               | equality         | (expected_state) = (state)
+        ├── scan                        |                  |
+        │                               | table            | station_info@primary
+        │                               | spans            | FULL SCAN
+        │                               | filter           | expected_state IS NOT NULL
+        └── group                       |                  |
+             │                          | engine type      | time series
+             │                          | aggregate 0      | work_area_sn
+             │                          | aggregate 1      | avg(value)
+             │                          | aggregate 2      | avg(standard_val)
+             │                          | aggregate 3      | sum(second_val)
+             │                          | aggregate 4      | count(standard_val)
+             │                          | aggregate 5      | count(state)
+             │                          | aggregate 6      | count(station_name)
+             │                          | group by         | work_area_sn
+             │                          | addSynchronizer  | true
+             └── render                 |                  |
+                  │                     | engine type      | time series
+                  │                     | value            | value
+                  │                     | state            | state
+                  │                     | second_val       | second_val
+                  │                     | station_name     | station_name
+                  │                     | work_area_sn     | work_area_sn
+                  │                     | standard_val     | standard_val
+                  └── filter            |                  |
+                       │                | filter           | state IS NOT NULL
+                       └── synchronizer |                  |
+                            └── ts scan |                  |
+                                        | ts-table         | firegases
+                                        | access mode      | hashTagScan
+(36 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -1910,48 +1904,47 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.second_val = s.standard_val and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |                     description
-----------------------------------------+---------------------+-------------------------------------------------------
-                                        | distributed         | false
-                                        | vectorized          | false
-  batch-lookup-join                     |                     |
-   │                                    | type                | inner
-   │                                    | equality            | (standard_val, expected_state) = (second_val, state)
-   ├── scan                             |                     |
-   │                                    | table               | station_info@primary
-   │                                    | spans               | FULL SCAN
-   │                                    | filter              | expected_state IS NOT NULL
-   └── group                            |                     |
-        │                               | engine type         | time series
-        │                               | aggregate 0         | work_area_sn
-        │                               | aggregate 1         | avg(value)
-        │                               | aggregate 2         | avg(standard_val)
-        │                               | aggregate 3         | sum(second_val)
-        │                               | aggregate 4         | count(standard_val)
-        │                               | aggregate 5         | count(state)
-        │                               | aggregate 6         | count(station_name)
-        │                               | group by            | work_area_sn
-        │                               | ordered             | +work_area_sn
-        │                               | addSynchronizer     | true
-        └── render                      |                     |
-             │                          | engine type         | time series
-             │                          | value               | value
-             │                          | state               | state
-             │                          | second_val          | second_val
-             │                          | station_name        | station_name
-             │                          | work_area_sn        | work_area_sn
-             │                          | standard_val        | standard_val
-             └── sort                   |                     |
-                  │                     | engine type         | time series
-                  │                     | order               | +work_area_sn
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | hashTagScan
-                                        | block filter[state] | NOT NULL
-(39 rows)
+                  tree                  |      field       |                     description
+----------------------------------------+------------------+-------------------------------------------------------
+                                        | distributed      | false
+                                        | vectorized       | false
+  batch-lookup-join                     |                  |
+   │                                    | type             | inner
+   │                                    | equality         | (standard_val, expected_state) = (second_val, state)
+   ├── scan                             |                  |
+   │                                    | table            | station_info@primary
+   │                                    | spans            | FULL SCAN
+   │                                    | filter           | expected_state IS NOT NULL
+   └── group                            |                  |
+        │                               | engine type      | time series
+        │                               | aggregate 0      | work_area_sn
+        │                               | aggregate 1      | avg(value)
+        │                               | aggregate 2      | avg(standard_val)
+        │                               | aggregate 3      | sum(second_val)
+        │                               | aggregate 4      | count(standard_val)
+        │                               | aggregate 5      | count(state)
+        │                               | aggregate 6      | count(station_name)
+        │                               | group by         | work_area_sn
+        │                               | ordered          | +work_area_sn
+        │                               | addSynchronizer  | true
+        └── render                      |                  |
+             │                          | engine type      | time series
+             │                          | value            | value
+             │                          | state            | state
+             │                          | second_val       | second_val
+             │                          | station_name     | station_name
+             │                          | work_area_sn     | work_area_sn
+             │                          | standard_val     | standard_val
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +work_area_sn
+                  └── filter            |                  |
+                       │                | filter           | state IS NOT NULL
+                       └── synchronizer |                  |
+                            └── ts scan |                  |
+                                        | ts-table         | firegases
+                                        | access mode      | hashTagScan
+(38 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -1983,55 +1976,54 @@ FROM my_timeseries_db.firegases ts,
     GROUP BY s.work_area_sn) as t
 WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
-                       tree                       |        field        |        description
---------------------------------------------------+---------------------+-----------------------------
-                                                  | distributed         | false
-                                                  | vectorized          | false
-  render                                          |                     |
-   └── sort                                       |                     |
-        │                                         | order               | +value
-        └── batch-lookup-join                     |                     |
-             │                                    | type                | inner
-             │                                    | equality            | (work_area_sn) = (adr)
-             │                                    | left cols are key   |
-             ├── batch-lookup-join                |                     |
-             │    │                               | type                | inner
-             │    │                               | equality            | (expected_state) = (state)
-             │    ├── scan                        |                     |
-             │    │                               | table               | station_info@primary
-             │    │                               | spans               | FULL SCAN
-             │    │                               | filter              | expected_state IS NOT NULL
-             │    └── group                       |                     |
-             │         │                          | engine type         | time series
-             │         │                          | aggregate 0         | work_area_sn
-             │         │                          | aggregate 1         | avg(value)
-             │         │                          | aggregate 2         | avg(standard_val)
-             │         │                          | aggregate 3         | sum(second_val)
-             │         │                          | aggregate 4         | count(standard_val)
-             │         │                          | aggregate 5         | count(state)
-             │         │                          | aggregate 6         | count(station_name)
-             │         │                          | group by            | work_area_sn
-             │         │                          | addSynchronizer     | true
-             │         └── render                 |                     |
-             │              │                     | engine type         | time series
-             │              │                     | value               | value
-             │              │                     | state               | state
-             │              │                     | second_val          | second_val
-             │              │                     | station_name        | station_name
-             │              │                     | work_area_sn        | work_area_sn
-             │              │                     | standard_val        | standard_val
-             │              └── filter            |                     |
-             │                   │                | filter              | state IS NOT NULL
-             │                   └── synchronizer |                     |
-             │                        └── ts scan |                     |
-             │                                    | ts-table            | firegases
-             │                                    | access mode         | hashTagScan
-             │                                    | block filter[state] | NOT NULL
-             └── synchronizer                     |                     |
-                  └── ts scan                     |                     |
-                                                  | ts-table            | firegases
-                                                  | access mode         | hashTagScan
-(46 rows)
+                       tree                       |       field       |        description
+--------------------------------------------------+-------------------+-----------------------------
+                                                  | distributed       | false
+                                                  | vectorized        | false
+  render                                          |                   |
+   └── sort                                       |                   |
+        │                                         | order             | +value
+        └── batch-lookup-join                     |                   |
+             │                                    | type              | inner
+             │                                    | equality          | (work_area_sn) = (adr)
+             │                                    | left cols are key |
+             ├── batch-lookup-join                |                   |
+             │    │                               | type              | inner
+             │    │                               | equality          | (expected_state) = (state)
+             │    ├── scan                        |                   |
+             │    │                               | table             | station_info@primary
+             │    │                               | spans             | FULL SCAN
+             │    │                               | filter            | expected_state IS NOT NULL
+             │    └── group                       |                   |
+             │         │                          | engine type       | time series
+             │         │                          | aggregate 0       | work_area_sn
+             │         │                          | aggregate 1       | avg(value)
+             │         │                          | aggregate 2       | avg(standard_val)
+             │         │                          | aggregate 3       | sum(second_val)
+             │         │                          | aggregate 4       | count(standard_val)
+             │         │                          | aggregate 5       | count(state)
+             │         │                          | aggregate 6       | count(station_name)
+             │         │                          | group by          | work_area_sn
+             │         │                          | addSynchronizer   | true
+             │         └── render                 |                   |
+             │              │                     | engine type       | time series
+             │              │                     | value             | value
+             │              │                     | state             | state
+             │              │                     | second_val        | second_val
+             │              │                     | station_name      | station_name
+             │              │                     | work_area_sn      | work_area_sn
+             │              │                     | standard_val      | standard_val
+             │              └── filter            |                   |
+             │                   │                | filter            | state IS NOT NULL
+             │                   └── synchronizer |                   |
+             │                        └── ts scan |                   |
+             │                                    | ts-table          | firegases
+             │                                    | access mode       | hashTagScan
+             └── synchronizer                     |                   |
+                  └── ts scan                     |                   |
+                                                  | ts-table          | firegases
+                                                  | access mode       | hashTagScan
+(45 rows)
 > SELECT *
 FROM my_timeseries_db.firegases ts,
     (SELECT s.work_area_sn,
@@ -2379,7 +2371,7 @@ WHERE f.second_val = r.standard_avg
   2024-09-01 10:00:00+00:00 |  22.5 | active         |         22.5 | adr1 | active |       22.5
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
              tree             |    field    |           description
@@ -2401,7 +2393,7 @@ ORDER BY f."time";
                               | access mode | hashTagScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
             time            | second_val | station_sn | station_name | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr | state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2409,7 +2401,7 @@ ORDER BY f."time";
   2024-09-01 10:15:00+00:00 |         15 |          5 | Station Five |                40 |              6000 |              500 | NULL           |                15.5 |               12.5 |   true   |   4 | active |       40 | NULL     |   40000 | NULL       |        15 |   NULL
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
              tree             |    field    |           description
@@ -2431,7 +2423,7 @@ ORDER BY f."time";
                               | access mode | hashTagScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2440,7 +2432,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          5 | Station Five  |                40 |              6000 |              500 | NULL           |                15.5 |               12.5 |   true   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (2 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
@@ -2463,7 +2455,7 @@ ORDER BY f."time";
                               | access mode       | hashTagScan
 (16 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2476,7 +2468,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          6 | Station Six   | NULL              | NULL              | NULL             | NULL           | NULL                | NULL               |  false   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (6 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
              tree             |    field    |             description
@@ -2498,7 +2490,7 @@ ORDER BY f."time";
                               | access mode | hashTagScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
             time            | second_val | station_sn | station_name | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr | state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2506,7 +2498,7 @@ ORDER BY f."time";
   2024-09-01 10:00:00+00:00 |         25 |          1 | Station One  |                 1 |                10 |            10000 | active         |                22.5 |                 20 |   true   |   1 | active |       10 |     1000 |   10000 |       22.5 |      22.5 |   true
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
              tree             |    field    |            description
@@ -2528,7 +2520,7 @@ ORDER BY f."time";
                               | access mode | hashTagScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2600,7 +2592,7 @@ ORDER BY f."time";
   2024-09-01 10:15:00+00:00 |         15 |          4 | Station Four  | NULL              | NULL              |            40000 | pending        | NULL                |                 15 |   NULL   |   4 | active  |       40 | NULL     |   40000 | NULL       |        15 |   NULL
 (2 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.bool_val = s.bool_val
 ORDER BY f."time";
              tree             |    field    |       description
@@ -2622,7 +2614,7 @@ ORDER BY f."time";
                               | access mode | hashTagScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.bool_val = s.bool_val
 ORDER BY f."time", s.station_sn, f.float_val, f.int_val, f.adr;
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2648,28 +2640,27 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | false
-                                   | vectorized          | false
-  render                           |                     |
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── batch-lookup-join      |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | primaryHashTagScan
-                                   | block filter[state] | NOT NULL
-(19 rows)
+                tree               |    field    |        description
+-----------------------------------+-------------+-----------------------------
+                                   | distributed | false
+                                   | vectorized  | false
+  render                           |             |
+   └── sort                        |             |
+        │                          | order       | +"time",+station_sn
+        └── batch-lookup-join      |             |
+             │                     | type        | inner
+             │                     | equality    | (expected_state) = (state)
+             ├── scan              |             |
+             │                     | table       | station_info@primary
+             │                     | spans       | FULL SCAN
+             │                     | filter      | expected_state IS NOT NULL
+             └── filter            |             |
+                  │                | filter      | state IS NOT NULL
+                  └── synchronizer |             |
+                       └── ts scan |             |
+                                   | ts-table    | firegases
+                                   | access mode | primaryHashTagScan
+(18 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -2711,7 +2702,7 @@ ORDER BY f."time", s.station_sn;
   2024-09-01 10:00:00+00:00 |  22.5 | sn1        | Station One  | adr1         | active         |         22.5 | adr1 | active |       22.5
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
@@ -2734,7 +2725,7 @@ ORDER BY f."time";
                               | access mode       | primaryHashTagScan
 (16 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -2747,7 +2738,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          6 | Station Six   | NULL              | NULL              | NULL             | NULL           | NULL                | NULL               |  false   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (6 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db.firegases f, my_relation_db.station_info s
+FROM my_timeseries_db.firegases f, my_relation_db.station_info s 
 WHERE f.adr = s.work_area_sn
 ORDER BY f."time";
              tree             |    field    |      description
@@ -2769,7 +2760,7 @@ ORDER BY f."time";
                               | access mode | primaryHashTagScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db.firegases f, my_relation_db.station_info s
+FROM my_timeseries_db.firegases f, my_relation_db.station_info s 
 WHERE f.adr = s.work_area_sn
 ORDER BY f."time";
             time            | value | station_sn | station_name  | work_area_sn | expected_state | standard_val | adr  | state  | second_val
@@ -2784,28 +2775,27 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | false
-                                   | vectorized          | false
-  render                           |                     |
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── batch-lookup-join      |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | hashRelScan
-                                   | block filter[state] | NOT NULL
-(19 rows)
+                tree               |    field    |        description
+-----------------------------------+-------------+-----------------------------
+                                   | distributed | false
+                                   | vectorized  | false
+  render                           |             |
+   └── sort                        |             |
+        │                          | order       | +"time",+station_sn
+        └── batch-lookup-join      |             |
+             │                     | type        | inner
+             │                     | equality    | (expected_state) = (state)
+             ├── scan              |             |
+             │                     | table       | station_info@primary
+             │                     | spans       | FULL SCAN
+             │                     | filter      | expected_state IS NOT NULL
+             └── filter            |             |
+                  │                | filter      | state IS NOT NULL
+                  └── synchronizer |             |
+                       └── ts scan |             |
+                                   | ts-table    | firegases
+                                   | access mode | hashRelScan
+(18 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -3136,46 +3126,45 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |        description
-----------------------------------------+---------------------+-----------------------------
-                                        | distributed         | false
-                                        | vectorized          | false
-  sort                                  |                     |
-   │                                    | order               | +work_area_sn
-   └── batch-lookup-join                |                     |
-        │                               | type                | inner
-        │                               | equality            | (expected_state) = (state)
-        ├── scan                        |                     |
-        │                               | table               | station_info@primary
-        │                               | spans               | FULL SCAN
-        │                               | filter              | expected_state IS NOT NULL
-        └── group                       |                     |
-             │                          | engine type         | time series
-             │                          | aggregate 0         | work_area_sn
-             │                          | aggregate 1         | avg(value)
-             │                          | aggregate 2         | avg(standard_val)
-             │                          | aggregate 3         | sum(second_val)
-             │                          | aggregate 4         | count(standard_val)
-             │                          | aggregate 5         | count(state)
-             │                          | aggregate 6         | count(station_name)
-             │                          | group by            | work_area_sn
-             │                          | addSynchronizer     | true
-             └── render                 |                     |
-                  │                     | engine type         | time series
-                  │                     | value               | value
-                  │                     | state               | state
-                  │                     | second_val          | second_val
-                  │                     | station_name        | station_name
-                  │                     | work_area_sn        | work_area_sn
-                  │                     | standard_val        | standard_val
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | hashRelScan
-                                        | block filter[state] | NOT NULL
-(37 rows)
+                  tree                  |      field       |        description
+----------------------------------------+------------------+-----------------------------
+                                        | distributed      | false
+                                        | vectorized       | false
+  sort                                  |                  |
+   │                                    | order            | +work_area_sn
+   └── batch-lookup-join                |                  |
+        │                               | type             | inner
+        │                               | equality         | (expected_state) = (state)
+        ├── scan                        |                  |
+        │                               | table            | station_info@primary
+        │                               | spans            | FULL SCAN
+        │                               | filter           | expected_state IS NOT NULL
+        └── group                       |                  |
+             │                          | engine type      | time series
+             │                          | aggregate 0      | work_area_sn
+             │                          | aggregate 1      | avg(value)
+             │                          | aggregate 2      | avg(standard_val)
+             │                          | aggregate 3      | sum(second_val)
+             │                          | aggregate 4      | count(standard_val)
+             │                          | aggregate 5      | count(state)
+             │                          | aggregate 6      | count(station_name)
+             │                          | group by         | work_area_sn
+             │                          | addSynchronizer  | true
+             └── render                 |                  |
+                  │                     | engine type      | time series
+                  │                     | value            | value
+                  │                     | state            | state
+                  │                     | second_val       | second_val
+                  │                     | station_name     | station_name
+                  │                     | work_area_sn     | work_area_sn
+                  │                     | standard_val     | standard_val
+                  └── filter            |                  |
+                       │                | filter           | state IS NOT NULL
+                       └── synchronizer |                  |
+                            └── ts scan |                  |
+                                        | ts-table         | firegases
+                                        | access mode      | hashRelScan
+(36 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -3309,48 +3298,47 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.second_val = s.standard_val and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |                     description
-----------------------------------------+---------------------+-------------------------------------------------------
-                                        | distributed         | false
-                                        | vectorized          | false
-  batch-lookup-join                     |                     |
-   │                                    | type                | inner
-   │                                    | equality            | (standard_val, expected_state) = (second_val, state)
-   ├── scan                             |                     |
-   │                                    | table               | station_info@primary
-   │                                    | spans               | FULL SCAN
-   │                                    | filter              | expected_state IS NOT NULL
-   └── group                            |                     |
-        │                               | engine type         | time series
-        │                               | aggregate 0         | work_area_sn
-        │                               | aggregate 1         | avg(value)
-        │                               | aggregate 2         | avg(standard_val)
-        │                               | aggregate 3         | sum(second_val)
-        │                               | aggregate 4         | count(standard_val)
-        │                               | aggregate 5         | count(state)
-        │                               | aggregate 6         | count(station_name)
-        │                               | group by            | work_area_sn
-        │                               | ordered             | +work_area_sn
-        │                               | addSynchronizer     | true
-        └── render                      |                     |
-             │                          | engine type         | time series
-             │                          | value               | value
-             │                          | state               | state
-             │                          | second_val          | second_val
-             │                          | station_name        | station_name
-             │                          | work_area_sn        | work_area_sn
-             │                          | standard_val        | standard_val
-             └── sort                   |                     |
-                  │                     | engine type         | time series
-                  │                     | order               | +work_area_sn
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | hashRelScan
-                                        | block filter[state] | NOT NULL
-(39 rows)
+                  tree                  |      field       |                     description
+----------------------------------------+------------------+-------------------------------------------------------
+                                        | distributed      | false
+                                        | vectorized       | false
+  batch-lookup-join                     |                  |
+   │                                    | type             | inner
+   │                                    | equality         | (standard_val, expected_state) = (second_val, state)
+   ├── scan                             |                  |
+   │                                    | table            | station_info@primary
+   │                                    | spans            | FULL SCAN
+   │                                    | filter           | expected_state IS NOT NULL
+   └── group                            |                  |
+        │                               | engine type      | time series
+        │                               | aggregate 0      | work_area_sn
+        │                               | aggregate 1      | avg(value)
+        │                               | aggregate 2      | avg(standard_val)
+        │                               | aggregate 3      | sum(second_val)
+        │                               | aggregate 4      | count(standard_val)
+        │                               | aggregate 5      | count(state)
+        │                               | aggregate 6      | count(station_name)
+        │                               | group by         | work_area_sn
+        │                               | ordered          | +work_area_sn
+        │                               | addSynchronizer  | true
+        └── render                      |                  |
+             │                          | engine type      | time series
+             │                          | value            | value
+             │                          | state            | state
+             │                          | second_val       | second_val
+             │                          | station_name     | station_name
+             │                          | work_area_sn     | work_area_sn
+             │                          | standard_val     | standard_val
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +work_area_sn
+                  └── filter            |                  |
+                       │                | filter           | state IS NOT NULL
+                       └── synchronizer |                  |
+                            └── ts scan |                  |
+                                        | ts-table         | firegases
+                                        | access mode      | hashRelScan
+(38 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -3382,55 +3370,54 @@ FROM my_timeseries_db.firegases ts,
     GROUP BY s.work_area_sn) as t
 WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
-                       tree                       |        field        |        description
---------------------------------------------------+---------------------+-----------------------------
-                                                  | distributed         | false
-                                                  | vectorized          | false
-  render                                          |                     |
-   └── sort                                       |                     |
-        │                                         | order               | +value
-        └── batch-lookup-join                     |                     |
-             │                                    | type                | inner
-             │                                    | equality            | (work_area_sn) = (adr)
-             │                                    | left cols are key   |
-             ├── batch-lookup-join                |                     |
-             │    │                               | type                | inner
-             │    │                               | equality            | (expected_state) = (state)
-             │    ├── scan                        |                     |
-             │    │                               | table               | station_info@primary
-             │    │                               | spans               | FULL SCAN
-             │    │                               | filter              | expected_state IS NOT NULL
-             │    └── group                       |                     |
-             │         │                          | engine type         | time series
-             │         │                          | aggregate 0         | work_area_sn
-             │         │                          | aggregate 1         | avg(value)
-             │         │                          | aggregate 2         | avg(standard_val)
-             │         │                          | aggregate 3         | sum(second_val)
-             │         │                          | aggregate 4         | count(standard_val)
-             │         │                          | aggregate 5         | count(state)
-             │         │                          | aggregate 6         | count(station_name)
-             │         │                          | group by            | work_area_sn
-             │         │                          | addSynchronizer     | true
-             │         └── render                 |                     |
-             │              │                     | engine type         | time series
-             │              │                     | value               | value
-             │              │                     | state               | state
-             │              │                     | second_val          | second_val
-             │              │                     | station_name        | station_name
-             │              │                     | work_area_sn        | work_area_sn
-             │              │                     | standard_val        | standard_val
-             │              └── filter            |                     |
-             │                   │                | filter              | state IS NOT NULL
-             │                   └── synchronizer |                     |
-             │                        └── ts scan |                     |
-             │                                    | ts-table            | firegases
-             │                                    | access mode         | hashRelScan
-             │                                    | block filter[state] | NOT NULL
-             └── synchronizer                     |                     |
-                  └── ts scan                     |                     |
-                                                  | ts-table            | firegases
-                                                  | access mode         | hashRelScan
-(46 rows)
+                       tree                       |       field       |        description
+--------------------------------------------------+-------------------+-----------------------------
+                                                  | distributed       | false
+                                                  | vectorized        | false
+  render                                          |                   |
+   └── sort                                       |                   |
+        │                                         | order             | +value
+        └── batch-lookup-join                     |                   |
+             │                                    | type              | inner
+             │                                    | equality          | (work_area_sn) = (adr)
+             │                                    | left cols are key |
+             ├── batch-lookup-join                |                   |
+             │    │                               | type              | inner
+             │    │                               | equality          | (expected_state) = (state)
+             │    ├── scan                        |                   |
+             │    │                               | table             | station_info@primary
+             │    │                               | spans             | FULL SCAN
+             │    │                               | filter            | expected_state IS NOT NULL
+             │    └── group                       |                   |
+             │         │                          | engine type       | time series
+             │         │                          | aggregate 0       | work_area_sn
+             │         │                          | aggregate 1       | avg(value)
+             │         │                          | aggregate 2       | avg(standard_val)
+             │         │                          | aggregate 3       | sum(second_val)
+             │         │                          | aggregate 4       | count(standard_val)
+             │         │                          | aggregate 5       | count(state)
+             │         │                          | aggregate 6       | count(station_name)
+             │         │                          | group by          | work_area_sn
+             │         │                          | addSynchronizer   | true
+             │         └── render                 |                   |
+             │              │                     | engine type       | time series
+             │              │                     | value             | value
+             │              │                     | state             | state
+             │              │                     | second_val        | second_val
+             │              │                     | station_name      | station_name
+             │              │                     | work_area_sn      | work_area_sn
+             │              │                     | standard_val      | standard_val
+             │              └── filter            |                   |
+             │                   │                | filter            | state IS NOT NULL
+             │                   └── synchronizer |                   |
+             │                        └── ts scan |                   |
+             │                                    | ts-table          | firegases
+             │                                    | access mode       | hashRelScan
+             └── synchronizer                     |                   |
+                  └── ts scan                     |                   |
+                                                  | ts-table          | firegases
+                                                  | access mode       | hashRelScan
+(45 rows)
 > SELECT *
 FROM my_timeseries_db.firegases ts,
     (SELECT s.work_area_sn,
@@ -3778,7 +3765,7 @@ WHERE f.second_val = r.standard_avg
   2024-09-01 10:00:00+00:00 |  22.5 | active         |         22.5 | adr1 | active |       22.5
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
              tree             |    field    |           description
@@ -3800,7 +3787,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
             time            | second_val | station_sn | station_name | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr | state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -3808,7 +3795,7 @@ ORDER BY f."time";
   2024-09-01 10:15:00+00:00 |         15 |          5 | Station Five |                40 |              6000 |              500 | NULL           |                15.5 |               12.5 |   true   |   4 | active |       40 | NULL     |   40000 | NULL       |        15 |   NULL
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
              tree             |    field    |           description
@@ -3830,7 +3817,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -3839,7 +3826,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          5 | Station Five  |                40 |              6000 |              500 | NULL           |                15.5 |               12.5 |   true   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (2 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
@@ -3862,7 +3849,7 @@ ORDER BY f."time";
                               | access mode       | hashRelScan
 (16 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.adr = s.station_sn
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state   | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -3875,7 +3862,7 @@ ORDER BY f."time";
   2024-09-01 10:25:00+00:00 | NULL       |          6 | Station Six   | NULL              | NULL              | NULL             | NULL           | NULL                | NULL               |  false   |   6 | inactive |       60 |     6000 |   60000 |       17.5 |      17.5 |  false
 (6 rows)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
              tree             |    field    |             description
@@ -3897,7 +3884,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
             time            | second_val | station_sn | station_name | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr | state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val
@@ -3905,7 +3892,7 @@ ORDER BY f."time";
   2024-09-01 10:00:00+00:00 |         25 |          1 | Station One  |                 1 |                10 |            10000 | active         |                22.5 |                 20 |   true   |   1 | active |       10 |     1000 |   10000 |       22.5 |      22.5 |   true
 (1 row)
 > EXPLAIN SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
              tree             |    field    |            description
@@ -3927,7 +3914,7 @@ ORDER BY f."time";
                               | access mode | hashRelScan
 (15 rows)
 > SELECT *
-FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s
+FROM my_timeseries_db_v2.firegases f, my_relation_db_v2.station_info s 
 WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
             time            | second_val | station_sn | station_name  | work_area_sn_int2 | work_area_sn_int4 | work_area_sn_int | expected_state | standard_val_float4 | standard_val_float | bool_val | adr |  state  | int2_val | int4_val | int_val | float4_val | float_val | bool_val

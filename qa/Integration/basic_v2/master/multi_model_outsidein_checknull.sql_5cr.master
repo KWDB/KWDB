@@ -72,38 +72,37 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | true
-                                   | vectorized          | false
-  render                           |                     |
-   │                               | time                | "time"
-   │                               | value               | value
-   │                               | station_sn          | station_sn
-   │                               | station_name        | station_name
-   │                               | work_area_sn        | work_area_sn
-   │                               | expected_state      | expected_state
-   │                               | standard_val        | standard_val
-   │                               | adr                 | adr
-   │                               | state               | state
-   │                               | second_val          | second_val
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── hash-join              |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | tableTableMeta
-                                   | block filter[state] | NOT NULL
-(29 rows)
+                tree               |     field      |        description
+-----------------------------------+----------------+-----------------------------
+                                   | distributed    | true
+                                   | vectorized     | false
+  render                           |                |
+   │                               | time           | "time"
+   │                               | value          | value
+   │                               | station_sn     | station_sn
+   │                               | station_name   | station_name
+   │                               | work_area_sn   | work_area_sn
+   │                               | expected_state | expected_state
+   │                               | standard_val   | standard_val
+   │                               | adr            | adr
+   │                               | state          | state
+   │                               | second_val     | second_val
+   └── sort                        |                |
+        │                          | order          | +"time",+station_sn
+        └── hash-join              |                |
+             │                     | type           | inner
+             │                     | equality       | (expected_state) = (state)
+             ├── scan              |                |
+             │                     | table          | station_info@primary
+             │                     | spans          | FULL SCAN
+             │                     | filter         | expected_state IS NOT NULL
+             └── filter            |                |
+                  │                | filter         | state IS NOT NULL
+                  └── synchronizer |                |
+                       └── ts scan |                |
+                                   | ts-table       | firegases
+                                   | access mode    | tableTableMeta
+(28 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -478,43 +477,42 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |        description
-----------------------------------------+---------------------+-----------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  sort                                  |                     |
-   │                                    | order               | +work_area_sn
-   └── group                            |                     |
-        │                               | aggregate 0         | work_area_sn
-        │                               | aggregate 1         | avg(value)
-        │                               | aggregate 2         | avg(standard_val)
-        │                               | aggregate 3         | sum(second_val)
-        │                               | aggregate 4         | count(standard_val)
-        │                               | aggregate 5         | count(state)
-        │                               | aggregate 6         | count(station_name)
-        │                               | group by            | work_area_sn
-        └── render                      |                     |
-             │                          | value               | value
-             │                          | state               | state
-             │                          | second_val          | second_val
-             │                          | station_name        | station_name
-             │                          | work_area_sn        | work_area_sn
-             │                          | standard_val        | standard_val
-             └── hash-join              |                     |
-                  │                     | type                | inner
-                  │                     | equality            | (expected_state) = (state)
-                  ├── scan              |                     |
-                  │                     | table               | station_info@primary
-                  │                     | spans               | FULL SCAN
-                  │                     | filter              | expected_state IS NOT NULL
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | tableTableMeta
-                                        | block filter[state] | NOT NULL
-(34 rows)
+                  tree                  |    field     |        description
+----------------------------------------+--------------+-----------------------------
+                                        | distributed  | true
+                                        | vectorized   | false
+  sort                                  |              |
+   │                                    | order        | +work_area_sn
+   └── group                            |              |
+        │                               | aggregate 0  | work_area_sn
+        │                               | aggregate 1  | avg(value)
+        │                               | aggregate 2  | avg(standard_val)
+        │                               | aggregate 3  | sum(second_val)
+        │                               | aggregate 4  | count(standard_val)
+        │                               | aggregate 5  | count(state)
+        │                               | aggregate 6  | count(station_name)
+        │                               | group by     | work_area_sn
+        └── render                      |              |
+             │                          | value        | value
+             │                          | state        | state
+             │                          | second_val   | second_val
+             │                          | station_name | station_name
+             │                          | work_area_sn | work_area_sn
+             │                          | standard_val | standard_val
+             └── hash-join              |              |
+                  │                     | type         | inner
+                  │                     | equality     | (expected_state) = (state)
+                  ├── scan              |              |
+                  │                     | table        | station_info@primary
+                  │                     | spans        | FULL SCAN
+                  │                     | filter       | expected_state IS NOT NULL
+                  └── filter            |              |
+                       │                | filter       | state IS NOT NULL
+                       └── synchronizer |              |
+                            └── ts scan |              |
+                                        | ts-table     | firegases
+                                        | access mode  | tableTableMeta
+(33 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -656,44 +654,43 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.second_val = s.standard_val and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |                     description
-----------------------------------------+---------------------+-------------------------------------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  group                                 |                     |
-   │                                    | aggregate 0         | work_area_sn
-   │                                    | aggregate 1         | avg(value)
-   │                                    | aggregate 2         | avg(standard_val)
-   │                                    | aggregate 3         | sum(second_val)
-   │                                    | aggregate 4         | count(standard_val)
-   │                                    | aggregate 5         | count(state)
-   │                                    | aggregate 6         | count(station_name)
-   │                                    | group by            | work_area_sn
-   │                                    | ordered             | +work_area_sn
-   └── render                           |                     |
-        │                               | value               | value
-        │                               | state               | state
-        │                               | second_val          | second_val
-        │                               | station_name        | station_name
-        │                               | work_area_sn        | work_area_sn
-        │                               | standard_val        | standard_val
-        └── sort                        |                     |
-             │                          | order               | +work_area_sn
-             └── hash-join              |                     |
-                  │                     | type                | inner
-                  │                     | equality            | (standard_val, expected_state) = (second_val, state)
-                  ├── scan              |                     |
-                  │                     | table               | station_info@primary
-                  │                     | spans               | FULL SCAN
-                  │                     | filter              | expected_state IS NOT NULL
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | tableTableMeta
-                                        | block filter[state] | NOT NULL
-(35 rows)
+                  tree                  |    field     |                     description
+----------------------------------------+--------------+-------------------------------------------------------
+                                        | distributed  | true
+                                        | vectorized   | false
+  group                                 |              |
+   │                                    | aggregate 0  | work_area_sn
+   │                                    | aggregate 1  | avg(value)
+   │                                    | aggregate 2  | avg(standard_val)
+   │                                    | aggregate 3  | sum(second_val)
+   │                                    | aggregate 4  | count(standard_val)
+   │                                    | aggregate 5  | count(state)
+   │                                    | aggregate 6  | count(station_name)
+   │                                    | group by     | work_area_sn
+   │                                    | ordered      | +work_area_sn
+   └── render                           |              |
+        │                               | value        | value
+        │                               | state        | state
+        │                               | second_val   | second_val
+        │                               | station_name | station_name
+        │                               | work_area_sn | work_area_sn
+        │                               | standard_val | standard_val
+        └── sort                        |              |
+             │                          | order        | +work_area_sn
+             └── hash-join              |              |
+                  │                     | type         | inner
+                  │                     | equality     | (standard_val, expected_state) = (second_val, state)
+                  ├── scan              |              |
+                  │                     | table        | station_info@primary
+                  │                     | spans        | FULL SCAN
+                  │                     | filter       | expected_state IS NOT NULL
+                  └── filter            |              |
+                       │                | filter       | state IS NOT NULL
+                       └── synchronizer |              |
+                            └── ts scan |              |
+                                        | ts-table     | firegases
+                                        | access mode  | tableTableMeta
+(34 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -725,64 +722,63 @@ FROM my_timeseries_db.firegases ts,
     GROUP BY s.work_area_sn) as t
 WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
-                       tree                       |        field        |        description
---------------------------------------------------+---------------------+-----------------------------
-                                                  | distributed         | true
-                                                  | vectorized          | false
-  render                                          |                     |
-   │                                              | time                | "time"
-   │                                              | value               | value
-   │                                              | work_area_sn        | work_area_sn
-   │                                              | avg                 | avg
-   │                                              | avg                 | avg
-   │                                              | sum                 | sum
-   │                                              | count               | count
-   │                                              | count               | count
-   │                                              | count               | count
-   │                                              | adr                 | adr
-   │                                              | state               | state
-   │                                              | second_val          | second_val
-   └── sort                                       |                     |
-        │                                         | order               | +value
-        └── hash-join                             |                     |
-             │                                    | type                | inner
-             │                                    | equality            | (adr) = (work_area_sn)
-             │                                    | right cols are key  |
-             ├── synchronizer                     |                     |
-             │    └── ts scan                     |                     |
-             │                                    | ts-table            | firegases
-             │                                    | access mode         | tableTableMeta
-             └── group                            |                     |
-                  │                               | aggregate 0         | work_area_sn
-                  │                               | aggregate 1         | avg(value)
-                  │                               | aggregate 2         | avg(standard_val)
-                  │                               | aggregate 3         | sum(second_val)
-                  │                               | aggregate 4         | count(standard_val)
-                  │                               | aggregate 5         | count(state)
-                  │                               | aggregate 6         | count(station_name)
-                  │                               | group by            | work_area_sn
-                  └── render                      |                     |
-                       │                          | value               | value
-                       │                          | state               | state
-                       │                          | second_val          | second_val
-                       │                          | station_name        | station_name
-                       │                          | work_area_sn        | work_area_sn
-                       │                          | standard_val        | standard_val
-                       └── hash-join              |                     |
-                            │                     | type                | inner
-                            │                     | equality            | (expected_state) = (state)
-                            ├── scan              |                     |
-                            │                     | table               | station_info@primary
-                            │                     | spans               | FULL SCAN
-                            │                     | filter              | expected_state IS NOT NULL
-                            └── filter            |                     |
-                                 │                | filter              | state IS NOT NULL
-                                 └── synchronizer |                     |
-                                      └── ts scan |                     |
-                                                  | ts-table            | firegases
-                                                  | access mode         | tableTableMeta
-                                                  | block filter[state] | NOT NULL
-(55 rows)
+                       tree                       |       field        |        description
+--------------------------------------------------+--------------------+-----------------------------
+                                                  | distributed        | true
+                                                  | vectorized         | false
+  render                                          |                    |
+   │                                              | time               | "time"
+   │                                              | value              | value
+   │                                              | work_area_sn       | work_area_sn
+   │                                              | avg                | avg
+   │                                              | avg                | avg
+   │                                              | sum                | sum
+   │                                              | count              | count
+   │                                              | count              | count
+   │                                              | count              | count
+   │                                              | adr                | adr
+   │                                              | state              | state
+   │                                              | second_val         | second_val
+   └── sort                                       |                    |
+        │                                         | order              | +value
+        └── hash-join                             |                    |
+             │                                    | type               | inner
+             │                                    | equality           | (adr) = (work_area_sn)
+             │                                    | right cols are key |
+             ├── synchronizer                     |                    |
+             │    └── ts scan                     |                    |
+             │                                    | ts-table           | firegases
+             │                                    | access mode        | tableTableMeta
+             └── group                            |                    |
+                  │                               | aggregate 0        | work_area_sn
+                  │                               | aggregate 1        | avg(value)
+                  │                               | aggregate 2        | avg(standard_val)
+                  │                               | aggregate 3        | sum(second_val)
+                  │                               | aggregate 4        | count(standard_val)
+                  │                               | aggregate 5        | count(state)
+                  │                               | aggregate 6        | count(station_name)
+                  │                               | group by           | work_area_sn
+                  └── render                      |                    |
+                       │                          | value              | value
+                       │                          | state              | state
+                       │                          | second_val         | second_val
+                       │                          | station_name       | station_name
+                       │                          | work_area_sn       | work_area_sn
+                       │                          | standard_val       | standard_val
+                       └── hash-join              |                    |
+                            │                     | type               | inner
+                            │                     | equality           | (expected_state) = (state)
+                            ├── scan              |                    |
+                            │                     | table              | station_info@primary
+                            │                     | spans              | FULL SCAN
+                            │                     | filter             | expected_state IS NOT NULL
+                            └── filter            |                    |
+                                 │                | filter             | state IS NOT NULL
+                                 └── synchronizer |                    |
+                                      └── ts scan |                    |
+                                                  | ts-table           | firegases
+                                                  | access mode        | tableTableMeta
+(54 rows)
 > SELECT *
 FROM my_timeseries_db.firegases ts,
     (SELECT s.work_area_sn,
@@ -1606,38 +1602,37 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | true
-                                   | vectorized          | false
-  render                           |                     |
-   │                               | time                | "time"
-   │                               | value               | value
-   │                               | station_sn          | station_sn
-   │                               | station_name        | station_name
-   │                               | work_area_sn        | work_area_sn
-   │                               | expected_state      | expected_state
-   │                               | standard_val        | standard_val
-   │                               | adr                 | adr
-   │                               | state               | state
-   │                               | second_val          | second_val
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── hash-join              |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | tableTableMeta
-                                   | block filter[state] | NOT NULL
-(29 rows)
+                tree               |     field      |        description
+-----------------------------------+----------------+-----------------------------
+                                   | distributed    | true
+                                   | vectorized     | false
+  render                           |                |
+   │                               | time           | "time"
+   │                               | value          | value
+   │                               | station_sn     | station_sn
+   │                               | station_name   | station_name
+   │                               | work_area_sn   | work_area_sn
+   │                               | expected_state | expected_state
+   │                               | standard_val   | standard_val
+   │                               | adr            | adr
+   │                               | state          | state
+   │                               | second_val     | second_val
+   └── sort                        |                |
+        │                          | order          | +"time",+station_sn
+        └── hash-join              |                |
+             │                     | type           | inner
+             │                     | equality       | (expected_state) = (state)
+             ├── scan              |                |
+             │                     | table          | station_info@primary
+             │                     | spans          | FULL SCAN
+             │                     | filter         | expected_state IS NOT NULL
+             └── filter            |                |
+                  │                | filter         | state IS NOT NULL
+                  └── synchronizer |                |
+                       └── ts scan |                |
+                                   | ts-table       | firegases
+                                   | access mode    | tableTableMeta
+(28 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -2012,43 +2007,42 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |        description
-----------------------------------------+---------------------+-----------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  sort                                  |                     |
-   │                                    | order               | +work_area_sn
-   └── group                            |                     |
-        │                               | aggregate 0         | work_area_sn
-        │                               | aggregate 1         | avg(value)
-        │                               | aggregate 2         | avg(standard_val)
-        │                               | aggregate 3         | sum(second_val)
-        │                               | aggregate 4         | count(standard_val)
-        │                               | aggregate 5         | count(state)
-        │                               | aggregate 6         | count(station_name)
-        │                               | group by            | work_area_sn
-        └── render                      |                     |
-             │                          | value               | value
-             │                          | state               | state
-             │                          | second_val          | second_val
-             │                          | station_name        | station_name
-             │                          | work_area_sn        | work_area_sn
-             │                          | standard_val        | standard_val
-             └── hash-join              |                     |
-                  │                     | type                | inner
-                  │                     | equality            | (expected_state) = (state)
-                  ├── scan              |                     |
-                  │                     | table               | station_info@primary
-                  │                     | spans               | FULL SCAN
-                  │                     | filter              | expected_state IS NOT NULL
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | tableTableMeta
-                                        | block filter[state] | NOT NULL
-(34 rows)
+                  tree                  |    field     |        description
+----------------------------------------+--------------+-----------------------------
+                                        | distributed  | true
+                                        | vectorized   | false
+  sort                                  |              |
+   │                                    | order        | +work_area_sn
+   └── group                            |              |
+        │                               | aggregate 0  | work_area_sn
+        │                               | aggregate 1  | avg(value)
+        │                               | aggregate 2  | avg(standard_val)
+        │                               | aggregate 3  | sum(second_val)
+        │                               | aggregate 4  | count(standard_val)
+        │                               | aggregate 5  | count(state)
+        │                               | aggregate 6  | count(station_name)
+        │                               | group by     | work_area_sn
+        └── render                      |              |
+             │                          | value        | value
+             │                          | state        | state
+             │                          | second_val   | second_val
+             │                          | station_name | station_name
+             │                          | work_area_sn | work_area_sn
+             │                          | standard_val | standard_val
+             └── hash-join              |              |
+                  │                     | type         | inner
+                  │                     | equality     | (expected_state) = (state)
+                  ├── scan              |              |
+                  │                     | table        | station_info@primary
+                  │                     | spans        | FULL SCAN
+                  │                     | filter       | expected_state IS NOT NULL
+                  └── filter            |              |
+                       │                | filter       | state IS NOT NULL
+                       └── synchronizer |              |
+                            └── ts scan |              |
+                                        | ts-table     | firegases
+                                        | access mode  | tableTableMeta
+(33 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -2190,44 +2184,43 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.second_val = s.standard_val and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |                     description
-----------------------------------------+---------------------+-------------------------------------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  group                                 |                     |
-   │                                    | aggregate 0         | work_area_sn
-   │                                    | aggregate 1         | avg(value)
-   │                                    | aggregate 2         | avg(standard_val)
-   │                                    | aggregate 3         | sum(second_val)
-   │                                    | aggregate 4         | count(standard_val)
-   │                                    | aggregate 5         | count(state)
-   │                                    | aggregate 6         | count(station_name)
-   │                                    | group by            | work_area_sn
-   │                                    | ordered             | +work_area_sn
-   └── render                           |                     |
-        │                               | value               | value
-        │                               | state               | state
-        │                               | second_val          | second_val
-        │                               | station_name        | station_name
-        │                               | work_area_sn        | work_area_sn
-        │                               | standard_val        | standard_val
-        └── sort                        |                     |
-             │                          | order               | +work_area_sn
-             └── hash-join              |                     |
-                  │                     | type                | inner
-                  │                     | equality            | (standard_val, expected_state) = (second_val, state)
-                  ├── scan              |                     |
-                  │                     | table               | station_info@primary
-                  │                     | spans               | FULL SCAN
-                  │                     | filter              | expected_state IS NOT NULL
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | tableTableMeta
-                                        | block filter[state] | NOT NULL
-(35 rows)
+                  tree                  |    field     |                     description
+----------------------------------------+--------------+-------------------------------------------------------
+                                        | distributed  | true
+                                        | vectorized   | false
+  group                                 |              |
+   │                                    | aggregate 0  | work_area_sn
+   │                                    | aggregate 1  | avg(value)
+   │                                    | aggregate 2  | avg(standard_val)
+   │                                    | aggregate 3  | sum(second_val)
+   │                                    | aggregate 4  | count(standard_val)
+   │                                    | aggregate 5  | count(state)
+   │                                    | aggregate 6  | count(station_name)
+   │                                    | group by     | work_area_sn
+   │                                    | ordered      | +work_area_sn
+   └── render                           |              |
+        │                               | value        | value
+        │                               | state        | state
+        │                               | second_val   | second_val
+        │                               | station_name | station_name
+        │                               | work_area_sn | work_area_sn
+        │                               | standard_val | standard_val
+        └── sort                        |              |
+             │                          | order        | +work_area_sn
+             └── hash-join              |              |
+                  │                     | type         | inner
+                  │                     | equality     | (standard_val, expected_state) = (second_val, state)
+                  ├── scan              |              |
+                  │                     | table        | station_info@primary
+                  │                     | spans        | FULL SCAN
+                  │                     | filter       | expected_state IS NOT NULL
+                  └── filter            |              |
+                       │                | filter       | state IS NOT NULL
+                       └── synchronizer |              |
+                            └── ts scan |              |
+                                        | ts-table     | firegases
+                                        | access mode  | tableTableMeta
+(34 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -2259,64 +2252,63 @@ FROM my_timeseries_db.firegases ts,
     GROUP BY s.work_area_sn) as t
 WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
-                       tree                       |        field        |        description
---------------------------------------------------+---------------------+-----------------------------
-                                                  | distributed         | true
-                                                  | vectorized          | false
-  render                                          |                     |
-   │                                              | time                | "time"
-   │                                              | value               | value
-   │                                              | work_area_sn        | work_area_sn
-   │                                              | avg                 | avg
-   │                                              | avg                 | avg
-   │                                              | sum                 | sum
-   │                                              | count               | count
-   │                                              | count               | count
-   │                                              | count               | count
-   │                                              | adr                 | adr
-   │                                              | state               | state
-   │                                              | second_val          | second_val
-   └── sort                                       |                     |
-        │                                         | order               | +value
-        └── hash-join                             |                     |
-             │                                    | type                | inner
-             │                                    | equality            | (adr) = (work_area_sn)
-             │                                    | right cols are key  |
-             ├── synchronizer                     |                     |
-             │    └── ts scan                     |                     |
-             │                                    | ts-table            | firegases
-             │                                    | access mode         | tableTableMeta
-             └── group                            |                     |
-                  │                               | aggregate 0         | work_area_sn
-                  │                               | aggregate 1         | avg(value)
-                  │                               | aggregate 2         | avg(standard_val)
-                  │                               | aggregate 3         | sum(second_val)
-                  │                               | aggregate 4         | count(standard_val)
-                  │                               | aggregate 5         | count(state)
-                  │                               | aggregate 6         | count(station_name)
-                  │                               | group by            | work_area_sn
-                  └── render                      |                     |
-                       │                          | value               | value
-                       │                          | state               | state
-                       │                          | second_val          | second_val
-                       │                          | station_name        | station_name
-                       │                          | work_area_sn        | work_area_sn
-                       │                          | standard_val        | standard_val
-                       └── hash-join              |                     |
-                            │                     | type                | inner
-                            │                     | equality            | (expected_state) = (state)
-                            ├── scan              |                     |
-                            │                     | table               | station_info@primary
-                            │                     | spans               | FULL SCAN
-                            │                     | filter              | expected_state IS NOT NULL
-                            └── filter            |                     |
-                                 │                | filter              | state IS NOT NULL
-                                 └── synchronizer |                     |
-                                      └── ts scan |                     |
-                                                  | ts-table            | firegases
-                                                  | access mode         | tableTableMeta
-                                                  | block filter[state] | NOT NULL
-(55 rows)
+                       tree                       |       field        |        description
+--------------------------------------------------+--------------------+-----------------------------
+                                                  | distributed        | true
+                                                  | vectorized         | false
+  render                                          |                    |
+   │                                              | time               | "time"
+   │                                              | value              | value
+   │                                              | work_area_sn       | work_area_sn
+   │                                              | avg                | avg
+   │                                              | avg                | avg
+   │                                              | sum                | sum
+   │                                              | count              | count
+   │                                              | count              | count
+   │                                              | count              | count
+   │                                              | adr                | adr
+   │                                              | state              | state
+   │                                              | second_val         | second_val
+   └── sort                                       |                    |
+        │                                         | order              | +value
+        └── hash-join                             |                    |
+             │                                    | type               | inner
+             │                                    | equality           | (adr) = (work_area_sn)
+             │                                    | right cols are key |
+             ├── synchronizer                     |                    |
+             │    └── ts scan                     |                    |
+             │                                    | ts-table           | firegases
+             │                                    | access mode        | tableTableMeta
+             └── group                            |                    |
+                  │                               | aggregate 0        | work_area_sn
+                  │                               | aggregate 1        | avg(value)
+                  │                               | aggregate 2        | avg(standard_val)
+                  │                               | aggregate 3        | sum(second_val)
+                  │                               | aggregate 4        | count(standard_val)
+                  │                               | aggregate 5        | count(state)
+                  │                               | aggregate 6        | count(station_name)
+                  │                               | group by           | work_area_sn
+                  └── render                      |                    |
+                       │                          | value              | value
+                       │                          | state              | state
+                       │                          | second_val         | second_val
+                       │                          | station_name       | station_name
+                       │                          | work_area_sn       | work_area_sn
+                       │                          | standard_val       | standard_val
+                       └── hash-join              |                    |
+                            │                     | type               | inner
+                            │                     | equality           | (expected_state) = (state)
+                            ├── scan              |                    |
+                            │                     | table              | station_info@primary
+                            │                     | spans              | FULL SCAN
+                            │                     | filter             | expected_state IS NOT NULL
+                            └── filter            |                    |
+                                 │                | filter             | state IS NOT NULL
+                                 └── synchronizer |                    |
+                                      └── ts scan |                    |
+                                                  | ts-table           | firegases
+                                                  | access mode        | tableTableMeta
+(54 rows)
 > SELECT *
 FROM my_timeseries_db.firegases ts,
     (SELECT s.work_area_sn,
@@ -3090,38 +3082,37 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | true
-                                   | vectorized          | false
-  render                           |                     |
-   │                               | time                | "time"
-   │                               | value               | value
-   │                               | station_sn          | station_sn
-   │                               | station_name        | station_name
-   │                               | work_area_sn        | work_area_sn
-   │                               | expected_state      | expected_state
-   │                               | standard_val        | standard_val
-   │                               | adr                 | adr
-   │                               | state               | state
-   │                               | second_val          | second_val
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── hash-join              |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | tableTableMeta
-                                   | block filter[state] | NOT NULL
-(29 rows)
+                tree               |     field      |        description
+-----------------------------------+----------------+-----------------------------
+                                   | distributed    | true
+                                   | vectorized     | false
+  render                           |                |
+   │                               | time           | "time"
+   │                               | value          | value
+   │                               | station_sn     | station_sn
+   │                               | station_name   | station_name
+   │                               | work_area_sn   | work_area_sn
+   │                               | expected_state | expected_state
+   │                               | standard_val   | standard_val
+   │                               | adr            | adr
+   │                               | state          | state
+   │                               | second_val     | second_val
+   └── sort                        |                |
+        │                          | order          | +"time",+station_sn
+        └── hash-join              |                |
+             │                     | type           | inner
+             │                     | equality       | (expected_state) = (state)
+             ├── scan              |                |
+             │                     | table          | station_info@primary
+             │                     | spans          | FULL SCAN
+             │                     | filter         | expected_state IS NOT NULL
+             └── filter            |                |
+                  │                | filter         | state IS NOT NULL
+                  └── synchronizer |                |
+                       └── ts scan |                |
+                                   | ts-table       | firegases
+                                   | access mode    | tableTableMeta
+(28 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -3281,38 +3272,37 @@ FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
-                tree               |        field        |        description
------------------------------------+---------------------+-----------------------------
-                                   | distributed         | true
-                                   | vectorized          | false
-  render                           |                     |
-   │                               | time                | "time"
-   │                               | value               | value
-   │                               | station_sn          | station_sn
-   │                               | station_name        | station_name
-   │                               | work_area_sn        | work_area_sn
-   │                               | expected_state      | expected_state
-   │                               | standard_val        | standard_val
-   │                               | adr                 | adr
-   │                               | state               | state
-   │                               | second_val          | second_val
-   └── sort                        |                     |
-        │                          | order               | +"time",+station_sn
-        └── hash-join              |                     |
-             │                     | type                | inner
-             │                     | equality            | (expected_state) = (state)
-             ├── scan              |                     |
-             │                     | table               | station_info@primary
-             │                     | spans               | FULL SCAN
-             │                     | filter              | expected_state IS NOT NULL
-             └── filter            |                     |
-                  │                | filter              | state IS NOT NULL
-                  └── synchronizer |                     |
-                       └── ts scan |                     |
-                                   | ts-table            | firegases
-                                   | access mode         | tableTableMeta
-                                   | block filter[state] | NOT NULL
-(29 rows)
+                tree               |     field      |        description
+-----------------------------------+----------------+-----------------------------
+                                   | distributed    | true
+                                   | vectorized     | false
+  render                           |                |
+   │                               | time           | "time"
+   │                               | value          | value
+   │                               | station_sn     | station_sn
+   │                               | station_name   | station_name
+   │                               | work_area_sn   | work_area_sn
+   │                               | expected_state | expected_state
+   │                               | standard_val   | standard_val
+   │                               | adr            | adr
+   │                               | state          | state
+   │                               | second_val     | second_val
+   └── sort                        |                |
+        │                          | order          | +"time",+station_sn
+        └── hash-join              |                |
+             │                     | type           | inner
+             │                     | equality       | (expected_state) = (state)
+             ├── scan              |                |
+             │                     | table          | station_info@primary
+             │                     | spans          | FULL SCAN
+             │                     | filter         | expected_state IS NOT NULL
+             └── filter            |                |
+                  │                | filter         | state IS NOT NULL
+                  └── synchronizer |                |
+                       └── ts scan |                |
+                                   | ts-table       | firegases
+                                   | access mode    | tableTableMeta
+(28 rows)
 > SELECT *
 FROM my_timeseries_db.firegases f,
      my_relation_db.station_info s
@@ -3687,43 +3677,42 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |        description
-----------------------------------------+---------------------+-----------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  sort                                  |                     |
-   │                                    | order               | +work_area_sn
-   └── group                            |                     |
-        │                               | aggregate 0         | work_area_sn
-        │                               | aggregate 1         | avg(value)
-        │                               | aggregate 2         | avg(standard_val)
-        │                               | aggregate 3         | sum(second_val)
-        │                               | aggregate 4         | count(standard_val)
-        │                               | aggregate 5         | count(state)
-        │                               | aggregate 6         | count(station_name)
-        │                               | group by            | work_area_sn
-        └── render                      |                     |
-             │                          | value               | value
-             │                          | state               | state
-             │                          | second_val          | second_val
-             │                          | station_name        | station_name
-             │                          | work_area_sn        | work_area_sn
-             │                          | standard_val        | standard_val
-             └── hash-join              |                     |
-                  │                     | type                | inner
-                  │                     | equality            | (expected_state) = (state)
-                  ├── scan              |                     |
-                  │                     | table               | station_info@primary
-                  │                     | spans               | FULL SCAN
-                  │                     | filter              | expected_state IS NOT NULL
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | tableTableMeta
-                                        | block filter[state] | NOT NULL
-(34 rows)
+                  tree                  |    field     |        description
+----------------------------------------+--------------+-----------------------------
+                                        | distributed  | true
+                                        | vectorized   | false
+  sort                                  |              |
+   │                                    | order        | +work_area_sn
+   └── group                            |              |
+        │                               | aggregate 0  | work_area_sn
+        │                               | aggregate 1  | avg(value)
+        │                               | aggregate 2  | avg(standard_val)
+        │                               | aggregate 3  | sum(second_val)
+        │                               | aggregate 4  | count(standard_val)
+        │                               | aggregate 5  | count(state)
+        │                               | aggregate 6  | count(station_name)
+        │                               | group by     | work_area_sn
+        └── render                      |              |
+             │                          | value        | value
+             │                          | state        | state
+             │                          | second_val   | second_val
+             │                          | station_name | station_name
+             │                          | work_area_sn | work_area_sn
+             │                          | standard_val | standard_val
+             └── hash-join              |              |
+                  │                     | type         | inner
+                  │                     | equality     | (expected_state) = (state)
+                  ├── scan              |              |
+                  │                     | table        | station_info@primary
+                  │                     | spans        | FULL SCAN
+                  │                     | filter       | expected_state IS NOT NULL
+                  └── filter            |              |
+                       │                | filter       | state IS NOT NULL
+                       └── synchronizer |              |
+                            └── ts scan |              |
+                                        | ts-table     | firegases
+                                        | access mode  | tableTableMeta
+(33 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -3865,44 +3854,43 @@ FROM my_timeseries_db.firegases f,
 WHERE s.expected_state is not NULL and f.second_val = s.standard_val and f.state = s.expected_state
 GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
-                  tree                  |        field        |                     description
-----------------------------------------+---------------------+-------------------------------------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  group                                 |                     |
-   │                                    | aggregate 0         | work_area_sn
-   │                                    | aggregate 1         | avg(value)
-   │                                    | aggregate 2         | avg(standard_val)
-   │                                    | aggregate 3         | sum(second_val)
-   │                                    | aggregate 4         | count(standard_val)
-   │                                    | aggregate 5         | count(state)
-   │                                    | aggregate 6         | count(station_name)
-   │                                    | group by            | work_area_sn
-   │                                    | ordered             | +work_area_sn
-   └── render                           |                     |
-        │                               | value               | value
-        │                               | state               | state
-        │                               | second_val          | second_val
-        │                               | station_name        | station_name
-        │                               | work_area_sn        | work_area_sn
-        │                               | standard_val        | standard_val
-        └── sort                        |                     |
-             │                          | order               | +work_area_sn
-             └── hash-join              |                     |
-                  │                     | type                | inner
-                  │                     | equality            | (standard_val, expected_state) = (second_val, state)
-                  ├── scan              |                     |
-                  │                     | table               | station_info@primary
-                  │                     | spans               | FULL SCAN
-                  │                     | filter              | expected_state IS NOT NULL
-                  └── filter            |                     |
-                       │                | filter              | state IS NOT NULL
-                       └── synchronizer |                     |
-                            └── ts scan |                     |
-                                        | ts-table            | firegases
-                                        | access mode         | tableTableMeta
-                                        | block filter[state] | NOT NULL
-(35 rows)
+                  tree                  |    field     |                     description
+----------------------------------------+--------------+-------------------------------------------------------
+                                        | distributed  | true
+                                        | vectorized   | false
+  group                                 |              |
+   │                                    | aggregate 0  | work_area_sn
+   │                                    | aggregate 1  | avg(value)
+   │                                    | aggregate 2  | avg(standard_val)
+   │                                    | aggregate 3  | sum(second_val)
+   │                                    | aggregate 4  | count(standard_val)
+   │                                    | aggregate 5  | count(state)
+   │                                    | aggregate 6  | count(station_name)
+   │                                    | group by     | work_area_sn
+   │                                    | ordered      | +work_area_sn
+   └── render                           |              |
+        │                               | value        | value
+        │                               | state        | state
+        │                               | second_val   | second_val
+        │                               | station_name | station_name
+        │                               | work_area_sn | work_area_sn
+        │                               | standard_val | standard_val
+        └── sort                        |              |
+             │                          | order        | +work_area_sn
+             └── hash-join              |              |
+                  │                     | type         | inner
+                  │                     | equality     | (standard_val, expected_state) = (second_val, state)
+                  ├── scan              |              |
+                  │                     | table        | station_info@primary
+                  │                     | spans        | FULL SCAN
+                  │                     | filter       | expected_state IS NOT NULL
+                  └── filter            |              |
+                       │                | filter       | state IS NOT NULL
+                       └── synchronizer |              |
+                            └── ts scan |              |
+                                        | ts-table     | firegases
+                                        | access mode  | tableTableMeta
+(34 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -3934,64 +3922,63 @@ FROM my_timeseries_db.firegases ts,
     GROUP BY s.work_area_sn) as t
 WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
-                       tree                       |        field        |        description
---------------------------------------------------+---------------------+-----------------------------
-                                                  | distributed         | true
-                                                  | vectorized          | false
-  render                                          |                     |
-   │                                              | time                | "time"
-   │                                              | value               | value
-   │                                              | work_area_sn        | work_area_sn
-   │                                              | avg                 | avg
-   │                                              | avg                 | avg
-   │                                              | sum                 | sum
-   │                                              | count               | count
-   │                                              | count               | count
-   │                                              | count               | count
-   │                                              | adr                 | adr
-   │                                              | state               | state
-   │                                              | second_val          | second_val
-   └── sort                                       |                     |
-        │                                         | order               | +value
-        └── hash-join                             |                     |
-             │                                    | type                | inner
-             │                                    | equality            | (adr) = (work_area_sn)
-             │                                    | right cols are key  |
-             ├── synchronizer                     |                     |
-             │    └── ts scan                     |                     |
-             │                                    | ts-table            | firegases
-             │                                    | access mode         | tableTableMeta
-             └── group                            |                     |
-                  │                               | aggregate 0         | work_area_sn
-                  │                               | aggregate 1         | avg(value)
-                  │                               | aggregate 2         | avg(standard_val)
-                  │                               | aggregate 3         | sum(second_val)
-                  │                               | aggregate 4         | count(standard_val)
-                  │                               | aggregate 5         | count(state)
-                  │                               | aggregate 6         | count(station_name)
-                  │                               | group by            | work_area_sn
-                  └── render                      |                     |
-                       │                          | value               | value
-                       │                          | state               | state
-                       │                          | second_val          | second_val
-                       │                          | station_name        | station_name
-                       │                          | work_area_sn        | work_area_sn
-                       │                          | standard_val        | standard_val
-                       └── hash-join              |                     |
-                            │                     | type                | inner
-                            │                     | equality            | (expected_state) = (state)
-                            ├── scan              |                     |
-                            │                     | table               | station_info@primary
-                            │                     | spans               | FULL SCAN
-                            │                     | filter              | expected_state IS NOT NULL
-                            └── filter            |                     |
-                                 │                | filter              | state IS NOT NULL
-                                 └── synchronizer |                     |
-                                      └── ts scan |                     |
-                                                  | ts-table            | firegases
-                                                  | access mode         | tableTableMeta
-                                                  | block filter[state] | NOT NULL
-(55 rows)
+                       tree                       |       field        |        description
+--------------------------------------------------+--------------------+-----------------------------
+                                                  | distributed        | true
+                                                  | vectorized         | false
+  render                                          |                    |
+   │                                              | time               | "time"
+   │                                              | value              | value
+   │                                              | work_area_sn       | work_area_sn
+   │                                              | avg                | avg
+   │                                              | avg                | avg
+   │                                              | sum                | sum
+   │                                              | count              | count
+   │                                              | count              | count
+   │                                              | count              | count
+   │                                              | adr                | adr
+   │                                              | state              | state
+   │                                              | second_val         | second_val
+   └── sort                                       |                    |
+        │                                         | order              | +value
+        └── hash-join                             |                    |
+             │                                    | type               | inner
+             │                                    | equality           | (adr) = (work_area_sn)
+             │                                    | right cols are key |
+             ├── synchronizer                     |                    |
+             │    └── ts scan                     |                    |
+             │                                    | ts-table           | firegases
+             │                                    | access mode        | tableTableMeta
+             └── group                            |                    |
+                  │                               | aggregate 0        | work_area_sn
+                  │                               | aggregate 1        | avg(value)
+                  │                               | aggregate 2        | avg(standard_val)
+                  │                               | aggregate 3        | sum(second_val)
+                  │                               | aggregate 4        | count(standard_val)
+                  │                               | aggregate 5        | count(state)
+                  │                               | aggregate 6        | count(station_name)
+                  │                               | group by           | work_area_sn
+                  └── render                      |                    |
+                       │                          | value              | value
+                       │                          | state              | state
+                       │                          | second_val         | second_val
+                       │                          | station_name       | station_name
+                       │                          | work_area_sn       | work_area_sn
+                       │                          | standard_val       | standard_val
+                       └── hash-join              |                    |
+                            │                     | type               | inner
+                            │                     | equality           | (expected_state) = (state)
+                            ├── scan              |                    |
+                            │                     | table              | station_info@primary
+                            │                     | spans              | FULL SCAN
+                            │                     | filter             | expected_state IS NOT NULL
+                            └── filter            |                    |
+                                 │                | filter             | state IS NOT NULL
+                                 └── synchronizer |                    |
+                                      └── ts scan |                    |
+                                                  | ts-table           | firegases
+                                                  | access mode        | tableTableMeta
+(54 rows)
 > SELECT *
 FROM my_timeseries_db.firegases ts,
     (SELECT s.work_area_sn,

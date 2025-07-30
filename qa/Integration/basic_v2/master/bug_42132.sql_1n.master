@@ -102,7 +102,6 @@ CREATE TABLE
                               | access mode      | metaTable
                               | filter           | id = 9
                               | block filter[id] | [9 - 9]
-                              | block filter[e9] | NOT NULL
-(36 rows)
+(35 rows)
 > DROP DATABASE IF exists test_select_subquery cascade;
 DROP DATABASE

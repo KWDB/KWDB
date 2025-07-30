@@ -14,33 +14,33 @@
 #include <memory>
 #include <vector>
 
-#include "ee_aggregate_flow_spec.h"
 #include "ee_aggregate_func.h"
+#include "ee_aggregate_parser.h"
 #include "ee_base_op.h"
 #include "ee_combined_group_key.h"
-#include "ee_data_container.h"
 #include "ee_data_chunk.h"
+#include "ee_data_container.h"
 #include "ee_global.h"
-#include "ee_pb_plan.pb.h"
 #include "ee_hash_table.h"
+#include "ee_pb_plan.pb.h"
 
 namespace kwdbts {
 // Base Agg OP
 class BaseAggregator : public BaseOperator {
  public:
-  BaseAggregator(TsFetcherCollection* collection, BaseOperator* input, TSAggregatorSpec* spec,
-                              TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
+  BaseAggregator(TsFetcherCollection* collection, TSAggregatorSpec* spec, TSPostProcessSpec* post,
+                 TABLE* table, int32_t processor_id);
 
-  BaseAggregator(const BaseAggregator&, BaseOperator* input, int32_t processor_id);
+  BaseAggregator(const BaseAggregator&, int32_t processor_id);
 
   virtual ~BaseAggregator();
 
   /*
     Inherited from BseIterator's virtual function
   */
-  EEIteratorErrCode Init(kwdbContext_p ctx) override;  // init spec param
-  EEIteratorErrCode Reset(kwdbContext_p ctx) override;    // Reset
-  KStatus Close(kwdbContext_p ctx) override;  // close and free ctx
+  EEIteratorErrCode Init(kwdbContext_p ctx) override;   // init spec param
+  EEIteratorErrCode Reset(kwdbContext_p ctx) override;  // Reset
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;  // close and free ctx
 
   virtual KStatus ResolveAggFuncs(kwdbContext_p ctx);  // make agg func
   virtual void ResolveGroupByCols(kwdbContext_p ctx);  // resolve agg cols
@@ -48,6 +48,9 @@ class BaseAggregator : public BaseOperator {
   void InitFirstLastTimeStamp(DatumRowPtr ptr);
 
   friend class AggregatorResolve;
+
+ public:
+  TSAggregatorSpec* spec_;
 
  protected:
   virtual void CalculateAggOffsets();  // calculate buffer offset
@@ -65,17 +68,10 @@ class BaseAggregator : public BaseOperator {
     return append_additional_timestamp_ ? len + sizeof(KTimestamp) : len;
   }
 
-  TSAggregatorSpec* spec_;
-  TSPostProcessSpec* post_;
-  AggregatorSpecParam<TSAggregatorSpec> param_;
-  BaseOperator* input_;
-
+  TsAggregateParser param_;
   // AggregationFunc is an interface to an aggregate function object (including
   // the AddOrUpdate method) that inherits a class such as MaxAggregate
   std::vector<unique_ptr<AggregateFunc>> funcs_;
-
-  // This inputs column references (FieldNum)
-  std::vector<Field*>& input_fields_;
   // the list of The inputs column's type and storage length
   std::vector<roachpb::DataType> col_types_;
   std::vector<k_uint32> col_lens_;
@@ -117,20 +113,9 @@ class BaseAggregator : public BaseOperator {
  */
 class HashAggregateOperator : public BaseAggregator {
  public:
-  /**
-   * @brief Construct a new Aggregate Operator object
-   *
-   * @param input
-   * @param spec
-   * @param post
-   * @param table
-   */
-  HashAggregateOperator(TsFetcherCollection* collection, BaseOperator* input, TSAggregatorSpec* spec,
-                        TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
+  using BaseAggregator::BaseAggregator;
 
-  HashAggregateOperator(const HashAggregateOperator&, BaseOperator* input, int32_t processor_id);
-
-  ~HashAggregateOperator() override;
+  ~HashAggregateOperator();
 
   /*
     Inherited from Barcelato's virtual function
@@ -142,6 +127,8 @@ class HashAggregateOperator : public BaseAggregator {
   EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
 
   BaseOperator* Clone() override;
+
+  enum OperatorType Type() override { return OperatorType::OPERATOR_HASH_GROUP_BY; }
 
   friend class FieldAggNum;
 
@@ -168,10 +155,10 @@ class HashAggregateOperator : public BaseAggregator {
  */
 class OrderedAggregateOperator : public BaseAggregator {
  public:
-  OrderedAggregateOperator(TsFetcherCollection* collection, BaseOperator* input, TSAggregatorSpec* spec,
+  OrderedAggregateOperator(TsFetcherCollection* collection, TSAggregatorSpec* spec,
                            TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
 
-  OrderedAggregateOperator(const OrderedAggregateOperator&, BaseOperator* input, int32_t processor_id);
+  OrderedAggregateOperator(const OrderedAggregateOperator&, int32_t processor_id);
 
   ~OrderedAggregateOperator() override;
 
@@ -185,6 +172,8 @@ class OrderedAggregateOperator : public BaseAggregator {
   EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
 
   BaseOperator* Clone() override;
+
+  enum OperatorType Type() override { return OperatorType::OPERATOR_SORT_GROUP_BY; }
 
   friend class FieldAggNum;
 
@@ -207,7 +196,8 @@ class OrderedAggregateOperator : public BaseAggregator {
   inline void handleEmptyResults(kwdbContext_p ctx) {
     // Queries like `SELECT MAX(n) FROM t` expect a row of NULLs if nothing was aggregated.
     if (!has_agg_result && group_type_ == TSAggregatorSpec_Type::TSAggregatorSpec_Type_SCALAR) {
-      temporary_data_chunk_ = std::make_unique<DataChunk>(agg_output_col_info_, agg_output_col_num_, 1);
+      temporary_data_chunk_ =
+          std::make_unique<DataChunk>(agg_output_col_info_, agg_output_col_num_, 1);
       if (temporary_data_chunk_->Initialize() != true) {
         temporary_data_chunk_ = nullptr;
         return;
@@ -233,7 +223,7 @@ class OrderedAggregateOperator : public BaseAggregator {
 
   DataChunkPtr agg_data_chunk_;
   ColumnInfo* agg_output_col_info_{nullptr};  // construct agg output col
-  k_int32     agg_output_col_num_{0};
+  k_int32 agg_output_col_num_{0};
 
   // used to save if the current row is a new group based on the input groupby information.
   GroupByMetadata group_by_metadata_;

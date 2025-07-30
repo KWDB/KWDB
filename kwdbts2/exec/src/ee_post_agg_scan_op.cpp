@@ -14,17 +14,19 @@
 
 #include "ee_pb_plan.pb.h"
 #include "ee_common.h"
+#include "ee_disk_data_container.h"
+#include "ee_agg_scan_op.h"
 
 namespace kwdbts {
 
-PostAggScanOperator::PostAggScanOperator(TsFetcherCollection* collection, BaseOperator* input,
+PostAggScanOperator::PostAggScanOperator(TsFetcherCollection* collection,
                                          TSAggregatorSpec* spec,
                                          TSPostProcessSpec* post,
                                          TABLE* table, int32_t processor_id)
-    : HashAggregateOperator(collection, input, spec, post, table, processor_id) {}
+    : HashAggregateOperator(collection, spec, post, table, processor_id) {}
 
-PostAggScanOperator::PostAggScanOperator(const PostAggScanOperator& other, BaseOperator* input, int32_t processor_id)
-    : HashAggregateOperator(other, input, processor_id) {}
+PostAggScanOperator::PostAggScanOperator(const PostAggScanOperator& other, int32_t processor_id)
+    : HashAggregateOperator(other, processor_id) {}
 
 EEIteratorErrCode PostAggScanOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
@@ -80,7 +82,7 @@ KStatus PostAggScanOperator::accumulateRows(kwdbContext_p ctx) {
     DataChunkPtr chunk = nullptr;
 
     // read a batch of data
-    code = input_->Next(ctx, chunk);
+    code = childrens_[0]->Next(ctx, chunk);
     auto start = std::chrono::high_resolution_clock::now();
     if (code != EEIteratorErrCode::EE_OK) {
       if (code == EEIteratorErrCode::EE_END_OF_RECORD ||
@@ -264,12 +266,17 @@ KStatus PostAggScanOperator::getAggResults(kwdbContext_p ctx, DataChunkPtr& resu
 }
 
 BaseOperator* PostAggScanOperator::Clone() {
-  BaseOperator* input = input_->Clone();
+  BaseOperator* input = childrens_[0]->Clone();
   // input_:TagScanOperator
   if (input == nullptr) {
-    input = input_;
+    return nullptr;
   }
-  BaseOperator* iter = NewIterator<PostAggScanOperator>(*this, input, this->processor_id_);
+  BaseOperator* iter = NewIterator<PostAggScanOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(input);
+  } else {
+    delete input;
+  }
   return iter;
 }
 
@@ -752,6 +759,14 @@ void PostAggScanOperator::CalculateAggOffsets() {
       offset += sizeof(KTimestamp);
     }
     offset += output_fields_[i]->get_storage_length();
+  }
+}
+
+void PostAggScanOperator::AddDependency(BaseOperator *children) {
+  HashAggregateOperator::AddDependency(children);
+  AggTableScanOperator* input = dynamic_cast<AggTableScanOperator*>(children);
+  if (input) {
+    input->SetHasPostAgg(true);
   }
 }
 

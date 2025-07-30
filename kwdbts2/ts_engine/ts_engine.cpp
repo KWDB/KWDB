@@ -100,6 +100,9 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
+#ifndef WITH_TESTS
+  BrMgr::GetInstance().Destroy();
+#endif
   vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
@@ -191,6 +194,16 @@ KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
+#ifndef WITH_TESTS
+  // init brpc for multi-node mode
+  if (!EngineOptions::isSingleNode()) {
+    if (BrMgr::GetInstance().Init(ctx, options_) != KStatus::SUCCESS) {
+      LOG_ERROR("BrMgr init failed")
+      return KStatus::FAIL;
+    }
+  }
+#endif
+
   std::filesystem::path db_path{options_.db_path};
   assert(!db_path.empty());
   schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory);

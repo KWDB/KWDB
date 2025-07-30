@@ -174,7 +174,7 @@ void ConstructOffsetMetas(std::vector<ZTableColumnMeta>* metas) {
 
 void ConstructRoachpbTable(roachpb::CreateTsTable* meta, const KString& prefix_table_name, KTableKey table_id,
                            uint64_t partition_interval = kwdbts::EngineOptions::iot_interval, int col_num = 4) {
-  // create table :  TIMESTAMP | FLOAT | INT | CHAR(char_len) | BOOL | BINARY(binary_len)
+  // create table :  TIMESTAMP | SMALLINT | INT | VARCHAR | TIMESTAMP(PTAG) | INT(TAG) | VARCHAR(TAG)
   roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
   table->set_table_name(prefix_table_name + std::to_string(table_id));
@@ -205,7 +205,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, const KString& prefix_t
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
     column->set_storage_type((roachpb::DataType)(tag_metas[i].type));
     column->set_storage_len(tag_metas[i].storage_len);
-    column->set_column_id(tag_metas.size() + 1 + i);
+    column->set_column_id(col_meta.size() + 1 + i);
     if (i == 0) {
       column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_PTAG);
     } else {

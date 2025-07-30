@@ -177,7 +177,6 @@ func (ds *ServerImpl) setupFlow(
 	req *execinfrapb.SetupFlowRequest,
 	syncFlowConsumer execinfra.RowReceiver,
 	localState LocalState,
-	allPushDown bool,
 ) (context.Context, flowinfra.Flow, error) {
 	if !FlowVerIsCompatible(req.Version, execinfra.MinAcceptedVersion, execinfra.Version) {
 		err := errors.Errorf(
@@ -363,8 +362,8 @@ func (ds *ServerImpl) setupFlow(
 	}
 	var err error
 	f.SetTS(req.Flow.TsProcessors != nil)
-	f.SetPushDown(allPushDown)
-	f.SetFormat(req.EvalContext.OutFormats)
+	f.SetQueryShortCircuit(req.Flow.TsInfo.UseQueryShortCircuit)
+	f.SetPipeLine(req.Flow.TsInfo.UsePipeline)
 	f.SetVectorized(isVectorized)
 	if ctx, err = f.Setup(ctx, &req.Flow, opt); err != nil {
 		log.Errorf(ctx, "error setting up flow: %s", err)
@@ -439,8 +438,7 @@ func (ds *ServerImpl) SetupSyncFlow(
 	req *execinfrapb.SetupFlowRequest,
 	output execinfra.RowReceiver,
 ) (context.Context, flowinfra.Flow, error) {
-	ctx, f, err := ds.setupFlow(ds.AnnotateCtx(ctx), opentracing.SpanFromContext(ctx), parentMonitor,
-		req, output, LocalState{}, false)
+	ctx, f, err := ds.setupFlow(ds.AnnotateCtx(ctx), opentracing.SpanFromContext(ctx), parentMonitor, req, output, LocalState{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -480,10 +478,8 @@ func (ds *ServerImpl) SetupLocalSyncFlow(
 	req *execinfrapb.SetupFlowRequest,
 	output execinfra.RowReceiver,
 	localState LocalState,
-	allPushDown bool,
 ) (context.Context, flowinfra.Flow, error) {
-	ctx, f, err := ds.setupFlow(ctx, opentracing.SpanFromContext(ctx), parentMonitor, req, output,
-		localState, allPushDown)
+	ctx, f, err := ds.setupFlow(ctx, opentracing.SpanFromContext(ctx), parentMonitor, req, output, localState)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -537,7 +533,7 @@ func (ds *ServerImpl) SetupFlow(
 	// Note: the passed context will be canceled when this RPC completes, so we
 	// can't associate it with the flow.
 	ctx = ds.AnnotateCtx(context.Background())
-	ctx, f, err := ds.setupFlow(ctx, parentSpan, &ds.memMonitor, req, nil /* syncFlowConsumer */, LocalState{}, false)
+	ctx, f, err := ds.setupFlow(ctx, parentSpan, &ds.memMonitor, req, nil, LocalState{})
 	if err == nil {
 		err = ds.flowScheduler.ScheduleFlow(ctx, f, int64(specMemUsage))
 	}

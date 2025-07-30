@@ -192,11 +192,9 @@ type RowSourcedProcessor interface {
 	RowSource
 	Run(context.Context) RowStats
 	RunTS(ctx context.Context)
+	RunShortCircuit(context.Context, TSReader) error
 	Push(ctx context.Context, res []byte) error
 	Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
-	NextPgWire() (val []byte, code int, err error)
-	IsShortCircuitForPgEncode() bool
-	SupportPgWire() bool
 	Start(ctx context.Context) context.Context
 }
 

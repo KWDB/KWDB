@@ -147,7 +147,7 @@ k_int64 getInterval(KString *value_, k_int64 *orgVal, k_bool negative) {
   struct tm ltm;
   k_int64 orgMS = *orgVal % 1000;
   k_int64 orgt = (*orgVal) / 1000;
-  localtime_r(&orgt, &ltm);
+  gmtime_r(&orgt, &ltm);
   k_int32 YorH, MorM, DorS, startPos;
   YorH = MorM = DorS = startPos = 0;
   k_bool dayStyle = getYMDFormInterval(value_, &startPos, &YorH, &MorM, &DorS);
@@ -163,7 +163,7 @@ k_int64 getInterval(KString *value_, k_int64 *orgVal, k_bool negative) {
     }
   }
   if (value_->at(startPos) == '\0') {
-    return mktime(&ltm) * 1000 + orgMS;
+    return timegm(&ltm) * 1000 + orgMS;
   }
   if (value_->at(startPos) == '-') {
     negative = KTRUE;
@@ -175,12 +175,12 @@ k_int64 getInterval(KString *value_, k_int64 *orgVal, k_bool negative) {
     ltm.tm_hour += YorH;
     ltm.tm_min += MorM;
     ltm.tm_sec += DorS;
-    return mktime(&ltm) * 1000 + orgMS + intervalMS;
+    return timegm(&ltm) * 1000 + orgMS + intervalMS;
   }
   ltm.tm_hour -= YorH;
   ltm.tm_min -= MorM;
   ltm.tm_sec -= DorS;
-  return mktime(&ltm) * 1000 + orgMS - intervalMS;
+  return timegm(&ltm) * 1000 + orgMS - intervalMS;
 }
 
 k_int64 getTimeFormTimestamp(KString *value_) {

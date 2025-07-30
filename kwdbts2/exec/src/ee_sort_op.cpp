@@ -22,35 +22,27 @@
 
 namespace kwdbts {
 
-SortOperator::SortOperator(TsFetcherCollection* collection, BaseOperator* input,
-                           TSSorterSpec* spec, TSPostProcessSpec* post,
-                           TABLE* table, int32_t processor_id)
-    : BaseOperator(collection, table, processor_id),
+SortOperator::SortOperator(TsFetcherCollection* collection, TSSorterSpec* spec,
+                           TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
+    : BaseOperator(collection, table, post, processor_id),
       spec_{spec},
-      post_{post},
-      param_(input, spec, post, table),
+      param_(spec, post, table),
       limit_(post->limit()),
-      offset_(post->offset()),
-      input_{input},
-      input_fields_{input->OutputFields()} {}
+      offset_(post->offset()) {}
 
-SortOperator::SortOperator(const SortOperator& other, BaseOperator* input,
-                           int32_t processor_id)
+SortOperator::SortOperator(const SortOperator& other, int32_t processor_id)
     : BaseOperator(other),
       spec_(other.spec_),
-      post_(other.post_),
-      param_(input, other.spec_, other.post_, other.table_),
+      param_(other.spec_, other.post_, other.table_),
       limit_(other.post_->limit()),
-      offset_(other.post_->offset()),
-      input_{input},
-      input_fields_{input->OutputFields()} {
+      offset_(other.post_->offset()) {
   is_clone_ = true;
 }
 
 SortOperator::~SortOperator() {
   //  delete input_
   if (is_clone_) {
-    delete input_;
+    delete childrens_[0];
   }
   SafeDeleteArray(input_col_info_);
 }
@@ -81,8 +73,10 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
 
   do {
+    param_.AddInput(childrens_[0]);
+    std::vector<Field *> &input_fields = childrens_[0]->OutputFields();
     // input preinit
-    code = input_->Init(ctx);
+    code = childrens_[0]->Init(ctx);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -90,14 +84,14 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
     param_.RenderSize(ctx, &num_);
     if (0 != num_) {
       // resolve render
-      code = param_.ResolveRender(ctx, &renders_, num_);
+      code = param_.ParserRender(ctx, &renders_, num_);
       if (EEIteratorErrCode::EE_OK != code) {
         LOG_ERROR("ResolveRender() error\n");
         break;
       }
     } else {
-      k_uint32 num = input_fields_.size();
-      renders_ = static_cast<Field**>(malloc(num * sizeof(Field*)));
+      k_uint32 num = input_fields.size();
+      renders_ = static_cast<Field **>(malloc(num * sizeof(Field *)));
       if (!renders_) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
                                       "Insufficient memory");
@@ -106,7 +100,7 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
       }
       num_ = num;
       for (k_uint32 i = 0; i < num_; i++) {
-        renders_[i] = input_fields_[i];
+        renders_[i] = input_fields[i];
       }
     }
     // dispose sort col
@@ -117,7 +111,7 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
     }
 
     // output Field
-    code = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+    code = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
     if (code != EEIteratorErrCode::EE_OK) {
       break;
     }
@@ -125,17 +119,17 @@ EEIteratorErrCode SortOperator::Init(kwdbContext_p ctx) {
     if (code != EEIteratorErrCode::EE_OK) {
       break;
     }
-    input_col_num_ = input_fields_.size();
+    input_col_num_ = input_fields.size();
     input_col_info_ = KNEW ColumnInfo[input_col_num_];
     if (input_col_info_ == nullptr) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,
                                     "Insufficient memory");
       Return(EEIteratorErrCode::EE_ERROR);
     }
-    for (k_int32 i = 0; i < input_fields_.size(); i++) {
-      input_col_info_[i] = ColumnInfo(input_fields_[i]->get_storage_length(),
-                                      input_fields_[i]->get_storage_type(),
-                                      input_fields_[i]->get_return_type());
+    for (k_int32 i = 0; i < input_fields.size(); i++) {
+      input_col_info_[i] = ColumnInfo(input_fields[i]->get_storage_length(),
+                                       input_fields[i]->get_storage_type(),
+                                       input_fields[i]->get_return_type());
     }
   } while (0);
 
@@ -147,7 +141,7 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   cur_offset_ = offset_;
 
-  code = input_->Start(ctx);
+  code = childrens_[0]->Start(ctx);
   if (EEIteratorErrCode::EE_OK != code) {
     Return(code);
   }
@@ -175,7 +169,7 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
     DataChunkPtr chunk = nullptr;
 
     // read a batch of data
-    code = input_->Next(ctx, chunk);
+    code = childrens_[0]->Next(ctx, chunk);
     auto start = std::chrono::high_resolution_clock::now();
     if (code != EEIteratorErrCode::EE_OK) {
       if (code == EEIteratorErrCode::EE_END_OF_RECORD ||
@@ -188,9 +182,9 @@ EEIteratorErrCode SortOperator::Start(kwdbContext_p ctx) {
       Return(code);
     }
     // no data, continue
-    if (chunk == nullptr || chunk->Count() == 0) {
-      continue;
-    }
+    // if (chunk == nullptr || chunk->Count() == 0) {
+    //   continue;
+    // }
 
     total_count += chunk->Count();
     buffer_size += chunk->RowSize() * chunk->Count();
@@ -321,35 +315,45 @@ EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx,
       is_done_ = true;
     }
 
-  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+  if (0 == chunk->Count()) {
+    chunk = nullptr;
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
+
+  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
   auto end = std::chrono::high_resolution_clock::now();
   fetcher_.Update(0, (end - start).count(), chunk->Count() * chunk->RowSize(),
                   0, 0, 0);
   Return(EEIteratorErrCode::EE_OK);
 }
 
-KStatus SortOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode SortOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  KStatus ret = input_->Close(ctx);
+  EEIteratorErrCode code = childrens_[0]->Close(ctx);
   Reset(ctx);
 
-  Return(ret);
+  Return(code);
 }
 
 EEIteratorErrCode SortOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-  input_->Reset(ctx);
+  childrens_[0]->Reset(ctx);
 
   Return(EEIteratorErrCode::EE_OK);
 }
 
 BaseOperator* SortOperator::Clone() {
-  BaseOperator* input = input_->Clone();
+  BaseOperator* input = childrens_[0]->Clone();
   if (input == nullptr) {
-    input = input_;
+    return nullptr;
   }
-  BaseOperator* iter =
-      NewIterator<SortOperator>(*this, input, this->processor_id_);
+  BaseOperator* iter = NewIterator<SortOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(input);
+  } else {
+    delete input;
+  }
+
   return iter;
 }
 

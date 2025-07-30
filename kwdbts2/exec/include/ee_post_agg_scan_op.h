@@ -28,10 +28,10 @@ namespace kwdbts {
  */
 class PostAggScanOperator : public HashAggregateOperator {
  public:
-  PostAggScanOperator(TsFetcherCollection* collection, BaseOperator* input, TSAggregatorSpec* spec,
+  PostAggScanOperator(TsFetcherCollection* collection, TSAggregatorSpec* spec,
                                   TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
 
-  PostAggScanOperator(const PostAggScanOperator&, BaseOperator* input, int32_t processor_id);
+  PostAggScanOperator(const PostAggScanOperator&, int32_t processor_id);
 
   ~PostAggScanOperator() override {
     SafeDeleteArray(agg_output_col_info_);
@@ -44,6 +44,10 @@ class PostAggScanOperator : public HashAggregateOperator {
   KStatus ResolveAggFuncs(kwdbContext_p ctx) override;
 
   void CalculateAggOffsets() override;
+
+  void AddDependency(BaseOperator *children) override;
+
+  enum OperatorType Type() override { return OperatorType::OPERATOR_POST_AGG_SCAN; }
 
  protected:
   void ResolveGroupByCols(kwdbContext_p ctx) override;

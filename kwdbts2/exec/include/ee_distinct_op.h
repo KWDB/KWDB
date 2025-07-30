@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "ee_base_op.h"
-#include "ee_distinct_flow_spec.h"
+#include "ee_distinct_parser.h"
 #include "ee_global.h"
 #include "ee_data_chunk.h"
 #include "ee_pb_plan.pb.h"
@@ -38,10 +38,10 @@ class DistinctOperator : public BaseOperator {
    * @param post
    * @param table
    */
-  DistinctOperator(TsFetcherCollection* collection, BaseOperator* input, DistinctSpec* spec,
+  DistinctOperator(TsFetcherCollection* collection, DistinctSpec* spec,
                         TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
 
-  DistinctOperator(const DistinctOperator&, BaseOperator* input, int32_t processor_id);
+  DistinctOperator(const DistinctOperator&, int32_t processor_id);
 
   virtual ~DistinctOperator();
 
@@ -56,25 +56,22 @@ class DistinctOperator : public BaseOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
   BaseOperator* Clone() override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_DISTINCT;}
 
  protected:
   // resolve distinct cols
   KStatus ResolveDistinctCols(kwdbContext_p ctx);
 
   DistinctSpec* spec_;
-  TSPostProcessSpec* post_;
-  BaseOperator* input_{nullptr};
-  DistinctSpecParam param_;
+  TsDistinctParser param_;
 
   // distinct column
   std::vector<k_uint32> distinct_cols_;
   LinearProbingHashTable* seen_{nullptr};
-
-  // This layer inputs column references (FieldNum)
-  std::vector<Field*>& input_fields_;
 
   k_uint32 offset_{0};
   k_uint32 limit_{0};
