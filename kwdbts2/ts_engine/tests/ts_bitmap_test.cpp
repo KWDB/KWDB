@@ -111,6 +111,27 @@ TEST(TsBitmap, View) {
   }
 }
 
+TEST(TsBitmap, SliceOfView) {
+  int n = 10000;
+  std::default_random_engine drng(0);
+  std::vector<kwdbts::DataFlags> flags(n);
+  std::array<kwdbts::DataFlags, 3> choises{kwdbts::DataFlags::kValid, kwdbts::DataFlags::kNone,
+                                           kwdbts::DataFlags::kNull};
+  TsBitmap bm(n);
+  for (int i = 0; i < n; ++i) {
+    flags[i] = choises[drng() % choises.size()];
+    bm[i] = flags[i];
+  }
+
+  TsBitmapView bm_v = bm.Slice(30, 300).Slice(40, 100).Slice(50, 10);
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(bm_v[i], flags[i + 30 + 40 + 50]);
+  }
+
+  EXPECT_EQ(bm_v.GetValidCount(),
+            std::count(flags.begin() + 30 + 40 + 50, flags.begin() + 30 + 40 + 50 + 10, kwdbts::DataFlags::kValid));
+}
+
 TEST(TsBitmap, ValidCount) {
   int n = 100;
   std::default_random_engine drng(0);
