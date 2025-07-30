@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <random>
+
+using namespace kwdbts;
 TEST(TsBitmap, Write) {
   {
     kwdbts::TsBitmap b1(4);
@@ -74,5 +76,54 @@ TEST(TsBitmap, Assign) {
   for (int i = 0; i < n; ++i) {
     bitmap2[i + offset] = bitmap1[i];
     EXPECT_EQ(bitmap1[i], bitmap2[i + offset]);
+  }
+}
+
+TEST(TsBitmap, View) {
+  int n = 10000;
+  std::default_random_engine drng(0);
+  std::vector<kwdbts::DataFlags> flags(n);
+  std::array<kwdbts::DataFlags, 3> choises{kwdbts::DataFlags::kValid, kwdbts::DataFlags::kNone,
+                                           kwdbts::DataFlags::kNull};
+  for (int i = 0; i < n; ++i) {
+    flags[i] = choises[drng() % choises.size()];
+  }
+  kwdbts::TsBitmap bm(n);
+  for (int i = 0; i < n; ++i) {
+    bm[i] = flags[i];
+  }
+
+  struct Case {
+    int start;
+    int count;
+  };
+
+  std::vector<Case> cases{{0, 1}, {2, 2}, {3, 1}, {0, 40}, {0, 39}, {1, 39}, {2, 38}, {3, 35}};
+
+  for (auto c : cases) {
+    auto view = bm.Slice(c.start, c.count);
+    for (int i = 0; i < c.count; ++i) {
+      EXPECT_EQ(view[i], flags[i + c.start]);
+    }
+
+    int nvalid = std::count(flags.begin() + c.start, flags.begin() + c.start + c.count, kwdbts::DataFlags::kValid);
+    EXPECT_EQ(view.GetValidCount(), nvalid);
+  }
+}
+
+TEST(TsBitmap, ValidCount) {
+  int n = 100;
+  std::default_random_engine drng(0);
+  std::vector<kwdbts::DataFlags> flags(n);
+  std::array<kwdbts::DataFlags, 3> choises{kwdbts::DataFlags::kValid, kwdbts::DataFlags::kNone,
+                                           kwdbts::DataFlags::kNull};
+  for (int i = 1; i < n; ++i) {
+    TsBitmap bm(i);
+    for (int k = 0; k < i; ++k) {
+      flags[k] = choises[drng() % choises.size()];
+      bm[k] = flags[k];
+    }
+
+    EXPECT_EQ(bm.GetValidCount(), std::count(flags.begin(), flags.begin() + i, kwdbts::DataFlags::kValid));
   }
 }

@@ -11,6 +11,7 @@
 
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,45 @@
 
 namespace kwdbts {
 enum DataFlags : uint8_t { kValid = 0b00, kNull = 0b01, kNone = 0b10 };
+
+// TsBitmapView is a read-only view of a TsBitmap.
+class TsBitmapView {
+  friend class TsBitmap;
+
+ private:
+  constexpr static int nbit_per_row = 2;
+  std::string_view sv_;
+  size_t nrows_;
+
+  int start_row_;
+
+  mutable int valid_count_ = -1;
+
+  TsBitmapView(std::string_view sv, size_t nrows, int start_row) : sv_(sv), nrows_(nrows), start_row_(start_row) {}
+
+ public:
+  DataFlags operator[](size_t idx) const {
+    assert(idx < nrows_);
+    idx += start_row_;
+    size_t bitidx = nbit_per_row * idx;
+    uint32_t charidx = (bitidx >> 3);
+    uint8_t charoff = (bitidx & 0b111);
+    return static_cast<DataFlags>((sv_[charidx] >> charoff) & 0b11);
+  }
+
+  size_t GetCount() const { return nrows_; }
+  size_t GetValidCount() const {
+    if (valid_count_ != -1) {
+      return valid_count_;
+    }
+    int sum = 0;
+    for (int i = 0; i < nrows_; ++i) {
+      sum += ((*this)[i] == kValid);
+    }
+    valid_count_ = sum;
+    return sum;
+  }
+};
 
 class TsBitmap {
  public:
@@ -48,7 +88,10 @@ class TsBitmap {
  public:
   TsBitmap() : nrows_(0) {}
   explicit TsBitmap(int nrows) { Reset(nrows); }
-  explicit TsBitmap(TSSlice rep, int nrows) { Map(rep, nrows); }
+  explicit TsBitmap(TSSlice rep, int nrows) {
+    nrows_ = nrows;
+    rep_.assign(rep.data, rep.len);
+  }
 
   TsBitmap(const TsBitmap &) = default;
   TsBitmap(TsBitmap &&) = default;
@@ -56,15 +99,10 @@ class TsBitmap {
   TsBitmap &operator=(const TsBitmap &) = default;
   TsBitmap &operator=(TsBitmap &&) = default;
 
-  void Map(TSSlice rep, int nrows) {
-    nrows_ = nrows;
-    rep_.assign(rep.data, rep.len);
-  }
-
   void Reset(int nrows) {
     nrows_ = nrows;
-    rep_.clear();
     rep_.resize((nbit_per_row * nrows + 7) / 8);
+    SetAllValid();
   }
 
   Proxy operator[](size_t idx) {
@@ -87,12 +125,21 @@ class TsBitmap {
     }
   }
 
+  void SetAllValid() {
+    std::fill(rep_.begin(), rep_.end(), 0);
+  }
+
   void SetData(TSSlice rep) { rep_.assign(rep.data, rep.len); }
 
   void SetCount(size_t count) {
     nrows_ = count;
     Reset(nrows_);
-    SetAll(DataFlags::kValid);
+  }
+
+  TsBitmapView Slice(int start, int count) {
+    assert(start < nrows_);
+    std::string_view sv{rep_};
+    return TsBitmapView(sv, count, start);
   }
 
   void Truncate(size_t count) {
@@ -107,9 +154,20 @@ class TsBitmap {
 
   static size_t GetBitmapLen(size_t nrows) { return (nbit_per_row * nrows + 7) / 8; }
   size_t GetValidCount() const {
+    if (rep_.empty()) {
+      return 0;
+    }
     int sum = 0;
-    for (int i = 0; i < nrows_; ++i) {
-      sum += ((*this)[i] == kValid);
+    int end = rep_.size() - (nrows_ % 4 != 0);
+    for (int i = 0; i < end; ++i) {
+      uint8_t c = rep_[i];
+      sum += ((c & 0b11) == 0b00) + (((c >> 2) & 0b11) == 0b00) + (((c >> 4) & 0b11) == 0b00) +
+             (((c >> 6) & 0b11) == 0b00);
+    }
+    // last byte
+    uint8_t c = rep_.back();
+    for (int i = 0; i < nrows_ % 4; ++i) {
+      sum += ((c >> (2 * i)) & 0b11) == 0b00;
     }
     return sum;
   }
@@ -136,4 +194,5 @@ class TsBitmap {
 
   void push_back(Proxy flag) { this->push_back(static_cast<DataFlags>(flag)); }
 };
+
 }  // namespace kwdbts
