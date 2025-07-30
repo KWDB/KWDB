@@ -100,6 +100,9 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
+#ifndef WITH_TESTS
+  BrMgr::GetInstance().Destroy();
+#endif
   vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
