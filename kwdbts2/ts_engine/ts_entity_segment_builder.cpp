@@ -564,7 +564,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
       block_->Clear();
     }
   }
-  if (block_->HasData()) {
+  if (block_ && block_->HasData()) {
     auto row_num = block_->GetRowNum();
     s = WriteBlock(entity_key);
     if (s == FAIL) {

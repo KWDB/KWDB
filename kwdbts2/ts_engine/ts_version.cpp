@@ -430,7 +430,7 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
     if (std::get<0>(k) != std::get<0>(partition_id)) {
       partition_id = k;
       partition = v;
-    } else if (partition != nullptr) {
+    } else if (partition != nullptr && !partition->GetAllLastSegments().empty()) {
       result.push_back(partition);
     }
   }
