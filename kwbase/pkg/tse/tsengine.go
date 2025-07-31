@@ -301,52 +301,6 @@ var TsRaftLogSyncPeriod = settings.RegisterPublicDurationSetting(
 	10*time.Second,
 )
 
-// TsWALFlushInterval indicates the WAL flush interval of TsEngine
-var TsWALFlushInterval = settings.RegisterPublicDurationSetting(
-	"ts.wal.flush_interval",
-	"ts WAL flush interval in TsEngine. when 0, wal will be flushed on wrote. when -1, WAL is disable.",
-	0,
-)
-
-// TsWALBufferSize indicates the WAL buffer size of TsEngine
-var TsWALBufferSize = settings.RegisterValidatedByteSizeSetting(
-	"ts.wal.buffer_size",
-	"ts WAL buffer size, default 4Mib",
-	4<<20,
-	func(v int64) error {
-		if v < 4<<20 {
-			return errors.Errorf("WAL buffer size can not less than 4(Mib)")
-		}
-		return nil
-	},
-)
-
-// TsWALFileSize indicates the WAL file size of TsEngine
-var TsWALFileSize = settings.RegisterPublicValidatedByteSizeSetting(
-	"ts.wal.file_size",
-	"ts WAL file size, default 64Mib",
-	64<<20,
-	func(v int64) error {
-		if v < 64<<20 {
-			return errors.Errorf("WAL file size must more than 64(Mib)")
-		}
-		return nil
-	},
-)
-
-// TsWALFilesInGroup indicates the WAL file num of in one entity group
-var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
-	"ts.wal.files_in_group",
-	"ts WAL files num of a entity group in TsEngine, default 3",
-	3,
-	func(v int64) error {
-		if v < 3 {
-			return errors.Errorf("WAL files num in group must more than 3")
-		}
-		return nil
-	},
-)
-
 // TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.
 const TsWALLevelClusterSettingName = "ts.wal.wal_level"
 
@@ -429,20 +383,7 @@ func (r *TsEngine) checkOrWaitForOpen() {
 
 // Open opens the ts engine.
 func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
-	var walLevel uint8
-
-	interval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
-	if interval < 0 {
-		walLevel = 0
-	} else if interval >= 0 && interval <= 200*time.Millisecond {
-		walLevel = 2
-	} else {
-		walLevel = 1
-	}
-
-	walBufferSize := TsWALBufferSize.Get(&r.cfg.Settings.SV) >> 20
-	walFileSize := TsWALFileSize.Get(&r.cfg.Settings.SV) >> 20
-	walFilesInGroup := TsWALFilesInGroup.Get(&r.cfg.Settings.SV)
+	walLevel := TsWALLevel.Get(&r.cfg.Settings.SV)
 
 	traceLevel := SQLTimeseriesTrace.Get(&r.cfg.Settings.SV)
 	optLog := C.TsLogOptions{
@@ -459,19 +400,16 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 	if len(rangeIndex) == 0 {
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
-				wal_level:         C.uint8_t(walLevel),
-				wal_buffer_size:   C.uint16_t(uint16(walBufferSize)),
-				wal_file_size:     C.uint16_t(uint16(walFileSize)),
-				wal_file_in_group: C.uint16_t(uint16(walFilesInGroup)),
-				extra_options:     goToTSSlice(r.cfg.ExtraOptions),
-				thread_pool_size:  C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
-				task_queue_size:   C.uint16_t(uint16(r.cfg.TaskQueueSize)),
-				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
-				lg_opts:           optLog,
-				is_single_node:    C.bool(r.cfg.IsSingleNode),
-				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
-				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
-				engine_version:    cEngineVersion,
+				wal_level:        C.uint8_t(walLevel),
+				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
+				thread_pool_size: C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
+				task_queue_size:  C.uint16_t(uint16(r.cfg.TaskQueueSize)),
+				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
+				lg_opts:          optLog,
+				is_single_node:   C.bool(r.cfg.IsSingleNode),
+				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
+				engine_version:   cEngineVersion,
 			},
 			nil,
 			C.uint64_t(0))
@@ -489,19 +427,16 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
-				wal_level:         C.uint8_t(walLevel),
-				wal_buffer_size:   C.uint16_t(uint16(walBufferSize)),
-				wal_file_size:     C.uint16_t(uint16(walFileSize)),
-				wal_file_in_group: C.uint16_t(uint16(walFilesInGroup)),
-				extra_options:     goToTSSlice(r.cfg.ExtraOptions),
-				thread_pool_size:  C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
-				task_queue_size:   C.uint16_t(uint16(r.cfg.TaskQueueSize)),
-				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
-				lg_opts:           optLog,
-				is_single_node:    C.bool(r.cfg.IsSingleNode),
-				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
-				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
-				engine_version:    cEngineVersion,
+				wal_level:        C.uint8_t(walLevel),
+				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
+				thread_pool_size: C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
+				task_queue_size:  C.uint16_t(uint16(r.cfg.TaskQueueSize)),
+				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
+				lg_opts:          optLog,
+				is_single_node:   C.bool(r.cfg.IsSingleNode),
+				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
+				engine_version:   cEngineVersion,
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
@@ -1984,34 +1919,18 @@ func (r *TsEngine) manageWAL() {
 		defer flushTimer.Stop()
 		defer checkpointTimer.Stop()
 
-		flushInterval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
 		checkpointInterval := TsWALCheckpointInterval.Get(&r.cfg.Settings.SV)
-		flushTimer.Reset(flushInterval)
 		checkpointTimer.Reset(checkpointInterval)
 
 		for {
 			select {
 			case <-r.stopper.ShouldStop():
 				return
-			case <-flushTimer.C:
-				if flushInterval <= 200*time.Millisecond {
-					continue
-				}
-				flushTimer.Read = true
-				_ = r.FlushBuffer()
-				flushTimer.Reset(flushInterval)
 			case <-checkpointTimer.C:
 				checkpointInterval = TsWALCheckpointInterval.Get(&r.cfg.Settings.SV)
 				checkpointTimer.Read = true
 				_ = r.Checkpoint()
 				checkpointTimer.Reset(checkpointInterval)
-
-				newFlushInterval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
-				if flushInterval != newFlushInterval {
-					flushInterval = newFlushInterval
-					flushTimer.Read = true
-					flushTimer.Reset(flushInterval)
-				}
 			}
 		}
 	})

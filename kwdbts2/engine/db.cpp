@@ -56,9 +56,6 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   std::string ts_store_path(dir.data, dir.len);
   opts.db_path = ts_store_path + "/tsdb";
   EngineOptions::is_single_node_ = options.is_single_node;
-  opts.wal_buffer_size = options.wal_buffer_size;
-  opts.wal_file_size = options.wal_file_size;
-  opts.wal_file_in_group = options.wal_file_in_group;
 
   // TODO(LSY): log settings from kwbase start params
   string lg_path = ts_store_path;
