@@ -526,6 +526,16 @@ func (r *TsEngine) DropLeftTsTableGarbage() error {
 	return nil
 }
 
+// TSFlushVGroups flush v-groups after import
+func (r *TsEngine) TSFlushVGroups() error {
+	r.checkOrWaitForOpen()
+	status := C.TSFlushVGroups(r.tdb)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not flush v-groups")
+	}
+	return nil
+}
+
 // AddTSColumn adds column for ts table.
 func (r *TsEngine) AddTSColumn(
 	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,
