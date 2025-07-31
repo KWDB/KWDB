@@ -117,7 +117,7 @@ class TsSequentialReadFile {
   }
 
   size_t GetFileSize() const { return file_size_; }
-  std::string GetFilePath() const { return path_; }
+  const std::string& GetFilePath() const { return path_; }
   bool IsEOF() const { return offset_ >= file_size_; }
 
   void MarkDelete() { delete_after_free = true; }
