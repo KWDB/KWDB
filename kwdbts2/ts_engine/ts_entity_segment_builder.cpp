@@ -10,9 +10,10 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_entity_segment_builder.h"
-#include <utility>
 #include <sys/types.h>
 #include <cstdint>
+#include <utility>
+
 
 #include "settings.h"
 #include "ts_agg.h"
@@ -20,7 +21,6 @@
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
-#include "ts_batch_data_worker.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_version.h"
 

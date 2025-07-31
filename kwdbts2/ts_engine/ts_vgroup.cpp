@@ -1390,8 +1390,9 @@ KStatus TsVGroup::Vacuum() {
     LOG_ERROR("Vacuum VGroup[%d] failed, Compact failed", vgroup_id_);
     return s;
   }
-  return KStatus::SUCCESS;
 
+  auto cur_lsn = wal_manager_->FetchCurrentLSN();
+  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
 
@@ -1456,11 +1457,21 @@ KStatus TsVGroup::Vacuum() {
         if (s != SUCCESS) {
           return s;
         }
+        if (tb_schema_mgr->IsDropped()) {
+          TsEntityItem empty_entity_item{entity_id};
+          empty_entity_item.table_id = entity_item.table_id;
+          s = vacuumer->AppendEntityItem(empty_entity_item);
+          if (s != SUCCESS) {
+            LOG_ERROR("Vacuum failed, AppendEntityItem failed")
+            return s;
+          }
+          entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
+          continue;
+        }
         auto life_time = tb_schema_mgr->GetLifeTime();
         int64_t start_ts = INT64_MIN;
         int64_t end_ts = INT64_MAX;
         if (life_time.ts != 0) {
-          auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
           start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
         }
         KwTsSpan ts_span = {start_ts, end_ts};
@@ -1472,7 +1483,7 @@ KStatus TsVGroup::Vacuum() {
           LOG_ERROR("getFilter failed");
           return s;
         }
-        auto cur_lsn = wal_manager_->FetchCurrentLSN();
+
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, 0);
         if (s != SUCCESS) {
@@ -1535,7 +1546,7 @@ KStatus TsVGroup::Vacuum() {
           // check weather mem segment has data for one entity
           KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
                                         partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
-          STScanRange scan_range = {partition_ts_span, {0, UINT64_MAX}};
+          STScanRange scan_range = {partition_ts_span, {0, cur_lsn}};
           TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
           std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
           for (auto& mem_segment : mem_segments) {
