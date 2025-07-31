@@ -165,7 +165,7 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j$(nproc)
+        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j4
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
@@ -349,7 +349,7 @@ if (WITH_TESTS)
                 third_party/gtest-1.8.1/fused-src
                 )
 
-        target_link_libraries(${tname} ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} common gtest dl rt)
+        target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} common gtest dl rt)
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO
