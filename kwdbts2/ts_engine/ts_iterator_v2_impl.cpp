@@ -505,12 +505,13 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   std::vector<KwTsSpan> ts_spans_bkup;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
   if (only_last_row_) {
-    ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], {{INT64_MIN, INT64_MAX}}, entity_last_ts);
+    ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetEntityLastRow failed.");
       return ret;
     }
-    if (entity_last_ts != INVALID_TS) {
+    if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
+                                         *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
       ts_spans_bkup.swap(ts_spans_);
       ts_partitions_bkup.swap(ts_partitions_);
       ts_spans_.clear();
