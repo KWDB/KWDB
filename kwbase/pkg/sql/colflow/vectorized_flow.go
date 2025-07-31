@@ -246,6 +246,7 @@ func (f *vectorizedFlow) Setup(
 		diskQueueCfg,
 		f.countingSemaphore,
 	)
+	creator.tsInfo.IsDist = spec.TsInfo.IsDist
 	if f.testingKnobs.onSetupFlow != nil {
 		f.testingKnobs.onSetupFlow(creator)
 	}
@@ -560,6 +561,9 @@ type vectorizedFlowCreator struct {
 
 	diskQueueCfg colcontainer.DiskQueueCfg
 	fdSemaphore  semaphore.Semaphore
+
+	// tsInfo is information for ae.
+	tsInfo execinfrapb.TsInfo
 }
 
 func newVectorizedFlowCreator(
@@ -845,7 +849,7 @@ func (s *vectorizedFlowCreator) setupInput(
 				log.Infof(ctx, "set up inbound stream %d", sid)
 			}
 			tsReader := colexec.NewTsReaderOp(ctx, colexec.NewAllocator(ctx, s.newStreamingMemAccount(flowCtx)),
-				flowCtx, input.ColumnTypes, sid, tsProcessorSpecs)
+				flowCtx, input.ColumnTypes, sid, tsProcessorSpecs, s.tsInfo)
 			if tsReader == nil {
 				return nil, nil, errors.Errorf("uncreated ts reader")
 			}

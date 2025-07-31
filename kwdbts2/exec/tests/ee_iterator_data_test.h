@@ -193,6 +193,77 @@ void CreateNoopSpecs(TSNoopSpec **spec, TSPostProcessSpec **post) {
   CreateNoopSpec(spec);
   CreateNoopTSPostProcessSpec(post);
 }
+void CreateSourceSpec(TSInputSyncSpec **spec) {
+  *spec = KNEW TSInputSyncSpec();
+  (*spec)->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
+  TSStreamEndpointSpec *stream = (*spec)->add_streams();
+  stream->set_stream_id(0);
+  stream->set_type(StreamEndpointType::REMOTE);
+  stream->set_target_node_id(1);
+  stream->set_dest_processor(1);
+
+  TSOrdering *ordering = KNEW TSOrdering();
+  (*spec)->set_allocated_ordering(ordering);
+  TSOrdering_Column *col = ordering->add_columns();
+  col->set_col_idx(0);
+}
+
+void CreateSourceMergeSpec(TSInputSyncSpec **spec) {
+  *spec = KNEW TSInputSyncSpec();
+  (*spec)->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
+  TSStreamEndpointSpec *stream = (*spec)->add_streams();
+  stream->set_stream_id(0);
+  stream->set_type(StreamEndpointType::REMOTE);
+  stream->set_target_node_id(1);
+  stream->set_dest_processor(1);
+
+  TSOrdering *ordering = KNEW TSOrdering();
+  (*spec)->set_allocated_ordering(ordering);
+  TSOrdering_Column *col = ordering->add_columns();
+  col->set_col_idx(0);
+  col->set_direction(kwdbts::TSOrdering_Column_Direction::TSOrdering_Column_Direction_ASC);
+  TSOrdering_Column *col1 = ordering->add_columns();
+  col1->set_col_idx(1);
+  col1->set_direction(kwdbts::TSOrdering_Column_Direction::TSOrdering_Column_Direction_ASC);
+}
+
+void CreateSinkSpec(TSOutputRouterSpec **spec) {
+  *spec = KNEW TSOutputRouterSpec();
+  // (*spec)->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_BY_HASH);
+  // (*spec)->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_MIRROR);
+  // (*spec)->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_PASS_THROUGH);
+  (*spec)->set_type(TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_BY_GATHER);
+  TSStreamEndpointSpec *stream = (*spec)->add_streams();
+  stream->set_stream_id(0);
+  stream->set_type(StreamEndpointType::REMOTE);
+  // stream->set_type(StreamEndpointType::LOCAL);
+  stream->set_target_node_id(0);
+  stream->set_dest_processor(1);
+  (*spec)->add_hash_columns(0);
+
+  stream = (*spec)->add_streams();
+  stream->set_stream_id(1);
+  stream->set_type(StreamEndpointType::LOCAL);
+  // stream->set_type(StreamEndpointType::LOCAL);
+  stream->set_target_node_id(1);
+  stream->set_dest_processor(1);
+  (*spec)->add_hash_columns(0);
+}
+void CreateSinkSpecs(TSOutputRouterSpec **spec, TSPostProcessSpec **post) {
+  CreateSinkSpec(spec);
+  CreateNoopTSPostProcessSpec(post);
+}
+
+void CreateSourceSpecs(TSInputSyncSpec **spec, TSPostProcessSpec **post) {
+  CreateSourceSpec(spec);
+  CreateNoopTSPostProcessSpec(post);
+}
+
+void CreateSourceMergeSpecs(TSInputSyncSpec **spec, TSPostProcessSpec **post) {
+  CreateSourceMergeSpec(spec);
+  CreateNoopTSPostProcessSpec(post);
+}
+
 /**
  * Create a FlowSpec that contains all operators
  * readerIter、MergeIter、SortIter、AggIter、TsSamplerIter、NoopIter、

@@ -20,7 +20,7 @@
 #include "ee_base_op.h"
 #include "ee_global.h"
 #include "ee_scan_row_batch.h"
-#include "ee_window_flow_spec.h"
+#include "ee_window_parser.h"
 #include "kwdb_consts.h"
 #include "kwdb_type.h"
 
@@ -40,11 +40,10 @@ class WindowOperator : public BaseOperator {
  public:
   enum Rowmark { ROW_NEED_SKIP = -1, ROW_NO_NEED_SKIP = -2 };
 
-  WindowOperator(TsFetcherCollection* collection, BaseOperator* input,
+  WindowOperator(TsFetcherCollection* collection,
                  WindowerSpec* spec, TSPostProcessSpec* post, TABLE* table,
                  int32_t processor_id);
-  WindowOperator(const WindowOperator&, BaseOperator* input,
-                 int32_t processor_id);
+  WindowOperator(const WindowOperator&, int32_t processor_id);
   ~WindowOperator() override;
 
   EEIteratorErrCode Init(kwdbContext_p ctx) override;
@@ -57,7 +56,9 @@ class WindowOperator : public BaseOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_WINDOWS;}
 
   BaseOperator* Clone() override;
 
@@ -83,16 +84,12 @@ class WindowOperator : public BaseOperator {
   k_bool is_new_partition_{false};  // for diff
   k_bool first_check_{false};
   WindowerSpec* spec_;
-  TSPostProcessSpec* post_{nullptr};
-  WindowSpecParam param_;
-  BaseOperator* input_{nullptr};  // input iterator
+  TsWindowParser param_;
   // ScanRowBatch* row_batch_{nullptr};
   // partitionby col
   Field* filter_{nullptr};
   std::vector<k_uint32> partition_cols_;
   std::vector<GroupByColumnInfo> group_by_cols_;
-  // if copy the data source using column mode.
-  std::vector<Field*>& input_fields_;
   ColumnInfo* output_filter_col_info_{nullptr};
   k_int32 output_filter_col_num_{0};
   std::vector<Field*> filter_fields_;

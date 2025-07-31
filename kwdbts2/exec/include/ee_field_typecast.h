@@ -83,7 +83,7 @@ class FieldTypeCastReal : public FieldTypeCast {
 class FieldTypeCastString : public FieldTypeCast {
  public:
   explicit FieldTypeCastString(Field *field, k_uint32 field_length,
-                               KString &output_type);
+                               const KString &output_type);
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
@@ -99,7 +99,7 @@ class FieldTypeCastString : public FieldTypeCast {
 class FieldTypeCastTimestamptz2String : public FieldTypeCast {
  public:
   explicit FieldTypeCastTimestamptz2String(Field *field, k_uint32 field_length,
-                                           KString &output_type,
+                                           const KString &output_type,
                                            k_int8 time_zone);
   k_int64 ValInt() override;
   k_double64 ValReal() override;

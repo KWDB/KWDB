@@ -8,7 +8,7 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
-#if 0
+
 #include "gtest/gtest.h"
 #include "ee_dml_exec.h"
 #include "ee_op_test_base.h"
@@ -34,6 +34,7 @@ TEST_F(TestSortOp, TestSortOpSelectAndSort) {
   TSFlowSpec flow;
   SpecSelectWithSort select_spec(table_id_);
   select_spec.PrepareFlowSpec(flow);
+  select_spec.PrepareInputOutputSpec(flow);
 
   size_t size = flow.ByteSizeLong();
 
@@ -82,4 +83,3 @@ TEST_F(TestSortOp, TestSortOpSelectAndSort) {
 }
 
 }  // namespace kwdbts
-#endif

@@ -113,6 +113,7 @@ func makeTestConfig(st *cluster.Settings) Config {
 	cfg.SQLAdvertiseAddr = util.TestAddr.String()
 	cfg.SplitListenSQL = true
 	cfg.HTTPAddr = util.TestAddr.String()
+	cfg.BRPCAddr = util.TestAddr.String()
 	// Set standard user for intra-cluster traffic.
 	cfg.User = security.NodeUser
 	cfg.TimestampCachePageSize = tscache.TestSklPageSize

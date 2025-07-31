@@ -147,18 +147,6 @@ func (cp *readImportDataProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.Pro
 	return nil, nil
 }
 
-func (cp *readImportDataProcessor) IsShortCircuitForPgEncode() bool {
-	return false
-}
-
-func (cp *readImportDataProcessor) NextPgWire() (val []byte, code int, err error) {
-	return nil, 0, nil
-}
-
-func (cp *readImportDataProcessor) SupportPgWire() bool {
-	return false
-}
-
 func (cp *readImportDataProcessor) Start(ctx context.Context) context.Context {
 	return nil
 }
@@ -221,6 +209,11 @@ func (cp *readImportDataProcessor) Run(ctx context.Context) execinfra.RowStats {
 		sqlbase.DatumToEncDatum(types.Bytes, tree.NewDBytes(tree.DBytes([]byte{}))),
 	}, nil)
 	return execinfra.RowStats{}
+}
+
+// RunShortCircuit is part of the Processor interface.
+func (cp *readImportDataProcessor) RunShortCircuit(context.Context, execinfra.TSReader) error {
+	return nil
 }
 
 // runImport read csv file and ingest data to storage.

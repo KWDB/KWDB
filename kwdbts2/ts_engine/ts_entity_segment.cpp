@@ -299,7 +299,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   size_t bitmap_len = 0;
   if (col_idx >= 1) {
     bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
-    column_blocks_[col_idx + 1].bitmap.Map({data.data, bitmap_len}, n_rows_);
+    column_blocks_[col_idx + 1].bitmap = TsBitmap({data.data, bitmap_len}, n_rows_);
   } else if (col_idx == 0) {
     // Timestamp Column Assign Default Value kValid
     column_blocks_[col_idx + 1].bitmap.SetCount(n_rows_);

@@ -1418,7 +1418,7 @@ int TsTimePartition::DeleteData(uint32_t entity_id, kwdbts::TS_LSN lsn, const st
 
     timestamp64 block_min_ts, block_max_ts;
     TsTimePartition::GetBlkMinMaxTs(block_item, segment_tbl.get(), block_min_ts, block_max_ts);
-    if (!isTimestampInSpans(ts_spans, block_min_ts, block_max_ts)) {
+    if (checkTimestampWithSpans(ts_spans, block_min_ts, block_max_ts) == TimestampCheckResult::NonOverlapping) {
       // blockitem ts span  not cross with ts_spans, no need scan data.
       block_item_id = block_item->prev_block_id;
       continue;
@@ -1429,7 +1429,8 @@ int TsTimePartition::DeleteData(uint32_t entity_id, kwdbts::TS_LSN lsn, const st
     for (k_uint32 row_idx = 1; row_idx <= block_item->alloc_row_count ; ++row_idx) {
       bool has_been_deleted = !segment_tbl->IsRowVaild(block_item, row_idx);
       auto cur_ts = KTimestamp(segment_tbl->columnAddr(block_item->getRowID(row_idx), 0));
-      if (has_been_deleted || !isTimestampInSpans(ts_spans, cur_ts, cur_ts)) {
+      if (has_been_deleted ||
+          checkTimestampWithSpans(ts_spans, cur_ts, cur_ts) == TimestampCheckResult::NonOverlapping) {
         continue;
       }
       if (!evaluate_del) {
@@ -2575,23 +2576,32 @@ int TsTimePartition::GetAllBlockSpans(uint32_t entity_id, std::vector<KwTsSpan>&
 
       timestamp64 min_ts, max_ts;
       GetBlkMinMaxTs(block_item, segment_tbl.get(), min_ts, max_ts);
-      if (!isTimestampInSpans(ts_spans, min_ts, max_ts) || !block_item->publish_row_count) {
+      TimestampCheckResult res = checkTimestampWithSpans(ts_spans, min_ts, max_ts);
+      if (res == kwdbts::TimestampCheckResult::NonOverlapping || !block_item->publish_row_count) {
         continue;
       }
 
       uint32_t first_row = 1;
-      bool all_within_spans = isTimestampWithinSpans(ts_spans, min_ts, max_ts);
+      bool all_within_spans = (res == kwdbts::TimestampCheckResult::FullyContained);
       for (uint32_t i = 1; i <= block_item->publish_row_count; ++i) {
-        MetricRowID row_id = block_item->getRowID(i);
-        timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddr(row_id, 0));
-        if ((!all_within_spans && !CheckIfTsInSpan(cur_ts, ts_spans)) || !segment_tbl->IsRowVaild(block_item, i)) {
+        bool skip_row = false;
+        if (!all_within_spans) {
+          MetricRowID row_id = block_item->getRowID(i);
+          const timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddr(row_id, 0));
+          if (checkTimestampWithSpans(ts_spans, cur_ts, cur_ts) == kwdbts::TimestampCheckResult::NonOverlapping) {
+            skip_row = true;
+          }
+        }
+        if (!skip_row && !segment_tbl->IsRowVaild(block_item, i)) {
+          skip_row = true;
+        }
+        if (skip_row) {
           if (i > first_row) {
             reverse ? block_spans.push_front({block_item, first_row - 1, i - first_row}) :
                       block_spans.push_back({block_item, first_row - 1, i - first_row});
             count += i - first_row;
           }
           first_row = i + 1;
-          continue;
         }
       }
 
@@ -2612,7 +2622,8 @@ int TsTimePartition::GetAllBlockSpans(uint32_t entity_id, std::vector<KwTsSpan>&
     std::shared_ptr<MMapSegmentTable> segment_tbl = getSegmentTable(cur_block->block_id);
     timestamp64 min_ts, max_ts;
     GetBlkMinMaxTs(cur_block, segment_tbl.get(), min_ts, max_ts);
-    if (isTimestampInSpans(ts_spans, min_ts, max_ts) && cur_block->publish_row_count > 0) {
+    if (checkTimestampWithSpans(ts_spans, min_ts, max_ts) != kwdbts::TimestampCheckResult::NonOverlapping
+        && cur_block->publish_row_count > 0) {
       if (!interval_block_map.count({min_ts, max_ts})) {
         intervals.push_back({min_ts, max_ts});
       }
@@ -2657,15 +2668,16 @@ int TsTimePartition::GetAllBlockSpans(uint32_t entity_id, std::vector<KwTsSpan>&
           LOG_ERROR("Can not find segment use block [%u], in path [%s]", block->block_id, GetPath().c_str());
           return -1;
         }
-
-        bool all_within_spans = isTimestampWithinSpans(ts_spans,
-                                   KTimestamp(segment_tbl->columnAggAddr(block->block_id, 0, Sumfunctype::MIN)),
-                                   KTimestamp(segment_tbl->columnAggAddr(block->block_id, 0, Sumfunctype::MAX)));
+        timestamp64 min_ts, max_ts;
+        GetBlkMinMaxTs(block, segment_tbl.get(), min_ts, max_ts);
+        TimestampCheckResult res = checkTimestampWithSpans(ts_spans, min_ts, max_ts);
+        bool all_within_spans = (res == kwdbts::TimestampCheckResult::FullyContained);
 
         for (uint32_t i = 1; i <= block->publish_row_count; ++i) {
           MetricRowID row_id = block->getRowID(i);
           timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddr(row_id, 0));
-          if (all_within_spans || (CheckIfTsInSpan(cur_ts, ts_spans))) {
+          if (all_within_spans || (checkTimestampWithSpans(ts_spans, cur_ts, cur_ts) !=
+                                   kwdbts::TimestampCheckResult::NonOverlapping)) {
             if (!segment_tbl->IsRowVaild(block, i)) {
               continue;
             }

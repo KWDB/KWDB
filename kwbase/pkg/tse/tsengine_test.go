@@ -48,6 +48,7 @@ func TestTSOpen(t *testing.T) {
 		ThreadPoolSize: 10,
 		TaskQueueSize:  10,
 		BufferPoolSize: 4096,
+		BRPCAddr:       "127.0.0.1:0",
 	}
 	stopper := stop.NewStopper()
 	tsDB, err := NewTsEngine(context.Background(), cfg, stopper)
@@ -123,6 +124,7 @@ func TestTSPut(t *testing.T) {
 		ThreadPoolSize: 10,
 		TaskQueueSize:  10,
 		BufferPoolSize: 4096,
+		BRPCAddr:       "127.0.0.1:0",
 	}
 	stopper := stop.NewStopper()
 	tsDB, err := NewTsEngine(context.Background(), cfg, stopper)

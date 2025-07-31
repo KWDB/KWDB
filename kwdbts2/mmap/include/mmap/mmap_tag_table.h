@@ -164,6 +164,8 @@ class TagTable {
 		    const TSSlice& primary_tag, TSSlice& tags);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
+  int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
+                    const TSSlice& primary_tag, kwdbts::TsRawPayload &payload);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
                     const TSSlice& primary_tag, const TSSlice& old_tag);
 
