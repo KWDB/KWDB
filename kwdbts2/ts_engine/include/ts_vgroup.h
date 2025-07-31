@@ -39,6 +39,12 @@ enum class TsExclusiveStatus{
   VACUUM,
 };
 
+enum class TsEntityLatestRowStatus {
+  Uninitialized = 0,
+  Recovering,
+  Valid,
+};
+
 /**
  * table group used for organizing a series of table(super table of device).
  * in current time vgroup is same as database
@@ -82,9 +88,12 @@ class TsVGroup {
 
   std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
 
-  mutable std::shared_mutex last_row_mutex_;
-  std::map<uint32_t, bool> last_row_checked_;
-  std::map<uint32_t, pair<timestamp64, uint32_t>> last_row_entity_;
+  mutable std::shared_mutex last_row_entity_mutex_;
+  std::unordered_map<uint32_t, bool> last_row_entity_checked_;
+  std::unordered_map<uint32_t, pair<timestamp64, uint32_t>> last_row_entity_;
+  mutable std::shared_mutex entity_latest_row_mutex_;
+  std::unordered_map<uint32_t, TsEntityLatestRowStatus> entity_latest_row_checked_;
+  std::unordered_map<uint32_t, timestamp64> entity_latest_row_;
 
  public:
   TsVGroup() = delete;
@@ -296,19 +305,41 @@ class TsVGroup {
                            pair<timestamp64, uint32_t>& last_row_entity);
 
   void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
-    std::unique_lock<std::shared_mutex> lock(last_row_mutex_);
+    std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
     if (!last_row_entity_.count(table_id) || max_ts >= last_row_entity_[table_id].first) {
       last_row_entity_[table_id] = {max_ts, entity_id};
     }
   }
 
   void ResetEntityMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
-    std::unique_lock<std::shared_mutex> lock(last_row_mutex_);
+    std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
     if (last_row_entity_.count(table_id) && max_ts >= last_row_entity_[table_id].first) {
       if (entity_id == last_row_entity_[table_id].second) {
         last_row_entity_.erase(table_id);
-        last_row_checked_[table_id] = false;
+        last_row_entity_checked_[table_id] = false;
       }
+    }
+  }
+
+  KStatus GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                           uint32_t entity_id, const std::vector<KwTsSpan>& ts_spans,
+                           timestamp64& entity_last_ts);
+
+  void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
+    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id]) {
+      entity_latest_row_[entity_id] = max_ts;
+      if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Uninitialized) {
+        entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
+      }
+    }
+  }
+
+  void ResetEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
+    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id]) {
+      entity_latest_row_.erase(entity_id);
+      entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Recovering;
     }
   }
 

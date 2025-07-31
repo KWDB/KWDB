@@ -74,6 +74,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
       }
     }
     vgroup->UpdateEntityAndMaxTs(table_id_, max_ts, *entity_id);
+    vgroup->UpdateEntityLatestRow(*entity_id, max_ts);
   }
   return KStatus::SUCCESS;
 }
@@ -108,6 +109,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
       }
     }
     v_group->UpdateEntityAndMaxTs(table_id_, max_ts, entity_id);
+    v_group->UpdateEntityLatestRow(entity_id, max_ts);
   }
   return KStatus::SUCCESS;
 }
@@ -451,6 +453,7 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
       LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
     GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, INT64_MAX, entity_id);
+    GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, INT64_MAX);
   }
   return KStatus::SUCCESS;
 }
@@ -498,6 +501,7 @@ KwTsSpan ts_span, uint64_t mtr_id) {
       return s;
     }
     GetVGroupByID(entity.subGroupId)->ResetEntityMaxTs(table_id_, ts_span.end, entity.entityId);
+    GetVGroupByID(entity.subGroupId)->ResetEntityLatestRow(entity.entityId, ts_span.end);
   }
   #ifdef K_DEBUG
     GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_aft);
@@ -765,6 +769,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
     max_ts = (max_ts < span.end) ? span.end : max_ts;
   }
   GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, max_ts, entity_id);
+  GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, max_ts);
   return KStatus::SUCCESS;
 }
 
