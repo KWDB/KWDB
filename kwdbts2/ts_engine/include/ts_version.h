@@ -88,7 +88,7 @@ class TsPartitionVersion {
     return convertSecondToPrecisionTS(GetStartTime(), ts_type);
   }
   inline timestamp64 GetTsColTypeEndTime(DATATYPE ts_type) const {
-    return convertSecondToPrecisionTS(GetEndTime(), ts_type);
+    return convertSecondToPrecisionTS(GetEndTime(), ts_type) - 1;
   }
 
   PartitionIdentifier GetPartitionIdentifier() const { return partition_info_; }

@@ -1271,14 +1271,15 @@ KStatus TsVGroup::Vacuum() {
         continue;
       }
 
-      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld] begin", vgroup_id_, partition->GetStartTime(),
-                                                                partition->GetEndTime());
+      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin", vgroup_id_, partition->GetStartTime(),
+                                                                partition->GetEndTime() - 1);
       auto max_entity_id = entity_segment->GetEntityNum();
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
 
       auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
       vacuumer->Open();
 
+      auto mem_segments = partition->GetAllMemSegments();
       std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
       for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
         TsEntityItem entity_item;
@@ -1378,7 +1379,20 @@ KStatus TsVGroup::Vacuum() {
           LOG_ERROR("Vacuum failed, AppendEntityItem failed")
           return s;
         }
-        entity_max_lsn.emplace_back(entity_id, cur_lsn);
+        {
+          // check weather mem segment has data for one entity
+          KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
+                                        partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
+          STScanRange scan_range = {partition_ts_span, {0, UINT64_MAX}};
+          TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
+          std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
+          for (auto& mem_segment : mem_segments) {
+            mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, 0);
+          }
+          if (mem_block_spans.empty()) {
+            entity_max_lsn.emplace_back(entity_id, cur_lsn);
+          }
+        }
       }
       TsVersionUpdate update;
       auto info = vacuumer->GetHandleInfo();
@@ -1390,8 +1404,8 @@ KStatus TsVGroup::Vacuum() {
       if (s != KStatus::SUCCESS) {
         LOG_INFO("delete delitem failed. can ignore this.");
       }
-      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld] succeeded", vgroup_id_, partition->GetStartTime(),
-                                                                partition->GetEndTime());
+      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) succeeded", vgroup_id_, partition->GetStartTime(),
+                                                                    partition->GetEndTime() - 1);
     }
   }
   return KStatus::SUCCESS;
