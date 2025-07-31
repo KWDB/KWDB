@@ -79,7 +79,7 @@ struct SortHistogram {
 
 class TsSamplerOperator : public BaseOperator {
  public:
-  explicit TsSamplerOperator(TsFetcherCollection* collection, TABLE* table, BaseOperator* input, int32_t processor_id);
+  explicit TsSamplerOperator(TsFetcherCollection* collection, TABLE* table, int32_t processor_id);
 
   ~TsSamplerOperator() override = default;
 
@@ -88,6 +88,8 @@ class TsSamplerOperator : public BaseOperator {
   EEIteratorErrCode Start(kwdbContext_p ctx) override;
 
   EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_SAMPLER;}
 
   /*
    * @Description : Sets up the TsSamplerOperator with sampling specifications from a given TSSamplerSpec.
@@ -115,7 +117,7 @@ class TsSamplerOperator : public BaseOperator {
   template<sampleObject N>
   EEIteratorErrCode mainLoop(kwdbContext_p ctx);
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
   k_uint32 GetSampleSize() const;
 
@@ -141,9 +143,6 @@ class TsSamplerOperator : public BaseOperator {
   std::vector<SketchSpec> tag_sketches_;
 
   std::shared_ptr<TsTable> ts_table_{nullptr};
-
-  // Input iterator
-  BaseOperator* input_;
 
   // Output return types
   std::vector<KWDBTypeFamily> outRetrunTypes_;

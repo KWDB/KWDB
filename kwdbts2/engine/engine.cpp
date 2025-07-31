@@ -94,6 +94,10 @@ TSEngineImpl::~TSEngineImpl() {
   wal_sys_ = nullptr;
 
   DestoryExecutor();
+#ifndef WITH_TESTS
+  BrMgr::GetInstance().Destroy();
+#endif
+
   delete tables_cache_;
   delete tables_lock_;
   KWDBDynamicThreadPool::GetThreadPool().Stop();
@@ -461,8 +465,8 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, 
   return s;
 }
 
-KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                TSSlice* payload, int payload_num, uint64_t mtr_id) {
+KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id, TSSlice *payload,
+                                int payload_num, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s;
   s = GetTsTable(ctx, table_id, table);
@@ -489,7 +493,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
       LOG_ERROR("PutEntity failed, GetEntityGroup failed %lu", range_group_id)
       return s;
     }
-    s = table_range->PutEntity(ctx, payload[i], mtr_id);
+    s = table_range->PutEntity(ctx, payload[i], mtr_id, writeWAL);
     if (s == KStatus::FAIL) {
       LOG_ERROR("PutEntity failed, table id: %lu, range group id: %lu", table->GetTableId(), range_group_id)
       return s;
@@ -541,34 +545,35 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                      HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                      uint64_t mtr_id) {
+KStatus TSEngineImpl::DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                      HashIdSpan &hash_span, const std::vector<KwTsSpan> &ts_spans,
+                                      uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table);
   if (s == KStatus::FAIL) {
     LOG_ERROR("DeleteRangeData failed: GetTsTable failed, table id [%lu]", table_id)
     return s;
   }
-  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
+  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, false);
   return s;
 }
 
-KStatus TSEngineImpl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                 std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                 uint64_t mtr_id) {
+KStatus TSEngineImpl::DeleteData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                 std::string &primary_tag, const std::vector<KwTsSpan> &ts_spans,
+                                 uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table);
   if (s == KStatus::FAIL) {
     LOG_ERROR("DeleteData failed: GetTsTable failed, table id [%lu]", table_id)
     return s;
   }
-  s = table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
+  s = table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id, writeWAL);
   return s;
 }
 
-KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                     std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
+KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                     std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id,
+                                     bool writeWAL) {
   std::shared_ptr<TsTable> table;
   KStatus s;
 
@@ -586,7 +591,7 @@ KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_i
   }
 
   if (table_range) {
-    s = table_range->DeleteEntities(ctx, primary_tags, count, mtr_id);
+    s = table_range->DeleteEntities(ctx, primary_tags, count, mtr_id, writeWAL);
     if (s == KStatus::FAIL) {
       return s;
     } else {
@@ -628,6 +633,17 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     LOG_ERROR("no env : KW_HOME ")
     return KStatus::FAIL;
   }
+
+#ifndef WITH_TESTS
+  // init brpc for multi-node mode
+  if (!EngineOptions::isSingleNode()) {
+    if (BrMgr::GetInstance().Init(ctx, options_) != KStatus::SUCCESS) {
+      LOG_ERROR("BrMgr init failed")
+      return KStatus::FAIL;
+    }
+  }
+#endif
+
   InitExecutor(ctx, options_);
   LOG_INFO("wal setting: %s.", getWalModeString((WALMode)options_.wal_level).c_str());
   wal_sys_ = KNEW WALMgr(options_.db_path, 0, 0, &options_);
@@ -739,11 +755,11 @@ KStatus TSEngineImpl::CreateCheckpointForTable(kwdbts::kwdbContext_p ctx, TSTabl
   if (options_.wal_level == 0) {
     return KStatus::SUCCESS;
   }
-  LOG_DEBUG("creating checkpoint for table %lu...", table_id);
+  LOG_DEBUG("creating checkpoint for table %" PRIu64 "...", table_id);
 
   std::shared_ptr<TsTable> table = tables_cache_->Get(table_id);
   if (!table || table->IsDropped()) {
-    LOG_WARN("table %lu doesn't exist, %p", table_id, table.get());
+    LOG_WARN("table %" PRIu64 " doesn't exist, %p", table_id, table.get());
     return KStatus::FAIL;
   }
   return table->CreateCheckpoint(ctx);

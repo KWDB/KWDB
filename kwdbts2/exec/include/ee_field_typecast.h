@@ -56,9 +56,13 @@ class FieldTypeCastSigned : public FieldTypeCast {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastSigned<T>(*this); }
   _to_signed_func func_;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 template <typename T>
 class FieldTypeCastReal : public FieldTypeCast {
@@ -67,37 +71,49 @@ class FieldTypeCastReal : public FieldTypeCast {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastReal<T>(*this); }
   _to_real_func func_;
+
+ protected:
+  k_double64 doublevalue_{0.0};
 };
 
 class FieldTypeCastString : public FieldTypeCast {
  public:
   explicit FieldTypeCastString(Field *field, k_uint32 field_length,
-                               KString &output_type);
+                               const KString &output_type);
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastString(*this); }
   _to_string_func func_{nullptr};
 
  protected:
   k_uint32 letter_len_ = 0;
+  String strvalue_{""};
 };
 class FieldTypeCastTimestamptz2String : public FieldTypeCast {
  public:
   explicit FieldTypeCastTimestamptz2String(Field *field, k_uint32 field_length,
-                                           KString &output_type,
+                                           const KString &output_type,
                                            k_int8 time_zone);
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastTimestamptz2String(*this); }
   k_int8 time_zone_;
   k_int64 type_scale_{1};
+
+ protected:
+  String strvalue_{""};
 };
+
 class FieldTypeCastTimestampTz : public FieldTypeCast {
  public:
   explicit FieldTypeCastTimestampTz(Field *field, k_int8 type_num, k_int8 timezone);
@@ -105,11 +121,15 @@ class FieldTypeCastTimestampTz : public FieldTypeCast {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastTimestampTz(*this); }
   _to_timestamp_func func_;
   k_int64 timezone_diff_;
   k_int64 type_scale_{1};
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldTypeCastBool : public FieldTypeCast {
@@ -118,9 +138,13 @@ class FieldTypeCastBool : public FieldTypeCast {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastBool(*this); }
   _to_bool_func func_;
+
+ protected:
+  k_bool value_{true};
 };
 class FieldTypeCastBytes : public FieldTypeCast {
  public:
@@ -129,12 +153,16 @@ class FieldTypeCastBytes : public FieldTypeCast {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastBytes(*this); }
   _to_bool_func func_;
 
  protected:
   k_uint32 bytes_len_ = 0;
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 class FieldTypeCastDecimal : public FieldTypeCast {
@@ -143,8 +171,14 @@ class FieldTypeCastDecimal : public FieldTypeCast {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
-
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() { return new FieldTypeCastDecimal(*this); }
+
+ protected:
+  k_int64 intvalue_{0};
+  k_double64 doublevalue_{0.0};
+  String strvalue_{""};
 };
 
 }  // namespace kwdbts

@@ -34,7 +34,7 @@ int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
-size_t EngineOptions::min_rows_per_block = 1000;
+size_t EngineOptions::min_rows_per_block = 4096;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -100,6 +100,9 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
+#ifndef WITH_TESTS
+  BrMgr::GetInstance().Destroy();
+#endif
   vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
@@ -191,6 +194,16 @@ KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
+#ifndef WITH_TESTS
+  // init brpc for multi-node mode
+  if (!EngineOptions::isSingleNode()) {
+    if (BrMgr::GetInstance().Init(ctx, options_) != KStatus::SUCCESS) {
+      LOG_ERROR("BrMgr init failed")
+      return KStatus::FAIL;
+    }
+  }
+#endif
+
   std::filesystem::path db_path{options_.db_path};
   assert(!db_path.empty());
   schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory);
@@ -202,7 +215,8 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
+    auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(),
+                                             &wal_level_mutex_);
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -499,16 +513,19 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
   assert(vgroup != nullptr);
   if (new_tag) {
     RW_LATCH_X_LOCK(&insert_tag_lock_);
+    Defer defer{[&](){
+      RW_LATCH_UNLOCK(&insert_tag_lock_);
+    }};
     s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
-      RW_LATCH_UNLOCK(&insert_tag_lock_);
       return s;
     }
     vgroup = GetVGroupByID(ctx, vgroup_id);
     if (new_tag) {
       if (options_.wal_level != WALMode::OFF && write_wal) {
-        // no need lock, lock inside.
+        wal_level_mutex_.lock_shared();
         s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id);
+        wal_level_mutex_.unlock_shared();
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
           return s;
@@ -517,12 +534,10 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
       entity_id = vgroup->AllocateEntityID();
       s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
-        RW_LATCH_UNLOCK(&insert_tag_lock_);
         return s;
       }
       inc_entity_cnt++;
     }
-    RW_LATCH_UNLOCK(&insert_tag_lock_);
   }
   return KStatus::SUCCESS;
 }
@@ -568,7 +583,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
 
 // TODO(wal): add WAL
 KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id) {
+                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, bool writeWAL) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   uint32_t vgroup_id;
@@ -601,6 +616,21 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
+
+    if (options_.wal_level != WALMode::OFF) {
+      // get old payload
+      TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
+      if (UNLIKELY(nullptr == tag_pack)) {
+        return KStatus::FAIL;
+      }
+      wal_level_mutex_.lock_shared();
+      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData());
+      wal_level_mutex_.unlock_shared();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
+        return s;
+      }
+    }
 
     err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
     if (err_info.errcode < 0) {
@@ -1057,13 +1087,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     // 4. write end chkckpoint wal
     TS_LSN end_lsn;
     uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-    char v_lsn[lsn_len];
+    auto v_lsn = std::make_unique<char[]>(lsn_len);
     int location = 0;
     for (auto it : vgrp_lsn) {
-      memcpy(v_lsn + location, &it, sizeof(uint64_t));
+      memcpy(v_lsn.get() + location, &it, sizeof(uint64_t));
       location += sizeof(uint64_t);
     }
-    auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+    auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn.get());
     s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
     delete []end_chk_log;
     if (s == KStatus::FAIL) {
@@ -1165,14 +1195,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
   }
 
-  // 4. rewrite wal log to chk file
-//  wal_mgr_ = nullptr;
-//  wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
-//  s = wal_mgr_->ResetWAL(ctx, true);
-//  if (s == KStatus::FAIL) {
-//    LOG_ERROR("Failed to reset wal log file before write incomplete log.")
-//    return s;
-//  }
   if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
@@ -1191,13 +1213,13 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 6.write EndWAL to chk file
   TS_LSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
-  char v_lsn[lsn_len];
+  auto v_lsn = std::make_unique<char[]>(lsn_len);
   int location = 0;
   for (auto it : vgrp_lsn) {
-    memcpy(v_lsn + location, &(it.second), sizeof(uint64_t));
+    memcpy(v_lsn.get() + location, &(it.second), sizeof(uint64_t));
     location += sizeof(uint64_t);
   }
-  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn);
+  auto end_chk_log = EndCheckpointEntry::construct(WALLogType::END_CHECKPOINT, 0, lsn_len, v_lsn.get());
   s = wal_mgr_->WriteWAL(ctx, end_chk_log, EndCheckpointEntry::fixed_length + lsn_len, end_lsn);
   delete []end_chk_log;
   if (s == KStatus::FAIL) {
@@ -1205,20 +1227,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return s;
   }
 
-  // 7. a). update checkpoint LSN .
-  //    b). trig all vgroup write checkpoint wal.
-  //    c). remove vgroup wal file.
+  // 7. remove vgroup wal file.
   for (const auto &vgrp : vgroups_) {
-    TS_LSN lsn = 0;
-    uint32_t vgrp_id = vgrp->GetVGroupID();
-    auto it = vgrp_lsn.find(vgrp_id);
-    if (it != vgrp_lsn.end()) {
-      lsn = it->second;
-    } else {
-      LOG_ERROR("Failed to find vgroup lsn from map.")
-      return KStatus::FAIL;
-    }
-    s = vgrp->UpdateLSN(ctx, lsn);
+    s = vgrp->RemoveChkFile(ctx);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to update vgroup checkpoint lsn.")
       return s;
@@ -1302,7 +1313,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
 
 KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                         HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                        uint64_t mtr_id) {
+                        uint64_t mtr_id, bool writeWAL) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1311,12 +1322,12 @@ KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
+  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, writeWAL);
 }
 
 KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                     std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                    uint64_t mtr_id) {
+                    uint64_t mtr_id, bool writeWAL) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1325,11 +1336,11 @@ KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id,
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
+  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id, writeWAL);
 }
 
 KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
+                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, bool writeWAL) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1894,8 +1905,18 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
   string value;
 
   if (GetClusterSetting(ctx, "ts.wal.wal_level", &value) == SUCCESS) {
-    options_.wal_level = std::stoll(value);
-    LOG_INFO("update wal level to %hhu", options_.wal_level)
+    if (std::stoll(value) != options_.wal_level) {
+      wal_level_mutex_.lock();
+      // wlock all vgroup rwlock
+      KStatus s = CreateCheckpoint(ctx);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to CreateCheckpoint while UpdateSetting.")
+      }
+      options_.wal_level = std::stoll(value);
+      LOG_INFO("update wal level to %hhu", options_.wal_level)
+      wal_level_mutex_.unlock();
+      // unlock
+    }
   }
 
   if (GetClusterSetting(ctx, "ts.wal.buffer_size", &value) == SUCCESS) {
@@ -2180,6 +2201,10 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
       snapshots_[snapshot_id].imgrated_rows);
     }
     snapshots_.erase(snapshot_id);
+  }
+  auto s = BatchJobFinish(ctx, snapshot_id);
+  if (s == KStatus::SUCCESS) {
+    return s;
   }
   LOG_INFO("DeleteSnapshot succeeded, snapshot[%lu]", snapshot_id);
   return KStatus::SUCCESS;

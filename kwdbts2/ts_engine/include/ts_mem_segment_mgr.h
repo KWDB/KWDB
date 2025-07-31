@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "libkwdbts2.h"
+#include "ts_engine_schema_manager.h"
 #include "ts_payload.h"
 #include "inlineskiplist.h"
 #include "ts_segment.h"
@@ -176,17 +177,11 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
 
-  size_t Size() {
-    return arena_.MemoryAllocatedBytes();
-  }
+  size_t Size() { return arena_.MemoryAllocatedBytes(); }
 
-  uint32_t GetRowNum() {
-    return intent_row_num_.load();
-  }
+  uint32_t GetRowNum() { return intent_row_num_.load(); }
 
-  inline void AllocRowNum(uint32_t row_num) {
-    intent_row_num_.fetch_add(row_num);
-  }
+  inline void AllocRowNum(uint32_t row_num) { intent_row_num_.fetch_add(row_num); }
 
   bool AppendOneRow(TSMemSegRowData& row);
 
@@ -196,9 +191,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
 
-  inline uint32_t GetMemSegmentSize() {
-    return cur_size_.load();
-  }
+  inline uint32_t GetMemSegmentSize() { return cur_size_.load(); }
 
   inline bool SetImm() {
     TsMemSegmentStatus tmp = MEM_SEGMENT_INITED;
@@ -210,17 +203,11 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     return status_.compare_exchange_strong(tmp, MEM_SEGMENT_FLUSHING);
   }
 
-  inline void SetDeleting() {
-    status_.store(MEM_SEGMENT_DELETING);
-  }
+  inline void SetDeleting() { status_.store(MEM_SEGMENT_DELETING); }
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
-                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
-                        uint32_t scan_version) override;
-
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks) {
-    return GetBlockSpans(filter, blocks, nullptr, 0);
-  }
+                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) override;
+  KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr);
 };
 
 class TsMemSegBlock : public TsBlock {

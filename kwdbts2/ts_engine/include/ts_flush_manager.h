@@ -18,6 +18,7 @@
 #include <deque>
 #include <vector>
 #include <utility>
+#include "settings.h"
 #include "ts_common.h"
 #include "ts_vgroup.h"
 

@@ -224,7 +224,7 @@ TEST_F(TestEngine, updatetag) {
     k_uint32 p_len = 0;
     data_value = GenSomePayloadData(ctx_, row_num_, p_len, start_ts1 + i * 100, &meta, 10, 1, false);
     TSSlice payload1{data_value, p_len};
-    ASSERT_EQ(tbl_range->PutEntity(ctx_, payload1, 0), KStatus::SUCCESS);
+    ASSERT_EQ(tbl_range->PutEntity(ctx_, payload1, 0, true), KStatus::SUCCESS);
     delete[] data_value;
   }
   // tag iterator

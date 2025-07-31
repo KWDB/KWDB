@@ -266,6 +266,7 @@ kwdb_internal       kwdb_object_create_statement
 kwdb_internal       kwdb_procedures
 kwdb_internal       kwdb_retention
 kwdb_internal       kwdb_schedules
+kwdb_internal       kwdb_streams
 kwdb_internal       kwdb_tse_info
 kwdb_internal       leases
 kwdb_internal       node_build_info
@@ -419,6 +420,7 @@ kwdb_object_create_statement
 kwdb_procedures
 kwdb_retention
 kwdb_schedules
+kwdb_streams
 kwdb_tse_info
 leases
 node_build_info
@@ -580,6 +582,7 @@ system         kwdb_internal       kwdb_object_create_statement       SYSTEM VIE
 system         kwdb_internal       kwdb_procedures                    SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_retention                     SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_schedules                     SYSTEM VIEW  NO                  1        1283818853
+system         kwdb_internal       kwdb_streams                       SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_tse_info                      SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       leases                             SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       node_build_info                    SYSTEM VIEW  NO                  1        1283818853
@@ -684,6 +687,8 @@ system         public              kwdb_ts_table                      BASE TABLE
 system         public              eventlog                           BASE TABLE   YES                 1        630200280
 system         public              scheduled_jobs                     BASE TABLE   YES                 1        630200280
 system         public              user_defined_routine               BASE TABLE   YES                 1        630200280
+system         public              kwdb_cdc_watermark                 BASE TABLE   YES                 1        630200280
+system         public              kwdb_streams                       BASE TABLE   YES                 1        630200280
 
 
 statement ok
@@ -773,6 +778,12 @@ system              public             630200280_15_2_not_null   system         
 system              public             630200280_15_3_not_null   system         public        jobs                             CHECK            NO             NO
 system              public             630200280_15_4_not_null   system         public        jobs                             CHECK            NO             NO
 system              public             primary                   system         public        jobs                             PRIMARY KEY      NO             NO
+system              public             630200280_60_1_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
+system              public             630200280_60_2_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
+system              public             630200280_60_3_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
+system              public             630200280_60_4_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
+system              public             630200280_60_5_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
+system              public             primary                   system         public        kwdb_cdc_watermark               PRIMARY KEY      NO             NO
 system              public             630200280_42_10_not_null  system         public        kwdb_replication_info            CHECK            NO             NO
 system              public             630200280_42_11_not_null  system         public        kwdb_replication_info            CHECK            NO             NO
 system              public             630200280_42_1_not_null   system         public        kwdb_replication_info            CHECK            NO             NO
@@ -785,6 +796,18 @@ system              public             630200280_42_7_not_null   system         
 system              public             630200280_42_8_not_null   system         public        kwdb_replication_info            CHECK            NO             NO
 system              public             630200280_42_9_not_null   system         public        kwdb_replication_info            CHECK            NO             NO
 system              public             primary                   system         public        kwdb_replication_info            PRIMARY KEY      NO             NO
+system              public             630200280_61_10_not_null  system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_1_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_2_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_3_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_4_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_5_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_6_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_7_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_8_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             630200280_61_9_not_null   system         public        kwdb_streams                     CHECK            NO             NO
+system              public             primary                   system         public        kwdb_streams                     PRIMARY KEY      NO             NO
+system              public             unique_name_idx           system         public        kwdb_streams                     UNIQUE           NO             NO
 system              public             630200280_47_1_not_null   system         public        kwdb_ts_table                    CHECK            NO             NO
 system              public             630200280_47_2_not_null   system         public        kwdb_ts_table                    CHECK            NO             NO
 system              public             630200280_47_3_not_null   system         public        kwdb_ts_table                    CHECK            NO             NO
@@ -1066,6 +1089,21 @@ system              public             630200280_58_7_not_null   creator IS NOT 
 system              public             630200280_58_8_not_null   create_time IS NOT NULL
 system              public             630200280_58_9_not_null   modification_time IS NOT NULL
 system              public             630200280_5_1_not_null    id IS NOT NULL
+system              public             630200280_60_1_not_null   table_id IS NOT NULL
+system              public             630200280_60_2_not_null   task_id IS NOT NULL
+system              public             630200280_60_3_not_null   task_type IS NOT NULL
+system              public             630200280_60_4_not_null   internal_type IS NOT NULL
+system              public             630200280_60_5_not_null   low_watermark IS NOT NULL
+system              public             630200280_61_10_not_null  run_info IS NOT NULL
+system              public             630200280_61_1_not_null   id IS NOT NULL
+system              public             630200280_61_2_not_null   name IS NOT NULL
+system              public             630200280_61_3_not_null   create_by IS NOT NULL
+system              public             630200280_61_4_not_null   create_at IS NOT NULL
+system              public             630200280_61_5_not_null   status IS NOT NULL
+system              public             630200280_61_6_not_null   target_table_id IS NOT NULL
+system              public             630200280_61_7_not_null   source_table_id IS NOT NULL
+system              public             630200280_61_8_not_null   job_id IS NOT NULL
+system              public             630200280_61_9_not_null   parameters IS NOT NULL
 system              public             630200280_6_1_not_null    name IS NOT NULL
 system              public             630200280_6_2_not_null    value IS NOT NULL
 system              public             630200280_6_3_not_null    lastUpdated IS NOT NULL
@@ -1076,65 +1114,71 @@ SELECT *
 FROM system.information_schema.constraint_column_usage
 ORDER BY TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME
 ----
-table_catalog  table_schema  table_name                       column_name            constraint_catalog  constraint_schema  constraint_name
-system         public        audits                           audit_name             system              public             primary
-system         public        comments                         object_id              system              public             primary
-system         public        comments                         sub_id                 system              public             primary
-system         public        comments                         type                   system              public             primary
-system         public        descriptor                       id                     system              public             primary
-system         public        eventlog                         timestamp              system              public             primary
-system         public        eventlog                         uniqueID               system              public             primary
-system         public        jobs                             id                     system              public             primary
-system         public        kwdb_replication_info            agent_type             system              public             primary
-system         public        kwdb_replication_info            replica_desc           system              public             primary
-system         public        kwdb_ts_table                    db_name                system              public             unique_instance_name_idx
-system         public        kwdb_ts_table                    instance_id            system              public             primary
-system         public        kwdb_ts_table                    instance_name          system              public             unique_instance_name_idx
-system         public        lease                            descID                 system              public             primary
-system         public        lease                            expiration             system              public             primary
-system         public        lease                            nodeID                 system              public             primary
-system         public        lease                            version                system              public             primary
-system         public        locations                        localityKey            system              public             primary
-system         public        locations                        localityValue          system              public             primary
-system         public        namespace                        name                   system              public             primary
-system         public        namespace                        parentID               system              public             primary
-system         public        namespace2                       name                   system              public             primary
-system         public        namespace2                       parentID               system              public             primary
-system         public        namespace2                       parentSchemaID         system              public             primary
-system         public        protected_ts_meta                singleton              system              public             check_singleton
-system         public        protected_ts_meta                singleton              system              public             primary
-system         public        protected_ts_records             id                     system              public             primary
-system         public        rangelog                         timestamp              system              public             primary
-system         public        rangelog                         uniqueID               system              public             primary
-system         public        replication_constraint_stats     config                 system              public             primary
-system         public        replication_constraint_stats     subzone_id             system              public             primary
-system         public        replication_constraint_stats     type                   system              public             primary
-system         public        replication_constraint_stats     zone_id                system              public             primary
-system         public        replication_critical_localities  locality               system              public             primary
-system         public        replication_critical_localities  subzone_id             system              public             primary
-system         public        replication_critical_localities  zone_id                system              public             primary
-system         public        replication_stats                subzone_id             system              public             primary
-system         public        replication_stats                zone_id                system              public             primary
-system         public        reports_meta                     id                     system              public             primary
-system         public        role_members                     member                 system              public             primary
-system         public        role_members                     role                   system              public             primary
-system         public        role_options                     option                 system              public             primary
-system         public        role_options                     username               system              public             primary
-system         public        scheduled_jobs                   schedule_id            system              public             primary
-system         public        settings                         name                   system              public             primary
-system         public        statement_bundle_chunks          id                     system              public             primary
-system         public        statement_diagnostics            id                     system              public             primary
-system         public        statement_diagnostics_requests   id                     system              public             primary
-system         public        table_statistics                 statisticID            system              public             primary
-system         public        table_statistics                 tableID                system              public             primary
-system         public        ui                               key                    system              public             primary
-system         public        user_defined_routine             db_id                  system              public             primary
-system         public        user_defined_routine             id                     system              public             id_idx
-system         public        user_defined_routine             name                   system              public             primary
-system         public        user_defined_routine             schema_id              system              public             primary
-system         public        users                            username               system              public             primary
-system         public        web_sessions                     id                     system              public             primary
-system         public        zones                            id                     system              public             primary
+table_catalog  table_schema  table_name                       column_name     constraint_catalog  constraint_schema  constraint_name
+system         public        audits                           audit_name      system              public             primary
+system         public        comments                         object_id       system              public             primary
+system         public        comments                         sub_id          system              public             primary
+system         public        comments                         type            system              public             primary
+system         public        descriptor                       id              system              public             primary
+system         public        eventlog                         timestamp       system              public             primary
+system         public        eventlog                         uniqueID        system              public             primary
+system         public        jobs                             id              system              public             primary
+system         public        kwdb_cdc_watermark               internal_type   system              public             primary
+system         public        kwdb_cdc_watermark               table_id        system              public             primary
+system         public        kwdb_cdc_watermark               task_id         system              public             primary
+system         public        kwdb_cdc_watermark               task_type       system              public             primary
+system         public        kwdb_replication_info            agent_type      system              public             primary
+system         public        kwdb_replication_info            replica_desc    system              public             primary
+system         public        kwdb_streams                     id              system              public             primary
+system         public        kwdb_streams                     name            system              public             unique_name_idx
+system         public        kwdb_ts_table                    db_name         system              public             unique_instance_name_idx
+system         public        kwdb_ts_table                    instance_id     system              public             primary
+system         public        kwdb_ts_table                    instance_name   system              public             unique_instance_name_idx
+system         public        lease                            descID          system              public             primary
+system         public        lease                            expiration      system              public             primary
+system         public        lease                            nodeID          system              public             primary
+system         public        lease                            version         system              public             primary
+system         public        locations                        localityKey     system              public             primary
+system         public        locations                        localityValue   system              public             primary
+system         public        namespace                        name            system              public             primary
+system         public        namespace                        parentID        system              public             primary
+system         public        namespace2                       name            system              public             primary
+system         public        namespace2                       parentID        system              public             primary
+system         public        namespace2                       parentSchemaID  system              public             primary
+system         public        protected_ts_meta                singleton       system              public             check_singleton
+system         public        protected_ts_meta                singleton       system              public             primary
+system         public        protected_ts_records             id              system              public             primary
+system         public        rangelog                         timestamp       system              public             primary
+system         public        rangelog                         uniqueID        system              public             primary
+system         public        replication_constraint_stats     config          system              public             primary
+system         public        replication_constraint_stats     subzone_id      system              public             primary
+system         public        replication_constraint_stats     type            system              public             primary
+system         public        replication_constraint_stats     zone_id         system              public             primary
+system         public        replication_critical_localities  locality        system              public             primary
+system         public        replication_critical_localities  subzone_id      system              public             primary
+system         public        replication_critical_localities  zone_id         system              public             primary
+system         public        replication_stats                subzone_id      system              public             primary
+system         public        replication_stats                zone_id         system              public             primary
+system         public        reports_meta                     id              system              public             primary
+system         public        role_members                     member          system              public             primary
+system         public        role_members                     role            system              public             primary
+system         public        role_options                     option          system              public             primary
+system         public        role_options                     username        system              public             primary
+system         public        scheduled_jobs                   schedule_id     system              public             primary
+system         public        settings                         name            system              public             primary
+system         public        statement_bundle_chunks          id              system              public             primary
+system         public        statement_diagnostics            id              system              public             primary
+system         public        statement_diagnostics_requests   id              system              public             primary
+system         public        table_statistics                 statisticID     system              public             primary
+system         public        table_statistics                 tableID         system              public             primary
+system         public        ui                               key             system              public             primary
+system         public        user_defined_routine             db_id           system              public             primary
+system         public        user_defined_routine             id              system              public             id_idx
+system         public        user_defined_routine             name            system              public             primary
+system         public        user_defined_routine             schema_id       system              public             primary
+system         public        users                            username        system              public             primary
+system         public        web_sessions                     id              system              public             primary
+system         public        zones                            id              system              public             primary
 
 statement ok
 CREATE DATABASE constraint_db
@@ -1255,6 +1299,12 @@ system         public        jobs                             id                
 system         public        jobs                             payload                   4
 system         public        jobs                             progress                  5
 system         public        jobs                             status                    2
+system         public        kwdb_cdc_watermark               client_id                 6
+system         public        kwdb_cdc_watermark               internal_type             4
+system         public        kwdb_cdc_watermark               low_watermark             5
+system         public        kwdb_cdc_watermark               table_id                  1
+system         public        kwdb_cdc_watermark               task_id                   2
+system         public        kwdb_cdc_watermark               task_type                 3
 system         public        kwdb_replication_info            agent_type                6
 system         public        kwdb_replication_info            dest_cluster_id           5
 system         public        kwdb_replication_info            replica_desc              8
@@ -1267,6 +1317,16 @@ system         public        kwdb_replication_info            replica_param     
 system         public        kwdb_replication_info            replica_rdbms_repl_done   12
 system         public        kwdb_replication_info            src_cluster_id            4
 system         public        kwdb_replication_info            status                    7
+system         public        kwdb_streams                     create_at                 4
+system         public        kwdb_streams                     create_by                 3
+system         public        kwdb_streams                     id                        1
+system         public        kwdb_streams                     job_id                    8
+system         public        kwdb_streams                     name                      2
+system         public        kwdb_streams                     parameters                9
+system         public        kwdb_streams                     run_info                  10
+system         public        kwdb_streams                     source_table_id           7
+system         public        kwdb_streams                     status                    5
+system         public        kwdb_streams                     target_table_id           6
 system         public        kwdb_ts_table                    db_name                   2
 system         public        kwdb_ts_table                    desc                      5
 system         public        kwdb_ts_table                    instance_id               1
@@ -1759,6 +1819,7 @@ NULL     public   system         kwdb_internal       kwdb_object_create_statemen
 NULL     public   system         kwdb_internal       kwdb_procedures                    SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_retention                     SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_schedules                     SELECT          NULL          YES
+NULL     public   system         kwdb_internal       kwdb_streams                       SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_tse_info                      SELECT          NULL          YES
 NULL     public   system         kwdb_internal       leases                             SELECT          NULL          YES
 NULL     public   system         kwdb_internal       node_build_info                    SELECT          NULL          YES
@@ -1886,6 +1947,16 @@ NULL     root     system         public              jobs                       
 NULL     root     system         public              jobs                               INSERT          NULL          NO
 NULL     root     system         public              jobs                               SELECT          NULL          YES
 NULL     root     system         public              jobs                               UPDATE          NULL          NO
+NULL     admin    system         public              kwdb_cdc_watermark                 DELETE          NULL          NO
+NULL     admin    system         public              kwdb_cdc_watermark                 GRANT           NULL          NO
+NULL     admin    system         public              kwdb_cdc_watermark                 INSERT          NULL          NO
+NULL     admin    system         public              kwdb_cdc_watermark                 SELECT          NULL          YES
+NULL     admin    system         public              kwdb_cdc_watermark                 UPDATE          NULL          NO
+NULL     root     system         public              kwdb_cdc_watermark                 DELETE          NULL          NO
+NULL     root     system         public              kwdb_cdc_watermark                 GRANT           NULL          NO
+NULL     root     system         public              kwdb_cdc_watermark                 INSERT          NULL          NO
+NULL     root     system         public              kwdb_cdc_watermark                 SELECT          NULL          YES
+NULL     root     system         public              kwdb_cdc_watermark                 UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              DELETE          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              GRANT           NULL          NO
 NULL     admin    system         public              kwdb_replication_info              INSERT          NULL          NO
@@ -1896,6 +1967,16 @@ NULL     root     system         public              kwdb_replication_info      
 NULL     root     system         public              kwdb_replication_info              INSERT          NULL          NO
 NULL     root     system         public              kwdb_replication_info              SELECT          NULL          YES
 NULL     root     system         public              kwdb_replication_info              UPDATE          NULL          NO
+NULL     admin    system         public              kwdb_streams                       DELETE          NULL          NO
+NULL     admin    system         public              kwdb_streams                       GRANT           NULL          NO
+NULL     admin    system         public              kwdb_streams                       INSERT          NULL          NO
+NULL     admin    system         public              kwdb_streams                       SELECT          NULL          YES
+NULL     admin    system         public              kwdb_streams                       UPDATE          NULL          NO
+NULL     root     system         public              kwdb_streams                       DELETE          NULL          NO
+NULL     root     system         public              kwdb_streams                       GRANT           NULL          NO
+NULL     root     system         public              kwdb_streams                       INSERT          NULL          NO
+NULL     root     system         public              kwdb_streams                       SELECT          NULL          YES
+NULL     root     system         public              kwdb_streams                       UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      DELETE          NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      GRANT           NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      INSERT          NULL          NO

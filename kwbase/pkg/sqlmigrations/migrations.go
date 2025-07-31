@@ -343,6 +343,14 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionUDR),
 		newDescriptorIDs:    staticIDs(keys.UDRTableID),
 	},
+	{
+		name:   "create system.kwdb_cdc_watermark table",
+		workFn: createCDCWatermarkTable,
+	},
+	{
+		name:   "create system.kwdb_streams table",
+		workFn: createStreamsTable,
+	},
 }
 
 func staticIDs(ids ...sqlbase.ID) func(ctx context.Context, db db) ([]sqlbase.ID, error) {
@@ -1882,4 +1890,14 @@ func createScheduledJobsTable(ctx context.Context, r runner) error {
 
 func createUDRTable(ctx context.Context, r runner) error {
 	return createSystemTable(ctx, r, sqlbase.UDRTable)
+}
+
+// createCDCWatermarkTable create CDC watermark table in the system database
+func createCDCWatermarkTable(ctx context.Context, r runner) error {
+	return createSystemTable(ctx, r, sqlbase.CDCWatermarkTable)
+}
+
+// createStreamsTable create stream metadata table in the system database
+func createStreamsTable(ctx context.Context, r runner) error {
+	return createSystemTable(ctx, r, sqlbase.StreamsTable)
 }

@@ -444,6 +444,11 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 
 	// row count of full table.
 	rowCount := stats.RowCount
+	if tsScan.BlockFilter != nil {
+		// we should to reduce count to select this expr if block filter exists.
+		// since the cost of blockFilter cannot be accurately calculated at this time, it is temporarily estimated as 0.5.
+		rowCount = stats.RowCount * 0.5
+	}
 	// cost of full scan table.
 	fullScanTblCost := tableScanCostUnit * float64(colsWith) * rowCount
 	// cost of full scan tag table.

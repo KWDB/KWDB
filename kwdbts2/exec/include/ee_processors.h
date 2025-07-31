@@ -13,7 +13,9 @@
 #pragma once
 
 #include <list>
+#include <memory>
 #include <vector>
+#include <unordered_map>
 
 #include "cm_assert.h"
 #include "ee_base_op.h"
@@ -24,6 +26,8 @@
 namespace kwdbts {
 
 class TSFlowSpec;
+class PipelineGroup;
+class PipelineTask;
 
 /**
  * @brief Physical plan processor
@@ -31,25 +35,22 @@ class TSFlowSpec;
  */
 class Processors {
  private:
-  /**
-   * @brief Recursive creating operators' tree.
-   * @param ctx
-   * @param processor_id
-   * @param iterator 
-   * @param table 
-   * @return KStatus
-   */
-  KStatus InitProcessorsOptimization(kwdbContext_p ctx, k_uint32 processor_id,
-                                     BaseOperator **iterator, TABLE **table);
+  void FindTopProcessorId();
+  KStatus BuildOperator(kwdbContext_p ctx);
+  KStatus CreateTable(kwdbContext_p ctx, TABLE **table, const TSProcessorCoreUnion& core);
+  KStatus ConnectOperator(kwdbContext_p ctx);
+  KStatus ReCreateOperator(kwdbContext_p ctx);
+  KStatus TransformOperator(kwdbContext_p ctx);
+  KStatus BuildTopOperator(kwdbContext_p ctx);
+  KStatus BuildPipeline(kwdbContext_p ctx);
+  KStatus ScheduleTasks(kwdbContext_p ctx);
   inline EEIteratorErrCode EncodeDataChunk(kwdbContext_p ctx, DataChunk *chunk,
                                     EE_StringInfo msgBuffer, k_bool is_pg);
-  inline void FindTopProcessorId(k_uint32 processor_id);
 
  public:
   Processors()
       : fspec_(nullptr),
         root_iterator_(nullptr),
-        table_(nullptr),
         b_init_(KFALSE),
         b_close_(KFALSE) {}
 
@@ -91,16 +92,21 @@ class Processors {
   // root operator
   BaseOperator *root_iterator_;
   // metadata table
-  TABLE *table_{nullptr};
+  std::vector<TABLE *> tables_{nullptr};
   // mark init
   k_bool b_init_{false};
   // mark close
   k_bool b_close_{false};
-  std::list<BaseOperator *> iter_list_;
+  std::vector<BaseOperator *> operators_;
+  std::vector<BaseOperator *> new_operators_;
+  std::unordered_map<k_int32, BaseOperator *> stream_input_id_;
   // limit, for pgwire encoding
   k_int64 command_limit_{0};
   std::atomic<k_int64> count_for_limit_{0};
   TsFetcherCollection collection_;
   k_uint32 top_process_id_{0};
+  PipelineGroup *root_pipeline_{nullptr};
+  std::vector<PipelineGroup *> pipelines_;
+  std::vector<std::weak_ptr<PipelineTask> > weak_tasks_;
 };
 }  // namespace kwdbts

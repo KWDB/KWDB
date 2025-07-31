@@ -18,7 +18,6 @@
 
 #include "cm_func.h"
 #include "ee_row_batch.h"
-#include "ee_flow_param.h"
 #include "ee_global.h"
 #include "ee_storage_handler.h"
 #include "ee_pb_plan.pb.h"
@@ -30,11 +29,10 @@ namespace kwdbts {
 
 TagScanOperator::TagScanOperator(TsFetcherCollection *collection, TSTagReaderSpec* spec, TSPostProcessSpec* post,
                                  TABLE* table, int32_t processor_id)
-    : TagScanBaseOperator(collection, table, processor_id),
+    : TagScanBaseOperator(collection, table, post, processor_id),
       spec_(spec),
-      post_(post),
       schema_id_(0),
-      param_(post, table) {
+      param_(spec, post, table) {
   if (spec) {
     table->SetAccessMode(spec->accessmode());
     if (spec->primarytags_size() > 0) {
@@ -47,7 +45,7 @@ TagScanOperator::TagScanOperator(TsFetcherCollection *collection, TSTagReaderSpe
   }
 }
 
-TagScanOperator::~TagScanOperator() = default;
+TagScanOperator::~TagScanOperator() { }
 
 EEIteratorErrCode TagScanOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
@@ -57,32 +55,38 @@ EEIteratorErrCode TagScanOperator::Init(kwdbContext_p ctx) {
   }
   EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
   do {
+    param_.ParserTagSpec(ctx);
+    object_id_ = param_.GetObjectId();
     // resolve tag
-    param_.ResolveScanTags(ctx);
+    param_.ParserScanTags(ctx);
     // post->filter;
-    ret = param_.ResolveFilter(ctx, &filter_, true);
+    ret = param_.ParserFilter(ctx, &filter_);
     if (EEIteratorErrCode::EE_OK != ret) {
       LOG_ERROR("ReaderPostResolve::ResolveFilter() failed");
       break;
     }
     if (object_id_ > 0) {
+      // parser input fields
+      ret = param_.ParserInputField(ctx);
+      if (ret != EEIteratorErrCode::EE_OK) {
+        LOG_ERROR("ParserInputField() failed");
+        break;
+      }
       // renders num
       param_.RenderSize(ctx, &num_);
-      ret = param_.ResolveRender(ctx, &renders_, num_);
+      ret = param_.ParserRender(ctx, &renders_, num_);
       if (ret != EEIteratorErrCode::EE_OK) {
         LOG_ERROR("ResolveRender() failed");
         break;
       }
-      // resolve render output type
-      if (table_->only_tag_) {
-        param_.ResolveOutputType(ctx, renders_, num_);
-      }
+
       // Output Fields
-      ret = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+      ret = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
       if (EEIteratorErrCode::EE_OK != ret) {
         LOG_ERROR("ResolveOutputFields() failed");
         break;
       }
+
       ret = InitOutputColInfo(output_fields_);
       if (ret != EEIteratorErrCode::EE_OK) {
         break;
@@ -106,6 +110,10 @@ EEIteratorErrCode TagScanOperator::Start(kwdbContext_p ctx) {
   handler_ = new StorageHandler(table_);
   start_code_ = handler_->Init(ctx);
   if (start_code_ == EEIteratorErrCode::EE_ERROR) {
+    if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+      EEPgErrorInfo::ResetPgErrorInfo();
+      Return(EEIteratorErrCode::EE_OK);
+    }
     Return(start_code_);
   }
 
@@ -138,7 +146,9 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx) {
   auto start = std::chrono::high_resolution_clock::now();
   EEIteratorErrCode code = EEIteratorErrCode::EE_END_OF_RECORD;
   k_uint32 access_mode = table_->GetAccessMode();
-
+  if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   do {
     tag_rowbatch_ = std::make_shared<TagRowBatch>();
     tag_rowbatch_->Init(table_);
@@ -174,6 +184,9 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) 
   KWThdContext *thd = current_thd;
   k_uint32 access_mode = table_->GetAccessMode();
   auto start = std::chrono::high_resolution_clock::now();
+  if (table_->hash_points_.empty() && thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   do {
     tag_rowbatch_ = std::make_shared<TagRowBatch>();
     tag_rowbatch_->Init(table_);
@@ -218,7 +231,7 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) 
   } while (0);
   auto end = std::chrono::high_resolution_clock::now();
   if (chunk != nullptr) {
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     fetcher_.Update(chunk->Count(), (end - start).count(), 0, 0, 0, 0);
   }
 
@@ -248,10 +261,10 @@ EEIteratorErrCode TagScanOperator::Reset(kwdbContext_p ctx) {
   Return(EEIteratorErrCode::EE_OK)
 }
 
-KStatus TagScanOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode TagScanOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
   Reset(ctx);
-  Return(KStatus::SUCCESS);
+  Return(EEIteratorErrCode::EE_OK);
 }
 
 KStatus TagScanOperator::GetEntities(kwdbContext_p ctx,

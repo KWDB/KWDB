@@ -1,13 +1,13 @@
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan PSL v2.
-// You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-// See the Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details.
 
 #pragma once
 
@@ -17,15 +17,15 @@
 #include <queue>
 #include <vector>
 
-#include "ee_data_container.h"
 #include "cm_kwdb_context.h"
+#include "ee_data_container.h"
 #include "ee_encoding.h"
 #include "ee_executor.h"
 #include "ee_field.h"
 #include "ee_field_func.h"
 #include "ee_global.h"
-#include "ee_tag_row_batch.h"
 #include "ee_string_info.h"
+#include "ee_tag_row_batch.h"
 #include "kwdb_type.h"
 #include "me_metadata.pb.h"
 
@@ -65,9 +65,10 @@ class DataChunk : public IChunk {
   DataChunk() = default;
 
   /* Constructor & Deconstructor */
-  explicit DataChunk(ColumnInfo *col_info, k_int32 col_num, k_uint32 capacity = 0);
+  explicit DataChunk(ColumnInfo* col_info, k_int32 col_num,
+                     k_uint32 capacity = 0);
 
-  explicit DataChunk(ColumnInfo *col_info, k_int32 col_num, const char* buf,
+  explicit DataChunk(ColumnInfo* col_info, k_int32 col_num, const char* buf,
                      k_uint32 count, k_uint32 capacity);
 
   virtual ~DataChunk();
@@ -75,6 +76,8 @@ class DataChunk : public IChunk {
    * @return return false if memory allocation fails
    */
   virtual k_bool Initialize();
+
+  void DebugPrintData();
 
   /* Getter && Setter */
   [[nodiscard]] inline k_uint32 ColumnNum() const { return col_num_; }
@@ -104,9 +107,7 @@ class DataChunk : public IChunk {
   void SetCount(k_uint32 count) { count_ = count; }
 
   // data size in data chunk
-  inline k_uint32 Size() {
-    return data_size_;
-  }
+  inline k_uint32 Size() { return data_size_; }
 
   /* override methods */
   virtual DatumPtr GetData(k_uint32 row, k_uint32 col);
@@ -115,7 +116,8 @@ class DataChunk : public IChunk {
 
   virtual DatumPtr GetData(k_uint32 col);
 
-  // get data pointer of a column for a specific row for multiple model processing
+  // get data pointer of a column for a specific row for multiple model
+  // processing
   virtual DatumPtr GetDataPtr(k_uint32 row, k_uint32 col);
 
   virtual k_int32 NextLine();
@@ -131,8 +133,19 @@ class DataChunk : public IChunk {
   virtual KStatus Append(std::queue<DataChunkPtr>& buffer);
 
   // Append all columns whose row number are in [begin_row, end_row)
-  virtual KStatus Append(DataChunk* chunk, k_uint32 begin_row, k_uint32 end_row);
+  virtual KStatus Append(DataChunk* chunk, k_uint32 begin_row,
+                         k_uint32 end_row);
 
+  KStatus Append_Selective(DataChunk* src, const k_uint32* indexes,
+                           k_uint32 size);
+  KStatus Append_Selective(DataChunk* src, k_uint32 row);
+  k_int32 Compare(size_t left, size_t right, k_uint32 col_idx, DataChunk* rhs);
+  DataChunkPtr CloneEmpty(k_uint32 num_rows) {
+    DataChunkPtr chunk =
+        std::make_unique<DataChunk>(col_info_, col_num_, num_rows);
+    chunk->Initialize();
+    return chunk;
+  }
   ////////////////   Basic Methods   ///////////////////
 
   /**
@@ -200,7 +213,8 @@ class DataChunk : public IChunk {
                      bool set_not_null = true);
 
   /**
-   * @brief Put data into the data chunk, and the existing data will be overwritten.
+   * @brief Put data into the data chunk, and the existing data will be
+   * overwritten.
    * @param[in] ctx   kwdb context
    * @param[in] value data to be put into data chunk
    * @param[in] count number of rows
@@ -220,7 +234,8 @@ class DataChunk : public IChunk {
    * @param[in] value
    * @param[in] Field*
    */
-  KStatus InsertData(kwdbContext_p ctx, IChunk* value, std::vector<Field*> &output_fields);
+  KStatus InsertData(kwdbContext_p ctx, IChunk* value,
+                     std::vector<Field*>& output_fields);
 
   /**
    * @brief Insert data into location at (row, col). Expected return
@@ -239,8 +254,7 @@ class DataChunk : public IChunk {
   KStatus InsertDecimal(k_uint32 row, k_uint32 col, DatumPtr value,
                         k_bool is_double);
 
-
- /**
+  /**
    * @brief Copy data from another data chunk
    * @param[in] other
    * @param[in] begin
@@ -260,7 +274,8 @@ class DataChunk : public IChunk {
    * @param[in] begin
    * @param[in] end
    */
-  void CopyFrom(std::unique_ptr<DataChunk>& other, k_uint32 begin, k_uint32 end, bool is_reverse) {
+  void CopyFrom(std::unique_ptr<DataChunk>& other, k_uint32 begin, k_uint32 end,
+                bool is_reverse) {
     count_ = end - begin + 1;
     if (count_ <= 0) {
       return;
@@ -273,9 +288,11 @@ class DataChunk : public IChunk {
         if (other->IsNull(selection[src_row], col_idx)) {
           SetNull(row, col_idx);
         } else {
-          char *src_ptr = other->GetData(selection[src_row], col_idx);
-          k_uint32 col_offset = row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
-          std::memcpy(data_ + col_offset, src_ptr, col_info_[col_idx].fixed_storage_len);
+          char* src_ptr = other->GetData(selection[src_row], col_idx);
+          k_uint32 col_offset =
+              row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
+          std::memcpy(data_ + col_offset, src_ptr,
+                      col_info_[col_idx].fixed_storage_len);
           SetNotNull(row, col_idx);
         }
       }
@@ -290,9 +307,11 @@ class DataChunk : public IChunk {
       if (other->IsNull(col_idx)) {
         SetNull(row, col_idx);
       } else {
-        char *src_ptr = other->GetData(col_idx);
-        k_uint32 col_offset = row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
-        std::memcpy(data_ + col_offset, src_ptr, col_info_[col_idx].fixed_storage_len);
+        char* src_ptr = other->GetData(col_idx);
+        k_uint32 col_offset =
+            row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
+        std::memcpy(data_ + col_offset, src_ptr,
+                    col_info_[col_idx].fixed_storage_len);
         SetNotNull(row, col_idx);
       }
     }
@@ -306,29 +325,32 @@ class DataChunk : public IChunk {
       if (other->IsNull(other_row, col_idx)) {
         SetNull(row, col_idx);
       } else {
-        char *src_ptr = other->GetData(other_row, col_idx);
-        k_uint32 col_offset = row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
-        std::memcpy(data_ + col_offset, src_ptr, col_info_[col_idx].fixed_storage_len);
+        char* src_ptr = other->GetData(other_row, col_idx);
+        k_uint32 col_offset =
+            row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
+        std::memcpy(data_ + col_offset, src_ptr,
+                    col_info_[col_idx].fixed_storage_len);
         SetNotNull(row, col_idx);
       }
     }
     return SUCCESS;
   }
 
-  KStatus OffsetSort(std::vector<k_uint32> &selection, bool is_reverse);
+  KStatus OffsetSort(std::vector<k_uint32>& selection, bool is_reverse);
 
   /**
    * @brief Copy current line using row mode
    * @param[in] ctx
    * @param[in] renders
    */
-  void AddRecordByRow(kwdbContext_p ctx, RowBatch* row_batch, k_uint32 col, Field* field);
+  void AddRecordByRow(kwdbContext_p ctx, RowBatch* row_batch, k_uint32 col,
+                      Field* field);
 
   /**
- * @brief Copy current line using column mode
- * @param[in] ctx
- * @param[in] renders
- */
+   * @brief Copy current line using column mode
+   * @param[in] ctx
+   * @param[in] renders
+   */
   KStatus AddRecordByColumn(kwdbContext_p ctx, RowBatch* row_batch, Field** renders);
   KStatus AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* row_batch, Field** renders);
   /**
@@ -341,7 +363,8 @@ class DataChunk : public IChunk {
                           Field** renders, bool batch_copy = false);
 
   ////////////////   Encoding func  ///////////////////
-  KStatus Encoding(kwdbContext_p ctx, TsNextRetState nextState, k_int64* command_limit,
+  KStatus Encoding(kwdbContext_p ctx, TsNextRetState nextState,
+                   bool use_query_short_circuit, k_int64* command_limit,
                    std::atomic<k_int64>* count_for_limit);
   /**
    * @brief Encode data at coordinate location (row, col) using kwbase protocol.
@@ -362,9 +385,10 @@ class DataChunk : public IChunk {
   KStatus PgResultData(kwdbContext_p ctx, k_uint32 row,
                        const EE_StringInfo& info);
 
-  virtual EEIteratorErrCode VectorizeData(kwdbContext_p ctx, DataInfo *data_info);
+  virtual EEIteratorErrCode VectorizeData(kwdbContext_p ctx,
+                                          DataInfo* data_info);
 
-  void ResetDataPtr(char *data_ptr, k_int32 data_count) {
+  void ResetDataPtr(char* data_ptr, k_int32 data_count) {
     data_ = data_ptr;
     count_ = data_count;
     current_line_ = -1;
@@ -374,7 +398,7 @@ class DataChunk : public IChunk {
    * @brief Reset the data ptr and free the previous buffer if it's data owner
    * @param[in] data_ptr  the new data ptr to be set
    */
-  void ResetDataPtr(char *data_ptr) {
+  void ResetDataPtr(char* data_ptr) {
     if (data_ && is_data_owner_) {
       kwdbts::EE_MemPoolFree(g_pstBufferPoolInfo, data_);
     }
@@ -389,7 +413,7 @@ class DataChunk : public IChunk {
    * @param[in] raw
    * @param[in] info
    */
-  template<typename T>
+  template <typename T>
   void EncodeDecimal(DatumPtr raw, const EE_StringInfo& info) {
     T val;
     std::memcpy(&val, raw, sizeof(T));
@@ -425,7 +449,7 @@ class DataChunk : public IChunk {
    * @param[in] raw
    * @param[in] info
    */
-  template<typename T>
+  template <typename T>
   KStatus PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& info) {
     T val;
     std::memcpy(&val, raw, sizeof(T));
@@ -466,12 +490,21 @@ class DataChunk : public IChunk {
   static const int SIZE_LIMIT = ROW_BUFFER_SIZE;
   static const int MIN_CAPACITY = 1;
 
-  static k_uint32 EstimateCapacity(ColumnInfo *column_info, k_int32 col_num);
+  static k_uint32 EstimateCapacity(ColumnInfo* column_info, k_int32 col_num);
 
-  static k_uint32 ComputeRowSize(ColumnInfo *column_info, k_int32 col_num);
+  static k_uint32 ComputeRowSize(ColumnInfo* column_info, k_int32 col_num);
 
   // convert one row to tag data format
-  KStatus ConvertToTagData(kwdbContext_p ctx, k_uint32 row, k_uint32 col, TagRawData& tag_raw_data, DatumPtr &rel_data_ptr);
+  KStatus ConvertToTagData(kwdbContext_p ctx, k_uint32 row, k_uint32 col,
+                           TagRawData& tag_raw_data, DatumPtr& rel_data_ptr);
+
+  bool IsEncoding() { return encoding_buf_ != nullptr; }
+  k_uint32 GetEncodingBufferLength() { return encoding_len_; }
+
+  char* GetEncodingBuffer() { return encoding_buf_; }
+
+  bool SetEncodingBuf(const unsigned char* buf, k_uint32 len);
+
   void GetEncodingBuffer(char** buf, k_uint32* len, k_uint32* count) {
     *buf = encoding_buf_;
     *len = encoding_len_;
@@ -493,19 +526,25 @@ class DataChunk : public IChunk {
    */
   EntityResultIndex& GetEntityIndex(k_uint32 row);
 
+  void Reset() {
+    count_ = 0;
+    memset(data_, 0, data_size_);
+  }
+
  protected:
   bool is_data_owner_{true};
-  char* data_{nullptr};  // Multiple rows of column data（not tag）
-  ColumnInfo *col_info_{nullptr};  // column info
-  k_uint32 *col_offset_{nullptr};  // column offset
-  k_uint32 *bitmap_offset_{nullptr};  // bitmap offset
+  char* data_{nullptr};               // Multiple rows of column data（not tag）
+  ColumnInfo* col_info_{nullptr};     // column info
+  k_uint32* col_offset_{nullptr};     // column offset
+  k_uint32* bitmap_offset_{nullptr};  // bitmap offset
 
   k_uint32 capacity_{0};     // data capacity
   k_uint32 count_{0};        // total number
   k_uint32 bitmap_size_{0};  // length of bitmap
   k_uint32 row_size_{0};     // the total length of one row
   k_bits32 col_num_{0};      // the number of col
-  k_uint32 data_size_{0};    // data size (capacity_ + 7) / 8 * col_num_ + capacity_ * row_size_;
+  k_uint32 data_size_{
+      0};  // data size (capacity_ + 7) / 8 * col_num_ + capacity_ * row_size_;
 
   k_int32 current_line_{-1};  // current row
   char* encoding_buf_{nullptr};

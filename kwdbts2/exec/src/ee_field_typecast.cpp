@@ -216,6 +216,41 @@ inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length, 
   return SUCCESS;
 }
 
+inline KStatus GetPtrTimestamptzToString(k_int64 timestamp, char *output, k_uint32 length, k_int64 type_scale,
+                                   k_int8 time_zone) {
+  time_t time = static_cast<time_t>(timestamp / type_scale) + time_zone * 3600;
+  struct tm local_time;
+  memset(&local_time, 0, sizeof(local_time));
+  gmtime_r(&time, &local_time);
+
+  char buffer[30] = {0};
+  std::strftime(buffer, 30, "%04Y-%m-%d %H:%M:%S", &local_time);
+
+  int seconds_after_decimal = timestamp % type_scale;
+  KString milli_second_str = ".";
+  if (seconds_after_decimal == 0) {
+    milli_second_str = "";
+  } else {
+    type_scale /= 10;
+    while (type_scale > seconds_after_decimal) {
+      milli_second_str += '0';
+      type_scale /= 10;
+    }
+    while (seconds_after_decimal % 10 == 0) {
+      seconds_after_decimal /= 10;
+    }
+    milli_second_str += to_string(seconds_after_decimal);
+  }
+  KString time_zone_str = "";
+  if (time_zone < 10) {
+    time_zone_str = "0";
+  }
+  time_zone_str += to_string(time_zone);
+  strncpy(output, (std::string(buffer) + milli_second_str + "+" + time_zone_str + ":00").c_str(), length - 1);
+  output[length - 1] = '\0';
+  return SUCCESS;
+}
+
 inline KStatus timestampToString(Field *field, char *output, k_uint32 length, k_int64 type_scale) {
   return timestamptzToString(field, output, length, type_scale, 0);
 }
@@ -223,6 +258,19 @@ inline KStatus timestampToString(Field *field, char *output, k_uint32 length, k_
 inline KStatus integerToString(Field *field, char *output, k_uint32 length) {
   strncpy(output, std::to_string(field->ValInt()).c_str(), length);
   output[length - 1] = '\0';
+  return SUCCESS;
+}
+
+inline KStatus boolToString(Field *field, char *output, k_uint32 length) {
+  int iBoolLen = 0;
+  if (field->ValInt()) {
+    iBoolLen = 4;
+    strncpy(output, "true", iBoolLen);
+  } else {
+    iBoolLen = 5;
+    strncpy(output, "false", 5);
+  }
+  output[iBoolLen] = '\0';
   return SUCCESS;
 }
 
@@ -305,6 +353,81 @@ template class FieldTypeCastSigned<k_int32>;
 template class FieldTypeCastSigned<k_int64>;
 
 template <typename T>
+char *FieldTypeCastSigned<T>::get_ptr(RowBatch *batch) {
+  k_double64 v = 0;
+  KStatus err = SUCCESS;
+
+  char *ptr = field_->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" as type int, get null value");
+    return const_cast<char *>("");
+  }
+
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+      storage_len_ = sizeof(k_int64);
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL:
+      intvalue_ = field_->ValInt(ptr);
+      break;
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+      v = field_->ValReal(ptr);
+      if (isinf(v) || isnan(v)) {
+        err = FAIL;
+      }
+      intvalue_ = v;
+      break;
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      String str = field_->ValStr(ptr);
+      if (!str.empty()) {
+        err = strToInt64(const_cast<char *>(std::string(str.getptr(), str.length_).c_str()), intvalue_);
+      } else {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION, "could not parse \"\" as type int");
+        err = FAIL;
+      }
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast signed.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  if (field_->get_storage_type() == roachpb::DataType::TIMESTAMP ||
+      field_->get_storage_type() == roachpb::DataType::TIMESTAMPTZ ||
+      field_->get_storage_type() == roachpb::DataType::DATE) {
+    return reinterpret_cast<char *>(&intvalue_);
+  }
+
+  if (intvalue_ < std::numeric_limits<T>::lowest() || intvalue_ > std::numeric_limits<T>::max()) {
+    KString msg = "value is out of range for type " + getCustomTypeName<T>();
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE, msg.c_str());
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(&intvalue_);
+}
+
+template <typename T>
 FieldTypeCastSigned<T>::FieldTypeCastSigned(Field *field)
     : FieldTypeCast(field) {
   return_type_ = KWDBTypeFamily::IntFamily;
@@ -353,18 +476,19 @@ k_int64 FieldTypeCastSigned<T>::ValInt() {
     if (err != SUCCESS) {
       return err;
     }
+
     if (field_->get_storage_type() == roachpb::DataType::TIMESTAMP ||
         field_->get_storage_type() == roachpb::DataType::TIMESTAMPTZ ||
         field_->get_storage_type() == roachpb::DataType::DATE) {
       return in_v;
     }
-    if (in_v < std::numeric_limits<T>::lowest() ||
-        in_v > std::numeric_limits<T>::max()) {
+
+    if (in_v < std::numeric_limits<T>::lowest() || in_v > std::numeric_limits<T>::max()) {
       KString msg = "value is out of range for type " + getCustomTypeName<T>();
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
-                                    msg.c_str());
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE, msg.c_str());
       return 0;
     }
+
     return (T)in_v;
   }
 }
@@ -422,6 +546,64 @@ FieldTypeCastReal<T>::FieldTypeCastReal(Field *field) : FieldTypeCast(field) {
 }
 
 template <typename T>
+char *FieldTypeCastReal<T>::get_ptr(RowBatch *batch) {
+  k_int64 v = 0;
+  KStatus err = SUCCESS;
+  char *ptr = field_->get_ptr(batch);
+
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" as type float, get null value");
+    return const_cast<char *>("");
+  }
+
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL:
+      v = field_->ValInt(ptr);
+      doublevalue_ = v;
+      break;
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+      doublevalue_ = field_->ValReal(ptr);
+      break;
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      String str = field_->ValStr(ptr);
+      if (!str.empty()) {
+        err = strToDouble(const_cast<char *>(std::string(str.getptr(), str.length_).data()), doublevalue_);
+      } else {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION, "could not parse \"\" as type float");
+        err = FAIL;
+      }
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast real.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+  return reinterpret_cast<char *>(&doublevalue_);
+}
+
+template <typename T>
 k_int64 FieldTypeCastReal<T>::ValInt() {
   return ValReal();
 }
@@ -458,7 +640,7 @@ String FieldTypeCastReal<T>::ValStr() {
 }
 
 FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
-                                         KString &output_type)
+                                         const KString &output_type)
     : FieldTypeCast(field) {
   return_type_ = KWDBTypeFamily::StringFamily;
   if (output_type.find("VARCHAR") != std::string::npos) {
@@ -495,11 +677,20 @@ FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
   }
 
   switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
     case roachpb::DataType::SMALLINT:
     case roachpb::DataType::INT:
     case roachpb::DataType::BIGINT:
-    case roachpb::DataType::BOOL:
       func_ = integerToString;
+      break;
+    case roachpb::DataType::BOOL:
+      func_ = boolToString;
       break;
     case roachpb::DataType::FLOAT:
     case roachpb::DataType::DOUBLE:
@@ -517,11 +708,98 @@ FieldTypeCastString::FieldTypeCastString(Field *field, k_uint32 field_length,
       break;
     default:
       KString msg =
-        "invalid type " + field_->get_storage_type();
+          "invalid type " + std::to_string(field_->get_storage_type());
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
                                   msg.c_str());
       break;
   }
+}
+
+char *FieldTypeCastString::get_ptr(RowBatch *batch) {
+  char *ptr = field_->get_ptr(batch);
+  KStatus err = SUCCESS;
+
+  char in_v[storage_len_] = {0};
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" as type string, get null value");
+    return const_cast<char *>("");
+  }
+
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT: {
+      strncpy(in_v, std::to_string(field_->ValInt(ptr)).c_str(), storage_len_);
+      in_v[storage_len_ - 1] = '\0';
+      break;
+    }
+    case roachpb::DataType::BOOL: {
+      int iBoolLen = 0;
+      if (field_->ValInt(ptr)) {
+        iBoolLen = 4;
+        strncpy(in_v, "true", iBoolLen);
+      } else {
+        iBoolLen = 5;
+        strncpy(in_v, "false", iBoolLen);
+      }
+      in_v[iBoolLen] = '\0';
+      break;
+    }
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE: {
+      err = doubleToStr(field_->ValReal(ptr), in_v, storage_len_);
+      break;
+    }
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      String valstr = field_->ValStr(ptr);
+      k_uint32 tmp = storage_len_ - 1;
+      if (tmp > valstr.length_) tmp = valstr.length_;
+      strncpy(in_v, valstr.c_str(), tmp);
+      in_v[tmp] = '\0';
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast string.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  // truncate string
+  if (letter_len_ > 0) {
+    k_uint32 num = 0;
+    for (size_t i = 0; i < storage_len_; i++) {
+      if ((in_v[i] & 0xc0) != 0x80) {
+        if (num >= letter_len_) {
+          memset(in_v + i, 0, storage_len_ - 1 - i);
+          break;
+        }
+        num++;
+      }
+    }
+  }
+
+  String s(storage_len_);
+  snprintf(s.getptr(), storage_len_ + 1, "%s", in_v);
+  s.length_ = strlen(in_v);
+  strvalue_ = s;
+  return reinterpret_cast<char *>(strvalue_.ptr_);
 }
 
 k_int64 FieldTypeCastString::ValInt() { return 0; }
@@ -559,7 +837,7 @@ String FieldTypeCastString::ValStr() {
 }
 
 FieldTypeCastTimestamptz2String::FieldTypeCastTimestamptz2String(
-    Field *field, k_uint32 field_length, KString &output_type, k_int8 time_zone)
+    Field *field, k_uint32 field_length, const KString &output_type, k_int8 time_zone)
     : FieldTypeCast(field) {
   return_type_ = KWDBTypeFamily::StringFamily;
   // storage_type_ = roachpb::DataType::CHAR;
@@ -602,6 +880,63 @@ FieldTypeCastTimestamptz2String::FieldTypeCastTimestamptz2String(
       storage_type_ = roachpb::DataType::VARCHAR;
       storage_len_ = field_length > 0 ? field_length : 256;
   }
+}
+
+char *FieldTypeCastTimestamptz2String::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      char *ptr = field_->get_ptr(batch);
+      char in_v[storage_len_] = {0};
+      if (ptr == nullptr) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" as type cast_timestamptz2_string, get null value .");
+        return const_cast<char *>("");
+      }
+      k_int64 timestamp = field_->ValInt(ptr);
+      KStatus err = GetPtrTimestamptzToString(timestamp, in_v, storage_len_, type_scale_, time_zone_);
+      if (err == SUCCESS) {
+        String s(storage_len_);
+        snprintf(s.getptr(), storage_len_ + 1, "%s", in_v);
+        s.length_ = strlen(in_v);
+        strvalue_ = s;
+      } else {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" as type cast_timestamptz2_string .");
+        err = FAIL;
+      }
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
+                                    "unsupported data type for field cast_timestamptz2_string .");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(strvalue_.ptr_);;
 }
 
 k_int64 FieldTypeCastTimestamptz2String::ValInt() { return 0; }
@@ -692,7 +1027,68 @@ FieldTypeCastTimestampTz::FieldTypeCastTimestampTz(Field *field,
       break;
   }
 }
-
+char *FieldTypeCastTimestampTz::get_ptr(RowBatch *batch) {
+  char *ptr = field_->get_ptr(batch);
+  KStatus err = SUCCESS;
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" as type timestamptz, get null value");
+    return const_cast<char *>("");
+  }
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+      intvalue_ = field_->ValInt(ptr);
+      if (!I64_SAFE_ADD_CHECK(intvalue_, timezone_diff_)) {
+        err = FAIL;
+      } else {
+        intvalue_ += timezone_diff_;
+        err = convertTimePrecision(&intvalue_, field_->get_storage_type(), storage_type_) ? SUCCESS : FAIL;
+      }
+      break;
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+      intvalue_ = field_->ValInt(ptr);
+      if (!I64_SAFE_ADD_CHECK(intvalue_, timezone_diff_)) {
+        err = FAIL;
+      } else {
+        intvalue_ += timezone_diff_;
+      }
+      break;
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      String valstr = field_->ValStr(ptr);
+      if (!valstr.empty()) {
+        convertStringToTimestamp(std::string(valstr.getptr(), valstr.length_), type_scale_, &intvalue_);
+      } else {
+        err = FAIL;
+      }
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
+                                    "unsupported data type for field cast timestamptz.");
+      err = FAIL;
+      break;
+  }
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+  return reinterpret_cast<char *>(&intvalue_);
+}
 k_int64 FieldTypeCastTimestampTz::ValInt() {
   char *ptr = get_ptr();
   if (nullptr != ptr) {
@@ -749,6 +1145,68 @@ FieldTypeCastBool::FieldTypeCastBool(Field *field) : FieldTypeCast(field) {
   }
 }
 
+char *FieldTypeCastBool::get_ptr(RowBatch *batch) {
+  char *ptr = field_->get_ptr(batch);
+  KStatus err = SUCCESS;
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" as type bool, get null value");
+    return reinterpret_cast<char *>(&value_);
+  }
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+      value_ = field_->ValInt(ptr) != 0 ? true : false;
+      break;
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      String s = field_->ValStr(ptr);
+      std::string str = std::string(s.getptr(), s.length_);
+      if (str.empty()) {
+        EEPgErrorInfo::SetPgErrorInfo(
+            ERRCODE_INVALID_TEXT_REPRESENTATION,
+            "could not parse \"\" as type bool: invalid bool value");
+            err = FAIL;
+      } else {
+        if (str == "1" || str == "true") {
+          value_ = true;
+        } else if (str == "0" || str == "false") {
+          value_ = false;
+        } else {
+          KString msg = "could not parse \"" + str + "\" as type bool: invalid bool value";
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION, msg.c_str());
+          err = FAIL;
+        }
+      }
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast bool.");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+  return reinterpret_cast<char *>(&value_);
+}
+
 k_int64 FieldTypeCastBool::ValInt() {
   char *ptr = get_ptr();
   if (nullptr != ptr) {
@@ -779,6 +1237,67 @@ FieldTypeCastBytes::FieldTypeCastBytes(Field *field, k_uint32 field_length,
   storage_type_ = roachpb::DataType::VARBINARY;
   storage_len_ = field_length > 0 ? field_length : 256;
   bytes_len_ = bytes_length;
+}
+
+char *FieldTypeCastBytes::get_ptr(RowBatch *batch) {
+  KStatus err = SUCCESS;
+  switch (storage_type_) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL:
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE:
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY: {
+      char *ptr = field_->get_ptr(batch);
+      if (ptr == nullptr) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                      "could not parse \"\" as type cast_bytes, get null value .");
+        return const_cast<char *>("");
+      }
+      strvalue_ = field_->ValStr(ptr);
+      KString ret = std::string(strvalue_.getptr(), strvalue_.length_);
+      if (bytes_len_ == 0) {
+        return reinterpret_cast<char *>(strvalue_.ptr_);
+      }
+      if (ret.size() > bytes_len_) {
+        String s(bytes_len_);
+        snprintf(s.ptr_, bytes_len_ + 1, "%s", ret.substr(0, bytes_len_).c_str());
+        s.length_ = bytes_len_;
+        strvalue_ = s;
+      } else {
+        for (size_t i = ret.size(); i < bytes_len_; i++) {
+          ret += "\0";
+        }
+        String s1(ret.length());
+        snprintf(s1.ptr_, ret.length() + 1, "%s", ret.c_str());
+        s1.length_ = ret.length();
+        strvalue_ = s1;
+      }
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast_bytes .");
+      err = FAIL;
+      break;
+  }
+
+  if (err != SUCCESS) {
+    return const_cast<char *>("");
+  }
+
+  return reinterpret_cast<char *>(strvalue_.ptr_);
 }
 
 k_int64 FieldTypeCastBytes::ValInt() { return 0; }
@@ -815,6 +1334,56 @@ FieldTypeCastDecimal::FieldTypeCastDecimal(Field *field)
   storage_type_ = field->get_storage_type();
   sql_type_ = field->get_sql_type();
   storage_len_ = field->get_storage_length();
+}
+
+char *FieldTypeCastDecimal::get_ptr(RowBatch *batch) {
+  char *ptrResult = nullptr;
+  char *ptr = field_->get_ptr(batch);
+  if (ptr == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                  "could not parse \"\" as type cast_decimal, get null value");
+    return const_cast<char *>("");
+  }
+
+  switch (field_->get_storage_type()) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+    case roachpb::DataType::DATE:
+    case roachpb::DataType::SMALLINT:
+    case roachpb::DataType::INT:
+    case roachpb::DataType::BIGINT:
+    case roachpb::DataType::BOOL: {
+      intvalue_ = field_->ValInt(ptr);
+      ptrResult = reinterpret_cast<char *>(&intvalue_);
+      break;
+    }
+    case roachpb::DataType::FLOAT:
+    case roachpb::DataType::DOUBLE: {
+      doublevalue_ = field_->ValReal(ptr);
+      ptrResult = reinterpret_cast<char *>(&doublevalue_);
+      break;
+    }
+    case roachpb::DataType::CHAR:
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::BINARY:
+    case roachpb::DataType::VARBINARY: {
+      strvalue_ = field_->ValStr(ptr);
+      ptrResult = reinterpret_cast<char *>(strvalue_.ptr_);
+      break;
+    }
+    default:
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast_decimal");
+      ptrResult = const_cast<char *>("");;
+      break;
+  }
+
+  return ptrResult;
 }
 
 k_int64 FieldTypeCastDecimal::ValInt() {

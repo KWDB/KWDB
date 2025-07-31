@@ -19,7 +19,6 @@
 #include "ee_global.h"
 #include "ee_storage_handler.h"
 #include "ee_kwthd_context.h"
-#include "ee_aggregate_flow_spec.h"
 #include "ee_pb_plan.pb.h"
 #include "ee_common.h"
 
@@ -29,6 +28,12 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode ret;
   do {
+    if (!is_clone_) {
+     if (OperatorType::OPERATOR_POST_AGG_SCAN == parent_operators_[0]->Type()) {
+      has_post_agg_ = true;
+     }
+    }
+
     ignore_outputtypes_ = true;
     ret = TableScanOperator::Init(ctx);
     if (ret != EEIteratorErrCode::EE_OK) {
@@ -58,8 +63,7 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
       break;
     }
     // extract from agg spec
-    agg_param_ = new AggregatorSpecParam<TSAggregatorSpec>(this,
-                                                            const_cast<TSAggregatorSpec*>(&aggregation_spec_),
+    agg_param_ = new TsAggregateParser(const_cast<TSAggregatorSpec*>(&aggregation_spec_),
                                                             const_cast<TSPostProcessSpec*>(&aggregation_post_),
                                                             table_, this);
     if (nullptr == agg_param_) {
@@ -68,6 +72,8 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
       break;
     }
 
+    agg_param_->AddInput(this);
+
     if (aggregation_spec_.group_cols_size() <= 1) {
       disorder_ = true;
     }
@@ -75,21 +81,14 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
     agg_param_->RenderSize(ctx, &agg_num_);
 
     // resolve renders
-    ret = agg_param_->ResolveRender(ctx, &agg_renders_, agg_num_);
+    ret = agg_param_->ParserRender(ctx, &agg_renders_, agg_num_);
     if (ret != EEIteratorErrCode::EE_OK) {
       LOG_ERROR("ResolveRender() failed\n")
       break;
     }
 
-    // resolve output type (return type)
-    ret = agg_param_->ResolveOutputType(ctx, agg_renders_, agg_num_);
-    if (ret != EEIteratorErrCode::EE_OK) {
-      LOG_ERROR("ResolveOutputType() failed\n")
-      break;
-    }
-
     // resolve output Field
-    ret = agg_param_->ResolveOutputFields(ctx, agg_renders_, agg_num_, agg_output_fields_);
+    ret = agg_param_->ParserOutputFields(ctx, agg_renders_, agg_num_, agg_output_fields_, false);
     if (ret != EEIteratorErrCode::EE_OK) {
       LOG_ERROR("ResolveOutputFields() failed\n")
       break;
@@ -157,6 +156,9 @@ EEIteratorErrCode AggTableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   KWThdContext* thd = current_thd;
+  if (table_->hash_points_.empty() && thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   StorageHandler* handler = handler_;
   auto start = std::chrono::high_resolution_clock::now();
   do {
@@ -242,7 +244,7 @@ EEIteratorErrCode AggTableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
     } else {
       chunk = std::move(output_queue_.front());
     }
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
@@ -934,7 +936,10 @@ KStatus AggTableScanOperator::getAggResult(kwdbContext_p ctx, DataChunkPtr& chun
 }
 
 BaseOperator* AggTableScanOperator::Clone() {
-  BaseOperator* iter = NewIterator<AggTableScanOperator>(*this, input_, this->processor_id_);
+  BaseOperator* iter = NewIterator<AggTableScanOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(childrens_[0]);
+  }
   return iter;
 }
 

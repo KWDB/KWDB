@@ -204,6 +204,52 @@ func (node *CreateSchedule) Format(ctx *FmtCtx) {
 	}
 }
 
+// CreateStream represents a CREATE STREAM statement.
+type CreateStream struct {
+	StreamName  Name
+	Table       TableName
+	Options     KVOptions
+	Query       *Select
+	IfNotExists bool
+}
+
+var _ Statement = &CreateStream{}
+
+// Format implements the NodeFormatter interface.
+func (node *CreateStream) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE STREAM ")
+	if node.IfNotExists {
+		ctx.WriteString(" IF NOT EXISTS")
+	}
+	node.StreamName.Format(ctx)
+	ctx.WriteString(" INTO ")
+	ctx.FormatNode(&node.Table)
+	if node.Options != nil {
+		ctx.WriteString(" WITH OPTIONS")
+		ctx.FormatNode(&node.Options)
+	}
+	ctx.WriteString(" AS ")
+	ctx.FormatNode(node.Query)
+}
+
+// AlterStream represents an ALTER STREAM statement.
+type AlterStream struct {
+	StreamName Name
+	Options    KVOptions
+}
+
+var _ Statement = &AlterStream{}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterStream) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER STREAM ")
+	node.StreamName.Format(ctx)
+	if node.Options != nil {
+		ctx.WriteString(" SET OPTIONS ")
+		ctx.FormatNode(&node.Options)
+	}
+}
+
 // IndexElem represents a column with a direction in a CREATE INDEX statement.
 type IndexElem struct {
 	Column     Name

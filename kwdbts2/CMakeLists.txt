@@ -145,6 +145,35 @@ if(OPENMP_FOUND)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
+# Build brpc external project
+message(STATUS "Building brpc from source: ${PROJECT_SOURCE_DIR}/third_party/brpc-1.9.0")
+
+set(BRPC_VERSION 1.9.0)
+set(BRPC_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}")
+set(BRPC_PREFIX_DIR "${CMAKE_CURRENT_BINARY_DIR}/brpc-${BRPC_VERSION}")
+set(BRPC_BUILD_DIR "${BRPC_PREFIX_DIR}/build")
+set(BRPC_OUTPUT_DIR "${BRPC_PREFIX_DIR}/output")
+
+include(ExternalProject)
+
+ExternalProject_Add(
+    brpc
+    SOURCE_DIR "${BRPC_SOURCE_DIR}"
+    PREFIX "${BRPC_PREFIX_DIR}"
+    BINARY_DIR "${BRPC_BUILD_DIR}"
+    CONFIGURE_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
+        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include --libs=/usr/lib
+    BUILD_COMMAND
+        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j$(nproc)
+    BUILD_IN_SOURCE 0
+    INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
+)
+
 set(MODULE_NAME kwdbts2)
 set(KWDBTS2_SERVER_LIB kwdbts2)
 
@@ -196,18 +225,21 @@ file(GLOB_RECURSE NART_PROTOS_EE
   roachpb/ee_pb_plan.proto)
 file(GLOB_RECURSE NART_PROTOS_META
   roachpb/me_metadata.proto)
+file(GLOB_RECURSE NART_PROTOS_BR
+  roachpb/br_internal_service.proto)
 generate_proto(${NART_PROTOS_META})
 generate_proto(${NART_PROTOS_EE})
+generate_proto(${NART_PROTOS_BR})
 
 # Build third-party libraries
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party)
 
 # Snappy
 set(SNAPPY_INSTALL_DIR ${THIRD_PARTY_DIR}/snappy_install)
-set(SNAPPY_CMAKE_ARGS 
-  -DCMAKE_INSTALL_PREFIX=${SNAPPY_INSTALL_DIR} 
-  -DCMAKE_CXX_STANDARD=17 
-  -DSNAPPY_BUILD_TESTS=OFF 
+set(SNAPPY_CMAKE_ARGS
+  -DCMAKE_INSTALL_PREFIX=${SNAPPY_INSTALL_DIR}
+  -DCMAKE_CXX_STANDARD=17
+  -DSNAPPY_BUILD_TESTS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
   -DCMAKE_BUILD_TYPE=Release
 )
@@ -226,6 +258,8 @@ set(TS_INCLUDE
         ../common/src/h
         ../common/src/include
         third_party/gtest-1.8.1/fused-src
+        third_party/brpc-1.9.0/src
+        ${BRPC_OUTPUT_DIR}/include
         include
         roachpb
         engine/include
@@ -236,6 +270,7 @@ set(TS_INCLUDE
         exec/include
         statistic/include
         ${SNAPPY_INCLUDE}
+        brpc/include
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -252,6 +287,7 @@ file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
         mmap/src/*.cpp
         mmap/src/lib/*.c
         statistic/src/*.cpp
+        brpc/src/*.cpp
         )
 else ()
     file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
@@ -265,6 +301,7 @@ else ()
             mmap/src/lib/*.c
             statistic/src/*.cpp
             icl/autonomy/src/*.cpp
+            brpc/src/*.cpp
     )
 endif()
 list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/tests/.*")
@@ -276,14 +313,20 @@ endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
 add_dependencies(${KWDBTS2_SERVER_LIB} snappy)
-target_link_libraries(${KWDBTS2_SERVER_LIB} 
+target_link_libraries(${KWDBTS2_SERVER_LIB}
   PRIVATE ${SNAPPY_LIB}
 )
+
+# Set brpc library dependency
+add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
     ${TS_INCLUDE}
+    ${BRPC_OUTPUT_DIR}/include
 	)
 
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
@@ -326,6 +369,7 @@ if (WITH_TESTS)
               #engine/tests/*.cpp
               ts_engine/tests/*.cpp
               statistic/tests/*.cpp
+              brpc/tests/*.cpp
               )
   else ()
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
@@ -336,6 +380,7 @@ if (WITH_TESTS)
               ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp
+              brpc/tests/*.cpp
       )
   endif()
   foreach (tsrc ${KWDBTS2_SERVER_TEST_SRC})

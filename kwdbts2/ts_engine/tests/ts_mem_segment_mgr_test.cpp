@@ -56,8 +56,7 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 }
 
 
-KStatus TsBlockSpan::GetFixLenColAddr(uint32_t blk_col_idx, char** value, TsBitmap& bitmap) {
-
+KStatus TsBlockSpan::GetFixLenColAddr(uint32_t blk_col_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
   auto s = block_->GetColAddr(blk_col_idx, {}, value);
   return s;
 }

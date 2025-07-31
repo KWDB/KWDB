@@ -113,11 +113,11 @@ type aggregatorBase struct {
 	// is the twice agg of count.
 	scalarGroupByWithSumInt bool
 
-	groupWindow groupWindow
+	groupWindow *groupWindow
 }
 
 type groupWindow struct {
-	rows               rowcontainer.MemRowContainer
+	rows               *rowcontainer.MemRowContainer
 	iter               rowcontainer.RowIterator
 	memMonitor         *mon.BytesMonitor
 	groupWindowValue   int
@@ -126,11 +126,69 @@ type groupWindow struct {
 	groupFirst         int32
 	groupLast          int32
 
-	stateWindowHelper   StateWindowHelper
-	countWindowHelper   CountWindowHelper
-	timeWindowHelper    TimeWindowHelper
-	sessionWindowHelper SessionWindowHelper
+	stateWindowHelper   *StateWindowHelper
+	countWindowHelper   *CountWindowHelper
+	timeWindowHelper    *TimeWindowHelper
+	sessionWindowHelper *SessionWindowHelper
 	startFlag           bool
+}
+
+// newGroupWindow return a new groupWindow with only one type of WindowHelper.
+func newGroupWindow(
+	evalCtx *tree.EvalContext,
+	groupWindowColID int32,
+	groupWindowTsColID int32,
+	groupWindowID []int32,
+) *groupWindow {
+	gWindow := &groupWindow{}
+
+	gWindow.groupWindowValue = 0
+	gWindow.groupWindowColID = groupWindowColID
+	gWindow.groupWindowTsColID = groupWindowTsColID
+
+	if len(groupWindowID) > 0 {
+		gWindow.groupFirst = groupWindowID[0]
+		gWindow.groupLast = groupWindowID[1]
+	}
+
+	switch evalCtx.GroupWindow.GroupWindowFunc {
+	case tree.StateWindow:
+		gWindow.stateWindowHelper = &StateWindowHelper{}
+	case tree.CountWindow:
+		gWindow.countWindowHelper = &CountWindowHelper{}
+		gWindow.rows = &rowcontainer.MemRowContainer{}
+	case tree.TimeWindow:
+		gWindow.timeWindowHelper = &TimeWindowHelper{}
+		gWindow.rows = &rowcontainer.MemRowContainer{}
+	case tree.SessionWindow:
+		gWindow.sessionWindowHelper = &SessionWindowHelper{}
+	default:
+	}
+	return gWindow
+}
+
+// newGroupWindowWithAllHelpers return a new groupWindow with all types of WindowHelper.
+func newGroupWindowWithAllHelpers(
+	groupWindowColID int32, groupWindowTsColID int32, groupWindowID []int32,
+) *groupWindow {
+	gWindow := &groupWindow{}
+
+	gWindow.groupWindowValue = 0
+	gWindow.groupWindowColID = groupWindowColID
+	gWindow.groupWindowTsColID = groupWindowTsColID
+
+	if len(groupWindowID) > 0 {
+		gWindow.groupFirst = groupWindowID[0]
+		gWindow.groupLast = groupWindowID[1]
+	}
+
+	gWindow.stateWindowHelper = &StateWindowHelper{}
+	gWindow.countWindowHelper = &CountWindowHelper{}
+	gWindow.timeWindowHelper = &TimeWindowHelper{}
+	gWindow.sessionWindowHelper = &SessionWindowHelper{}
+	gWindow.rows = &rowcontainer.MemRowContainer{}
+
+	return gWindow
 }
 
 // StateWindowHelper implement state_window.
@@ -321,10 +379,11 @@ func (gw *groupWindow) handleCountWindow(
 ) (err error) {
 	if gw.memMonitor == nil {
 		gw.memMonitor = execinfra.NewLimitedMonitor(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, flowCtx.Cfg, "group-window-func")
+
 		gw.rows.InitWithMon(
 			nil /* ordering */, typ, flowCtx.EvalCtx, gw.memMonitor, 0, /* rowCapacity */
 		)
-		gw.countWindowHelper = CountWindowHelper{
+		gw.countWindowHelper = &CountWindowHelper{
 			countValue:        0,
 			windowNum:         flowCtx.EvalCtx.GroupWindow.CountWindowHelper.WindowNum,
 			slidingWindowSize: flowCtx.EvalCtx.GroupWindow.CountWindowHelper.SlidingWindowSize,
@@ -696,6 +755,7 @@ func (gw *groupWindow) handleTimeWindowForRemainingValue(
 ) (err error) {
 	if gw.memMonitor == nil {
 		gw.memMonitor = execinfra.NewLimitedMonitor(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, flowCtx.Cfg, "group-window-func")
+
 		gw.rows.InitWithMon(
 			nil /* ordering */, typ, flowCtx.EvalCtx, gw.memMonitor, 0, /* rowCapacity */
 		)
@@ -898,22 +958,7 @@ func (ag *aggregatorBase) init(
 	ag.bucketsAcc = memMonitor.MakeBoundAccount()
 	ag.arena = stringarena.Make(&ag.bucketsAcc)
 	ag.aggFuncsAcc = memMonitor.MakeBoundAccount()
-	if len(spec.Group_WindowId) > 0 {
-		ag.groupWindow = groupWindow{
-			groupWindowValue:   0,
-			groupWindowColID:   spec.GroupWindowId,
-			groupWindowTsColID: spec.Group_WindowTscolid,
-			groupFirst:         spec.Group_WindowId[0],
-			groupLast:          spec.Group_WindowId[1],
-		}
-	} else {
-		ag.groupWindow = groupWindow{
-			groupWindowValue:   0,
-			groupWindowColID:   spec.GroupWindowId,
-			groupWindowTsColID: spec.Group_WindowTscolid,
-		}
-	}
-
+	ag.groupWindow = newGroupWindowWithAllHelpers(spec.GroupWindowId, spec.Group_WindowTscolid, spec.Group_WindowId)
 	ag.gapfill = gapfilltype{
 		groupTimeIndex:   groupTimeIndex,
 		anyNotNUllNum:    anyNotNUllNum,
@@ -1155,6 +1200,7 @@ const (
 	// aggEmittingRows means that accumulation has finished and rows are being
 	// sent to the output.
 	aggEmittingRows
+	aggForceEmittingRows
 )
 
 func newAggregator(
@@ -1473,17 +1519,24 @@ func (ag *orderedAggregator) accumulateRows() (
 				ag.MoveToDraining(err)
 				return aggStateUnknown, nil, nil
 			}
-			if ag.groupWindow.stateWindowHelper.IgnoreFlag {
-				ag.groupWindow.stateWindowHelper.IgnoreFlag = false
-				continue
-			}
-			if ag.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag {
-				ag.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag = false
-				continue
-			}
-			if (ag.groupWindow.timeWindowHelper.reading || ag.groupWindow.timeWindowHelper.noMatch) &&
-				ag.EvalCtx.GroupWindow.TimeWindowHelper.IsSlide {
-				continue
+
+			switch ag.EvalCtx.GroupWindow.GroupWindowFunc {
+			case tree.StateWindow:
+				if ag.groupWindow.stateWindowHelper.IgnoreFlag {
+					ag.groupWindow.stateWindowHelper.IgnoreFlag = false
+					continue
+				}
+			case tree.EventWindow:
+				if ag.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag {
+					ag.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag = false
+					continue
+				}
+			case tree.TimeWindow:
+				if (ag.groupWindow.timeWindowHelper.reading || ag.groupWindow.timeWindowHelper.noMatch) &&
+					ag.EvalCtx.GroupWindow.TimeWindowHelper.IsSlide {
+					continue
+				}
+			default:
 			}
 		}
 		if row == nil {

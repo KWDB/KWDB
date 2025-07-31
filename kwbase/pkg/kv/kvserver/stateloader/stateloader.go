@@ -670,7 +670,7 @@ func (rsl StateLoader) SetTsFlushedIndex(
 	)
 }
 
-// LoadTsFlushedIndex overwrites the HardState.
+// LoadTsFlushedIndex loads the ts flushed index.
 func (rsl StateLoader) LoadTsFlushedIndex(
 	ctx context.Context, reader storage.Reader,
 ) (uint64, error) {
@@ -691,4 +691,42 @@ func (rsl StateLoader) LoadTsFlushedIndex(
 		tsFlushedIndex = uint64(int64TsFlushedIndex)
 	}
 	return tsFlushedIndex, nil
+}
+
+// SetInconsistent overwrites the inconsistent flag.
+func (rsl StateLoader) SetInconsistent(
+	ctx context.Context, writer storage.Writer, inconsistent bool,
+) error {
+	var value roachpb.Value
+	value.SetBool(inconsistent)
+	// "Blind" because ms == nil and timestamp == hlc.Timestamp{}.
+	return storage.MVCCBlindPut(
+		ctx,
+		writer,
+		nil, /* ms */
+		rsl.InconsistentKey(),
+		hlc.Timestamp{}, /* timestamp */
+		value,
+		nil, /* txn */
+	)
+}
+
+// LoadInconsistent load the inconsistent flag.
+func (rsl StateLoader) LoadInconsistent(ctx context.Context, reader storage.Reader) (bool, error) {
+	// If the range applied state is not found, check the legacy Raft applied
+	// index and the lease applied index keys. This is where these indices were
+	// stored before the range applied state was introduced.
+	v, _, err := storage.MVCCGet(ctx, reader, rsl.InconsistentKey(),
+		hlc.Timestamp{}, storage.MVCCGetOptions{})
+	if err != nil {
+		return false, err
+	}
+	var inconsistent bool
+	if v != nil {
+		inconsistent, err = v.GetBool()
+		if err != nil {
+			return false, err
+		}
+	}
+	return inconsistent, nil
 }

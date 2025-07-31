@@ -53,13 +53,12 @@ type Processor interface {
 	// Run is the main loop of the processor.
 	Run(context.Context) RowStats
 
+	RunShortCircuit(context.Context, TSReader) (err error)
+
 	// RunTS is the main loop of the kwdbprocessor
 	RunTS(ctx context.Context)
 	Push(ctx context.Context, res []byte) error
 	Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
-	NextPgWire() (val []byte, code int, err error)
-	SupportPgWire() bool
-	IsShortCircuitForPgEncode() bool
 	Start(ctx context.Context) context.Context
 }
 
@@ -327,6 +326,59 @@ func (h *ProcOutputHelper) ProcessRow(
 				return nil, false, err
 			}
 			h.outputRow[i] = sqlbase.DatumToEncDatum(&h.OutputTypes[i], datum)
+		}
+	} else if h.outputCols != nil {
+		// Projection.
+		for i, col := range h.outputCols {
+			h.outputRow[i] = row[col]
+		}
+	} else {
+		// No rendering or projection.
+		return row, h.rowIdx < h.maxRowIdx, nil
+	}
+
+	// If this row satisfies the limit, the caller is told to drain.
+	return h.outputRow, h.rowIdx < h.maxRowIdx, nil
+}
+
+// ProcessRowForStream processes row for stream.
+func (h *ProcOutputHelper) ProcessRowForStream(
+	ctx context.Context, row sqlbase.EncDatumRow,
+) (_ sqlbase.EncDatumRow, moreRowsOK bool, _ error) {
+	if h.rowIdx >= h.maxRowIdx {
+		return nil, false, nil
+	}
+
+	if h.filter != nil && !h.Gapfill {
+		// Filtering.
+		passes, err := h.filter.EvalFilter(row)
+		if err != nil {
+			return nil, false, err
+		}
+		if !passes {
+			if log.V(4) {
+				log.Infof(ctx, "filtered out row %s", row.String(h.filter.Types))
+			}
+			return nil, true, nil
+		}
+	}
+	h.rowIdx++
+	if h.rowIdx <= h.offset {
+		// Suppress row.
+		return nil, true, nil
+	}
+
+	if len(h.renderExprs) > 0 {
+		// Rendering.
+		for i := range h.renderExprs {
+			datum, err := h.renderExprs[i].Eval(row)
+			if err != nil {
+				// for any error, set the output value to NULL
+				log.Errorf(ctx, "failed to process output column(index '%d') with error: %v, set it to NULL", i, err)
+				h.outputRow[i] = sqlbase.DatumToEncDatum(&h.OutputTypes[i], tree.DNull)
+			} else {
+				h.outputRow[i] = sqlbase.DatumToEncDatum(&h.OutputTypes[i], datum)
+			}
 		}
 	} else if h.outputCols != nil {
 		// Projection.
@@ -845,6 +897,11 @@ func (pb *ProcessorBase) Run(ctx context.Context) RowStats {
 	return pb.Out.output.GetStats()
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (pb *ProcessorBase) RunShortCircuit(context.Context, TSReader) error {
+	return nil
+}
+
 // Push is part of the processor interface.
 func (pb *ProcessorBase) Push(ctx context.Context, res []byte) error {
 	err := pb.Out.output.PushPGResult(ctx, res)
@@ -852,21 +909,6 @@ func (pb *ProcessorBase) Push(ctx context.Context, res []byte) error {
 		return err
 	}
 	return nil
-}
-
-// NextPgWire is part of the processor interface.
-func (pb *ProcessorBase) NextPgWire() (val []byte, code int, err error) {
-	return nil, 0, nil
-}
-
-// SupportPgWire is part of the processor interface
-func (pb *ProcessorBase) SupportPgWire() bool {
-	return false
-}
-
-// IsShortCircuitForPgEncode is part of the processor interface.
-func (pb *ProcessorBase) IsShortCircuitForPgEncode() bool {
-	return false
 }
 
 // Start is part of the processor interface.

@@ -147,6 +147,7 @@ struct GroupKeyHasher {
         case roachpb::DataType::TIMESTAMP:
         case roachpb::DataType::TIMESTAMP_MICRO:
         case roachpb::DataType::TIMESTAMP_NANO:
+        case roachpb::DataType::TIMESTAMPTZ:
         case roachpb::DataType::TIMESTAMPTZ_MICRO:
         case roachpb::DataType::TIMESTAMPTZ_NANO:
         case roachpb::DataType::DATE:

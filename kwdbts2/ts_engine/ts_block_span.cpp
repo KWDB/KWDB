@@ -182,8 +182,8 @@ KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
 }
 
 // dest type is fixed len datatype.
-KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap) {
-  return convert_.GetFixLenColAddr(scan_idx, value, bitmap);
+KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
+  return convert_.GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
 }
 
 // dest type is varlen datatype.

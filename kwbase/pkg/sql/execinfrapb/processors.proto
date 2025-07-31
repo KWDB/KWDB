@@ -39,6 +39,7 @@ import "sql/execinfrapb/processors_sql.proto";
 import "sql/execinfrapb/processors_bulk_io.proto";
 import "sql/execinfrapb/processors_changefeeds.proto";
 import "sql/execinfrapb/processors_table_stats.proto";
+import "sql/execinfrapb/kwdb_struct.proto";
 import "gogoproto/gogo.proto";
 
 // Each processor has the following components:
@@ -134,6 +135,10 @@ message ProcessorCoreUnion {
   // when the switch is on and the server starts with single node mode.
   optional BatchLookupJoinerSpec batchLookupJoiner = 42;
 
+  optional TsInsertWithCDCProSpec tsInsertWithCDC = 43;
+  optional StreamReaderSpec streamReader = 44;
+  optional StreamAggregatorSpec streamAggregator = 45;
+
   reserved 6, 12;
 }
 
@@ -145,6 +150,7 @@ message NoopCoreSpec {
   optional uint32 input_num = 1 [(gogoproto.nullable) = false];
   // Time series distributed operation type, default to TsSelect
   optional OperatorType TsOperator = 2 [(gogoproto.nullable) = false];
+  repeated bytes output_types = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
 // LocalPlanNodeSpec is the specification for a local planNode wrapping

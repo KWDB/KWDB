@@ -459,6 +459,7 @@ func getPlanCtxByParam(
 	planCtx.planner.curPlan = *plan
 	planCtx.ExtendedEvalCtx.Planner = &plannerCopy
 	planCtx.stmtType = stmtType
+	planCtx.haveSubquery = true
 
 	evalCtx.IsDisplayed = params.extendedEvalCtx.IsDisplayed
 	return planCtx

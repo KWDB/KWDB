@@ -104,7 +104,7 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
   TS_LSN current_lsn = FetchCurrentLSN();
   TS_LSN buffer_lsn = FetchCurrentLSN();
   if (for_eng_wal) {
-    buffer_lsn = FetchCheckpointLSN();
+    buffer_lsn = GetFirstLSN();
   }
 
 
@@ -462,9 +462,6 @@ KStatus WALMgr::CreateCheckpoint(kwdbContext_p ctx) {
 
   return SUCCESS;
 }
-
-
-
 
 KStatus WALMgr::CreateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx) {
   meta_.current_checkpoint_no++;

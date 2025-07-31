@@ -88,6 +88,16 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   opts.thread_pool_size = options.thread_pool_size;
   opts.task_queue_size = options.task_queue_size;
   opts.buffer_pool_size = options.buffer_pool_size;
+  if (options.brpc_addr.data != nullptr && options.brpc_addr.len > 0 && options.brpc_addr.len < 65536) {
+    opts.brpc_addr = string(options.brpc_addr.data, options.brpc_addr.len);
+  } else {
+    opts.brpc_addr = "";
+  }
+  if (options.cluster_id.data != nullptr && options.cluster_id.len > 0 && options.cluster_id.len < 65536) {
+    opts.cluster_id = string(options.cluster_id.data, options.cluster_id.len);
+  } else {
+    opts.cluster_id = "00000000-0000-0000-0000-000000000000";
+  }
 
   setenv("KW_HOME", ts_store_path.c_str(), 1);
 
@@ -377,15 +387,15 @@ TSStatus TSTableAutonomy(TSEngine* engine, TSTableID table_id) {
 #endif
 }
 
-TSStatus TSPutEntity(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num, RangeGroup range_group,
-                     uint64_t mtr_id) {
+TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
+                     uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->PutEntity(ctx_p, table_id, range_group.range_group_id, payload, payload_num, mtr_id);
+  s = engine->PutEntity(ctx_p, tableId, range_group.range_group_id, payload, payload_num, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("PutEntity Error!");
   }
@@ -480,8 +490,8 @@ TSStatus TSGetWaitThreadNum(TSEngine* engine, void* resp) {
   return kTsSuccess;
 }
 
-TSStatus TsDeleteEntities(TSEngine* engine, TSTableID table_id, TSSlice* primary_tags, size_t primary_tags_num,
-                          uint64_t range_group_id, uint64_t* count, uint64_t mtr_id) {
+TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
+                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -492,15 +502,15 @@ TSStatus TsDeleteEntities(TSEngine* engine, TSTableID table_id, TSSlice* primary
   for (size_t i = 0; i < primary_tags_num; ++i) {
     p_tags.emplace_back(primary_tags[i].data, primary_tags[i].len);
   }
-  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id);
+  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteEntities Error!");
   }
   return kTsSuccess;
 }
 
-TSStatus TsDeleteRangeData(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                      HashIdSpan hash_span, KwTsSpans ts_spans, uint64_t* count, uint64_t mtr_id) {
+TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -508,15 +518,15 @@ TSStatus TsDeleteRangeData(TSEngine* engine, TSTableID table_id, uint64_t range_
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id);
+  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteRangeData Error!");
   }
   return kTsSuccess;
 }
 
-TSStatus TsDeleteData(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                      TSSlice primary_tag, KwTsSpans ts_spans, uint64_t* count, uint64_t mtr_id) {
+TSStatus TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag,
+                      KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -525,7 +535,7 @@ TSStatus TsDeleteData(TSEngine* engine, TSTableID table_id, uint64_t range_group
   }
   std::string p_tag(primary_tag.data, primary_tag.len);
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id);
+  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id, writeWAL);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteData Error!");
   }

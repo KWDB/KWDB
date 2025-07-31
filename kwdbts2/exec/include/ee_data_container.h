@@ -42,6 +42,7 @@ class DiskDataContainer;
 
 typedef std::unique_ptr<DataContainer> DataContainerPtr;
 typedef std::unique_ptr<DataChunk> DataChunkPtr;
+typedef std::shared_ptr<DataChunk> DataChunkSPtr;
 
 /**
  * Structure to store column type, length.

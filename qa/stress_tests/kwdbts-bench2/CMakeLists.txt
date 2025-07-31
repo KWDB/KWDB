@@ -100,6 +100,11 @@ endif ()
 # Macro definition used in code
 add_definitions(-DDATA_DIR="${CMAKE_SOURCE_DIR}/qa/stress_tests/kwdbts-bench2/ts_data")
 
+get_filename_component(PROJECT_BINARY_DIR_PARENT_DIR1 ${PROJECT_BINARY_DIR} DIRECTORY)
+get_filename_component(PROJECT_BINARY_DIR_PARENT_DIR2 ${PROJECT_BINARY_DIR_PARENT_DIR1} DIRECTORY)
+get_filename_component(PROJECT_BINARY_DIR_PARENT_DIR3 ${PROJECT_BINARY_DIR_PARENT_DIR2} DIRECTORY)
+set(BRPC_INCLUDE_DIR ${PROJECT_BINARY_DIR_PARENT_DIR3}/kwdbts2/brpc-1.9.0/output/include)
+
 # embed will use the include file
 set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
         ${KWDB_PROJECT_DIR}/common/src/include
@@ -112,6 +117,9 @@ set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
         ${KWDBTS_PROJ_DIR}/storage/include
         ${KWDBTS_PROJ_DIR}/roachpb
         ${KWDBTS_PROJ_DIR}/latch/include
+        ${KWDBTS_PROJ_DIR}/brpc/include
+        ${BRPC_INCLUDE_DIR}
+        ${KWDBTS_PROJ_DIR}/exec/include
         )
 #message("embed_includes:${embed_includes}")
 

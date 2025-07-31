@@ -235,7 +235,7 @@ TEST_F(TestTsTableMaxTS, deleteSomeData) {
   std::vector<KwTsSpan> ts_spans;
   ts_spans.push_back(KwTsSpan{INT64_MIN, INT64_MAX});
   uint64_t count;
-  s = table_->DeleteData(ctx_, 1, primary_keys_str, ts_spans, &count, 0);
+  s = table_->DeleteData(ctx_, 1, primary_keys_str, ts_spans, &count, 0, true);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(count, 1);
 

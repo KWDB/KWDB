@@ -36,6 +36,8 @@ class TestDB : public ::testing::Test {
     opts_.lg_opts = TsLogOptions{};
     opts_.is_single_node = true;
     opts_.buffer_pool_size = 1024;
+    opts_.brpc_addr = TSSlice{"127.0.0.1:27257", 13};
+    opts_.cluster_id = TSSlice{"00000000-0000-0000-0000-000000000000", 36};
     ts_db_ = nullptr;
     g_go_start_service = false;
   }
@@ -195,7 +197,7 @@ TEST_F(TestDB, insert) {
   {
     // INSERT INTO benchmark.host_template VALUES ('host_0','x86', 510,56),('host_23','x86', 780,62);
     TSSlice payload;
-    TSStatus s = TSPutEntity(ts_db_, table_id, &payload, 0, kDefaultRange, 0);
+    TSStatus s = TSPutEntity(ts_db_, table_id, &payload, 0, kDefaultRange, 0, true);
     ASSERT_EQ(s.data, nullptr);
     free(s.data);
   }

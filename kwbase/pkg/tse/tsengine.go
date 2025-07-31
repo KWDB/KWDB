@@ -183,6 +183,8 @@ type TsEngineConfig struct {
 	LogCfg         log.Config
 	ExtraOptions   []byte
 	IsSingleNode   bool
+	BRPCAddr       string
+	ClusterID      string
 }
 
 // TsQueryInfo the parameter and return value passed by the query
@@ -199,6 +201,7 @@ type TsQueryInfo struct {
 	// when the switch is on and the server starts with single node mode.
 	PushData *DataChunkGo
 	RowCount int
+	SQL      string
 	// PullData TsDataChunkToGo
 }
 
@@ -264,12 +267,13 @@ type EntitiesAffect struct {
 
 // TsEngine is ts database instance.
 type TsEngine struct {
-	stopper *stop.Stopper
-	cfg     TsEngineConfig
-	tdb     *C.TSEngine
-	opened  bool
-	openCh  chan struct{}
-	Version string
+	stopper  *stop.Stopper
+	cfg      TsEngineConfig
+	tdb      *C.TSEngine
+	opened   bool
+	openCh   chan struct{}
+	writeWAL bool
+	Version  string
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -288,7 +292,14 @@ var DeDuplicateRule = settings.RegisterPublicStringSetting(
 var TsRaftLogCombineWAL = settings.RegisterPublicBoolSetting(
 	"ts.raftlog_combine_wal.enabled",
 	"combine raft log and wal to reduce write amplification, but still ensure data consistency",
-	false,
+	true,
+)
+
+// TsRaftLogSyncPeriod determine the sync interval of ts raft logs.
+var TsRaftLogSyncPeriod = settings.RegisterPublicDurationSetting(
+	"ts.raft_log.sync_period",
+	"the min duration between every 2 syncs to disk of ts raft logs",
+	10*time.Second,
 )
 
 // TsWALFlushInterval indicates the WAL flush interval of TsEngine
@@ -420,26 +431,18 @@ func (r *TsEngine) checkOrWaitForOpen() {
 // Open opens the ts engine.
 func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 	var walLevel uint8
-	if TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV) {
-		walLevel = 3
-		if v, ok := envutil.EnvString("KW_WAL_LEVEL", 0); ok && v != "3" {
-			if err := os.Setenv("KW_WAL_LEVEL", "3"); err != nil {
-				return errors.Wrap(err, "failed adjust env KW_WAL_LEVEL to 3")
-			}
-		}
+
+	interval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
+	if interval < 0 {
+		walLevel = 0
+	} else if interval >= 0 && interval <= 200*time.Millisecond {
+		walLevel = 2
 	} else {
-		interval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
-		if interval < 0 {
-			walLevel = 0
-		} else if interval >= 0 && interval <= 200*time.Millisecond {
-			walLevel = 2
-		} else {
-			walLevel = 1
-		}
-		if v, ok := envutil.EnvString("KW_WAL_LEVEL", 0); ok && v == "3" {
-			if err := os.Setenv("KW_WAL_LEVEL", fmt.Sprintf("%d", walLevel)); err != nil {
-				return errors.Wrapf(err, "failed adjust env KW_WAL_LEVEL to %d", walLevel)
-			}
+		walLevel = 1
+	}
+	if _, ok := envutil.EnvString("KW_WAL_LEVEL", 0); ok {
+		if err := os.Setenv("KW_WAL_LEVEL", fmt.Sprintf("%d", walLevel)); err != nil {
+			return errors.Wrapf(err, "failed adjust env KW_WAL_LEVEL to %d", walLevel)
 		}
 	}
 
@@ -472,6 +475,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
 				engine_version:    cEngineVersion,
 			},
 			nil,
@@ -500,6 +505,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:           optLog,
 				is_single_node:    C.bool(r.cfg.IsSingleNode),
+				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
 				engine_version:    cEngineVersion,
 			},
 			&appliedRangeIndex[0],
@@ -509,10 +516,16 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		}
 	}
 
+	r.SetWriteWAL(!TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
 	r.manageWAL()
 	r.opened = true
 	close(r.openCh)
 	return nil
+}
+
+// SetWriteWAL set the writeWAL
+func (r *TsEngine) SetWriteWAL(writeWAL bool) {
+	r.writeWAL = writeWAL
 }
 
 // CreateTsTable create ts table
@@ -716,7 +729,14 @@ func (r *TsEngine) PutEntity(
 		range_group_id: C.uint64_t(rangeGroupID),
 		typ:            C.int8_t(0),
 	}
-	status := C.TSPutEntity(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID))
+	status := C.TSPutEntity(
+		r.tdb,
+		C.TSTableID(tableID),
+		&cTsSlice[0],
+		(C.size_t)(len(cTsSlice)),
+		cRangeGroup,
+		C.uint64_t(tsTxnID),
+		C.bool(r.writeWAL))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not PutEntity")
 	}
@@ -755,6 +775,7 @@ func (r *TsEngine) PutData(
 	var affect EntitiesAffect
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
+	writeWAL = r.writeWAL && writeWAL
 	var status C.TSStatus
 	if r.Version == "2" {
 		if transactionID != nil {
@@ -836,6 +857,7 @@ func (r *TsEngine) PutRowData(
 	totalRowCnt := len(payload)
 	var res DedupResult
 	var affect EntitiesAffect
+	writeWAL = r.writeWAL && writeWAL
 	for i := 0; i < totalRowCnt; i++ {
 		p := payload[i]
 		if len(p) == 0 {
@@ -1009,6 +1031,12 @@ func (r *TsEngine) tsExecute(
 	queryInfo.unique_id = C.int(tsQueryInfo.UniqueID)
 	queryInfo.time_zone = C.int(tsQueryInfo.TimeZone)
 	queryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
+	cTsSlice := C.TSSlice{
+		data: (*C.char)(C.CBytes([]byte(tsQueryInfo.SQL))),
+		len:  C.size_t(len(tsQueryInfo.SQL)),
+	}
+	defer C.free(unsafe.Pointer(cTsSlice.data))
+	queryInfo.sql = cTsSlice
 	// process push data for batch lookup join for multiple model processing
 	// only store the data chunk pointer into tsQueryInfo and push it down to tse
 	// when the switch is on and the server starts with single node mode.
@@ -1457,7 +1485,7 @@ func (r *TsEngine) DeleteEntities(
 
 	var delCnt C.uint64_t
 	status := C.TsDeleteEntities(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
-		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID))
+		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID), C.bool(r.writeWAL))
 	if err := statusToError(status); err != nil {
 		if isDrop {
 			return 0, err
@@ -1493,7 +1521,15 @@ func (r *TsEngine) DeleteRangeData(
 	}
 
 	var delCnt C.uint64_t
-	status := C.TsDeleteRangeData(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), cKwHashIDSpans, cKwTsSpans, &delCnt, C.uint64_t(tsTxnID))
+	status := C.TsDeleteRangeData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cKwHashIDSpans,
+		cKwTsSpans,
+		&delCnt,
+		C.uint64_t(tsTxnID),
+		C.bool(r.writeWAL))
 	if err := statusToError(status); err != nil {
 		return uint64(delCnt), errors.New("Data deletion failed or partially failed")
 	}
@@ -1548,7 +1584,15 @@ func (r *TsEngine) DeleteData(
 	}
 
 	var delCnt C.uint64_t
-	status := C.TsDeleteData(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), cTsSlice, cKwTsSpans, &delCnt, C.uint64_t(tsTxnID))
+	status := C.TsDeleteData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cTsSlice,
+		cKwTsSpans,
+		&delCnt,
+		C.uint64_t(tsTxnID),
+		C.bool(r.writeWAL))
 	if err := statusToError(status); err != nil {
 		return uint64(delCnt), errors.Wrap(err, "failed to delete ts data")
 	}

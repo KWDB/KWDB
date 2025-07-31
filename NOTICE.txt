@@ -1333,3 +1333,6 @@ vitess.io/vitess (Apache 2.0)
 revision: 1740ce8b3188b99cd3c88fb38ad734eda711519f
 Copyright 2017 Google Inc.
 
+github.com/apache/brpc (Apache 2.0)
+version: v1.9.0
+Copyright 2018-2024 The Apache Software Foundation

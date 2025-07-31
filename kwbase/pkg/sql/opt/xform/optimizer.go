@@ -231,6 +231,9 @@ func (o *Optimizer) Optimize() (_ opt.Expr, err error) {
 
 	// Now optimize the entire expression tree.
 	root := o.mem.RootExpr().(memo.RelExpr)
+	exprMap := make(map[interface{}]struct{}, 0)
+	memo.RebuildExprs(root, exprMap)
+
 	rootProps := o.mem.RootProps()
 	o.optimizeGroup(root, rootProps)
 

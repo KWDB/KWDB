@@ -47,10 +47,15 @@ class FieldFuncString : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
 
   Functype func_type_;
   _str_fn func_;
+
+ protected:
+  String strvalue_{""};
 };
 
 class FieldFuncLength : public FieldFunc {
@@ -66,7 +71,12 @@ class FieldFuncLength : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncChr : public FieldFunc {
@@ -82,7 +92,12 @@ class FieldFuncChr : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  String strvalue_{""};
 };
 
 class FieldFuncDecode : public FieldFunc {
@@ -98,7 +113,12 @@ class FieldFuncDecode : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  String strvalue_{""};
 };
 
 class FieldFuncEncode : public FieldFunc {
@@ -114,7 +134,12 @@ class FieldFuncEncode : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  String strvalue_{""};
 };
 
 class FieldFuncGetBit : public FieldFunc {
@@ -127,7 +152,12 @@ class FieldFuncGetBit : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncInitCap : public FieldFunc {
@@ -144,7 +174,12 @@ class FieldFuncInitCap : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  String strvalue_{""};
 };
 
 class FieldFuncBitLength : public FieldFunc {
@@ -160,7 +195,12 @@ class FieldFuncBitLength : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 class FieldFuncOctetLength : public FieldFunc {
@@ -176,7 +216,12 @@ class FieldFuncOctetLength : public FieldFunc {
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
+  char *get_ptr() override { return nullptr; }
+  char *get_ptr(RowBatch *batch) override;
   Field *field_to_copy() override;
+
+ protected:
+  k_int64 intvalue_{0};
 };
 
 }  // namespace kwdbts

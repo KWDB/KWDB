@@ -67,8 +67,9 @@ class TsVGroup {
   // mutex for initialize/allocate/get max_entity_id_
   mutable std::mutex entity_id_mutex_;
 
-  EngineOptions engine_options_;
+  EngineOptions* engine_options_ = nullptr;
 
+  std::shared_mutex* engine_wal_level_mutex_ = nullptr;
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
@@ -98,8 +99,8 @@ class TsVGroup {
  public:
   TsVGroup() = delete;
 
-  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
-           bool enable_compact_thread = true);
+  TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+           std::shared_mutex* engine_mutex, bool enable_compact_thread = true);
 
   ~TsVGroup();
 
@@ -121,6 +122,30 @@ class TsVGroup {
   TSEntityID GetMaxEntityID() const;
 
   void InitEntityID(TSEntityID entity_id);
+
+  void LockLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->lock();
+    }
+  }
+
+  void UnLockLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->unlock();
+    }
+  }
+
+  void LockSharedLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->lock_shared();
+    }
+  }
+
+  void UnLockSharedLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->unlock_shared();
+    }
+  }
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
 
@@ -184,7 +209,7 @@ class TsVGroup {
 
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload);
 
-  KStatus UpdateLSN(kwdbContext_p ctx, TS_LSN chk_lsn);
+  KStatus RemoveChkFile(kwdbContext_p ctx);
 
   KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
@@ -230,17 +255,13 @@ class TsVGroup {
   const std::vector<KwTsSpan>& ts_spans);
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 ts, DATATYPE ts_col_type, TSSlice data);
+                         timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();
 
   KStatus ClearWriteBatchData();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
-
-  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
-
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload);
 
   /**
    * @brief undoPut undo a put operation. This function is used to undo a previously executed put operation.
@@ -260,18 +281,14 @@ class TsVGroup {
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
+  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& payload);
+
   KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
+
   KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
-                        uint32_t entity_id, TSSlice& payload);
-
-  KStatus redoCreateHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
-
-  KStatus undoCreateHashIndex(uint32_t index_id, uint32_t ts_version);
-
-  KStatus redoDropHashIndex(uint32_t index_id, uint32_t ts_version);
-
-  KStatus undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
+                        uint32_t entity_id, TSSlice& tags);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.

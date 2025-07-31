@@ -301,7 +301,7 @@ func (f *rowBasedFlow) setupInputSyncs(
 					mrc := &execinfra.RowChannel{}
 					mrc.InitWithNumSenders(is.ColumnTypes, len(is.Streams))
 					for _, s := range is.Streams {
-						if err := f.setupInboundStream(ctx, s, mrc, is.ColumnTypes, spec.TsProcessors); err != nil {
+						if err := f.setupInboundStream(ctx, s, mrc, is.ColumnTypes, spec.TsProcessors, spec.TsInfo); err != nil {
 							return nil, err
 						}
 					}
@@ -322,7 +322,7 @@ func (f *rowBasedFlow) setupInputSyncs(
 					}
 					rowChan := &execinfra.RowChannel{}
 					rowChan.InitWithNumSenders(is.ColumnTypes, 1 /* numSenders */)
-					if err := f.setupInboundStream(ctx, s, rowChan, is.ColumnTypes, spec.TsProcessors); err != nil {
+					if err := f.setupInboundStream(ctx, s, rowChan, is.ColumnTypes, spec.TsProcessors, spec.TsInfo); err != nil {
 						return nil, err
 					}
 					streams[i] = rowChan
@@ -351,6 +351,7 @@ func (f *rowBasedFlow) setupInboundStream(
 	receiver execinfra.RowReceiver,
 	typs []types.T,
 	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsInfo execinfrapb.TsInfo,
 ) error {
 	sid := spec.StreamID
 	switch spec.Type {
@@ -377,7 +378,7 @@ func (f *rowBasedFlow) setupInboundStream(
 			log.Infof(ctx, "set up inbound stream %d", sid)
 		}
 		tsTableReader, err := rowexec.NewTsTableReader(
-			&f.FlowCtx, -1, receiver.Types(), receiver, sid, tsProcessorSpecs)
+			ctx, &f.FlowCtx, -1, receiver.Types(), receiver, sid, tsProcessorSpecs, tsInfo)
 		if err != nil {
 			return err
 		}

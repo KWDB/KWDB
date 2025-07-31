@@ -386,6 +386,11 @@ type Factory interface {
 		PayloadNodeInfo map[int]*sqlbase.PayloadForDistTSInsert,
 	) (Node, error)
 
+	// ConstructTSInsertWithCDC creates a node that implements an TIME SERIES INSERT statement with CDC.
+	ConstructTSInsertWithCDC(
+		PayloadNodeInfo map[int]*sqlbase.PayloadForDistTSInsert,
+	) (Node, error)
+
 	// ConstructTSDelete creates a node that implements an TIME SERIES DELETE statement.
 	ConstructTSDelete(
 		nodeIDs []roachpb.NodeID,

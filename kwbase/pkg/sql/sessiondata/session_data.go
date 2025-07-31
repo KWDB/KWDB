@@ -80,6 +80,8 @@ type SessionData struct {
 	// MultiModelEnabled indicates whether the optimizer should do multi-model analysis and
 	// consider the optimal plan for a multi-model query.
 	MultiModelEnabled bool
+	// TimeBucketEnabled is set to release restrictions of projection.
+	TimeBucketEnabled bool
 	// ReorderJoinsLimit indicates the number of joins at which the optimizer should
 	// stop attempting to reorder.
 	ReorderJoinsLimit int

@@ -343,8 +343,9 @@ class TsTable {
    * @param[in] mtr_id Mini-transaction id for TS table.
    * @return
    */
-  virtual KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
-                                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id);
+  virtual KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan &hash_span,
+                                  const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id,
+                                  bool writeWAL);
 
   /**
    * @brief Delete data based on the primary tag and timestamp range.
@@ -355,8 +356,8 @@ class TsTable {
    * @param[in] mtr_id Mini-transaction id for TS table.
    * @return KStatus
    */
-  virtual KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
-                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id);
+  virtual KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string &primary_tag,
+                             const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL);
 
   /**
    * @brief Delete expired data whose timestamp is older than the end_ts in all entity group,
@@ -686,7 +687,7 @@ class TsEntityGroup {
    *
    * @return KStatus
    */
-  virtual KStatus PutEntity(kwdbContext_p ctx, TSSlice& payload_data, uint64_t mtr_id);
+  virtual KStatus PutEntity(kwdbContext_p ctx, TSSlice &payload_data, uint64_t mtr_id, bool writeWAL);
 
   /**
    * @brief  PutData writes the Tag value and time series data to the entity
@@ -747,9 +748,9 @@ class TsEntityGroup {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteRangeData(kwdbContext_p ctx, const HashIdSpan& hash_span, TS_LSN lsn,
-                                  const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpans>* del_rows,
-                                  uint64_t* count, uint64_t mtr_id, bool evaluate_del);
+  virtual KStatus DeleteRangeData(kwdbContext_p ctx, const HashIdSpan &hash_span, TS_LSN lsn,
+                                  const std::vector<KwTsSpan> &ts_spans, vector<DelRowSpans> *del_rows,
+                                  uint64_t *count, uint64_t mtr_id, bool evaluate_del, bool writeWAL);
 
   /**
    * @brief Mark the deletion of temporal data within a specified time range for a certain entity.
@@ -761,9 +762,9 @@ class TsEntityGroup {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteData(kwdbContext_p ctx, const string& primary_tag, TS_LSN lsn,
-                             const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>* rows,
-                             uint64_t* count, uint64_t mtr_id, bool evaluate_del);
+  virtual KStatus DeleteData(kwdbContext_p ctx, const string &primary_tag, TS_LSN lsn,
+                             const std::vector<KwTsSpan> &ts_spans, vector<DelRowSpan> *rows,
+                             uint64_t *count, uint64_t mtr_id, bool evaluate_del, bool writeWAL);
 
   /**
    * DeleteExpiredData deletes expired partition data whose timestamp is older than the end_ts
@@ -793,8 +794,8 @@ class TsEntityGroup {
    *
    * @return KStatus
    */
-  virtual KStatus DeleteEntities(kwdbContext_p ctx, const std::vector<std::string>& primary_tags,
-                                 uint64_t* count, uint64_t mtr_id);
+  virtual KStatus DeleteEntities(kwdbContext_p ctx, const std::vector<std::string> &primary_tags,
+                                 uint64_t *count, uint64_t mtr_id, bool writeWAL);
 
   /**
    * @brief Delete an Entity and data within a hash range, usually used for data migration.

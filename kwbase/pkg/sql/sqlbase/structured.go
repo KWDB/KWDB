@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -4609,6 +4610,22 @@ type PayloadForDistTSInsert struct {
 	// NodeID node id
 	NodeID          roachpb.NodeID
 	PerNodePayloads []*SinglePayloadInfo
+	CDCData         *CDCData
+}
+
+// CDCData stores data that will send to CDC Task.
+type CDCData struct {
+	TableID      uint64
+	MinTimestamp int64
+	PushData     []*CDCPushData
+}
+
+// CDCPushData stores information of CDC data.
+type CDCPushData struct {
+	TaskID   uint64
+	TaskType cdcpb.TSCDCInstanceType
+	Rows     [][]byte
+	Types    []types.T
 }
 
 // SinglePayloadInfo stores information about a single payload.

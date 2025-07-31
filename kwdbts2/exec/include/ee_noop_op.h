@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "ee_base_op.h"
-#include "ee_noop_flow_spec.h"
+#include "ee_noop_parser.h"
 #include "ee_row_batch.h"
 
 namespace kwdbts {
@@ -32,19 +32,19 @@ class NoopOperator : public BaseOperator {
    *
    * @param input
    */
-  NoopOperator(TsFetcherCollection* collection, BaseOperator *input, TSNoopSpec *spec, TSPostProcessSpec *post,
+  NoopOperator(TsFetcherCollection* collection, TSNoopSpec *spec, TSPostProcessSpec *post,
                TABLE *table, int32_t processor_id);
 
-  NoopOperator(const NoopOperator& other, BaseOperator* input, int32_t processor_id);
+  NoopOperator(const NoopOperator& other, int32_t processor_id);
 
   virtual ~NoopOperator() {
     if (is_clone_) {
-      delete input_;
+      delete childrens_[0];
     }
   }
 
   k_uint32 GetRenderSize() {
-    return num_ == 0 ? input_->GetRenderSize() : num_;
+    return num_ == 0 ? childrens_[0]->GetRenderSize() : num_;
   }
 
   Field *GetRender(int i) override;
@@ -70,7 +70,9 @@ class NoopOperator : public BaseOperator {
    *            close
    * @return int    0 - success, other - failed
    */
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_NOOP;}
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
   BaseOperator* Clone() override;
@@ -82,13 +84,38 @@ class NoopOperator : public BaseOperator {
   void make_noop_data_chunk(kwdbContext_p ctx, DataChunkPtr *chunk, k_uint32 capacity);
 
  private:
-  BaseOperator *input_;  // input iterator
   k_uint32 limit_{0};
   k_uint32 offset_{0};
-  NoopPostResolve param_;
-  TSPostProcessSpec *post_{nullptr};
+  TsNoopParser param_;
   Field *filter_{nullptr};
   k_uint32 examined_rows_{0};
+  bool is_pass_through_{false};
 };
+
+class PassThroughNoopOperaotr : public BaseOperator {
+ public:
+  PassThroughNoopOperaotr(TsFetcherCollection* collection, TSNoopSpec *spec, TSPostProcessSpec *post,
+               TABLE *table, int32_t processor_id);
+
+  ~PassThroughNoopOperaotr() { }
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_PASSTHROUGH_NOOP;}
+
+  EEIteratorErrCode Init(kwdbContext_p ctx) override;
+
+  EEIteratorErrCode Start(kwdbContext_p ctx) override;
+
+  EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
+
+  EEIteratorErrCode Reset(kwdbContext_p ctx) override;
+
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
+
+ private:
+  k_uint32 limit_{0};
+  k_uint32 offset_{0};
+  k_uint32 examined_rows_{0};
+};
+
 
 }  // namespace kwdbts

@@ -22,37 +22,25 @@
 namespace kwdbts {
 
 WindowOperator::WindowOperator(TsFetcherCollection* collection,
-                               BaseOperator* input, WindowerSpec* spec,
+                               WindowerSpec* spec,
                                TSPostProcessSpec* post, TABLE* table,
                                int32_t processor_id)
-    : BaseOperator(collection, table, processor_id),
+    : BaseOperator(collection, table, post, processor_id),
       spec_{spec},
-      post_{post},
       limit_{post->limit()},
-      param_(input, spec, post, table),
-      input_(input),
-      input_fields_{input->OutputFields()} {
+      param_(spec, post, table) {
   k_uint32 size_ = spec_->partitionby_size();
   for (k_int32 i = 0; i < size_; ++i) {
     k_uint32 part_col = spec_->partitionby(i);
     partition_cols_.push_back(part_col);
   }
-  // input_fields_.clear();
-  // size_ = input->GetRenderSize();
-  // for (k_int32 i = 0; i < size_; ++i) {
-  //   input_fields_.push_back(input_->GetRender(i));
-  // }
 }
 
-WindowOperator::WindowOperator(const WindowOperator& other, BaseOperator* input,
-                               int32_t processor_id)
+WindowOperator::WindowOperator(const WindowOperator& other, int32_t processor_id)
     : BaseOperator(other),
       spec_{other.spec_},
-      post_{other.post_},
       limit_{other.limit_},
-      param_(input, other.spec_, other.post_, other.table_),
-      input_(input),
-      input_fields_{input->OutputFields()} {
+      param_(other.spec_, other.post_, other.table_) {
   k_uint32 size_ = spec_->partitionby_size();
   for (k_int32 i = 0; i < size_; ++i) {
     k_uint32 part_col = spec_->partitionby(i);
@@ -63,7 +51,7 @@ WindowOperator::WindowOperator(const WindowOperator& other, BaseOperator* input,
 
 WindowOperator::~WindowOperator() {
   if (is_clone_) {
-    delete input_;
+    delete childrens_[0];
   }
   for (auto field : win_func_output_fields_) {
     SafeDeletePointer(field);
@@ -89,8 +77,9 @@ EEIteratorErrCode WindowOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   do {
+    param_.AddInput(childrens_[0]);
     // init subquery iterator
-    code = input_->Init(ctx);
+    code = childrens_[0]->Init(ctx);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -98,21 +87,21 @@ EEIteratorErrCode WindowOperator::Init(kwdbContext_p ctx) {
     // resolve renders num
     param_.RenderSize(ctx, &num_);
     // resolve render
-    code = param_.ResolveRender(ctx, &renders_, num_);
+    code = param_.ParserRender(ctx, &renders_, num_);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("ResolveRender() error\n");
       break;
     }
 
     // output Field
-    code = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+    code = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
     if (code != EEIteratorErrCode::EE_OK) {
       LOG_ERROR("ResolveOutputFields() failed\n");
       break;
     }
 
     // win func material
-    param_.ResolveWinFuncFields(win_func_fields_);
+    param_.ParserWinFuncFields(win_func_fields_);
 
     // temp output field
     code = ResolveWinTempFields(ctx);
@@ -121,15 +110,15 @@ EEIteratorErrCode WindowOperator::Init(kwdbContext_p ctx) {
       break;
     }
     // set trunk win filter field;
-    param_.ResolveSetOutputFields(win_func_output_fields_);
+    param_.ParserSetOutputFields(win_func_output_fields_);
 
-    code = param_.ResolveFilter(ctx, &filter_, false);
+    code = param_.ParserFilter(ctx, &filter_);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("Resolve having clause error\n");
       break;
     }
 
-    param_.ResolveFilterFields(filter_fields_);
+    param_.ParserFilterFields(filter_fields_);
 
     for (auto it : filter_fields_) {
       filter_fields_num_.push_back(it->get_num());
@@ -247,8 +236,8 @@ EEIteratorErrCode WindowOperator::Start(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   do {
-    if (input_) {
-      code = input_->Start(ctx);
+    if (childrens_[0]) {
+      code = childrens_[0]->Start(ctx);
       if (EEIteratorErrCode::EE_OK != code) {
         LOG_ERROR("window table Scan Init() failed\n");
         break;
@@ -273,7 +262,7 @@ k_bool WindowOperator::CheckNewPartition(RowBatch* row_batch) {
   int i = 0;
   k_bool is_same = true;
   for (k_uint32 col : partition_cols_) {  // ptag
-    Field* field = input_->GetRender()[col];
+    Field* field = childrens_[0]->GetRender()[col];
     k_uint32 colId = field->getColIdxInRs();
     char* data = row_batch->GetData(
         colId, 0, roachpb::KWDBKTSColumn::TYPE_TAG, field->get_storage_type());
@@ -320,12 +309,12 @@ EEIteratorErrCode WindowOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   do {
     RowBatch* row_batch_ = nullptr;
     while (!is_done_) {
-      code = input_->Next(ctx);
+      code = childrens_[0]->Next(ctx);
       if (EEIteratorErrCode::EE_OK != code) {
         is_done_ = true;
         break;
       }
-      row_batch_ = input_->GetRowBatch(ctx);
+      row_batch_ = childrens_[0]->GetRowBatch(ctx);
       if (limit_ == 0) {
         examined_rows_ += row_batch_->Count();
         break;
@@ -396,7 +385,7 @@ EEIteratorErrCode WindowOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
 
   if (!output_queue_.empty()) {
     chunk = std::move(output_queue_.front());
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     output_queue_.pop();
     if (code == EEIteratorErrCode::EE_END_OF_RECORD) {
       Return(EEIteratorErrCode::EE_OK)
@@ -774,18 +763,22 @@ EEIteratorErrCode WindowOperator::Reset(kwdbContext_p ctx) {
   Return(EEIteratorErrCode::EE_OK)
 }
 
-KStatus WindowOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode WindowOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  Return(KStatus::SUCCESS);
+  Return(EEIteratorErrCode::EE_OK);
 }
 
 BaseOperator* WindowOperator::Clone() {
-  BaseOperator* input = input_->Clone();
+  BaseOperator* input = childrens_[0]->Clone();
   if (input == nullptr) {
-    input = input_;
+    return nullptr;
   }
-  BaseOperator* iter =
-      NewIterator<WindowOperator>(*this, input, this->processor_id_);
+  BaseOperator* iter = NewIterator<WindowOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(input);
+  } else {
+    delete input;
+  }
   return iter;
 }
 

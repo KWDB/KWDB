@@ -121,6 +121,8 @@ typedef struct {
   uint32_t buffer_pool_size;
   TsLogOptions lg_opts;
   bool is_single_node;
+  TSSlice brpc_addr;
+  TSSlice cluster_id;
   const char* engine_version;
 } TSOptions;
 
@@ -203,6 +205,7 @@ typedef struct _QueryInfo {
   // when the switch is on and the server starts with single node mode.
   void* relBatchData;
   int32_t relRowCount;
+  TSSlice sql;
   DataInfo vectorize_data;
 } QueryInfo;
 
@@ -257,8 +260,8 @@ TSStatus TSIsTsTableExist(TSEngine* engine, TSTableID tableId, bool* find);
 
 TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, TSSlice* schema);
 
-TSStatus TSPutEntity(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
-                     uint64_t mtr_id);
+TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
+                     uint64_t mtr_id, bool writeWAL);
 
 TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
@@ -270,14 +273,14 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload
 
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
 
-TSStatus TsDeleteEntities(TSEngine* engine, TSTableID table_id, TSSlice* primary_tags, size_t primary_tags_num,
-                          uint64_t range_group_id, uint64_t* count, uint64_t mtr_id);
+TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
+                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, bool writeWAL);
 
-TSStatus TsDeleteRangeData(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                      HashIdSpan hash_span, KwTsSpans ts_spans, uint64_t* count, uint64_t mtr_id);
+TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL);
 
-TSStatus TsDeleteData(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
-                      TSSlice primary_tag, KwTsSpans ts_spans, uint64_t* count, uint64_t mtr_id);
+TSStatus TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag,
+                      KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL);
 
 TSStatus TSFlushBuffer(TSEngine* engine);
 
