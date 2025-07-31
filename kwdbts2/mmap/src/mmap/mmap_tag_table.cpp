@@ -48,7 +48,8 @@ TagTable::~TagTable() {
   m_version_mutex_ = nullptr;
 }
 
-int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version, ErrorInfo &err_info) {
+int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
+                     const std::vector<roachpb::NTagIndexInfo>& idx_info, ErrorInfo &err_info) {
   LOG_INFO("Create TagTable table_version:%d", table_version)
   // 1. create table version
   m_version_mgr_ = KNEW TagTableVersionManager(m_db_path_, m_tbl_sub_path_, m_table_id);
@@ -80,6 +81,17 @@ int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version, Erro
   if (initEntityRowHashIndex(MMAP_CREAT_EXCL, err_info) < 0) {
     LOG_ERROR("create EntityRow HashIndex failed, %s", err_info.errmsg.c_str());
     return -1;
+  }
+
+  // 5. create normal hash index
+  if (!idx_info.empty()) {
+    for (auto it = idx_info.begin(); it != idx_info.end(); it++) {
+      const std::vector<uint32_t> tags (it->col_ids().begin(), it->col_ids().end());
+      if (createHashIndex(table_version, err_info, tags, it->index_id()) < 0) {
+        LOG_ERROR("create HashIndex failed.");
+        return -1;
+      }
+    }
   }
 
   tag_ver_obj->setStatus(TAG_STATUS_READY);
@@ -2071,7 +2083,7 @@ TagTable* CreateTagTable(const std::vector<TagInfo> &tag_schema,
     LOG_ERROR("create tag table out off memory.");
     return nullptr;
   }
-  if (tmp_bt->create(tag_schema, table_version, err_info)< 0) {
+  if (tmp_bt->create(tag_schema, table_version, std::vector<roachpb::NTagIndexInfo>{}, err_info)< 0) {
     LOG_ERROR("failed to create the tag table %s%lu, error: %s",
         dir_path.c_str(), table_id, err_info.errmsg.c_str());
     delete tmp_bt;

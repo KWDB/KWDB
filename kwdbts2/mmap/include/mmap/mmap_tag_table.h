@@ -73,7 +73,8 @@ class TagTable {
 
   virtual ~TagTable();
 
-  int create(const vector<TagInfo> &schema, uint32_t table_version, ErrorInfo &err_info);
+  int create(const vector<TagInfo> &schema, uint32_t table_version, const std::vector<roachpb::NTagIndexInfo>& idx_info,
+             ErrorInfo &err_info);
 
   int open(ErrorInfo &err_info);
 
