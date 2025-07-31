@@ -415,7 +415,8 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
       return KStatus::SUCCESS;
     }
     if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Valid
-        && CheckIfTsInSpan(entity_latest_row_[entity_id], ts_spans)) {
+        && checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id],
+                                   entity_latest_row_[entity_id]) != TimestampCheckResult::NonOverlapping) {
       entity_last_ts = entity_latest_row_[entity_id];
       return KStatus::SUCCESS;
     }
@@ -468,7 +469,8 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
       entity_latest_row_[entity_id] = last_block_span->GetLastTS();
       entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
     }
-    if (CheckIfTsInSpan(entity_latest_row_[entity_id], ts_spans)) {
+    if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id],
+                                entity_latest_row_[entity_id]) != TimestampCheckResult::NonOverlapping) {
       entity_last_ts = entity_latest_row_[entity_id];
     }
   }
