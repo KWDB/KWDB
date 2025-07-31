@@ -64,7 +64,8 @@ class ConcurrentRWTest : public testing::Test {
     ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, metric_schema_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
 
-    vgroup_ = std::make_shared<TsVGroup>(opts_, 1, schema_mgr_.get(), false);
+    std::shared_mutex wal_level_mutex;
+    vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, false);
     ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
     vgroup_->SetReady();
   }
