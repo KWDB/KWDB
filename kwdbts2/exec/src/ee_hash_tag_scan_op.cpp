@@ -19,7 +19,6 @@
 
 #include "cm_func.h"
 #include "ee_row_batch.h"
-#include "ee_flow_param.h"
 #include "ee_global.h"
 #include "ee_storage_handler.h"
 #include "ee_pb_plan.pb.h"
@@ -34,10 +33,9 @@ namespace kwdbts {
 HashTagScanOperator::HashTagScanOperator(TsFetcherCollection *collection,
                                          TSTagReaderSpec* spec, TSPostProcessSpec* post,
                                          TABLE* table, int32_t processor_id)
-    : TagScanBaseOperator(collection, table, processor_id),
-      spec_(spec),
-      post_(post),
-      param_(post, table) {
+    : TagScanBaseOperator(collection, table, post, processor_id),
+    spec_(spec),
+    param_(spec, post, table) {
   if (spec) {
     table->SetAccessMode(spec->accessmode());
     table_->ptag_size_ = 0;
@@ -53,7 +51,7 @@ HashTagScanOperator::HashTagScanOperator(TsFetcherCollection *collection,
 
 HashTagScanOperator::~HashTagScanOperator() = default;
 
-KStatus HashTagScanOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode HashTagScanOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
   Reset(ctx);
   if (dynamic_hash_index_) {
@@ -66,7 +64,7 @@ KStatus HashTagScanOperator::Close(kwdbContext_p ctx) {
     tag_renders_ = nullptr;
   }
   SafeDeleteArray(tag_col_info_);
-  Return(KStatus::SUCCESS);
+  Return(EEIteratorErrCode::EE_OK);
 }
 
 EEIteratorErrCode HashTagScanOperator::Init(kwdbContext_p ctx) {
@@ -78,28 +76,34 @@ EEIteratorErrCode HashTagScanOperator::Init(kwdbContext_p ctx) {
   EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
   do {
     // resolve tag
-    param_.ResolveScanTags(ctx);
+    param_.ParserScanTags(ctx);
     for (k_uint32 i = 0; i < table_->scan_tags_.size(); ++i) {
       scan_tag_to_output[table_->scan_tags_[i]] = i;
     }
     // resolve relational cols
-    param_.ResolveScanRelCols(ctx);
+    param_.ParserScanTagsRelCols(ctx);
     // post->filter;
-    ret = param_.ResolveFilter(ctx, &filter_, true);
+    ret = param_.ParserFilter(ctx, &filter_);
     if (EEIteratorErrCode::EE_OK != ret) {
       LOG_ERROR("ReaderPostResolve::ResolveFilter() failed");
       break;
     }
     if (object_id_ > 0) {
+      // parser input fields
+      ret = param_.ParserInputField(ctx);
+      if (ret != EEIteratorErrCode::EE_OK) {
+        LOG_ERROR("ParserInputField() failed");
+        break;
+      }
       // renders num
       param_.RenderSize(ctx, &num_);
-      ret = param_.ResolveRender(ctx, &renders_, num_);
+      ret = param_.ParserRender(ctx, &renders_, num_);
       if (ret != EEIteratorErrCode::EE_OK) {
         LOG_ERROR("ResolveRender() failed");
         break;
       }
       // Output Fields
-      ret = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+      ret = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
       if (EEIteratorErrCode::EE_OK != ret) {
         LOG_ERROR("ResolveOutputFields() failed");
         break;

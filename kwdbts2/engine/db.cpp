@@ -88,6 +88,16 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   opts.thread_pool_size = options.thread_pool_size;
   opts.task_queue_size = options.task_queue_size;
   opts.buffer_pool_size = options.buffer_pool_size;
+  if (options.brpc_addr.data != nullptr && options.brpc_addr.len > 0 && options.brpc_addr.len < 65536) {
+    opts.brpc_addr = string(options.brpc_addr.data, options.brpc_addr.len);
+  } else {
+    opts.brpc_addr = "";
+  }
+  if (options.cluster_id.data != nullptr && options.cluster_id.len > 0 && options.cluster_id.len < 65536) {
+    opts.cluster_id = string(options.cluster_id.data, options.cluster_id.len);
+  } else {
+    opts.cluster_id = "00000000-0000-0000-0000-000000000000";
+  }
 
   setenv("KW_HOME", ts_store_path.c_str(), 1);
 

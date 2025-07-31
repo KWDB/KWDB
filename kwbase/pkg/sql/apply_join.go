@@ -247,7 +247,6 @@ func (a *applyJoinNode) Next(params runParams) (bool, error) {
 			return false, err
 		}
 		plan := p.(*planTop)
-
 		if err := a.runRightSidePlan(params, plan); err != nil {
 			return false, err
 		}

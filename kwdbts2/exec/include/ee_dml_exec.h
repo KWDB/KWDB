@@ -11,6 +11,7 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include "cm_assert.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
@@ -43,6 +44,17 @@ class DmlExec {
   };
 
  public:
+  struct IpAddr {
+    std::string ip_;
+    k_uint32 port_{0};
+  };
+
+  struct BrpcInfo {
+    k_int64 query_id_{0};
+    std::vector<IpAddr> addrs_;
+  };
+
+ public:
   DmlExec():tsscan_head_(nullptr), tsscan_end_{nullptr} {}
   ~DmlExec();
 
@@ -54,6 +66,9 @@ class DmlExec {
   RelBatchQueue* GetRelBatchQueue();
   // push relational batch data into relational batch queue for multiple model processing
   KStatus PushRelData(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp);
+
+  void SetBrpcInfo(const TSFlowSpec *flow);
+  void GetBrpcInfo(BrpcInfo &brpc) { brpc = brpc_info_; }
 
  private:
   // create ts scan for execute
@@ -79,6 +94,7 @@ class DmlExec {
   KWThdContext  *thd_{nullptr};
   // a queue to receive relation batch data from ME for multiple model processing
   RelBatchQueue* rel_batch_queue_{nullptr};
+  BrpcInfo brpc_info_;
 };
 };  // namespace kwdbts
 

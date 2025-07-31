@@ -78,8 +78,7 @@ INSERT 1
                               | ts-table            | ts1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-                              | block filter[e1]    | NOT NULL
-(27 rows)
+(26 rows)
 > select min(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   min
 -------
@@ -114,8 +113,7 @@ INSERT 1
                               | ts-table            | ts1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-                              | block filter[e1]    | NOT NULL
-(27 rows)
+(26 rows)
 > select count(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   count
 ---------
@@ -1537,35 +1535,33 @@ SET CLUSTER SETTING
                                    | ts-table            | ts1
                                    | access mode         | metaTable
                                    | use statistic       | true
-                                   | block filter[e1]    | NOT NULL
-(24 rows)
+(23 rows)
 > select max(ts.e1) from tsdb.ts1 ts join redb.re1 r on ts.e1=r.e1;
   max
 --------
   NULL
 (1 row)
 > explain select max(ts.e1) from tsdb.ts1 ts join redb.re1 r on ts.e1=r.e1;
-             tree             |      field       | description
-------------------------------+------------------+--------------
-                              | distributed      | true
-                              | vectorized       | false
-  group                       |                  |
-   │                          | aggregate 0      | max(e1)
-   │                          | scalar           |
-   └── render                 |                  |
-        │                     | e1               | e1
-        └── hash-join         |                  |
-             │                | type             | inner
-             │                | equality         | (e1) = (e1)
-             ├── synchronizer |                  |
-             │    └── ts scan |                  |
-             │                | ts-table         | ts1
-             │                | access mode      | metaTable
-             │                | block filter[e1] | NOT NULL
-             └── scan         |                  |
-                              | table            | re1@primary
-                              | spans            | FULL SCAN
-(18 rows)
+             tree             |    field    | description
+------------------------------+-------------+--------------
+                              | distributed | true
+                              | vectorized  | false
+  group                       |             |
+   │                          | aggregate 0 | max(e1)
+   │                          | scalar      |
+   └── render                 |             |
+        │                     | e1          | e1
+        └── hash-join         |             |
+             │                | type        | inner
+             │                | equality    | (e1) = (e1)
+             ├── synchronizer |             |
+             │    └── ts scan |             |
+             │                | ts-table    | ts1
+             │                | access mode | metaTable
+             └── scan         |             |
+                              | table       | re1@primary
+                              | spans       | FULL SCAN
+(17 rows)
 > select max(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1+r.e2-10;
   max
 --------
@@ -1601,8 +1597,7 @@ SET CLUSTER SETTING
                               | ts-table            | ts1
                               | access mode         | tableTableMeta
                               | use statistic       | true
-                              | block filter[e1]    | NOT NULL
-(28 rows)
+(27 rows)
 > select max(ts2.e1) from tsdb.ts1 ts2 join tsdb.ts1 ts3 on ts2.tag1=10 join redb.re1 r on ts2.tag1=r.e1;
   max
 -------
@@ -1647,8 +1642,7 @@ SET CLUSTER SETTING
                                              | access mode         | tagIndex
                                              | use statistic       | true
                                              | ptag filter[0]      | tag1 = 10
-                                             | block filter[e1]    | NOT NULL
-(37 rows)
+(36 rows)
 > select max(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 and ts.tag2=r.e2 or ts.tag3=r.e3 group by ts.tag1, r.e1;
   max
 -------

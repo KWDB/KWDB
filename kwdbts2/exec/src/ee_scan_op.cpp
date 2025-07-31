@@ -19,7 +19,6 @@
 
 #include "cm_func.h"
 #include "ee_row_batch.h"
-#include "ee_flow_param.h"
 #include "ee_global.h"
 #include "ee_storage_handler.h"
 #include "ee_window_helper.h"
@@ -34,16 +33,14 @@
 namespace kwdbts {
 
 TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
-                                     TABLE* table, BaseOperator* input, int32_t processor_id)
-    : BaseOperator(collection, table, processor_id),
-      spec_{spec},
-      post_(post),
+                                     TABLE* table, int32_t processor_id)
+    : BaseOperator(collection, table, post, processor_id),
+      spec_(spec),
       schema_id_(0),
       object_id_(spec->tableid()),
       limit_(post->limit()),
       offset_(post->offset()),
-      param_(post, table),
-      input_{input} {
+      param_(spec, post, table) {
   int count = spec->ts_spans_size();
   for (int i = 0; i < count; ++i) {
     TsSpan* span = spec->mutable_ts_spans(i);
@@ -70,29 +67,27 @@ TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSp
   }
 }
 
-TableScanOperator::TableScanOperator(const TableScanOperator& other, BaseOperator* input, int32_t processor_id)
+TableScanOperator::TableScanOperator(const TableScanOperator& other, int32_t processor_id)
     : BaseOperator(other),
-      spec_{other.spec_},
-      post_(other.post_),
+      spec_(other.spec_),
       schema_id_(other.schema_id_),
       object_id_(other.object_id_),
       ts_kwspans_(other.ts_kwspans_),
       limit_(other.limit_),
       offset_(other.offset_),
-      param_(other.post_, other.table_),
-      input_{input} {
+      param_(other.spec_, other.post_, other.table_) {
   is_clone_ = true;
 }
 
-TableScanOperator::~TableScanOperator() {}
+TableScanOperator::~TableScanOperator() {
+}
 
 EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
-
   EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
   do {
-    if (input_) {
-      ret = input_->Init(ctx);
+    if (childrens_[0]) {
+      ret = childrens_[0]->Init(ctx);
       if (ret != EEIteratorErrCode::EE_OK) {
         LOG_ERROR("Init tagscan failed.");
         break;
@@ -100,32 +95,30 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
     }
 
     // post->filter;
-    ret = param_.ResolveFilter(ctx, &filter_, false);
+    ret = param_.ParserFilter(ctx, &filter_);
     if (EEIteratorErrCode::EE_OK != ret) {
       LOG_ERROR("Rosolve filter failed.");
       break;
     }
 
+    // parser input fields
+    ret = param_.ParserInputField(ctx);
+    if (ret != EEIteratorErrCode::EE_OK) {
+      LOG_ERROR("ParserInputFields failed.");
+      break;
+    }
     // render num
     param_.RenderSize(ctx, &num_);
 
     // resolve renders
-    ret = param_.ResolveRender(ctx, &renders_, num_);
+    ret = param_.ParserRender(ctx, &renders_, num_);
     if (ret != EEIteratorErrCode::EE_OK) {
       LOG_ERROR("Resolve render failed.");
       break;
     }
 
-    if (!ignore_outputtypes_) {
-      // resolve output type(return type)
-      ret = param_.ResolveOutputType(ctx, renders_, num_);
-      if (ret != EEIteratorErrCode::EE_OK) {
-        LOG_ERROR("Resolve output type failed.");
-        break;
-      }
-    }
     // output Field
-    ret = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+    ret = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, ignore_outputtypes_);
     if (ret != EEIteratorErrCode::EE_OK) {
       LOG_ERROR("Resolve output fields failed.");
       break;
@@ -156,11 +149,11 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
     }
 
     if (!is_clone_) {
-      ret = param_.ResolveScanCols(ctx);
+      ret = param_.ParserScanCols(ctx);
       if (ret != EEIteratorErrCode::EE_OK) {
         Return(ret);
       }
-      ret = param_.ResolveBlockFilter(spec_);
+      ret = param_.ResolveBlockFilter();
     }
   } while (0);
   Return(ret);
@@ -169,7 +162,6 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
 EEIteratorErrCode TableScanOperator::Start(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
-
   cur_offset_ = offset_;
 
   code = InitHandler(ctx);
@@ -180,9 +172,14 @@ EEIteratorErrCode TableScanOperator::Start(kwdbContext_p ctx) {
   if (EEIteratorErrCode::EE_OK != code) {
     Return(code);
   }
-  if (input_) {
-    code = input_->Start(ctx);
+  if (childrens_[0]) {
+    code = childrens_[0]->Start(ctx);
     if (code != EEIteratorErrCode::EE_OK) {
+      LOG_ERROR("table_->hash_points_ size : %lu, is remote : %d", table_->hash_points_.size(), current_thd->IsRemote());
+      if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+        EEPgErrorInfo::ResetPgErrorInfo();
+        Return(EEIteratorErrCode::EE_OK);
+      }
       LOG_ERROR("Start tagscan failed.");
       Return(code);
     }
@@ -193,6 +190,9 @@ EEIteratorErrCode TableScanOperator::Start(kwdbContext_p ctx) {
 
 EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx) {
   EnterFunc();
+  if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   if (CheckCancel(ctx) != SUCCESS) {
     Return(EEIteratorErrCode::EE_ERROR);
@@ -216,7 +216,9 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   KWThdContext* thd = current_thd;
-
+  if (table_->hash_points_.empty() && thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   auto start = std::chrono::high_resolution_clock::now();
   if (CheckCancel(ctx) != SUCCESS) {
     Return(EEIteratorErrCode::EE_ERROR);
@@ -224,7 +226,7 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
   chunk = nullptr;
   code = helper_->NextChunk(ctx, chunk);
   if (chunk) {
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
     Return(code);
@@ -243,14 +245,14 @@ EEIteratorErrCode TableScanOperator::Reset(kwdbContext_p ctx) {
   Return(EEIteratorErrCode::EE_OK);
 }
 
-KStatus TableScanOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode TableScanOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  Reset(ctx);
-  KStatus ret;
-  if (input_) {
-    ret = input_->Close(ctx);
+  EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
+  code = Reset(ctx);
+  if (childrens_[0] && !is_clone_) {
+    code = childrens_[0]->Close(ctx);
   }
-  Return(ret);
+  Return(code);
 }
 
 EEIteratorErrCode TableScanOperator::InitHandler(kwdbContext_p ctx) {
@@ -262,7 +264,7 @@ EEIteratorErrCode TableScanOperator::InitHandler(kwdbContext_p ctx) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
   handler_->Init(ctx);
-  handler_->SetTagScan(static_cast<TagScanBaseOperator*>(input_));
+  handler_->SetTagScan(static_cast<TagScanBaseOperator*>(childrens_[0]));
   handler_->SetSpans(&ts_kwspans_);
 
   Return(ret);
@@ -334,7 +336,11 @@ k_bool TableScanOperator::ResolveOffset() {
 
 BaseOperator* TableScanOperator::Clone() {
   // input_ is TagScanIterator object，shared by TableScanIterator
-  BaseOperator* iter = NewIterator<TableScanOperator>(*this, input_, this->processor_id_);
+  BaseOperator* iter = NewIterator<TableScanOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(childrens_[0]);
+  }
+
   return iter;
 }
 

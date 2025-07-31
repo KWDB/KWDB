@@ -115,6 +115,47 @@ func newNoopProcessor(
 	return n, nil
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSReader) error {
+	// start a goroutine to receive local data.
+	go func() {
+		ttr := ttr.(*TsTableReader)
+		dst := ttr.Out.Output()
+		defer dst.ProducerDone()
+		ttr.Start(ctx)
+		for {
+			rev, code, err := ttr.NextPgWire()
+			if err != nil {
+				meta := &execinfrapb.ProducerMetadata{Err: err}
+				dst.Push(nil, meta)
+				return
+			}
+
+			if code == -1 {
+				return
+			}
+
+			err = n.Push(ctx, rev)
+			if err != nil {
+				meta := &execinfrapb.ProducerMetadata{Err: err}
+				dst.Push(nil, meta)
+				return
+			}
+		}
+	}()
+
+	ctx = n.Start(ctx)
+	dst := n.Out.Output()
+	for {
+		row, meta := n.input.Next()
+		if row == nil && meta == nil {
+			// query short circuit end.
+			return nil
+		}
+		dst.Push(row, meta)
+	}
+}
+
 // InitProcessorProcedure init processor in procedure
 func (n *noopProcessor) InitProcessorProcedure(txn *kv.Txn) {
 	if n.EvalCtx.IsProcedure {
@@ -275,11 +316,6 @@ func (n *noopProcessor) handleMetaForTs(meta *execinfrapb.ProducerMetadata) (Nee
 	}
 
 	return false
-}
-
-func (n *noopProcessor) IsShortCircuitForPgEncode() bool {
-	// n.InputNum > 1: Multiple nodes refuse to use this optimization.
-	return n.InputNum <= 1 && !n.hasFilter && !n.hasOutputColumn
 }
 
 // ConsumerClosed is part of the RowSource interface.

@@ -189,6 +189,7 @@ func createAndStartTestNode(
 	if err := node.start(ctx,
 		addr,
 		addr, // Note: this is not really a SQL address but these tests do not use SQL so all is fine.
+		util.NewUnresolvedAddr("tcp", "127.0.0.1:0"),
 		bootstrappedEngines, newEngines, "",
 		roachpb.Attributes{}, &locality, cv, []roachpb.LocalityAddress{},
 		nil, /*nodeDescriptorCallback */
@@ -436,6 +437,7 @@ func TestCorruptedClusterID(t *testing.T) {
 	if err := node.start(
 		ctx, serverAddr,
 		serverAddr, // Note: this is not really a SQL address but the tests in this package do not use SQL so all is fine.
+		util.NewUnresolvedAddr("tcp", "127.0.0.1:0"),
 		bootstrappedEngines, newEngines, "",
 		roachpb.Attributes{}, &roachpb.Locality{}, cv,
 		[]roachpb.LocalityAddress{},

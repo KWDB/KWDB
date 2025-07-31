@@ -22,13 +22,11 @@
 namespace kwdbts {
 
 TableStatisticScanOperator::TableStatisticScanOperator(TsFetcherCollection* collection,
-    TSStatisticReaderSpec* spec, TSPostProcessSpec* post, TABLE* table, BaseOperator* input, int32_t processor_id)
-    : BaseOperator(collection, table, processor_id),
-      post_(post),
+    TSStatisticReaderSpec* spec, TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
+    : BaseOperator(collection, table, post, processor_id),
       schema_id_(0),
       object_id_(spec->tableid()),
-      param_(spec, post, table),
-      input_(input) {
+      param_(spec, post, table) {
   for (int i = 0; i < spec->tsspans_size(); i++) {
     TsSpan* span = spec->mutable_tsspans(i);
     KwTsSpan ts_span;
@@ -50,15 +48,12 @@ TableStatisticScanOperator::TableStatisticScanOperator(TsFetcherCollection* coll
 }
 
 TableStatisticScanOperator::TableStatisticScanOperator(
-    const TableStatisticScanOperator& other, BaseOperator* input,
-    int32_t processor_id)
+    const TableStatisticScanOperator& other, int32_t processor_id)
     : BaseOperator(other),
-      post_(other.post_),
       schema_id_(other.schema_id_),
       object_id_(other.object_id_),
       ts_kwspans_(other.ts_kwspans_),
-      param_(other.param_.spec_, other.post_, other.table_),
-      input_{input} {
+      param_(other.param_.spec_, other.post_, other.table_) {
   is_clone_ = true;
   param_.insert_ts_index_ = other.param_.insert_ts_index_;
   param_.insert_last_tag_ts_num_ = other.param_.insert_last_tag_ts_num_;
@@ -76,7 +71,7 @@ EEIteratorErrCode TableStatisticScanOperator::InitHandler(kwdbContext_p ctx) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
   handler_->Init(ctx);
-  handler_->SetTagScan(static_cast<TagScanBaseOperator *>(input_));
+  handler_->SetTagScan(static_cast<TagScanBaseOperator *>(childrens_[0]));
   handler_->SetSpans(&ts_kwspans_);
   Return(ret);
 }
@@ -89,8 +84,8 @@ EEIteratorErrCode TableStatisticScanOperator::Start(kwdbContext_p ctx) {
   if (EEIteratorErrCode::EE_OK != code) {
     Return(code);
   }
-  if (input_) {
-    code = input_->Start(ctx);
+  if (childrens_[0]) {
+    code = childrens_[0]->Start(ctx);
     if (code != EEIteratorErrCode::EE_OK) {
       LOG_ERROR("Tag Scan Init() failed\n");
       Return(code);
@@ -124,8 +119,8 @@ EEIteratorErrCode TableStatisticScanOperator::Init(kwdbContext_p ctx) {
   EEIteratorErrCode ret = EEIteratorErrCode::EE_ERROR;
 
   do {
-    if (input_) {
-      ret = input_->Init(ctx);
+    if (childrens_[0]) {
+      ret = childrens_[0]->Init(ctx);
       if (ret != EEIteratorErrCode::EE_OK) {
         LOG_ERROR("Tag Scan Init() failed\n");
         break;
@@ -138,16 +133,9 @@ EEIteratorErrCode TableStatisticScanOperator::Init(kwdbContext_p ctx) {
       ret = param_.ResolveScanCols(ctx);
     }
 
-    ret = param_.ResolveRender(ctx, &renders_, num_);
+    ret = param_.ParserRender(ctx, &renders_, num_);
     if (EEIteratorErrCode::EE_OK != ret) {
       LOG_ERROR("ReaderPostResolve ResolveRender failed!\n");
-      break;
-    }
-
-    // resolve output field(return type)
-    ret = param_.ResolveOutputType(ctx, renders_, num_);
-    if (ret != EEIteratorErrCode::EE_OK) {
-      LOG_ERROR("ResolveOutputType() failed\n");
       break;
     }
 
@@ -157,7 +145,7 @@ EEIteratorErrCode TableStatisticScanOperator::Init(kwdbContext_p ctx) {
     is_lastrow_optimize_ = param_.spec_->lastrowopt();
 
     // dispose Output Fields
-    ret = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+    ret = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
     if (EEIteratorErrCode::EE_OK != ret) {
       LOG_ERROR("ResolveOutputFields() failed\n");
       break;
@@ -182,14 +170,14 @@ EEIteratorErrCode TableStatisticScanOperator::Init(kwdbContext_p ctx) {
   Return(ret);
 }
 
-KStatus TableStatisticScanOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode TableStatisticScanOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
   Reset(ctx);
-  KStatus ret;
-  if (input_) {
-    ret = input_->Close(ctx);
+  EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
+  if (childrens_[0] && !is_clone_) {
+    code = childrens_[0]->Close(ctx);
   }
-  Return(KStatus::SUCCESS);
+  Return(code);
 }
 
 EEIteratorErrCode TableStatisticScanOperator::Reset(kwdbContext_p ctx) {
@@ -202,6 +190,9 @@ EEIteratorErrCode TableStatisticScanOperator::Reset(kwdbContext_p ctx) {
 EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   EnterFunc();
   auto start = std::chrono::high_resolution_clock::now();
+  if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   if (CheckCancel(ctx) != SUCCESS) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
@@ -278,7 +269,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
 
   if (!output_queue_.empty()) {
     chunk = std::move(output_queue_.front());
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
@@ -327,7 +318,10 @@ void TableStatisticScanOperator::ProcessScalar() {
 
 BaseOperator* TableStatisticScanOperator::Clone() {
   // input_ is the object of TagScanIterator，shared by the object of TableScanIterator
-  BaseOperator* iter = NewIterator<TableStatisticScanOperator>(*this, input_, this->processor_id_);
+  BaseOperator* iter = NewIterator<TableStatisticScanOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(childrens_[0]);
+  }
   return iter;
 }
 

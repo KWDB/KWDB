@@ -31,6 +31,13 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "ts_sampler_op.h"
+#include "ee_result_collector_op.h"
+#include "ee_local_inbound_op.h"
+#include "ee_local_merge_inbound_op.h"
+#include "ee_remote_inbound_op.h"
+#include "ee_remote_merge_sort_inbound_op.h"
+#include "ee_router_outbound_op.h"
+#include "ee_local_outbound_op.h"
 
 namespace kwdbts {
 
@@ -41,19 +48,6 @@ KStatus OpFactory::NewTagScan(kwdbContext_p ctx, TsFetcherCollection* collection
   EnterFunc();
   // New tag reader operator
   const TSTagReaderSpec& readerSpec = core.tagreader();
-  k_uint32 sId = 0;
-  k_uint64 objId = readerSpec.tableid();
-  *table = KNEW TABLE(sId, objId);
-  if (*table == nullptr) {
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-    Return(KStatus::FAIL);
-  }
-  if (KStatus::FAIL == (*table)->Init(ctx, &readerSpec)) {
-    delete *table;
-    *table = nullptr;
-    LOG_ERROR("Init table error when creating TableScanIterator.");
-    Return(KStatus::FAIL);
-  }
   // generate HashTagScan op for hashTagScan, primaryHashTagScan and hashRelScan access mode
   // for multiple model processing
   if (readerSpec.accessmode() == TSTableReadMode::hashTagScan
@@ -81,21 +75,18 @@ KStatus OpFactory::NewTagScan(kwdbContext_p ctx, TsFetcherCollection* collection
 KStatus OpFactory::NewTableScan(kwdbContext_p ctx, TsFetcherCollection* collection,
                                 const TSPostProcessSpec& post,
                                 const TSProcessorCoreUnion& core,
-                                BaseOperator** iterator, TABLE** table,
-                                BaseOperator* childIterator,
-                                int32_t processor_id) {
+                                BaseOperator** iterator, TABLE** table, int32_t processor_id) {
   EnterFunc();
   // New table reader operator
   const TSReaderSpec& readerSpec = core.tablereader();
   if (readerSpec.has_aggregator()) {
     *iterator = NewIterator<AggTableScanOperator>(collection,
         const_cast<TSReaderSpec*>(&readerSpec),
-        const_cast<TSPostProcessSpec*>(&post), *table, childIterator,
-        processor_id);
+        const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
   } else if (readerSpec.has_sorter() || readerSpec.offsetopt()) {
     *iterator = NewIterator<SortScanOperator>(collection,
         const_cast<TSReaderSpec*>(&readerSpec),
-        const_cast<TSPostProcessSpec*>(&post), *table, childIterator, processor_id);
+        const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
   } else {
     if (post.outputcols_size() == 0 && post.renders_size() == 0) {
       auto rewrite_post = const_cast<TSPostProcessSpec*>(&post);
@@ -105,7 +96,7 @@ KStatus OpFactory::NewTableScan(kwdbContext_p ctx, TsFetcherCollection* collecti
     *iterator =
         NewIterator<TableScanOperator>(collection, const_cast<TSReaderSpec*>(&readerSpec),
                                        const_cast<TSPostProcessSpec*>(&post),
-                                       *table, childIterator, processor_id);
+                                       *table, processor_id);
   }
   if (!(*iterator)) {
     LOG_ERROR("create TableScanOperator failed");
@@ -117,72 +108,66 @@ KStatus OpFactory::NewTableScan(kwdbContext_p ctx, TsFetcherCollection* collecti
 
 KStatus OpFactory::NewAgg(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec& post,
                           const TSProcessorCoreUnion& core,
-                          BaseOperator** iterator, TABLE** table,
-                          BaseOperator* childIterator, int32_t processor_id) {
+                          BaseOperator** iterator, TABLE** table, int32_t processor_id) {
   EnterFunc();
   // New agg operator
   const TSAggregatorSpec& aggSpec = core.aggregator();
   if (aggSpec.agg_push_down()) {
     *iterator = NewIterator<PostAggScanOperator>(collection,
-        childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
+        const_cast<TSAggregatorSpec*>(&aggSpec),
         const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
-    AggTableScanOperator* input =
-        dynamic_cast<AggTableScanOperator*>(childIterator);
-    if (input) {
-      input->SetHasPostAgg(true);
-    }
   } else {
     if (aggSpec.group_cols_size() == aggSpec.ordered_group_cols_size() ||
         aggSpec.group_window_id() >= 0) {
-      *iterator = NewIterator<OrderedAggregateOperator>(collection,
-          childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
+      *iterator = NewIterator<OrderedAggregateOperator>(collection, const_cast<TSAggregatorSpec*>(&aggSpec),
           const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
     } else {
-      k_uint32 group_size = aggSpec.group_cols_size();
-      k_uint32 k_group_ptag_size = 0;
-      TableScanOperator* input = dynamic_cast<TableScanOperator*>(childIterator);
-      if (input) {
-        for (k_int32 i = 0; i < group_size; ++i) {
-          k_uint32 groupcol = aggSpec.group_cols(i);
-          k_int32 col = -1;
-          if (input->post_->renders_size() > 0) {
-            std::string render = input->post_->renders(groupcol);
-            render = render.substr(1);
-            try {
-              col = std::stoi(render) - 1;
-              if (input->post_->outputcols_size() > 0) {
-                col = input->post_->outputcols(col);
-              }
-            } catch (...) {
-              break;
-            }
-          } else if (input->post_->outputcols_size() > 0) {
-            col = input->post_->outputcols(groupcol);
-          } else {
-            col = groupcol;
-          }
+      // k_uint32 group_size = aggSpec.group_cols_size();
+      // k_uint32 k_group_ptag_size = 0;
+      // TableScanOperator* input = dynamic_cast<TableScanOperator*>(childIterator);
+      // if (input) {
+      //   for (k_int32 i = 0; i < group_size; ++i) {
+      //     k_uint32 groupcol = aggSpec.group_cols(i);
+      //     k_int32 col = -1;
+      //     if (input->post_->renders_size() > 0) {
+      //       std::string render = input->post_->renders(groupcol);
+      //       render = render.substr(1);
+      //       try {
+      //         col = std::stoi(render) - 1;
+      //         if (input->post_->outputcols_size() > 0) {
+      //           col = input->post_->outputcols(col);
+      //         }
+      //       } catch (...) {
+      //         break;
+      //       }
+      //     } else if (input->post_->outputcols_size() > 0) {
+      //       col = input->post_->outputcols(groupcol);
+      //     } else {
+      //       col = groupcol;
+      //     }
 
-          if (col == -1 || col >= (*table)->field_num_) {
-            break;
-          }
-          Field* field = (*table)->fields_[col];
-          if (field->get_column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
-            ++k_group_ptag_size;
-          }
-        }
-      }
+      //     if (col == -1 || col >= (*table)->field_num_) {
+      //       break;
+      //     }
+      //     Field* field = (*table)->fields_[col];
+      //     if (field->get_column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+      //       ++k_group_ptag_size;
+      //     }
+      //   }
+      // }
       // use OrderedAggregate, when grouping only by ptag.
       // for example:
       // select ptag, sum(v) from t group by ptag;
-      if (group_size == k_group_ptag_size && (*table)->PTagCount() == k_group_ptag_size) {
+      // if (group_size == k_group_ptag_size && (*table)->PTagCount() == k_group_ptag_size) {
+      //   *iterator =
+      //       NewIterator<OrderedAggregateOperator>(collection, const_cast<TSAggregatorSpec*>(&aggSpec),
+      //     const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+      // } else {
         *iterator =
-            NewIterator<OrderedAggregateOperator>(collection, childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
-                                                  const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
-      } else {
-        *iterator =
-            NewIterator<HashAggregateOperator>(collection, childIterator, const_cast<TSAggregatorSpec*>(&aggSpec),
-                                               const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
-      }
+            NewIterator<HashAggregateOperator>(collection,
+          const_cast<TSAggregatorSpec*>(&aggSpec),
+          const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+      // }
     }
   }
   if (!(*iterator)) {
@@ -195,14 +180,17 @@ KStatus OpFactory::NewAgg(kwdbContext_p ctx, TsFetcherCollection* collection, co
 
 KStatus OpFactory::NewNoop(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec& post,
                            const TSProcessorCoreUnion& core,
-                           BaseOperator** iterator, TABLE** table,
-                           BaseOperator* childIterator, int32_t processor_id) {
+                           BaseOperator** iterator, TABLE** table, int32_t processor_id, bool only_operator) {
   EnterFunc();
   const TSNoopSpec& noopSpec = core.noop();
-  // New noop operator
-  *iterator = NewIterator<NoopOperator>(collection,
-      childIterator, const_cast<TSNoopSpec*>(&noopSpec),
+  if (!only_operator) {
+    *iterator = NewIterator<NoopOperator>(collection, const_cast<TSNoopSpec*>(&noopSpec),
       const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+  } else {
+    *iterator = NewIterator<PassThroughNoopOperaotr>(collection, const_cast<TSNoopSpec*>(&noopSpec),
+      const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+  }
+  // New noop operator
   if (!(*iterator)) {
     LOG_ERROR("create NoopOperator failed");
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
@@ -234,12 +222,11 @@ KStatus OpFactory::NewNoop(kwdbContext_p ctx, TsFetcherCollection* collection, c
 KStatus OpFactory::NewTsSampler(kwdbContext_p ctx, TsFetcherCollection* collection,
                                 const TSProcessorCoreUnion& core,
                                 BaseOperator** iterator, TABLE** table,
-                                BaseOperator* childIterator,
                                 int32_t processor_id) {
   EnterFunc();
   const TSSamplerSpec& tsInfo = core.sampler();
   *iterator =
-      NewIterator<TsSamplerOperator>(collection, *table, childIterator, processor_id);
+      NewIterator<TsSamplerOperator>(collection, *table, processor_id);
   if (!(*iterator)) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(KStatus::FAIL);
@@ -258,14 +245,12 @@ KStatus OpFactory::NewTsSampler(kwdbContext_p ctx, TsFetcherCollection* collecti
 
 KStatus OpFactory::NewSort(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec& post,
                            const TSProcessorCoreUnion& core,
-                           BaseOperator** iterator, TABLE** table,
-                           BaseOperator* childIterator, int32_t processor_id) {
+                           BaseOperator** iterator, TABLE** table, int32_t processor_id) {
   EnterFunc();
   // New sort operator
   const TSSorterSpec& spec = core.sorter();
 
-  *iterator = NewIterator<SortOperator>(collection,
-      childIterator, const_cast<TSSorterSpec*>(&spec),
+  *iterator = NewIterator<SortOperator>(collection, const_cast<TSSorterSpec*>(&spec),
       const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
 
   if (!(*iterator)) {
@@ -277,22 +262,40 @@ KStatus OpFactory::NewSort(kwdbContext_p ctx, TsFetcherCollection* collection, c
 }
 
 KStatus OpFactory::NewSynchronizer(kwdbContext_p ctx, TsFetcherCollection* collection,
+                                   const TSProcessorSpec& procSpec,
                                    const TSPostProcessSpec& post,
                                    const TSProcessorCoreUnion& core,
                                    BaseOperator** iterator, TABLE** table,
-                                   BaseOperator* childIterator,
                                    int32_t processor_id) {
   EnterFunc();
   // New synchronizer operator
   const TSSynchronizerSpec& mergeSpec = core.synchronizer();
-  *iterator = NewIterator<SynchronizerOperator>(collection,
-      childIterator, const_cast<TSSynchronizerSpec*>(&mergeSpec),
-      const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
+  const TSOutputRouterSpec &output_spec = procSpec.output(0);
+  k_uint32 stream_size = output_spec.streams_size();
+  bool is_routor = false;
+  for (k_uint32 i = 0; i < stream_size; i++) {
+    StreamEndpointType output_stream_type = output_spec.streams(i).type();
+    if (StreamEndpointType::REMOTE == output_stream_type) {
+      is_routor = true;
+      break;
+    }
+  }
+
+  if (is_routor) {
+    *iterator = NewIterator<RouterOutboundOperator>(collection, const_cast<TSOutputRouterSpec*>(&output_spec), *table);
+  } else {
+    *iterator = NewIterator<LocalOutboundOperator>(collection, const_cast<TSOutputRouterSpec*>(&output_spec), *table);
+  }
 
   if (!(*iterator)) {
     LOG_ERROR("create SynchronizerOperator failed");
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(KStatus::FAIL);
+  }
+  // 设置并行度
+  OutboundOperator *outbound = dynamic_cast<OutboundOperator*>(*iterator);
+  if (outbound) {
+    outbound->SetDegree(mergeSpec.degree());
   }
   Return(SUCCESS);
 }
@@ -300,13 +303,11 @@ KStatus OpFactory::NewSynchronizer(kwdbContext_p ctx, TsFetcherCollection* colle
 KStatus OpFactory::NewDistinct(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec& post,
                                const TSProcessorCoreUnion& core,
                                BaseOperator** iterator, TABLE** table,
-                               BaseOperator* childIterator,
                                int32_t processor_id) {
   EnterFunc();
   // New distinct operator
   const DistinctSpec& spec = core.distinct();
-  *iterator = NewIterator<DistinctOperator>(collection,
-      childIterator, const_cast<DistinctSpec*>(&spec),
+  *iterator = NewIterator<DistinctOperator>(collection, const_cast<DistinctSpec*>(&spec),
       const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
 
   if (!(*iterator)) {
@@ -320,14 +321,14 @@ KStatus OpFactory::NewDistinct(kwdbContext_p ctx, TsFetcherCollection* collectio
 KStatus OpFactory::NewStatisticScan(
     kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec& post,
     const TSProcessorCoreUnion& core, BaseOperator** iterator,
-    TABLE** table, BaseOperator* childIterator, int32_t processor_id) {
+    TABLE** table, int32_t processor_id) {
   EnterFunc();
   // Create StatisticReader Operator
   const TSStatisticReaderSpec& statisticReaderSpec = core.statisticreader();
   LOG_DEBUG("NewTableScan creating TableStatisticScanOperator");
   *iterator = NewIterator<TableStatisticScanOperator>(collection,
       const_cast<TSStatisticReaderSpec*>(&statisticReaderSpec),
-      const_cast<TSPostProcessSpec*>(&post), *table, childIterator, processor_id);
+      const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
 
   if (!(*iterator)) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
@@ -342,13 +343,12 @@ KStatus OpFactory::NewWindowScan(kwdbContext_p ctx,
                                  const TSPostProcessSpec& post,
                                  const TSProcessorCoreUnion& core,
                                  BaseOperator** iterator, TABLE** table,
-                                 BaseOperator* childIterator,
                                  int32_t processor_id) {
   EnterFunc();
   // Create WindowerSpec Operator
   const WindowerSpec& windowerSpec = core.window();
   *iterator = NewIterator<WindowOperator>(
-      collection, childIterator, const_cast<WindowerSpec*>(&windowerSpec),
+      collection, const_cast<WindowerSpec*>(&windowerSpec),
       const_cast<TSPostProcessSpec*>(&post), *table, processor_id);
 
   if (!(*iterator)) {
@@ -359,49 +359,168 @@ KStatus OpFactory::NewWindowScan(kwdbContext_p ctx,
   Return(SUCCESS);
 }
 
-KStatus OpFactory::NewOp(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec& post,
-                         const TSProcessorCoreUnion& core,
-                         BaseOperator** iterator, TABLE** table,
-                         BaseOperator* childIterator, int32_t processor_id) {
+KStatus OpFactory::NewOp(kwdbContext_p ctx, TsFetcherCollection* collection, const TSProcessorSpec& procSpec,
+                          const TSPostProcessSpec& post, const TSProcessorCoreUnion& core, BaseOperator** iterator,
+                          TABLE** table, int32_t processor_id, bool only_operator) {
   EnterFunc();
   KStatus ret = KStatus::SUCCESS;
   // New operator by type
   if (core.has_tagreader()) {
-    if (childIterator != nullptr) {
-      LOG_ERROR("physical plan error");
-      Return(KStatus::FAIL);
-    }
     ret = NewTagScan(ctx, collection, post, core, iterator, table, processor_id);
   } else if (core.has_tablereader()) {
-    ret = NewTableScan(ctx, collection, post, core, iterator, table, childIterator,
-                       processor_id);
+    ret = NewTableScan(ctx, collection, post, core, iterator, table, processor_id);
   } else if (core.has_statisticreader()) {
-    ret = NewStatisticScan(ctx, collection, post, core, iterator, table, childIterator,
-                           processor_id);
+    ret = NewStatisticScan(ctx, collection, post, core, iterator, table, processor_id);
   } else if (core.has_aggregator()) {
-    ret = NewAgg(ctx, collection, post, core, iterator, table, childIterator, processor_id);
+    ret = NewAgg(ctx, collection, post, core, iterator, table, processor_id);
   } else if (core.has_sampler()) {
     // collect statistic
-    ret = NewTsSampler(ctx, collection, core, iterator, table, childIterator, processor_id);
+    ret = NewTsSampler(ctx, collection, core, iterator, table, processor_id);
   } else if (core.has_noop()) {
-    ret =
-        NewNoop(ctx, collection, post, core, iterator, table, childIterator, processor_id);
+    ret = NewNoop(ctx, collection, post, core, iterator, table, processor_id, only_operator);
   } else if (core.has_synchronizer()) {
-    ret = NewSynchronizer(ctx, collection, post, core, iterator, table, childIterator,
-                          processor_id);
+    ret = NewSynchronizer(ctx, collection, procSpec, post, core, iterator, table, processor_id);
   } else if (core.has_sorter()) {
-    ret =
-        NewSort(ctx, collection, post, core, iterator, table, childIterator, processor_id);
+    ret = NewSort(ctx, collection, post, core, iterator, table, processor_id);
   } else if (core.has_distinct()) {
-    ret = NewDistinct(ctx, collection, post, core, iterator, table, childIterator,
-                      processor_id);
+    ret = NewDistinct(ctx, collection, post, core, iterator, table, processor_id);
   } else if (core.has_window()) {
-    ret = NewWindowScan(ctx, collection, post, core, iterator, table,
-                        childIterator, processor_id);
+    ret = NewWindowScan(ctx, collection, post, core, iterator, table, processor_id);
   } else {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid operator type");
     ret = KStatus::FAIL;
   }
+  if (*iterator) {
+    (*iterator)->BuildRpcSpec(procSpec);
+  }
+  if (procSpec.final_ts_processor()) {
+    (*iterator)->SetFinalOperator(true);
+  }
   Return(ret);
 }
+
+KStatus OpFactory::NewResultCollectorOp(kwdbContext_p ctx,  BaseOperator **iterator) {
+  EnterFunc();
+  KStatus ret = KStatus::SUCCESS;
+  *iterator = NewIterator<ResultCollectorOperator>();
+
+  if (!(*iterator)) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+    Return(KStatus::FAIL);
+  }
+
+  Return(KStatus::SUCCESS);
+}
+
+KStatus OpFactory::NewInboundOperator(kwdbContext_p ctx, TsFetcherCollection* collection, TSInputSyncSpec* spec,
+                          BaseOperator **iterator, TABLE **table, bool is_remote, bool is_ordered) {
+  EnterFunc();
+  if (is_remote) {
+    if (is_ordered) {
+      *iterator = NewIterator<RemoteMergeSortInboundOperator>(collection, spec, *table);
+    } else {
+      *iterator = NewIterator<RemoteInboundOperator>(collection, spec, *table);
+    }
+  } else {
+    if (is_ordered) {
+      *iterator = NewIterator<LocalMergeInboundOperator>(collection, spec, *table);
+    } else {
+      *iterator = NewIterator<LocalInboundOperator>(collection, spec, *table);
+    }
+  }
+
+  if (!(*iterator)) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+    Return(KStatus::FAIL);
+  }
+
+  Return(KStatus::SUCCESS);
+}
+
+KStatus OpFactory::NewOutboundOperator(kwdbContext_p ctx, TsFetcherCollection* collection,
+                        TSOutputRouterSpec* spec, BaseOperator **iterator, TABLE **table, bool is_remote) {
+  EnterFunc();
+  if (is_remote) {
+    *iterator = NewIterator<RouterOutboundOperator>(collection, spec, *table);
+  } else {
+    *iterator = NewIterator<LocalOutboundOperator>(collection, spec, *table);
+  }
+
+  if (!(*iterator)) {
+    LOG_ERROR("create OutboundOperator failed");
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+    Return(KStatus::FAIL);
+  }
+
+  Return(KStatus::SUCCESS);
+}
+
+KStatus OpFactory::ReCreateOperoatr(kwdbContext_p ctx, BaseOperator *child, std::vector<BaseOperator *> *operators) {
+  std::vector<BaseOperator *> &parents = child->GetParent();
+  HashAggregateOperator *parent = dynamic_cast<HashAggregateOperator *>(parents[0]);
+  TSAggregatorSpec *aggSpec = parent->spec_;
+  k_uint32 group_size = aggSpec->group_cols_size();
+  k_uint32 k_group_ptag_size = 0;
+  TableScanOperator* input = dynamic_cast<TableScanOperator*>(child);
+  if (input) {
+    for (k_int32 i = 0; i < group_size; ++i) {
+      k_uint32 groupcol = aggSpec->group_cols(i);
+      k_int32 col = -1;
+      if (input->post_->renders_size() > 0) {
+        std::string render = input->post_->renders(groupcol);
+        render = render.substr(1);
+        try {
+          col = std::stoi(render) - 1;
+          if (input->post_->outputcols_size() > 0) {
+            col = input->post_->outputcols(col);
+          }
+        } catch (...) {
+          break;
+        }
+      } else if (input->post_->outputcols_size() > 0) {
+        col = input->post_->outputcols(groupcol);
+      } else {
+        col = groupcol;
+      }
+
+      if (col == -1 || col >= (input->table())->field_num_) {
+        break;
+      }
+      Field* field = (input->table())->fields_[col];
+      if (field->get_column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+        ++k_group_ptag_size;
+      }
+    }
+  }
+
+  // use OrderedAggregate, when grouping only by ptag.
+  // for example:
+  // select ptag, sum(v) from t group by ptag;
+  if (group_size == k_group_ptag_size && (input->table())->PTagCount() == k_group_ptag_size) {
+    BaseOperator* op = NewIterator<OrderedAggregateOperator>(parent->collection_, aggSpec, parent->post_,
+                                                          parent->table(), parent->GetProcessorId());
+    parent->RemoveDependency(child);
+    op->AddDependency(child);
+    BaseOperator *parent_parent = parent->GetParent()[0];
+    parent_parent->RemoveDependency(parent);
+    parent_parent->AddDependency(op);
+    for (k_uint32 i = 0; i < operators->size(); ++i) {
+      if ((*operators)[i] == parent) {
+        (*operators)[i] = op;
+        break;
+      }
+    }
+
+    RpcSpecResolve &new_prc = op->GetRpcSpecInfo();
+    new_prc = parent->GetRpcSpecInfo();
+    op->SetFinalOperator(parent->IsFinalOperator());
+    op->SetOutputEncoding(parent->GetOutputEncoding());
+    op->SetUseQueryShortCircuit(parent->IsUseQueryShortCircuit());
+
+    SafeDeletePointer(parent);
+  }
+
+  return KStatus::SUCCESS;
+}
+
 }  // namespace kwdbts

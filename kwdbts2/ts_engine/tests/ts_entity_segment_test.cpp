@@ -62,9 +62,10 @@ class TsEntitySegmentTest : public ::testing::Test {
     System("rm -rf db001-123");
 
     mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    std::shared_mutex wal_level_mutex;
     mgr->Init(nullptr);
     opts.db_path = "db001-123";
-    vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), false);
+    vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
   }
 };
@@ -290,8 +291,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     kwdbContext_t ctx;
     EngineOptions opts;
     EngineOptions::mem_segment_max_size = INT32_MAX;
+    std::shared_mutex wal_level_mutex;
     opts.db_path = "db001-123";
-    auto vgroup = std::make_unique<TsVGroup>(opts, 0, mgr.get(), false);
+    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
     vgroup->Init(&ctx);
 
     for (int i = 0; i < 10; ++i) {

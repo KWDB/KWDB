@@ -120,10 +120,12 @@ message StreamEndpointSpec {
                                 (gogoproto.customname) = "StreamID",
                                 (gogoproto.casttype) = "StreamID"];
   // Node ID of the target host, only used for outgoing REMOTE streams.
-  optional int32 target_node_id = 4 [(gogoproto.nullable) = false,
+  optional int32 target_node_id = 3 [(gogoproto.nullable) = false,
                                      (gogoproto.customname) = "TargetNodeID",
                                      (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.NodeID"];
-  reserved 3;
+
+  // Processor ID of target processor.
+  optional int32 dest_processor = 4[(gogoproto.nullable) = false];
 }
 
 // InputSyncSpec is the specification for an input synchronizer; it decides how
@@ -161,6 +163,8 @@ message OutputRouterSpec {
     // Each row is sent to one stream, chosen according to preset boundaries
     // for the values of certain columns of the row.
     BY_RANGE = 3;
+    // Send row to AE gateWay node, send end message to local ME node.
+    BY_GATHER = 4;
   }
   optional Type type = 1 [(gogoproto.nullable) = false];
   repeated StreamEndpointSpec streams = 2 [(gogoproto.nullable) = false];

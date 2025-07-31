@@ -22,7 +22,7 @@
 
 #include "kwdb_type.h"
 #include "ee_scan_op.h"
-#include "ee_aggregate_flow_spec.h"
+#include "ee_aggregate_parser.h"
 #include "ee_aggregate_func.h"
 
 namespace kwdbts {
@@ -31,14 +31,13 @@ namespace kwdbts {
 class AggTableScanOperator : public TableScanOperator {
  public:
   AggTableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
-                       TABLE* table, BaseOperator* input, int32_t processor_id)
-      : TableScanOperator(collection, spec, post, table, input, processor_id),
+                       TABLE* table, int32_t processor_id)
+      : TableScanOperator(collection, spec, post, table, processor_id),
         aggregation_spec_(spec->aggregator()),
         aggregation_post_(spec->aggregatorpost()) {}
 
-  AggTableScanOperator(const AggTableScanOperator& other, BaseOperator* input,
-                       int32_t processor_id)
-      : TableScanOperator(other, input, processor_id),
+  AggTableScanOperator(const AggTableScanOperator& other, int32_t processor_id)
+      : TableScanOperator(other, processor_id),
         aggregation_spec_(other.aggregation_spec_),
         aggregation_post_(other.aggregation_post_),
         has_post_agg_(other.has_post_agg_),
@@ -68,6 +67,8 @@ class AggTableScanOperator : public TableScanOperator {
 
   // clone the operator for parallel
   BaseOperator* Clone() override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_AGG_SCAN;}
 
   // add data to trunk struct
   KStatus AddRowBatchData(kwdbContext_p ctx, RowBatch* row_batch);
@@ -159,7 +160,7 @@ class AggTableScanOperator : public TableScanOperator {
 
   // the list of input column's type
   std::vector<roachpb::DataType> data_types_;
-  AggregatorSpecParam<TSAggregatorSpec> *agg_param_{nullptr};
+  TsAggregateParser *agg_param_{nullptr};
 
   // group cols
   k_uint32* group_cols_{nullptr};

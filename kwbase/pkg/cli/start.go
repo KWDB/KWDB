@@ -698,6 +698,8 @@ If problems persist, please see ` + base.DocsURL("cluster-setup-troubleshooting.
 						err = errors.Wrap(err, errorPrefix+cliflags.ListenAddr.Name)
 					} else if le.Addr == serverCfg.HTTPAddr {
 						err = errors.Wrap(err, errorPrefix+cliflags.ListenHTTPAddr.Name)
+					} else if le.Addr == serverCfg.BRPCAddr {
+						err = errors.Wrap(err, errorPrefix+cliflags.BRPCAddr.Name)
 					}
 				}
 

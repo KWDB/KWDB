@@ -3013,9 +3013,10 @@ func (c *CustomFuncs) GenerateTagTSScans(
 	// tagFilters is tag1 < 11
 	// primaryTagFilters is ptag = 10
 	leaveFilter, tagFilters, primaryTagFilters := memo.GetPrimaryTagFilterValue(&private, &explicitFilters, c.e.mem)
-	TSScanPrivate.BlockFilter = memo.GetBlockFilter(leaveFilter, private.Table)
-	if tagFilters == nil && primaryTagFilters == nil {
-		// can not optimize when have not tag filter
+	private.BlockFilter = memo.GetBlockFilter(leaveFilter, private.Table, c.e.mem)
+	// if tagFilters, primaryTagFilters or private.BlockFilter exists, we need build newExpr and add it to group
+	if tagFilters == nil && primaryTagFilters == nil && private.BlockFilter == nil {
+		// can not optimize when have not tag filter or blockFilter
 		return
 	}
 
@@ -3032,7 +3033,12 @@ func (c *CustomFuncs) GenerateTagTSScans(
 	// primary tag value and tag filter ----- tag index table
 	// only tag filter --- table table table
 	// not exist primary tag value and tag filter  ----- meta table
-	private.AccessMode = memo.GetAccessMode(primaryTagFilters != nil, tagFilters != nil, len(private.TagIndexFilter) > 0, TSScanPrivate, c.e.mem)
+	//
+	// only when at least one of primaryTagFilters, tagFilters or TagIndexFilter is non-empty should AccessMode be set,
+	// processing is only skipped when blockFilter exists.
+	if primaryTagFilters != nil || tagFilters != nil || len(private.TagIndexFilter) > 0 {
+		private.AccessMode = memo.GetAccessMode(primaryTagFilters != nil, tagFilters != nil, len(private.TagIndexFilter) > 0, TSScanPrivate, c.e.mem)
+	}
 
 	// filter can all push to table reader, so need remover select expr
 	if leaveFilter == nil {
@@ -3041,18 +3047,11 @@ func (c *CustomFuncs) GenerateTagTSScans(
 		c.e.mem.AddTSScanToGroup(newTSScan, grp)
 	} else {
 		newFilters := *(leaveFilter.(*memo.FiltersExpr))
-		// filter can all push to table reader, so need remover select expr
-		if newFilters == nil {
-			newTSScan := &memo.TSScanExpr{TSScanPrivate: private}
-			newTSScan.Relational().Stats = grp.Child(0).(*memo.TSScanExpr).Relational().Stats
-			c.e.mem.AddTSScanToGroup(newTSScan, grp)
-		} else {
-			// move leave filter to select filter iterm
-			newTSScan := c.e.f.ConstructTSScan(&private)
-			newTSScan.Relational().Stats = grp.Child(0).(*memo.TSScanExpr).Relational().Stats
-			sel := &memo.SelectExpr{Input: newTSScan, Filters: newFilters}
-			c.e.mem.AddSelectToGroup(sel, grp)
-		}
+		// move leave filter to select filter iterm
+		newTSScan := c.e.f.ConstructTSScan(&private)
+		newTSScan.Relational().Stats = grp.Child(0).(*memo.TSScanExpr).Relational().Stats
+		sel := &memo.SelectExpr{Input: newTSScan, Filters: newFilters}
+		c.e.mem.AddSelectToGroup(sel, grp)
 	}
 }
 

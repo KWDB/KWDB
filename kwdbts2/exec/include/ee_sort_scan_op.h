@@ -20,7 +20,6 @@
 #include "ee_pb_plan.pb.h"
 #include "ee_memory_data_container.h"
 #include "ee_scan_op.h"
-#include "ee_sort_flow_spec.h"
 #include "kwdb_type.h"
 
 namespace kwdbts {
@@ -47,10 +46,9 @@ class Less {
 class SortScanOperator : public TableScanOperator {
  public:
   SortScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post, TABLE* table,
-                   BaseOperator* input, int32_t processor_id);
-
-  SortScanOperator(const SortScanOperator&, BaseOperator* input,
                    int32_t processor_id);
+
+  SortScanOperator(const SortScanOperator&, int32_t processor_id);
 
   ~SortScanOperator() override;
 
@@ -62,9 +60,11 @@ class SortScanOperator : public TableScanOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
   BaseOperator* Clone() override;
+
+  enum OperatorType Type() override {return OperatorType::OPERATOR_SORT_SCAN;}
 
  private:
   EEIteratorErrCode mallocTempField(kwdbContext_p ctx);

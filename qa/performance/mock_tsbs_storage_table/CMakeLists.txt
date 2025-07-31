@@ -33,6 +33,7 @@ set(INCLUDE
     ${ZDP}/kwdbts2/mmap/include
     ${ZDP}/kwdbts2/exec/include
     ${ZDP}/kwdbts2/statistic/include
+    ${ZDP}/kwdbts2/brpc/include
     ${CMAKE_CURRENT_SOURCE_DIR}/
     ${CMAKE_CURRENT_SOURCE_DIR}/tag
     ${CMAKE_CURRENT_SOURCE_DIR}/metric

@@ -41,6 +41,8 @@ class ExecTask : public TimerEvent, public std::enable_shared_from_this<ExecTask
    * @brief op interface
    */
   virtual void Run(kwdbContext_p ctx) {}
+
+  virtual bool is_can_schedule() { return false; }
   /**
    * @brief Construct a new ExecTask object
    *

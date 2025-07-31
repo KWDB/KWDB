@@ -1615,6 +1615,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Pre check AE RPC host/port.
+	if err = s.checkBRPC(ctx); err != nil {
+		return err
+	}
+
 	if s.cfg.TestingKnobs.Server != nil {
 		knobs := s.cfg.TestingKnobs.Server.(*TestingKnobs)
 		if knobs.SignalAfterGettingRPCAddress != nil {
@@ -1756,6 +1761,7 @@ func (s *Server) Start(ctx context.Context) error {
 	listenAddrU := util.NewUnresolvedAddr("tcp", s.cfg.Addr)
 	advAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseAddr)
 	advSQLAddrU := util.NewUnresolvedAddr("tcp", s.cfg.SQLAdvertiseAddr)
+	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.BRPCAddr)
 	filtered := s.cfg.FilterGossipBootstrapResolvers(ctx, listenAddrU, advAddrU)
 	s.gossip.Start(advAddrU, filtered)
 	log.Event(ctx, "started gossip")
@@ -1889,7 +1895,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	setTse := func() (*tse.TsEngine, error) {
 		if s.cfg.Stores.Specs != nil && s.cfg.Stores.Specs[0].Path != "" && !s.cfg.ForbidCatchCoreDump {
-			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper)
+			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String())
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create ts engine")
 			}
@@ -1938,7 +1944,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// we're joining an existing cluster for the first time.
 	if err := s.node.start(
 		ctx,
-		advAddrU, advSQLAddrU,
+		advAddrU, advSQLAddrU, brpcAddrU,
 		bootstrappedEngines, emptyEngines,
 		s.cfg.ClusterName,
 		s.cfg.NodeAttributes,
@@ -2581,6 +2587,17 @@ func (s *Server) startServeUI(
 	s.stopper.RunWorker(workersCtx, func(context.Context) {
 		netutil.FatalIfUnexpected(connManager.Serve(httpLn))
 	})
+	return nil
+}
+
+func (s *Server) checkBRPC(ctx context.Context) error {
+	_, err := net.Listen("tcp", s.cfg.BRPCAddr)
+	if err != nil {
+		return ListenError{
+			error: err,
+			Addr:  s.cfg.BRPCAddr,
+		}
+	}
 	return nil
 }
 
