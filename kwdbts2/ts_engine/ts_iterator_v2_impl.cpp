@@ -450,6 +450,7 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
             break;
         }
       } else {
+        bool is_var_string = (attrs_[col_id].type == DATATYPE::VARSTRING);
         if (block_span->HasPreAgg()) {
           TSSlice var_pre_min{nullptr, 0};
           ret = block_span->GetVarPreMin(col_id, var_pre_min);
@@ -465,9 +466,9 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
           }
           if (!var_pre_min.data || !var_pre_max.data) continue;
 
-          min.len = var_pre_min.len;
+          min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
           min.data = var_pre_min.data;
-          max.len = var_pre_max.len;
+          max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
           max.data = var_pre_max.data;
         } else {
           TSSlice var_pre_min{nullptr, 0};
@@ -484,9 +485,9 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
           }
           if (!var_pre_min.data || !var_pre_max.data) continue;
 
-          min.len = var_pre_min.len;
+          min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
           min.data = var_pre_min.data;
-          max.len = var_pre_max.len;
+          max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
           max.data = var_pre_max.data;
 
           is_new = true;
