@@ -426,20 +426,6 @@ class TsLastBlock : public TsBlock {
 };
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) {
-  {
-    std::shared_lock lk{mu_};
-    if (cache_flag_[block_id] == 1) {
-      *block = block_infos_[block_id];
-      return SUCCESS;
-    }
-  }
-  std::unique_lock lk{mu_};
-  if (cache_flag_[block_id] == 1) {
-    *block = block_infos_[block_id];
-    return SUCCESS;
-  }
-  // std::shared_ptr<TsLastSegment> lastseg, int block_id,
-  //           TsLastSegmentBlockIndex block_index, TsLastSegmentBlockInfo block_info
   TsLastSegmentBlockIndex* index;
   auto s = lastseg_cache_->GetBlockIndex(block_id, &index);
   if (s == FAIL) {
@@ -454,10 +440,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockCache::GetBlock(int block_id, s
     return s;
   }
 
-  auto tmp_block = std::make_unique<TsLastBlock>(lastseg_cache_->segment_, block_id, *index, *info);
-  cache_flag_[block_id] = 1;
-  block_infos_[block_id] = std::move(tmp_block);
-  *block = block_infos_[block_id];
+  *block = std::make_shared<TsLastBlock>(lastseg_cache_->segment_, block_id, *index, *info);
   return SUCCESS;
 }
 
