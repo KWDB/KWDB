@@ -390,13 +390,13 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
 
         switch (attrs_[col_id].type) {
           case DATATYPE::BYTE:
-          case DATATYPE::BOOL:
-          case DATATYPE::BINARY: {
+          case DATATYPE::BOOL: {
             min.data = static_cast<char*>(min_addr);
             max.data = static_cast<char*>(max_addr);
             min.len = max.len = attrs_[col_id].size;
             break;
           }
+          case DATATYPE::BINARY:
           case DATATYPE::CHAR:
           case DATATYPE::STRING: {
             min.data = static_cast<char*>(min_addr);
