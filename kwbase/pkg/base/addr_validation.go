@@ -40,12 +40,12 @@ import (
 
 // ValidateAddrs controls the address fields in the Config object
 // and "fills in" the blanks:
-// - the host part of Addr and HTTPAddr is resolved to an IP address
-//   if specified (it stays blank if blank to mean "all addresses").
-// - the host part of AdvertiseAddr is filled in if blank, either
-//   from Addr if non-empty or os.Hostname(). It is also checked
-//   for resolvability.
-// - non-numeric port numbers are resolved to numeric.
+//   - the host part of Addr and HTTPAddr is resolved to an IP address
+//     if specified (it stays blank if blank to mean "all addresses").
+//   - the host part of AdvertiseAddr is filled in if blank, either
+//     from Addr if non-empty or os.Hostname(). It is also checked
+//     for resolvability.
+//   - non-numeric port numbers are resolved to numeric.
 //
 // The addresses fields must be guaranteed by the caller to either be
 // completely empty, or have both a host part and a port part
@@ -59,6 +59,19 @@ func (cfg *Config) ValidateAddrs(ctx context.Context) error {
 		return errors.Wrap(err, "invalid --advertise-addr")
 	}
 	cfg.AdvertiseAddr = net.JoinHostPort(advHost, advPort)
+
+	// Validate the BRPC address
+	brpcHost, brpcPort, err := validateAdvertiseAddr(ctx, cfg.BRPCAddr, "brpc-addr", cfg.BRPCAddr, "")
+	if err != nil {
+		return errors.Wrap(err, "invalid --brpc-addr")
+	}
+	// get ip when address not specified.
+	h, err := net.DefaultResolver.LookupIPAddr(ctx, brpcHost)
+	if err != nil {
+		return errors.Wrap(err, "invalid --brpc-addr")
+	}
+	brpcHost = h[0].IP.String()
+	cfg.BRPCAddr = net.JoinHostPort(brpcHost, brpcPort)
 
 	// Validate the RPC listen address.
 	listenHost, listenPort, err := validateListenAddr(ctx, cfg.Addr, "")

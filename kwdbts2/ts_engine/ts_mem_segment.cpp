@@ -13,7 +13,6 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <numeric>
 #include <vector>
 
 #include "kwdb_type.h"
@@ -316,7 +315,8 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
         cur_version = cur_row->table_version;
         break;
       }
-      if (CheckIfTsInSpan(cur_row->ts, filter.ts_spans_)) {
+      if (checkTimestampWithSpans(filter.ts_spans_, cur_row->ts, cur_row->ts)
+            == TimestampCheckResult::FullyContained) {
         return true;
       }
       iter.Next();

@@ -1,50 +1,53 @@
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan PSL v2.
-// You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-// See the Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details.
 
 #pragma once
 
-#include <vector>
 #include <memory>
 #include <queue>
+#include <vector>
 
 #include "ee_base_op.h"
-#include "ee_global.h"
 #include "ee_data_chunk.h"
-#include "ee_sort_flow_spec.h"
-#include "kwdb_type.h"
-#include "ee_memory_data_container.h"
-#include "ee_heap_sort_container.h"
 #include "ee_disk_data_container.h"
+#include "ee_global.h"
+#include "ee_heap_sort_container.h"
+#include "ee_memory_data_container.h"
 #include "ee_pb_plan.pb.h"
+#include "ee_sort_parser.h"
+#include "kwdb_type.h"
 
 namespace kwdbts {
 
 enum EESortType {
-  EE_SORT_MEMORY = 0,  // Use in-memory sorting when the total memory of datachunk < SORT_MAX_MEM_BUFFER_SIZE
-  EE_SORT_HEAP,  // Use heap sorting when (limit + offset) * row_size < SORT_MAX_MEM_BUFFER_SIZE
-  EE_SORT_DISK  // Use external sorting when the total memory of datachunk >= SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_MEMORY = 0,  // Use in-memory sorting when the total memory of
+                       // datachunk < SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_HEAP,        // Use heap sorting when (limit + offset) * row_size <
+                       // SORT_MAX_MEM_BUFFER_SIZE
+  EE_SORT_DISK  // Use external sorting when the total memory of datachunk >=
+                // SORT_MAX_MEM_BUFFER_SIZE
 };
 
 class SortOperator : public BaseOperator {
  public:
-  SortOperator(TsFetcherCollection* collection, BaseOperator* input, TSSorterSpec* spec,
-                              TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
+  SortOperator(TsFetcherCollection* collection, TSSorterSpec* spec,
+               TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
 
-  SortOperator(const SortOperator&, BaseOperator* input, int32_t processor_id);
+  SortOperator(const SortOperator&, int32_t processor_id);
 
   ~SortOperator() override;
 
   /**
    * Inherited from BaseIterator
-  */
+   */
   EEIteratorErrCode Init(kwdbContext_p ctx) override;
 
   EEIteratorErrCode Start(kwdbContext_p ctx) override;
@@ -53,17 +56,17 @@ class SortOperator : public BaseOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
   BaseOperator* Clone() override;
+
+  enum OperatorType Type() override { return OperatorType::OPERATOR_ORDER_BY; }
 
  protected:
   KStatus ResolveSortCols(kwdbContext_p ctx);
 
   TSSorterSpec* spec_;
-  TSPostProcessSpec* post_;
-  SortSpecParam param_;
-  BaseOperator* input_;
+  TsSortParser param_;
 
   k_uint32 limit_{0};
   k_uint32 offset_{0};
@@ -77,11 +80,7 @@ class SortOperator : public BaseOperator {
   // sort container
   DataContainerPtr container_;
 
-  // input (FieldNum)
-  std::vector<Field*>& input_fields_;
-
-  bool is_done_{false};
-  EESortType sort_type_{EE_SORT_MEMORY};   // sort type
+  EESortType sort_type_{EE_SORT_MEMORY};  // sort type
 
   ColumnInfo* input_col_info_{nullptr};
   k_int32 input_col_num_{0};

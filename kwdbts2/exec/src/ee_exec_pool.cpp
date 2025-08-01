@@ -16,6 +16,7 @@
 #include "kwdb_type.h"
 #include "cm_fault_injection.h"
 #include "ee_cpuinfo.h"
+#include "ee_pipeline_task_poller.h"
 
 namespace kwdbts {
 
@@ -53,10 +54,15 @@ KStatus ExecPool::Init(kwdbContext_p ctx) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(KStatus::FAIL);
   }
-  // if (KStatus::SUCCESS != timer_event_pool_->Init()) {
-  //  EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-  //  Return(KStatus::FAIL);
-  // }
+
+  pipeline_task_poller_ = new PipelineTaskPoller(this);
+  if (pipeline_task_poller_ == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+    Return(KStatus::FAIL);
+  }
+
+  pipeline_task_poller_->Init();
+
   for (k_int32 i = 0; i < min_threads_; i++) {
     {
       std::unique_lock unique_lock(lock_);
@@ -64,11 +70,16 @@ KStatus ExecPool::Init(kwdbContext_p ctx) {
     }
     CreateThread();
   }
-  // timer_event_pool_->Start();
+
   Return(KStatus::SUCCESS);
 }
 
 void ExecPool::Stop() {
+  if (nullptr != pipeline_task_poller_) {
+    pipeline_task_poller_->Stop();
+    SafeDeletePointer(pipeline_task_poller_);
+  }
+
   is_tp_stop_ = true;
   wait_cond_.notify_all();
   not_fill_cv_.notify_all();
@@ -160,14 +171,25 @@ KStatus ExecPool::PushTask(ExecTaskPtr task_ptr, bool no_check) {
     threads_starting_++;
   }
   // insert task queue
-  task_queue_.push_back(task_ptr);
-  task_ptr->SetState(ExecTaskState::EXEC_TASK_STATE_WAITING);
+  if (task_ptr->is_can_schedule()) {
+    task_queue_.push_back(task_ptr);
+    task_ptr->SetState(ExecTaskState::EXEC_TASK_STATE_WAITING);
+  } else {
+    pipeline_task_poller_->add_blocked_driver(task_ptr);
+  }
+
   // notify
   wait_cond_.notify_one();
   unique_lock.unlock();
   if (need) {
     CreateThread();
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus ExecPool::PushBlockedTask(ExecTaskPtr task_ptr) {
+  pipeline_task_poller_->add_blocked_driver(task_ptr);
+
   return KStatus::SUCCESS;
 }
 

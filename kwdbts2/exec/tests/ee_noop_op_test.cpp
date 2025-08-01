@@ -9,15 +9,11 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "ee_noop_op.h"
-
-#include "ee_exec_pool.h"
-#include "ee_iterator_create_test.h"
-#include "engine.h"
-#include "../../engine/tests/test_util.h"
+#include "ee_dml_exec.h"
 #include "ee_op_test_base.h"
-#include "ee_kwthd_context.h"
+#include "ee_op_spec_utils.h"
 #include "gtest/gtest.h"
+
 namespace kwdbts {
 
 class TestNoopOperator : public OperatorTestBase {
@@ -25,35 +21,63 @@ class TestNoopOperator : public OperatorTestBase {
   TestNoopOperator() : OperatorTestBase() {}
   virtual void SetUp() {
     OperatorTestBase::SetUp();
-    thd_ = new KWThdContext();
-    current_thd = thd_;
-    ASSERT_TRUE(current_thd != nullptr);
-    parallelGroup_ = new ParallelGroup();
-    parallelGroup_->SetDegree(1);
-    current_thd->SetParallelGroup(parallelGroup_);
-    noop_.SetUp(ctx_, table_id_);
   }
 
   virtual void TearDown() {
     OperatorTestBase::TearDown();
-    noop_.TearDown(ctx_);
-    SafeDeletePointer(thd_);
-    SafeDeletePointer(parallelGroup_);
   }
-
-  //   CreateMeta meta_;
-  CreateNoop noop_;
-  KWThdContext *thd_{nullptr};
-  ParallelGroup* parallelGroup_{nullptr};
 };
 
 TEST_F(TestNoopOperator, NoopIterTest) {
-  BaseOperator *noop_iter = noop_.iter_;
-  EXPECT_EQ(noop_iter->Init(ctx_), EE_OK);
-  EXPECT_EQ(noop_iter->Start(ctx_), EE_OK);
-  EXPECT_EQ(noop_iter->Next(ctx_), EE_END_OF_RECORD);
-  EXPECT_EQ(noop_iter->Close(ctx_), SUCCESS);
-  noop_iter->GetRowBatch(ctx_);
+  TSFlowSpec flow;
+  TestNoopSpec noop_spec(table_id_);
+  noop_spec.PrepareFlowSpec(flow);
+  noop_spec.PrepareInputOutputSpec(flow);
+
+  size_t size = flow.ByteSizeLong();
+
+  auto req = make_unique<char[]>(sizeof(QueryInfo));
+  auto resp = make_unique<char[]>(sizeof(QueryInfo));
+  auto message = make_unique<char[]>(size);
+  flow.SerializeToArray(message.get(), size);
+
+  auto* info = reinterpret_cast<QueryInfo*>(req.get());
+  auto* info2 = reinterpret_cast<QueryInfo*>(resp.get());
+  info->tp = EnMqType::MQ_TYPE_DML_SETUP;
+  info->len = size;
+  info->id = 3;
+  info->unique_id = 34716;
+  info->handle = nullptr;
+  info->value = message.get();
+  info->ret = 0;
+  info->time_zone = 0;
+  info->relBatchData = nullptr;
+  info->relRowCount = 0;
+
+  KStatus status = DmlExec::ExecQuery(ctx_, info, info2);
+  ASSERT_EQ(status, KStatus::SUCCESS);
+
+  auto* result = static_cast<QueryInfo*>(static_cast<void*>(resp.get()));
+  ASSERT_EQ(result->ret, SUCCESS);
+
+  // next
+  info->tp = EnMqType::MQ_TYPE_DML_NEXT;
+
+  do {
+    ASSERT_EQ(DmlExec::ExecQuery(ctx_, info, info2), KStatus::SUCCESS);
+    result = static_cast<QueryInfo*>(static_cast<void*>(resp.get()));
+
+    if (result->value) {
+      free(result->value);
+      result->value = nullptr;
+    }
+  } while (result->code != -1);
+
+  ASSERT_EQ(result->ret, SUCCESS);
+
+  info->handle = result->handle;
+  info->tp = EnMqType::MQ_TYPE_DML_CLOSE;
+  DmlExec::ExecQuery(ctx_, info, info2);
 }
 
 }  // namespace kwdbts

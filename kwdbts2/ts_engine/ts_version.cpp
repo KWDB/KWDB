@@ -294,7 +294,9 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
 
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
-
+  if (update->has_max_lsn_) {
+    new_vgroup_version->max_lsn_ = std::max(new_vgroup_version->max_lsn_, update->max_lsn_);
+  }
 
   if (update->has_new_partition_) {
     for (const auto &p : update->partitions_created_) {
@@ -399,7 +401,8 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
     const auto &[dbid, _, __] = k;
     if (dbid == target_dbid) {
       // check if current partition is cross with ts_spans.
-      if (isTimestampInSpans(ts_spans, v->GetTsColTypeStartTime(ts_type), v->GetTsColTypeEndTime(ts_type))) {
+      if (checkTimestampWithSpans(ts_spans, v->GetTsColTypeStartTime(ts_type), v->GetTsColTypeEndTime(ts_type))
+           < TimestampCheckResult::NonOverlapping) {
         result.push_back(v);
       }
     }
@@ -721,6 +724,11 @@ std::string TsVersionUpdate::EncodeToString() const {
     PutVarint64(&result, next_file_number_);
   }
 
+  if (has_max_lsn_) {
+    result.push_back(static_cast<char>(VersionUpdateType::kMaxLSN));
+    PutVarint64(&result, max_lsn_);
+  }
+
   return result;
 }
 
@@ -791,6 +799,15 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
         break;
       }
 
+      case VersionUpdateType::kMaxLSN: {
+        ptr = DecodeVarint64(ptr, end, &this->max_lsn_);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        this->has_max_lsn_ = true;
+        break;
+      }
       default:
         LOG_ERROR("Unknown version update type: %d", static_cast<int>(type));
         return FAIL;
@@ -925,6 +942,11 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     all_updates_.has_next_file_number_ = true;
     all_updates_.next_file_number_ = update.next_file_number_;
   }
+
+  if (update.has_max_lsn_) {
+    all_updates_.has_max_lsn_ = true;
+    all_updates_.max_lsn_ = std::max(all_updates_.max_lsn_, update.max_lsn_);
+  }
   return SUCCESS;
 }
 
@@ -943,6 +965,9 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
 
   update->has_next_file_number_ = all_updates_.has_next_file_number_;
   update->next_file_number_ = all_updates_.next_file_number_;
+
+  update->has_max_lsn_ = all_updates_.has_max_lsn_;
+  update->max_lsn_ = all_updates_.max_lsn_;
 
   update->need_record_ = true;
 }

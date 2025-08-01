@@ -17,34 +17,28 @@
 
 namespace kwdbts {
 
-DistinctOperator::DistinctOperator(TsFetcherCollection* collection, BaseOperator* input, DistinctSpec* spec,
+DistinctOperator::DistinctOperator(TsFetcherCollection* collection, DistinctSpec* spec,
                                    TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
-    : BaseOperator(collection, table, processor_id),
+    : BaseOperator(collection, table, post, processor_id),
       spec_{spec},
-      post_{post},
-      param_(input, spec, post, table),
-      input_(input),
+      param_(spec, post, table),
       offset_(post->offset()),
-      limit_(post->limit()),
-      input_fields_{input->OutputFields()} {
+      limit_(post->limit()) {
 }
 
-DistinctOperator::DistinctOperator(const DistinctOperator& other, BaseOperator* input, int32_t processor_id)
+DistinctOperator::DistinctOperator(const DistinctOperator& other, int32_t processor_id)
     : BaseOperator(other),
       spec_(other.spec_),
-      post_(other.post_),
-      param_(input, other.spec_, other.post_, other.table_),
-      input_(input),
+      param_(other.spec_, other.post_, other.table_),
       offset_(other.offset_),
-      limit_(other.limit_),
-      input_fields_{input->OutputFields()} {
+      limit_(other.limit_) {
   is_clone_ = true;
 }
 
 DistinctOperator::~DistinctOperator() {
   //  delete input
   if (is_clone_) {
-    delete input_;
+    delete childrens_[0];
   }
   SafeDeletePointer(seen_);
 }
@@ -53,22 +47,23 @@ EEIteratorErrCode DistinctOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   do {
+    param_.AddInput(childrens_[0]);
     // init subquery iterator
-    code = input_->Init(ctx);
+    code = childrens_[0]->Init(ctx);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
     // resolve renders num
     param_.RenderSize(ctx, &num_);
     // resolve render
-    code = param_.ResolveRender(ctx, &renders_, num_);
+    code = param_.ParserRender(ctx, &renders_, num_);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("ResolveRender() error\n");
       break;
     }
 
     // dispose Output Fields
-    code = param_.ResolveOutputFields(ctx, renders_, num_, output_fields_);
+    code = param_.ParserOutputFields(ctx, renders_, num_, output_fields_, false);
     if (EEIteratorErrCode::EE_OK != code) {
       LOG_ERROR("ResolveOutputFields() failed\n");
       break;
@@ -84,9 +79,10 @@ EEIteratorErrCode DistinctOperator::Init(kwdbContext_p ctx) {
     // custom hash set
     std::vector<roachpb::DataType> distinct_types;
     std::vector<k_uint32> distinct_lens;
+    std::vector<Field *> &input_fields = childrens_[0]->OutputFields();
     for (const auto& col : distinct_cols_) {
-      distinct_types.push_back(input_fields_[col]->get_storage_type());
-      distinct_lens.push_back(input_fields_[col]->get_storage_length());
+      distinct_types.push_back(input_fields[col]->get_storage_type());
+      distinct_lens.push_back(input_fields[col]->get_storage_length());
     }
 
     seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0);
@@ -103,7 +99,7 @@ EEIteratorErrCode DistinctOperator::Start(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
 
-  code = input_->Start(ctx);
+  code = childrens_[0]->Start(ctx);
   if (EEIteratorErrCode::EE_OK != code) {
     Return(code);
   }
@@ -120,25 +116,15 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
   std::chrono::_V2::system_clock::time_point start;
   int64_t read_row_num = 0;
   KWThdContext *thd = current_thd;
-  do {
+
+  while (true) {
     // read a batch of data
     DataChunkPtr data_chunk = nullptr;
-    while (true) {
-      code = input_->Next(ctx, data_chunk);
-      if (code != EEIteratorErrCode::EE_OK) {
-        break;
-      }
-
-      // data is null
-      if (data_chunk == nullptr || data_chunk->Count() == 0) {
-        data_chunk = nullptr;
-        continue;
-      }
-      break;
-    }
+    code = childrens_[0]->Next(ctx, data_chunk);
     if (code != EEIteratorErrCode::EE_OK) {
       break;
     }
+
     start = std::chrono::high_resolution_clock::now();
     read_row_num += data_chunk->Count();
     // result set
@@ -153,7 +139,6 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
 
     thd->SetDataChunk(data_chunk.get());
 
-    // Distinct
     k_uint32 i = 0;
     data_chunk->ResetLine();
     while (i < data_chunk->Count()) {
@@ -195,11 +180,18 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
         seen_->CopyGroups(data_chunk.get(), row, distinct_cols_, loc);
       }
     }
-  } while (0);
+
+    if (0 == chunk->Count()) {
+      chunk = nullptr;
+      continue;
+    } else {
+      break;
+    }
+  }
   auto end = std::chrono::high_resolution_clock::now();
 
   if (chunk != nullptr && chunk->Count() > 0) {
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     fetcher_.Update(read_row_num, (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, chunk->Count());
     Return(EEIteratorErrCode::EE_OK)
   }
@@ -211,27 +203,32 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
   Return(code);
 }
 
-KStatus DistinctOperator::Close(kwdbContext_p ctx) {
+EEIteratorErrCode DistinctOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  KStatus ret = input_->Close(ctx);
+  EEIteratorErrCode code = childrens_[0]->Close(ctx);
   Reset(ctx);
 
-  Return(ret);
+  Return(code);
 }
 
 EEIteratorErrCode DistinctOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-  input_->Reset(ctx);
+  childrens_[0]->Reset(ctx);
 
   Return(EEIteratorErrCode::EE_OK);
 }
 
 BaseOperator* DistinctOperator::Clone() {
-  BaseOperator* input = input_->Clone();
+  BaseOperator* input = childrens_[0]->Clone();
   if (input == nullptr) {
-    input = input_;
+    return nullptr;
   }
-  BaseOperator* iter = NewIterator<DistinctOperator>(*this, input, this->processor_id_);
+  BaseOperator* iter = NewIterator<DistinctOperator>(*this, this->processor_id_);
+  if (nullptr != iter) {
+    iter->AddDependency(input);
+  } else {
+    delete input;
+  }
   return iter;
 }
 

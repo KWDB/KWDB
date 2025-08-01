@@ -128,6 +128,14 @@ def get_http_url_from_node_id(node_id: int):
     return http_ip_map[str(node_id)]
 
 
+def get_brpc_url_from_node_id(url: str):
+    ip = url.split(':')[0]
+    port = url.split(':')[1]
+    brpc_port = int(port) + 1000
+    brpc_url = ip + ':' + str(brpc_port)
+    return brpc_url
+
+
 def get_url_for_join(node_id: int):
     return join_node_id_map[str(node_id)]
 
@@ -277,13 +285,14 @@ if __name__ == "__main__":
                     cmd = ' {} {}' \
                           ' --insecure --listen-addr={}' \
                           ' --http-addr={}' \
+                          ' --brpc-addr={}' \
                           ' --store={}/{}' \
                           ' --ts-store={}/{}' \
                           ' --locality=region=CN-100000-0{}' \
                           ' --pid-file={}/kwbase.pid ' \
                           ' --external-io-dir={}/extern' \
                           ' --join={} --background'.format(
-                        kwbin_path, 'start', url, get_http_url_fot_join(node_id), store_dir, 'c' + str(store_id), store_dir,
+                        kwbin_path, 'start', url, get_http_url_fot_join(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id), store_dir,
                                                                                              'c-ts' + str(store_id),
                                                                                              "%02d" % node_id,
                                                                                              store_dir + '/c' + str(
@@ -296,13 +305,14 @@ if __name__ == "__main__":
                     cmd = ' {} {}' \
                           ' --insecure --listen-addr={}' \
                           ' --http-addr={}' \
+                          ' --brpc-addr={}' \
                           ' --store={}/{}' \
                           ' --ts-store={}/{}' \
                           ' --locality=region=CN-100000-0{}' \
                           ' --pid-file={}/kwbase.pid ' \
                           '--external-io-dir={}/extern' \
                           ' --join={} --background'.format(
-                        kwbin_path, 'start', url, get_http_url_from_node_id(node_id), store_dir, 'c' + str(store_id),
+                        kwbin_path, 'start', url, get_http_url_from_node_id(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id),
                         store_dir, 'c-ts' + str(store_id),
                                                                                                  "%02d" % node_id,
                                                                                                  store_dir + '/c' + str(
@@ -319,12 +329,13 @@ if __name__ == "__main__":
                     cmd = ' {} {}' \
                           ' --insecure --listen-addr={}' \
                           ' --http-addr={}' \
+                          ' --brpc-addr={}' \
                           ' --store={}/{}' \
                           ' --locality=region=CN-100000-0{}' \
                           ' --pid-file={}/kwbase.pid ' \
                           ' --external-io-dir={}/extern' \
                           ' --join={} --background'.format(
-                        kwbin_path, 'start', url, get_http_url_fot_join(node_id), store_dir, 'c' + str(store_id),
+                        kwbin_path, 'start', url, get_http_url_fot_join(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id),
                                                                                              "%02d" % node_id,
                                                                                              store_dir + '/c' + str(
                                                                                                  store_id), store_dir,
@@ -336,12 +347,13 @@ if __name__ == "__main__":
                     cmd = ' {} {}' \
                           ' --insecure --listen-addr={}' \
                           ' --http-addr={}' \
+                          ' --brpc-addr={}' \
                           ' --store={}/{}' \
                           ' --locality=region=CN-100000-0{}' \
                           ' --pid-file={}/kwbase.pid ' \
                           '--external-io-dir={}/extern' \
                           ' --join={} --background'.format(
-                        kwbin_path, 'start', url, get_http_url_from_node_id(node_id), store_dir, 'c' + str(store_id),
+                        kwbin_path, 'start', url, get_http_url_from_node_id(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id),
                                                                                                  "%02d" % node_id,
                                                                                                  store_dir + '/c' + str(
                                                                                                      store_id),
@@ -354,12 +366,13 @@ if __name__ == "__main__":
                 cmd = ' {} {}' \
                       ' --insecure --listen-addr={}' \
                       ' --http-addr={}' \
+                      ' --brpc-addr={}' \
                       ' --store={}/{}' \
                       ' --pid-file={}/kwbase.pid ' \
                       ' --locality=region=CN-100000-0{}' \
                       ' --external-io-dir={}/extern' \
                       ' --join={} --background'.format(
-                    kwbin_path, 'start', url, get_http_url_fot_join(node_id), store_dir,
+                    kwbin_path, 'start', url, get_http_url_fot_join(node_id), get_brpc_url_from_node_id(url), store_dir,
                     'c' + str(node_id),
                     store_dir + '/c' + str(node_id),
                     "%02d" % node_id, store_dir,
@@ -477,12 +490,13 @@ if __name__ == "__main__":
                 cmd = ' {} {}' \
                       ' --insecure --listen-addr={}' \
                       ' --http-addr={}' \
+                      ' --brpc-addr={}' \
                       ' --store={}/{}' \
                       ' --locality=region=CN-100000-0{}' \
                       ' --pid-file={}/kwbase.pid ' \
                       ' --external-io-dir={}/extern' \
                       ' --join={} --background'.format(
-                    kwbin_path, 'start --upgrade-complete', url, get_http_url_from_node_id(node_id), store_dir,
+                    kwbin_path, 'start --upgrade-complete', url, get_http_url_from_node_id(node_id), get_brpc_url_from_node_id(url), store_dir,
                     'c' + str(store_id), "%02d" % node_id, store_dir + '/c' + str(store_id), store_dir,
                     get_url_from_node_id(1))
             cmds.append(cmd)

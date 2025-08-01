@@ -36,6 +36,7 @@ TEST_F(TestAggScanOp, TestDmlExecAgg) {
   TSFlowSpec flow;
   AggScanSpec agg_spec(table_id_);
   agg_spec.PrepareFlowSpec(flow);
+  agg_spec.PrepareInputOutputSpec(flow);
 
   size_t size = flow.ByteSizeLong();
 

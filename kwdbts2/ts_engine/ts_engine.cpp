@@ -100,6 +100,9 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
 
 TSEngineV2Impl::~TSEngineV2Impl() {
   DestoryExecutor();
+#ifndef WITH_TESTS
+  BrMgr::GetInstance().Destroy();
+#endif
   vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
@@ -191,6 +194,16 @@ KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
+#ifndef WITH_TESTS
+  // init brpc for multi-node mode
+  if (!EngineOptions::isSingleNode()) {
+    if (BrMgr::GetInstance().Init(ctx, options_) != KStatus::SUCCESS) {
+      LOG_ERROR("BrMgr init failed")
+      return KStatus::FAIL;
+    }
+  }
+#endif
+
   std::filesystem::path db_path{options_.db_path};
   assert(!db_path.empty());
   schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory);
@@ -202,7 +215,8 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = std::make_unique<TsVGroup>(options_, vgroup_id, schema_mgr_.get());
+    auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(),
+                                             &wal_level_mutex_);
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -509,8 +523,9 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
     vgroup = GetVGroupByID(ctx, vgroup_id);
     if (new_tag) {
       if (options_.wal_level != WALMode::OFF && write_wal) {
-        // no need lock, lock inside.
+        wal_level_mutex_.lock_shared();
         s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id);
+        wal_level_mutex_.unlock_shared();
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
           return s;
@@ -601,6 +616,21 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
+
+    if (options_.wal_level != WALMode::OFF) {
+      // get old payload
+      TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
+      if (UNLIKELY(nullptr == tag_pack)) {
+        return KStatus::FAIL;
+      }
+      wal_level_mutex_.lock_shared();
+      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData());
+      wal_level_mutex_.unlock_shared();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
+        return s;
+      }
+    }
 
     err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
     if (err_info.errcode < 0) {
@@ -1875,8 +1905,18 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
   string value;
 
   if (GetClusterSetting(ctx, "ts.wal.wal_level", &value) == SUCCESS) {
-    options_.wal_level = std::stoll(value);
-    LOG_INFO("update wal level to %hhu", options_.wal_level)
+    if (std::stoll(value) != options_.wal_level) {
+      wal_level_mutex_.lock();
+      // wlock all vgroup rwlock
+      KStatus s = CreateCheckpoint(ctx);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to CreateCheckpoint while UpdateSetting.")
+      }
+      options_.wal_level = std::stoll(value);
+      LOG_INFO("update wal level to %hhu", options_.wal_level)
+      wal_level_mutex_.unlock();
+      // unlock
+    }
   }
 
   if (GetClusterSetting(ctx, "ts.wal.buffer_size", &value) == SUCCESS) {
