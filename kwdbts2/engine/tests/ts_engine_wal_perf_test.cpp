@@ -458,8 +458,6 @@ TEST_F(TestEngineWALPerf, insert1) {
 TEST_F(TestEngineWALPerf, insert2) {
   opts_.wal_level = 2;
   opts_.wal_buffer_size = 10;
-  // opts_.wal_file_size = 128;
-  opts_.wal_file_in_group = 20;
   opts_.db_path = kDbPath;
   KStatus s = TSEngineImpl::OpenTSEngine(ctx_, kDbPath, opts_, &ts_engine_);
   EXPECT_EQ(s, KStatus::SUCCESS);

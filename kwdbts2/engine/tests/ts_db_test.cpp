@@ -29,8 +29,6 @@ class TestDB : public ::testing::Test {
     rmdir(kDbPath.c_str());
     opts_.wal_level = 0;
     opts_.wal_buffer_size = 1;
-    opts_.wal_file_size = 4;
-    opts_.wal_file_in_group = 3;
     opts_.thread_pool_size = 2;
     opts_.task_queue_size = 10;
     opts_.lg_opts = TsLogOptions{};

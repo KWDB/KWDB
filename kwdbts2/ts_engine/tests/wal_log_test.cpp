@@ -31,7 +31,6 @@ class TestWALManagerV2 : public ::testing::Test {
     opts_.wal_level = 1;
     opts_.wal_buffer_size = 4;
     opts_.db_path =  "./wal_log_test/";
-    opts_.wal_file_in_group = 1;
 
     std::filesystem::remove_all(opts_.db_path);
     wal_ = new WALMgr("./wal_log_test/", intToString(tbl_grp_id_), &opts_);
