@@ -170,7 +170,92 @@ func TestValidateAddrs(t *testing.T) {
 				SQLAdvertiseAddr: test.in.advsql,
 			}
 
-			if err := cfg.ValidateAddrs(context.Background()); err != nil {
+			if err := cfg.ValidateAddrs(context.Background(), base.StartSingleNodeCmdName); err != nil {
+				if !testutils.IsError(err, test.expectedErr) {
+					t.Fatalf("expected error %q, got %v", test.expectedErr, err)
+				}
+				return
+			}
+			if test.expectedErr != "" {
+				t.Fatalf("expected error %q, got success", test.expectedErr)
+			}
+
+			got := addrs{cfg.Addr, cfg.AdvertiseAddr, cfg.HTTPAddr, cfg.HTTPAdvertiseAddr, cfg.SQLAddr, cfg.SQLAdvertiseAddr}
+			gotStr := got.String()
+			expStr := test.expected.String()
+
+			if gotStr != expStr {
+				t.Fatalf("expected %q,\ngot %q", expStr, gotStr)
+			}
+		})
+	}
+}
+
+func TestValidateBrpcAddrs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Prepare some reference strings that will be checked in the
+	// test below.
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostAddr, err := base.LookupAddr(context.Background(), net.DefaultResolver, hostname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(hostAddr, ":") {
+		hostAddr = "[" + hostAddr + "]"
+	}
+	localAddr, err := base.LookupAddr(context.Background(), net.DefaultResolver, "localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(localAddr, ":") {
+		localAddr = "[" + localAddr + "]"
+	}
+	// For the host name resolution error we can reliably expect "no such host"
+	// below, but before we test anything we need to ensure we indeed have
+	// a reliably non-resolvable host name.
+	_, err = net.DefaultResolver.LookupIPAddr(context.Background(), "nonexistent.example.com")
+	if err == nil {
+		t.Fatal("expected host resolution failure, got no error")
+	}
+
+	brpcExpectedErr := "--brpc-addr not specified"
+
+	// The test cases.
+	testData := []struct {
+		in          addrs
+		expectedErr string
+		expected    addrs
+		brpc        string
+	}{
+		//normal
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, "",
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			"127.0.0.1:26257"},
+		// Expected errors.
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, brpcExpectedErr,
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			base.DefaultBRPVAddr},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, "no such host",
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			"333.333.333.333:26257"},
+	}
+
+	for i, test := range testData {
+		t.Run(fmt.Sprintf("%d/%s", i, test.in), func(t *testing.T) {
+			cfg := base.Config{
+				Addr:             test.in.listen,
+				AdvertiseAddr:    test.in.adv,
+				HTTPAddr:         test.in.http,
+				SQLAddr:          test.in.sql,
+				SQLAdvertiseAddr: test.in.advsql,
+				BRPCAddr:         test.brpc,
+			}
+
+			if err := cfg.ValidateAddrs(context.Background(), base.StartCmdName); err != nil {
 				if !testutils.IsError(err, test.expectedErr) {
 					t.Fatalf("expected error %q, got %v", test.expectedErr, err)
 				}

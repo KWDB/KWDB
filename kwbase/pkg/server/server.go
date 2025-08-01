@@ -313,7 +313,7 @@ type Server struct {
 
 // NewServer creates a Server from a server.Config.
 func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
-	if err := cfg.ValidateAddrs(context.Background()); err != nil {
+	if err := cfg.ValidateAddrs(context.Background(), cfg.StartMode); err != nil {
 		return nil, err
 	}
 
@@ -1617,8 +1617,10 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	// Pre check AE RPC host/port.
-	if err = s.checkBRPC(ctx); err != nil {
-		return err
+	if s.cfg.StartMode != base.StartSingleNodeCmdName {
+		if err = s.checkBRPC(ctx); err != nil {
+			return err
+		}
 	}
 
 	if s.cfg.TestingKnobs.Server != nil {
@@ -1762,7 +1764,7 @@ func (s *Server) Start(ctx context.Context) error {
 	listenAddrU := util.NewUnresolvedAddr("tcp", s.cfg.Addr)
 	advAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseAddr)
 	advSQLAddrU := util.NewUnresolvedAddr("tcp", s.cfg.SQLAdvertiseAddr)
-	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.BRPCAddr)
+	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseBrpcAddr)
 	filtered := s.cfg.FilterGossipBootstrapResolvers(ctx, listenAddrU, advAddrU)
 	s.gossip.Start(advAddrU, filtered)
 	log.Event(ctx, "started gossip")
@@ -2588,13 +2590,12 @@ func (s *Server) startServeUI(
 }
 
 func (s *Server) checkBRPC(ctx context.Context) error {
-	_, err := net.Listen("tcp", s.cfg.BRPCAddr)
+	var err error
+	_, err = listen(ctx, &s.cfg.BRPCAddr, &s.cfg.AdvertiseBrpcAddr, "brpc")
 	if err != nil {
-		return ListenError{
-			error: err,
-			Addr:  s.cfg.BRPCAddr,
-		}
+		return err
 	}
+	log.Eventf(ctx, "listening on port %s", s.cfg.Addr)
 	return nil
 }
 

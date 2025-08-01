@@ -89,7 +89,9 @@ TSEngineImpl::~TSEngineImpl() {
 
   DestoryExecutor();
 #ifndef WITH_TESTS
-  BrMgr::GetInstance().Destroy();
+  if (!EngineOptions::isSingleNode()) {
+    BrMgr::GetInstance().Destroy();
+  }
 #endif
 
   delete tables_cache_;
