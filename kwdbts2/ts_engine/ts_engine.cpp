@@ -524,7 +524,7 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
     if (new_tag) {
       if (options_.wal_level != WALMode::OFF && write_wal) {
         wal_level_mutex_.lock_shared();
-        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id);
+        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, table_id);
         wal_level_mutex_.unlock_shared();
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
@@ -624,7 +624,7 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
         return KStatus::FAIL;
       }
       wal_level_mutex_.lock_shared();
-      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData());
+      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), table_id);
       wal_level_mutex_.unlock_shared();
       if (s == KStatus::FAIL) {
         LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")

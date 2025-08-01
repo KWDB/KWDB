@@ -114,7 +114,7 @@ class WALMgr {
    * @return
    */
   KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                         size_t offset, TSSlice prepared_payload, uint64_t vgrp_id = 0);
+                         size_t offset, TSSlice prepared_payload, uint64_t vgrp_id = 0, uint64_t table_id = 0);
 
   /**
    * Construct the log entry for the UPDATE Tag operation.
@@ -127,7 +127,8 @@ class WALMgr {
    * @return
    */
   KStatus WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                         size_t offset, TSSlice new_payload, TSSlice old_payload, uint64_t vgrp_id = 0);
+                         size_t offset, TSSlice new_payload, TSSlice old_payload, uint64_t vgrp_id = 0,
+                         uint64_t table_id = 0);
 
   /**
    * Construct the log entry for the INSERT Metrics operation.
@@ -168,7 +169,8 @@ class WALMgr {
    * @return
    */
   KStatus WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
-                            uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id = 0);
+                            uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id = 0,
+                            uint64_t table_id = 0, uint64_t hash_num = 0);
 
   /**
    * Construct the log entry for the CREATE INDEX operation.
