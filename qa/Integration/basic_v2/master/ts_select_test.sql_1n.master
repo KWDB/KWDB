@@ -6627,5 +6627,106 @@ SET
 DROP DATABASE
 > drop database test cascade;
 DROP DATABASE
+> drop database tsdb cascade;
+ERROR: database "tsdb" does not exist
+SQLSTATE: 3D000
+> create ts database tsdb;
+CREATE TS DATABASE
+> use tsdb;
+SET
+> create table t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into t1 values('2025-07-29 03:06:28.103',1,1);
+INSERT 1
+> insert into t1 values('2025-07-29 03:06:29.101',2,2);
+INSERT 1
+> insert into t1 values('2025-07-29 03:07:31.265',3,3);
+INSERT 1
+> insert into t1 values('2025-07-29 03:08:32.313',4,4);
+INSERT 1
+> insert into t1 values('2025-07-29 03:09:35.130',5,5);
+INSERT 1
+> insert into t1 values('2025-07-29 03:09:37.695',6,6);
+INSERT 1
+> insert into t1 values('2025-07-29 03:11:39.103',60,60);
+INSERT 1
+> insert into t1 values('2025-07-29 03:16:41.333',600,600);
+INSERT 1
+> insert into t1 values('2025-07-29 03:26:45.456',6000,6000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:37:46.765',60000,60000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:39:48.334',100,100);
+INSERT 1
+> insert into t1 values('2025-07-29 03:41:49.987',1000,1000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:42:50.322',10000,10000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:46:51.122',100000,100000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:48:53.665',6000,90549856);
+INSERT 1
+> insert into t1 values('2025-07-29 03:50:55.101',60000,89498);
+INSERT 1
+> insert into t1 values('2025-07-29 03:52:56.103',100,9384732);
+INSERT 1
+> insert into t1 values('2025-07-29 03:53:57.156',1000,234566);
+INSERT 1
+> insert into t1 values('2025-07-29 03:57:58.191',10000,345667643);
+INSERT 1
+> insert into t1 values('2025-07-29 03:58:59.203',100000,4564353);
+INSERT 1
+> SELECT max(a) FROM tsdb.t1 GROUP BY a,ts order by ts;
+   max
+----------
+       1
+       2
+       3
+       4
+       5
+       6
+      60
+     600
+    6000
+   60000
+     100
+    1000
+   10000
+  100000
+    6000
+   60000
+     100
+    1000
+   10000
+  100000
+(20 rows)
+> SELECT * FROM tsdb.t1 order by ts;
+               ts               |   a    |     b
+--------------------------------+--------+------------
+  2025-07-29 03:06:28.103+00:00 |      1 |         1
+  2025-07-29 03:06:29.101+00:00 |      2 |         2
+  2025-07-29 03:07:31.265+00:00 |      3 |         3
+  2025-07-29 03:08:32.313+00:00 |      4 |         4
+  2025-07-29 03:09:35.13+00:00  |      5 |         5
+  2025-07-29 03:09:37.695+00:00 |      6 |         6
+  2025-07-29 03:11:39.103+00:00 |     60 |        60
+  2025-07-29 03:16:41.333+00:00 |    600 |       600
+  2025-07-29 03:26:45.456+00:00 |   6000 |      6000
+  2025-07-29 03:37:46.765+00:00 |  60000 |     60000
+  2025-07-29 03:39:48.334+00:00 |    100 |       100
+  2025-07-29 03:41:49.987+00:00 |   1000 |      1000
+  2025-07-29 03:42:50.322+00:00 |  10000 |     10000
+  2025-07-29 03:46:51.122+00:00 | 100000 |    100000
+  2025-07-29 03:48:53.665+00:00 |   6000 |  90549856
+  2025-07-29 03:50:55.101+00:00 |  60000 |     89498
+  2025-07-29 03:52:56.103+00:00 |    100 |   9384732
+  2025-07-29 03:53:57.156+00:00 |   1000 |    234566
+  2025-07-29 03:57:58.191+00:00 |  10000 | 345667643
+  2025-07-29 03:58:59.203+00:00 | 100000 |   4564353
+(20 rows)
+> use defaultdb;
+SET
+> drop database if exists tsdb;
+DROP DATABASE
 > set cluster setting sql.all_push_down.enabled=default;
 SET CLUSTER SETTING

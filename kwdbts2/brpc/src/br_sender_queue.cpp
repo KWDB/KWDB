@@ -77,7 +77,9 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
 
   ProtobufChunkSerrialde serial;
   if (pchunk.compress_type() == CompressionTypePB::NO_COMPRESSION) {
-    serial.Deserialize(chunk, pchunk.data(), pchunk.is_encoding(), col_info_, col_num_);
+    if (false == serial.Deserialize(chunk, pchunk.data(), pchunk.is_encoding(), col_info_, col_num_)) {
+      return KStatus::FAIL;
+    }
   } else {
     std::string_view buff = pchunk.data();
     auto* cur = reinterpret_cast<const uint8_t*>(buff.data());
@@ -85,6 +87,7 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
     k_uint32 version = decode_fixed32(cur);
     if (version != 1) {
       LOG_ERROR("invalid version {%u}", version);
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid version");
       return KStatus::FAIL;
     }
     cur += 4;
@@ -100,6 +103,7 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
       const BlockCompressionCodec* codec = nullptr;
       if (KStatus::FAIL == GetBlockCompressionCodec(pchunk.compress_type(), &codec)) {
         LOG_ERROR("GetBlockCompressionCodec failed, compress_type: %d", pchunk.compress_type());
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid compress type");
         return KStatus::FAIL;
       }
       for (k_int32 i = 0; i < col_num_; i++) {
@@ -116,6 +120,7 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
         if (codec != nullptr && compressed_data.get_size() > 0) {
           if (KStatus::FAIL == codec->Decompress(compressed_data, &output)) {
             LOG_ERROR("decompress failed, queryid:%ld", recvr_->QueryId());
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "decompress failed");
             return KStatus::FAIL;
           }
         }
@@ -127,9 +132,14 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
           chunk = std::make_unique<DataChunk>(col_info_, col_num_, capacity);
           if (chunk == nullptr) {
             LOG_ERROR("Deserialize make unique data chunk failed");
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
             return KStatus::FAIL;
           }
-          chunk->Initialize();
+          if (!chunk->Initialize()) {
+            LOG_ERROR("Deserialize data chunk, initialize failed");
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+            return KStatus::FAIL;
+          }
           chunk->SetCount(num_rows);
         }
         memcpy(chunk->GetData() + offset, uncompress_buf, uncompressed_size);
