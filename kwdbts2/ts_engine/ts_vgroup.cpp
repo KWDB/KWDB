@@ -1540,8 +1540,7 @@ KStatus TsVGroup::Vacuum() {
   auto current = version_manager_->Current();
   auto partitions = current->GetPartitionsToVacuum();
 
-  for (int i = 0; i < partitions.size() - 1; i++) {
-    const auto& partition = partitions[i];
+  for (auto& partition : partitions) {
     // force compact historical partition
     s = PartitionCompact(partition, true);
     if (s != KStatus::SUCCESS) {
