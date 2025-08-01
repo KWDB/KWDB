@@ -110,9 +110,6 @@ typedef struct TsLogOptions {
 // TSOptions contains local database options.
 typedef struct {
   uint8_t wal_level;
-  uint16_t wal_file_size;
-  uint16_t wal_file_in_group;
-  uint16_t wal_buffer_size;
   bool must_exist;
   bool read_only;
   TSSlice extra_options;

@@ -452,7 +452,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
-  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders2;
+  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders;
   std::unordered_set<std::shared_ptr<const TsPartitionVersion>> new_created_partitions;
   TsVersionUpdate update;
 
@@ -541,8 +541,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         span_to_flush = std::move(front_span);
       }
 
-      auto it = builders2.find(partition);
-      if (it == builders2.end()) {
+      auto it = builders.find(partition);
+      if (it == builders.end()) {
         std::unique_ptr<TsAppendOnlyFile> last_segment;
         uint64_t file_number = version_manager_->NewFileNumber();
         auto path =
@@ -553,7 +553,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
           return FAIL;
         }
 
-        auto result = builders2.insert({partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment),
+        auto result = builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment),
                                                                          static_cast<uint32_t>(file_number)}});
         it = result.first;
       }
@@ -566,12 +566,13 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
   }
 
-  for (auto& [k, v] : builders2) {
+  for (auto& [k, v] : builders) {
     auto s = v.Finalize();
     if (s == FAIL) {
       return FAIL;
     }
     update.AddLastSegment(k->GetPartitionIdentifier(), v.GetFileNumber());
+    update.SetMaxLSN(v.GetMaxLSN());
   }
 
   mem_seg->SetDeleting();

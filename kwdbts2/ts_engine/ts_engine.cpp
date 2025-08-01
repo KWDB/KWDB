@@ -229,7 +229,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
     vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
-
+  LOG_INFO("TS engine WAL level is: %d", options_.wal_level);
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   auto res = wal_mgr_->Init(ctx);
   if (res == KStatus::FAIL) {
@@ -1917,21 +1917,6 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
       wal_level_mutex_.unlock();
       // unlock
     }
-  }
-
-  if (GetClusterSetting(ctx, "ts.wal.buffer_size", &value) == SUCCESS) {
-    options_.wal_buffer_size = std::stoll(value);
-    LOG_INFO("update wal buffer size to %hu Mib", options_.wal_buffer_size)
-  }
-
-  if (GetClusterSetting(ctx, "ts.wal.file_size", &value) == SUCCESS) {
-    options_.wal_file_size = std::stoll(value);
-    LOG_INFO("update wal file size to %hu Mib", options_.wal_file_size)
-  }
-
-  if (GetClusterSetting(ctx, "ts.wal.files_in_group", &value) == SUCCESS) {
-    options_.wal_file_in_group = std::stoll(value);
-    LOG_INFO("update wal file num in group to %hu", options_.wal_file_in_group)
   }
 
   return KStatus::SUCCESS;
