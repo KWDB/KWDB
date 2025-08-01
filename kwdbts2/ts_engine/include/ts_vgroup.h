@@ -179,7 +179,7 @@ class TsVGroup {
     return tsx_manager_->IsExplict(mini_trans_id);
   }
 
-  KStatus Compact(bool call_by_vacuum = false);
+  KStatus Compact();
 
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
@@ -354,6 +354,8 @@ class TsVGroup {
   void initCompactThread();
   // Close compact thread.
   void closeCompactThread();
+
+  KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 };
 
 }  // namespace kwdbts
