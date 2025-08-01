@@ -138,6 +138,13 @@ KStatus TsLastSegmentBuilder::Finalize() {
   return s;
 }
 
+TS_LSN TsLastSegmentBuilder::GetMaxLSN() const {
+  auto it = std::max_element(
+      block_index_buffer_.begin(), block_index_buffer_.end(),
+      [](const TsLastSegmentBlockIndex& a, const TsLastSegmentBlockIndex& b) { return a.max_lsn < b.max_lsn; });
+  return it == block_index_buffer_.end() ? 0 : it->max_lsn;
+}
+
 KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
   if (metric_block_builder_ == nullptr || metric_block_builder_->GetRowNum() == 0) {
     return SUCCESS;

@@ -107,6 +107,8 @@ class TsVGroup {
 
   TSEntityID GetMaxEntityID() const;
 
+  TS_LSN GetMaxLSN() const { return CurrentVersion()->GetMaxLSN(); }
+
   void InitEntityID(TSEntityID entity_id);
 
   void LockLevelMutex() {

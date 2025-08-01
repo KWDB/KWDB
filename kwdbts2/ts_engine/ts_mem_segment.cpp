@@ -13,7 +13,6 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <numeric>
 #include <vector>
 
 #include "kwdb_type.h"

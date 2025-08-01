@@ -67,6 +67,7 @@ class TsLastSegmentBuilder {
   KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
   KStatus Finalize();
   uint64_t GetFileNumber() const { return file_number_; }
+  TS_LSN GetMaxLSN() const;
 
  private:
   KStatus RecordAndWriteBlockToFile();
