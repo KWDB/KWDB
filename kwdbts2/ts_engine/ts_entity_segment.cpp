@@ -210,6 +210,10 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   entity_id_ = block_item->entity_id;
   n_rows_ = block_item->n_rows;
   n_cols_ = block_item->n_cols;
+  first_ts_ = block_item->min_ts;
+  last_ts_ = block_item->max_ts;
+  first_lsn_ = block_item->first_lsn;
+  last_lsn_ = block_item->last_lsn;
   block_offset_ = block_item->block_offset;
   block_length_ = block_item->block_len;
   agg_offset_ = block_item->agg_offset;
@@ -527,6 +531,22 @@ timestamp64 TsEntityBlock::GetTS(int row_num) {
     }
   }
   return *reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data() + row_num * sizeof(timestamp64));
+}
+
+timestamp64 TsEntityBlock::GetFirstTS() {
+  return first_ts_;
+}
+
+timestamp64 TsEntityBlock::GetLastTS() {
+  return last_ts_;
+}
+
+TS_LSN TsEntityBlock::GetFirstLSN() {
+  return first_lsn_;
+}
+
+TS_LSN TsEntityBlock::GetLastLSN() {
+  return last_lsn_;
 }
 
 uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {

@@ -127,7 +127,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::list<std::shared_ptr<TsBlockSpan>> block_spans;
-  for (uint32_t vgroup_id = 0; vgroup_id < EngineOptions::vgroup_max_num; vgroup_id++) {
+  for (uint32_t vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     auto vgroup = engine_->GetTsVGroup(vgroup_id);
     auto p = vgroup->CurrentVersion()->GetPartition(1, 10086);
     if (p == nullptr) {
