@@ -67,6 +67,7 @@ class TsLastSegmentBuilder {
   KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
   KStatus Finalize();
   uint64_t GetFileNumber() const { return file_number_; }
+  TS_LSN GetMaxLSN() const;
 
  private:
   KStatus RecordAndWriteBlockToFile();
@@ -81,8 +82,12 @@ class TsLastSegmentBuilder::BlockIndexCollector {
   TSEntityID min_entity_id_ = std::numeric_limits<TSEntityID>::max();
   TS_LSN max_lsn_ = 0;
   TS_LSN min_lsn_ = std::numeric_limits<TS_LSN>::max();
+  TS_LSN first_lsn_ = std::numeric_limits<TS_LSN>::max();
+  TS_LSN last_lsn_ = std::numeric_limits<TS_LSN>::max();
   timestamp64 max_ts_ = std::numeric_limits<timestamp64>::min();
   timestamp64 min_ts_ = std::numeric_limits<timestamp64>::max();
+  timestamp64 first_ts_ = std::numeric_limits<timestamp64>::max();
+  timestamp64 last_ts_ = std::numeric_limits<timestamp64>::max();
 
  public:
   BlockIndexCollector(TSTableID table_id, uint32_t version) : table_id_(table_id), version_(version) {}

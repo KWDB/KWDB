@@ -217,7 +217,11 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
 
   if (tag_table_ == nullptr) {
     tag_table_ = std::make_shared<TagTable>(table_path_, tag_schema_path_, table_id_, 1);
-    if (tag_table_->create(tag_schema, ts_version, err_info) < 0) {
+    std::vector<roachpb::NTagIndexInfo> idx_info;
+    for (int i = 0; i < meta->index_info_size(); i++) {
+      idx_info.emplace_back(meta->index_info(i));
+    }
+    if (tag_table_->create(tag_schema, ts_version, idx_info, err_info) < 0) {
       LOG_ERROR("failed to create the tag table %s%lu, error: %s",
                 tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
       return FAIL;

@@ -19,6 +19,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -36,6 +37,12 @@ enum class TsExclusiveStatus{
   COMPACT,
   WRITE_BATCH,
   VACUUM,
+};
+
+enum class TsEntityLatestRowStatus {
+  Uninitialized = 0,
+  Recovering,
+  Valid,
 };
 
 /**
@@ -60,8 +67,9 @@ class TsVGroup {
   // mutex for initialize/allocate/get max_entity_id_
   mutable std::mutex entity_id_mutex_;
 
-  EngineOptions engine_options_;
+  EngineOptions* engine_options_ = nullptr;
 
+  std::shared_mutex* engine_wal_level_mutex_ = nullptr;
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
@@ -81,11 +89,18 @@ class TsVGroup {
 
   std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
 
+  mutable std::shared_mutex last_row_entity_mutex_;
+  std::unordered_map<uint32_t, bool> last_row_entity_checked_;
+  std::unordered_map<uint32_t, pair<timestamp64, uint32_t>> last_row_entity_;
+  mutable std::shared_mutex entity_latest_row_mutex_;
+  std::unordered_map<uint32_t, TsEntityLatestRowStatus> entity_latest_row_checked_;
+  std::unordered_map<uint32_t, timestamp64> entity_latest_row_;
+
  public:
   TsVGroup() = delete;
 
-  TsVGroup(const EngineOptions& engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
-           bool enable_compact_thread = true);
+  TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+           std::shared_mutex* engine_mutex, bool enable_compact_thread = true);
 
   ~TsVGroup();
 
@@ -106,7 +121,33 @@ class TsVGroup {
 
   TSEntityID GetMaxEntityID() const;
 
+  TS_LSN GetMaxLSN() const { return CurrentVersion()->GetMaxLSN(); }
+
   void InitEntityID(TSEntityID entity_id);
+
+  void LockLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->lock();
+    }
+  }
+
+  void UnLockLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->unlock();
+    }
+  }
+
+  void LockSharedLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->lock_shared();
+    }
+  }
+
+  void UnLockSharedLevelMutex() {
+    if (engine_wal_level_mutex_ != nullptr) {
+      engine_wal_level_mutex_->unlock_shared();
+    }
+  }
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
 
@@ -225,10 +266,6 @@ class TsVGroup {
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
-  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
-
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, TSSlice old_payload);
-
   /**
    * @brief undoPut undo a put operation. This function is used to undo a previously executed put operation.
    *
@@ -247,18 +284,14 @@ class TsVGroup {
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
+  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& payload);
+
   KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
+
   KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
-                        uint32_t entity_id, TSSlice& payload);
-
-  KStatus redoCreateHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
-
-  KStatus undoCreateHashIndex(uint32_t index_id, uint32_t ts_version);
-
-  KStatus redoDropHashIndex(uint32_t index_id, uint32_t ts_version);
-
-  KStatus undoDropHashIndex(const std::vector<uint32_t>& tags, uint32_t index_id, uint32_t ts_version);
+                        uint32_t entity_id, TSSlice& tags);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.
@@ -287,6 +320,48 @@ class TsVGroup {
    */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
+
+  KStatus GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                           pair<timestamp64, uint32_t>& last_row_entity);
+
+  void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
+    std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
+    if (!last_row_entity_.count(table_id) || max_ts >= last_row_entity_[table_id].first) {
+      last_row_entity_[table_id] = {max_ts, entity_id};
+    }
+  }
+
+  void ResetEntityMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
+    std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
+    if (last_row_entity_.count(table_id) && max_ts >= last_row_entity_[table_id].first) {
+      if (entity_id == last_row_entity_[table_id].second) {
+        last_row_entity_.erase(table_id);
+        last_row_entity_checked_[table_id] = false;
+      }
+    }
+  }
+
+  KStatus GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                           uint32_t entity_id, const std::vector<KwTsSpan>& ts_spans,
+                           timestamp64& entity_last_ts);
+
+  void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
+    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id]) {
+      entity_latest_row_[entity_id] = max_ts;
+      if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Uninitialized) {
+        entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
+      }
+    }
+  }
+
+  void ResetEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
+    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id]) {
+      entity_latest_row_.erase(entity_id);
+      entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Recovering;
+    }
+  }
 
  private:
   // check partition of rows exist. if not creating it.
