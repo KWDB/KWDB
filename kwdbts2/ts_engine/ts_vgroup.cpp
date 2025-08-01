@@ -756,9 +756,10 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
 
 KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                                std::shared_ptr<const TsVGroupVersion>& current,
                                 std::list<std::shared_ptr<TsBlockSpan>>* block_spans) {
   uint32_t db_id = schema_mgr_->GetDBIDByTableID(table_id);
-  auto current = version_manager_->Current();
+  current = version_manager_->Current();
   std::vector<KwTsSpan> ts_spans{ts_span};
   auto ts_partitions = current->GetPartitions(db_id, ts_spans, ts_col_type);
   for (int32_t index = 0; index < ts_partitions.size(); ++index) {
