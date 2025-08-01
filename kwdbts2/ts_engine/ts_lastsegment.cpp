@@ -162,7 +162,6 @@ class TsLastBlock : public TsBlock {
 
   class ColumnCache {
    private:
-
     TsRandomReadFile* file_;
     TsLastSegmentBlockInfo* block_info_;
 
