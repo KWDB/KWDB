@@ -1,0 +1,52 @@
+SET
+
+Time: 783.14µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+append,"",""
+" ├── batch-lookup-join","",""
+" │    │",type,inner
+" │    │",equality,"(""tag"", company_id) = (""tag"", companyid)"
+" │    ├── scan","",""
+" │    │",table,plat_zone_member@primary
+" │    │",spans,FULL SCAN
+" │    │",filter,contract_email = 'ningmeng0823@hotmail.com'
+" │    └── group","",""
+" │         │",engine type,time series
+" │         │",aggregate 0,count_rows()
+" │         │",aggregate 1,avg(value)
+" │         │",scalar,""
+" │         │",addSynchronizer ,true
+" │         └── render","",""
+" │              │",engine type,time series
+" │              │",value,value
+" │              └── ts scan","",""
+" │",ts-table,opcdata449600
+" │",access mode,hashRelScan
+" │",spans:fromTime,2023-05-29 10:10:10.001 +0000 UTC
+" │",spans:toTime,2024-05-29 16:10:10 +0000 UTC
+" └── batch-lookup-join","",""
+"      │",type,inner
+"      │",equality,"(""tag"", company_id) = (""tag"", companyid)"
+"      ├── scan","",""
+"      │",table,plat_zone_member@primary
+"      │",spans,FULL SCAN
+"      │",filter,contract_email = 'ningmeng0823@hotmail.com'
+"      └── group","",""
+"           │",engine type,time series
+"           │",aggregate 0,count_rows()
+"           │",aggregate 1,avg(value)
+"           │",scalar,""
+"           │",addSynchronizer ,true
+"           └── render","",""
+"                │",engine type,time series
+"                │",value,value
+"                └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",filter,"(""time"" > '2023-05-29 10:10:10+00:00') AND (""time"" <= '2024-05-29 16:10:10+00:00')"
+
+Time: 27.116212ms
+

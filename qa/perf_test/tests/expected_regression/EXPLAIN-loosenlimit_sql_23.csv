@@ -1,0 +1,80 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+sort,"",""
+" │",order,"+area_name,+device_name,+plat_company_name,+risk_level"
+" └── filter","",""
+"      │",filter,avg > 50.0
+"      └── group","",""
+"           │",aggregate 0,area_name
+"           │",aggregate 1,device_name
+"           │",aggregate 2,name
+"           │",aggregate 3,level
+"           │",aggregate 4,count_rows()
+"           │",aggregate 5,avg(value)
+"           │",aggregate 6,count(DISTINCT device_no)
+"           │",aggregate 7,min(value)
+"           │",aggregate 8,max(value)
+"           │",aggregate 9,sum(CASE WHEN value > 100.0 THEN 1 ELSE 0 END)
+"           │",aggregate 10,count(DISTINCT area_id)
+"           │",aggregate 11,sum(CASE WHEN value < 10.0 THEN 1 ELSE 0 END)
+"           │",group by,"area_name, device_name, name, level"
+"           └── render","",""
+"                │",CASE WHEN value > 100.0 THEN 1 ELSE 0 END,CASE WHEN value > 100.0 THEN 1 ELSE 0 END
+"                │",CASE WHEN value < 10.0 THEN 1 ELSE 0 END,CASE WHEN value < 10.0 THEN 1 ELSE 0 END
+"                │",value,value
+"                │",area_name,area_name
+"                │",device_name,device_name
+"                │",name,name
+"                │",level,level
+"                │",device_no,device_no
+"                │",area_id,area_id
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,(company_id) = (companyid)
+"                     ├── hash-join","",""
+"                     │    │",type,inner
+"                     │    │",equality,"(company_id, id) = (company_id, id)"
+"                     │    ├── cross-join","",""
+"                     │    │    │",type,cross
+"                     │    │    ├── scan","",""
+"                     │    │    │",table,cd_security_device@primary
+"                     │    │    │",spans,FULL SCAN
+"                     │    │    └── lookup-join","",""
+"                     │    │         │",table,plat_risk_analyse_objects@primary
+"                     │    │         │",type,inner
+"                     │    │         │",equality,(risk_id) = (id)
+"                     │    │         │",equality cols are key,""
+"                     │    │         │",parallel,""
+"                     │    │         │",pred,@6 = 1
+"                     │    │         └── scan","",""
+"                     │    │",table,plat_risk_area@primary
+"                     │    │",spans,FULL SCAN
+"                     │    └── lookup-join","",""
+"                     │         │",table,plat_device_info@primary
+"                     │         │",type,inner
+"                     │         │",equality,(device_id) = (id)
+"                     │         │",equality cols are key,""
+"                     │         │",parallel,""
+"                     │         └── hash-join","",""
+"                     │              │",type,inner
+"                     │              │",equality,(company_id) = (company_id)
+"                     │              ├── scan","",""
+"                     │              │",table,cd_device_point@primary
+"                     │              │",spans,FULL SCAN
+"                     │              │",filter,index_upper_value > 1.0
+"                     │              └── scan","",""
+"                     │",table,cd_behavior_area@primary
+"                     │",spans,FULL SCAN
+"                     │",filter,area_type = 1
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-06-29 00:00:00 +0000 UTC
+"",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"",tag filter[0],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"",tag filter[1],datatype = e'\U00006C14\U00004F53'
+
+Time: 10.104471ms
+

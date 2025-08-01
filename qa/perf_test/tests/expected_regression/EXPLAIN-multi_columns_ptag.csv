@@ -1,0 +1,33 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+batch-lookup-join,"",""
+" │",type,inner
+" │",equality,"(pipeline_name, pipeline_sn, column16, column17) = (measure_tag, measure_position, measure_type, measure_style)"
+" │",left cols are key,""
+" ├── render","",""
+" │    └── scan","",""
+" │",table,pipeline_info@primary
+" │",spans,FULL SCAN
+" └── group","",""
+"      │",engine type,time series
+"      │",aggregate 0,pipeline_name
+"      │",aggregate 1,pipe_start
+"      │",aggregate 2,pipe_end
+"      │",aggregate 3,count(measure_value)
+"      │",aggregate 4,avg(measure_value)
+"      │",group by,"pipeline_name, pipe_start, pipe_end"
+"      │",addSynchronizer ,true
+"      └── render","",""
+"           │",engine type,time series
+"           │",measure_value,measure_value
+"           │",pipeline_name,pipeline_name
+"           │",pipe_start,pipe_start
+"           │",pipe_end,pipe_end
+"           └── ts scan","",""
+"",ts-table,measurepoints
+"",access mode,primaryHashTagScan
+"",filter,measure_value >= 2.7
+
+Time: 50.865212ms
+

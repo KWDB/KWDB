@@ -1,0 +1,10 @@
+SET
+
+Time: 491.052µs
+
+station_sn,work_area_sn,sub_company_sn,pipeline_sn,point_sn,measure_type,measure_location,avg,count
+station_sn_243,work_area_sn_25,sub_com_sn_5,pipeline_sn_13,point_sn_91000,16,measure_location_91000,53.99407812030072,133
+station_sn_57,work_area_sn_6,sub_com_sn_1,pipeline_sn_3,point_sn_21000,5,measure_location_21000,54.950759104477605,134
+
+Time: 37.383724791s
+

@@ -1,0 +1,63 @@
+SET
+
+Time: 573.643µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── group","",""
+"      │",aggregate 0,point_sn
+"      │",aggregate 1,sub_com_sn
+"      │",aggregate 2,work_area_sn
+"      │",aggregate 3,station_sn
+"      │",aggregate 4,pipeline_sn
+"      │",aggregate 5,avg(measure_value)
+"      │",aggregate 6,min(measure_value)
+"      │",aggregate 7,"last(k_timestamp, k_timestamp)"
+"      │",aggregate 8,any_not_null(measure_type)
+"      │",aggregate 9,any_not_null(measure_location)
+"      │",aggregate 10,any_not_null(k_timestamp)
+"      │",group by,"point_sn, sub_com_sn, work_area_sn, station_sn, pipeline_sn"
+"      └── render","",""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,"(station_sn, work_area_sn, sub_company_sn, pipeline_sn) = (station_sn, work_area_sn, sub_com_sn, pipeline_sn)"
+"                ├── render","",""
+"                │    └── cross-join","",""
+"                │         │",type,cross
+"                │         ├── cross-join","",""
+"                │         │    │",type,cross
+"                │         │    ├── cross-join","",""
+"                │         │    │    │",type,cross
+"                │         │    │    ├── cross-join","",""
+"                │         │    │    │    │",type,cross
+"                │         │    │    │    ├── scan","",""
+"                │         │    │    │    │",table,point_info@point_station_sn_index
+"                │         │    │    │    │",spans,FULL SCAN
+"                │         │    │    │    │",filter,"substring(point_sn, 10, 5) = '15000'"
+"                │         │    │    │    └── scan","",""
+"                │         │    │    │",table,pipeline_info@pipeline_sn_index
+"                │         │    │    │",spans,FULL SCAN
+"                │         │    │    └── scan","",""
+"                │         │    │",table,company_info@sub_company_name_index
+"                │         │    │",spans,FULL SCAN
+"                │         │    └── scan","",""
+"                │         │",table,workarea_info@workarea_name_index
+"                │         │",spans,FULL SCAN
+"                │         └── scan","",""
+"                │",table,station_info@station_work_area_sn_index
+"                │",spans,FULL SCAN
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashRelScan
+"",spans:fromTime,2024-01-04 14:34:59 +0000 UTC
+"",spans:toTime,2024-01-04 14:34:59 +0000 UTC
+"",filter,measure_value = 95.86477
+"",tag filter[0],measure_location = 'measure_location_15000'
+"",tag filter[1],(point_sn = 'point_sn_150000') OR (point_sn = 'point_sn_15000')
+"",tag filter[2],measure_type = 6
+
+Time: 3.479313ms
+

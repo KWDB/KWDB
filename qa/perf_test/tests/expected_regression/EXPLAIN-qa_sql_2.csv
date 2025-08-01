@@ -1,0 +1,76 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",work_area_name,work_area_name
+" │",station_name,station_name
+" │",measure_type,measure_type
+" │",timebucket,timebucket
+" │",avg_value,avg
+" │",max_value,max
+" │",min_value,min
+" │",number_of_values,count
+" └── group","",""
+"      │",aggregate 0,measure_type
+"      │",aggregate 1,station_name
+"      │",aggregate 2,work_area_name
+"      │",aggregate 3,timebucket
+"      │",aggregate 4,avg(measure_value)
+"      │",aggregate 5,max(measure_value)
+"      │",aggregate 6,min(measure_value)
+"      │",aggregate 7,count(measure_value)
+"      │",group by,"measure_type, station_name, work_area_name, timebucket"
+"      │",ordered,"+work_area_name,+station_name,+measure_type,+timebucket"
+"      └── sort","",""
+"           │",order,"+work_area_name,+station_name,+measure_type,+timebucket"
+"           └── render","",""
+"                │",timebucket,"time_bucket(k_timestamp, '10s')"
+"                │",measure_value,measure_value
+"                │",measure_type,measure_type
+"                │",station_name,station_name
+"                │",work_area_name,work_area_name
+"                └── cross-join","",""
+"                     │",type,cross
+"                     ├── hash-join","",""
+"                     │    │",type,inner
+"                     │    │",equality,(station_sn) = (station_sn)
+"                     │    │",right cols are key,""
+"                     │    ├── render","",""
+"                     │    │    └── lookup-join","",""
+"                     │    │         │",table,point_info@primary
+"                     │    │         │",type,inner
+"                     │    │         │",equality,(point_sn) = (point_sn)
+"                     │    │         │",equality cols are key,""
+"                     │    │         │",parallel,""
+"                     │    │         └── lookup-join","",""
+"                     │    │              │",table,point_info@point_pipeline_sn_index
+"                     │    │              │",type,inner
+"                     │    │              │",equality,(pipeline_sn) = (pipeline_sn)
+"                     │    │              └── scan","",""
+"                     │    │",table,pipeline_info@pipeline_name_index
+"                     │    │",spans,"/""pipeline_1""-/""pipeline_1""/PrefixEnd"
+"                     │    └── lookup-join","",""
+"                     │         │",table,station_info@primary
+"                     │         │",type,inner
+"                     │         │",equality,(station_sn) = (station_sn)
+"                     │         │",equality cols are key,""
+"                     │         │",parallel,""
+"                     │         └── lookup-join","",""
+"                     │              │",table,station_info@station_work_area_sn_index
+"                     │              │",type,inner
+"                     │              │",equality,(work_area_sn) = (work_area_sn)
+"                     │              └── scan","",""
+"                     │",table,workarea_info@workarea_name_index
+"                     │",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd /""work_area_2""-/""work_area_2""/PrefixEnd /""work_area_3""-/""work_area_3""/PrefixEnd"
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,t_point
+"",access mode,tagIndexTable
+"",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"",ptag filter[0],point_sn = 'point_sn_1'
+"","",""
+warning messages,multi-model fall back,cross join is not supported in multi-model
+
+Time: 5.378282ms
+

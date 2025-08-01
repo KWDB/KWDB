@@ -1,0 +1,55 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── group","",""
+"      │",aggregate 0,measure_type
+"      │",aggregate 1,station_name
+"      │",aggregate 2,timebucket
+"      │",aggregate 3,stddev(measure_value)
+"      │",aggregate 4,any_not_null(work_area_name)
+"      │",group by,"measure_type, station_name, timebucket"
+"      │",ordered,"+station_name,+measure_type,+timebucket"
+"      └── sort","",""
+"           │",order,"+station_name,+measure_type,+timebucket"
+"           └── render","",""
+"                └── batch-lookup-join","",""
+"                     │",type,inner
+"                     │",equality,(point_sn) = (point_sn)
+"                     │",left cols are key,""
+"                     ├── lookup-join","",""
+"                     │    │",table,point_info@primary
+"                     │    │",type,inner
+"                     │    │",equality,(point_sn) = (point_sn)
+"                     │    │",equality cols are key,""
+"                     │    │",parallel,""
+"                     │    │",pred,@10 = @6
+"                     │    └── lookup-join","",""
+"                     │         │",table,point_info@point_station_sn_index
+"                     │         │",type,inner
+"                     │         │",equality,(station_sn) = (station_sn)
+"                     │         └── cross-join","",""
+"                     │              │",type,cross
+"                     │              ├── lookup-join","",""
+"                     │              │    │",table,station_info@primary
+"                     │              │    │",type,inner
+"                     │              │    │",equality,(station_sn) = (station_sn)
+"                     │              │    │",equality cols are key,""
+"                     │              │    │",parallel,""
+"                     │              │    └── lookup-join","",""
+"                     │              │         │",table,station_info@station_work_area_sn_index
+"                     │              │         │",type,inner
+"                     │              │         │",equality,(work_area_sn) = (work_area_sn)
+"                     │              │         └── scan","",""
+"                     │              │",table,workarea_info@workarea_name_index
+"                     │              │",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd"
+"                     │              └── scan","",""
+"                     │",table,pipeline_info@pipeline_name_index
+"                     │",spans,"/""pipeline_1""-/""pipeline_1""/PrefixEnd"
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,t_point
+"",access mode,primaryHashTagScan
+
+Time: 4.15613ms
+

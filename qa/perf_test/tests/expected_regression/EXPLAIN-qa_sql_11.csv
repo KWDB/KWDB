@@ -1,0 +1,62 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",station_name,station_name
+" │",count,count
+" │",avg,avg
+" └── sort","",""
+"      │",order,+station_name
+"      └── render","",""
+"           │",avg,"round(avg, 2)"
+"           │",station_name,station_name
+"           │",count,count
+"           └── filter","",""
+"                │",filter,count > 10
+"                └── render","",""
+"                     │",avg,sum / sum_int
+"                     │",station_name,station_name
+"                     │",count,sum_int
+"                     └── group","",""
+"                          │",aggregate 0,station_name
+"                          │",aggregate 1,sum_int(count)
+"                          │",aggregate 2,sum_int(count)
+"                          │",aggregate 3,sum(sum)
+"                          │",group by,station_name
+"                          └── render","",""
+"                               │",station_name,station_name
+"                               │",count,count
+"                               │",sum,sum
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,(station_sn) = (station_sn)
+"                                    │",right cols are key,""
+"                                    ├── group","",""
+"                                    │    │",engine type,time series
+"                                    │    │",aggregate 0,station_sn
+"                                    │    │",aggregate 1,count(measure_value)
+"                                    │    │",aggregate 2,sum(measure_value)
+"                                    │    │",group by,station_sn
+"                                    │    │",addSynchronizer ,true
+"                                    │    └── ts scan","",""
+"                                    │",ts-table,t_point
+"                                    │",access mode,tagIndexTable
+"                                    │",filter,measure_value > 80.0
+"                                    │",tag filter[0],measure_type = 5
+"                                    │",ptag filter[0],point_sn = 'point_sn_1858'
+"                                    └── lookup-join","",""
+"                                         │",table,station_info@primary
+"                                         │",type,inner
+"                                         │",equality,(station_sn) = (station_sn)
+"                                         │",equality cols are key,""
+"                                         │",parallel,""
+"                                         └── lookup-join","",""
+"                                              │",table,station_info@station_work_area_sn_index
+"                                              │",type,inner
+"                                              │",equality,(work_area_sn) = (work_area_sn)
+"                                              └── scan","",""
+"",table,workarea_info@workarea_name_index
+"",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd"
+
+Time: 6.485976ms
+

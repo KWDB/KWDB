@@ -1,0 +1,80 @@
+SET
+
+Time: 552.244µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",adr,adr
+" │",avg,avg
+" │",max,max
+" │",avg,avg
+" │",min,min
+" │",time,"""time"""
+" │",datatype,any_not_null
+" │",lowwarn,lowwarn
+" │",channel,channel
+" └── sort","",""
+"      │",order,"+""time"",+channel"
+"      └── group","",""
+"           │",aggregate 0,adr
+"           │",aggregate 1,time
+"           │",aggregate 2,channel
+"           │",aggregate 3,lowwarn
+"           │",aggregate 4,avg(value)
+"           │",aggregate 5,max(member_id)
+"           │",aggregate 6,avg(member_id)
+"           │",aggregate 7,min(obj_id)
+"           │",aggregate 8,any_not_null(datatype)
+"           │",group by,"adr, time, channel, lowwarn"
+"           └── render","",""
+"                │",adr,adr
+"                │",member_id,member_id
+"                │",obj_id,obj_id
+"                │",time,"""time"""
+"                │",value,value
+"                │",channel,channel
+"                │",datatype,datatype
+"                │",lowwarn,lowwarn
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,"(company_id, column151) = (companyid, lowwarn)"
+"                     ├── render","",""
+"                     │    └── hash-join","",""
+"                     │         │",type,inner
+"                     │         │",equality,(company_id) = (company_id)
+"                     │         ├── hash-join","",""
+"                     │         │    │",type,inner
+"                     │         │    │",equality,(company_id) = (company_id)
+"                     │         │    ├── scan","",""
+"                     │         │    │",table,plat_zone_member@primary
+"                     │         │    │",spans,-/385/# /387-
+"                     │         │    │",filter,company_id = 449600
+"                     │         │    └── scan","",""
+"                     │         │",table,plat_tijiancard_item_relation@primary
+"                     │         │",spans,FULL SCAN
+"                     │         │",filter,(company_id = 449600) AND (obj_id < 5000)
+"                     │         └── hash-join","",""
+"                     │              │",type,inner
+"                     │              │",equality,(company_id) = (company_id)
+"                     │              ├── scan","",""
+"                     │              │",table,cd_device_point@primary
+"                     │              │",spans,FULL SCAN
+"                     │              │",filter,company_id = 449600
+"                     │              └── scan","",""
+"                     │",table,plat_risk_analyse_objects@primary
+"                     │",spans,FULL SCAN
+"                     │",filter,company_id = 449600
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+"",spans:toTime,2024-01-01 01:00:00 +0000 UTC
+"",tag filter[0],datatype = e'\U00006DB2\U00004F4D'
+"",tag filter[1],channel != 'CH248'
+"",tag filter[2],companyid = 449600
+
+Time: 7.195284ms
+

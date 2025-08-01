@@ -1,0 +1,65 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+sort,"",""
+" │",order,-std_measure
+" └── group","",""
+"      │",aggregate 0,sub_company_name
+"      │",aggregate 1,stddev(measure_value)
+"      │",aggregate 2,max(measure_value)
+"      │",aggregate 3,min(measure_value)
+"      │",group by,sub_company_name
+"      └── render","",""
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,(sub_company_sn) = (sub_company_sn)
+"                │",right cols are key,""
+"                ├── batch-lookup-join","",""
+"                │    │",type,inner
+"                │    │",equality,(point_sn) = (point_sn)
+"                │    │",left cols are key,""
+"                │    ├── hash-join","",""
+"                │    │    │",type,inner
+"                │    │    │",equality,(station_sn) = (station_sn)
+"                │    │    │",right cols are key,""
+"                │    │    ├── hash-join","",""
+"                │    │    │    │",type,semi
+"                │    │    │    │",equality,(pipeline_sn) = (pipeline_sn)
+"                │    │    │    │",right cols are key,""
+"                │    │    │    ├── scan","",""
+"                │    │    │    │",table,point_info@primary
+"                │    │    │    │",spans,FULL SCAN
+"                │    │    │    └── scan","",""
+"                │    │    │",table,pipeline_info@primary
+"                │    │    │",spans,FULL SCAN
+"                │    │    │",filter,pipe_properties LIKE '%1%'
+"                │    │    └── hash-join","",""
+"                │    │         │",type,inner
+"                │    │         │",equality,(sub_company_sn) = (sub_company_sn)
+"                │    │         │",right cols are key,""
+"                │    │         ├── scan","",""
+"                │    │         │",table,station_info@primary
+"                │    │         │",spans,FULL SCAN
+"                │    │         └── scan","",""
+"                │    │",table,company_info@sub_company_name_index
+"                │    │",spans,FULL SCAN
+"                │    └── synchronizer","",""
+"                │         └── ts scan","",""
+"                │",ts-table,t_point
+"                │",access mode,primaryHashTagScan
+"                │",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+"                │",spans:toTime,2024-12-31 00:00:00 +0000 UTC
+"                │",filter,measure_value > 50.0
+"                │",tag filter[0],measure_type = 1
+"                └── filter","",""
+"                     │",filter,count_rows > 5
+"                     └── group","",""
+"                          │",aggregate 0,sub_company_sn
+"                          │",aggregate 1,count_rows()
+"                          │",group by,sub_company_sn
+"                          └── scan","",""
+"",table,station_info@primary
+"",spans,FULL SCAN
+
+Time: 5.556761ms
+
