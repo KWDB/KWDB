@@ -639,6 +639,12 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->table_id != filter.table_id) {
         continue;
       }
+      if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
+        continue;
+      }
+      if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
+        continue;
+      }
       //  we need to read the block to do futher filtering.
       int block_idx = it - block_indices.begin();
 
