@@ -117,7 +117,8 @@ func (ba *BatchRequest) IsTsWrite() bool {
 			*TsTagUpdateRequest,
 			*TsDeleteMultiEntitiesDataRequest,
 			*TsCommitRequest,
-			*TsRollbackRequest:
+			*TsRollbackRequest,
+			*TsImportFlushRequest:
 			return true
 		}
 	}
