@@ -122,11 +122,35 @@ timestamp64 TsBlockSpan::GetTS(uint32_t row_idx) const {
 }
 
 timestamp64 TsBlockSpan::GetFirstTS() const {
-  return block_->GetTS(start_row_);
+  if (start_row_ == 0) {
+    return block_->GetFirstTS();
+  } else {
+    return block_->GetTS(start_row_);
+  }
 }
 
 timestamp64 TsBlockSpan::GetLastTS() const {
-  return block_->GetTS(start_row_ + nrow_ - 1);
+  if (start_row_ + nrow_ == block_->GetRowNum()) {
+    return block_->GetLastTS();
+  } else {
+    return block_->GetTS(start_row_ + nrow_ - 1);
+  }
+}
+
+TS_LSN TsBlockSpan::GetFirstLSN() const {
+  if (start_row_ == 0) {
+    return block_->GetFirstLSN();
+  } else {
+    return *block_->GetLSNAddr(start_row_);
+  }
+}
+
+TS_LSN TsBlockSpan::GetLastLSN() const {
+  if (start_row_ + nrow_ == block_->GetRowNum()) {
+    return block_->GetLastLSN();
+  } else {
+    return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
+  }
 }
 
 uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
