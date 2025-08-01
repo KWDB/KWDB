@@ -177,43 +177,8 @@ void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
   *max_ts = block_->GetTS(start_row_ + nrow_ - 1);
 }
 
-bool TsBlockSpan::IsColExist(uint32_t scan_idx) {
-  return convert_.IsColExist(scan_idx);
-}
-
-bool TsBlockSpan::IsColNotNull(uint32_t scan_idx) {
-  return convert_.IsColNotNull(scan_idx);
-}
-
-bool TsBlockSpan::IsSameType(uint32_t scan_idx) {
-  return convert_.IsSameType(scan_idx);
-}
-
-int32_t TsBlockSpan::GetColSize(uint32_t scan_idx) {
-  return convert_.GetColSize(scan_idx);
-}
-
-int32_t TsBlockSpan::GetColType(uint32_t scan_idx) {
-  return convert_.GetColType(scan_idx);
-}
-
-bool TsBlockSpan::IsVarLenType(uint32_t scan_idx) {
-  return convert_.IsVarLenType(scan_idx);
-}
-
-KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
-  return convert_.GetColBitmap(scan_idx, bitmap);
-}
-
-// dest type is fixed len datatype.
-KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
-  return convert_.GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
-}
 
 // dest type is varlen datatype.
-KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
-  return convert_.GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
-}
 
 KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
   TsBitmap bitmap;
@@ -221,12 +186,7 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
   if (s != KStatus::SUCCESS) {
     return s;
   }
-  for (int row_idx = 0; row_idx < nrow_; ++row_idx) {
-    if (bitmap[row_idx] != DataFlags::kValid) {
-      continue;
-    }
-    ++count;
-  }
+  count = bitmap.GetValidCount();
   return KStatus::SUCCESS;
 }
 
