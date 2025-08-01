@@ -59,7 +59,7 @@ class TsTableSchemaManager {
   uint32_t cur_version_{0};
   std::shared_ptr<MetricsVersionManager> metric_mgr_{nullptr};
   std::shared_ptr<TagTable> tag_table_{nullptr};
-  std::unordered_map<string, shared_ptr<SchemaVersionConv>> version_conv_map;
+  std::unordered_map<uint64_t, shared_ptr<SchemaVersionConv>> version_conv_map;
   KRWLatch* ver_conv_rw_lock_{nullptr};
 
  public:
@@ -162,9 +162,9 @@ class TsTableSchemaManager {
    */
   const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
 
-  bool FindVersionConv(const string& key, std::shared_ptr<SchemaVersionConv>* version_conv);
+  bool FindVersionConv(uint64_t key, std::shared_ptr<SchemaVersionConv>* version_conv);
 
-  void InsertVersionConv(const string& key, const shared_ptr<SchemaVersionConv>& ver_conv);
+  void InsertVersionConv(uint64_t key, const shared_ptr<SchemaVersionConv>& ver_conv);
 
   bool IsExistTableVersion(uint32_t version);
 

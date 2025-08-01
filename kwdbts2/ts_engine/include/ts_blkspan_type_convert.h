@@ -40,7 +40,7 @@ class TSBlkDataTypeConvert {
  public:
   std::shared_ptr<SchemaVersionConv> version_conv_;
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
-  std::string key_;
+  uint64_t key_;
 
  public:
   TSBlkDataTypeConvert() = default;
@@ -68,15 +68,21 @@ class TSBlkDataTypeConvert {
     row_num_ = row_num;
   }
 
-  int ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size,
-                           void* old_mem, uint16_t old_var_len, std::shared_ptr<void>* new_mem);
+  int ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size, void* old_mem, uint16_t old_var_len,
+                           std::shared_ptr<void>* new_mem);
 
-  bool IsColExist(uint32_t scan_idx);
-  bool IsSameType(uint32_t scan_idx);
-  bool IsColNotNull(uint32_t scan_idx);
-  bool IsVarLenType(uint32_t scan_idx);
-  int32_t GetColSize(uint32_t scan_idx);
-  int32_t GetColType(uint32_t scan_idx);
+  bool IsColExist(uint32_t scan_idx) { return version_conv_->blk_cols_extended_[scan_idx] != UINT32_MAX; }
+  bool IsSameType(uint32_t scan_idx) {
+    auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+    return isSameType(version_conv_->blk_attrs_[blk_col_idx], version_conv_->scan_attrs_[scan_idx]);
+  }
+  bool IsColNotNull(uint32_t scan_idx) {
+    auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
+    return version_conv_->blk_attrs_[blk_col_idx].isFlag(AINFO_NOT_NULL);
+  }
+  bool IsVarLenType(uint32_t scan_idx) { return isVarLenType(version_conv_->scan_attrs_[scan_idx].type); }
+  int32_t GetColSize(uint32_t scan_idx) { return version_conv_->scan_attrs_[scan_idx].size; }
+  int32_t GetColType(uint32_t scan_idx) { return version_conv_->scan_attrs_[scan_idx].type; }
 
   // dest type is fixed len datatype.
   KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);

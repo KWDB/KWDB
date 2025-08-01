@@ -162,27 +162,25 @@ class TsLastBlock : public TsBlock {
 
   class ColumnCache {
    private:
-    std::shared_mutex mu_;
 
     TsRandomReadFile* file_;
     TsLastSegmentBlockInfo* block_info_;
 
     std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
-    std::string entity_ids_;
-    std::string timestamps_;
-    std::string lsn_;
+    std::mutex entity_id_mu_, timestamp_mu_, lsn_mu_;
+    std::mutex mu_;
+    std::unique_ptr<std::string> entity_ids_;
+    std::unique_ptr<std::string> timestamps_;
+    std::unique_ptr<std::string> lsn_;
 
    public:
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
         : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
     KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
-      {
-        std::shared_lock lk{mu_};
-        if (column_blocks_[col_id] != nullptr) {
-          *block = column_blocks_[col_id].get();
-          return SUCCESS;
-        }
+      if (column_blocks_[col_id] != nullptr) {
+        *block = column_blocks_[col_id].get();
+        return SUCCESS;
       }
       std::unique_lock lk{mu_};
       if (column_blocks_[col_id] != nullptr) {
@@ -222,16 +220,13 @@ class TsLastBlock : public TsBlock {
     }
 
     KStatus GetEntityIDs(TSEntityID** entity_ids) {
-      {
-        std::shared_lock lk{mu_};
-        if (!entity_ids_.empty()) {
-          *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-          return SUCCESS;
-        }
+      if (entity_ids_ != nullptr) {
+        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_->data());
+        return SUCCESS;
       }
-      std::unique_lock lk{mu_};
-      if (!entity_ids_.empty()) {
-        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+      std::unique_lock lk{entity_id_mu_};
+      if (entity_ids_ != nullptr) {
+        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_->data());
         return SUCCESS;
       }
 
@@ -245,22 +240,20 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
-      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+      entity_ids_ = std::make_unique<std::string>();
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, entity_ids_.get());
+      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_->data());
       return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetLSN(TS_LSN** lsn) {
-      {
-        std::shared_lock lk{mu_};
-        if (!lsn_.empty()) {
-          *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-          return SUCCESS;
-        }
+      if (lsn_ != nullptr) {
+        *lsn = reinterpret_cast<TS_LSN*>(lsn_->data());
+        return SUCCESS;
       }
-      std::unique_lock lk{mu_};
-      if (!lsn_.empty()) {
-        *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+      std::unique_lock lk{lsn_mu_};
+      if (lsn_ != nullptr) {
+        *lsn = reinterpret_cast<TS_LSN*>(lsn_->data());
         return SUCCESS;
       }
 
@@ -274,23 +267,20 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
-      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+      lsn_ = std::make_unique<std::string>();
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, lsn_.get());
+      *lsn = reinterpret_cast<TS_LSN*>(lsn_->data());
       return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetTimestamps(timestamp64** timestamps) {
-      {
-        std::shared_lock lk{mu_};
-        if (!timestamps_.empty()) {
-          *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-          return SUCCESS;
-        }
+      if (timestamps_ != nullptr) {
+        *timestamps = reinterpret_cast<timestamp64*>(timestamps_->data());
+        return SUCCESS;
       }
-
-      std::unique_lock lk{mu_};
-      if (!timestamps_.empty()) {
-        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+      std::unique_lock lk{timestamp_mu_};
+      if (timestamps_ != nullptr) {
+        *timestamps = reinterpret_cast<timestamp64*>(timestamps_->data());
         return SUCCESS;
       }
 
@@ -305,8 +295,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
-      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+      timestamps_ = std::make_unique<std::string>();
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, timestamps_.get());
+      *timestamps = reinterpret_cast<timestamp64*>(timestamps_->data());
       return ok ? SUCCESS : FAIL;
     }
   };

@@ -11,6 +11,7 @@
 
 #include "ts_table_schema_manager.h"
 #include <dirent.h>
+#include <cstdint>
 #include "engine.h"
 #include "sys_utils.h"
 #include "column_utils.h"
@@ -578,7 +579,7 @@ const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_
   return getMetricsTable(table_version)->getIdxForValidCols();
 }
 
-bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<SchemaVersionConv>* version_conv) {
+bool TsTableSchemaManager::FindVersionConv(uint64_t key, std::shared_ptr<SchemaVersionConv>* version_conv) {
   RW_LATCH_S_LOCK(ver_conv_rw_lock_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
   const auto iter = version_conv_map.find(key);
@@ -589,7 +590,7 @@ bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<Sc
   return true;
 }
 
-void TsTableSchemaManager::InsertVersionConv(const string &key, const shared_ptr<SchemaVersionConv>& ver_conv) {
+void TsTableSchemaManager::InsertVersionConv(uint64_t key, const shared_ptr<SchemaVersionConv>& ver_conv) {
   RW_LATCH_X_LOCK(ver_conv_rw_lock_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
   version_conv_map.insert(make_pair(key, ver_conv));
