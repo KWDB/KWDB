@@ -55,7 +55,7 @@ class TsMetricBlock {
   int GetColNum() const { return column_blocks_.size(); }
   int GetRowNum() const { return count_; }
 
-  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_lsn);
+  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_lsn, bool compress_columns);
 };
 
 class TsMetricBlockBuilder {

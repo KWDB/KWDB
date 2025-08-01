@@ -24,7 +24,7 @@
 namespace kwdbts {
 
 bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info,
-                                      bool compress_ts_and_lsn) {
+                                      bool compress_ts_and_lsn, bool compress_columns) {
   std::string compressed_data;
   const auto& mgr = CompressorManager::GetInstance();
   // 1. Compress LSN
@@ -45,8 +45,8 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
   TsColumnCompressInfo col_compress_info;
   for (int i = 0; i < column_blocks_.size(); i++) {
     tmp.clear();
-    bool compress = compress_ts_and_lsn || i != 0;
-    ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress);
+    // bool compress = compress_ts_and_lsn || i != 0;
+    ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress_columns);
     if (!ok) {
       LOG_ERROR("compress column data error");
       return FAIL;
