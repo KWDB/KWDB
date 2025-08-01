@@ -146,6 +146,9 @@ type ScalarExpr interface {
 
 	// SetConstDeductionEnabled set IsConstForLogicPlan
 	SetConstDeductionEnabled(flag bool)
+
+	// Rebuild rebuild expr
+	Rebuild() ScalarExpr
 }
 
 // MutableExpr is implemented by expressions that allow their children to be

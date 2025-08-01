@@ -403,6 +403,46 @@ func (g *exprsGen) genExprFuncs(define *lang.DefineExpr) {
 			fmt.Fprintf(g.w, "}\n\n")
 		}
 
+		// Generate the Rebuild method.
+		fmt.Fprintf(g.w, "func (e *%s) Rebuild() opt.ScalarExpr {\n", opTyp.name)
+		if len(childFields) > 0 {
+			fmt.Fprintf(g.w, "  var new%s %s\n", opTyp.name, opTyp.name)
+			for _, field := range childFields {
+				fieldTyp := g.md.typeOf(field)
+				fieldName := g.md.fieldName(field)
+				if fieldTyp.isInterface {
+					fmt.Fprintf(g.w, "   new%s.%s = e.%s.Rebuild().(%s)\n", opTyp.name, fieldName, fieldName, fieldTyp.asParam())
+				} else {
+					fmt.Fprintf(g.w, "   new%s.%s = *e.%s.Rebuild().(*%s)\n", opTyp.name, fieldName, fieldName, fieldTyp.asParam())
+				}
+			}
+			if privateField != nil {
+				fieldName := g.md.fieldName(privateField)
+				fieldTyp := g.md.typeOf(privateField)
+				if fieldName != "_" {
+					fmt.Fprintf(g.w, "new%s.%s = e.%s\n", opTyp.name, fieldName, fieldName)
+				} else {
+					fmt.Fprintf(g.w, "new%s.%s = e.%s\n", opTyp.name, fieldTyp.name, fieldTyp.name)
+				}
+
+			}
+			fmt.Fprintf(g.w, "new%s.IsConstForLogicPlan = e.IsConstForLogicPlan\n", opTyp.name)
+			if !define.Tags.Contains("ListItem") {
+				fmt.Fprintf(g.w, "new%s.id = e.id\n", opTyp.name)
+			}
+			if define.Tags.Contains("ScalarProps") {
+				fmt.Fprintf(g.w, "new%s.scalar = e.scalar\n", opTyp.name)
+			}
+			if g.needsDataTypeField(define) {
+				fmt.Fprintf(g.w, "new%s.Typ = e.Typ\n", opTyp.name)
+			}
+			fmt.Fprintf(g.w, "new%s.engine = e.engine\n", opTyp.name)
+			fmt.Fprintf(g.w, "return &new%s", opTyp.name)
+		} else {
+			fmt.Fprintf(g.w, "return e \n")
+		}
+		fmt.Fprintf(g.w, "}\n\n")
+
 		// Generate the PopulateProps and ScalarProps methods.
 		if define.Tags.Contains("ScalarProps") {
 			fmt.Fprintf(g.w, "func (e *%s) PopulateProps(mem *Memo) {\n", opTyp.name)
@@ -508,6 +548,46 @@ func (g *exprsGen) genExprFuncs(define *lang.DefineExpr) {
 		// Generate the ResetAddSynchronizer method.
 		fmt.Fprintf(g.w, "func (e *%s) ResetAddSynchronizer() {\n", opTyp.name)
 		fmt.Fprintf(g.w, "  e.addSynchronizer = false\n")
+		fmt.Fprintf(g.w, "}\n\n")
+
+		// Generate the Rebuild method.
+		fmt.Fprintf(g.w, "func (e *%s) Rebuild() RelExpr {\n", opTyp.name)
+		if len(childFields) > 0 {
+			for _, field := range childFields {
+				fieldTyp := g.md.typeOf(field)
+				fieldName := g.md.fieldName(field)
+				if fieldTyp.isExpr {
+					fmt.Fprintf(g.w, "  e.%s.Rebuild()\n", fieldName)
+				}
+			}
+		}
+		groupName := fmt.Sprintf("%sGroup", unTitle(string(define.Name)))
+		fmt.Fprintf(g.w, "  grp := &%s{mem: e.Memo(), rel: *e.grp.relational(), first: %s{\n", groupName, opTyp.name)
+		for _, field := range childFields {
+			fieldTyp := g.md.typeOf(field)
+			fieldName := g.md.fieldName(field)
+
+			// Use fieldStorePrefix since a value with a static param type is being
+			// stored as a field type.
+			if fieldTyp.isInterface {
+				fmt.Fprintf(g.w, "   %s: e.%s.Rebuild().(%s),\n", fieldName, fieldName, fieldTyp.asParam())
+			} else {
+				fmt.Fprintf(g.w, "   %s: *e.%s.Rebuild().(*%s),\n", fieldName, fieldName, fieldTyp.asParam())
+			}
+
+		}
+		if privateField != nil {
+			if privateField.Name == "_" {
+				fmt.Fprintf(g.w, "   %s: e.%s,\n", privateField.Type, privateField.Type)
+			} else {
+				fmt.Fprintf(g.w, "   %s: e.%s,\n", privateField.Name, privateField.Name)
+			}
+
+		}
+		fmt.Fprintf(g.w, "  }}\n")
+		fmt.Fprintf(g.w, " new%s := &grp.first\n", opTyp.name)
+		fmt.Fprintf(g.w, " new%s.grp = grp\n", opTyp.name)
+		fmt.Fprintf(g.w, " return new%s \n", opTyp.name)
 		fmt.Fprintf(g.w, "}\n\n")
 	}
 
@@ -629,6 +709,11 @@ func (g *exprsGen) genEnforcerFuncs(define *lang.DefineExpr) {
 	// Generate the ResetAddSynchronizer method.
 	fmt.Fprintf(g.w, "func (e *%s) ResetAddSynchronizer() {\n", opTyp.name)
 	fmt.Fprintf(g.w, "  e.addSynchronizer = false\n")
+	fmt.Fprintf(g.w, "}\n\n")
+
+	// Generate the Rebuild method.
+	fmt.Fprintf(g.w, "func (e *%s) Rebuild() RelExpr {\n", opTyp.name)
+	fmt.Fprintf(g.w, " return e \n")
 	fmt.Fprintf(g.w, "}\n\n")
 
 	// Generate the Relational method.
@@ -817,6 +902,17 @@ func (g *exprsGen) genListExprFuncs(define *lang.DefineExpr) {
 	fmt.Fprintf(g.w, "      s.SetConstDeductionEnabled(flag)\n")
 	fmt.Fprintf(g.w, "    }\n")
 	fmt.Fprintf(g.w, "  }\n")
+	fmt.Fprintf(g.w, "}\n\n")
+
+	// Generate the Rebuild method.
+	fmt.Fprintf(g.w, "func (e *%s) Rebuild() opt.ScalarExpr {\n", opTyp.name)
+	fmt.Fprintf(g.w, "  new%s := make(%s, e.ChildCount())\n", opTyp.name, opTyp.name)
+	fmt.Fprintf(g.w, "  for i := 0; i < e.ChildCount(); i++ {\n")
+	fmt.Fprintf(g.w, "    if s, ok := e.Child(i).(opt.ScalarExpr); ok{\n")
+	fmt.Fprintf(g.w, "      new%s.SetChild(i, s.Rebuild())\n", opTyp.name)
+	fmt.Fprintf(g.w, "    }\n")
+	fmt.Fprintf(g.w, "  }\n")
+	fmt.Fprintf(g.w, "  return &new%s\n", opTyp.name)
 	fmt.Fprintf(g.w, "}\n\n")
 }
 

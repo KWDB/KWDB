@@ -136,7 +136,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 		errPrefix = "Compress data manually failed, reason:%s"
 		for _, toDrop := range tp.dropMEInfo {
 			if toDrop.IsTSTable {
-				err = tp.FlowCtx.Cfg.TsEngine.CompressImmediately(ctx, uint64(toDrop.TableID))
+				err = tp.FlowCtx.Cfg.TsEngine.CompressImmediately(tp.Ctx, uint64(toDrop.TableID))
 				if err != nil {
 					log.Errorf(ctx, "Compress Table Failed, tableID:%d, reason:%s", toDrop.TableID, err.Error())
 				}
