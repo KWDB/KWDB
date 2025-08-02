@@ -177,7 +177,7 @@ inline void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
 }
 
 inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts) {
-  return ts != INVALID_TS && ((!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts));
+  return  (!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts);
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
@@ -187,8 +187,8 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
-    if (IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
-                      partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
+    if (ts != INVALID_TS && IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
+                                          partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       continue;
     }
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
@@ -276,7 +276,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
         return KStatus::FAIL;
       }
-      if (!is_done && !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
+      if (!is_done && (ts == INVALID_TS || !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts))) {
         // Found a block span which might contain satisfied rows.
         ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
         if (ret != KStatus::SUCCESS) {
