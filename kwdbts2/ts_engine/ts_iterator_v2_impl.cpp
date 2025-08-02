@@ -145,6 +145,9 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
 
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+
+  filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
+                                                  0, ts_col_type_, scan_lsn_, ts_spans_);
   return KStatus::SUCCESS;
 }
 
@@ -183,21 +186,17 @@ inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timesta
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   ts_block_spans_.clear();
   UpdateTsSpans(ts);
-  for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
-    auto partition_version = ts_partitions_[cur_partition_index_];
+  filter_->entity_id_ = entity_ids_[cur_entity_index_];
+  for (auto& partition_version : ts_partitions_) {
     if (ts != INVALID_TS && IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       continue;
     }
-    std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    auto s = partition_version->GetBlockSpan(filter, &cur_block_span, table_schema_mgr_, table_version_);
+    auto s = partition_version->GetBlockSpan(*filter_, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
     }
-    ts_block_spans_.splice(ts_block_spans_.begin(), cur_block_span);
   }
 
   return KStatus::SUCCESS;
