@@ -278,13 +278,15 @@ KStatus TsEntityBlock::LoadLSNColData(TSSlice buffer) {
   TSSlice data{buffer.data, end_offset - start_offset};
   std::string plain;
   const auto& mgr = CompressorManager::GetInstance();
-  bool ok = mgr.DecompressData(data, nullptr, n_rows_, &plain);
+  TSSlice out;
+  bool ok = mgr.DecompressData(data, nullptr, n_rows_, &out, &plain);
   if (!ok) {
     LOG_ERROR("block segment column[0] data decompress failed");
     return KStatus::FAIL;
   }
   // save decompressed col block data
-  column_blocks_[0].buffer = std::move(plain);
+  // TODO(zzr): avoid copy
+  column_blocks_[0].buffer.assign(out.data, out.len);
   return KStatus::SUCCESS;
 }
 
@@ -311,34 +313,37 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   RemovePrefix(&data, bitmap_len);
   if (!is_var_type) {
     std::string plain;
-    bool ok = mgr.DecompressData(data, &column_blocks_[col_idx + 1].bitmap, n_rows_, &plain);
+    TSSlice out;
+    bool ok = mgr.DecompressData(data, &column_blocks_[col_idx + 1].bitmap, n_rows_, &out, &plain);
     if (!ok) {
       LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
       return KStatus::FAIL;
     }
     // save decompressed col block data
-    column_blocks_[col_idx + 1].buffer = std::move(plain);
+    column_blocks_[col_idx + 1].buffer.assign(out.data, out.len);
   } else {
+    TSSlice out_var_offset;
     uint32_t var_offsets_len = *reinterpret_cast<uint32_t*>(data.data);
     RemovePrefix(&data, sizeof(uint32_t));
     TSSlice compressed_var_offsets = {data.data, var_offsets_len};
     std::string var_offsets;
-    bool ok = mgr.DecompressData(compressed_var_offsets, nullptr, n_rows_, &var_offsets);
+    bool ok = mgr.DecompressData(compressed_var_offsets, nullptr, n_rows_, &out_var_offset, &var_offsets);
     if (!ok) {
       LOG_ERROR("Decompress var offsets failed");
       return KStatus::FAIL;
     }
-    assert(var_offsets.size() == n_rows_ * sizeof(uint32_t));
-    column_blocks_[col_idx + 1].buffer.append(var_offsets);
+    assert(out_var_offset.len == n_rows_ * sizeof(uint32_t));
+    column_blocks_[col_idx + 1].buffer.append(out_var_offset.data, out_var_offset.len);
     RemovePrefix(&data, var_offsets_len);
     std::string var_data;
-    ok = mgr.DecompressVarchar(data, &var_data);
+    TSSlice out_var_data;
+    ok = mgr.DecompressVarchar(data, &out_var_data, &var_data);
     if (!ok) {
       LOG_ERROR("Decompress varchar failed");
       return KStatus::FAIL;
     }
-    column_blocks_[col_idx + 1].buffer.append(var_data);
-    assert(*reinterpret_cast<uint32_t*>(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
+    column_blocks_[col_idx + 1].buffer.append(out_var_data.data, out_var_data.len);
+    assert(*reinterpret_cast<uint32_t*>(out_var_offset.data + out_var_offset.len - sizeof(uint32_t)) == out_var_data.len);
   }
   return KStatus::SUCCESS;
 }

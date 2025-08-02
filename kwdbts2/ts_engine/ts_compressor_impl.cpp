@@ -754,7 +754,7 @@ bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
   return true;
 }
 
-bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
+bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count, TSSlice *out_slice,
                                        std::string *output) const {
   if (input.len < 4) {
     LOG_ERROR("Invalid input length, too short");
@@ -770,14 +770,17 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, ui
     return false;
   }
   if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {
-    output->assign(input.data, input.len);
+    *out_slice = input;
     return true;
   }
   auto compressor = GetCompressor(first, second);
-  return compressor.Decompress(input, bitmap, count, output);
+  bool ok = compressor.Decompress(input, bitmap, count, output);
+  out_slice->data = output->data();
+  out_slice->len = output->size();
+  return ok;
 }
 
-bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) const {
+bool CompressorManager::DecompressVarchar(TSSlice input, TSSlice *out_slice, std::string *output) const {
   if (input.len < 2) {
     return false;
   }
@@ -789,7 +792,7 @@ bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) co
   }
 
   if (alg == GenCompAlg::kPlain) {
-    output->assign(input.data, input.len);
+    *out_slice = input;
     return true;
   }
 
@@ -797,9 +800,11 @@ bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) co
   if (it == general_compressor_.end()) {
     return false;
   }
-  std::string tmp;
   output->clear();
-  return it->second->Decompress(input, output);
+  bool ok = it->second->Decompress(input, output);
+  out_slice->data = output->data();
+  out_slice->len = output->size();
+  return ok;
 }
 
 }  // namespace kwdbts

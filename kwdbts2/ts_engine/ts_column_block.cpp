@@ -45,13 +45,13 @@ void TsColumnBlockBuilder::AppendColumnBlock(TsColumnBlock& col) {
   // TODO(zzr) deal with schama mismatch?
   if (isVarLenType(col_schema_.type)) {
     uint32_t current_offset = varchar_data_.size();
-    this->varchar_data_.append(col.varchar_data_);
-    uint32_t* rhs_offset = reinterpret_cast<uint32_t*>(col.fixlen_data_.data());
+    this->varchar_data_.append(col.varchar_guard_.slice.data);
+    uint32_t* rhs_offset = reinterpret_cast<uint32_t*>(col.fixlen_guard_.slice.data);
     for (int i = 0; i < count; ++i) {
       PutFixed32(&fixlen_data_, rhs_offset[i] + current_offset);
     }
   } else {
-    this->fixlen_data_.append(col.fixlen_data_);
+    this->fixlen_data_.append(col.fixlen_guard_.slice.data, col.fixlen_guard_.slice.len);
   }
   bitmap_ += col.bitmap_;
   count_ += col.GetRowNum();
@@ -66,17 +66,17 @@ KStatus TsColumnBlock::GetValueSlice(int row_num, TSSlice& value) {
   assert(row_num < count_);
   if (!isVarLenType(col_schema_.type)) {
     size_t offset = col_schema_.size * row_num;
-    assert(offset + col_schema_.size <= fixlen_data_.size());
-    value.data = fixlen_data_.data() + offset;
+    assert(offset + col_schema_.size <= fixlen_guard_.slice.len);
+    value.data = fixlen_guard_.slice.data + offset;
     value.len = col_schema_.size;
     return SUCCESS;
   }
 
-  uint32_t* varchar_offsets = reinterpret_cast<uint32_t*>(fixlen_data_.data());
+  uint32_t* varchar_offsets = reinterpret_cast<uint32_t*>(fixlen_guard_.slice.data);
   uint32_t start = varchar_offsets[row_num];
-  uint32_t end = row_num + 1 == count_ ? varchar_data_.size() : varchar_offsets[row_num + 1];
-  assert(end >= start && end <= varchar_data_.size());
-  value.data = varchar_data_.data() + start;
+  uint32_t end = row_num + 1 == count_ ? varchar_guard_.slice.len : varchar_offsets[row_num + 1];
+  assert(end >= start && end <= varchar_guard_.slice.len);
+  value.data = varchar_guard_.slice.data + start;
   value.len = end - start;
   return SUCCESS;
 }
@@ -103,13 +103,13 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
     bitmap = nullptr;
   }
 
-  TSSlice input{fixlen_data_.data(), fixlen_data_.size()};
+  TSSlice input = fixlen_guard_.slice;
   std::vector<timestamp64> tmp_ts;
   // TODO(zzr) remove it when payload has 8 bytes timestamp
   if (need_convert_ts(col_schema_.type)) {
     tmp_ts.resize(count_);
     for (int i = 0; i < count_; ++i) {
-      tmp_ts[i] = *reinterpret_cast<timestamp64*>(fixlen_data_.data() + i * 16);
+      tmp_ts[i] = *reinterpret_cast<timestamp64*>(fixlen_guard_.slice.data + i * 16);
     }
     input.data = reinterpret_cast<char*>(tmp_ts.data());
     input.len = tmp_ts.size() * sizeof(timestamp64);
@@ -128,10 +128,10 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   compressed_data.append(tmp);
 
   // 3. compress varchar data
-  if (!varchar_data_.empty()) {
+  if (varchar_guard_.slice.len != 0) {
     tmp.clear();
     auto comp_alg = compress ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
-    ok = mgr.CompressVarchar({varchar_data_.data(), varchar_data_.size()}, &tmp, comp_alg);
+    ok = mgr.CompressVarchar(varchar_guard_.slice, &tmp, comp_alg);
     if (!ok) {
       return false;
     }
@@ -172,15 +172,16 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo col_schema,
   const auto& mgr = CompressorManager::GetInstance();
   std::string fixlen_data;
   TsBitmap* pbitmap = isVarLenType(col_schema.type) ? nullptr : p_bitmap.get();
-  bool ok = mgr.DecompressData(fixlen_slice, pbitmap, info.row_count, &fixlen_data);
+  TSSlice out_fixlen_slice;
+  bool ok = mgr.DecompressData(fixlen_slice, pbitmap, info.row_count, &out_fixlen_slice, &fixlen_data);
   if (!ok) {
     return KStatus::FAIL;
   }
   RemovePrefix(&compressed_data, info.fixdata_len);
 
   if (need_convert_ts(col_schema.type)) {
-    if (fixlen_data.size() != info.row_count * 8) {
-      LOG_ERROR("Invalid timestamp data size: %lu, count: %d", fixlen_data.size(), info.row_count);
+    if (out_fixlen_slice.len != info.row_count * 8) {
+      LOG_ERROR("Invalid timestamp data size: %lu, count: %d", out_fixlen_slice.len, info.row_count);
       return FAIL;
     }
     std::string tmp_data;
@@ -190,24 +191,30 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo col_schema,
       uint64_t lsn;
     };
     auto dst_ptr = reinterpret_cast<TSWithLSN*>(tmp_data.data());
-    auto src_ptr = reinterpret_cast<timestamp64*>(fixlen_data.data());
+    auto src_ptr = reinterpret_cast<timestamp64*>(out_fixlen_slice.data);
     for (int i = 0; i < info.row_count; ++i) {
       dst_ptr[i].ts = src_ptr[i];
     }
     fixlen_data.swap(tmp_data);
+    out_fixlen_slice.data = fixlen_data.data();
+    out_fixlen_slice.len = fixlen_data.size();
   }
 
   // 3. Decompress Varchar
   std::string varlen_data;
+  TSSlice out_varchar_slice{nullptr, 0};
   if (info.vardata_len != 0) {
     TSSlice varlen_slice = compressed_data;
     assert(varlen_slice.len == info.vardata_len);
-    ok = mgr.DecompressVarchar(varlen_slice, &varlen_data);
+    ok = mgr.DecompressVarchar(varlen_slice, &out_varchar_slice, &varlen_data);
     if (!ok) {
       return KStatus::FAIL;
     }
   }
-  colblock->reset(new TsColumnBlock(col_schema, info.row_count, *p_bitmap, fixlen_data, varlen_data));
+  TsSliceGuard fixlen_guard(out_fixlen_slice, std::move(fixlen_data));
+  TsSliceGuard varchar_guard(out_varchar_slice, std::move(varlen_data));
+  colblock->reset(
+      new TsColumnBlock(col_schema, info.row_count, *p_bitmap, std::move(fixlen_guard), std::move(varchar_guard)));
   return SUCCESS;
 }
 }  // namespace kwdbts

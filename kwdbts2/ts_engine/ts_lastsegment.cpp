@@ -169,9 +169,9 @@ class TsLastBlock : public TsBlock {
 
     std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
-    std::string entity_ids_;
-    std::string timestamps_;
-    std::string lsn_;
+    TsSliceGuard entity_ids_;
+    TsSliceGuard timestamps_;
+    TsSliceGuard lsn_;
 
    public:
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
@@ -222,16 +222,8 @@ class TsLastBlock : public TsBlock {
     }
 
     KStatus GetEntityIDs(TSEntityID** entity_ids) {
-      {
-        std::shared_lock lk{mu_};
-        if (!entity_ids_.empty()) {
-          *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-          return SUCCESS;
-        }
-      }
-      std::unique_lock lk{mu_};
-      if (!entity_ids_.empty()) {
-        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+      if (entity_ids_.slice.len != 0) {
+        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.slice.data);
         return SUCCESS;
       }
 
@@ -245,22 +237,18 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
-      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+      TSSlice out;
+      std::string out_string;
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &out, &out_string);
+      entity_ids_.slice = out;
+      entity_ids_.str = std::move(out_string);
+      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.slice.data);
       return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetLSN(TS_LSN** lsn) {
-      {
-        std::shared_lock lk{mu_};
-        if (!lsn_.empty()) {
-          *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-          return SUCCESS;
-        }
-      }
-      std::unique_lock lk{mu_};
-      if (!lsn_.empty()) {
-        *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+      if (lsn_.slice.len != 0) {
+        *lsn = reinterpret_cast<TS_LSN*>(lsn_.slice.data);
         return SUCCESS;
       }
 
@@ -274,23 +262,18 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
-      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+      TSSlice out;
+      std::string out_string;
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &out, &out_string);
+      lsn_.slice = out;
+      lsn_.str = std::move(out_string);
+      *lsn = reinterpret_cast<TS_LSN*>(lsn_.slice.data);
       return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetTimestamps(timestamp64** timestamps) {
-      {
-        std::shared_lock lk{mu_};
-        if (!timestamps_.empty()) {
-          *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-          return SUCCESS;
-        }
-      }
-
-      std::unique_lock lk{mu_};
-      if (!timestamps_.empty()) {
-        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+      if (timestamps_.slice.len != 0) {
+        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.slice.data);
         return SUCCESS;
       }
 
@@ -305,8 +288,12 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
-      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+      TSSlice out;
+      std::string out_string;
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &out, &out_string);
+      timestamps_.slice = out;
+      timestamps_.str = std::move(out_string);
+      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.slice.data);
       return ok ? SUCCESS : FAIL;
     }
   };

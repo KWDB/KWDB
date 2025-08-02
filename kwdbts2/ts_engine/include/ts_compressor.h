@@ -107,9 +107,9 @@ class CompressorManager {
   bool CompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, std::string* output,
                     TsCompAlg fisrt, GenCompAlg second) const;
   bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
-  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count,
+  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, TSSlice* out_slice,
                       std::string* output) const;
-  bool DecompressVarchar(TSSlice input, std::string* output) const;
+  bool DecompressVarchar(TSSlice input, TSSlice* out_slice, std::string* output) const;
 };
 
 }  //  namespace kwdbts
