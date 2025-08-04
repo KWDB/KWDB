@@ -639,12 +639,11 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 
   // find the first block which satisfies block.min_entity_id > filter.entity_id
   auto end_it = std::upper_bound(
-      block_indices.begin(), block_indices.end(), filter.entity_id,
+      begin_it, block_indices.end(), filter.entity_id,
       [](TSEntityID entity_id, const TsLastSegmentBlockIndex& element) { return element.min_entity_id > entity_id; });
   if (begin_it == end_it) {
     return SUCCESS;
   }
-  assert(end_it > begin_it);
 
   std::shared_ptr<TsLastBlock> block = nullptr;
 
@@ -657,7 +656,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     EntityTsPoint filter_ts_span_start{filter.entity_id, span.ts_span.begin};
     EntityTsPoint filter_ts_span_end{filter.entity_id, span.ts_span.end};
 
-    for (auto it = begin_it; it != end_it; ++it) {
+    for (auto it = begin_it; it < end_it; ++it) {
       assert(it->max_entity_id >= filter.entity_id && it->min_entity_id <= filter.entity_id);
       if (it->table_id != filter.table_id) {
         continue;
