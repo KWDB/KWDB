@@ -345,9 +345,8 @@ Field *FieldLonglong::field_to_copy() {
 
 char *FieldTimestampTZ::get_ptr() {
   if (false == is_chunk_) {
-    return static_cast<char *>(current_thd->GetRowBatch()->GetData(
-        col_idx_in_rs_, 0 == num_ ? storage_len_ + 8 : storage_len_,
-        column_type_, storage_type_));
+    return static_cast<char *>(
+        current_thd->GetRowBatch()->GetData(col_idx_in_rs_, storage_len_, column_type_, storage_type_));
   } else {
     return static_cast<char *>(current_thd->GetDataChunk()->GetData(num_));
   }
