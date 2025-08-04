@@ -435,12 +435,13 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
     return KStatus::SUCCESS;
   }
 
+  // TODO(liumengzhen) : set correct lsn
+  TS_LSN scan_lsn = UINT64_MAX;
+  std::vector<KwTsSpan> spans = {{INT64_MIN, INT64_MAX}};
+  TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type,
+                            scan_lsn, spans};
   std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
   for (int i = ts_partitions.size() - 1; i >= 0; --i) {
-    // TODO(liumengzhen) : set correct lsn
-    TS_LSN scan_lsn = UINT64_MAX;
-    TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type,
-                              scan_lsn, {{INT64_MIN, INT64_MAX}}};
     std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
     KStatus ret = ts_partitions[i]->GetBlockSpan(filter, &ts_block_spans, table_schema_mgr,
                                                  table_schema_mgr->GetCurrentVersion());
