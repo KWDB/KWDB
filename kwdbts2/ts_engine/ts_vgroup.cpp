@@ -585,7 +585,8 @@ KStatus TsVGroup::Compact() {
     return FAIL;
   }
   // 4. Update the version.
-  return version_manager_->ApplyUpdate(&update);
+  KStatus s = version_manager_->ApplyUpdate(&update);
+  return s;
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
@@ -1141,8 +1142,8 @@ KStatus TsVGroup::FinishWriteBatchData() {
     }
   }
   write_batch_segment_builders_.clear();
-  version_manager_->ApplyUpdate(&update);
-  return KStatus::SUCCESS;
+  KStatus s = version_manager_->ApplyUpdate(&update);
+  return s;
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {

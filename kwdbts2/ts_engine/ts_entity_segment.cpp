@@ -706,6 +706,9 @@ KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                        uint32_t scan_version) {
+  if (filter.entity_id > meta_mgr_.GetEntityNum()) {
+    return KStatus::SUCCESS;
+  }
   return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);
 }
 
