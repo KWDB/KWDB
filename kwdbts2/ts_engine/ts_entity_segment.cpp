@@ -678,7 +678,8 @@ TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, TsVersionUpd
     : dir_path_(root),
       meta_mgr_(root, info.header_e_file_number, info.header_b_size),
       block_file_(root / block_data_file_name, info.block_file_size),
-      agg_file_(root / block_agg_file_name, info.agg_file_size) {
+      agg_file_(root / block_agg_file_name, info.agg_file_size),
+      info_(info) {
   Open();
 }
 
@@ -707,6 +708,9 @@ KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                        uint32_t scan_version) {
+  if (filter.entity_id > meta_mgr_.GetEntityNum()) {
+    return KStatus::SUCCESS;
+  }
   return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);
 }
 
