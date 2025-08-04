@@ -88,7 +88,7 @@ class TsVGroup {
   std::mutex cv_mutex_;
 
   std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
-  std::atomic<uint64_t> max_lsn_{4108};
+  std::atomic<uint64_t> max_lsn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
   std::unordered_map<uint32_t, bool> last_row_entity_checked_;
