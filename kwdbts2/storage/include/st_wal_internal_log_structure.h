@@ -85,6 +85,7 @@ class InsertLogTagsEntry : public InsertLogEntry {
   int64_t time_partition_;
   uint64_t offset_;
   uint64_t length_;
+  uint64_t table_id_;
   char* data_{nullptr};
 
   InsertLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, int64_t time_partition,
@@ -109,7 +110,8 @@ class InsertLogTagsEntry : public InsertLogEntry {
 
   void prettyPrint() override;
 
-  static const size_t header_length = sizeof(time_partition_) +
+  static const size_t header_length = sizeof(table_id_) +
+                                      sizeof(time_partition_) +
                                       sizeof(offset_) +
                                       sizeof(length_);
 
@@ -138,10 +140,10 @@ class InsertLogTagsEntry : public InsertLogEntry {
     location += sizeof(vgrp_id_);
     memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
     location += sizeof(old_lsn_);
-    memcpy(log_ptr + location, &table_id, sizeof(table_id_));
-    location += sizeof(table_id_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
+    memcpy(log_ptr + location, &table_id, sizeof(table_id_));
+    location += sizeof(table_id_);
     memcpy(log_ptr + location, &time_partition, sizeof(time_partition_));
     location += sizeof(time_partition_);
     memcpy(log_ptr + location, &offset, sizeof(offset_));
@@ -263,6 +265,7 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
   uint64_t offset_;
   uint64_t length_;
   uint64_t old_len_;
+  uint64_t table_id_;
   char* data_{nullptr};
   char* old_data_{nullptr};
 
@@ -291,7 +294,8 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
 
   void prettyPrint() override;
 
-  static const size_t header_length = sizeof(time_partition_) +
+  static const size_t header_length = sizeof(table_id_) +
+                                      sizeof(time_partition_) +
                                       sizeof(offset_) +
                                       sizeof(length_) +
                                       sizeof(old_len_);
@@ -323,10 +327,10 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
     location += sizeof(vgrp_id_);
     memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
     location += sizeof(old_lsn_);
-    memcpy(log_ptr + location, &table_id, sizeof(table_id_));
-    location += sizeof(table_id_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
+    memcpy(log_ptr + location, &table_id, sizeof(table_id_));
+    location += sizeof(table_id_);
     memcpy(log_ptr + location, &time_partition, sizeof(time_partition_));
     location += sizeof(time_partition_);
     memcpy(log_ptr + location, &offset, sizeof(offset_));
@@ -526,6 +530,7 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
   uint32_t entity_id_;
   size_t p_tag_len_;
   size_t tag_len_;
+  uint64_t table_id_;
   char* encoded_primary_tags_{nullptr};
   char* encoded_tags_{nullptr};
 
@@ -546,10 +551,9 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
 
   TSSlice getTags();
 
-  uint64_t getHashNum();
-
  public:
-  static const size_t header_length = sizeof(group_id_) + sizeof(entity_id_) + sizeof(p_tag_len_) + sizeof(tag_len_);
+  static const size_t header_length = sizeof(table_id_) + sizeof(group_id_) + sizeof(entity_id_) + sizeof(p_tag_len_)
+                                      + sizeof(tag_len_);
 
   static const size_t fixed_length = sizeof(type_) +
                                      sizeof(x_id_) +
@@ -580,10 +584,10 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
     location += sizeof(vgrp_id_);
     memcpy(log_ptr + location, &old_lsn, sizeof(old_lsn_));
     location += sizeof(old_lsn_);
-    memcpy(log_ptr + location, &table_id, sizeof(table_id_));
-    location += sizeof(table_id_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
+    memcpy(log_ptr + location, &table_id, sizeof(table_id_));
+    location += sizeof(table_id_);
     memcpy(log_ptr + location, &group_id, sizeof(group_id_));
     location += sizeof(group_id_);
     memcpy(log_ptr + location, &entity_id, sizeof(entity_id_));
