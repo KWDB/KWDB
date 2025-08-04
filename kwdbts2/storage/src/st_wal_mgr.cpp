@@ -993,7 +993,7 @@ bool WALMgr::NeedCheckpoint() {
   return false;
 }
 
-KStatus WALMgr::SwitchNextFile() {
+KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
   kwdbts::kwdbContext_p ctx;
   if (std::filesystem::exists(file_mgr_->getFilePath())) {
     KStatus s = FlushWithoutLock(ctx);
@@ -1007,7 +1007,9 @@ KStatus WALMgr::SwitchNextFile() {
       return KStatus::FAIL;
     }
   }
-  TS_LSN first_lsn = FetchCurrentLSN();
+  if (first_lsn == 0) {
+    first_lsn = FetchCurrentLSN();
+  }
 //  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
 //  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
 //                        FetchCurrentLSN(), 0);
@@ -1023,6 +1025,7 @@ KStatus WALMgr::SwitchNextFile() {
     return s;
   }
 
+  SetCurLSN(first_lsn);
   UpdateCheckpointWithoutFlush(ctx, first_lsn);
   UpdateFirstLSN(first_lsn);
   s = FlushWithoutLock(ctx);

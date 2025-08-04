@@ -86,6 +86,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     LOG_ERROR("Failed to initialize WAL manager")
     return res;
   }
+  UpdateAtomicLSN();
 
   return KStatus::SUCCESS;
 }
@@ -125,6 +126,8 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
       LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
       return KStatus::FAIL;
     }
+  } else {
+    current_lsn = LSNInc();
   }
   // TODO(limeng04): import and export current lsn that temporarily use wal
   if (engine_options_->wal_level != WALMode::OFF && !write_wal) {
@@ -215,8 +218,12 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   std::vector<uint64_t> ignore;
   TS_LSN first_lsn = wal_manager_->GetFirstLSN();
   last_lsn = wal_manager_->FetchCurrentLSN();
+  auto next_first_lsn = last_lsn;
+  if (last_lsn < GetMaxLSN()) {
+    next_first_lsn = GetMaxLSN();
+  }
   WALMeta meta = wal_manager_->GetMeta();
-  KStatus s = wal_manager_->SwitchNextFile();
+  KStatus s = wal_manager_->SwitchNextFile(next_first_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to switch next WAL file.")
     return s;
