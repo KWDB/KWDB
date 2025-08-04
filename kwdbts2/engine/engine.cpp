@@ -550,7 +550,7 @@ KStatus TSEngineImpl::DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_
     LOG_ERROR("DeleteRangeData failed: GetTsTable failed, table id [%lu]", table_id)
     return s;
   }
-  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, false);
+  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, writeWAL);
   return s;
 }
 
