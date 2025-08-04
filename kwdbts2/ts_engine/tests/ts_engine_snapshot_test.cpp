@@ -142,7 +142,7 @@ TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
       uint64_t volume;
       s = ts_table->GetDataVolume(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &volume);
       ASSERT_EQ(s, KStatus::SUCCESS);
-      ASSERT_EQ(volume, 28 * row_num);
+      ASSERT_EQ(volume, 20 * row_num);
       timestamp64 half_ts;
       s = ts_table->GetDataVolumeHalfTS(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &half_ts);
       ASSERT_EQ(s, KStatus::SUCCESS);

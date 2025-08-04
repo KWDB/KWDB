@@ -532,13 +532,6 @@ inline int cmp(void* l, void* r, int32_t type, int32_t size) {
       k_int64 rv = *(static_cast<k_int64*>(r));
       return lv == rv ? 0 : (lv > rv ? 1 : -1);
     }
-    case DATATYPE::TIMESTAMP64_LSN:
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-    case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      timestamp64 lv = static_cast<TimeStamp64LSN*>(l)->ts64;
-      timestamp64 rv = static_cast<TimeStamp64LSN*>(r)->ts64;
-      return lv == rv ? 0 : (lv > rv ? 1 : -1);
-    }
     case DATATYPE::FLOAT: {
       float lv = *(static_cast<float*>(l));
       float rv = *(static_cast<float*>(r));
@@ -592,15 +585,7 @@ inline void getMaxAndMinTs(std::vector<KwTsSpan>& spans, timestamp64* min_ts,
 }
 
 inline bool isTsType(DATATYPE type) {
-  if (type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO || type == TIMESTAMP64_NANO
-      || type == TIMESTAMP64_LSN || type == TIMESTAMP64_LSN_MICRO || type == TIMESTAMP64_LSN_NANO) {
-    return true;
-  }
-  return false;
-}
-
-inline bool isTsWithLSNType(DATATYPE type) {
-  if (type == TIMESTAMP64_LSN || type == TIMESTAMP64_LSN_MICRO || type == TIMESTAMP64_LSN_NANO) {
+  if (type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO || type == TIMESTAMP64_NANO) {
     return true;
   }
   return false;
@@ -1119,15 +1104,12 @@ inline timestamp64 convertTsToPTime(timestamp64 ts, DATATYPE ts_type) {
   }
   int64_t precision = 0;
   switch (ts_type) {
-    case TIMESTAMP64_LSN:
     case TIMESTAMP64:
       precision = 1000;
       break;
-    case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_MICRO:
       precision = 1000000;
       break;
-    case TIMESTAMP64_LSN_NANO:
     case TIMESTAMP64_NANO:
       precision = 1000000000;
       break;
@@ -1156,15 +1138,12 @@ inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) 
   }
   int64_t precision = 0;
   switch (ts_type) {
-    case TIMESTAMP64_LSN:
     case TIMESTAMP64:
       precision = 1000;
       break;
-    case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_MICRO:
       precision = 1000000;
       break;
-    case TIMESTAMP64_LSN_NANO:
     case TIMESTAMP64_NANO:
       precision = 1000000000;
       break;
@@ -1186,15 +1165,12 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
   }
   int64_t precision = 0;
   switch (ts_type) {
-    case TIMESTAMP64_LSN:
     case TIMESTAMP64:
       precision = 1;
       break;
-    case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_MICRO:
       precision = 1000;
       break;
-    case TIMESTAMP64_LSN_NANO:
     case TIMESTAMP64_NANO:
       precision = 1000000;
       break;

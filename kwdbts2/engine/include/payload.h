@@ -248,20 +248,14 @@ class Payload {
 
   // update payload rows lsn
   void SetLsn(TS_LSN lsn) {
-    if (!isTsWithLSNType((DATATYPE)(schema_[0].type))) return;
-    for (int i = 0; i < GetRowCount(); i++) {
-      TimeStamp64LSN* ts_lsn = reinterpret_cast<TimeStamp64LSN*>(GetColumnAddr(i, 0));
-      ts_lsn->lsn = lsn;
-    }
+    LOG_ERROR("should not set lsn now.");
+    exit(1);
   }
 
   // get lsn from first row.
   bool GetLsn(TS_LSN& lsn) {
-    if (!isTsWithLSNType((DATATYPE)(schema_[0].type))) return false;
-    if (GetRowCount() <= 0) return false;
-    TimeStamp64LSN* ts_lsn = reinterpret_cast<TimeStamp64LSN*>(GetColumnAddr(0, 0));
-    lsn = ts_lsn->lsn;
-    return true;
+    LOG_ERROR("should not get lsn now.");
+    exit(1);
   }
 
   // Get the timestamp of the ith row

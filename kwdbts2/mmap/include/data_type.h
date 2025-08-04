@@ -170,14 +170,11 @@ enum DATATYPE {
   TIME = 28,                // 4 bytes, curtime(), timediff()
   INT8 = 29,
   BYTE_ARRAY = 30,
-  TIMESTAMP64_LSN = 32,     // 16 bytes, first 8 bytes for timestamp, next 8 bytes for lsn
   INT8_ARRAY = 34,
   DATETIME32 = 50,          // 32-bit date time.
   TIME64 = 58,              // 8 bytes integer time with microsecond
   TIMESTAMP64_MICRO = 59,
   TIMESTAMP64_NANO = 60,
-  TIMESTAMP64_LSN_MICRO = 61,
-  TIMESTAMP64_LSN_NANO = 62,
   NULL_TYPE = 999,
   ROWID = 1000,			    /// ROWID item
   STRING_CONST = 20002,

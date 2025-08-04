@@ -23,7 +23,7 @@ const uint64_t TestBigTableInstance::iot_interval_ = 3600;
 
 void ConstructSchema(vector<AttributeInfo>* schema, KTableKey table_id) {
   // create table
-  Def_Column(col_1, 1, "k_timestamp", DATATYPE::TIMESTAMP64_LSN, 0, 8, 8, 0, AINFO_NOT_NULL, 8, 1, 0);
+  Def_Column(col_1, 1, "k_timestamp", DATATYPE::TIMESTAMP64, 0, 8, 8, 0, AINFO_NOT_NULL, 8, 1, 0);
   Def_Column(col_2, 2, "c1", DATATYPE::INT64, 16, 8, 8, 0, 0, 8, 1, 0);
   Def_Column(col_3, 3, "c2", DATATYPE::DOUBLE, 24, 8, 8, 0, 0, 8, 1, 0);
   *schema = {std::move(col_1), std::move(col_2), std::move(col_3)};

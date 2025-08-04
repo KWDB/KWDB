@@ -235,15 +235,6 @@ TsEntityBlock::TsEntityBlock(const TsEntityBlock& other) {
 
 char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
   assert(col_idx < column_blocks_.size() - 1);
-  if (col_idx == 0) {
-    if (extra_buffer_.empty()) {
-      extra_buffer_.resize(n_rows_ * 16);
-      for (int i = 0; i < n_rows_; ++i) {
-        memcpy(extra_buffer_.data() + i * 16, column_blocks_[1].buffer.data() + i * 8, 8);
-      }
-    }
-    return extra_buffer_.data();
-  }
   return column_blocks_[col_idx + 1].buffer.data();
 }
 

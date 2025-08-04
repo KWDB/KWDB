@@ -27,7 +27,7 @@ std::vector<ColDataTypes> tag_col_types({
   {DATATYPE::TIMESTAMP64, 8, TagType::PRIMARY_TAG},
   {DATATYPE::INT64, 8, TagType::GENERAL_TAG}});
 
-std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64_LSN, 16, TagType::UNKNOWN_TAG},
+std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64, 16, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 1024, TagType::UNKNOWN_TAG},
                                             {DATATYPE::INT32, 4, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARBINARY, 1123, TagType::UNKNOWN_TAG},
@@ -81,7 +81,6 @@ class TestRowPayloadBuilder : public testing::Test {
         switch (data_schema_[i].type) {
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           pay_build.SetColumnValue(j, i, reinterpret_cast<char*>(&cur_value), sizeof(cur_value));
           break;
         case DATATYPE::INT32: {
@@ -123,7 +122,6 @@ class TestRowPayloadBuilder : public testing::Test {
         switch (data_schema_[i].type) {
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           ASSERT_EQ(KTimestamp(col_data.data), cur_value);
           break;
         case DATATYPE::INT32: {

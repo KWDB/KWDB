@@ -48,7 +48,7 @@ class TsSortedBlockSpanTest : public ::testing::Test {
     ts.length = 16;
     ts.size = 16;
     ts.offset = 0;
-    ts.type = DATATYPE::TIMESTAMP64_LSN;
+    ts.type = DATATYPE::TIMESTAMP64;
     schema_.push_back(ts);
   }
   ~TsSortedBlockSpanTest() {

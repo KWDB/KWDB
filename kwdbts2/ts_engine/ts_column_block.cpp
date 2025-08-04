@@ -13,7 +13,7 @@
 
 #include <cstddef>
 #include <string>
-
+#include <memory>
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -104,17 +104,6 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   }
 
   TSSlice input{fixlen_data_.data(), fixlen_data_.size()};
-  std::vector<timestamp64> tmp_ts;
-  // TODO(zzr) remove it when payload has 8 bytes timestamp
-  if (need_convert_ts(col_schema_.type)) {
-    tmp_ts.resize(count_);
-    for (int i = 0; i < count_; ++i) {
-      tmp_ts[i] = *reinterpret_cast<timestamp64*>(fixlen_data_.data() + i * 16);
-    }
-    input.data = reinterpret_cast<char*>(tmp_ts.data());
-    input.len = tmp_ts.size() * sizeof(timestamp64);
-  }
-
   if (!compress) {
     first = TsCompAlg::kPlain;
     second = GenCompAlg::kPlain;
@@ -177,25 +166,6 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo col_schema,
     return KStatus::FAIL;
   }
   RemovePrefix(&compressed_data, info.fixdata_len);
-
-  if (need_convert_ts(col_schema.type)) {
-    if (fixlen_data.size() != info.row_count * 8) {
-      LOG_ERROR("Invalid timestamp data size: %lu, count: %d", fixlen_data.size(), info.row_count);
-      return FAIL;
-    }
-    std::string tmp_data;
-    tmp_data.resize(info.row_count * 16);
-    struct TSWithLSN {
-      timestamp64 ts;
-      uint64_t lsn;
-    };
-    auto dst_ptr = reinterpret_cast<TSWithLSN*>(tmp_data.data());
-    auto src_ptr = reinterpret_cast<timestamp64*>(fixlen_data.data());
-    for (int i = 0; i < info.row_count; ++i) {
-      dst_ptr[i].ts = src_ptr[i];
-    }
-    fixlen_data.swap(tmp_data);
-  }
 
   // 3. Decompress Varchar
   std::string varlen_data;
