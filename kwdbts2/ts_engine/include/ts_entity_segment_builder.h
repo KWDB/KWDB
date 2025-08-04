@@ -237,31 +237,39 @@ class TsEntitySegmentBuilder {
         std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
     bool override = cur_entity_segment_ == nullptr ? true : false;
     uint64_t block_header_file_num;
-    uint64_t datablock_file_num;
-    uint64_t aggblock_file_num;
+    size_t block_header_file_size = 0;
+    uint64_t block_file_num;
+    size_t block_file_size = 0;
+    uint64_t agg_file_num;
+    size_t agg_file_size = 0;
     if (entity_segment == nullptr) {
       // brand new entity segment, allocate all file numbers
       block_header_file_num = version_manager_->NewFileNumber();
-      datablock_file_num = version_manager_->NewFileNumber();
-      aggblock_file_num = version_manager_->NewFileNumber();
+      block_file_num = version_manager_->NewFileNumber();
+      agg_file_num = version_manager_->NewFileNumber();
     } else {
       //  entity segment exists, reuse file numbers
       auto info = entity_segment->GetHandleInfo();
       block_header_file_num = info.header_b_info.file_number;
-      datablock_file_num = info.datablock_info.file_number;
-      aggblock_file_num = info.agg_info.file_number;
+      block_header_file_size = info.header_b_info.length;
+      block_file_num = info.datablock_info.file_number;
+      block_file_size = info.datablock_info.length;
+      agg_file_num = info.agg_info.file_number;
+      agg_file_size = info.agg_info.length;
     }
 
     // block header file
     std::string block_header_file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
     block_item_builder_ =
-        std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_header_file_num, override);
+        std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_header_file_num,
+                                                              block_header_file_size);
     // block data file
-    std::string block_file_path = root_path_ / DataBlockFileName(datablock_file_num);
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, datablock_file_num, override);
+    std::string block_file_path = root_path_ / DataBlockFileName(block_file_num);
+    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, block_file_num,
+                                                                            block_file_size);
     // block agg file
-    std::string agg_file_path = root_path_ / EntityAggFileName(aggblock_file_num);
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, aggblock_file_num, override);
+    std::string agg_file_path = root_path_ / EntityAggFileName(agg_file_num);
+    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, agg_file_num, agg_file_size);
   }
 
   TsEntitySegmentBuilder(const std::string& root_path, TsVersionManager* version_manager,
