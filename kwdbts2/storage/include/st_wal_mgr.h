@@ -170,7 +170,7 @@ class WALMgr {
    */
   KStatus WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
                             uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id = 0,
-                            uint64_t table_id = 0, uint64_t hash_num = 0);
+                            uint64_t table_id = 0);
 
   /**
    * Construct the log entry for the CREATE INDEX operation.

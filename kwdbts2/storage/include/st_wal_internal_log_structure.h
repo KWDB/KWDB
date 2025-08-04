@@ -36,7 +36,7 @@ class LogEntry {
 
   [[nodiscard]] TS_LSN getOldLSN() const;
 
-  [[nodiscard]] TS_LSN getTableID() const;
+  [[nodiscard]] uint64_t getTableID() const;
 
   virtual char* encode();
 
@@ -526,18 +526,17 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
   uint32_t entity_id_;
   size_t p_tag_len_;
   size_t tag_len_;
-  uint64_t hash_num_;
   char* encoded_primary_tags_{nullptr};
   char* encoded_tags_{nullptr};
 
   DeleteLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint32_t group_id,
                      uint32_t entity_id, size_t p_tag_len, size_t tag_len, char* encoded_data, uint64_t vgrp_id = 0,
-                     TS_LSN old_lsn = 0, uint64_t table_id = 0, uint64_t hash_num = 0);
+                     TS_LSN old_lsn = 0, uint64_t table_id = 0);
 
   ~DeleteLogTagsEntry() override;
 
   char* encode() override {
-    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_id_, hash_num_, table_type_, group_id_, entity_id_, p_tag_len_,
+    return construct(type_, x_id_, vgrp_id_, old_lsn_, table_id_, table_type_, group_id_, entity_id_, p_tag_len_,
                      encoded_primary_tags_, tag_len_, encoded_tags_);
   }
 
@@ -547,6 +546,8 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
 
   TSSlice getTags();
 
+  uint64_t getHashNum();
+
  public:
   static const size_t header_length = sizeof(group_id_) + sizeof(entity_id_) + sizeof(p_tag_len_) + sizeof(tag_len_);
 
@@ -555,7 +556,6 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
                                      sizeof(vgrp_id_) +
                                      sizeof(old_lsn_) +
                                      sizeof(table_id_) +
-                                     sizeof(hash_num_) +
                                      sizeof(table_type_) +
                                      sizeof(group_id_) +
                                      sizeof(entity_id_) +
@@ -563,7 +563,7 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
                                      sizeof(tag_len_);
 
   static char* construct(const WALLogType type, const uint64_t x_id, const uint64_t vgrp_id, const TS_LSN old_lsn,
-                         const uint64_t table_id, const uint64_t hash_num, const WALTableType table_type,
+                         const uint64_t table_id, const WALTableType table_type,
                          const uint32_t group_id, const uint32_t entity_id, const size_t p_tag_len,
                          const char* encoded_primary_tags,
                          const size_t tag_len, const char* encoded_tags) {
@@ -582,8 +582,6 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
     location += sizeof(old_lsn_);
     memcpy(log_ptr + location, &table_id, sizeof(table_id_));
     location += sizeof(table_id_);
-    memcpy(log_ptr + location, &hash_num, sizeof(hash_num_));
-    location += sizeof(hash_num_);
     memcpy(log_ptr + location, &table_type, sizeof(table_type_));
     location += sizeof(table_type_);
     memcpy(log_ptr + location, &group_id, sizeof(group_id_));

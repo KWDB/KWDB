@@ -607,8 +607,8 @@ KStatus WALMgr::WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTab
 
 KStatus WALMgr::WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
                                   uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id,
-                                  uint64_t table_id, uint64_t hash_num) {
-  auto* wal_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, table_id, hash_num,
+                                  uint64_t table_id) {
+  auto* wal_log = DeleteLogTagsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, table_id,
                                                 WALTableType::TAG,
                                                 sub_group_id, entity_id, primary_tag.length(), primary_tag.data(),
                                                 tag_pack.len, tag_pack.data);

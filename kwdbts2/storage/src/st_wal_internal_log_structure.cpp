@@ -44,7 +44,7 @@ TS_LSN LogEntry::getOldLSN() const {
   return old_lsn_;
 }
 
-TS_LSN LogEntry::getTableID() const {
+uint64_t LogEntry::getTableID() const {
   return table_id_;
 }
 
@@ -361,6 +361,10 @@ TSSlice DeleteLogTagsEntry::getPrimaryTag() const {
 
 TSSlice DeleteLogTagsEntry::getTags() {
   return TSSlice{encoded_tags_, tag_len_};
+}
+
+uint64_t DeleteLogTagsEntry::getHashNum() {
+  return hash_num_;
 }
 
 size_t DeleteLogTagsEntry::getLen() {

@@ -840,9 +840,8 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
       return KStatus::FAIL;
     }
     LockSharedLevelMutex();
-    // todo(xy) : how to get hash num?
     s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_,
-                                        table_id, 0);
+                                        table_id);
     UnLockSharedLevelMutex();
     delete tag_pack;
     if (s == KStatus::FAIL) {
@@ -1314,7 +1313,7 @@ KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& p
     LOG_WARN("redoDeleteTag: can not find primary tag[%s].", primary_key.data)
     return KStatus::SUCCESS;
   }
-  int res = tag_table->DeleteForUndo(group_id, entity_id, p.GetHashPoint(), primary_key, tags);
+  int res = tag_table->DeleteForUndo(group_id, entity_id, tb_schema_manager->GetHashNum(), primary_key, tags);
   if (res < 0) {
     return KStatus::FAIL;
   }
