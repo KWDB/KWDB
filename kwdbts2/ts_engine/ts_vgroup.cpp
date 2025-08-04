@@ -554,8 +554,13 @@ KStatus TsVGroup::Compact() {
 
     // 2. Build the column block.
     {
+      TsVersionUpdate::EntitySegmentVersionInfo info{0, 0, 0, 0};
+      if (entity_segment) {
+        info = entity_segment->GetInfo();
+      }
+      info.header_e_file_number = new_entity_header_num;
       TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                     cur_partition->GetPartitionIdentifier(), entity_segment, new_entity_header_num,
+                                     cur_partition->GetPartitionIdentifier(), entity_segment, info,
                                      last_segments);
       KStatus s = builder.Open();
       if (s != KStatus::SUCCESS) {
@@ -582,7 +587,8 @@ KStatus TsVGroup::Compact() {
     return FAIL;
   }
   // 4. Update the version.
-  return version_manager_->ApplyUpdate(&update);
+  KStatus s = version_manager_->ApplyUpdate(&update);
+  return s;
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
@@ -1096,8 +1102,13 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
       uint64_t new_entity_header_num = version_manager_->NewFileNumber();
 
+      TsVersionUpdate::EntitySegmentVersionInfo info{0, 0, 0, 0};
+      if (entity_segment) {
+        info = entity_segment->GetInfo();
+      }
+      info.header_e_file_number = new_entity_header_num;
       builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), partition_id,
-                                                         entity_segment, new_entity_header_num);
+                                                         entity_segment, info);
       KStatus s = builder->Open();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Open entity segment builder failed.");
@@ -1133,8 +1144,8 @@ KStatus TsVGroup::FinishWriteBatchData() {
     }
   }
   write_batch_segment_builders_.clear();
-  version_manager_->ApplyUpdate(&update);
-  return KStatus::SUCCESS;
+  KStatus s = version_manager_->ApplyUpdate(&update);
+  return s;
 }
 
 KStatus TsVGroup::ClearWriteBatchData() {
