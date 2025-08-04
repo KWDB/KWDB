@@ -27,6 +27,7 @@
 #include "cm_kwdb_context.h"
 #include "ts_table.h"
 #include "st_logged_entity_group.h"
+#include "br_mgr.h"
 #include "ts_table_schema_manager.h"
 
 using namespace kwdbts; // NOLINT

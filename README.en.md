@@ -86,6 +86,9 @@ KWDB supports installation and deployment on Linux operating systems. The table 
 | libstdc++-static    | v7.3.0+ | Required only for GCC and G++ versions 7.3.0 and above.      |
 | protobuf-compiler   | any     |                                                               |
 | git                 | any     |                                                               |
+| libprotoc-dev       | v3.6.1+ | - For Ubuntu systems, the dependency command is libprotoc-dev.<br/>- For RHEL, CentOS, Kylin, UOS, and AnolisOS systems, the dependency is named as libprotobuf-devel. |
+| gflags              | V2.2.2  |                                                              |
+| libz4               | V1.9.2  |                                                              |
 
 **Running Dependencies:**
 

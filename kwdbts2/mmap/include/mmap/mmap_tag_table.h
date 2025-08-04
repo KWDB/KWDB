@@ -73,7 +73,8 @@ class TagTable {
 
   virtual ~TagTable();
 
-  int create(const vector<TagInfo> &schema, uint32_t table_version, ErrorInfo &err_info);
+  int create(const vector<TagInfo> &schema, uint32_t table_version, const std::vector<roachpb::NTagIndexInfo>& idx_info,
+             ErrorInfo &err_info);
 
   int open(ErrorInfo &err_info);
 
@@ -164,6 +165,8 @@ class TagTable {
 		    const TSSlice& primary_tag, TSSlice& tags);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
+  int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
+                    const TSSlice& primary_tag, kwdbts::TsRawPayload &payload);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
                     const TSSlice& primary_tag, const TSSlice& old_tag);
 

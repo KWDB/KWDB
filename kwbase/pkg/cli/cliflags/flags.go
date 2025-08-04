@@ -443,6 +443,11 @@ The port number should be the same as in --listen-addr unless port
 forwarding is set up on an intermediate firewall/router.`,
 	}
 
+	BRPCAddr = FlagInfo{
+		Name:        "brpc-addr",
+		Description: `rpc addr for AE`,
+	}
+
 	SQLAdvertiseAddr = FlagInfo{
 		Name: "advertise-sql-addr",
 		Description: `

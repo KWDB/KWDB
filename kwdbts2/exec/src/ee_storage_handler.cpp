@@ -160,6 +160,7 @@ EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx) {
       break;
     }
     total_read_rows_ += row_batch->count_;
+    // LOG_ERROR("row_batch->count_ is %d", row_batch->count_);
 
     if (0 == row_batch->count_) {
       current_line_++;

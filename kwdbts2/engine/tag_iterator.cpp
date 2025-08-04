@@ -211,12 +211,7 @@ KStatus EntityGroupTagIterator::Init() {
   return KStatus::SUCCESS;
 }
 bool in(kwdbts::k_uint32 hp, const std::vector<kwdbts::k_uint32>& hps) {
-  for (int i=0; i < hps.size(); i++) {
-    if (hps[i] == hp) {
-      return true;
-    }
-  }
-  return false;
+  return std::find(hps.begin(), hps.end(), hp) != hps.end();
 }
 
 KStatus EntityGroupTagIterator::Next(std::vector<EntityResultIndex>* entity_id_list,

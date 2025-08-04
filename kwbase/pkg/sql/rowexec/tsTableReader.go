@@ -55,50 +55,78 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
+const (
+	tsTableReaderProcName = "ts table reader"
+	// Maximum timeout for waiting BLJ operators to complete
+	maxBLJWaitTimeout = 10 * time.Second
+	// Ticker interval for checking BLJ completion
+	bljCheckInterval = 10 * time.Millisecond
+	// Command strings for TS engine
+	cmdExecNext    = "exec next"
+	cmdCloseTsFlow = "close tsflow"
+)
+
 // TsTableReader is used to retrieve data from ts storage.
 type TsTableReader struct {
 	execinfra.ProcessorBase
 
-	tsHandle unsafe.Pointer
-	Rev      []byte
-	// The output streamID of the topmost operator in the temporal flow
+	tsHandle         unsafe.Pointer
+	Rev              []byte
 	sid              execinfrapb.StreamID
 	tsProcessorSpecs []execinfrapb.TSProcessorSpec
 	timeZone         int
-	collected        bool
-	statsList        []tse.TsFetcherStats
-	fetMu            syncutil.Mutex
-	value0           bool
-	rowNum           int
-	manualAddTsCol   bool
-	tsTableReaderID  int32
+
+	value0 bool
+	rowNum int
+
+	manualAddTsCol  bool
+	tsTableReaderID int32
+
+	collected bool
+	statsList []tse.TsFetcherStats
+	fetMu     syncutil.Mutex
+
+	tsInfo execinfrapb.TsInfo
 }
 
 var _ execinfra.Processor = &TsTableReader{}
 var _ execinfra.RowSource = &TsTableReader{}
 
-const tsTableReaderProcName = "ts table reader"
+var kwdbFlowSpecPool = sync.Pool{
+	New: func() interface{} {
+		return &execinfrapb.TSFlowSpec{}
+	},
+}
+
+// contextTsTableKey is an empty type for the handle associated with the
+// statement value (see context.Value).
+type contextTsTableKey struct{}
 
 // NewTsTableReader creates a TsTableReader.
 func NewTsTableReader(
+	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
 	typs []types.T,
 	output execinfra.RowReceiver,
 	sid execinfrapb.StreamID,
 	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsInfo execinfrapb.TsInfo,
 ) (*TsTableReader, error) {
+	ttr := &TsTableReader{
+		sid:      sid,
+		tsHandle: nil,
+		tsInfo:   tsInfo,
+		value0:   len(typs) == 0,
+	}
 
-	tsi := &TsTableReader{sid: sid, tsHandle: nil}
 	if sp := opentracing.SpanFromContext(flowCtx.EvalCtx.Ctx()); sp != nil && tracing.IsRecording(sp) {
-		tsi.collected = true
-		tsi.FinishTrace = tsi.outputStatsToTrace
+		ttr.collected = true
+		ttr.FinishTrace = ttr.outputStatsToTrace
 	}
-	if len(typs) == 0 {
-		tsi.value0 = true
-	}
-	if err := tsi.Init(
-		tsi,
+
+	if err := ttr.Init(
+		ttr,
 		&execinfrapb.PostProcessSpec{},
 		typs,
 		flowCtx,
@@ -116,45 +144,57 @@ func NewTsTableReader(
 	); err != nil {
 		return nil, err
 	}
-	if err := tsi.initTableReader(flowCtx.EvalCtx.Ctx(), tsProcessorSpecs); err != nil {
+	if err := ttr.initTableReader(ctx, tsProcessorSpecs); err != nil {
 		return nil, err
 	}
-	return tsi, nil
+	ttr.StartInternal(ctx, tsTableReaderProcName)
+	if err := ttr.setupTsFlow(ttr.Ctx); err != nil {
+		return nil, err
+	}
+
+	return ttr, nil
 }
 
 func (ttr *TsTableReader) initTableReader(
 	ctx context.Context, tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 ) error {
-	// ts processor output StreamID map
-	outPutMap := make(map[execinfrapb.StreamID]int)
 
-	// The timing operator has only one input and one output,
-	// and each input and output has only one stream.
-	for i, proc := range tsProcessorSpecs {
-		if proc.Output != nil {
-			outPutMap[proc.Output[0].Streams[0].StreamID] = i
+	if ttr.tsInfo.UsePipeline {
+		ttr.initPipelineTableReader(tsProcessorSpecs)
+	} else {
+		// ts processor output StreamID map
+		outPutMap := make(map[execinfrapb.StreamID]int)
+
+		// The timing operator has only one input and one output,
+		// and each input and output has only one stream.
+		for i, proc := range tsProcessorSpecs {
+			if proc.Output != nil {
+				outPutMap[proc.Output[0].Streams[0].StreamID] = i
+			}
+
 		}
 
-	}
+		// The set of operators on the ts flow.
+		var tsSpecs []execinfrapb.TSProcessorSpec
 
-	// The set of operators on the ts flow.
-	var tsSpecs []execinfrapb.TSProcessorSpec
-
-	tsTopProcessorIndex := outPutMap[ttr.sid]
-	tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
-	for tsProcessorSpecs[tsTopProcessorIndex].Input != nil {
-		if tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader != nil {
-			ttr.tsTableReaderID = tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader.TsTablereaderId
-		}
-		streamID := tsProcessorSpecs[tsTopProcessorIndex].Input[0].Streams[0].StreamID
-		tsTopProcessorIndex = outPutMap[streamID]
+		tsTopProcessorIndex := outPutMap[ttr.sid]
 		tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
+		for tsProcessorSpecs[tsTopProcessorIndex].Input != nil {
+			if tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader != nil {
+				ttr.tsTableReaderID = tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader.TsTablereaderId
+			}
+			streamID := tsProcessorSpecs[tsTopProcessorIndex].Input[0].Streams[0].StreamID
+			tsTopProcessorIndex = outPutMap[streamID]
+			tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
+		}
+		for j := len(tsSpecs) - 1; j >= 0; j-- {
+			ttr.tsProcessorSpecs = append(ttr.tsProcessorSpecs, tsSpecs[j])
+		}
 	}
-	ttr.tsProcessorSpecs = tsSpecs
 	var info tse.TsQueryInfo
 	info.Handle = nil
 	info.Buf = []byte("init ts handle")
-	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.InitTsHandle(&(ttr.Ctx), info)
+	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.InitTsHandle(&ctx, info)
 	if err != nil {
 		log.Warning(ctx, err)
 		return err
@@ -164,10 +204,20 @@ func (ttr *TsTableReader) initTableReader(
 	return nil
 }
 
-var kwdbFlowSpecPool = sync.Pool{
-	New: func() interface{} {
-		return &execinfrapb.TSFlowSpec{}
-	},
+// initPipelineTableReader fill ttr.tsProcessorSpecs
+func (ttr *TsTableReader) initPipelineTableReader(tsProcessorSpecs []execinfrapb.TSProcessorSpec) {
+	for _, tsp := range tsProcessorSpecs {
+		if tsp.Core.TableReader != nil {
+			// blj cannot use pipeline
+			ttr.tsTableReaderID = tsp.Core.TableReader.TsTablereaderId
+		}
+		ttr.tsProcessorSpecs = append(ttr.tsProcessorSpecs, tsp)
+	}
+
+	if log.V(3) {
+		log.Infof(ttr.PbCtx(), "nodeID:%v, tsFlowSpec.Processors:%v\n",
+			ttr.FlowCtx.NodeID, len(ttr.tsProcessorSpecs))
+	}
 }
 
 // NewTSFlowSpec get ts flow spec.
@@ -182,62 +232,131 @@ func NewTSFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfra
 func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 	ctx = ttr.StartInternal(ctx, tsTableReaderProcName)
 
-	var tsSpecs = ttr.tsProcessorSpecs
-	var randomNumber int
-	if tsSpecs != nil {
-		rand.Seed(timeutil.Now().UnixNano())
-		randomNumber = rand.Intn(100000) + 1
-		flowID := execinfrapb.FlowID{}
-		flowID.UUID = uuid.MakeV4()
-
-		tsFlowSpec := NewTSFlowSpec(flowID, ttr.FlowCtx.NodeID)
-		for j := len(tsSpecs) - 1; j >= 0; j-- {
-			tsFlowSpec.Processors = append(tsFlowSpec.Processors, tsSpecs[j])
-		}
-		msg, err := protoutil.Marshal(tsFlowSpec)
-		if err != nil {
-			ttr.MoveToDraining(err)
-			return ctx
-		}
-
-		if log.V(3) {
-			log.Infof(ctx, "node: %v,\nts_physical_plan: %v\n", ttr.EvalCtx.NodeID, tsFlowSpec)
-		}
-
-		loc, err := timeutil.TimeZoneStringToLocation(ttr.EvalCtx.GetLocation().String(), timeutil.TimeZoneStringToLocationISO8601Standard)
-		if err != nil {
-			ttr.MoveToDraining(err)
-			return ctx
-		}
-		currentTime := timeutil.Now()
-		// Convert time to a specified time zone.
-		timeInLocation := currentTime.In(loc)
-		_, offSet := timeInLocation.Zone()
-		timezone := offSet / 3600
-		ttr.timeZone = timezone
-		tsHandle := ttr.tsHandle
-		var tsQueryInfo = tse.TsQueryInfo{
-			ID:       int(ttr.sid),
-			Buf:      msg,
-			UniqueID: randomNumber,
-			Handle:   tsHandle,
-			TimeZone: timezone,
-		}
-		respInfo, setupErr := ttr.FlowCtx.Cfg.TsEngine.SetupTsFlow(&(ttr.Ctx), tsQueryInfo)
-		if setupErr != nil {
-			if ttr.FlowCtx != nil {
-				ttr.FlowCtx.TsHandleBreak = true
-			}
-			ttr.MoveToDraining(setupErr)
-			return ctx
-		}
-		ttr.tsHandle = respInfo.Handle
-	}
 	return ctx
 }
 
+// Next is part of the RowSource interface.
+func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	for ttr.State == execinfra.StateRunning {
+		if len(ttr.Rev) == 0 || (ttr.value0 && ttr.rowNum == 0) {
+			// Prepare query info
+			tsQueryInfo := tse.TsQueryInfo{
+				ID:       int(ttr.sid),
+				Handle:   ttr.tsHandle,
+				TimeZone: ttr.timeZone,
+				Buf:      []byte(cmdExecNext),
+				Fetcher:  tse.TsFetcher{Collected: ttr.collected},
+			}
+			// Init analyse fetcher.
+			if ttr.collected {
+				ttr.initStatsCollector(&tsQueryInfo)
+			}
+
+			// Execute query to get next batch of data
+			respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlow(&(ttr.Ctx), tsQueryInfo)
+			// Collect statistics (if enabled)
+			if ttr.collected {
+				ttr.updateStatsList(&respInfo)
+			}
+
+			// Handle response codes
+			switch respInfo.Code {
+			case -1: // End of data
+				return nil, ttr.handleEndOfData()
+			case 1: // Success
+				// Store the returned data and row count
+				ttr.Rev = respInfo.Buf
+				ttr.rowNum = respInfo.RowNum
+			default: // Error
+				return nil, ttr.handleFetchError(&respInfo, err)
+			}
+		}
+
+		if ttr.value0 {
+			if ttr.rowNum > 0 {
+				var tmpRow sqlbase.EncDatumRow = make([]sqlbase.EncDatum, 0)
+				ttr.rowNum--
+				return tmpRow, nil
+			}
+			return nil, ttr.DrainHelper()
+		}
+
+		// Parse and return a row from the buffer
+		return ttr.parseRowFromBuffer()
+	}
+
+	return nil, ttr.DrainHelper()
+}
+
+// NextPgWire get data for short circuit go pg encoding.
+func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
+	for ttr.State == execinfra.StateRunning {
+		var tsQueryInfo = tse.TsQueryInfo{
+			ID:       int(ttr.sid),
+			Handle:   ttr.tsHandle,
+			Buf:      []byte(cmdExecNext),
+			TimeZone: ttr.timeZone,
+			Fetcher:  tse.TsFetcher{Collected: ttr.collected},
+		}
+
+		// Init analyse fetcher.
+		if ttr.collected {
+			ttr.initStatsCollector(&tsQueryInfo)
+		}
+
+		respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlowPgWire(&(ttr.Ctx), tsQueryInfo)
+
+		// Collect statistics (if enabled)
+		if ttr.collected {
+			ttr.updateStatsList(&respInfo)
+		}
+
+		// Handle response codes
+		switch respInfo.Code {
+		case -1: // End of data
+			if ttr.collected {
+				ttr.MoveToDraining(nil)
+				meta := ttr.DrainHelper()
+				if meta.Err != nil {
+					return nil, 0, meta.Err
+				}
+				if len(meta.TraceData) > 0 {
+					span := opentracing.SpanFromContext(ttr.Ctx)
+					if span == nil {
+						return nil, 0, errors.New("trying to ingest remote spans but there is no recording span set up")
+					} else if err := tracing.ImportRemoteSpans(span, meta.TraceData); err != nil {
+						return nil, 0, errors.Errorf("error ingesting remote spans: %s", err)
+					}
+				}
+			}
+			return nil, respInfo.Code, nil
+		case 1: // Success
+			return respInfo.Buf, respInfo.Code, nil
+		default: // Error
+			if err != nil && ttr.FlowCtx != nil {
+				ttr.FlowCtx.TsHandleBreak = true
+			}
+			log.Errorf(context.Background(), err.Error())
+			return nil, respInfo.Code, err
+		}
+	}
+
+	meta := ttr.DrainHelper()
+	if meta.Err != nil {
+		return nil, 0, meta.Err
+	}
+	return nil, -1, nil
+}
+
+// ConsumerClosed is part of the RowSource interface.
+func (ttr *TsTableReader) ConsumerClosed() {
+	// The consumer is done, Next() will not be called again.
+	ttr.InternalClose()
+}
+
+// cleanup releases resources used by the TsTableReader
 func (ttr *TsTableReader) cleanup(ctx context.Context) {
-	// ttr.DropHandle(ctx)
+	// DropHandle(ctx)
 }
 
 // DropHandle is to close ts handle.
@@ -254,181 +373,161 @@ func (ttr *TsTableReader) DropHandle(ctx context.Context) {
 	}
 }
 
-// IsShortCircuitForPgEncode is part of the processor interface.
-func (ttr *TsTableReader) IsShortCircuitForPgEncode() bool {
-	return false
+// setupTsFlow initializes the time series flow in the TS engine
+func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
+	rand.Seed(timeutil.Now().UnixNano())
+	randomNumber := rand.Intn(100000) + 1
+
+	flowID := execinfrapb.FlowID{UUID: uuid.MakeV4()}
+
+	tsFlowSpec := NewTSFlowSpec(flowID, ttr.FlowCtx.NodeID)
+	tsFlowSpec.Processors = ttr.tsProcessorSpecs
+	tsFlowSpec.BrpcAddrs = ttr.tsInfo.BrpcAddrs
+	tsFlowSpec.QueryID = ttr.tsInfo.QueryID
+	tsFlowSpec.IsDist = ttr.tsInfo.IsDist
+	tsFlowSpec.Processors[len(tsFlowSpec.Processors)-1].FinalTsProcessor = true
+	tsFlowSpec.UseQueryShortCircuit = ttr.tsInfo.UseQueryShortCircuit
+
+	msg, err := protoutil.Marshal(tsFlowSpec)
+	if err != nil {
+		return err
+	}
+
+	if log.V(3) {
+		log.Infof(ctx, "node: %v,\nts_physical_plan: %v\n", ttr.EvalCtx.NodeID, tsFlowSpec)
+	}
+
+	timezone, err := ttr.setupTimezone(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create query info for the TS engine
+	tsQueryInfo := tse.TsQueryInfo{
+		ID:       int(ttr.sid),
+		Buf:      msg,
+		UniqueID: randomNumber,
+		Handle:   ttr.tsHandle, // Will be set by the engine
+		TimeZone: timezone,
+		SQL:      ttr.EvalCtx.Planner.GetStmt(),
+	}
+
+	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.SetupTsFlow(&(ttr.Ctx), tsQueryInfo)
+	if err != nil {
+		if ttr.FlowCtx != nil {
+			ttr.FlowCtx.TsHandleBreak = true
+		}
+		return err
+	}
+
+	// Store the handle and register it in the flow context
+	ttr.tsHandle = respInfo.Handle
+
+	return nil
 }
 
-// Next is part of the RowSource interface.
-func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	for ttr.State == execinfra.StateRunning {
-		if (len(ttr.Rev) == 0) || (ttr.value0 && ttr.rowNum == 0) {
-			var tsQueryInfo = tse.TsQueryInfo{
-				ID:       int(ttr.sid),
-				Handle:   ttr.tsHandle,
-				TimeZone: ttr.timeZone,
-				Buf:      []byte("exec next"),
-				Fetcher:  tse.TsFetcher{Collected: ttr.collected},
-			}
-			// Init analyse fetcher.
-			if ttr.collected {
-				tsFetchers := tse.NewTsFetcher(ttr.tsProcessorSpecs)
-				tsQueryInfo.Fetcher.CFetchers = tsFetchers
-				tsQueryInfo.Fetcher.Size = len(tsFetchers)
-				tsQueryInfo.Fetcher.Mu = &ttr.fetMu
-				if ttr.statsList == nil || len(ttr.statsList) <= 0 {
-					for j := len(ttr.tsProcessorSpecs) - 1; j >= 0; j-- {
-						rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: ttr.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&ttr.tsProcessorSpecs[j].Core)}
-						ttr.statsList = append(ttr.statsList, rowNumFetcherStats)
-					}
-				}
-			}
-			respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlow(&(ttr.Ctx), tsQueryInfo)
-			if ttr.collected {
-				if sp := opentracing.SpanFromContext(ttr.PbCtx()); sp != nil {
-					ttr.statsList = tse.AddStatsList(respInfo.Fetcher, ttr.statsList)
-				}
-			}
-			if respInfo.Code == -1 {
-				// Data read completed.
-				// BLJ operator must stop pushing down data before cleanup
-				ttr.cleanup(ttr.PbCtx())
-				if ttr.collected {
-					ttr.MoveToDraining(nil)
-					return nil, ttr.DrainHelper()
-				}
-				return nil, nil
-			} else if respInfo.Code != 1 {
-				if err == nil {
-					err = errors.Newf("There is no error message for this error code. The err code is %d.\n", respInfo.Code)
-				}
-				if ttr.FlowCtx != nil {
-					ttr.FlowCtx.TsHandleBreak = true
-				}
-				ttr.MoveToDraining(err)
-				log.Errorf(context.Background(), err.Error())
-				ttr.cleanup(ttr.PbCtx())
-				return nil, &execinfrapb.ProducerMetadata{Err: err}
-			}
-			ttr.Rev = respInfo.Buf
-			ttr.rowNum = respInfo.RowNum
-		}
-		if ttr.value0 {
-			if ttr.rowNum > 0 {
-				var tmpRow sqlbase.EncDatumRow = make([]sqlbase.EncDatum, 0)
-				ttr.rowNum--
-				return tmpRow, nil
-			}
-			return nil, ttr.DrainHelper()
-		}
-		row := make([]sqlbase.EncDatum, len(ttr.Out.OutputTypes))
-		for i := range row {
-			var err error
-			row[i], ttr.Rev, err = sqlbase.EncDatumFromBuffer(nil, sqlbase.DatumEncoding_VALUE, ttr.Rev)
-			if err != nil {
-				if ttr.FlowCtx != nil {
-					ttr.FlowCtx.TsHandleBreak = true
-				}
-				log.Errorf(context.Background(), err.Error())
-				ttr.cleanup(ttr.PbCtx())
-				return nil, &execinfrapb.ProducerMetadata{Err: err}
-			}
-		}
-
-		return row, nil
+// setupTimezone determines the timezone offset to use for the query
+func (ttr *TsTableReader) setupTimezone(ctx context.Context) (int, error) {
+	locStr := ttr.EvalCtx.GetLocation().String()
+	loc, err := timeutil.TimeZoneStringToLocation(locStr, timeutil.TimeZoneStringToLocationISO8601Standard)
+	if err != nil {
+		return 0, err
 	}
-	return nil, ttr.DrainHelper()
+
+	// Convert current time to the specified timezone and get the offset
+	currentTime := timeutil.Now()
+	timeInLocation := currentTime.In(loc)
+	_, offset := timeInLocation.Zone()
+
+	// Convert offset from seconds to hours
+	timezone := offset / 3600
+	ttr.timeZone = timezone
+
+	return timezone, nil
 }
 
-func slicesEqual(a, b []types.T) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !a[i].Equal(b[i]) {
-			return false
-		}
-	}
-	return true
-}
+// parseRowFromBuffer parses a row from the current buffer
+func (ttr *TsTableReader) parseRowFromBuffer() (
+	sqlbase.EncDatumRow,
+	*execinfrapb.ProducerMetadata,
+) {
+	row := make([]sqlbase.EncDatum, len(ttr.Out.OutputTypes))
 
-// NextPgWire get data for short circuit go pg encoding.
-func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
-	for ttr.State == execinfra.StateRunning {
-		var tsQueryInfo = tse.TsQueryInfo{
-			ID:       int(ttr.sid),
-			Handle:   ttr.tsHandle,
-			Buf:      []byte("exec next"),
-			TimeZone: ttr.timeZone,
-			Fetcher:  tse.TsFetcher{Collected: ttr.collected},
-		}
-		// Init analyse fetcher.
-		if ttr.collected {
-			tsFetchers := tse.NewTsFetcher(ttr.tsProcessorSpecs)
-			tsQueryInfo.Fetcher.CFetchers = tsFetchers
-			tsQueryInfo.Fetcher.Size = len(tsFetchers)
-			tsQueryInfo.Fetcher.Mu = &ttr.fetMu
-			if ttr.statsList == nil || len(ttr.statsList) <= 0 {
-				for j := len(ttr.tsProcessorSpecs) - 1; j >= 0; j-- {
-					rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: ttr.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&ttr.tsProcessorSpecs[j].Core)}
-					ttr.statsList = append(ttr.statsList, rowNumFetcherStats)
-				}
-			}
-		}
+	// Parse each column from the buffer
+	for i := range row {
+		var err error
+		row[i], ttr.Rev, err = sqlbase.EncDatumFromBuffer(nil, sqlbase.DatumEncoding_VALUE, ttr.Rev)
 
-		respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlowPgWire(&(ttr.Ctx), tsQueryInfo)
-		if ttr.collected {
-			if sp := opentracing.SpanFromContext(ttr.PbCtx()); sp != nil {
-				ttr.statsList = tse.AddStatsList(respInfo.Fetcher, ttr.statsList)
-			}
-		}
-		if respInfo.Code == -1 {
-			// Data read completed.
-			ttr.cleanup(context.Background())
-			if ttr.collected {
-				ttr.MoveToDraining(nil)
-				meta := ttr.DrainHelper()
-				if meta.Err != nil {
-					return nil, 0, meta.Err
-				}
-				if ttr.collected && len(meta.TraceData) > 0 {
-					span := opentracing.SpanFromContext(ttr.Ctx)
-					if span == nil {
-						return nil, 0, errors.New("trying to ingest remote spans but there is no recording span set up")
-					} else if err := tracing.ImportRemoteSpans(span, meta.TraceData); err != nil {
-						return nil, 0, errors.Errorf("error ingesting remote spans: %s", err)
-					}
-				}
-			}
-			return nil, respInfo.Code, nil
-		} else if respInfo.Code != 1 {
-			if err != nil && ttr.FlowCtx != nil {
+		// Handle parsing errors
+		if err != nil {
+			if ttr.FlowCtx != nil {
 				ttr.FlowCtx.TsHandleBreak = true
 			}
 			log.Errorf(context.Background(), err.Error())
-			ttr.cleanup(context.Background())
-			return nil, respInfo.Code, err
+			return nil, &execinfrapb.ProducerMetadata{Err: err}
 		}
-		return respInfo.Buf, respInfo.Code, nil
 	}
 
-	meta := ttr.DrainHelper()
-	if meta.Err != nil {
-		return nil, 0, meta.Err
+	return row, nil
+}
+
+// handleEndOfData handles the end-of-data response code
+func (ttr *TsTableReader) handleEndOfData() *execinfrapb.ProducerMetadata {
+	// If collecting statistics, return drain helper metadata
+	if ttr.collected {
+		ttr.MoveToDraining(nil)
+		return ttr.DrainHelper()
 	}
-	return nil, -1, nil
+
+	return nil
 }
 
-// SupportPgWire is part of the processor interface
-func (ttr *TsTableReader) SupportPgWire() bool {
-	return false
+// handleFetchError handles error responses from the TS engine
+func (ttr *TsTableReader) handleFetchError(
+	respInfo *tse.TsQueryInfo, err error,
+) *execinfrapb.ProducerMetadata {
+	if err == nil {
+		err = errors.Newf("There is no error message for this error code. The err code is %d.\n", respInfo.Code)
+	}
+
+	ttr.MoveToDraining(err)
+	log.Errorf(context.Background(), err.Error())
+	if ttr.FlowCtx != nil {
+		ttr.FlowCtx.TsHandleBreak = true
+	}
+	return &execinfrapb.ProducerMetadata{Err: err}
 }
 
-// ConsumerClosed is part of the RowSource interface.
-func (ttr *TsTableReader) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
-	ttr.cleanup(ttr.PbCtx())
-	ttr.InternalClose()
+// initStatsCollector initializes the statistics collector
+func (ttr *TsTableReader) initStatsCollector(queryInfo *tse.TsQueryInfo) {
+	tsFetchers := tse.NewTsFetcher(ttr.tsProcessorSpecs)
+	queryInfo.Fetcher.CFetchers = tsFetchers
+	queryInfo.Fetcher.Size = len(tsFetchers)
+	queryInfo.Fetcher.Mu = &ttr.fetMu
+
+	if len(ttr.statsList) <= 0 {
+		ttr.initStatsList()
+	}
+}
+
+// initStatsList initializes the statistics list for all processors
+func (ttr *TsTableReader) initStatsList() {
+	ttr.statsList = make([]tse.TsFetcherStats, 0, len(ttr.tsProcessorSpecs))
+
+	for j := len(ttr.tsProcessorSpecs) - 1; j >= 0; j-- {
+		procSpec := &ttr.tsProcessorSpecs[j]
+		ttr.statsList = append(ttr.statsList, tse.TsFetcherStats{
+			ProcessorID:   procSpec.ProcessorID,
+			ProcessorName: tsGetNameValue(&procSpec.Core),
+		})
+	}
+}
+
+// updateStatsList updates the statistics list with data from response
+func (ttr *TsTableReader) updateStatsList(respInfo *tse.TsQueryInfo) {
+	if sp := opentracing.SpanFromContext(ttr.PbCtx()); sp != nil {
+		ttr.statsList = tse.AddStatsList(respInfo.Fetcher, ttr.statsList)
+	}
 }
 
 // InitProcessorProcedure init processor in procedure
@@ -446,6 +545,52 @@ func (ttr *TsTableReader) outputStatsToTrace() {
 	if sp != nil {
 		tracing.SetSpanStats(sp, &tsi)
 	}
+}
+
+// Name of processor in time series
+const (
+	tsUnknownName int8 = iota
+	tsTableReaderName
+	tsAggregatorName
+	tsNoopName
+	tsSorterName
+	tsStatisticReaderName
+	tsSynchronizerName
+	tsSamplerName
+	tsTagReaderName
+	tsDistinctName
+)
+
+// tsGetNameValue get name of tsProcessor.
+func tsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
+	if this.TableReader != nil {
+		return tsTableReaderName
+	}
+	if this.Aggregator != nil {
+		return tsAggregatorName
+	}
+	if this.Noop != nil {
+		return tsNoopName
+	}
+	if this.Sorter != nil {
+		return tsSorterName
+	}
+	if this.StatisticReader != nil {
+		return tsStatisticReaderName
+	}
+	if this.Synchronizer != nil {
+		return tsSynchronizerName
+	}
+	if this.Sampler != nil {
+		return tsSamplerName
+	}
+	if this.TagReader != nil {
+		return tsTagReaderName
+	}
+	if this.Distinct != nil {
+		return tsDistinctName
+	}
+	return tsUnknownName
 }
 
 var _ execinfrapb.DistSQLSpanStats = &TsInputStats{}

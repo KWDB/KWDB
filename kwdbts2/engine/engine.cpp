@@ -94,6 +94,10 @@ TSEngineImpl::~TSEngineImpl() {
   wal_sys_ = nullptr;
 
   DestoryExecutor();
+#ifndef WITH_TESTS
+  BrMgr::GetInstance().Destroy();
+#endif
+
   delete tables_cache_;
   delete tables_lock_;
   KWDBDynamicThreadPool::GetThreadPool().Stop();
@@ -629,6 +633,17 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     LOG_ERROR("no env : KW_HOME ")
     return KStatus::FAIL;
   }
+
+#ifndef WITH_TESTS
+  // init brpc for multi-node mode
+  if (!EngineOptions::isSingleNode()) {
+    if (BrMgr::GetInstance().Init(ctx, options_) != KStatus::SUCCESS) {
+      LOG_ERROR("BrMgr init failed")
+      return KStatus::FAIL;
+    }
+  }
+#endif
+
   InitExecutor(ctx, options_);
   LOG_INFO("wal setting: %s.", getWalModeString((WALMode)options_.wal_level).c_str());
   wal_sys_ = KNEW WALMgr(options_.db_path, 0, 0, &options_);
@@ -740,11 +755,11 @@ KStatus TSEngineImpl::CreateCheckpointForTable(kwdbts::kwdbContext_p ctx, TSTabl
   if (options_.wal_level == 0) {
     return KStatus::SUCCESS;
   }
-  LOG_DEBUG("creating checkpoint for table %lu...", table_id);
+  LOG_DEBUG("creating checkpoint for table %" PRIu64 "...", table_id);
 
   std::shared_ptr<TsTable> table = tables_cache_->Get(table_id);
   if (!table || table->IsDropped()) {
-    LOG_WARN("table %lu doesn't exist, %p", table_id, table.get());
+    LOG_WARN("table %" PRIu64 " doesn't exist, %p", table_id, table.get());
     return KStatus::FAIL;
   }
   return table->CreateCheckpoint(ctx);
@@ -1431,16 +1446,6 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
   if (GetClusterSetting(ctx, "ts.wal.buffer_size", &value) == SUCCESS) {
     options_.wal_buffer_size = std::stoll(value);
     LOG_INFO("update wal buffer size to %hu Mib", options_.wal_buffer_size)
-  }
-
-  if (GetClusterSetting(ctx, "ts.wal.file_size", &value) == SUCCESS) {
-    options_.wal_file_size = std::stoll(value);
-    LOG_INFO("update wal file size to %hu Mib", options_.wal_file_size)
-  }
-
-  if (GetClusterSetting(ctx, "ts.wal.files_in_group", &value) == SUCCESS) {
-    options_.wal_file_in_group = std::stoll(value);
-    LOG_INFO("update wal file num in group to %hu", options_.wal_file_in_group)
   }
 
   return KStatus::SUCCESS;

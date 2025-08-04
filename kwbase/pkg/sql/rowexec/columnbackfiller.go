@@ -58,14 +58,6 @@ func (cb *columnBackfiller) NextPgWire() (val []byte, code int, err error) {
 	return nil, 0, nil
 }
 
-func (cb *columnBackfiller) SupportPgWire() bool {
-	return false
-}
-
-func (cb *columnBackfiller) IsShortCircuitForPgEncode() bool {
-	return false
-}
-
 func (cb *columnBackfiller) Start(ctx context.Context) context.Context {
 	return nil
 }

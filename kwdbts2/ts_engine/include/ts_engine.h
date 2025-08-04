@@ -61,6 +61,7 @@ class TSEngineV2Impl : public TSEngine {
   EngineOptions options_;
   std::mutex table_mutex_;
   std::mutex snapshot_mutex_;
+  std::shared_mutex wal_level_mutex_;
   std::unordered_map<uint64_t, TsRangeImgrationInfo> snapshots_;
   TsLSNFlushManager flush_mgr_;
   std::unique_ptr<WALMgr> wal_mgr_ = nullptr;

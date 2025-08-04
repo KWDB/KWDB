@@ -48,7 +48,8 @@ TagTable::~TagTable() {
   m_version_mutex_ = nullptr;
 }
 
-int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version, ErrorInfo &err_info) {
+int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
+                     const std::vector<roachpb::NTagIndexInfo>& idx_info, ErrorInfo &err_info) {
   LOG_INFO("Create TagTable table_version:%d", table_version)
   // 1. create table version
   m_version_mgr_ = KNEW TagTableVersionManager(m_db_path_, m_tbl_sub_path_, m_table_id);
@@ -80,6 +81,17 @@ int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version, Erro
   if (initEntityRowHashIndex(MMAP_CREAT_EXCL, err_info) < 0) {
     LOG_ERROR("create EntityRow HashIndex failed, %s", err_info.errmsg.c_str());
     return -1;
+  }
+
+  // 5. create normal hash index
+  if (!idx_info.empty()) {
+    for (auto it = idx_info.begin(); it != idx_info.end(); it++) {
+      const std::vector<uint32_t> tags (it->col_ids().begin(), it->col_ids().end());
+      if (createHashIndex(table_version, err_info, tags, it->index_id()) < 0) {
+        LOG_ERROR("create HashIndex failed.");
+        return -1;
+      }
+    }
   }
 
   tag_ver_obj->setStatus(TAG_STATUS_READY);
@@ -1941,6 +1953,57 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id,
   return InsertTagRecord(payload, group_id, entity_id);
 }
 
+// V3 UpdateFroRedo
+int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice &primary_tag, TsRawPayload &payload) {
+  // 1. search primary tag
+  TagPartitionTable* tag_partition_table = nullptr;
+  TableVersion tbl_version = 0;
+  TagPartitionTableRowID tag_row_no = 0;
+  auto ret = m_index_->get(primary_tag.data, primary_tag.len);
+  if (ret.first != INVALID_TABLE_VERSION_ID) {
+    // found
+    tag_partition_table = m_partition_mgr_->GetPartitionTable(ret.first);
+    if (nullptr == tag_partition_table) {
+      LOG_ERROR("primary tag's tag partition table [%u] does not exist.", ret.first);
+      return -1;
+    }
+    // delete mark
+    tag_partition_table->startRead();
+    tag_partition_table->setDeleteMark(ret.second);
+    tag_partition_table->stopRead();
+    // delete index data
+    auto ret_del = m_index_->remove(primary_tag.data, primary_tag.len);
+
+    // drop normal index
+    tag_partition_table->NtagIndexRWMutexSLock();
+    for (auto ntag_index : tag_partition_table->getMmapNTagHashIndex()) {
+      std::vector<TSSlice> index_cols;
+      size_t len = 0;
+      auto col_ids = ntag_index->getColIDs();
+      for (auto col_id : col_ids) {
+        uint32_t col_size = tag_partition_table->getTagColSize(col_id);
+        uint32_t off = tag_partition_table->getTagColOff(col_id);
+        auto col_val = payload.GetNormalTag(off, col_size);
+        index_cols.emplace_back(col_val);
+        len += col_val.len;
+      }
+      char index_key[len];
+      int num = 0;
+      for(auto r:index_cols){
+        strncpy(&index_key[num], r.data, r.len);
+        num += r.len;
+      }
+      ntag_index->remove(ret.second, ret.first, index_key, len);
+    }
+    tag_partition_table->NtagIndexRWMutexUnLock();
+
+    // delete entity row index data
+    uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | group_id;
+    ret_del = m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id));
+  }
+  return InsertTagRecord(payload, group_id, entity_id);
+}
+
 int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
                     const TSSlice& primary_tag, const TSSlice& old_tag) {
   int rc = 0;
@@ -2071,7 +2134,7 @@ TagTable* CreateTagTable(const std::vector<TagInfo> &tag_schema,
     LOG_ERROR("create tag table out off memory.");
     return nullptr;
   }
-  if (tmp_bt->create(tag_schema, table_version, err_info)< 0) {
+  if (tmp_bt->create(tag_schema, table_version, std::vector<roachpb::NTagIndexInfo>{}, err_info)< 0) {
     LOG_ERROR("failed to create the tag table %s%lu, error: %s",
         dir_path.c_str(), table_id, err_info.errmsg.c_str());
     delete tmp_bt;

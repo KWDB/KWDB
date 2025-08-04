@@ -23,6 +23,9 @@
 #include "ee_statistic_scan_op.h"
 #include "ee_tag_scan_op.h"
 #include "ee_synchronizer_op.h"
+#include "ee_router_outbound_op.h"
+#include "ee_remote_inbound_op.h"
+#include "ee_remote_merge_sort_inbound_op.h"
 
 namespace kwdbts {
 class CreateIterator {
@@ -65,7 +68,7 @@ class CreateTableReader : public CreateIterator {
     CreateReaderTSPostProcessSpec(&post_);
     table_ = tag_reader_.table_;
     iter_ =
-        NewIterator<TableScanOperator>(nullptr, spec_, post_, table_, tag_reader_.iter_, 0);
+        NewIterator<TableScanOperator>(nullptr, spec_, post_, table_, 0);
   }
 
   void TearDown() {
@@ -83,7 +86,7 @@ class CreateDistinct : public CreateIterator {
     table_reader_.SetUp(ctx, table_id);
     CreateDistinctSpecs(&spec_, &post_);
     table_ = table_reader_.table_;
-    iter_ = NewIterator<DistinctOperator>(nullptr, table_reader_.iter_, spec_,
+    iter_ = NewIterator<DistinctOperator>(nullptr, spec_,
                                                post_, table_, 0);
   }
 
@@ -105,7 +108,7 @@ class CreateAggregate : public CreateIterator {
     table_reader_.SetUp(ctx, table_id);
     CreateAggSpecs(&spec_, &post_);
     table_ = table_reader_.table_;
-    iter_ = NewIterator<HashAggregateOperator>(nullptr, table_reader_.iter_, spec_,
+    iter_ = NewIterator<HashAggregateOperator>(nullptr, spec_,
                                                post_, table_, 0);
   }
 
@@ -127,7 +130,7 @@ class CreateSort : public CreateIterator {
     CreateSortSpecs(&spec_, &post_);
     table_ = table_reader_.table_;
     iter_ =
-        NewIterator<SortOperator>(nullptr, table_reader_.iter_, spec_, post_, table_, 0);
+        NewIterator<SortOperator>(nullptr, spec_, post_, table_, 0);
   }
 
   void TearDown(kwdbContext_p ctx) {
@@ -146,8 +149,8 @@ class CreateSynchronizerIterator : public CreateIterator {
     table_reader_.SetUp(ctx, table_id);
     CreateMergeSpecs(&spec_, &post_);
     table_ = table_reader_.table_;
-    iter_ = NewIterator<SynchronizerOperator>(nullptr, table_reader_.iter_, spec_, post_,
-                                              table_, 0);
+    // iter_ = NewIterator<SynchronizerOperator>(nullptr, spec_, post_,
+    //                                           table_, 0);
   }
 
   void TearDown() {
@@ -166,7 +169,7 @@ class CreateSortAggregate : public CreateIterator {
     sync_iter_.SetUp(ctx, table_id);
     CreateAggSpecs(&spec_, &post_);
     table_ = sync_iter_.table_;
-    iter_ = NewIterator<OrderedAggregateOperator>(nullptr, sync_iter_.iter_, spec_, post_,
+    iter_ = NewIterator<OrderedAggregateOperator>(nullptr, spec_, post_,
                                                table_, 0);
   }
 
@@ -188,7 +191,7 @@ class CreateNoop : public CreateIterator {
     CreateNoopSpecs(&spec_, &post_);
     table_ = table_reader_.table_;
     iter_ =
-        NewIterator<NoopOperator>(nullptr, table_reader_.iter_, spec_, post_, table_, 0);
+        NewIterator<NoopOperator>(nullptr, spec_, post_, table_, 0);
   }
 
   void TearDown(kwdbContext_p ctx) {
@@ -199,6 +202,68 @@ class CreateNoop : public CreateIterator {
 
   CreateTableReader table_reader_;
   TSNoopSpec *spec_{nullptr};
+};
+
+class CreateSinkOp : public CreateIterator {
+ public:
+  void SetUp(kwdbContext_p ctx, k_uint32 table_id) {
+    tag_reader_.SetUp(ctx, table_id);
+    table_reader_.SetUp(ctx, table_id);
+    table_reader_.iter_->AddDependency(tag_reader_.iter_);
+    CreateSinkSpecs(&spec_, &post_);
+    table_ = table_reader_.table_;
+    TsFetcherCollection *col = nullptr;
+    iter_ =
+        NewIterator<RouterOutboundOperator>(col, spec_, nullptr);
+    iter_->AddDependency(table_reader_.iter_);
+  }
+
+  void TearDown() {
+    table_reader_.TearDown();
+    SafeDeletePointer(spec_);
+    CreateIterator::TearDown();
+  }
+  CreateTagReader tag_reader_;
+  CreateTableReader table_reader_;
+  TSOutputRouterSpec *spec_{nullptr};
+};
+
+class CreateSourceOp : public CreateIterator {
+ public:
+  void SetUp(kwdbContext_p ctx, k_uint32 table_id) {
+    table_reader_.SetUp(ctx, table_id);
+    CreateSourceSpecs(&spec_, &post_);
+    table_ = table_reader_.table_;
+    iter_ = NewIterator<RemoteInboundOperator>(nullptr, spec_, nullptr);
+  }
+
+  void TearDown() {
+    table_reader_.TearDown();
+    SafeDeletePointer(spec_);
+    CreateIterator::TearDown();
+  }
+
+  CreateTableReader table_reader_;
+  TSInputSyncSpec *spec_{nullptr};
+};
+
+class CreateSourceMergeOp : public CreateIterator {
+ public:
+  void SetUp(kwdbContext_p ctx, k_uint32 table_id) {
+    table_reader_.SetUp(ctx, table_id);
+    CreateSourceMergeSpecs(&spec_, &post_);
+    table_ = table_reader_.table_;
+    iter_ = NewIterator<RemoteMergeSortInboundOperator>(nullptr, spec_, nullptr);
+  }
+
+  void TearDown() {
+    table_reader_.TearDown();
+    SafeDeletePointer(spec_);
+    CreateIterator::TearDown();
+  }
+
+  CreateTableReader table_reader_;
+  TSInputSyncSpec *spec_{nullptr};
 };
 
 }  // namespace kwdbts

@@ -1247,6 +1247,7 @@ KStatus TsTable::GetLastRowEntity(EntityResultIndex& entity_id) {
         entity_id.entityGroupId = e_grp.first;
         entity_id.subGroupId = sub_grp->GetID();
         entity_id.entityId = cur_last_entity.second;
+        entity_max_ts = cur_last_entity.first;
       }
     }
   }
@@ -2172,7 +2173,7 @@ KStatus TsTable::GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t 
           partition->GetAllBlockItems(cur_entity_id, block_item_queue);
           for (auto& block_item : block_item_queue) {
             if (partition->GetBlockMinMaxTS(block_item, &min_ts, &max_ts) &&
-                isTimestampWithinSpans({ts_span}, min_ts, max_ts)) {
+                checkTimestampWithSpans({ts_span}, min_ts, max_ts) == TimestampCheckResult::FullyContained) {
               total_rows += block_item->publish_row_count - block_item->getDeletedCount();
             }
           }
@@ -2321,7 +2322,7 @@ KStatus TsTable::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uin
   if (scan_pt_rows * 3 < total_rows || *half_ts < ts_span.begin) {
     *half_ts = partitions_mid_ts[find_min_ts];
   }
-  if (!isTimestampInSpans({ts_span}, *half_ts, *half_ts)) {
+  if (checkTimestampWithSpans({ts_span}, *half_ts, *half_ts) == TimestampCheckResult::NonOverlapping) {
     LOG_ERROR("GetDataVolumeHalfTS faild. range{%lu/%ld - %lu/%ld}, half ts [%ld]",
               begin_hash, ts_span.begin, end_hash, ts_span.end, *half_ts);
     return KStatus::FAIL;
@@ -2585,7 +2586,7 @@ KStatus TsTable::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &para
                                                                 iter, entity_groups_.begin()->second,
                                                                 params.offset, params.limit, params.reverse);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("cannot create offset iterator for entitygroup[%lu], subgroup", entity_groups_.begin()->first);
+    LOG_ERROR("cannot create offset iterator for entitygroup[%lu]", entity_groups_.begin()->first);
     return s;
   }
 

@@ -85,7 +85,7 @@ func (n *explainVecNode) startExec(params runParams) error {
 	}
 
 	distSQLPlanner.FinalizePlan(planCtx, &plan)
-	flows := plan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID)
+	flows := plan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID, distSQLPlanner.gossip)
 	flowCtx := makeFlowCtx(planCtx, plan, params)
 	flowCtx.Cfg.ClusterID = &distSQLPlanner.rpcCtx.ClusterID
 

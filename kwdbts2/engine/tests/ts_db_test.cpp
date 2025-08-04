@@ -29,13 +29,13 @@ class TestDB : public ::testing::Test {
     rmdir(kDbPath.c_str());
     opts_.wal_level = 0;
     opts_.wal_buffer_size = 1;
-    opts_.wal_file_size = 4;
-    opts_.wal_file_in_group = 3;
     opts_.thread_pool_size = 2;
     opts_.task_queue_size = 10;
     opts_.lg_opts = TsLogOptions{};
     opts_.is_single_node = true;
     opts_.buffer_pool_size = 1024;
+    opts_.brpc_addr = TSSlice{"127.0.0.1:27257", 13};
+    opts_.cluster_id = TSSlice{"00000000-0000-0000-0000-000000000000", 36};
     ts_db_ = nullptr;
     g_go_start_service = false;
   }

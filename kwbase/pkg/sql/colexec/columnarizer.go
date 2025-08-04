@@ -156,6 +156,11 @@ func (c *Columnarizer) Run(context.Context) execinfra.RowStats {
 	return execinfra.RowStats{}
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (c *Columnarizer) RunShortCircuit(context.Context, execinfra.Processor) error {
+	return nil
+}
+
 var _ Operator = &Columnarizer{}
 var _ execinfrapb.MetadataSource = &Columnarizer{}
 

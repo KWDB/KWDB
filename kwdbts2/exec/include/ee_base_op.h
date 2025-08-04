@@ -7,18 +7,22 @@
 // THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
 // KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
 // NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
-// Mulan PSL v2 for more details. Created by liguoliang on 2022/07/18.
+// Mulan PSL v2 for more details.
 #pragma once
 
 #include <memory>
 #include <queue>
+#include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "cm_kwdb_context.h"
 #include "ee_data_chunk.h"
 #include "ee_global.h"
+#include "ee_operator_type.h"
 #include "ee_row_batch.h"
+#include "ee_rpc_parser.h"
 #include "er_api.h"
 #include "explain_analyse.h"
 
@@ -31,8 +35,9 @@ struct GroupByColumnInfo {
 };
 
 class TABLE;
-
+class PipelineGroup;
 class Field;
+class Processors;
 
 /**
  * @brief   The base class of the operator module
@@ -43,9 +48,12 @@ class BaseOperator {
  public:
   BaseOperator() {}
 
-  explicit BaseOperator(TsFetcherCollection* collection, TABLE* table,
-                        int32_t processor_id)
-      : table_(table), processor_id_(processor_id), collection_(collection) {
+  BaseOperator(TsFetcherCollection* collection, TABLE* table,
+               TSPostProcessSpec* post, int32_t processor_id)
+      : table_(table),
+        processor_id_(processor_id),
+        post_(post),
+        collection_(collection) {
     if (nullptr != collection) {
       collection->emplace(processor_id, &fetcher_);
     }
@@ -55,7 +63,12 @@ class BaseOperator {
       : table_(other.table_),
         processor_id_(other.processor_id_),
         output_encoding_(other.output_encoding_),
-        collection_(other.collection_) {
+        post_(other.post_),
+        collection_(other.collection_),
+        rpcSpecInfo_(other.rpcSpecInfo_),
+        pipeline_(other.pipeline_),
+        is_final_operator_(other.is_final_operator_),
+        use_query_short_circuit_(other.use_query_short_circuit_) {
     if (nullptr != collection_) {
       collection_->emplace(processor_id_, &fetcher_);
     }
@@ -80,26 +93,99 @@ class BaseOperator {
 
   BaseOperator& operator=(BaseOperator&&) = delete;
 
+  k_int32 GetProcessorId() { return processor_id_; }
+
+  virtual enum OperatorType Type() = 0;
+
   virtual EEIteratorErrCode Init(kwdbContext_p ctx) = 0;
 
   virtual EEIteratorErrCode Start(kwdbContext_p ctx) = 0;
+
+  virtual EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) = 0;
+
+  virtual EEIteratorErrCode Reset(kwdbContext_p ctx) = 0;
+
+  virtual EEIteratorErrCode Close(kwdbContext_p ctx) = 0;
 
   // get next batch data
   virtual EEIteratorErrCode Next(kwdbContext_p ctx) {
     return EEIteratorErrCode::EE_END_OF_RECORD;
   }
 
-  virtual EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
-    return EEIteratorErrCode::EE_END_OF_RECORD;
+  bool isClone() { return is_clone_; }
+
+  void SetUseQueryShortCircuit(bool use) { use_query_short_circuit_ = use; }
+  bool IsUseQueryShortCircuit() { return use_query_short_circuit_; }
+
+  virtual bool isSink() { return false; }
+
+  virtual bool isSource() { return false; }
+
+  virtual k_bool HasOutput() { return true; }
+
+  virtual void PushFinish(EEIteratorErrCode code, k_int32 stream_id,
+                          const EEPgErrorInfo& pgInfo) {}
+
+  virtual void PrintFinishLog() {}
+
+  virtual KStatus BuildPipeline(PipelineGroup* pipeline, Processors* processor);
+
+  virtual KStatus CreateInputChannel(kwdbContext_p ctx,
+                                     std::vector<BaseOperator*>& new_operators);
+
+  virtual KStatus CreateOutputChannel(
+      kwdbContext_p ctx, std::vector<BaseOperator*>& new_operators);
+
+  virtual KStatus CreateTopOutputChannel(kwdbContext_p ctx,
+                                         std::vector<BaseOperator*>& operators);
+
+  void BelongsToPipeline(PipelineGroup* pipeline) { pipeline_ = pipeline; }
+
+  virtual void AddDependency(BaseOperator* children) {
+    childrens_.push_back(children);
+    children->parent_operators_.push_back(this);
   }
 
-  virtual EEIteratorErrCode Reset(kwdbContext_p ctx) {
-    return EEIteratorErrCode::EE_OK;
+  virtual void AddParent(BaseOperator* parent) {
+    parent_operators_.push_back(parent);
   }
+
+  virtual void RemoveDependency(BaseOperator* children) {
+    childrens_.erase(
+        std::remove(childrens_.begin(), childrens_.end(), children),
+        childrens_.end());
+    children->parent_operators_.erase(
+        std::remove(children->parent_operators_.begin(),
+                    children->parent_operators_.end(), this),
+        children->parent_operators_.end());
+  }
+
+  BaseOperator* GetInboundOperator() { return childrens_.back(); }
+
+  void BuildRpcSpec(const TSProcessorSpec& tsProcessorSpec) {
+    rpcSpecInfo_.BuildRpcSpec(tsProcessorSpec);
+  }
+
+  RpcSpecResolve& GetRpcSpecInfo() { return rpcSpecInfo_; }
+
+  std::set<k_int32>& GetOutputStreamIds() { return rpcSpecInfo_.output_ids_; }
+
+  std::set<k_int32>& GetInputStreamIds() { return rpcSpecInfo_.input_ids_; }
+
+  bool HasChildren() { return !childrens_.empty(); }
+
+  const char* GetTypeName();
+  std::vector<BaseOperator*>& GetChildren() { return childrens_; }
+
+  std::vector<BaseOperator*>& GetParent() { return parent_operators_; }
+
+  virtual KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+                            EEIteratorErrCode code = EEIteratorErrCode::EE_OK) {
+    return KStatus::FAIL;
+  }
+  virtual KStatus PullChunk(DataChunkPtr& chunk) { return KStatus::FAIL; }
 
   virtual RowBatch* GetRowBatch(kwdbContext_p ctx) { return nullptr; }
-
-  virtual KStatus Close(kwdbContext_p ctx) = 0;
 
   virtual Field** GetRender() { return renders_; }
 
@@ -127,9 +213,15 @@ class BaseOperator {
 
   void SetOutputEncoding(bool encode) { output_encoding_ = encode; }
 
+  bool GetOutputEncoding() { return output_encoding_; }
+
+  void SetFinalOperator(bool is_final) { is_final_operator_ = is_final; }
+  bool IsFinalOperator() { return is_final_operator_; }
+
  protected:
   inline void constructDataChunk(k_uint32 capacity = 0) {
-    current_data_chunk_ = std::make_unique<DataChunk>(output_col_info_, output_col_num_, capacity);
+    current_data_chunk_ = std::make_unique<DataChunk>(
+        output_col_info_, output_col_num_, capacity);
     if (current_data_chunk_->Initialize() != true) {
       current_data_chunk_ = nullptr;
       return;
@@ -137,14 +229,16 @@ class BaseOperator {
   }
   inline void constructFilterDataChunk(ColumnInfo* column_info, k_int32 num,
                                        k_uint32 capacity = 0) {
-    current_filter_data_chunk_ = std::make_unique<DataChunk>(column_info, num, capacity);
+    current_filter_data_chunk_ =
+        std::make_unique<DataChunk>(column_info, num, capacity);
     if (current_filter_data_chunk_->Initialize() != true) {
       current_filter_data_chunk_ = nullptr;
       return;
     }
   }
 
-  inline EEIteratorErrCode InitOutputColInfo(std::vector<Field*>& output_fields) {
+  inline EEIteratorErrCode InitOutputColInfo(
+      std::vector<Field*>& output_fields) {
     output_col_num_ = output_fields.size();
     output_col_info_ = KNEW ColumnInfo[output_col_num_];
     if (output_col_info_ == nullptr) {
@@ -161,10 +255,12 @@ class BaseOperator {
     return EEIteratorErrCode::EE_OK;
   }
 
+  k_int32 processor_id_{0};                      // operator ID
+  std::vector<BaseOperator*> childrens_;         // input iterator
+  std::vector<BaseOperator*> parent_operators_;  // parent operator
   Field** renders_{nullptr};  // the operator projection column of this layer
   k_uint32 num_{0};           // count of projected column
   TABLE* table_{nullptr};     // table object
-  k_int32 processor_id_{0};   // operator ID
   // output columns of the current layer，input columns of Parent
   // operator(FieldNum)
   std::vector<Field*> output_fields_;
@@ -178,8 +274,16 @@ class BaseOperator {
 
   bool is_clone_{false};
   bool output_encoding_{false};
+  bool is_final_operator_{false};
+
+  RpcSpecResolve rpcSpecInfo_;
+
+  PipelineGroup* pipeline_{nullptr};
+
+  bool use_query_short_circuit_{false};
 
  public:
+  TSPostProcessSpec* post_{nullptr};
   DataChunkPtr temporary_data_chunk_;
   OperatorFetcher fetcher_;
   TsFetcherCollection* collection_{nullptr};

@@ -45,13 +45,12 @@ struct EngineOptions {
   std::string db_path;
   // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
   uint8_t wal_level = WALMode::FLUSH;
-  // WAL file size, default is 64Mb
-  uint16_t wal_file_size = 64;
-  uint16_t wal_file_in_group = 1;
   uint16_t wal_buffer_size = 4;
   uint16_t thread_pool_size = 10;
   uint16_t task_queue_size = 1024;
   uint32_t buffer_pool_size = 4096;  // NEWPOOL_MAX_SIZE (4096)
+  std::string brpc_addr = "127.0.0.1:27257";
+  std::string cluster_id = "00000000-0000-0000-0000-000000000000";
   // 1MiB / 4KiB(BLOCK_SIZE) = 256
   [[nodiscard]] uint32_t GetBlockNumPerFile() const {
     return UINT32_MAX;

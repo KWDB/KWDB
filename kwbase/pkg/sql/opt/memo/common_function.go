@@ -715,11 +715,11 @@ func CheckAggCanParallel(expr opt.Expr) (bool, bool) {
 }
 
 // GetBlockFilter get block filters from ordinary col filters.
-func GetBlockFilter(expr opt.Expr, tabID opt.TableID) FiltersExpr {
+func GetBlockFilter(expr opt.Expr, tabID opt.TableID, memo *Memo) FiltersExpr {
 	var blockFilter FiltersExpr
 	if filters, ok := expr.(*FiltersExpr); ok {
 		for _, filter := range *filters {
-			if shouldAddBlockFilter(filter, tabID) {
+			if shouldAddBlockFilter(filter, tabID, memo) {
 				blockFilter = append(blockFilter, filter)
 			}
 		}
@@ -727,15 +727,22 @@ func GetBlockFilter(expr opt.Expr, tabID opt.TableID) FiltersExpr {
 	return blockFilter
 }
 
-func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID) bool {
+func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID, memo *Memo) bool {
 	// TightConstraints is true if filter can be converted to constraints and filter is exactly equivalent to the constraints.
 	// filters can convert to blockFilter if TightConstraints is true
-	if !filter.scalar.TightConstraints {
+	// colID can only be got when Constraints is non-empty and Constraint.Columns is non-empty.
+	if !filter.scalar.TightConstraints ||
+		filter.scalar.Constraints.Length() <= 0 ||
+		filter.scalar.Constraints.Constraint(0).Columns.Count() <= 0 {
 		return false
 	}
+	// we only need to use firstConstraints,
+	// as otherConstraints is currently unused in the code and reserved for future feature extensions.
+	// since a filter can only operate on a single column, we only get first column.
 	colID := filter.scalar.Constraints.Constraint(0).Columns.Get(0).ID()
-	// we should exclude it if column is timestamp column.
-	return colID != tabID.ColumnID(0)
+	// we need exclude it if column is timestamp column.
+	// filters contains filter of tag if it can not push to AE, we need to exclude it.
+	return colID != tabID.ColumnID(0) && !memo.metadata.ColumnMeta(colID).IsTag()
 }
 
 // GetTagIndexKeyAndFilter get tag index key and tag index filters by metadata.

@@ -139,6 +139,11 @@ func (b *backfiller) Run(ctx context.Context) execinfra.RowStats {
 	return execinfra.RowStats{}
 }
 
+// RunShortCircuit is part of the Processor interface.
+func (b *backfiller) RunShortCircuit(context.Context, execinfra.TSReader) error {
+	return nil
+}
+
 func (b *backfiller) doRun(ctx context.Context) *execinfrapb.ProducerMetadata {
 	if err := b.out.Init(&execinfrapb.PostProcessSpec{}, nil, b.flowCtx.NewEvalCtx(), b.output); err != nil {
 		return &execinfrapb.ProducerMetadata{Err: err}

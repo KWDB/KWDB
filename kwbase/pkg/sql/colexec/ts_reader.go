@@ -62,6 +62,9 @@ type TsReaderOp struct {
 	types []types.T
 	// Rev   []byte
 	Rcv tse.TsDataChunkToGo
+
+	// tsInfo is information for ae.
+	tsInfo execinfrapb.TsInfo
 }
 
 var _ Operator = &TsReaderOp{}
@@ -88,9 +91,10 @@ func NewTsReaderOp(
 	types []types.T,
 	sid execinfrapb.StreamID,
 	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsInfo execinfrapb.TsInfo,
 ) Operator {
 	tro := &TsReaderOp{sid: sid, tsProcessorSpecs: tsProcessorSpecs, tsHandle: nil,
-		FlowCtx: flowCtx, EvalCtx: flowCtx.NewEvalCtx(), Ctx: ctx, types: types,
+		FlowCtx: flowCtx, EvalCtx: flowCtx.NewEvalCtx(), Ctx: ctx, types: types, tsInfo: tsInfo,
 	}
 	if sp := opentracing.SpanFromContext(flowCtx.EvalCtx.Ctx()); sp != nil && tracing.IsRecording(sp) {
 		tro.collected = true
@@ -156,6 +160,8 @@ func (tro *TsReaderOp) Init() {
 		for j := len(tsSpecs) - 1; j >= 0; j-- {
 			tsFlowSpec.Processors = append(tsFlowSpec.Processors, tsSpecs[j])
 		}
+		tsFlowSpec.IsDist = tro.tsInfo.IsDist
+		tsFlowSpec.Processors[len(tsFlowSpec.Processors)-1].FinalTsProcessor = true
 		msg, err := protoutil.Marshal(tsFlowSpec)
 		if err != nil {
 			execerror.VectorizedInternalPanic(err)

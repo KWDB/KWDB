@@ -20,7 +20,7 @@
 #include "ee_base_op.h"
 #include "ee_scan_helper.h"
 #include "ee_scan_row_batch.h"
-#include "ee_flow_param.h"
+#include "ee_scan_parser.h"
 #include "kwdb_consts.h"
 #include "kwdb_type.h"
 #include "ee_global.h"
@@ -47,9 +47,9 @@ class TableScanOperator : public BaseOperator {
   friend class ScanHelper;
   friend class WindowHelper;
   TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post, TABLE* table,
-                                        BaseOperator* input, int32_t processor_id);
+                                        int32_t processor_id);
 
-  TableScanOperator(const TableScanOperator&, BaseOperator* input, int32_t processor_id);
+  TableScanOperator(const TableScanOperator&, int32_t processor_id);
 
   ~TableScanOperator() override;
 
@@ -63,9 +63,9 @@ class TableScanOperator : public BaseOperator {
 
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
-  KStatus Close(kwdbContext_p ctx) override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
-  [[nodiscard]] BaseOperator* GetInput() const { return input_; }
+  enum OperatorType Type() override {return OperatorType::OPERATOR_TABLE_SCAN;}
 
   BaseOperator* Clone() override;
 
@@ -81,7 +81,6 @@ class TableScanOperator : public BaseOperator {
 
  public:
   TSReaderSpec* spec_{nullptr};
-  TSPostProcessSpec* post_{nullptr};
 
  protected:
   k_uint32 schema_id_{0};
@@ -89,10 +88,9 @@ class TableScanOperator : public BaseOperator {
   std::vector<KwTsSpan> ts_kwspans_;
   k_uint32 limit_{0};
   k_uint32 offset_{0};
-  ReaderPostResolve param_;
+  TsTableScanParser param_;
   Field* filter_{nullptr};
   StorageHandler *handler_{nullptr};
-  BaseOperator* input_{nullptr};  // input iterator
   ScanRowBatch* row_batch_{nullptr};
 
   ScanHelper *helper_{nullptr};

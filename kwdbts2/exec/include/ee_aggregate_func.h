@@ -206,7 +206,6 @@ class AggregateFunc {
       k_double64 src_val, dest_val;
       if (src_is_double) {
         src_val = *reinterpret_cast<k_double64*>(src + sizeof(k_bool));
-        std::memcpy(dest, &src_is_double, sizeof(k_bool));
       } else {
         k_int64 src_ival = *reinterpret_cast<k_int64*>(src + sizeof(k_bool));
         src_val = (k_double64) src_ival;
@@ -214,7 +213,6 @@ class AggregateFunc {
 
       if (dest_is_double) {
         dest_val = *reinterpret_cast<k_double64*>(dest + sizeof(k_bool));
-        std::memcpy(dest, &dest_is_double, sizeof(k_bool));
       } else {
         k_int64 dest_ival = *reinterpret_cast<k_int64*>(dest + sizeof(k_bool));
         dest_val = (k_double64) dest_ival;

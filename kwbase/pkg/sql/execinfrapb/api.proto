@@ -73,6 +73,17 @@ message FlowSpec {
 
   repeated ProcessorSpec processors = 2 [(gogoproto.nullable) = false];
   repeated TSProcessorSpec tsProcessors = 4 [(gogoproto.nullable) = false];
+  optional TsInfo tsInfo = 5 [(gogoproto.nullable) = false];
+}
+
+// TsInfo is info for AE.
+message TsInfo {
+  optional int64 queryID = 1[(gogoproto.nullable) = false];
+  repeated string brpcAddrs = 2;
+  // UsePipeline is true represents AE using pipeline mode.
+  optional bool usePipeline = 3 [(gogoproto.nullable) = false];
+  optional bool isDist = 4 [(gogoproto.nullable) = false];
+  optional bool useQueryShortCircuit = 5 [(gogoproto.nullable) = false];
 }
 
 // EvalContext is used to marshall some planner.EvalContext members.

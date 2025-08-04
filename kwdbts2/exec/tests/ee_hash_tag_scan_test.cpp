@@ -13,6 +13,7 @@
 #include "ee_dml_exec.h"
 #include "ee_op_test_base.h"
 #include "ee_op_spec_utils.h"
+#include "ee_data_chunk.h"
 
 namespace kwdbts {
 
@@ -315,6 +316,7 @@ class TestHashTagScanOp : public OperatorTestBase {
     TSFlowSpec flow;
     HashTagScanSpec hash_tag_scan_spec(table_id_, access_mode);
     hash_tag_scan_spec.PrepareFlowSpec(flow);
+    hash_tag_scan_spec.PrepareInputOutputSpec(flow);
 
     size_t size = flow.ByteSizeLong();
 

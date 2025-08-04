@@ -131,6 +131,9 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 			return recv.commErr
 		}
 	}
+	if len(n.subqueryPlans) > 0 {
+		planCtx.haveSubquery = true
+	}
 
 	plan, err := makePhysicalPlan(planCtx, distSQLPlanner, n.plan)
 	if err != nil {
@@ -212,7 +215,7 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 		}
 		diagram.AddSpans(spans, rowexec.BuildResponseSpan(distSQLPlanner.RowStats))
 	} else {
-		flows := plan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID)
+		flows := plan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID, distSQLPlanner.gossip)
 		showInputTypes := n.options.Flags[tree.ExplainFlagTypes]
 		diagram, err = execinfrapb.GeneratePlanDiagram(params.p.stmt.String(), flows, showInputTypes)
 		if err != nil {

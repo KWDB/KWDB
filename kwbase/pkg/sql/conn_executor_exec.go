@@ -1376,6 +1376,7 @@ func (ex *connExecutor) execWithDistSQLEngine(
 		) {
 			return recv.bytesRead, recv.rowsRead, recv.commErr
 		}
+		planCtx.haveSubquery = true
 	}
 	recv.discardRows = planner.discardRows
 	// We pass in whether or not we wanted to distribute this plan, which tells

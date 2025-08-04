@@ -110,9 +110,6 @@ typedef struct TsLogOptions {
 // TSOptions contains local database options.
 typedef struct {
   uint8_t wal_level;
-  uint16_t wal_file_size;
-  uint16_t wal_file_in_group;
-  uint16_t wal_buffer_size;
   bool must_exist;
   bool read_only;
   TSSlice extra_options;
@@ -121,6 +118,8 @@ typedef struct {
   uint32_t buffer_pool_size;
   TsLogOptions lg_opts;
   bool is_single_node;
+  TSSlice brpc_addr;
+  TSSlice cluster_id;
   const char* engine_version;
 } TSOptions;
 
@@ -203,6 +202,7 @@ typedef struct _QueryInfo {
   // when the switch is on and the server starts with single node mode.
   void* relBatchData;
   int32_t relRowCount;
+  TSSlice sql;
   DataInfo vectorize_data;
 } QueryInfo;
 
