@@ -74,11 +74,11 @@ class TsEntitySegmentBlockItemFileBuilder {
   uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   TsBlockItemFileHeader header_;
-  bool override_ = false;
+  size_t file_size_ = 0;
 
  public:
-  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path, uint64_t file_number, bool override)
-      : file_path_(file_path), file_number_(file_number), override_(override) {
+  explicit TsEntitySegmentBlockItemFileBuilder(const string& file_path, uint64_t file_number, size_t file_size)
+      : file_path_(file_path), file_number_(file_number), file_size_(file_size) {
     memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
@@ -95,11 +95,11 @@ class TsEntitySegmentBlockFileBuilder {
   uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
-  bool override_ = false;
+  size_t file_size_ = 0;
 
  public:
-  explicit TsEntitySegmentBlockFileBuilder(const string& file_path, uint64_t file_number, bool override)
-      : file_path_(file_path), file_number_(file_number), override_(override) {
+  explicit TsEntitySegmentBlockFileBuilder(const string& file_path, uint64_t file_number, size_t file_size)
+      : file_path_(file_path), file_number_(file_number), file_size_(file_size) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
@@ -116,11 +116,11 @@ class TsEntitySegmentAggFileBuilder {
   uint64_t file_number_;
   std::unique_ptr<TsAppendOnlyFile> w_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
-  bool override_ = false;
+  size_t file_size_ = 0;
 
  public:
-  explicit TsEntitySegmentAggFileBuilder(const string& file_path, uint64_t file_number, bool override)
-      : file_path_(file_path), file_number_(file_number), override_(override) {
+  explicit TsEntitySegmentAggFileBuilder(const string& file_path, uint64_t file_number, size_t file_size)
+      : file_path_(file_path), file_number_(file_number), file_size_(file_size) {
     memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
   }
 
