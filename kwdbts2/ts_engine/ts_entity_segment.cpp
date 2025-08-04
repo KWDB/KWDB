@@ -676,7 +676,8 @@ TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, TsVersionUpd
     : dir_path_(root),
       meta_mgr_(root, info.header_e_file_number, info.header_b_size),
       block_file_(root / block_data_file_name, info.block_file_size),
-      agg_file_(root / block_agg_file_name, info.agg_file_size) {
+      agg_file_(root / block_agg_file_name, info.agg_file_size),
+      info_(info) {
   Open();
 }
 
