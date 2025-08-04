@@ -117,11 +117,24 @@ class TsBlockSpanSortedIterator {
 
   TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan> block_span) {
     if (!is_reverse_) {
-      return {block_span->GetEntityID(), block_span->GetTS(0), *block_span->GetLSNAddr(0), block_span, 0};
+      return {block_span->GetEntityID(), block_span->GetFirstTS(), block_span->GetFirstLSN(), block_span, 0};
     } else {
       int row_idx = block_span->GetRowNum() - 1;
-      return {block_span->GetEntityID(), block_span->GetTS(row_idx), *block_span->GetLSNAddr(row_idx), block_span,
+      return {block_span->GetEntityID(), block_span->GetLastTS(), block_span->GetLastLSN(), block_span,
               row_idx};
+    }
+  }
+
+  inline void getTsAndLSN(std::shared_ptr<TsBlockSpan> block_span, int row_idx, timestamp64& row_ts, TS_LSN& row_lsn) {
+    if (row_idx == 0) {
+      row_ts = block_span->GetFirstTS();
+      row_lsn = block_span->GetFirstLSN();
+    } else if (row_idx == block_span->GetRowNum() - 1) {
+      row_ts = block_span->GetLastTS();
+      row_lsn = block_span->GetLastLSN();
+    } else {
+      row_ts = block_span->GetTS(row_idx);
+      row_lsn = *block_span->GetLSNAddr(row_idx);
     }
   }
 
@@ -170,14 +183,17 @@ class TsBlockSpanSortedIterator {
     // find the intersection of two BlockSpan.
     // find the data location in the first BlockSpan that is larger than
     // the timestamp of the first row of data in the second BlockSpan.
+    timestamp64 cur_span_end_ts;
+    TS_LSN cur_span_end_lsn;
     int end_row_idx, row_idx;
     if (!is_reverse_) {
-      end_row_idx = cur_block_span->GetRowNum() - 1;
+      cur_span_end_ts = cur_block_span->GetLastTS();
+      cur_span_end_lsn = cur_block_span->GetLastLSN();
     } else {
-      end_row_idx = 0;
+      cur_span_end_ts = cur_block_span->GetFirstTS();
+      cur_span_end_lsn = cur_block_span->GetFirstLSN();
     }
-    TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(end_row_idx),
-                                                *cur_block_span->GetLSNAddr(end_row_idx)};
+    TsBlockSpanRowInfo cur_span_end_row_info = {cur_block_span->GetEntityID(), cur_span_end_ts, cur_span_end_lsn};
     if (!is_reverse_ && cur_span_end_row_info <= next_span_row_info) {
       row_idx = cur_block_span->GetRowNum();
     } else if (is_reverse_ && cur_span_end_row_info >= next_span_row_info) {
@@ -186,14 +202,16 @@ class TsBlockSpanSortedIterator {
       binarySearch(next_span_row_info, cur_block_span, row_idx);
     }
 
+    timestamp64 cur_span_row_ts;
+    TS_LSN cur_span_row_lsn;
     if (dedup_rule_ == DedupRule::OVERRIDE) {
       auto iter = span_row_infos_.begin();
       TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
       if (!is_reverse_) {
         int prev_row_idx = row_idx - 1;
         assert(prev_row_idx >= 0);
-        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(prev_row_idx),
-                                            *cur_block_span->GetLSNAddr(prev_row_idx)};
+        getTsAndLSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts, cur_span_row_lsn};
         if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
           if (prev_row_idx != 0) {
             cur_block_span->SplitFront(prev_row_idx, block_span);
@@ -211,8 +229,8 @@ class TsBlockSpanSortedIterator {
       } else {
         int next_row_idx = row_idx + 1;
         assert(next_row_idx <= cur_block_span->GetRowNum() - 1);
-        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(next_row_idx),
-                                            *cur_block_span->GetLSNAddr(next_row_idx)};
+        getTsAndLSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts, cur_span_row_lsn};
         cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
         if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
           // need dedup
@@ -258,8 +276,8 @@ class TsBlockSpanSortedIterator {
       if (!is_reverse_) {
         int prev_row_idx = row_idx - 1;
         assert(prev_row_idx >= 0);
-        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(prev_row_idx),
-                                            *cur_block_span->GetLSNAddr(prev_row_idx)};
+        getTsAndLSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts, cur_span_row_lsn};
         cur_block_span->SplitFront(row_idx, block_span);
         if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
           // need dedup
@@ -271,8 +289,8 @@ class TsBlockSpanSortedIterator {
       } else {
         int next_row_idx = row_idx + 1;
         assert(next_row_idx <= cur_block_span->GetRowNum() - 1);
-        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_block_span->GetTS(next_row_idx),
-                                            *cur_block_span->GetLSNAddr(next_row_idx)};
+        getTsAndLSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts, cur_span_row_lsn};
         if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
           if (next_row_idx != span_row_infos_.begin()->row_idx) {
             cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - next_row_idx, block_span);
