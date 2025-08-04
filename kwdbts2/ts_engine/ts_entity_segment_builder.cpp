@@ -41,7 +41,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
 
 KStatus TsEntitySegmentBlockItemFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -70,7 +70,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
 
 KStatus TsEntitySegmentBlockFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -94,7 +94,7 @@ KStatus TsEntitySegmentBlockFileBuilder::AppendBlock(const TSSlice& block, uint6
 
 KStatus TsEntitySegmentAggFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
