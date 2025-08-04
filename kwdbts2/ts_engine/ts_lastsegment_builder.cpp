@@ -212,7 +212,7 @@ void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
   max_entity_id_ = std::max(max_entity_id_, span->GetEntityID());
   min_entity_id_ = std::min(min_entity_id_, span->GetEntityID());
   max_ts_ = std::max(max_ts_, span->GetLastTS());
-  min_ts_ = std::min(max_ts_, span->GetFirstTS());
+  min_ts_ = std::min(min_ts_, span->GetFirstTS());
   if (first_ts_ == std::numeric_limits<timestamp64>::max()) {
     first_ts_ = span->GetFirstTS();
   }
