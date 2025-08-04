@@ -59,6 +59,32 @@ enum class BitmapCompAlg : uint8_t {
   kCompressed = 1,
 };
 
+struct TsSliceGuard {
+ private:
+  TSSlice slice;
+  std::string str;
+
+ public:
+  TsSliceGuard() : slice{nullptr, 0} {}
+  explicit TsSliceGuard(TSSlice s) : slice{s} {}
+  explicit TsSliceGuard(std::string&& str_) : str(std::move(str_)) {
+    slice.data = str.data();
+    slice.len = str.size();
+  }
+
+  TsSliceGuard(const TsSliceGuard&) = delete;
+  TsSliceGuard& operator=(const TsSliceGuard&) = delete;
+
+  TsSliceGuard(TsSliceGuard&& other) = default;
+  TsSliceGuard& operator=(TsSliceGuard&& other) = default;
+
+  TSSlice AsSlice() const { return slice; }
+  std::string_view AsStringView() const { return {slice.data, slice.len}; }
+  size_t size() const { return slice.len; }
+  const char* data() const { return slice.data; }
+  char* data() { return slice.data; }
+};
+
 class TsCompressorBase;
 class GenCompressorBase;
 class CompressorManager {
@@ -107,9 +133,8 @@ class CompressorManager {
   bool CompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, std::string* output,
                     TsCompAlg fisrt, GenCompAlg second) const;
   bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
-  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, TSSlice* out_slice,
-                      std::string* output) const;
-  bool DecompressVarchar(TSSlice input, TSSlice* out_slice, std::string* output) const;
+  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, TsSliceGuard* out) const;
+  bool DecompressVarchar(TSSlice input, TsSliceGuard* out) const;
 };
 
 }  //  namespace kwdbts

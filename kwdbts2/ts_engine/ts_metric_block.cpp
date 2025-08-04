@@ -123,21 +123,19 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
   TSSlice lsn_slice;
   lsn_slice.data = compressed_data.data;
   lsn_slice.len = compress_info.lsn_len;
-  std::string decompressed_lsn_buffer;
-
-  TSSlice out;
-  bool ok = mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &out, &decompressed_lsn_buffer);
+  TsSliceGuard out_lsn_guard;
+  bool ok = mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &out_lsn_guard);
   if (!ok) {
     LOG_ERROR("decompress lsn error");
     return FAIL;
   }
 
-  if (decompressed_lsn_buffer.size() != compress_info.row_count * sizeof(TS_LSN)) {
+  if (out_lsn_guard.size() != compress_info.row_count * sizeof(TS_LSN)) {
     LOG_ERROR("decompress lsn size not match");
     return FAIL;
   }
   std::vector<TS_LSN> lsn_vec(compress_info.row_count);
-  std::memcpy(lsn_vec.data(), out.data, out.len);
+  std::memcpy(lsn_vec.data(), out_lsn_guard.data(), out_lsn_guard.size());
 
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks;
   for (int i = 0; i < schema.size(); i++) {

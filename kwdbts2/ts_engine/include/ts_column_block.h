@@ -18,6 +18,7 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_compressor.h"
 
 namespace kwdbts {
 
@@ -27,18 +28,6 @@ struct TsColumnCompressInfo {
   int fixdata_len;
   int vardata_len;
   int row_count;
-};
-
-struct TsSliceGuard {
-  TSSlice slice;
-  std::string str;
-
-  TsSliceGuard() : slice{nullptr, 0} {}
-  TsSliceGuard(TSSlice s, std::string&& str_) : slice(s), str(std::move(str_)) {}
-  explicit TsSliceGuard(std::string&& str_) : str(std::move(str_)) {
-    slice.data = str.data();
-    slice.len = str.size();
-  }
 };
 
 class TsColumnBlock {
@@ -67,7 +56,7 @@ class TsColumnBlock {
 
   size_t GetRowNum() const { return count_; }
   const AttributeInfo& GetColSchama() const { return col_schema_; }
-  char* GetColAddr() { return fixlen_guard_.slice.data; }
+  char* GetColAddr() { return fixlen_guard_.data(); }
   KStatus GetColBitmap(TsBitmap& bitmap);
   KStatus GetValueSlice(int row_num, TSSlice& value);
 };

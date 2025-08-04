@@ -30,7 +30,6 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "mmap/mmap_entity_block_meta.h"
-#include "ts_arena.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"
@@ -50,9 +49,7 @@ static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockInd
                              TsLastSegmentBlockInfo* info) {
   assert(info != nullptr);
   TSSlice result;
-  Arena arena;
-  char* buf = arena.Allocate(index.length);
-  auto s = file->Read(index.info_offset, index.length, &result, buf);
+  auto s = file->Read(index.info_offset, index.length, &result, nullptr);
   if (s != SUCCESS) {
     return s;
   }
@@ -160,9 +157,11 @@ class TsLastBlock : public TsBlock {
   TsLastSegmentBlockIndex block_index_;
   TsLastSegmentBlockInfo block_info_;
 
+  TsSliceGuard entity_ids_;
+  TsSliceGuard timestamps_;
+  TsSliceGuard lsn_;
   class ColumnCache {
    private:
-    std::shared_mutex mu_;
 
     TsRandomReadFile* file_;
     TsLastSegmentBlockInfo* block_info_;
@@ -177,14 +176,6 @@ class TsLastBlock : public TsBlock {
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
         : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
     KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
-      {
-        std::shared_lock lk{mu_};
-        if (column_blocks_[col_id] != nullptr) {
-          *block = column_blocks_[col_id].get();
-          return SUCCESS;
-        }
-      }
-      std::unique_lock lk{mu_};
       if (column_blocks_[col_id] != nullptr) {
         *block = column_blocks_[col_id].get();
         return SUCCESS;
@@ -195,10 +186,8 @@ class TsLastBlock : public TsBlock {
       const auto& col_info = block_info_->col_infos[col_id];
       size_t length = col_info.bitmap_len + col_info.fixdata_len + col_info.vardata_len;
 
-      Arena arena;
-      char* buf = arena.Allocate(length);
       TSSlice result{nullptr, 0};
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL || result.len != length) {
         LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.len);
         return s;
@@ -222,58 +211,46 @@ class TsLastBlock : public TsBlock {
     }
 
     KStatus GetEntityIDs(TSEntityID** entity_ids) {
-      if (entity_ids_.slice.len != 0) {
-        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.slice.data);
+      if (entity_ids_.data() != 0) {
+        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
         return SUCCESS;
       }
 
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset;
       size_t length = block_info_->entity_id_len;
-      Arena arena;
       TSSlice result;
-      char* buf = arena.Allocate(length);
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
-      TSSlice out;
-      std::string out_string;
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &out, &out_string);
-      entity_ids_.slice = out;
-      entity_ids_.str = std::move(out_string);
-      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.slice.data);
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
       return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetLSN(TS_LSN** lsn) {
-      if (lsn_.slice.len != 0) {
-        *lsn = reinterpret_cast<TS_LSN*>(lsn_.slice.data);
+      if (lsn_.size() != 0) {
+        *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
         return SUCCESS;
       }
 
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset + block_info_->entity_id_len;
       size_t length = block_info_->entity_id_len;
-      Arena arena;
       TSSlice result;
-      char* buf = arena.Allocate(length);
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
-      TSSlice out;
-      std::string out_string;
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &out, &out_string);
-      lsn_.slice = out;
-      lsn_.str = std::move(out_string);
-      *lsn = reinterpret_cast<TS_LSN*>(lsn_.slice.data);
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
+      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
       return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetTimestamps(timestamp64** timestamps) {
-      if (timestamps_.slice.len != 0) {
-        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.slice.data);
+      if (timestamps_.size() != 0) {
+        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
         return SUCCESS;
       }
 
@@ -281,19 +258,13 @@ class TsLastBlock : public TsBlock {
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
       const auto& mgr = CompressorManager::GetInstance();
-      Arena arena;
       TSSlice result;
-      char* buf = arena.Allocate(length);
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
-      TSSlice out;
-      std::string out_string;
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &out, &out_string);
-      timestamps_.slice = out;
-      timestamps_.str = std::move(out_string);
-      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.slice.data);
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
+      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
       return ok ? SUCCESS : FAIL;
     }
   };
@@ -363,21 +334,13 @@ class TsLastBlock : public TsBlock {
     return ts[row_num];
   }
 
-  timestamp64 GetFirstTS() override {
-    return block_index_.first_ts;
-  }
+  timestamp64 GetFirstTS() override { return block_index_.first_ts; }
 
-  timestamp64 GetLastTS() override {
-    return block_index_.last_ts;
-  }
+  timestamp64 GetLastTS() override { return block_index_.last_ts; }
 
-  TS_LSN GetFirstLSN() override {
-    return block_index_.first_lsn;
-  }
+  TS_LSN GetFirstLSN() override { return block_index_.first_lsn; }
 
-  TS_LSN GetLastLSN() override {
-    return block_index_.last_lsn;
-  }
+  TS_LSN GetLastLSN() override { return block_index_.last_lsn; }
 
   uint64_t* GetLSNAddr(int row_num) override {
     auto seq_nos = GetLSN();
@@ -497,10 +460,8 @@ KStatus TsLastSegment::Open() {
   // Open()
   int nmeta = footer_.n_meta_block;
   if (nmeta != 0) {
-    Arena arena;
     TSSlice result;
-    char* buf = arena.Allocate(nmeta * 16);
-    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, buf);
+    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, nullptr);
     if (s == FAIL) {
       return s;
     }
@@ -512,8 +473,7 @@ KStatus TsLastSegment::Open() {
     }
 
     for (int i = 0; i < nmeta; ++i) {
-      char* buf2 = arena.Allocate(meta_len[i]);
-      s = file_->Read(meta_offset[i], meta_len[i], &result, buf2);
+      s = file_->Read(meta_offset[i], meta_len[i], &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
@@ -642,12 +602,12 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->table_id != filter.table_id) {
         continue;
       }
-      if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
-        continue;
-      }
-      if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
-        continue;
-      }
+      // if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
+      //   continue;
+      // }
+      // if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
+      //   continue;
+      // }
       //  we need to read the block to do futher filtering.
       int block_idx = it - block_indices.begin();
 
