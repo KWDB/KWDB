@@ -576,6 +576,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
+    ts_block_spans_.clear();
     auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
@@ -597,6 +598,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
+    ts_block_spans_.clear();
     auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
@@ -617,6 +619,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                                 entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
+      ts_block_spans_.clear();
       auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
@@ -1501,6 +1504,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
     // TODO(liumengzhen) filter参数能否支持多设备
     for (auto entity_id : entity_ids) {
       TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_lsn_, ts_spans_};
+      ts_block_spans_.clear();
       ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
