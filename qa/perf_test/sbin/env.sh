@@ -21,8 +21,8 @@
 #
 sbindir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-export TEST_IMAGE_NAME=${TEST_IMAGE_NAME:-devops.inspur.com:80/isg/zdp/repo/local_repo/quality_team/kwdb/perf_test}
-export TEST_IMAGE_TAG=${TEST_IMAGE_TAG:-22.04-20240819}
+export TEST_IMAGE_NAME=${TEST_IMAGE_NAME:-devops.inspur.com:80/isg/zdp/repo/local_repo/zdp/builder/kaiwudb_amd64_ub_2204}
+export TEST_IMAGE_TAG=${TEST_IMAGE_TAG:-latest}
 export CODE_PLATFORM=${CODE_PLATFORM:-gitee.com}
 export HTTP_PORT=${HTTP_PORT:-8080}
 export MAX_SQL_MEMORY=${MAX_SQL_MEMORY:-25%}
