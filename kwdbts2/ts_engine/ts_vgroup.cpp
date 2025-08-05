@@ -1146,10 +1146,10 @@ KStatus TsVGroup::FinishWriteBatchData() {
   return s;
 }
 
-KStatus TsVGroup::ClearWriteBatchData() {
+KStatus TsVGroup::CancelWriteBatchData() {
   std::unique_lock lock{builders_mutex_};
   for (auto& kv : write_batch_segment_builders_) {
-    kv.second->MarkDelete();
+    kv.second->WriteBatchCancel();
   }
   write_batch_segment_builders_.clear();
   ResetTsExclusiveStatus();
