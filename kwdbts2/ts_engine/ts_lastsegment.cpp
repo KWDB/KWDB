@@ -66,11 +66,13 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
     *block_indices = block_indices_.get();
     return SUCCESS;
   }
-  block_indices_ = std::make_unique<std::vector<TsLastSegmentBlockIndex>>();
-  auto s = lastseg_->GetAllBlockIndex(block_indices_.get());
+  auto indices = std::make_unique<std::vector<TsLastSegmentBlockIndex>>();
+  auto s = lastseg_->GetAllBlockIndex(indices.get());
   if (s == FAIL) {
     LOG_ERROR("cannot get block index from last segment");
   }
+  // indices is ready to use after GetAllBlockIndex.
+  block_indices_ = std::move(indices);
   *block_indices = block_indices_.get();
   return SUCCESS;
 }
