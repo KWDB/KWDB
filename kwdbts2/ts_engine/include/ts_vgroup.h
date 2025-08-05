@@ -88,6 +88,7 @@ class TsVGroup {
   std::mutex cv_mutex_;
 
   std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
+  std::atomic<uint64_t> max_lsn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
   std::unordered_map<uint32_t, bool> last_row_entity_checked_;
@@ -147,6 +148,14 @@ class TsVGroup {
     if (engine_wal_level_mutex_ != nullptr) {
       engine_wal_level_mutex_->unlock_shared();
     }
+  }
+
+  void UpdateAtomicLSN() {
+    max_lsn_.store(GetMaxLSN());
+  }
+
+  uint64_t LSNInc() {
+    return max_lsn_.fetch_add(1, std::memory_order_relaxed);
   }
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }

@@ -1065,8 +1065,12 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     // 2. switch vgroup wal file
     for (const auto &vgrp : vgroups_) {
       vgrp->GetWALManager()->Lock();
-      vgrp_lsn.emplace_back(vgrp->GetWALManager()->FetchCurrentLSN());
-      s = vgrp->GetWALManager()->SwitchNextFile();
+      auto cur_lsn = vgrp->GetWALManager()->FetchCurrentLSN();
+      if (cur_lsn < vgrp->GetMaxLSN()) {
+        cur_lsn = vgrp->GetMaxLSN();
+      }
+      vgrp_lsn.emplace_back(cur_lsn);
+      s = vgrp->GetWALManager()->SwitchNextFile(cur_lsn);
       if (s == KStatus::FAIL) {
         vgrp->GetWALManager()->Unlock();
         LOG_ERROR("Failed to switch vgroup chk file.")
@@ -1899,6 +1903,13 @@ KStatus TSEngineV2Impl::GetClusterSetting(kwdbContext_p ctx, const std::string& 
   }
 }
 
+KStatus TSEngineV2Impl::UpdateAtomicLSN() {
+  for (auto vgrp : vgroups_) {
+    vgrp->UpdateAtomicLSN();
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
   // After changing the WAL configuration parameters, the already opened table will not change,
   // and the newly opened table will follow the new configuration.
@@ -1914,6 +1925,9 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
       }
       options_.wal_level = std::stoll(value);
       LOG_INFO("update wal level to %hhu", options_.wal_level)
+      if (options_.wal_level == WALMode::OFF || options_.wal_level == WALMode::BYRL) {
+        UpdateAtomicLSN();
+      }
       wal_level_mutex_.unlock();
       // unlock
     }

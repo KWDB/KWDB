@@ -86,6 +86,8 @@ class WALMgr {
 
   KStatus FlushWithoutLock(kwdbContext_p ctx);
 
+  void SetCurLSN(TS_LSN cur_lsn) { meta_.current_lsn = cur_lsn; }
+
   /**
    * Synchronize data to disk by calling the FLush method of Tag tables and Metrics tables to ensure the
    * persistence of time-series data to save recovery time after an outage.
@@ -393,7 +395,7 @@ class WALMgr {
    * @return KStatus
    */
 
-  KStatus SwitchNextFile();
+  KStatus SwitchNextFile(TS_LSN first_lsn = 0);
 
   KStatus SwitchLastFile(kwdbContext_p ctx, TS_LSN last_lsn);
 
