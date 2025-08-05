@@ -96,7 +96,7 @@ template <size_t N>
 struct BigEndianUInt {
   const char *key;
   static constexpr uint64_t zero = 0;
-  static_assert(N > 0 && N <= 8 && (N & N - 1) == 0);
+  static_assert(N > 0 && N <= 8 && (N & (N - 1)) == 0);
 
   BigEndianUInt() : key(reinterpret_cast<const char *>(&zero)) {}
   explicit BigEndianUInt(const char *k) : key(k) {}
