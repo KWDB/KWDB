@@ -363,7 +363,7 @@ func (ds *ServerImpl) setupFlow(
 	var err error
 	f.SetTS(req.Flow.TsProcessors != nil)
 	f.SetQueryShortCircuit(req.Flow.TsInfo.UseQueryShortCircuit)
-	f.SetPipeLine(req.Flow.TsInfo.UsePipeline)
+	f.SetAeGather(req.Flow.TsInfo.UseAeGather)
 	f.SetVectorized(isVectorized)
 	if ctx, err = f.Setup(ctx, &req.Flow, opt); err != nil {
 		log.Errorf(ctx, "error setting up flow: %s", err)

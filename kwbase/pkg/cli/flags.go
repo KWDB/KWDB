@@ -893,7 +893,7 @@ func extraServerFlagInit(cmd *cobra.Command) error {
 	serverCfg.AdvertiseAddr = net.JoinHostPort(serverAdvertiseAddr, serverAdvertisePort)
 
 	if serverBRPCAddr == "" {
-		serverBRPCAddr = startCtx.serverListenBRPCAddr
+		serverBRPCAddr = startCtx.serverListenAddr
 	}
 	if serverBRPCPort == "" {
 		serverBRPCPort = base.DefaultBRPCPort
