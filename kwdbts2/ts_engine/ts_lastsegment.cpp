@@ -50,7 +50,7 @@ static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockInd
                              TsLastSegmentBlockInfo* info) {
   assert(info != nullptr);
   TSSlice result;
-  Arena arena;
+  Allocator arena;
   char* buf = arena.Allocate(index.length);
   auto s = file->Read(index.info_offset, index.length, &result, buf);
   if (s != SUCCESS) {
@@ -195,7 +195,7 @@ class TsLastBlock : public TsBlock {
       const auto& col_info = block_info_->col_infos[col_id];
       size_t length = col_info.bitmap_len + col_info.fixdata_len + col_info.vardata_len;
 
-      Arena arena;
+      Allocator arena;
       char* buf = arena.Allocate(length);
       TSSlice result{nullptr, 0};
       auto s = file_->Read(offset, length, &result, buf);
@@ -238,7 +238,7 @@ class TsLastBlock : public TsBlock {
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset;
       size_t length = block_info_->entity_id_len;
-      Arena arena;
+      Allocator arena;
       TSSlice result;
       char* buf = arena.Allocate(length);
       auto s = file_->Read(offset, length, &result, buf);
@@ -267,7 +267,7 @@ class TsLastBlock : public TsBlock {
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset + block_info_->entity_id_len;
       size_t length = block_info_->entity_id_len;
-      Arena arena;
+      Allocator arena;
       TSSlice result;
       char* buf = arena.Allocate(length);
       auto s = file_->Read(offset, length, &result, buf);
@@ -298,7 +298,7 @@ class TsLastBlock : public TsBlock {
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
       const auto& mgr = CompressorManager::GetInstance();
-      Arena arena;
+      Allocator arena;
       TSSlice result;
       char* buf = arena.Allocate(length);
       auto s = file_->Read(offset, length, &result, buf);
@@ -511,7 +511,7 @@ KStatus TsLastSegment::Open() {
   // Open()
   int nmeta = footer_.n_meta_block;
   if (nmeta != 0) {
-    Arena arena;
+    Allocator arena;
     TSSlice result;
     char* buf = arena.Allocate(nmeta * 16);
     s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, buf);

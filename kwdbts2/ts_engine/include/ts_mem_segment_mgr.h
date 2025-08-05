@@ -23,7 +23,6 @@
 #include "libkwdbts2.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_payload.h"
-#include "inlineskiplist.h"
 #include "ts_segment.h"
 #include "ts_arena.h"
 #include "sl_set.h"
@@ -176,7 +175,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
-  ConcurrentArena arena_;
+  ConcurrentAllocator arena_;
   TSRowDataComparator comp_;
   sl_set<TSMemSegKey> keys_;
 
