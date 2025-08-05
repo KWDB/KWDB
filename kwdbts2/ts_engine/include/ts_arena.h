@@ -204,7 +204,7 @@ std::pair<T *, size_t> TLSArray<T>::AccessElementAndIndex() const {
   if (UNLIKELY(cpuid < 0)) {
     idx = Random::GetInstance()->Uniform(1 << size_shift_);
   } else {
-    idx = static_cast<size_t>(cpuid & (1 << size_shift_) - 1);
+    idx = static_cast<size_t>(cpuid & ((1 << size_shift_) - 1));
   }
   return {AccessAtCore(idx), idx};
 }
@@ -254,7 +254,7 @@ public:
 
 private:
   struct Shard {
-    [[maybe_unused]] char padding[40];
+    char padding[40];
     mutable SpinMutex mutex;
     char *free_begin_;
     std::atomic<size_t> allocated_and_unused_;
@@ -263,7 +263,7 @@ private:
   };
 
   static thread_local size_t tls_cpuid;
-  [[maybe_unused]] char padding0[56];
+  char padding0[56];
 
   size_t shard_block_size_;
   TLSArray<Shard> shards_;
@@ -274,7 +274,7 @@ private:
   std::atomic<size_t> memory_allocated_;  // bytes
   std::atomic<size_t> irregular_block_count_;
 
-  [[maybe_unused]] char padding1[56];
+  char padding1[56];
 
   Shard *Repick();
 
