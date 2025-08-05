@@ -64,7 +64,7 @@ InsertLogTagsEntry::InsertLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_i
                                        int64_t time_partition, uint64_t offset, uint64_t length, char* data,
                                        uint64_t vgrp_id, TS_LSN old_lsn, uint64_t table_id)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
-    offset_(offset), length_(length) {
+    offset_(offset), length_(length), table_id_(table_id) {
   data_ = KNEW char[length_];
   memcpy(data_, data, length_);
 }
@@ -180,7 +180,7 @@ UpdateLogTagsEntry::UpdateLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_i
                                        uint64_t length, uint64_t old_len, char* data, uint64_t vgrp_id, TS_LSN old_lsn,
                                        uint64_t table_id)
     : UpdateLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
-    offset_(offset), length_(length), old_len_(old_len) {
+    offset_(offset), length_(length), old_len_(old_len), table_id_(table_id) {
   data_ = KNEW char[length_];
   memcpy(data_, data, length_);
   old_data_ = KNEW char[old_len_];
@@ -343,7 +343,7 @@ DeleteLogTagsEntry::DeleteLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_i
                                        size_t tag_len, char* encoded_data, uint64_t vgrp_id, TS_LSN old_lsn,
                                        uint64_t table_id)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), group_id_(group_id),
-    entity_id_(entity_id), p_tag_len_(p_tag_len), tag_len_(tag_len) {
+    entity_id_(entity_id), p_tag_len_(p_tag_len), tag_len_(tag_len), table_id_(table_id) {
   encoded_primary_tags_ = KNEW char[p_tag_len_];
   memcpy(encoded_primary_tags_, encoded_data, p_tag_len_);
   encoded_tags_ = KNEW char[tag_len_];
