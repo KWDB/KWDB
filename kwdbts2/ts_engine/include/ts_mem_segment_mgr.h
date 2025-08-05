@@ -271,6 +271,26 @@ class TsMemSegBlock : public TsBlock {
     return row_data_[row_num]->ts;
   }
 
+  timestamp64 GetFirstTS() override {
+    assert(row_data_.size() > 0);
+    return row_data_[0]->ts;
+  }
+
+  timestamp64 GetLastTS() override {
+    assert(row_data_.size() > 0);
+    return row_data_[row_data_.size() - 1]->ts;
+  }
+
+  TS_LSN GetFirstLSN() override {
+    assert(row_data_.size() > 0);
+    return row_data_[0]->lsn;
+  }
+
+  TS_LSN GetLastLSN() override {
+    assert(row_data_.size() > 0);
+    return row_data_[row_data_.size() - 1]->lsn;
+  }
+
   uint64_t* GetLSNAddr(int row_num) override {
     assert(row_data_.size() > row_num);
     return &row_data_[row_num]->lsn;

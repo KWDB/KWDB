@@ -376,6 +376,22 @@ class TsLastBlock : public TsBlock {
     return ts[row_num];
   }
 
+  timestamp64 GetFirstTS() override {
+    return block_index_.first_ts;
+  }
+
+  timestamp64 GetLastTS() override {
+    return block_index_.last_ts;
+  }
+
+  TS_LSN GetFirstLSN() override {
+    return block_index_.first_lsn;
+  }
+
+  TS_LSN GetLastLSN() override {
+    return block_index_.last_lsn;
+  }
+
   uint64_t* GetLSNAddr(int row_num) override {
     auto seq_nos = GetLSN();
     if (seq_nos == nullptr) {

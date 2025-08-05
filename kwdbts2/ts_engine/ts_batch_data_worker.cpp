@@ -118,9 +118,9 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
   cur_entity_index_ = entity_indexes_[entity_indexes_.size() - 1];
   entity_indexes_.pop_back();
   std::list<std::shared_ptr<TsBlockSpan>> block_spans;
-  KStatus s = ts_engine_->GetTsVGroup(cur_entity_index_.subGroupId - 1)->GetBlockSpans(table_id_, cur_entity_index_.entityId,
+  KStatus s = ts_engine_->GetTsVGroup(cur_entity_index_.subGroupId)->GetBlockSpans(table_id_, cur_entity_index_.entityId,
                                                                                    actual_ts_span_, ts_col_type_, schema_,
-                                                                                   table_version_, &block_spans);
+                                                                                   table_version_, current_, &block_spans);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to get block span, "
               "table_id[%lu], table_version[%lu], entity_id[%u]",
@@ -452,7 +452,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
   assert(!attrs.empty());
   DATATYPE ts_col_type = static_cast<DATATYPE>(attrs[0].type);
-  s = ts_engine_->GetTsVGroup(vgroup_id - 1)->WriteBatchData(ctx, table_id, table_version,
+  s = ts_engine_->GetTsVGroup(vgroup_id)->WriteBatchData(ctx, table_id, table_version,
                                                              entity_id, ts, ts_col_type,
                                                              vgroups_lsn_[vgroup_id - 1],
                                                              new_block_data);

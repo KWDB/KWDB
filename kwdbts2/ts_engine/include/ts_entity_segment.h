@@ -43,9 +43,11 @@ struct TsEntitySegmentBlockItem {
   timestamp64 max_ts = INT64_MIN;
   TS_LSN min_lsn = UINT64_MAX;
   TS_LSN max_lsn = 0;
+  TS_LSN first_lsn = 0;
+  TS_LSN last_lsn = 0;
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
-  char reserved[36] = {0};            // reserved for user-defined information.
+  char reserved[20] = {0};            // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");
@@ -202,6 +204,11 @@ class TsEntityBlock : public TsBlock {
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
 
+  timestamp64 first_ts_ = 0;
+  timestamp64 last_ts_ = 0;
+  TS_LSN first_lsn_ = 0;
+  TS_LSN last_lsn_ = 0;
+
   std::shared_ptr<TsEntitySegment> entity_segment_ = nullptr;
   uint64_t block_offset_ = 0;
   uint32_t block_length_ = 0;
@@ -269,6 +276,14 @@ class TsEntityBlock : public TsBlock {
 
   timestamp64 GetTS(int row_num) override;
 
+  timestamp64 GetFirstTS() override;
+
+  timestamp64 GetLastTS() override;
+
+  TS_LSN GetFirstLSN() override;
+
+  TS_LSN GetLastLSN() override;
+
   uint64_t* GetLSNAddr(int row_num) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override;
@@ -288,6 +303,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   TsEntitySegmentMetaManager meta_mgr_;
   TsEntitySegmentBlockFile block_file_;
   TsEntitySegmentAggFile agg_file_;
+  TsVersionUpdate::EntitySegmentVersionInfo info_;
 
  public:
   TsEntitySegment() = delete;
@@ -297,6 +313,8 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   ~TsEntitySegment() {}
 
   KStatus Open();
+
+  TsVersionUpdate::EntitySegmentVersionInfo GetInfo() { return info_; }
 
   uint64_t GetEntityHeaderFileNum() { return meta_mgr_.GetEntityHeaderFileNum(); }
 

@@ -1427,8 +1427,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
 }
 
 TEST_F(TestTSWALTable, autoCheckpoint) {
-  opt_.wal_file_in_group = 2;
-  opt_.wal_file_size = 1;
+
   std::shared_ptr<TsEntityGroup> entity_group;
   KTimestamp start_ts = std::chrono::duration_cast<std::chrono::milliseconds>
       (std::chrono::system_clock::now().time_since_epoch()).count();

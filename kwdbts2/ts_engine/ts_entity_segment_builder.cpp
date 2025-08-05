@@ -41,7 +41,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
 
 KStatus TsEntitySegmentBlockItemFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -70,7 +70,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
 
 KStatus TsEntitySegmentBlockFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -94,7 +94,7 @@ KStatus TsEntitySegmentBlockFileBuilder::AppendBlock(const TSSlice& block, uint6
 
 KStatus TsEntitySegmentAggFileBuilder::Open() {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, override_, -1) != KStatus::SUCCESS) {
+  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -238,6 +238,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // min lsn && max lsn
   TS_LSN min_lsn = UINT64_MAX;
   TS_LSN max_lsn = 0;
+  TS_LSN first_lsn = 0;
+  TS_LSN last_lsn = 0;
 
   // write column block data and column agg
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
@@ -306,6 +308,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
           max_lsn = *lsn;
         }
       }
+      first_lsn = *reinterpret_cast<TS_LSN *>(block.buffer.data());
+      last_lsn = *reinterpret_cast<TS_LSN *>(block.buffer.data() + (n_rows_ - 1) * sizeof(TS_LSN));
       continue;
     }
     string col_agg;
@@ -371,6 +375,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   blk_item.min_ts = min_ts;
   blk_item.max_lsn = max_lsn;
   blk_item.min_lsn = min_lsn;
+  blk_item.first_lsn = first_lsn;
+  blk_item.last_lsn = last_lsn;
   blk_item.block_len = data_buffer.size();
   blk_item.agg_len = agg_buffer.size();
 
@@ -731,6 +737,8 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
   block_item.max_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
   block_item.min_lsn = lsn;
   block_item.max_lsn = lsn;
+  block_item.first_lsn = lsn;
+  block_item.last_lsn = lsn;
   block_item.agg_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size + block_item.block_len
                        + (n_cols - 2) * sizeof(uint32_t))  + sizeof(uint32_t) * (n_cols - 1);
 

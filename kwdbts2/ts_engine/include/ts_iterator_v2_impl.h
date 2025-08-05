@@ -76,6 +76,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
+
+  std::shared_ptr<TsScanFilterParams> filter_;
 };
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -160,6 +162,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   bool has_first_row_col_;
   bool has_last_row_col_;
   bool only_count_ts_{false};
+  bool only_last_row_{true};
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 };

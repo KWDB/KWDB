@@ -276,7 +276,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
   std::shared_ptr<TsTable> ts_table_;
   std::shared_ptr<TsTableSchemaManager> schema_ = nullptr;
   std::shared_ptr<TsBlockSpanSortedIterator> block_spans_iterator_ = nullptr;
-
+  std::shared_ptr<const TsVGroupVersion> current_ = nullptr;
   EntityResultIndex cur_entity_index_;
   uint32_t n_cols_ = 0;
   TsBatchData cur_batch_data_;
