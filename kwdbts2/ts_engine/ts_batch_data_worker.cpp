@@ -507,6 +507,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 }
 
 KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
+  KStatus s = KStatus::SUCCESS;
   is_finished_ = true;
   w_file_->MarkDelete();
 
@@ -514,12 +515,18 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   Defer defer([&]() {
+    if (s != KStatus::SUCCESS) {
+      auto vgroups = ts_engine_->GetTsVGroups();
+      for (const auto &vgroup: *vgroups) {
+        vgroup->CancelWriteBatchData();
+      }
+    }
     ResetWriteStatus();
   });
 
   // write batch data to entity segment
   {
-    BatchDataHeader header;
+    BatchDataHeader header{};
     size_t batch_header_size = sizeof(BatchDataHeader);
     std::unique_ptr<TsSequentialReadFile> r_file;
 
@@ -529,7 +536,7 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
     });
 
     TsIOEnv *env = &TsMMapIOEnv::GetInstance();
-    KStatus s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file);
+    s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NewSequentialReadFile failed, job_id[%lu]", job_id_);
       return s;
@@ -556,28 +563,20 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
                                                                     block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
-        return KStatus::FAIL;
+        return s;
       }
       left += batch_header_size + header.data_length;
     }
   }
   // write batch finish
   {
-    bool success = true;
     auto vgroups = ts_engine_->GetTsVGroups();
     for (const auto& vgroup : *vgroups) {
-      if (!success) {
-        vgroup->CancelWriteBatchData();
-        continue;
-      }
-      KStatus s = vgroup->FinishWriteBatchData();
+      s = vgroup->FinishWriteBatchData();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
-        success = false;
+        return s;
       }
-    }
-    if (!success) {
-      return KStatus::FAIL;
     }
   }
   return KStatus::SUCCESS;
