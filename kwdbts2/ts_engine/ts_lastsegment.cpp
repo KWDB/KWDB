@@ -76,12 +76,15 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
 }
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) {
-  if (cache_flag_[block_id] == true) {
-    *info = &block_infos_[block_id];
-    return SUCCESS;
+  {
+    std::shared_lock lk{mu_};
+    if (cache_flag_[block_id] == 1) {
+      *info = &block_infos_[block_id];
+      return SUCCESS;
+    }
   }
   std::unique_lock lk{mu_};
-  if (cache_flag_[block_id] == true) {
+  if (cache_flag_[block_id] == 1) {
     *info = &block_infos_[block_id];
     return SUCCESS;
   }
@@ -96,7 +99,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
     LOG_ERROR("cannot load block info from last segment");
   }
   block_infos_[block_id] = std::move(tmp_info);
-  cache_flag_[block_id] = true;
+  cache_flag_[block_id] = 1;
   *info = &block_infos_[block_id];
   return SUCCESS;
 }
@@ -150,45 +153,115 @@ class TsLastBlock : public TsBlock {
   TsLastSegmentBlockIndex block_index_;
   TsLastSegmentBlockInfo block_info_;
 
-  std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
-  TsSliceGuard entity_ids_;
-  TsSliceGuard timestamps_;
-  TsSliceGuard lsn_;
+  class ColumnCache {
+   private:
+    TsRandomReadFile* file_;
+    TsLastSegmentBlockInfo* block_info_;
 
-  KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
-    if (column_blocks_[col_id] != nullptr) {
+    std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
+
+    TsSliceGuard entity_ids_;
+    TsSliceGuard timestamps_;
+    TsSliceGuard lsn_;
+
+   public:
+    ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
+        : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
+    KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
+      if (column_blocks_[col_id] != nullptr) {
+        *block = column_blocks_[col_id].get();
+        return SUCCESS;
+      }
+      auto offset = block_info_->block_offset + block_info_->entity_id_len;
+      offset += block_info_->col_infos[col_id].offset;
+
+      const auto& col_info = block_info_->col_infos[col_id];
+      size_t length = col_info.bitmap_len + col_info.fixdata_len + col_info.vardata_len;
+
+      TSSlice result{nullptr, 0};
+      auto s = file_->Read(offset, length, &result, nullptr);
+      if (s == FAIL || result.len != length) {
+        LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.len);
+        return s;
+      }
+      TsColumnCompressInfo info;
+      info.bitmap_len = col_info.bitmap_len;
+      info.fixdata_len = col_info.fixdata_len;
+      info.vardata_len = col_info.vardata_len;
+      info.row_count = block_info_->nrow;
+
+      std::unique_ptr<TsColumnBlock> colblock;
+      s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
+      if (s == FAIL) {
+        LOG_ERROR("can not parse column data, col_id %d", col_id);
+        return FAIL;
+      }
+
+      column_blocks_[col_id].swap(colblock);
       *block = column_blocks_[col_id].get();
       return SUCCESS;
     }
-    auto offset = block_info_.block_offset + block_info_.entity_id_len;
-    offset += block_info_.col_infos[col_id].offset;
 
-    const auto& col_info = block_info_.col_infos[col_id];
-    size_t length = col_info.bitmap_len + col_info.fixdata_len + col_info.vardata_len;
+    KStatus GetEntityIDs(TSEntityID** entity_ids) {
+      if (!entity_ids_.empty()) {
+        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+        return SUCCESS;
+      }
 
-    TSSlice result{nullptr, 0};
-    auto s = lastsegment_->file_->Read(offset, length, &result, nullptr);
-    if (s == FAIL || result.len != length) {
-      LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.len);
-      return s;
-    }
-    TsColumnCompressInfo info;
-    info.bitmap_len = col_info.bitmap_len;
-    info.fixdata_len = col_info.fixdata_len;
-    info.vardata_len = col_info.vardata_len;
-    info.row_count = block_info_.nrow;
-
-    std::unique_ptr<TsColumnBlock> colblock;
-    s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
-    if (s == FAIL) {
-      LOG_ERROR("can not parse column data, col_id %d", col_id);
-      return FAIL;
+      const auto& mgr = CompressorManager::GetInstance();
+      auto offset = block_info_->block_offset;
+      size_t length = block_info_->entity_id_len;
+      TSSlice result;
+      auto s = file_->Read(offset, length, &result, nullptr);
+      if (s == FAIL) {
+        return FAIL;
+      }
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+      return ok ? SUCCESS : FAIL;
     }
 
-    column_blocks_[col_id].swap(colblock);
-    *block = column_blocks_[col_id].get();
-    return SUCCESS;
-  }
+    KStatus GetLSN(TS_LSN** lsn) {
+      if (!lsn_.empty()) {
+        *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+        return SUCCESS;
+      }
+
+      const auto& mgr = CompressorManager::GetInstance();
+      auto offset = block_info_->block_offset + block_info_->entity_id_len;
+      size_t length = block_info_->entity_id_len;
+      TSSlice result;
+      auto s = file_->Read(offset, length, &result, nullptr);
+      if (s == FAIL) {
+        return FAIL;
+      }
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
+      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+      return ok ? SUCCESS : FAIL;
+    }
+
+    KStatus GetTimestamps(timestamp64** timestamps) {
+      if (!timestamps_.empty()) {
+        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+        return SUCCESS;
+      }
+
+      auto offset = block_info_->block_offset + block_info_->entity_id_len;
+      offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
+      auto length = block_info_->col_infos[0].fixdata_len;
+      const auto& mgr = CompressorManager::GetInstance();
+      TSSlice result;
+      auto s = file_->Read(offset, length, &result, nullptr);
+      if (s == FAIL) {
+        return FAIL;
+      }
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
+      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+      return ok ? SUCCESS : FAIL;
+    }
+  };
+
+  std::unique_ptr<ColumnCache> column_block_cache_;
 
  public:
   TsLastBlock(const TsLastSegment* lastseg, int block_id, TsLastSegmentBlockIndex block_index,
@@ -197,7 +270,7 @@ class TsLastBlock : public TsBlock {
         block_id_(block_id),
         block_index_(block_index),
         block_info_(std::move(block_info)),
-        column_blocks_(block_info_.ncol) {}
+        column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), &block_info_)) {}
   ~TsLastBlock() = default;
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }
@@ -205,7 +278,7 @@ class TsLastBlock : public TsBlock {
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override {
     TsColumnBlock* col_block = nullptr;
-    auto s = GetColumnBlock(col_id, &col_block, schema);
+    auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
       LOG_ERROR("load column from %s failed block_id %d, col_id %d", lastsegment_->GetFilePath().c_str(), block_id_,
                 col_id);
@@ -215,7 +288,7 @@ class TsLastBlock : public TsBlock {
   }
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override {
     TsColumnBlock* col_block = nullptr;
-    auto s = GetColumnBlock(col_id, &col_block, schema);
+    auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
       LOG_ERROR("load column from %s failed block_id %d, col_id %d", lastsegment_->GetFilePath().c_str(), block_id_,
                 col_id);
@@ -226,7 +299,7 @@ class TsLastBlock : public TsBlock {
   }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override {
     TsColumnBlock* col_block = nullptr;
-    auto s = GetColumnBlock(col_id, &col_block, schema);
+    auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
       LOG_ERROR("load column from %s failed block_id %d, col_id %d", lastsegment_->GetFilePath().c_str(), block_id_,
                 col_id);
@@ -246,31 +319,36 @@ class TsLastBlock : public TsBlock {
 
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {
-    timestamp64* ts;
-    auto s = GetTimestamps(&ts);
-    if (s == FAIL) {
-      LOG_ERROR("cannot get timestamps");
+    auto ts = GetTimestamps();
+    if (ts == nullptr) {
       return INVALID_TS;
     }
     return ts[row_num];
   }
 
-  timestamp64 GetFirstTS() override { return block_index_.first_ts; }
+  timestamp64 GetFirstTS() override {
+    return block_index_.first_ts;
+  }
 
-  timestamp64 GetLastTS() override { return block_index_.last_ts; }
+  timestamp64 GetLastTS() override {
+    return block_index_.last_ts;
+  }
 
-  TS_LSN GetFirstLSN() override { return block_index_.first_lsn; }
+  TS_LSN GetFirstLSN() override {
+    return block_index_.first_lsn;
+  }
 
-  TS_LSN GetLastLSN() override { return block_index_.last_lsn; }
+  TS_LSN GetLastLSN() override {
+    return block_index_.last_lsn;
+  }
 
-  TS_LSN* GetLSNAddr(int row_num) override {
-    TS_LSN* lsn;
-    auto s = GetLSN(&lsn);
-    if (s == FAIL) {
+  uint64_t* GetLSNAddr(int row_num) override {
+    auto seq_nos = GetLSN();
+    if (seq_nos == nullptr) {
       LOG_ERROR("cannot get lsn addr");
       return nullptr;
     }
-    return lsn + row_num;
+    return const_cast<uint64_t*>(&seq_nos[row_num]);
   }
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
@@ -282,92 +360,34 @@ class TsLastBlock : public TsBlock {
  private:
   friend class TsLastSegment;
 
-  KStatus GetEntityIDs(TSEntityID** entity_ids) {
-    if (entity_ids_.data() != nullptr) {
-      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-      return SUCCESS;
-    }
-
-    const auto& mgr = CompressorManager::GetInstance();
-    auto offset = block_info_.block_offset;
-    size_t length = block_info_.entity_id_len;
-    TSSlice result;
-    auto s = lastsegment_->file_->Read(offset, length, &result, nullptr);
+  const TSEntityID* GetEntities() {
+    TSEntityID* entity_ids = nullptr;
+    auto s = column_block_cache_->GetEntityIDs(&entity_ids);
     if (s == FAIL) {
-      return FAIL;
-    }
-    bool ok = mgr.DecompressData(result, nullptr, block_info_.nrow, &entity_ids_);
-    *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-    return ok ? SUCCESS : FAIL;
-  }
-
-  KStatus GetLSN(TS_LSN** lsn) {
-    if (lsn_.data() != nullptr) {
-      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-      return SUCCESS;
-    }
-
-    const auto& mgr = CompressorManager::GetInstance();
-    auto offset = block_info_.block_offset + block_info_.entity_id_len;
-    size_t length = block_info_.entity_id_len;
-    TSSlice result;
-    auto s = lastsegment_->file_->Read(offset, length, &result, nullptr);
-    if (s == FAIL) {
-      return FAIL;
-    }
-    bool ok = mgr.DecompressData(result, nullptr, block_info_.nrow, &lsn_);
-    *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-    return ok ? SUCCESS : FAIL;
-  }
-
-  KStatus GetTimestamps(timestamp64** timestamps) {
-    if (timestamps_.size() != 0) {
-      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-      return SUCCESS;
-    }
-
-    auto offset = block_info_.block_offset + block_info_.entity_id_len;
-    offset += block_info_.col_infos[0].offset + block_info_.col_infos[0].bitmap_len;
-    auto length = block_info_.col_infos[0].fixdata_len;
-    const auto& mgr = CompressorManager::GetInstance();
-    TSSlice result;
-    auto s = lastsegment_->file_->Read(offset, length, &result, nullptr);
-    if (s == FAIL) {
-      return FAIL;
-    }
-    bool ok = mgr.DecompressData(result, nullptr, block_info_.nrow, &timestamps_);
-    *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-    return ok ? SUCCESS : FAIL;
-  }
-
-  timestamp64* GetTimestampsAddr() {
-    timestamp64* ts;
-    auto s = GetTimestamps(&ts);
-    if (s == FAIL) {
-      LOG_ERROR("cannot get timestamps");
+      LOG_ERROR("cannot load entitiy column");
       return nullptr;
     }
-    return ts;
+    return entity_ids;
   }
 
-  TS_LSN* GetLSNAddr() {
-    TS_LSN* lsn;
-    auto s = GetLSN(&lsn);
+  const uint64_t* GetLSN() {
+    TS_LSN* lsn = nullptr;
+    auto s = column_block_cache_->GetLSN(&lsn);
     if (s == FAIL) {
-      LOG_ERROR("cannot get lsn addr");
+      LOG_ERROR("cannot load lsn column");
       return nullptr;
     }
     return lsn;
   }
 
-  TSEntityID* GetEntityIDsAddr() {
-    TSEntityID* entity_ids;
-    auto s = GetEntityIDs(&entity_ids);
+  const timestamp64* GetTimestamps() {
+    timestamp64* timestamps = nullptr;
+    auto s = column_block_cache_->GetTimestamps(&timestamps);
     if (s == FAIL) {
-      LOG_ERROR("cannot get entity ids addr");
+      LOG_ERROR("cannot load timestamp column");
       return nullptr;
     }
-    return entity_ids;
+    return timestamps;
   }
 };
 
@@ -386,7 +406,7 @@ KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) c
     return s;
   }
 
-  *block = std::make_shared<TsLastBlock>(this, block_id, *index, *info);
+  *block = std::make_unique<TsLastBlock>(this, block_id, *index, *info);
   return SUCCESS;
 }
 
@@ -413,7 +433,6 @@ KStatus TsLastSegment::TsLastSegBlockCache::GetBlockIndex(int block_id, TsLastSe
 KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
   return block_info_cache_->GetBlockInfo(block_id, info);
 }
-
 
 KStatus TsLastSegment::Open() {
   // just check the magic number;
@@ -488,11 +507,17 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 
     // split current block to several span;
     int prev_end = 0;
-    auto entities = block->GetEntityIDsAddr();
-    auto ts = block->GetTimestampsAddr();
-    if (entities == nullptr || ts == nullptr) {
+    auto entities = block->GetEntities();
+    if (entities == nullptr) {
+      LOG_ERROR("cannot load entity column");
       return FAIL;
     }
+    auto ts = block->GetTimestamps();
+    if (ts == nullptr) {
+      LOG_ERROR("cannot load timestamp column");
+      return FAIL;
+    }
+
     if (tbl_schema_mgr == nullptr || tbl_schema_mgr->GetTableId() != block->GetTableId()) {
       auto s = schema_mgr->GetTableSchemaMgr(block->GetTableId(), tbl_schema_mgr);
       if (s != KStatus::SUCCESS) {
@@ -572,12 +597,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->table_id != filter.table_id) {
         continue;
       }
-      // if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
-      //   continue;
-      // }
-      // if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
-      //   continue;
-      // }
       //  we need to read the block to do futher filtering.
       int block_idx = it - block_indices.begin();
 
@@ -589,9 +608,9 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         }
         block = std::static_pointer_cast<TsLastBlock>(tmp_block);
       }
-      auto ts = block->GetTimestampsAddr();
-      auto entities = block->GetEntityIDsAddr();
-      auto lsn = block->GetLSNAddr();
+      auto ts = block->GetTimestamps();
+      auto entities = block->GetEntities();
+      auto lsn = block->GetLSN();
       if (ts == nullptr || entities == nullptr || lsn == nullptr) {
         return FAIL;
       }

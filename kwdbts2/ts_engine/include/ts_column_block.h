@@ -78,8 +78,11 @@ class TsColumnBlockBuilder {
   void AppendColumnBlock(TsColumnBlock& col);
 
   std::unique_ptr<TsColumnBlock> GetColumnBlock() {
-    TsSliceGuard fixlen_guard{std::move(fixlen_data_)};
-    TsSliceGuard varchar_guard{std::move(varchar_data_)};
+    std::string fixlen_data, varchar_data;
+    fixlen_data.swap(fixlen_data_);
+    varchar_data.swap(varchar_data_);
+    TsSliceGuard fixlen_guard{std::move(fixlen_data)};
+    TsSliceGuard varchar_guard{std::move(varchar_data)};
     return std::unique_ptr<TsColumnBlock>{
         new TsColumnBlock(col_schema_, count_, bitmap_, std::move(fixlen_guard), std::move(varchar_guard))};
   }

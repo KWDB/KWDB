@@ -80,7 +80,6 @@ class TsSliceGuard {
     if (&other == this) {
       return *this;
     }
-    this->~TsSliceGuard();
     if (!other.str.empty()) {
       this->str = std::move(other.str);
       this->slice = TSSlice{this->str.data(), this->str.size()};

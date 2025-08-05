@@ -10,7 +10,6 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -163,13 +162,14 @@ class TsLastSegment::TsLastSegBlockCache::BlockIndexCache {
 class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
  private:
   TsLastSegBlockCache* lastseg_cache_;
-  std::vector<std::atomic_bool> cache_flag_;
+  std::vector<uint8_t> cache_flag_;
   std::vector<TsLastSegmentBlockInfo> block_infos_;
-  std::mutex mu_;
+  std::shared_mutex mu_;
 
  public:
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
-      : lastseg_cache_(lastseg_cache), cache_flag_(nblocks), block_infos_(nblocks) {}
+      : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
   KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info);
 };
+
 }  // namespace kwdbts

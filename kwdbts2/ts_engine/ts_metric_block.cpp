@@ -104,8 +104,10 @@ std::unique_ptr<TsMetricBlock> TsMetricBlockBuilder::GetMetricBlock() {
   for (int i = 0; i < column_block_builders_.size(); ++i) {
     column_blocks.push_back(column_block_builders_[i]->GetColumnBlock());
   }
-  return std::unique_ptr<TsMetricBlock>(
-      new TsMetricBlock{count_, std::move(lsn_buffer_), std::move(column_blocks)});
+
+  std::vector<TS_LSN> lsn_buffer;
+  lsn_buffer.swap(lsn_buffer_);
+  return std::unique_ptr<TsMetricBlock>(new TsMetricBlock{count_, std::move(lsn_buffer), std::move(column_blocks)});
 }
 
 KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo>& schema,

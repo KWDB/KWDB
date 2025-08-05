@@ -45,7 +45,7 @@ void TsColumnBlockBuilder::AppendColumnBlock(TsColumnBlock& col) {
   // TODO(zzr) deal with schama mismatch?
   if (isVarLenType(col_schema_.type)) {
     uint32_t current_offset = varchar_data_.size();
-    this->varchar_data_.append(col.varchar_guard_.data());
+    this->varchar_data_.append(col.varchar_guard_.AsStringView());
     const uint32_t* rhs_offset = reinterpret_cast<const uint32_t*>(col.fixlen_guard_.data());
     for (int i = 0; i < count; ++i) {
       PutFixed32(&fixlen_data_, rhs_offset[i] + current_offset);
@@ -128,7 +128,7 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   compressed_data.append(tmp);
 
   // 3. compress varchar data
-  if (varchar_guard_.size() != 0) {
+  if (!varchar_guard_.empty()) {
     tmp.clear();
     auto comp_alg = compress ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
     ok = mgr.CompressVarchar(varchar_guard_.AsSlice(), &tmp, comp_alg);
