@@ -179,7 +179,7 @@ UpdateLogTagsEntry::UpdateLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_i
                                        int64_t time_partition, uint64_t offset,
                                        uint64_t length, uint64_t old_len, char* data, uint64_t vgrp_id, TS_LSN old_lsn,
                                        uint64_t table_id)
-    : UpdateLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), time_partition_(time_partition),
+    : UpdateLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
     offset_(offset), length_(length), old_len_(old_len) {
   data_ = KNEW char[length_];
   memcpy(data_, data, length_);
