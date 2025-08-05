@@ -248,14 +248,13 @@ class Payload {
 
   // update payload rows lsn
   void SetLsn(TS_LSN lsn) {
-    LOG_ERROR("should not set lsn now.");
-    exit(1);
+    lsn_ = lsn;
   }
 
   // get lsn from first row.
   bool GetLsn(TS_LSN& lsn) {
-    LOG_ERROR("should not get lsn now.");
-    exit(1);
+    lsn = lsn_;
+    return true;
   }
 
   // Get the timestamp of the ith row
@@ -346,6 +345,7 @@ class Payload {
   int32_t* col_offsets_;
   RecordHelper* rec_helper_{nullptr};
   std::vector<std::map<MetricRowID, std::shared_ptr<void>>> var_merge_values_;
+  TS_LSN lsn_{0};
 
  public:
   DedupRule dedup_rule_ = DedupRule::OVERRIDE;
