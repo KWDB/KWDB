@@ -124,8 +124,8 @@ func runTimeSeriesImport(
 		log.Infof(ctx, "Start flush v-group")
 		// start-single-node
 		if flowCtx.EvalCtx.StartSinglenode {
-			if err := flowCtx.Cfg.TsEngine.TSFlushVGroups; err != nil {
-				return nil, err()
+			if err := flowCtx.Cfg.TsEngine.TSFlushVGroups(); err != nil {
+				return nil, err
 			}
 		} else {
 			// start-single-replica && start
