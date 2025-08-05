@@ -180,6 +180,7 @@ TEST_F(TestWALManagerV2, TestWALInsertTag) {
   for (auto& l : redo_logs) {
     delete l;
   }
+  free(payload_data.data);
 }
 
 TEST_F(TestWALManagerV2, TestWALUpdateTag) {
@@ -225,6 +226,8 @@ TEST_F(TestWALManagerV2, TestWALUpdateTag) {
   for (auto& l : redo_logs) {
     delete l;
   }
+  free(new_payload_data.data);
+  free(old_payload_data.data);
 }
 
 TEST_F(TestWALManagerV2, TestWALDeleteTag) {
@@ -270,4 +273,5 @@ TEST_F(TestWALManagerV2, TestWALDeleteTag) {
   for (auto& l : redo_logs) {
     delete l;
   }
+  free(payload_data.data);
 }
