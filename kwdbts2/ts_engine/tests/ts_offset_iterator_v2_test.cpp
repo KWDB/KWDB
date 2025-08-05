@@ -16,7 +16,7 @@
 using namespace kwdbts;  // NOLINT
 
 const string engine_root_path = "./tsdb";
-class TestV2OffsetIterator : public ::testing::Test {
+class TestOffsetIteratorV2 : public ::testing::Test {
  public:
   EngineOptions opts_;
   TSEngineV2Impl *engine_;
@@ -34,7 +34,7 @@ class TestV2OffsetIterator : public ::testing::Test {
   }
 
  public:
-  TestV2OffsetIterator() {
+  TestOffsetIteratorV2() {
     ctx_ = &g_ctx_;
     InitKWDBContext(ctx_);
     opts_.db_path = engine_root_path;
@@ -45,7 +45,7 @@ class TestV2OffsetIterator : public ::testing::Test {
     EXPECT_EQ(s, KStatus::SUCCESS);
   }
 
-  ~TestV2OffsetIterator() {
+  ~TestOffsetIteratorV2() {
     if (engine_) {
       delete engine_;
     }
@@ -53,7 +53,7 @@ class TestV2OffsetIterator : public ::testing::Test {
 };
 
 // 单分区 多分区 单设备 多设备 顺序乱序 正序逆序 极端值
-TEST_F(TestV2OffsetIterator, basic) {
+TEST_F(TestOffsetIteratorV2, basic) {
   roachpb::CreateTsTable meta;
 
   TSTableID table_id = 999;
@@ -172,7 +172,7 @@ TEST_F(TestV2OffsetIterator, basic) {
   delete iter2;
 }
 
-TEST_F(TestV2OffsetIterator, multi_partition) {
+TEST_F(TestOffsetIteratorV2, multi_partition) {
   roachpb::CreateTsTable meta;
 
   TSTableID table_id = 999;
@@ -303,7 +303,7 @@ TEST_F(TestV2OffsetIterator, multi_partition) {
   delete iter2;
 }
 
-TEST_F(TestV2OffsetIterator, extreme) {
+TEST_F(TestOffsetIteratorV2, extreme) {
   roachpb::CreateTsTable meta;
 
   TSTableID table_id = 999;

@@ -49,6 +49,14 @@ class TsBlock {
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
 
+  virtual timestamp64 GetFirstTS() = 0;
+
+  virtual timestamp64 GetLastTS() = 0;
+
+  virtual TS_LSN GetFirstLSN() = 0;
+
+  virtual TS_LSN GetLastLSN() = 0;
+
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
   virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
@@ -107,6 +115,8 @@ class TsBlockSpan {
   timestamp64 GetTS(uint32_t row_idx) const;
   timestamp64 GetFirstTS() const;
   timestamp64 GetLastTS() const;
+  TS_LSN GetFirstLSN() const;
+  TS_LSN GetLastLSN() const;
   uint64_t* GetLSNAddr(int row_idx) const;
 
   KStatus GetCompressData(std::string& data);

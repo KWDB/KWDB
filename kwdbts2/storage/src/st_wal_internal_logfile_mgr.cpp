@@ -301,57 +301,25 @@ void WALFileMgr::CleanUp(TS_LSN checkpoint_lsn, TS_LSN current_lsn) {
 }
 
 KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recover) {
-  for (int i = 0; i < opt_->wal_file_in_group; i++) {
-    string path = getFilePath();
-    if (IsExists(path)) {
-      Remove(path);
-    }
-    TS_LSN first_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-    KStatus s = initWalFile(first_lsn);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to initialize the WAL file.")
-      return s;
-    }
+  string path = getFilePath();
+  if (IsExists(path)) {
+    Remove(path);
+  }
+  TS_LSN first_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+  KStatus s = initWalFile(first_lsn);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to initialize the WAL file.")
+    return s;
   }
   return SUCCESS;
 }
 
 TS_LSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
   HeaderBlock header = header_block_;
-  for (int i = 0; i < opt_->wal_file_in_group; i++) {
-    if (block_no >= header.getStartBlockNo() && block_no <= header.getEndBlockNo()) {
-      // at current file
-      return header.getStartLSN() + (block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-    } else if (header.getStartBlockNo() >= MIN_BLOCK_NUM) {
-      if (block_no > header.getStartBlockNo() - MIN_BLOCK_NUM && block_no < header.getStartBlockNo()) {
-        // at prev file, won't across 2 files
-        return header.getStartLSN() + (block_no - header.getStartBlockNo()) * BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-      } else if (block_no < header.getEndBlockNo() + MIN_BLOCK_NUM && block_no >= header.getEndBlockNo()) {
-        // at next file, won't across 2 files
-        return header.getStartLSN() + (block_no - header.getStartBlockNo() + 2) * BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-      } else if (block_no <= header.getStartBlockNo() - MIN_BLOCK_NUM) {
-        if (!IsExists(getFilePath())) {
-          break;
-        }
-        header = getHeader();
-        continue;
-      }
-    }
-
-    HeaderBlock old = header;
-    if (IsExists(getFilePath())) {
-      header = getHeader();
-      if (header.getStartBlockNo() > old.getStartBlockNo()) {
-        continue;
-      }
-    }
-
-    TS_LSN start_lsn = old.getStartLSN() + BLOCK_SIZE + old.getBlockNum() * BLOCK_SIZE;
-    TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-    header = HeaderBlock(table_id_, old.getEndBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
-                         old.getCheckpointLSN(), old.getCheckpointNo());
+  if (block_no >= header.getStartBlockNo() && block_no <= header.getEndBlockNo()) {
+    // at current file
+    return header.getStartLSN() + (block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
   }
-
   LOG_ERROR("Failed find WAL block %ld", block_no)
   return 0;
 }

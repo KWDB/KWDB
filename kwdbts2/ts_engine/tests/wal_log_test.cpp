@@ -38,7 +38,6 @@ class TestWALManagerV2 : public ::testing::Test {
     opts_.wal_level = 1;
     opts_.wal_buffer_size = 4;
     opts_.db_path =  "./wal_log_test/";
-    opts_.wal_file_in_group = 1;
     mgr = std::make_unique<TsEngineSchemaManager>("./wal_log_test/schema");
 
     std::filesystem::remove_all(opts_.db_path);

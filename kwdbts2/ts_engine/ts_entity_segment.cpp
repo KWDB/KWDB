@@ -209,6 +209,10 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   entity_id_ = block_item->entity_id;
   n_rows_ = block_item->n_rows;
   n_cols_ = block_item->n_cols;
+  first_ts_ = block_item->min_ts;
+  last_ts_ = block_item->max_ts;
+  first_lsn_ = block_item->first_lsn;
+  last_lsn_ = block_item->last_lsn;
   block_offset_ = block_item->block_offset;
   block_length_ = block_item->block_len;
   agg_offset_ = block_item->agg_offset;
@@ -528,6 +532,22 @@ timestamp64 TsEntityBlock::GetTS(int row_num) {
   return *reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data() + row_num * sizeof(timestamp64));
 }
 
+timestamp64 TsEntityBlock::GetFirstTS() {
+  return first_ts_;
+}
+
+timestamp64 TsEntityBlock::GetLastTS() {
+  return last_ts_;
+}
+
+TS_LSN TsEntityBlock::GetFirstLSN() {
+  return first_lsn_;
+}
+
+TS_LSN TsEntityBlock::GetLastLSN() {
+  return last_lsn_;
+}
+
 uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {
   if (!HasDataCached(-1)) {
     KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
@@ -656,7 +676,8 @@ TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, TsVersionUpd
     : dir_path_(root),
       meta_mgr_(root, info.header_e_file_number, info.header_b_size),
       block_file_(root / block_data_file_name, info.block_file_size),
-      agg_file_(root / block_agg_file_name, info.agg_file_size) {
+      agg_file_(root / block_agg_file_name, info.agg_file_size),
+      info_(info) {
   Open();
 }
 
@@ -685,6 +706,9 @@ KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                        uint32_t scan_version) {
+  if (filter.entity_id > meta_mgr_.GetEntityNum()) {
+    return KStatus::SUCCESS;
+  }
   return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);
 }
 

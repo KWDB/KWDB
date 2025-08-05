@@ -46,7 +46,10 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
                           uint64_t mtr_id, uint16_t* entity_id, uint32_t* inc_unordered_cnt,
                           DedupResult* dedup_result, const DedupRule& dedup_rule) {
   assert(payload_num == 1);
-  TsRawPayload p{*payload};
+  auto version = TsRawPayload::GetTableVersionFromSlice(*payload);
+  std::vector<AttributeInfo> metric_schema;
+  table_schema_mgr_->GetColumnsExcludeDropped(metric_schema, version);
+  TsRawPayload p(*payload, metric_schema);
   uint8_t payload_data_flag = p.GetRowType();
   if (payload_data_flag == DataTagFlag::TAG_ONLY) {
     LOG_DEBUG("tag only. so no need putdata.");
@@ -61,6 +64,18 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* 
     LOG_ERROR("putdata failed. table id[%lu], group id[%lu]", table_id_, v_group_id);
     return s;
   }
+  // update vgroup entity_id.
+  {
+    timestamp64 max_ts = p.GetTS(0);
+    for (size_t i = 1; i < p.GetRowCount(); i++) {
+      auto cur_ts = p.GetTS(i);
+      if (max_ts < cur_ts) {
+        max_ts = cur_ts;
+      }
+    }
+    vgroup->UpdateEntityAndMaxTs(table_id_, max_ts, *entity_id);
+    vgroup->UpdateEntityLatestRow(*entity_id, max_ts);
+  }
   return KStatus::SUCCESS;
 }
 
@@ -74,11 +89,27 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   }
   auto primary_key = p.GetPrimaryTag();
   auto payload = p.GetPayload();
+  auto version = p.GetTableVersion();
   auto s = v_group->PutData(ctx, table_id_, mtr_id, &primary_key, entity_id, &payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
     return s;
+  }
+  // update vgroup entity_id.
+  {
+    std::vector<AttributeInfo> metric_schema;
+    table_schema_mgr_->GetColumnsExcludeDropped(metric_schema, version);
+    TsRawPayload tp(payload, metric_schema);
+    timestamp64 max_ts = tp.GetTS(0);
+    for (size_t i = 1; i < tp.GetRowCount(); i++) {
+      auto cur_ts = tp.GetTS(i);
+      if (max_ts < cur_ts) {
+        max_ts = cur_ts;
+      }
+    }
+    v_group->UpdateEntityAndMaxTs(table_id_, max_ts, entity_id);
+    v_group->UpdateEntityLatestRow(entity_id, max_ts);
   }
   return KStatus::SUCCESS;
 }
@@ -421,6 +452,8 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
     if (s != KStatus::SUCCESS) {
       LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
+    GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, INT64_MAX, entity_id);
+    GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, INT64_MAX);
   }
   return KStatus::SUCCESS;
 }
@@ -467,6 +500,8 @@ KwTsSpan ts_span, uint64_t mtr_id) {
       LOG_ERROR("DeleteData failed.");
       return s;
     }
+    GetVGroupByID(entity.subGroupId)->ResetEntityMaxTs(table_id_, ts_span.end, entity.entityId);
+    GetVGroupByID(entity.subGroupId)->ResetEntityLatestRow(entity.entityId, ts_span.end);
   }
   #ifdef K_DEBUG
     GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_aft);
@@ -730,6 +765,12 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
   if (s != KStatus::SUCCESS) {
     return s;
   }
+  timestamp64 max_ts = INT64_MIN;
+  for (auto span : ts_spans) {
+    max_ts = (max_ts < span.end) ? span.end : max_ts;
+  }
+  GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, max_ts, entity_id);
+  GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, max_ts);
   return KStatus::SUCCESS;
 }
 
@@ -784,5 +825,28 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::GetLastRowEntity(EntityResultIndex& entity_id) {
+  entity_id = {0, 0, 0};
+  timestamp64 entity_max_ts = INT64_MIN;
+
+  for (auto& vgroup : vgroups_) {
+    pair<timestamp64, EntityID> cur_last_entity = {INT64_MIN, 0};
+    if (vgroup->GetLastRowEntity(table_schema_mgr_, cur_last_entity) != KStatus::SUCCESS) {
+      LOG_ERROR("Vgroup %d GetLastRowEntity failed.", vgroup->GetVGroupID());
+      return KStatus::FAIL;
+    }
+    if (cur_last_entity.second == 0) {
+      LOG_WARN("cannot found last row entity for vgroup[%d]", vgroup->GetVGroupID());
+      continue;
+    }
+    if (cur_last_entity.first > entity_max_ts) {
+      entity_id.entityGroupId = 1;
+      entity_id.subGroupId = vgroup->GetVGroupID();
+      entity_id.entityId = cur_last_entity.second;
+      entity_max_ts = cur_last_entity.first;
+    }
+  }
+  return KStatus::SUCCESS;
+}
 
 }  //  namespace kwdbts

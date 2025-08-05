@@ -45,9 +45,6 @@ struct EngineOptions {
   std::string db_path;
   // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
   uint8_t wal_level = WALMode::FLUSH;
-  // WAL file size, default is 64Mb
-  uint16_t wal_file_size = 64;
-  uint16_t wal_file_in_group = 1;
   uint16_t wal_buffer_size = 4;
   uint16_t thread_pool_size = 10;
   uint16_t task_queue_size = 1024;
