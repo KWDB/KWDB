@@ -532,9 +532,13 @@ void TsVGroup::closeCompactThread() {
 }
 
 KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum) {
-  while (!partition->TrySetBusy(PartitionStatus::Compacting)) {
-    sleep(1);
+  auto partition_id = partition->GetPartitionIdentifier();
+  if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
+    LOG_INFO("partition[%d,%ld,%ld] skip compact",
+             std::get<0>(partition_id), std::get<1>(partition_id), std::get<2>(partition_id));
+    return KStatus::SUCCESS;
   }
+  partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
   Defer defer{[&]() {
     partition->ResetStatus();
   }};
@@ -1106,6 +1110,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
         sleep(1);
       }
+      partition = version_manager_->Current()->GetPartition(database_id, p_time);
       auto entity_segment = partition->GetEntitySegment();
 
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
@@ -1113,6 +1118,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
                                                          entity_segment);
       KStatus s = builder->Open();
       if (s != KStatus::SUCCESS) {
+        partition->ResetStatus();
         LOG_ERROR("Open entity segment builder failed.");
         return s;
       }
@@ -1548,7 +1554,8 @@ KStatus TsVGroup::Vacuum() {
   auto partitions = current->GetPartitionsToVacuum();
 
   for (auto& partition : partitions) {
-    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
+    auto partition_id = partition->GetPartitionIdentifier();
+    auto root_path = this->GetPath() / PartitionDirName(partition_id);
     bool need_vacuum = false;
     s = partition->NeedVacuumEntitySegment(root_path, need_vacuum);
     if (s != KStatus::SUCCESS) {
@@ -1573,6 +1580,7 @@ KStatus TsVGroup::Vacuum() {
       partition->ResetStatus();
     }};
 
+    partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
     auto entity_segment = partition->GetEntitySegment();
     if (entity_segment == nullptr) {
       continue;

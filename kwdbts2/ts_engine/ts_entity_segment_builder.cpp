@@ -836,9 +836,9 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
-  Defer defer([this]() {
-    LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
-             entity_item_file_number_);
+  Defer defer([&]() {
+    LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish end, root_path: %s, update info: %s",
+             root_path_.c_str(), update->DebugStr().c_str());
     ReleaseBuilders();
   });
   // write entity header
