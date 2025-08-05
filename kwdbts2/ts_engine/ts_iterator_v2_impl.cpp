@@ -147,6 +147,9 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
 
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+
+  filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
+                                                  0, ts_col_type_, scan_lsn_, ts_spans_);
   return KStatus::SUCCESS;
 }
 
@@ -179,7 +182,7 @@ inline void TsStorageIteratorV2Impl::UpdateTsSpans(timestamp64 ts) {
 }
 
 inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts) {
-  return ts != INVALID_TS && ((!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts));
+  return  (!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts);
 }
 
 KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpan> block_span,
@@ -504,32 +507,28 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   ts_block_spans_.clear();
   UpdateTsSpans(ts);
-  for (cur_partition_index_ = 0; cur_partition_index_ < ts_partitions_.size(); ++cur_partition_index_) {
-    TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
-    auto partition_version = ts_partitions_[cur_partition_index_];
-    if (IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
-                      partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
+  filter_->entity_id_ = entity_ids_[cur_entity_index_];
+  for (auto& partition_version : ts_partitions_) {
+    if (ts != INVALID_TS && IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
+                                          partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       continue;
     }
-    std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    auto s = partition_version->GetBlockSpan(filter, &cur_block_span, table_schema_mgr_, table_version_);
+    auto s = partition_version->GetBlockSpan(*filter_, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
     }
     if (!block_filter_.empty()) {
-      uint32_t size = cur_block_span.size();
+      uint32_t size = ts_block_spans_.size();
       for (uint32_t i = 0; i < size; ++i) {
-        auto block_span = cur_block_span.front();
-        cur_block_span.pop_front();
+        auto block_span = ts_block_spans_.front();
+        ts_block_spans_.pop_front();
         if (!block_span->GetRowNum() || isBlockFiltered(block_span)) {
           continue;
         }
-        cur_block_span.push_back(block_span);
+        ts_block_spans_.push_back(block_span);
       }
     }
-    ts_block_spans_.splice(ts_block_spans_.begin(), cur_block_span);
   }
 
   return KStatus::SUCCESS;
@@ -609,7 +608,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
         return KStatus::FAIL;
       }
-      if (!is_done && !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts)) {
+      if (!is_done && (ts == INVALID_TS || !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts))) {
         // Found a block span which might contain satisfied rows.
         ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
         if (ret != KStatus::SUCCESS) {
@@ -910,6 +909,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
+    ts_block_spans_.clear();
     auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
@@ -931,6 +931,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
+    ts_block_spans_.clear();
     auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
@@ -951,6 +952,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                                 entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
+      ts_block_spans_.clear();
       auto ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
@@ -1835,6 +1837,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
     // TODO(liumengzhen) filter参数能否支持多设备
     for (auto entity_id : entity_ids) {
       TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_lsn_, ts_spans_};
+      ts_block_spans_.clear();
       ret = partition_version->GetBlockSpan(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");

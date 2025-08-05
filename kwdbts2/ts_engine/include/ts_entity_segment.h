@@ -303,6 +303,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   TsEntitySegmentMetaManager meta_mgr_;
   TsEntitySegmentBlockFile block_file_;
   TsEntitySegmentAggFile agg_file_;
+  TsVersionUpdate::EntitySegmentVersionInfo info_;
 
  public:
   TsEntitySegment() = delete;
@@ -312,6 +313,8 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   ~TsEntitySegment() {}
 
   KStatus Open();
+
+  TsVersionUpdate::EntitySegmentVersionInfo GetInfo() { return info_; }
 
   uint64_t GetEntityHeaderFileNum() { return meta_mgr_.GetEntityHeaderFileNum(); }
 
