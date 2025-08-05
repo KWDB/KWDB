@@ -36,15 +36,14 @@ class TsColumnBlock {
  private:
   const AttributeInfo col_schema_;
   int count_ = 0;
-  TsBitmap bitmap_;
-
+  TsSliceGuard bitmap_guard_;
   TsSliceGuard fixlen_guard_, varchar_guard_;
 
-  TsColumnBlock(const AttributeInfo& col_schema, int count, const TsBitmap& bitmap, TsSliceGuard&& fixlen_data,
+  TsColumnBlock(const AttributeInfo& col_schema, int count, TsSliceGuard&& bitmap, TsSliceGuard&& fixlen_data,
                 TsSliceGuard&& varchar_data)
       : col_schema_(col_schema),
         count_(count),
-        bitmap_(bitmap),
+        bitmap_guard_(std::move(bitmap)),
         fixlen_guard_(std::move(fixlen_data)),
         varchar_guard_(std::move(varchar_data)) {}
 
@@ -83,8 +82,10 @@ class TsColumnBlockBuilder {
     varchar_data.swap(varchar_data_);
     TsSliceGuard fixlen_guard{std::move(fixlen_data)};
     TsSliceGuard varchar_guard{std::move(varchar_data)};
+    auto bitmap_str = bitmap_.GetStr();
+    TsSliceGuard bitmap_guard{std::move(bitmap_str)};
     return std::unique_ptr<TsColumnBlock>{
-        new TsColumnBlock(col_schema_, count_, bitmap_, std::move(fixlen_guard), std::move(varchar_guard))};
+        new TsColumnBlock(col_schema_, count_, std::move(bitmap_guard), std::move(fixlen_guard), std::move(varchar_guard))};
   }
 
   void Reset() {
