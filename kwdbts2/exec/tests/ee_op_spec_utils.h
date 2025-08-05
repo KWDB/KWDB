@@ -324,6 +324,35 @@ class SpecSelectWithSort : public SpecBase {
   }
 
  protected:
+ 
+  // include hostname in the Tag Reader Spec.
+  void initTagReaderPostSpec(TSPostProcessSpec& post) override {
+    // primary tag
+    post.add_outputcols(4);
+    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
+  }
+
+  // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
+  void initTableReaderPostSpec(TSPostProcessSpec& post) override {
+    // metrics columns
+    for (int i = 1; i <= 2; i++) {
+      post.add_outputcols(i);
+      post.add_outputtypes(KWDBTypeFamily::IntFamily);
+    }
+    // primary tag column
+    initTagReaderPostSpec(post);
+    post.set_projection(true);
+  }
+
+  // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
+  void initOutputTypes(TSPostProcessSpec& post) override {
+    // metrics columns
+    post.add_outputtypes(IntFamily);
+    post.add_outputtypes(IntFamily);
+    // primary tag
+    post.add_outputtypes(TimestampFamily);
+  }
+
   void initAggFuncs(TSAggregatorSpec& agg) override {};
 
   void initAggOutputTypes(TSPostProcessSpec& post) override {};
