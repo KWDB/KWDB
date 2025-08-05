@@ -27,12 +27,18 @@ namespace kwdbts {
 class TsSegmentBase;
 // conditions used for flitering data.
 struct TsScanFilterParams {
-  uint32_t db_id;
-  TSTableID table_id;
-  uint32_t vgroup_id;
-  TSEntityID entity_id;
-  DATATYPE  table_ts_type;
-  TS_LSN end_lsn;
+  TsScanFilterParams(uint32_t db_id, TSTableID table_id, uint32_t vgroup_id,
+                      TSEntityID entity_id, DATATYPE  table_ts_type, TS_LSN end_lsn,
+                      const std::vector<KwTsSpan>& ts_spans) :
+                      db_id_(db_id), table_id_(table_id), vgroup_id_(vgroup_id),
+                      entity_id_(entity_id), table_ts_type_(table_ts_type),
+                      end_lsn_(end_lsn), ts_spans_(ts_spans) {};
+  uint32_t db_id_;
+  TSTableID table_id_;
+  uint32_t vgroup_id_;
+  TSEntityID entity_id_;
+  DATATYPE  table_ts_type_;
+  TS_LSN end_lsn_;
   const std::vector<KwTsSpan>& ts_spans_;
 };
 

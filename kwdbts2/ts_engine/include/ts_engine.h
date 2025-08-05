@@ -232,6 +232,8 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus UpdateSetting(kwdbContext_p ctx) override;
 
+  KStatus UpdateAtomicLSN();
+
   KStatus LogInit();
 
   KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,

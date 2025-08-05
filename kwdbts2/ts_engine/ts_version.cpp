@@ -535,7 +535,7 @@ KStatus TsPartitionVersion::DropEntity(TSEntityID e_id) const {
 
 KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
   std::list<STDelRange> del_range_all;
-  auto s = GetDelRange(filter.entity_id, del_range_all);
+  auto s = GetDelRange(filter.entity_id_, del_range_all);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelRange failed.");
     return s;
@@ -543,20 +543,20 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   // filter delitems that insert after scannig.
   std::list<STDelRange> del_range;
   for (STDelRange& d_item : del_range_all) {
-    if (d_item.lsn_span.end <= filter.end_lsn) {
+    if (d_item.lsn_span.end <= filter.end_lsn_) {
       del_range.push_back(d_item);
     }
   }
   KwTsSpan partition_span;
-  partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type);
-  partition_span.end = convertSecondToPrecisionTS(GetEndTime(), filter.table_ts_type) - 1;
+  partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type_);
+  partition_span.end = convertSecondToPrecisionTS(GetEndTime(), filter.table_ts_type_) - 1;
   std::vector<STScanRange> cur_scan_range;
   for (auto& scan : filter.ts_spans_) {
     KwTsSpan cross_part;
     cross_part.begin = std::max(partition_span.begin, scan.begin);
     cross_part.end = std::min(partition_span.end, scan.end);
     if (cross_part.begin <= cross_part.end) {
-      cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn}));
+      cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn_}));
     }
   }
   for (auto& del : del_range) {
@@ -571,10 +571,10 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   });
 
   block_data_filter.spans_ = std::move(cur_scan_range);
-  block_data_filter.db_id = filter.db_id;
-  block_data_filter.entity_id = filter.entity_id;
-  block_data_filter.vgroup_id = filter.vgroup_id;
-  block_data_filter.table_id = filter.table_id;
+  block_data_filter.db_id = filter.db_id_;
+  block_data_filter.entity_id = filter.entity_id_;
+  block_data_filter.vgroup_id = filter.vgroup_id_;
+  block_data_filter.table_id = filter.table_id_;
   return KStatus::SUCCESS;
 }
 
@@ -588,7 +588,6 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     return s;
   }
 
-  ts_block_spans->clear();
   // get block span in mem segment
   for (auto& mem : GetAllMemSegments()) {
     s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);

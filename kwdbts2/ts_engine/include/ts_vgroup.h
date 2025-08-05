@@ -80,6 +80,8 @@ class TsVGroup {
   // Mutexes for condition variables
   std::mutex cv_mutex_;
 
+  std::atomic<uint64_t> max_lsn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
+
   mutable std::shared_mutex last_row_entity_mutex_;
   std::unordered_map<uint32_t, bool> last_row_entity_checked_;
   std::unordered_map<uint32_t, pair<timestamp64, uint32_t>> last_row_entity_;
@@ -138,6 +140,14 @@ class TsVGroup {
     if (engine_wal_level_mutex_ != nullptr) {
       engine_wal_level_mutex_->unlock_shared();
     }
+  }
+
+  void UpdateAtomicLSN() {
+    max_lsn_.store(GetMaxLSN());
+  }
+
+  uint64_t LSNInc() {
+    return max_lsn_.fetch_add(1, std::memory_order_relaxed);
   }
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
@@ -255,7 +265,7 @@ class TsVGroup {
 
   KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
 
-  KStatus undoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, TS_LSN log_lsn,
+  KStatus undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, TS_LSN log_lsn,
                         uint32_t group_id, uint32_t entity_id, TSSlice& tags);
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
@@ -266,7 +276,7 @@ class TsVGroup {
 
   KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
-  KStatus redoDeleteTag(kwdbContext_p ctx, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
+  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
                         uint32_t entity_id, TSSlice& tags);
 
   /**
