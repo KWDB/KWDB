@@ -431,7 +431,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
       }
     }
     for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id < entity_key.entity_id; ++entity_id) {
-      cur_entity_item_ = {entity_id};
+      cur_entity_item_ = {};
       if (cur_entity_segment_) {
         bool is_exist = true;
         s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
@@ -446,8 +446,7 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
         return s;
       }
     }
-    cur_entity_item_ = {entity_key.entity_id};
-    cur_entity_item_.table_id = entity_key.table_id;
+    cur_entity_item_ = {};
     if (cur_entity_segment_) {
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_key.entity_id, cur_entity_item_, is_exist);
@@ -455,6 +454,12 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
         return s;
       }
+    }
+    if (cur_entity_item_.entity_id == 0) {
+      cur_entity_item_.entity_id = entity_key.entity_id;
+    }
+    if (cur_entity_item_.table_id == 0) {
+      cur_entity_item_.table_id = entity_key.table_id;
     }
   }
   block_item.prev_block_id = cur_entity_item_.cur_block_id;
@@ -699,7 +704,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
   if (cur_entity_segment_) {
     uint64_t max_entity_id = cur_entity_segment_->GetEntityNum();
     for (uint64_t entity_id = cur_entity_item_.entity_id + 1; entity_id <= max_entity_id; ++entity_id) {
-      cur_entity_item_ = {entity_id};
+      cur_entity_item_ = {};
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, cur_entity_item_, is_exist);
       if (s != KStatus::SUCCESS && is_exist) {
@@ -750,8 +755,7 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   }
   auto it = entity_items_.find(entity_id);
   if (it == entity_items_.end()) {
-    TsEntityItem entity_item{entity_id};
-    entity_item.table_id = tbl_id;
+    TsEntityItem entity_item{};
     if (cur_entity_segment_) {
       bool is_exist = true;
       KStatus s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
@@ -759,6 +763,12 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
         LOG_ERROR("entity item[%d] not found", entity_id);
         return s;
       }
+    }
+    if (entity_item.entity_id == 0) {
+      entity_item.entity_id = entity_id;
+    }
+    if (entity_item.table_id == 0) {
+      entity_item.table_id = tbl_id;
     }
     entity_items_[entity_id] = entity_item;
   }
@@ -830,7 +840,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   uint32_t cur_entity_id = 0;
   for (auto kv : entity_items_) {
     for (uint32_t entity_id = cur_entity_id + 1; entity_id < kv.first; ++entity_id) {
-      TsEntityItem entity_item{entity_id};
+      TsEntityItem entity_item{};
       if (cur_entity_segment_) {
         bool is_exist = true;
         s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
@@ -854,7 +864,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   }
   if (cur_entity_segment_) {
     for (uint32_t entity_id = cur_entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
-      TsEntityItem entity_item{entity_id};
+      TsEntityItem entity_item{};
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
       if (s != KStatus::SUCCESS && is_exist) {
