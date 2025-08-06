@@ -15,6 +15,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 
 #include "data_type.h"
 #include "libkwdbts2.h"

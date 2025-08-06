@@ -222,7 +222,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
             size_t log_len = InsertLogTagsEntry::fixed_length + ins_log->getPayload().len;
             auto log_ = InsertLogTagsEntry::construct(WALLogType::INSERT, ins_log->getXID(),
                                                       ins_log->getVGroupID(), ins_log->getOldLSN(),
-                                                      wal_log->getTableID(),WALTableType::TAG,
+                                                      wal_log->getTableID(), WALTableType::TAG,
                                                       ins_log->getTimePartition(), ins_log->getOffset(),
                                                       ins_log->getPayload().len, ins_log->getPayload().data);
             s = writeWALInternal(ctx, log_, log_len, current_lsn);

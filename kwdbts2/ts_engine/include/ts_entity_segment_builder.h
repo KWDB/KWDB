@@ -234,10 +234,10 @@ class TsEntitySegmentBuilder {
         partition_id_(partition_id),
         cur_entity_segment_(entity_segment),
         last_segments_(last_segments) {
-    entity_header_file_num_ = version_manager_->NewFileNumber();
+    entity_item_file_number_ = version_manager_->NewFileNumber();
     // entity header file
-    std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_header_file_num);
-    entity_item_builder_ = new TsEntitySegmentEntityItemFileBuilder(entity_header_file_path, entity_header_file_num);
+    std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_item_file_number_);
+    entity_item_builder_ = new TsEntitySegmentEntityItemFileBuilder(entity_header_file_path, entity_item_file_number_);
     bool override = cur_entity_segment_ == nullptr ? true : false;
     uint64_t block_header_file_num;
     size_t block_header_file_size = 0;

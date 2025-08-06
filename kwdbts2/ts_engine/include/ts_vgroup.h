@@ -276,8 +276,8 @@ class TsVGroup {
 
   KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
-  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
-                        uint32_t entity_id, TSSlice& tags);
+  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.
