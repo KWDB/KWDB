@@ -91,6 +91,11 @@ func BuildChildPhysicalProps(
 		childProps.Presentation = parent.(*memo.CancelSessionsExpr).Props.Presentation
 	case opt.ExportOp:
 		childProps.Presentation = parent.(*memo.ExportExpr).Props.Presentation
+	case opt.SortOp:
+		// we need get Presentation if the SortExpr is saved from fromSubquery
+		if parent.(*memo.SortExpr).InputOrdering.CheckFlag(physical.OrderFromSubquerySave) {
+			childProps.Presentation = parentProps.Presentation
+		}
 	}
 
 	childProps.Ordering = ordering.BuildChildRequired(parent, &parentProps.Ordering, nth)
