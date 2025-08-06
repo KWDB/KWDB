@@ -19,7 +19,6 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -30,7 +29,6 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "mmap/mmap_entity_block_meta.h"
-#include "ts_arena.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"
@@ -50,9 +48,7 @@ static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockInd
                              TsLastSegmentBlockInfo* info) {
   assert(info != nullptr);
   TSSlice result;
-  Allocator arena;
-  char* buf = arena.Allocate(index.length);
-  auto s = file->Read(index.info_offset, index.length, &result, buf);
+  auto s = file->Read(index.info_offset, index.length, &result, nullptr);
   if (s != SUCCESS) {
     return s;
   }
@@ -61,24 +57,23 @@ static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockInd
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
     std::vector<TsLastSegmentBlockIndex>** block_indices) {
-  {
-    std::shared_lock lk{mu_};
-    if (cached_) {
-      *block_indices = &block_indices_;
-      return SUCCESS;
-    }
-  }
-  std::unique_lock lk{mu_};
-  if (cached_) {
-    *block_indices = &block_indices_;
+  if (block_indices_ != nullptr) {
+    *block_indices = block_indices_.get();
     return SUCCESS;
   }
-  auto s = lastseg_->GetAllBlockIndex(&block_indices_);
+  std::unique_lock lk{mu_};
+  if (block_indices_ != nullptr) {
+    *block_indices = block_indices_.get();
+    return SUCCESS;
+  }
+  auto indices = std::make_unique<std::vector<TsLastSegmentBlockIndex>>();
+  auto s = lastseg_->GetAllBlockIndex(indices.get());
   if (s == FAIL) {
     LOG_ERROR("cannot get block index from last segment");
   }
-  cached_ = true;
-  *block_indices = &block_indices_;
+  // indices is ready to use after GetAllBlockIndex.
+  block_indices_ = std::move(indices);
+  *block_indices = block_indices_.get();
   return SUCCESS;
 }
 
@@ -153,7 +148,7 @@ KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* bl
 
 class TsLastBlock : public TsBlock {
  private:
-  TsLastSegment* lastsegment_;
+  const TsLastSegment* lastsegment_;
 
   int block_id_;
 
@@ -162,29 +157,19 @@ class TsLastBlock : public TsBlock {
 
   class ColumnCache {
    private:
-    std::shared_mutex mu_;
-
     TsRandomReadFile* file_;
     TsLastSegmentBlockInfo* block_info_;
 
     std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
-    std::string entity_ids_;
-    std::string timestamps_;
-    std::string lsn_;
+    TsSliceGuard entity_ids_;
+    TsSliceGuard timestamps_;
+    TsSliceGuard lsn_;
 
    public:
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
         : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
     KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
-      {
-        std::shared_lock lk{mu_};
-        if (column_blocks_[col_id] != nullptr) {
-          *block = column_blocks_[col_id].get();
-          return SUCCESS;
-        }
-      }
-      std::unique_lock lk{mu_};
       if (column_blocks_[col_id] != nullptr) {
         *block = column_blocks_[col_id].get();
         return SUCCESS;
@@ -195,10 +180,8 @@ class TsLastBlock : public TsBlock {
       const auto& col_info = block_info_->col_infos[col_id];
       size_t length = col_info.bitmap_len + col_info.fixdata_len + col_info.vardata_len;
 
-      Allocator arena;
-      char* buf = arena.Allocate(length);
       TSSlice result{nullptr, 0};
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL || result.len != length) {
         LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.len);
         return s;
@@ -222,14 +205,6 @@ class TsLastBlock : public TsBlock {
     }
 
     KStatus GetEntityIDs(TSEntityID** entity_ids) {
-      {
-        std::shared_lock lk{mu_};
-        if (!entity_ids_.empty()) {
-          *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-          return SUCCESS;
-        }
-      }
-      std::unique_lock lk{mu_};
       if (!entity_ids_.empty()) {
         *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
         return SUCCESS;
@@ -238,10 +213,8 @@ class TsLastBlock : public TsBlock {
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset;
       size_t length = block_info_->entity_id_len;
-      Allocator arena;
       TSSlice result;
-      char* buf = arena.Allocate(length);
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
@@ -251,14 +224,6 @@ class TsLastBlock : public TsBlock {
     }
 
     KStatus GetLSN(TS_LSN** lsn) {
-      {
-        std::shared_lock lk{mu_};
-        if (!lsn_.empty()) {
-          *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-          return SUCCESS;
-        }
-      }
-      std::unique_lock lk{mu_};
       if (!lsn_.empty()) {
         *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
         return SUCCESS;
@@ -267,10 +232,8 @@ class TsLastBlock : public TsBlock {
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset + block_info_->entity_id_len;
       size_t length = block_info_->entity_id_len;
-      Allocator arena;
       TSSlice result;
-      char* buf = arena.Allocate(length);
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
@@ -280,15 +243,6 @@ class TsLastBlock : public TsBlock {
     }
 
     KStatus GetTimestamps(timestamp64** timestamps) {
-      {
-        std::shared_lock lk{mu_};
-        if (!timestamps_.empty()) {
-          *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-          return SUCCESS;
-        }
-      }
-
-      std::unique_lock lk{mu_};
       if (!timestamps_.empty()) {
         *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
         return SUCCESS;
@@ -298,10 +252,8 @@ class TsLastBlock : public TsBlock {
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
       const auto& mgr = CompressorManager::GetInstance();
-      Allocator arena;
       TSSlice result;
-      char* buf = arena.Allocate(length);
-      auto s = file_->Read(offset, length, &result, buf);
+      auto s = file_->Read(offset, length, &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
@@ -314,7 +266,7 @@ class TsLastBlock : public TsBlock {
   std::unique_ptr<ColumnCache> column_block_cache_;
 
  public:
-  TsLastBlock(TsLastSegment* lastseg, int block_id, TsLastSegmentBlockIndex block_index,
+  TsLastBlock(const TsLastSegment* lastseg, int block_id, TsLastSegmentBlockIndex block_index,
               TsLastSegmentBlockInfo block_info)
       : lastsegment_(lastseg),
         block_id_(block_id),
@@ -441,47 +393,29 @@ class TsLastBlock : public TsBlock {
   }
 };
 
-KStatus TsLastSegment::TsLastSegBlockCache::BlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) {
-  {
-    std::shared_lock lk{mu_};
-    if (cache_flag_[block_id] == 1) {
-      *block = block_infos_[block_id];
-      return SUCCESS;
-    }
-  }
-  std::unique_lock lk{mu_};
-  if (cache_flag_[block_id] == 1) {
-    *block = block_infos_[block_id];
-    return SUCCESS;
-  }
-  // std::shared_ptr<TsLastSegment> lastseg, int block_id,
-  //           TsLastSegmentBlockIndex block_index, TsLastSegmentBlockInfo block_info
+KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const {
   TsLastSegmentBlockIndex* index;
-  auto s = lastseg_cache_->GetBlockIndex(block_id, &index);
+  auto s = block_cache_->GetBlockIndex(block_id, &index);
   if (s == FAIL) {
     LOG_ERROR("cannot get block index");
     return s;
   }
 
   TsLastSegmentBlockInfo* info;
-  s = lastseg_cache_->GetBlockInfo(block_id, &info);
+  s = block_cache_->GetBlockInfo(block_id, &info);
   if (s == FAIL) {
     LOG_ERROR("cannot get block info");
     return s;
   }
 
-  auto tmp_block = std::make_unique<TsLastBlock>(lastseg_cache_->segment_, block_id, *index, *info);
-  cache_flag_[block_id] = 1;
-  block_infos_[block_id] = std::move(tmp_block);
-  *block = block_infos_[block_id];
+  *block = std::make_unique<TsLastBlock>(this, block_id, *index, *info);
   return SUCCESS;
 }
 
 TsLastSegment::TsLastSegBlockCache::TsLastSegBlockCache(TsLastSegment* last, int nblock)
     : segment_(last),
       block_index_cache_(std::make_unique<BlockIndexCache>(last)),
-      block_info_cache_(std::make_unique<BlockInfoCache>(this, nblock)),
-      block_cache_(std::make_unique<BlockCache>(this, nblock)) {}
+      block_info_cache_(std::make_unique<BlockInfoCache>(this, nblock)) {}
 
 KStatus TsLastSegment::TsLastSegBlockCache::GetAllBlockIndex(
     std::vector<TsLastSegmentBlockIndex>** block_indices) const {
@@ -500,10 +434,6 @@ KStatus TsLastSegment::TsLastSegBlockCache::GetBlockIndex(int block_id, TsLastSe
 
 KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
   return block_info_cache_->GetBlockInfo(block_id, info);
-}
-
-KStatus TsLastSegment::TsLastSegBlockCache::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const {
-  return block_cache_->GetBlock(block_id, block);
 }
 
 KStatus TsLastSegment::Open() {
@@ -527,10 +457,8 @@ KStatus TsLastSegment::Open() {
   // Open()
   int nmeta = footer_.n_meta_block;
   if (nmeta != 0) {
-    Allocator arena;
     TSSlice result;
-    char* buf = arena.Allocate(nmeta * 16);
-    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, buf);
+    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, nullptr);
     if (s == FAIL) {
       return s;
     }
@@ -542,8 +470,7 @@ KStatus TsLastSegment::Open() {
     }
 
     for (int i = 0; i < nmeta; ++i) {
-      char* buf2 = arena.Allocate(meta_len[i]);
-      s = file_->Read(meta_offset[i], meta_len[i], &result, buf2);
+      s = file_->Read(meta_offset[i], meta_len[i], &result, nullptr);
       if (s == FAIL) {
         return FAIL;
       }
@@ -575,7 +502,7 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr;
   for (int idx = 0; idx < footer_.n_data_block; ++idx) {
     std::shared_ptr<TsBlock> tmp_block;
-    block_cache_->GetBlock(idx, &tmp_block);
+    this->GetBlock(idx, &tmp_block);
     auto block = std::static_pointer_cast<TsLastBlock>(tmp_block);
 
     // auto block = std::make_shared<TsLastBlock>(shared_from_this(), idx, block_indices[idx], *info);
@@ -677,7 +604,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 
       if (block == nullptr || block->GetBlockID() != block_idx) {
         std::shared_ptr<TsBlock> tmp_block;
-        auto s = block_cache_->GetBlock(block_idx, &tmp_block);
+        auto s = this->GetBlock(block_idx, &tmp_block);
         if (s == FAIL) {
           return s;
         }

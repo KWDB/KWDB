@@ -34,7 +34,7 @@ int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
-size_t EngineOptions::min_rows_per_block = 4096;
+size_t EngineOptions::min_rows_per_block = 2048;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
