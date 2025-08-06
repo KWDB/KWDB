@@ -1,0 +1,62 @@
+SET
+
+Time: 485.208µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,"+""time"",+lowwarn"
+"      └── render","",""
+"           └── group","",""
+"                │",aggregate 0,adr
+"                │",aggregate 1,time
+"                │",aggregate 2,lowwarn
+"                │",aggregate 3,avg(value)
+"                │",aggregate 4,"last(time, time)"
+"                │",aggregate 5,any_not_null(channel)
+"                │",aggregate 6,any_not_null(datatype)
+"                │",group by,"adr, time, lowwarn"
+"                └── render","",""
+"                     └── batch-lookup-join","",""
+"                          │",type,inner
+"                          │",equality,"(company_id, column151) = (companyid, lowwarn)"
+"                          ├── render","",""
+"                          │    └── hash-join","",""
+"                          │         │",type,inner
+"                          │         │",equality,(company_id) = (company_id)
+"                          │         ├── hash-join","",""
+"                          │         │    │",type,inner
+"                          │         │    │",equality,(company_id) = (company_id)
+"                          │         │    ├── scan","",""
+"                          │         │    │",table,plat_zone_member@primary
+"                          │         │    │",spans,-/385/# /387-
+"                          │         │    │",filter,company_id = 449600
+"                          │         │    └── scan","",""
+"                          │         │",table,plat_tijiancard_item_relation@primary
+"                          │         │",spans,FULL SCAN
+"                          │         │",filter,(company_id = 449600) AND (obj_id < 5000)
+"                          │         └── hash-join","",""
+"                          │              │",type,inner
+"                          │              │",equality,(company_id) = (company_id)
+"                          │              ├── scan","",""
+"                          │              │",table,cd_device_point@primary
+"                          │              │",spans,FULL SCAN
+"                          │              │",filter,company_id = 449600
+"                          │              └── scan","",""
+"                          │",table,plat_risk_analyse_objects@primary
+"                          │",spans,FULL SCAN
+"                          │",filter,company_id = 449600
+"                          └── synchronizer","",""
+"                               └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+"",spans:toTime,2024-01-01 01:00:00 +0000 UTC
+"",tag filter[0],datatype = e'\U00006DB2\U00004F4D'
+"",ptag filter[0],channel = 'CH248'
+"",ptag filter[1],companyid = 449600
+
+Time: 24.57003ms
+

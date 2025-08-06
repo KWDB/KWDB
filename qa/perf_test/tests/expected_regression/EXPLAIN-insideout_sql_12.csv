@@ -1,0 +1,56 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",avg,avg
+" │",min,min
+" │",max,max
+" │",sum,sum
+" └── filter","",""
+"      │",filter,(avg > 45.0) AND (max > 100)
+"      └── render","",""
+"           │",avg,sum / sum_int
+"           │",min,min
+"           │",max,max
+"           │",sum,sum
+"           │",max,max
+"           └── group","",""
+"                │",aggregate 0,sum_int(count)
+"                │",aggregate 1,sum(sum)
+"                │",aggregate 2,min(min)
+"                │",aggregate 3,max(max)
+"                │",aggregate 4,sum(sum)
+"                │",aggregate 5,max(zone_company_id)
+"                │",scalar,""
+"                └── render","",""
+"                     │",zone_company_id,zone_company_id
+"                     │",min,min
+"                     │",max,max
+"                     │",sum,sum
+"                     │",count,count
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,(companyid) = (company_id)
+"                          ├── group","",""
+"                          │    │",engine type,time series
+"                          │    │",aggregate 0,companyid
+"                          │    │",aggregate 1,min(value)
+"                          │    │",aggregate 2,max(value)
+"                          │    │",aggregate 3,sum(value)
+"                          │    │",aggregate 4,count(value)
+"                          │    │",group by,companyid
+"                          │    │",addSynchronizer ,true
+"                          │    └── ts scan","",""
+"                          │",ts-table,opcdata449600
+"                          │",access mode,tableTableMeta
+"                          │",spans:fromTime,2023-12-29 10:10:10.001 +0000 UTC
+"                          │",spans:toTime,2024-05-29 16:10:10 +0000 UTC
+"                          │",tag filter[0],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"                          │",tag filter[1],"""tag"" LIKE 'MAT%'"
+"                          │",tag filter[2],datatype = e'\U00006C14\U00004F53'
+"                          └── scan","",""
+"",table,plat_zone_member@primary
+"",spans,FULL SCAN
+
+Time: 4.026882ms
+

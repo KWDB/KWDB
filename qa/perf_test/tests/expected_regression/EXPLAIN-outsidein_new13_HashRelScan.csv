@@ -1,0 +1,142 @@
+SET
+
+Time: 992.993µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+root,"",""
+" ├── sort","",""
+" │    │",order,"+area_name,+device_name,+plat_company_name,+risk_level"
+" │    └── render","",""
+" │         └── hash-join","",""
+" │              │",type,inner
+" │              │",equality,(level) = (level)
+" │              │",left cols are key,""
+" │              ├── group","",""
+" │              │    │",aggregate 0,level
+" │              │    │",aggregate 1,count_rows()
+" │              │    │",aggregate 2,avg(value)
+" │              │    │",aggregate 3,max(value)
+" │              │    │",aggregate 4,min(value)
+" │              │    │",group by,level
+" │              │    └── render","",""
+" │              │         └── scan buffer node","",""
+" │              │",label,buffer 1 (device_data)
+" │              └── hash-join","",""
+" │                   │",type,inner
+" │                   │",equality,(area_name) = (area_name)
+" │                   │",right cols are key,""
+" │                   ├── hash-join","",""
+" │                   │    │",type,inner
+" │                   │    │",equality,(company_id) = (company_id)
+" │                   │    ├── scan","",""
+" │                   │    │",table,plat_risk_analyse_objects@primary
+" │                   │    │",spans,FULL SCAN
+" │                   │    │",filter,risk_status = 1
+" │                   │    └── hash-join","",""
+" │                   │         │",type,inner
+" │                   │         │",equality,(column256) = (index_id)
+" │                   │         ├── render","",""
+" │                   │         │    └── scan","",""
+" │                   │         │",table,plat_tijian_item_index@primary
+" │                   │         │",spans,FULL SCAN
+" │                   │         └── hash-join","",""
+" │                   │              │",type,inner
+" │                   │              │",equality,(companyid) = (companyid)
+" │                   │              │",right cols are key,""
+" │                   │              ├── lookup-join","",""
+" │                   │              │    │",table,plat_device_info@primary
+" │                   │              │    │",type,inner
+" │                   │              │    │",equality,(device_id) = (id)
+" │                   │              │    │",equality cols are key,""
+" │                   │              │    │",parallel,""
+" │                   │              │    └── hash-join","",""
+" │                   │              │         │",type,inner
+" │                   │              │         │",equality,(company_id) = (company_id)
+" │                   │              │         ├── scan","",""
+" │                   │              │         │",table,cd_device_point@primary
+" │                   │              │         │",spans,FULL SCAN
+" │                   │              │         │",filter,index_upper_value > 1.0
+" │                   │              │         └── batch-lookup-join","",""
+" │                   │              │              │",type,inner
+" │                   │              │              │",equality,(company_id) = (companyid)
+" │                   │              │              ├── scan","",""
+" │                   │              │              │",table,cd_behavior_area@primary
+" │                   │              │              │",spans,FULL SCAN
+" │                   │              │              │",filter,area_type = 1
+" │                   │              │              └── synchronizer","",""
+" │                   │              │                   └── ts scan","",""
+" │                   │              │",ts-table,opcdata449600
+" │                   │              │",access mode,hashRelScan
+" │                   │              │",spans:fromTime,2023-01-01 00:00:00 +0000 UTC
+" │                   │              │",spans:toTime,2024-01-01 00:01:00 +0000 UTC
+" │                   │              └── group","",""
+" │                   │                   │",aggregate 0,companyid
+" │                   │                   │",aggregate 1,count_rows()
+" │                   │                   │",aggregate 2,avg(value)
+" │                   │                   │",aggregate 3,max(value)
+" │                   │                   │",aggregate 4,min(value)
+" │                   │                   │",group by,companyid
+" │                   │                   └── render","",""
+" │                   │                        └── scan buffer node","",""
+" │                   │",label,buffer 1 (device_data)
+" │                   └── group","",""
+" │                        │",aggregate 0,area_name
+" │                        │",aggregate 1,count_rows()
+" │                        │",aggregate 2,avg(value)
+" │                        │",aggregate 3,max(value)
+" │                        │",aggregate 4,min(value)
+" │                        │",group by,area_name
+" │                        └── render","",""
+" │                             └── scan buffer node","",""
+" │",label,buffer 1 (device_data)
+" └── subquery","",""
+"      │",id,@S1
+"      │",original sql,"SELECT o.companyid, o.time, o.value, c.area_name, d.device_name, p.name AS plat_company_name, r.level AS risk_level, t.index_name, t.index_unit FROM runba.opcdata449600 AS o JOIN runba_tra.cd_behavior_area AS c ON o.companyid = c.company_id JOIN runba_tra.cd_device_point AS d ON c.company_id = d.company_id JOIN runba_tra.plat_device_info AS p ON d.device_id = p.id JOIN runba_tra.plat_risk_analyse_objects AS r ON p.company_id = r.company_id JOIN runba_tra.plat_tijian_item_index AS t ON d.index_id = (t.id + 1) WHERE (((o.time BETWEEN '2023-01-01' AND '2024-01-01 00:01:00') AND (c.area_type = 1)) AND (d.index_upper_value > 1.0)) AND (r.risk_status = 1)"
+"      │",exec mode,all rows
+"      └── buffer node","",""
+"           │",label,buffer 1 (device_data)
+"           └── render","",""
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,(company_id) = (company_id)
+"                     ├── scan","",""
+"                     │",table,plat_risk_analyse_objects@primary
+"                     │",spans,FULL SCAN
+"                     │",filter,risk_status = 1
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,(column128) = (index_id)
+"                          ├── render","",""
+"                          │    └── scan","",""
+"                          │",table,plat_tijian_item_index@primary
+"                          │",spans,FULL SCAN
+"                          └── lookup-join","",""
+"                               │",table,plat_device_info@primary
+"                               │",type,inner
+"                               │",equality,(device_id) = (id)
+"                               │",equality cols are key,""
+"                               │",parallel,""
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,(company_id) = (company_id)
+"                                    ├── scan","",""
+"                                    │",table,cd_device_point@primary
+"                                    │",spans,FULL SCAN
+"                                    │",filter,index_upper_value > 1.0
+"                                    └── batch-lookup-join","",""
+"                                         │",type,inner
+"                                         │",equality,(company_id) = (companyid)
+"                                         ├── scan","",""
+"                                         │",table,cd_behavior_area@primary
+"                                         │",spans,FULL SCAN
+"                                         │",filter,area_type = 1
+"                                         └── synchronizer","",""
+"                                              └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",filter,"(""time"" >= '2023-01-01 00:00:00+00:00') AND (""time"" <= '2024-01-01 00:01:00+00:00')"
+
+Time: 34.74656ms
+

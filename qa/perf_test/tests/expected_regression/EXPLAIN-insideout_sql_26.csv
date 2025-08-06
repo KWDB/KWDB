@@ -1,0 +1,91 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",area_name,area_name
+" │",device_name,device_name
+" │",avg_value,avg
+" │",unique_security_devices,count
+" │",high_value_count,sum
+" │",unique_risk_areas,count
+" └── sort","",""
+"      │",order,"+area_name,+device_name"
+"      └── filter","",""
+"           │",filter,avg > 55.0
+"           └── render","",""
+"                │",avg,sum / sum_int
+"                │",area_name,area_name
+"                │",device_name,device_name
+"                │",count,count
+"                │",sum,sum
+"                │",count,count
+"                └── group","",""
+"                     │",aggregate 0,area_name
+"                     │",aggregate 1,device_name
+"                     │",aggregate 2,sum_int(count)
+"                     │",aggregate 3,sum(sum)
+"                     │",aggregate 4,count(DISTINCT device_no)
+"                     │",aggregate 5,sum(sum)
+"                     │",aggregate 6,count(DISTINCT area_id)
+"                     │",group by,"area_name, device_name"
+"                     └── render","",""
+"                          │",area_name,area_name
+"                          │",device_name,device_name
+"                          │",device_no,device_no
+"                          │",area_id,area_id
+"                          │",sum,sum
+"                          │",count,count
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(companyid) = (company_id)
+"                               ├── group","",""
+"                               │    │",engine type,time series
+"                               │    │",aggregate 0,companyid
+"                               │    │",aggregate 1,sum(value)
+"                               │    │",aggregate 2,count(value)
+"                               │    │",group by,companyid
+"                               │    │",addSynchronizer ,true
+"                               │    └── ts scan","",""
+"                               │",ts-table,opcdata449600
+"                               │",access mode,tableTableMeta
+"                               │",spans:fromTime,2023-01-01 00:00:00 +0000 UTC
+"                               │",spans:toTime,2024-01-01 01:01:00 +0000 UTC
+"                               │",filter,(value > 15.0) AND (value < 180.0)
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,"(company_id, id) = (company_id, id)"
+"                                    ├── cross-join","",""
+"                                    │    │",type,cross
+"                                    │    ├── scan","",""
+"                                    │    │",table,cd_security_device@primary
+"                                    │    │",spans,FULL SCAN
+"                                    │    └── lookup-join","",""
+"                                    │         │",table,plat_risk_analyse_objects@primary
+"                                    │         │",type,inner
+"                                    │         │",equality,(risk_id) = (id)
+"                                    │         │",equality cols are key,""
+"                                    │         │",parallel,""
+"                                    │         │",pred,(@6 = 0) AND (@5 = 1)
+"                                    │         └── scan","",""
+"                                    │",table,plat_risk_area@primary
+"                                    │",spans,FULL SCAN
+"                                    └── lookup-join","",""
+"                                         │",table,plat_device_info@primary
+"                                         │",type,inner
+"                                         │",equality,(device_id) = (id)
+"                                         │",equality cols are key,""
+"                                         │",parallel,""
+"                                         └── hash-join","",""
+"                                              │",type,inner
+"                                              │",equality,(company_id) = (company_id)
+"                                              ├── scan","",""
+"                                              │",table,cd_device_point@primary
+"                                              │",spans,FULL SCAN
+"                                              │",filter,index_id >= 2
+"                                              └── scan","",""
+"",table,cd_behavior_area@primary
+"",spans,FULL SCAN
+"",filter,is_select IS NULL
+
+Time: 36.420142ms
+

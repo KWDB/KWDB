@@ -48,9 +48,10 @@ class RouterOutboundOperator : public OutboundOperator {
     }
     // ~Channel() = default;
     KStatus Init();
-    KStatus SendOneChunk(DataChunk* chunk, k_int32 driver_sequence, k_bool eos);
-    KStatus SendOneChunk(DataChunk* chunk, k_int32 driver_sequence, k_bool eos,
-                         k_bool* is_real_sent);
+    KStatus SendOneChunk(DataChunkPtr& chunk, k_int32 driver_sequence,
+                           k_bool eos);
+    KStatus SendOneChunk(DataChunkPtr& chunk, k_int32 driver_sequence,
+                           k_bool eos, k_bool* is_real_sent);
     KStatus SendChunkRequest(PTransmitChunkParamsPtr chunk_request,
                              const butil::IOBuf& attachment,
                              k_int64 attachment_physical_bytes);
@@ -165,7 +166,7 @@ class RouterOutboundOperator : public OutboundOperator {
  private:
   std::string host_name_;
   k_int32 port_{8060};
-  std::vector<int> channel_indices_;
+  std::vector<k_int32> channel_indices_;
   static const int32_t DEFAULT_DRIVER_SEQUENCE = 0;
   static const int32_t max_transmit_batched_bytes_ = 262144;
   size_t current_request_bytes_{0};

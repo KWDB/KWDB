@@ -1,0 +1,75 @@
+SET
+
+Time: 599.634µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",station_sn,station_sn
+" │",work_area_sn,work_area_sn
+" │",sub_com_sn,sub_com_sn
+" │",pipeline_sn,pipeline_sn
+" │",avg,sum / sum_int
+" │",min,min
+" └── group","",""
+"      │",aggregate 0,sub_com_sn
+"      │",aggregate 1,work_area_sn
+"      │",aggregate 2,station_sn
+"      │",aggregate 3,pipeline_sn
+"      │",aggregate 4,sum_int(count)
+"      │",aggregate 5,sum(sum)
+"      │",aggregate 6,min(min)
+"      │",group by,"sub_com_sn, work_area_sn, station_sn, pipeline_sn"
+"      │",ordered,"+station_sn,+work_area_sn,+sub_com_sn,+pipeline_sn"
+"      └── render","",""
+"           │",sub_com_sn,sub_com_sn
+"           │",work_area_sn,work_area_sn
+"           │",station_sn,station_sn
+"           │",pipeline_sn,pipeline_sn
+"           │",min,min
+"           │",count,count
+"           │",sum,sum
+"           └── sort","",""
+"                │",order,"+station_sn,+work_area_sn,+sub_com_sn,+pipeline_sn"
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,"(station_sn, work_area_sn, sub_com_sn, pipeline_sn) = (station_sn, work_area_sn, sub_company_sn, pipeline_sn)"
+"                     │",right cols are key,""
+"                     ├── group","",""
+"                     │    │",engine type,time series
+"                     │    │",aggregate 0,station_sn
+"                     │    │",aggregate 1,work_area_sn
+"                     │    │",aggregate 2,sub_com_sn
+"                     │    │",aggregate 3,pipeline_sn
+"                     │    │",aggregate 4,min(k_timestamp)
+"                     │    │",aggregate 5,count(measure_value)
+"                     │    │",aggregate 6,sum(measure_value)
+"                     │    │",group by,"station_sn, work_area_sn, sub_com_sn, pipeline_sn"
+"                     │    │",addSynchronizer ,true
+"                     │    └── ts scan","",""
+"                     │",ts-table,t_point
+"                     │",access mode,tableTableMeta
+"                     │",spans:fromTime,2024-01-04 14:30:00 +0000 UTC
+"                     │",spans:toTime,2024-01-04 14:30:30 +0000 UTC
+"                     └── cross-join","",""
+"                          │",type,cross
+"                          ├── cross-join","",""
+"                          │    │",type,cross
+"                          │    ├── scan","",""
+"                          │    │",table,workarea_info@workarea_name_index
+"                          │    │",spans,FULL SCAN
+"                          │    └── cross-join","",""
+"                          │         │",type,cross
+"                          │         ├── scan","",""
+"                          │         │",table,pipeline_info@pipeline_sn_index
+"                          │         │",spans,FULL SCAN
+"                          │         └── scan","",""
+"                          │",table,company_info@sub_company_name_index
+"                          │",spans,FULL SCAN
+"                          └── scan","",""
+"",table,station_info@station_work_area_sn_index
+"",spans,FULL SCAN
+
+Time: 6.574027ms
+

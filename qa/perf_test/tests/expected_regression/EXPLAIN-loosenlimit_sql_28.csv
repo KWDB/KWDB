@@ -1,0 +1,80 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+sort,"",""
+" │",order,"+area_name,+device_name,+device_no,+index_name,+obj_name"
+" └── render","",""
+"      │",area_name,area_name
+"      │",device_name,device_name
+"      │",device_no,device_no
+"      │",index_name,index_name
+"      │",obj_name,obj_name
+"      └── filter","",""
+"           │",filter,sum_int > 1
+"           └── group","",""
+"                │",aggregate 0,area_name
+"                │",aggregate 1,device_name
+"                │",aggregate 2,device_no
+"                │",aggregate 3,index_name
+"                │",aggregate 4,obj_name
+"                │",aggregate 5,sum_int(count)
+"                │",group by,"area_name, device_name, device_no, index_name, obj_name"
+"                └── render","",""
+"                     │",area_name,area_name
+"                     │",device_name,device_name
+"                     │",device_no,device_no
+"                     │",index_name,index_name
+"                     │",obj_name,obj_name
+"                     │",count,count
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,(company_id) = (companyid)
+"                          ├── hash-join","",""
+"                          │    │",type,inner
+"                          │    │",equality,(company_id) = (company_id)
+"                          │    ├── hash-join","",""
+"                          │    │    │",type,inner
+"                          │    │    │",equality,(company_id) = (company_id)
+"                          │    │    ├── scan","",""
+"                          │    │    │",table,plat_risk_analyse_objects@primary
+"                          │    │    │",spans,FULL SCAN
+"                          │    │    │",filter,risk_status = 1
+"                          │    │    └── hash-join","",""
+"                          │    │         │",type,inner
+"                          │    │         │",equality,(company_id) = (company_id)
+"                          │    │         ├── hash-join","",""
+"                          │    │         │    │",type,inner
+"                          │    │         │    │",equality,(index_id) = (id)
+"                          │    │         │    │",right cols are key,""
+"                          │    │         │    ├── scan","",""
+"                          │    │         │    │",table,cd_device_point@primary
+"                          │    │         │    │",spans,FULL SCAN
+"                          │    │         │    │",filter,index_upper_value > 1.0
+"                          │    │         │    └── scan","",""
+"                          │    │         │",table,plat_tijian_item_index@primary
+"                          │    │         │",spans,FULL SCAN
+"                          │    │         │",filter,index_unit = 'MPA'
+"                          │    │         └── scan","",""
+"                          │    │",table,cd_behavior_area@primary
+"                          │    │",spans,FULL SCAN
+"                          │    │",filter,area_type = 1
+"                          │    └── scan","",""
+"                          │",table,cd_security_device@primary
+"                          │",spans,FULL SCAN
+"                          │",filter,device_name = '1002'
+"                          └── group","",""
+"                               │",engine type,time series
+"                               │",aggregate 0,companyid
+"                               │",aggregate 1,count(value)
+"                               │",group by,companyid
+"                               │",addSynchronizer ,true
+"                               └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-06-29 00:00:00 +0000 UTC
+"",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"",tag filter[0],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"",tag filter[1],datatype = e'\U00006C14\U00004F53'
+
+Time: 12.163243ms
+

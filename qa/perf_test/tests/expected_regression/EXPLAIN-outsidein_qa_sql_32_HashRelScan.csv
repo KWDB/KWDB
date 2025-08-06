@@ -1,0 +1,45 @@
+SET
+
+Time: 632.673µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+sort,"",""
+" │",order,+timebucket
+" └── batch-lookup-join","",""
+"      │",type,inner
+"      │",equality,(company_id) = (companyid)
+"      ├── limit","",""
+"      │    │",count,100
+"      │    └── hash-join","",""
+"      │         │",type,right outer
+"      │         │",equality,(company_id) = (company_id)
+"      │         ├── scan","",""
+"      │         │",table,cd_security_device@primary
+"      │         │",spans,FULL SCAN
+"      │         └── scan","",""
+"      │",table,plat_zone_member@primary
+"      │",spans,LIMITED SCAN
+"      │",limit,100
+"      └── group","",""
+"           │",engine type,time series
+"           │",aggregate 0,timebucket
+"           │",aggregate 1,avg(value)
+"           │",aggregate 2,min(value)
+"           │",aggregate 3,max(value)
+"           │",aggregate 4,sum(value)
+"           │",group by,timebucket
+"           │",addSynchronizer ,true
+"           └── render","",""
+"                │",engine type,time series
+"                │",timebucket,"time_bucket(""time"", '10s')"
+"                │",value,value
+"                └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",spans:fromTime,2023-05-29 10:10:10.001 +0000 UTC
+"",spans:toTime,2024-05-29 11:10:10 +0000 UTC
+
+Time: 3.640817ms
+

@@ -1,0 +1,56 @@
+SET
+
+Time: 394.52µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,"+timebucket,+work_area_sn"
+"      └── batch-lookup-join","",""
+"           │",type,inner
+"           │",equality,"(work_area_sn, pipeline_sn) = (work_area_sn, pipeline_sn)"
+"           ├── cross-join","",""
+"           │    │",type,cross
+"           │    ├── merge-join","",""
+"           │    │    │",type,inner
+"           │    │    │",equality,(work_area_sn) = (work_area_sn)
+"           │    │    │",right cols are key,""
+"           │    │    │",mergeJoinOrder,"+""(work_area_sn=work_area_sn)"""
+"           │    │    ├── scan","",""
+"           │    │    │",table,station_info@station_work_area_sn_index
+"           │    │    │",spans,FULL SCAN
+"           │    │    └── scan","",""
+"           │    │",table,workarea_info@primary
+"           │    │",spans,FULL SCAN
+"           │    └── scan","",""
+"           │",table,pipeline_info@pipeline_name_index
+"           │",spans,FULL SCAN
+"           └── group","",""
+"                │",engine type,time series
+"                │",aggregate 0,work_area_sn
+"                │",aggregate 1,pipeline_name
+"                │",aggregate 2,timebucket
+"                │",aggregate 3,count(k_timestamp)
+"                │",aggregate 4,sum(measure_value)
+"                │",aggregate 5,avg(measure_value)
+"                │",aggregate 6,any_not_null(work_area_name)
+"                │",group by,"work_area_sn, pipeline_name, timebucket"
+"                │",addSynchronizer ,true
+"                └── render","",""
+"                     │",engine type,time series
+"                     │",timebucket,"time_bucket(k_timestamp, '1h')"
+"                     │",k_timestamp,k_timestamp
+"                     │",measure_value,measure_value
+"                     │",work_area_sn,work_area_sn
+"                     │",work_area_name,work_area_name
+"                     │",pipeline_name,pipeline_name
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashRelScan
+"",spans:fromTime,2024-01-04 14:30:51 +0000 UTC
+"",spans:toTime,2024-01-04 14:31:00 +0000 UTC
+
+Time: 5.835251ms
+

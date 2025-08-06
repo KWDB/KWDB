@@ -126,9 +126,17 @@ KStatus MergeTwoCursor::MergeSortedCursorTwoWay(DataChunkPtr& chunk) {
   k_int32 intersect = left_.Intersect(sort_desc, right_);
   if (intersect < 0) {
     chunk = left_.CloneSlice();
+    if (chunk == nullptr) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "sort data error");
+      return KStatus::FAIL;
+    }
     left_.Reset();
   } else if (intersect > 0) {
     chunk = right_.CloneSlice();
+    if (chunk == nullptr) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "sort data error");
+      return KStatus::FAIL;
+    }
     right_.Reset();
   } else {
     return MergeSortedForIntersectedCursor(chunk, left_, right_);
@@ -153,11 +161,19 @@ KStatus MergeTwoCursor::MergeSortedForIntersectedCursor(DataChunkPtr& chunk,
   size_t merged_rows = std::min(run1.Count(), run2.Count());
 
   chunk = run2.chunk->CloneEmpty(merged_rows);
+  if (chunk == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "sort data error");
+    return KStatus::FAIL;
+  }
   MaterializeDst(chunk.get(), {run1.chunk, run2.chunk}, permutation.data(),
                  merged_rows);
 
   auto left_rows = permutation.size() - merged_rows;
   DataChunkPtr left_merged = run2.chunk->CloneEmpty(left_rows);
+  if (left_merged == nullptr) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "sort data error");
+    return KStatus::FAIL;
+  }
   MaterializeDst(left_merged.get(), {run1.chunk, run2.chunk},
                  permutation.data() + merged_rows, left_rows);
 

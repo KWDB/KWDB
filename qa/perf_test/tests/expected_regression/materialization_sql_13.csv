@@ -1,0 +1,9 @@
+SET
+
+Time: 671.437µs
+
+station_sn,work_area_sn,sub_com_sn,pipeline_sn,point_sn,sum,max
+station_sn_1,work_area_sn_1,sub_com_sn_5,pipeline_sn_1,point_sn_1,6627.50669,98.82807
+
+Time: 7.038474165s
+

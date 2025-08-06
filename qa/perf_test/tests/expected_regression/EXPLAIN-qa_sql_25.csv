@@ -1,0 +1,27 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+batch-lookup-join,"",""
+" │",type,inner
+" │",equality,"(""tag"", company_id, contract_mobile) = (""tag"", companyid, channel)"
+" ├── scan","",""
+" │",table,plat_zone_member@primary
+" │",spans,FULL SCAN
+" │",filter,contract_email = 'ningmeng0823@hotmail.com'
+" └── group","",""
+"      │",engine type,time series
+"      │",aggregate 0,count_rows()
+"      │",aggregate 1,avg(value)
+"      │",scalar,""
+"      │",addSynchronizer ,true
+"      └── render","",""
+"           │",engine type,time series
+"           │",value,value
+"           └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,primaryHashTagScan
+"",spans:fromTime,2023-05-29 10:10:10.001 +0000 UTC
+"",spans:toTime,2024-05-29 16:10:10 +0000 UTC
+
+Time: 4.152727ms
+
