@@ -1840,7 +1840,7 @@ KStatus DataChunk::AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* r
     row_batch->ResetLine();
     const k_uint32 total_rows = row_batch->Count();
     const auto storage_len = field->get_storage_length();
-    const auto offset_storage_len = (field->get_num() == 0) ? storage_len + 8 : storage_len;
+    const auto offset_storage_len = storage_len;
     const auto col_idx_in_rs = field->getColIdxInRs();
     const auto column_type = field->get_column_type();
     const bool is_tag =
