@@ -101,7 +101,7 @@ char *Allocator::AllocateNewBlock(size_t block_bytes) {
 }
 
 static constexpr size_t MAX_SHARD_BLOCK_SIZE = 1 << 17;
-thread_local size_t ConcurrentAllocator::tls_cpuid = 0;
+__thread size_t ConcurrentAllocator::tls_cpuid = 0;
 
 ConcurrentAllocator::ConcurrentAllocator(size_t size) // NOLINT
     : shard_block_size_(std::min(MAX_SHARD_BLOCK_SIZE, size / 8)), alloc_(size) {

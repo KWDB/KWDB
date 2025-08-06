@@ -262,7 +262,7 @@ private:
     Shard() : free_begin_(nullptr), allocated_and_unused_(0) {} // NOLINT
   };
 
-  static thread_local size_t tls_cpuid;
+  static __thread size_t tls_cpuid;
   char padding0[56];
 
   size_t shard_block_size_;
