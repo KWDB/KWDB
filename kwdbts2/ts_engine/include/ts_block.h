@@ -87,7 +87,7 @@ class TsBlockSpan {
   bool has_pre_agg_{false};
 
  public:
-  TSBlkDataTypeConvert convert_;
+  std::unique_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
 
   friend TSBlkDataTypeConvert;
 
@@ -104,6 +104,15 @@ class TsBlockSpan {
 
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
+
+  inline void Clear() {
+    assert(block_ != nullptr);
+    block_ = nullptr;
+    entity_id_ = 0;
+    start_row_ = 0;
+    nrow_ = 0;
+    convert_ = nullptr;
+  }
 
   uint32_t GetVGroupID() const;
   TSEntityID GetEntityID() const;
@@ -165,7 +174,5 @@ class TsBlockSpan {
   void TrimBack(int row_num);
 
   void TrimFront(int row_num);
-
-  void Clear();
 };
 }  // namespace kwdbts
