@@ -195,6 +195,8 @@ class TsEntitySegmentBuilder {
 
   KStatus WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key);
 
+  void ReleaseBuilders();
+
   std::filesystem::path root_path_;
   TsEngineSchemaManager* schema_manager_;
   TsVersionManager* version_manager_;
@@ -203,14 +205,16 @@ class TsEntitySegmentBuilder {
   std::shared_ptr<TsEntitySegment> cur_entity_segment_;
   std::vector<std::shared_ptr<TsLastSegment>> last_segments_;
 
-  std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
-  std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
-  std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
-  std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
+  TsEntitySegmentEntityItemFileBuilder* entity_item_builder_ = nullptr;
+  TsEntitySegmentBlockItemFileBuilder* block_item_builder_ = nullptr;
+  TsEntitySegmentBlockFileBuilder* block_file_builder_ = nullptr;
+  TsEntitySegmentAggFileBuilder* agg_file_builder_ = nullptr;
   std::unique_ptr<TsLastSegmentBuilder> builder_ = nullptr;
   std::shared_ptr<TsEntityBlockBuilder> block_ = nullptr;
+  uint64_t entity_item_file_number_ = 0;
 
   std::shared_mutex mutex_;
+  bool write_batch_finished_ = false;
 
   TsEntityItem cur_entity_item_;
 
@@ -230,11 +234,10 @@ class TsEntitySegmentBuilder {
         partition_id_(partition_id),
         cur_entity_segment_(entity_segment),
         last_segments_(last_segments) {
-    auto entity_header_file_num = version_manager_->NewFileNumber();
+    entity_header_file_num_ = version_manager_->NewFileNumber();
     // entity header file
     std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_header_file_num);
-    entity_item_builder_ =
-        std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_num);
+    entity_item_builder_ = new TsEntitySegmentEntityItemFileBuilder(entity_header_file_path, entity_header_file_num);
     bool override = cur_entity_segment_ == nullptr ? true : false;
     uint64_t block_header_file_num;
     size_t block_header_file_size = 0;
@@ -260,21 +263,24 @@ class TsEntitySegmentBuilder {
 
     // block header file
     std::string block_header_file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
-    block_item_builder_ =
-        std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path, block_header_file_num,
-                                                              block_header_file_size);
+    block_item_builder_ = new TsEntitySegmentBlockItemFileBuilder(block_header_file_path, block_header_file_num,
+                                                                  block_header_file_size);
     // block data file
     std::string block_file_path = root_path_ / DataBlockFileName(block_file_num);
-    block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, block_file_num,
-                                                                            block_file_size);
+    block_file_builder_ = new TsEntitySegmentBlockFileBuilder(block_file_path, block_file_num,
+                                                              block_file_size);
     // block agg file
     std::string agg_file_path = root_path_ / EntityAggFileName(agg_file_num);
-    agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, agg_file_num, agg_file_size);
+    agg_file_builder_ = new TsEntitySegmentAggFileBuilder(agg_file_path, agg_file_num, agg_file_size);
   }
 
   TsEntitySegmentBuilder(const std::string& root_path, TsVersionManager* version_manager,
                          PartitionIdentifier partition_id, std::shared_ptr<TsEntitySegment> entity_segment)
       : TsEntitySegmentBuilder(root_path, nullptr, version_manager, partition_id, entity_segment, {}) {}
+
+  ~TsEntitySegmentBuilder() {
+    ReleaseBuilders();
+  }
 
   KStatus Open();
 
@@ -284,7 +290,7 @@ class TsEntitySegmentBuilder {
 
   KStatus WriteBatchFinish(TsVersionUpdate* update);
 
-  void MarkDelete();
+  void WriteBatchCancel();
 };
 
 class TsEntitySegmentVacuumer {

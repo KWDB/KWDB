@@ -248,7 +248,7 @@ class TsVGroup {
 
   KStatus FinishWriteBatchData();
 
-  KStatus ClearWriteBatchData();
+  KStatus CancelWriteBatchData();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 

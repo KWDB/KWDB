@@ -584,8 +584,34 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
   return s;
 }
 
+void TsEntitySegmentBuilder::ReleaseBuilders() {
+  if (entity_item_builder_) {
+    delete entity_item_builder_;
+    entity_item_builder_ = nullptr;
+  }
+  if (block_item_builder_) {
+    delete block_item_builder_;
+    block_item_builder_ = nullptr;
+  }
+  if (block_file_builder_) {
+    delete block_file_builder_;
+    block_file_builder_ = nullptr;
+  }
+  if (agg_file_builder_) {
+    delete agg_file_builder_;
+    agg_file_builder_ = nullptr;
+  }
+}
+
 KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update) {
+  // assert(EngineOptions::min_rows_per_block < EngineOptions::max_rows_per_block);
   std::unique_lock lock{mutex_};
+  LOG_INFO("TsEntitySegmentBuilder Compact begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+           entity_item_file_number_);
+  Defer defer([this]() {
+    LOG_INFO("TsEntitySegmentBuilder Compact end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+             entity_item_file_number_);
+  });
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
@@ -711,6 +737,16 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
 
 KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice block_data) {
   std::unique_lock lock{mutex_};
+  LOG_INFO("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+           entity_item_file_number_);
+  Defer defer([this]() {
+    LOG_INFO("TsEntitySegmentBuilder WriteBatch end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+             entity_item_file_number_);
+  });
+  if (write_batch_finished_) {
+    LOG_WARN("TsEntitySegmentBuilder::WriteBatch skip, builder has already finished.");
+    return KStatus::SUCCESS;
+  }
   auto it = entity_items_.find(entity_id);
   if (it == entity_items_.end()) {
     TsEntityItem entity_item{entity_id};
@@ -778,7 +814,15 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
+  write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
+  LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+           entity_item_file_number_);
+  Defer defer([this]() {
+    LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+             entity_item_file_number_);
+    ReleaseBuilders();
+  });
   // write entity header
   KStatus s = KStatus::SUCCESS;
   uint32_t cur_entity_id = 0;
@@ -833,7 +877,16 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   return KStatus::SUCCESS;
 }
 
-void TsEntitySegmentBuilder::MarkDelete() {
+void TsEntitySegmentBuilder::WriteBatchCancel() {
+  write_batch_finished_ = true;
+  std::unique_lock lock{mutex_};
+  LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+           entity_item_file_number_);
+  Defer defer([this]() {
+    LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu",
+             root_path_.c_str(), entity_item_file_number_);
+    ReleaseBuilders();
+  });
   entity_item_builder_->MarkDelete();
 }
 
