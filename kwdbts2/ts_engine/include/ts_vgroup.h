@@ -209,6 +209,7 @@ class TsVGroup {
 
   KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                        std::shared_ptr<const TsVGroupVersion>& current,
                         std::list<std::shared_ptr<TsBlockSpan>>* block_spans);
 
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk = false);
