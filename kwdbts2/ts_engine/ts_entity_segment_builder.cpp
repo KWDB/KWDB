@@ -735,7 +735,8 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice block_data) {
+KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version,
+                                           TS_LSN lsn, TSSlice block_data) {
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
@@ -750,6 +751,7 @@ KStatus TsEntitySegmentBuilder::WriteBatch(uint32_t entity_id, uint32_t table_ve
   auto it = entity_items_.find(entity_id);
   if (it == entity_items_.end()) {
     TsEntityItem entity_item{entity_id};
+    entity_item.table_id = tbl_id;
     if (cur_entity_segment_) {
       bool is_exist = true;
       KStatus s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);

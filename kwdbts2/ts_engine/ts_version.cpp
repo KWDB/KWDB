@@ -602,7 +602,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     for (auto& last_seg : last_segs) {
       s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetBlockSpans of mem segment failed.");
+        LOG_ERROR("GetBlockSpans of last segment failed.");
         return s;
       }
     }
@@ -617,7 +617,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans,
              tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetBlockSpans of mem segment failed.");
+      LOG_ERROR("GetBlockSpans of entity segment failed.");
       return s;
     }
   }

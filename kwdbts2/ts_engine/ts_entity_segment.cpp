@@ -162,10 +162,9 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   if (s != KStatus::SUCCESS && is_exist) {
     return s;
   }
-  if (s != SUCCESS && !is_exist) {
-    return SUCCESS;
-  }
   if (filter.table_id != entity_item.table_id) {
+    LOG_WARN("entity id [%lu], filter table id [%lu], real table id[%u]",
+              filter.entity_id, filter.table_id, entity_item.table_id);
     return SUCCESS;
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
@@ -710,6 +709,7 @@ KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                        uint32_t scan_version) {
   if (filter.entity_id > meta_mgr_.GetEntityNum()) {
+    // LOG_WARN("entity id [%lu] > entity number [%lu]", filter.entity_id, meta_mgr_.GetEntityNum());
     return KStatus::SUCCESS;
   }
   return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);

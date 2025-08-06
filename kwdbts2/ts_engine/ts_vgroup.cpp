@@ -1121,7 +1121,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       builder = it->second;
     }
   }
-  KStatus s = builder->WriteBatch(entity_id, table_version, lsn, data);
+  KStatus s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
