@@ -163,7 +163,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
     return s;
   }
   if (filter.table_id != entity_item.table_id) {
-    LOG_WARN("entity id [%lu], filter table id [%lu], real table id[%u]",
+    LOG_WARN("entity id [%lu], filter table id [%lu], real table id[%lu]",
               filter.entity_id, filter.table_id, entity_item.table_id);
     return SUCCESS;
   }
