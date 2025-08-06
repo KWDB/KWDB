@@ -133,18 +133,22 @@ class TsBlockSpan {
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
-  bool IsColExist(uint32_t scan_idx);
-  bool IsColNotNull(uint32_t scan_idx);
-  bool IsSameType(uint32_t scan_idx);
-  bool IsVarLenType(uint32_t scan_idx);
-  int32_t GetColSize(uint32_t scan_idx);
-  int32_t GetColType(uint32_t scan_idx);
-  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
+  bool IsColExist(uint32_t scan_idx) { return convert_.IsColExist(scan_idx); }
+  bool IsColNotNull(uint32_t scan_idx) { return convert_.IsColNotNull(scan_idx); }
+  bool IsSameType(uint32_t scan_idx) { return convert_.IsSameType(scan_idx); }
+  bool IsVarLenType(uint32_t scan_idx) { return convert_.IsVarLenType(scan_idx); }
+  int32_t GetColSize(uint32_t scan_idx) { return convert_.GetColSize(scan_idx); }
+  int32_t GetColType(uint32_t scan_idx) { return convert_.GetColType(scan_idx); }
+  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) { return convert_.GetColBitmap(scan_idx, bitmap); }
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true) {
+    return convert_GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
+  }
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
+    return convert_.GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
+  }
 
   KStatus GetCount(uint32_t scan_idx, uint32_t& count);
   KStatus GetSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
