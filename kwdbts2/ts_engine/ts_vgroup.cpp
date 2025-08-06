@@ -379,7 +379,7 @@ KStatus TsVGroup::GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_
     for (TSEntityID entity_id = 1; entity_id <= max_entity_id_; ++entity_id) {
       std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
       filter.entity_id_ = entity_id;
-      KStatus ret = ts_partitions[i]->GetBlockSpan(filter, &ts_block_spans, table_schema_mgr,
+      KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,
                                                    table_schema_mgr->GetCurrentVersion());
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
@@ -450,7 +450,7 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
   std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
   for (int i = ts_partitions.size() - 1; i >= 0; --i) {
     std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
-    KStatus ret = ts_partitions[i]->GetBlockSpan(filter, &ts_block_spans, table_schema_mgr,
+    KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,
                                                  table_schema_mgr->GetCurrentVersion());
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpan failed.");
@@ -783,7 +783,7 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
                               ts_col_type, wal_manager_->FetchCurrentLSN(), ts_spans};
     auto partition_version = ts_partitions[index];
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    auto s = partition_version->GetBlockSpan(filter, &cur_block_span, table_schema_mgr, table_version);
+    auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, table_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
