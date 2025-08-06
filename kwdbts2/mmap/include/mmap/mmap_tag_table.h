@@ -87,6 +87,8 @@ class TagTable {
 
   // get max entity id
   void GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id);
+  // get entity id list
+  void GetEntityIdListByVGroupId(uint32_t vgroup_id, uint32_t& entity_id_list);
 
   // insert tag record
   int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
