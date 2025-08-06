@@ -285,7 +285,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   assert(column_blocks_.size() == n_cols_);
   assert(column_blocks_.size() > col_idx + 1);
   bool is_var_type = col_idx > 0 && isVarLenType(metric_schema[col_idx].type);
-  bool is_not_null = metric_schema[col_idx].isFlag(AINFO_NOT_NULL);
+  bool is_not_null = col_idx <= 0 || metric_schema[col_idx].isFlag(AINFO_NOT_NULL);
   const auto& mgr = CompressorManager::GetInstance();
   if (metric_schema_.empty()) {
     metric_schema_ = metric_schema;
