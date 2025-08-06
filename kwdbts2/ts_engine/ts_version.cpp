@@ -42,7 +42,7 @@
 
 namespace kwdbts {
 static const int64_t interval = 3600 * 24 * 10;  // 10 days.
-
+static const int64_t vacuum_minutes = 24 * 60;  // 24 hours.
 // Note: we expect this function always return lower bound of both positive and negative timestamp
 // e.g. interval = 3,
 // timestamp = 0, return 0;
@@ -654,6 +654,14 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
     need_vacuum = false;
     return SUCCESS;
   }
+  // Temporarily add environment variables to control vacuum
+  const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
+  uint32_t vacuum_interval = 0;
+  if (vacuum_minutes_char) {
+    char *endptr;
+    vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
+    assert(*endptr == '\0');
+  }
   auto now = std::chrono::system_clock::now();
   auto now_sys = std::chrono::system_clock::now();
   auto now_file = std::filesystem::file_time_type::clock::now();
@@ -663,8 +671,9 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
   auto diff_sys = std::chrono::duration_cast<std::chrono::system_clock::duration>(diff);
   auto file_sys_time = now_sys + diff_sys;
 
+  vacuum_interval = vacuum_interval != 0 ? vacuum_interval : vacuum_minutes;
   auto diff_latest_now = now - file_sys_time;
-  if (std::chrono::duration_cast<std::chrono::hours>(diff_latest_now).count() < 24) {
+  if (std::chrono::duration_cast<std::chrono::minutes>(diff_latest_now).count() < vacuum_interval) {
     need_vacuum = false;
     return SUCCESS;
   }
