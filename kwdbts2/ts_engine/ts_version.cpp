@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -432,7 +433,7 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
     if (std::get<0>(k) != std::get<0>(partition_id)) {
       partition_id = k;
       partition = v;
-    } else if (partition != nullptr && !partition->GetAllLastSegments().empty()) {
+    } else if (partition != nullptr) {
       result.push_back(partition);
     }
   }
@@ -637,7 +638,38 @@ void TsPartitionVersion::ResetStatus() const {
   exclusive_status_->store(PartitionStatus::None);
 }
 
-KStatus TsPartitionVersion::NeedVacuumEntitySegment(bool* need_vacuum) const {
+KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path& root_path, bool& need_vacuum) const {
+  std::filesystem::file_time_type latest_mtime{};
+  bool has_files = false;
+  for (const auto& entry : std::filesystem::directory_iterator(root_path)) {
+    if (entry.is_regular_file() && entry.path().filename() != DEL_FILE_NAME) {
+      auto mtime = std::filesystem::last_write_time(entry);
+      if (!has_files || mtime > latest_mtime) {
+        latest_mtime = mtime;
+        has_files = true;
+      }
+    }
+  }
+  if (!has_files) {
+    std::cerr << "No regular files found in directory\n";
+    need_vacuum = false;
+    return SUCCESS;
+  }
+  auto now = std::chrono::system_clock::now();
+  auto now_sys = std::chrono::system_clock::now();
+  auto now_file = std::filesystem::file_time_type::clock::now();
+  auto file_duration = latest_mtime.time_since_epoch();
+  auto now_file_duration = now_file.time_since_epoch();
+  auto diff = file_duration - now_file_duration;
+  auto diff_sys = std::chrono::duration_cast<std::chrono::system_clock::duration>(diff);
+  auto file_sys_time = now_sys + diff_sys;
+
+  auto diff_latest_now = now - file_sys_time;
+  if (std::chrono::duration_cast<std::chrono::hours>(diff_latest_now).count() < 24) {
+    need_vacuum = false;
+    return SUCCESS;
+  }
+
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.
   KwLSNSpan span{0, UINT64_MAX};
@@ -646,7 +678,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(bool* need_vacuum) const {
     LOG_ERROR("HasValidDelItem failed.");
     return s;
   }
-  *need_vacuum = has_del_info && (entity_segment_ != nullptr);
+  need_vacuum = has_del_info && (entity_segment_ != nullptr);
   return KStatus::SUCCESS;
 }
 

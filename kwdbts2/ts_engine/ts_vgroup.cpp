@@ -536,6 +536,9 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
   } else {
     last_segments = partition->GetAllLastSegments();
   }
+  if (last_segments.empty()) {
+    return KStatus::SUCCESS;
+  }
   auto entity_segment = partition->GetEntitySegment();
 
   auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
@@ -1541,21 +1544,22 @@ KStatus TsVGroup::Vacuum() {
   auto partitions = current->GetPartitionsToVacuum();
 
   for (auto& partition : partitions) {
-    // force compact historical partition
-    s = PartitionCompact(partition, true);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("PartitionCompact failed.");
-      continue;
-    }
-    // need compact
+    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
     bool need_vacuum = false;
-    s = partition->NeedVacuumEntitySegment(&need_vacuum);
+    s = partition->NeedVacuumEntitySegment(root_path, need_vacuum);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NeedVacuumEntitySegment failed.");
       continue;
     }
     if (!need_vacuum) {
       LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
+      continue;
+    }
+
+    // force compact historical partition
+    s = PartitionCompact(partition, true);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("PartitionCompact failed.");
       continue;
     }
     if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
@@ -1573,7 +1577,6 @@ KStatus TsVGroup::Vacuum() {
     LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin", vgroup_id_, partition->GetStartTime(),
                                                               partition->GetEndTime() - 1);
     auto max_entity_id = entity_segment->GetEntityNum();
-    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
 
     auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
     vacuumer->Open();

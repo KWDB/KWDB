@@ -123,7 +123,7 @@ class TsPartitionVersion {
 
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
-  KStatus NeedVacuumEntitySegment(bool* need_vacuum) const;
+  KStatus NeedVacuumEntitySegment(const std::filesystem::path& root_path, bool& need_vacuum) const;
 };
 
 class TsVGroupVersion {
