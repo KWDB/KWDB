@@ -45,7 +45,6 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
       if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
         TsBitmap ts_bitmap;
         char* value;
-        char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
         ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap, false);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
@@ -58,10 +57,9 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             }
           }
         }
-        memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
 
-        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
-        batch->is_new = true;
+        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
+        batch->is_new = false;
         batch->need_free_bitmap = true;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
