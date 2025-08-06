@@ -43,7 +43,8 @@ class TsMetricBlock {
   std::vector<TS_LSN> lsn_buffer_;
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
-  TsMetricBlock(int count, std::vector<TS_LSN>&& lsn_buffer, std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks)
+  TsMetricBlock(int count, std::vector<TS_LSN>&& lsn_buffer,
+                std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks)
       : count_(count), lsn_buffer_(std::move(lsn_buffer)), column_blocks_(std::move(column_blocks)) {}
 
  public:
@@ -55,7 +56,8 @@ class TsMetricBlock {
   int GetColNum() const { return column_blocks_.size(); }
   int GetRowNum() const { return count_; }
 
-  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_lsn);
+  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_lsn,
+                         bool compress_columns);
 };
 
 class TsMetricBlockBuilder {

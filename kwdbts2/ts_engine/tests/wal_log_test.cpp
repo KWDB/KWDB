@@ -13,10 +13,17 @@
 #include "libkwdbts2.h"
 #include "test_util.h"
 #include "st_wal_mgr.h"
+#include "data_type.h"
+#include "me_metadata.pb.h"
+#include "ts_engine_schema_manager.h"
 
-using namespace kwdbts;  // NOLINT
+using namespace roachpb;
+std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,    DataType::BIGINT, DataType::VARCHAR,
+                                      DataType::FLOAT,     DataType::DOUBLE, DataType::VARCHAR};
 
 class TestWALManagerV2 : public ::testing::Test {
+ protected:
+  std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
  public:
   kwdbContext_t context_;
   kwdbContext_p ctx_;
@@ -31,6 +38,7 @@ class TestWALManagerV2 : public ::testing::Test {
     opts_.wal_level = 1;
     opts_.wal_buffer_size = 4;
     opts_.db_path =  "./wal_log_test/";
+    mgr = std::make_unique<TsEngineSchemaManager>("./wal_log_test/schema");
 
     std::filesystem::remove_all(opts_.db_path);
     wal_ = new WALMgr("./wal_log_test/", intToString(tbl_grp_id_), &opts_);
@@ -129,4 +137,141 @@ TEST_F(TestWALManagerV2, TestWALDeleteDataV2) {
   for (auto& l : redo_logs) {
     delete l;
   }
+}
+
+TEST_F(TestWALManagerV2, TestWALInsertTag) {
+  kwdbContext_p ctx{};
+  uint64_t mtr_id = 1;
+  uint64_t vgroup_id = 66;
+  uint64_t table_id = 77;
+
+  CreateTsTable meta;
+  ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
+  auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<AttributeInfo> metric_schema;
+  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  auto payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  s = wal_->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, table_id);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  vector<LogEntry*> redo_logs;
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->GetFirstLSN(), wal_->FetchCurrentLSN(), ignore);
+  EXPECT_EQ(redo_logs.size(), 1);
+
+  auto* redo = reinterpret_cast<InsertLogTagsEntry*>(redo_logs[0]);
+  EXPECT_EQ(redo->getType(), WALLogType::INSERT);
+  EXPECT_EQ(redo->getTableType(), WALTableType::TAG);
+  EXPECT_EQ(redo->getXID(), mtr_id);
+  EXPECT_EQ(redo->getVGroupID(), vgroup_id);
+  EXPECT_EQ(redo->getTableID(), table_id);
+  EXPECT_EQ(redo->getPayload().len, payload_data.len);
+
+  for (auto& l : redo_logs) {
+    delete l;
+  }
+  free(payload_data.data);
+}
+
+TEST_F(TestWALManagerV2, TestWALUpdateTag) {
+  kwdbContext_p ctx{};
+  uint64_t mtr_id = 1;
+  uint64_t vgroup_id = 66;
+  uint64_t table_id = 77;
+
+  CreateTsTable meta;
+  ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
+  auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<AttributeInfo> metric_schema;
+  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  auto new_payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  auto old_payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  s = wal_->WriteUpdateWAL(ctx, mtr_id, 0, 0, new_payload_data, old_payload_data, vgroup_id, table_id);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  vector<LogEntry*> redo_logs;
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->GetFirstLSN(), wal_->FetchCurrentLSN(), ignore);
+  EXPECT_EQ(redo_logs.size(), 1);
+
+  auto* redo = reinterpret_cast<UpdateLogTagsEntry*>(redo_logs[0]);
+  EXPECT_EQ(redo->getType(), WALLogType::UPDATE);
+  EXPECT_EQ(redo->getTableType(), WALTableType::TAG);
+  EXPECT_EQ(redo->getXID(), mtr_id);
+  EXPECT_EQ(redo->getVGroupID(), vgroup_id);
+  EXPECT_EQ(redo->getTableID(), table_id);
+  EXPECT_EQ(redo->getPayload().len, new_payload_data.len);
+  EXPECT_EQ(redo->getOldPayload().len, old_payload_data.len);
+
+  for (auto& l : redo_logs) {
+    delete l;
+  }
+  free(new_payload_data.data);
+  free(old_payload_data.data);
+}
+
+TEST_F(TestWALManagerV2, TestWALDeleteTag) {
+  kwdbContext_p ctx{};
+  uint64_t mtr_id = 1;
+  uint64_t vgroup_id = 66;
+  uint64_t table_id = 77;
+  string p_tag = "11111";
+
+  CreateTsTable meta;
+  ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
+  auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<AttributeInfo> metric_schema;
+  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  auto payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  s = wal_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, 0, 0, payload_data, vgroup_id, table_id);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  vector<LogEntry*> redo_logs;
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->GetFirstLSN(), wal_->FetchCurrentLSN(), ignore);
+  EXPECT_EQ(redo_logs.size(), 1);
+
+  auto* redo = reinterpret_cast<DeleteLogTagsEntry*>(redo_logs[0]);
+  EXPECT_EQ(redo->getType(), WALLogType::DELETE);
+  EXPECT_EQ(redo->getTableType(), WALTableType::TAG);
+  EXPECT_EQ(redo->getXID(), mtr_id);
+  EXPECT_EQ(redo->getVGroupID(), vgroup_id);
+  EXPECT_EQ(redo->getTableID(), table_id);
+  EXPECT_EQ(redo->getPrimaryTag().len, p_tag.size());
+  EXPECT_EQ(redo->getTags().len, payload_data.len);
+
+  for (auto& l : redo_logs) {
+    delete l;
+  }
+  free(payload_data.data);
 }
