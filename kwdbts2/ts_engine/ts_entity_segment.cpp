@@ -162,6 +162,12 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   if (s != KStatus::SUCCESS && is_exist) {
     return s;
   }
+  if (s != SUCCESS && !is_exist) {
+    return SUCCESS;
+  }
+  if (filter.table_id != entity_item.table_id) {
+    return SUCCESS;
+  }
   uint64_t last_blk_id = entity_item.cur_block_id;
 
   TsEntitySegmentBlockItem* cur_blk_item;
