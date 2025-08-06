@@ -61,8 +61,6 @@ const (
 	defaultAddr     = ":" + DefaultPort
 	defaultHTTPAddr = ":" + DefaultHTTPPort
 	defaultSQLAddr  = ":" + DefaultPort
-	DefaultBRPCPort = "27257"
-	DefaultBRPVAddr = ":" + DefaultBRPCPort
 	// NetworkTimeout is the timeout used for network operations.
 	NetworkTimeout = 3 * time.Second
 
@@ -303,7 +301,6 @@ func (cfg *Config) InitDefaults() {
 	cfg.User = defaultUser
 	cfg.Addr = defaultAddr
 	cfg.AdvertiseAddr = cfg.Addr
-	cfg.BRPCAddr = DefaultBRPVAddr
 	cfg.HTTPAddr = defaultHTTPAddr
 	cfg.DisableTLSForHTTP = false
 	cfg.HTTPAdvertiseAddr = ""

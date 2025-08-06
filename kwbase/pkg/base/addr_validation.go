@@ -101,9 +101,17 @@ func (cfg *Config) ValidateAddrs(ctx context.Context, StartMode string) error {
 	cfg.HTTPAddr = net.JoinHostPort(httpHost, httpPort)
 
 	if StartMode != StartSingleNodeCmdName {
-		host, _, err := net.SplitHostPort(cfg.BRPCAddr)
-		if err == nil && host == "" {
-			return errors.New("--brpc-addr not specified")
+		brpcErr := "--brpc-addr's port not specified"
+		if cfg.BRPCAddr == "" {
+			return errors.New(brpcErr)
+		}
+		host, port, err := net.SplitHostPort(cfg.BRPCAddr)
+		if err == nil && port == "" {
+			return errors.New(brpcErr)
+		}
+		if err == nil && (host == "" || host == "0.0.0.0") {
+			// when the host of brpc is not specified or it is 0.0.0.0, use advertiseAddr's host
+			cfg.BRPCAddr = advHost + ":" + port
 		}
 		// Validate the BRPC address
 		brpcHost, brpcPort, err := validateListenAddr(ctx, cfg.BRPCAddr, listenHost)
