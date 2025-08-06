@@ -179,7 +179,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
 
   TsMetricCompressInfo compress_info;
   compressed_data.clear();
-  ok = metric_block->GetCompressedData(&compressed_data, &compress_info, false);
+  ok = metric_block->GetCompressedData(&compressed_data, &compress_info, false, false);
   if (!ok) {
     return FAIL;
   }

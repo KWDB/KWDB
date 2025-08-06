@@ -82,6 +82,10 @@ class TsTableSchemaManager {
     return cur_version_;
   }
 
+  uint64_t GetHashNum() const {
+    return hash_num_;
+  }
+
   TSTableID GetTableId();
 
   std::shared_ptr<TagTable> GetTagTable() {

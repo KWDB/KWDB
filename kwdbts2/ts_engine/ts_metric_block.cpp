@@ -24,7 +24,7 @@
 namespace kwdbts {
 
 bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info,
-                                      bool compress_ts_and_lsn) {
+                                      bool compress_ts_and_lsn, bool compress_columns) {
   std::string compressed_data;
   const auto& mgr = CompressorManager::GetInstance();
   // 1. Compress LSN
@@ -45,8 +45,8 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
   TsColumnCompressInfo col_compress_info;
   for (int i = 0; i < column_blocks_.size(); i++) {
     tmp.clear();
-    bool compress = compress_ts_and_lsn || i != 0;
-    ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress);
+    // bool compress = compress_ts_and_lsn || i != 0;
+    ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress_columns);
     if (!ok) {
       LOG_ERROR("compress column data error");
       return FAIL;
@@ -104,8 +104,10 @@ std::unique_ptr<TsMetricBlock> TsMetricBlockBuilder::GetMetricBlock() {
   for (int i = 0; i < column_block_builders_.size(); ++i) {
     column_blocks.push_back(column_block_builders_[i]->GetColumnBlock());
   }
-  return std::unique_ptr<TsMetricBlock>(
-      new TsMetricBlock{count_, std::move(lsn_buffer_), std::move(column_blocks)});
+
+  std::vector<TS_LSN> lsn_buffer;
+  lsn_buffer.swap(lsn_buffer_);
+  return std::unique_ptr<TsMetricBlock>(new TsMetricBlock{count_, std::move(lsn_buffer), std::move(column_blocks)});
 }
 
 KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo>& schema,
@@ -123,21 +125,19 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
   TSSlice lsn_slice;
   lsn_slice.data = compressed_data.data;
   lsn_slice.len = compress_info.lsn_len;
-  std::string decompressed_lsn_buffer;
-
-  bool ok =
-      mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &decompressed_lsn_buffer);
+  TsSliceGuard out_lsn_guard;
+  bool ok = mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &out_lsn_guard);
   if (!ok) {
     LOG_ERROR("decompress lsn error");
     return FAIL;
   }
 
-  if (decompressed_lsn_buffer.size() != compress_info.row_count * sizeof(TS_LSN)) {
+  if (out_lsn_guard.size() != compress_info.row_count * sizeof(TS_LSN)) {
     LOG_ERROR("decompress lsn size not match");
     return FAIL;
   }
   std::vector<TS_LSN> lsn_vec(compress_info.row_count);
-  std::memcpy(lsn_vec.data(), decompressed_lsn_buffer.data(), decompressed_lsn_buffer.size());
+  std::memcpy(lsn_vec.data(), out_lsn_guard.data(), out_lsn_guard.size());
 
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks;
   for (int i = 0; i < schema.size(); i++) {

@@ -776,8 +776,12 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       uint64_t time_partition = 0;
       uint64_t offset = 0;
       uint64_t length = 0;
+      uint64_t table_id = 0;
 
-      memcpy(&time_partition, read_buf,
+      memcpy(&table_id, read_buf,
+             sizeof(InsertLogTagsEntry::table_id_));
+      read_offset += sizeof(InsertLogTagsEntry::table_id_);
+      memcpy(&time_partition, read_buf + read_offset,
              sizeof(InsertLogTagsEntry::time_partition_));
       read_offset += sizeof(InsertLogTagsEntry::time_partition_);
       memcpy(&offset, read_buf + read_offset,
@@ -804,7 +808,7 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
             old_lsn = v_lsn;
           }
           insert_tags = new InsertLogTagsEntry(current_lsn, WALLogType::INSERT, x_id, tbl_typ, time_partition,
-                                                      offset, length, read_buf, vgrp_id, old_lsn);
+                                                      offset, length, read_buf, vgrp_id, old_lsn, table_id);
         } catch (exception &e) {
           delete[] read_buf;
           read_buf = nullptr;
@@ -927,8 +931,12 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       uint64_t offset = 0;
       uint64_t length = 0;
       uint64_t old_len = 0;
+      uint64_t table_id = 0;
 
-      memcpy(&time_partition, read_buf,
+      memcpy(&table_id, read_buf,
+             sizeof(UpdateLogTagsEntry::table_id_));
+      read_offset += sizeof(UpdateLogTagsEntry::table_id_);
+      memcpy(&time_partition, read_buf + read_offset,
              sizeof(UpdateLogTagsEntry::time_partition_));
       read_offset += sizeof(UpdateLogTagsEntry::time_partition_);
       memcpy(&offset, read_buf + read_offset,
@@ -956,7 +964,7 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
             old_lsn = v_lsn;
           }
           update_tags = KNEW UpdateLogTagsEntry(current_lsn, WALLogType::UPDATE, x_id, tbl_typ, time_partition,
-                                                      offset, length, old_len, read_buf, vgrp_id, old_lsn);
+                                                      offset, length, old_len, read_buf, vgrp_id, old_lsn, table_id);
         } catch (exception &e) {
           LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;
@@ -1039,8 +1047,11 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       uint32_t entity_id = 0;
       size_t p_tag_len = 0;
       size_t tag_len = 0;
+      uint64_t table_id = 0;
 
-      memcpy(&group_id, res, sizeof(DeleteLogTagsEntry::group_id_));
+      memcpy(&table_id, res, sizeof(DeleteLogTagsEntry::table_id_));
+      construct_offset += sizeof(DeleteLogTagsEntry::table_id_);
+      memcpy(&group_id, res + construct_offset, sizeof(DeleteLogTagsEntry::group_id_));
       construct_offset += sizeof(DeleteLogTagsEntry::group_id_);
       memcpy(&entity_id, res + construct_offset, sizeof(DeleteLogTagsEntry::entity_id_));
       construct_offset += sizeof(DeleteLogTagsEntry::entity_id_);
@@ -1065,7 +1076,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
             old_lsn = v_lsn;
           }
           d_tags_entry = KNEW DeleteLogTagsEntry(current_lsn, WALLogType::DELETE, x_id, table_type, group_id,
-                                                       entity_id, p_tag_len, tag_len, res, vgrp_id, old_lsn);
+                                                       entity_id, p_tag_len, tag_len, res, vgrp_id, old_lsn, table_id);
         } catch (exception &e) {
           LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;

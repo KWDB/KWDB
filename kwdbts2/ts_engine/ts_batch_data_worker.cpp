@@ -120,7 +120,7 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
   std::list<std::shared_ptr<TsBlockSpan>> block_spans;
   KStatus s = ts_engine_->GetTsVGroup(cur_entity_index_.subGroupId)->GetBlockSpans(table_id_, cur_entity_index_.entityId,
                                                                                    actual_ts_span_, ts_col_type_, schema_,
-                                                                                   table_version_, &block_spans);
+                                                                                   table_version_, current_, &block_spans);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to get block span, "
               "table_id[%lu], table_version[%lu], entity_id[%u]",
@@ -481,9 +481,9 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
 void TsWriteBatchDataWorker::Cancel(kwdbContext_p ctx) {
   auto vgroups = ts_engine_->GetTsVGroups();
   for (const auto &vgroup : *vgroups) {
-    KStatus s = vgroup->ClearWriteBatchData();
+    KStatus s = vgroup->CancelWriteBatchData();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ClearWriteBatchData failed, vgroup_id[%u], job_id[%lu]", vgroup->GetVGroupID(), job_id_);
+      LOG_ERROR("CancelWriteBatchData failed, vgroup_id[%u], job_id[%lu]", vgroup->GetVGroupID(), job_id_);
     }
   }
 }

@@ -76,6 +76,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
+
+  std::shared_ptr<TsScanFilterParams> filter_;
 };
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
