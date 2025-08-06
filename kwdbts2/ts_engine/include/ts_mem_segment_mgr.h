@@ -23,9 +23,9 @@
 #include "libkwdbts2.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_payload.h"
-#include "inlineskiplist.h"
 #include "ts_segment.h"
 #include "ts_arena.h"
+#include "sl_set.h"
 
 namespace kwdbts {
 
@@ -155,6 +155,19 @@ struct TSRowDataComparator {
   }
 };
 
+struct TSMemSegKey {
+  const char *key;
+  static constexpr char zero[TSMemSegRowData::GetKeyLen()] = {};
+
+  TSMemSegKey() : key(zero) {}
+  TSMemSegKey(const char *k) : key(k) {}  /* NOLINT */
+
+  bool operator<(TSMemSegKey rhs) const noexcept { return TSRowDataComparator{}(key, rhs.key) < 0; }
+  bool operator>(TSMemSegKey rhs) const noexcept { return TSRowDataComparator{}(key, rhs.key) > 0; }
+  bool operator==(TSMemSegKey rhs) const noexcept { return TSRowDataComparator{}(key, rhs.key) == 0; }
+  bool operator!=(TSMemSegKey rhs) const noexcept { return !(*this == rhs); }
+};
+
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
  private:
   std::atomic<uint32_t> row_idx_{1};
@@ -162,9 +175,9 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
-  ConcurrentArena arena_;
+  ConcurrentAllocator arena_;
   TSRowDataComparator comp_;
-  InlineSkipList<TSRowDataComparator> skiplist_;
+  sl_set<TSMemSegKey> keys_;
 
   explicit TsMemSegment(int32_t max_height);
 
