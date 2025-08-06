@@ -82,4 +82,10 @@ select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by 
 -- error
 select first(ts) as _wstart,last(ts) as _wend, ts, min(b) from tsdb.t1 group by time_window(ts, '1d', '1w');
 
+select first_row(ts) as _wstart,last(ts) as _wend, min(b) from tsdb.t1 group by time_window(ts, '1w', '1d');
+select first(ts) as _wstart,last_row(ts) as _wend, min(b) from tsdb.t1 group by time_window(ts, '1y', '1d');
+select first_row(ts) as _wstart,last_row(ts) as _wend, min(b) from tsdb.t1 group by time_window(ts, '1y', '1w');
+select first_row(ts) as _wstart,last_row(ts) as _wend, min(b) from tsdb.t1 group by time_window(ts, '2y', '1w');
+select first_row(ts) as _wstart,last(ts) as _wend, min(b) from tsdb.t1 group by time_window(ts, '1mons', '1w');
+
 drop database tsdb cascade;
