@@ -183,7 +183,7 @@ class BaseOperator {
                             EEIteratorErrCode code = EEIteratorErrCode::EE_OK) {
     return KStatus::FAIL;
   }
-  virtual KStatus PullChunk(DataChunkPtr& chunk) { return KStatus::FAIL; }
+  virtual KStatus PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) { return KStatus::FAIL; }
 
   virtual RowBatch* GetRowBatch(kwdbContext_p ctx) { return nullptr; }
 

@@ -61,6 +61,8 @@ TableStatisticScanOperator::TableStatisticScanOperator(
 }
 
 TableStatisticScanOperator::~TableStatisticScanOperator() {
+  SafeDeletePointer(handler_);
+  SafeDeletePointer(row_batch_);
 }
 
 EEIteratorErrCode TableStatisticScanOperator::InitHandler(kwdbContext_p ctx) {
@@ -182,8 +184,6 @@ EEIteratorErrCode TableStatisticScanOperator::Close(kwdbContext_p ctx) {
 
 EEIteratorErrCode TableStatisticScanOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-  SafeDeletePointer(handler_);
-  SafeDeletePointer(row_batch_);
   Return(EEIteratorErrCode::EE_OK);
 }
 
