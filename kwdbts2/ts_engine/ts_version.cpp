@@ -529,7 +529,7 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionVersion::GetBlockSpan(const TsScanFilterParams& filter,
+KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
 std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
 std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;

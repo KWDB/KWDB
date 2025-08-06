@@ -98,7 +98,7 @@ class TsPartitionVersion {
     return del_info_->GetDelRange(e_id, del_items);
   }
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
-  KStatus GetBlockSpan(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
+  KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version,
   bool skip_last = false, bool skip_entity = false) const;
 };
