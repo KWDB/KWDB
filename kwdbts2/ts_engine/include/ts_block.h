@@ -105,7 +105,7 @@ class TsBlockSpan {
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
 
-  inline void Clear() {
+  void Clear() {
     assert(block_ != nullptr);
     block_ = nullptr;
     entity_id_ = 0;
