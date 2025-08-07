@@ -2256,4 +2256,13 @@ KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgr
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TSEngineV2Impl::Vacuum() {
+  for (const auto& vgroup : vgroups_) {
+    vgroup->Vacuum();
+  }
+  return SUCCESS;
+}
+
+
 }  // namespace kwdbts
