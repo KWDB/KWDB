@@ -284,6 +284,16 @@ function cfg_check() {
     log_err "The kaiwudb_port value is incorrect, range [1-65535]."
     exit 1
   fi
+  push_back "g_brpc_port"
+  g_brpc_port=$(read_config_value $g_deploy_path/deploy.cfg global brpc_port)
+  if [ -z "$g_brpc_port" ];then
+    log_err "brpc_port is missing in deploy.cfg."
+    exit 1
+  fi
+  if [ $g_brpc_port -le 0 -o $g_brpc_port -gt 65535 ];then
+    log_err "The brpc_port value is incorrect, range [1-65535]."
+    exit 1
+  fi
   push_back "g_cpu_usage"
   g_cpu_usage=$(read_config_value $g_deploy_path/deploy.cfg global cpu)
   if [ -z "$g_cpu_usage" ];then

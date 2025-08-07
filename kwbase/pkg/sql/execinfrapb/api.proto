@@ -80,8 +80,8 @@ message FlowSpec {
 message TsInfo {
   optional int64 queryID = 1[(gogoproto.nullable) = false];
   repeated string brpcAddrs = 2;
-  // UsePipeline is true represents AE using pipeline mode.
-  optional bool usePipeline = 3 [(gogoproto.nullable) = false];
+  // useAeGather is true represents AE using pipeline mode.
+  optional bool useAeGather = 3 [(gogoproto.nullable) = false];
   optional bool isDist = 4 [(gogoproto.nullable) = false];
   optional bool useQueryShortCircuit = 5 [(gogoproto.nullable) = false];
 }

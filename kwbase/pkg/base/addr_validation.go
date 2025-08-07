@@ -51,7 +51,7 @@ import (
 // completely empty, or have both a host part and a port part
 // separated by a colon. In the latter case either can be empty to
 // indicate it's left unspecified.
-func (cfg *Config) ValidateAddrs(ctx context.Context) error {
+func (cfg *Config) ValidateAddrs(ctx context.Context, StartMode string) error {
 	// Validate the advertise address.
 	advHost, advPort, err := validateAdvertiseAddr(ctx,
 		cfg.AdvertiseAddr, "--listen-addr", cfg.Addr, "")
@@ -59,19 +59,6 @@ func (cfg *Config) ValidateAddrs(ctx context.Context) error {
 		return errors.Wrap(err, "invalid --advertise-addr")
 	}
 	cfg.AdvertiseAddr = net.JoinHostPort(advHost, advPort)
-
-	// Validate the BRPC address
-	brpcHost, brpcPort, err := validateAdvertiseAddr(ctx, cfg.BRPCAddr, "brpc-addr", cfg.BRPCAddr, "")
-	if err != nil {
-		return errors.Wrap(err, "invalid --brpc-addr")
-	}
-	// get ip when address not specified.
-	h, err := net.DefaultResolver.LookupIPAddr(ctx, brpcHost)
-	if err != nil {
-		return errors.Wrap(err, "invalid --brpc-addr")
-	}
-	brpcHost = h[0].IP.String()
-	cfg.BRPCAddr = net.JoinHostPort(brpcHost, brpcPort)
 
 	// Validate the RPC listen address.
 	listenHost, listenPort, err := validateListenAddr(ctx, cfg.Addr, "")
@@ -112,6 +99,21 @@ func (cfg *Config) ValidateAddrs(ctx context.Context) error {
 		return errors.Wrap(err, "invalid --http-addr")
 	}
 	cfg.HTTPAddr = net.JoinHostPort(httpHost, httpPort)
+
+	if StartMode != StartSingleNodeCmdName {
+		host, _, err := net.SplitHostPort(cfg.BRPCAddr)
+		if err == nil && host == "" {
+			return errors.New("--brpc-addr not specified")
+		}
+		// Validate the BRPC address
+		brpcHost, brpcPort, err := validateListenAddr(ctx, cfg.BRPCAddr, listenHost)
+		if err != nil {
+			return errors.Wrap(err, "invalid --brpc-addr")
+		}
+		cfg.AdvertiseBrpcAddr = net.JoinHostPort(brpcHost, brpcPort)
+	} else {
+		cfg.AdvertiseBrpcAddr = "127.0.0.1:27257"
+	}
 	return nil
 }
 

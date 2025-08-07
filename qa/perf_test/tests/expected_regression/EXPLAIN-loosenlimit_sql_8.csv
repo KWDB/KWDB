@@ -1,0 +1,47 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,"+station_name,+adjusted_value"
+"      └── render","",""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,(point_sn) = (point_sn)
+"                │",left cols are key,""
+"                ├── hash-join","",""
+"                │    │",type,inner
+"                │    │",equality,(pipeline_sn) = (pipeline_sn)
+"                │    │",right cols are key,""
+"                │    ├── hash-join","",""
+"                │    │    │",type,inner
+"                │    │    │",equality,(station_sn) = (station_sn)
+"                │    │    │",right cols are key,""
+"                │    │    ├── scan","",""
+"                │    │    │",table,point_info@primary
+"                │    │    │",spans,FULL SCAN
+"                │    │    └── hash-join","",""
+"                │    │         │",type,inner
+"                │    │         │",equality,(work_area_sn) = (work_area_sn)
+"                │    │         │",right cols are key,""
+"                │    │         ├── scan","",""
+"                │    │         │",table,station_info@primary
+"                │    │         │",spans,FULL SCAN
+"                │    │         └── scan","",""
+"                │    │",table,workarea_info@workarea_name_index
+"                │    │",spans,/!NULL-
+"                │    │",filter,work_area_name LIKE '%3'
+"                │    └── scan","",""
+"                │",table,pipeline_info@pipeline_name_index
+"                │",spans,/!NULL-
+"                │",filter,pipeline_name LIKE '%7'
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,primaryHashTagScan
+"",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"",tag filter[0],measure_type = 1
+
+Time: 3.896517ms
+

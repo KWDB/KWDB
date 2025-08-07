@@ -1,0 +1,42 @@
+SET
+
+Time: 464.447µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── batch-lookup-join","",""
+"      │",type,inner
+"      │",equality,"(company_id, name, index_name) = (companyid, device, datatype)"
+"      ├── cross-join","",""
+"      │    │",type,cross
+"      │    ├── hash-join","",""
+"      │    │    │",type,inner
+"      │    │    │",equality,(obj_id) = (id)
+"      │    │    │",right cols are key,""
+"      │    │    ├── scan","",""
+"      │    │    │",table,plat_tijiancard_item_relation@primary
+"      │    │    │",spans,FULL SCAN
+"      │    │    └── scan","",""
+"      │    │",table,plat_device_info@primary
+"      │    │",spans,FULL SCAN
+"      │    │",filter,qianyi_id <= 4
+"      │    └── hash-join","",""
+"      │         │",type,inner
+"      │         │",equality,(index_id) = (id)
+"      │         │",right cols are key,""
+"      │         ├── scan","",""
+"      │         │",table,plat_tijian_item@primary
+"      │         │",spans,FULL SCAN
+"      │         │",filter,create_user_id = 9962
+"      │         └── scan","",""
+"      │",table,plat_tijian_item_index@primary
+"      │",spans,FULL SCAN
+"      └── synchronizer","",""
+"           └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+
+Time: 3.976927ms
+

@@ -1,0 +1,80 @@
+SET
+
+Time: 418.488µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",pipeline_name,pipeline_name
+" │",timebucket,timebucket
+" │",avg_value,avg
+" │",max_value,max
+" │",min_value,min
+" │",number_of_values,count
+" └── limit","",""
+"      │",count,100
+"      └── render","",""
+"           │",avg,sum / sum_int
+"           │",pipeline_name,pipeline_name
+"           │",max,max
+"           │",min,min
+"           │",count,sum_int
+"           │",timebucket,timebucket
+"           └── group","",""
+"                │",aggregate 0,pipeline_name
+"                │",aggregate 1,timebucket
+"                │",aggregate 2,sum_int(count)
+"                │",aggregate 3,sum(sum)
+"                │",aggregate 4,max(max)
+"                │",aggregate 5,min(min)
+"                │",aggregate 6,sum_int(count)
+"                │",group by,"pipeline_name, timebucket"
+"                │",ordered,"+pipeline_name,+timebucket"
+"                └── render","",""
+"                     │",pipeline_name,pipeline_name
+"                     │",max,max
+"                     │",min,min
+"                     │",count,count
+"                     │",timebucket,timebucket
+"                     │",sum,sum
+"                     └── sort","",""
+"                          │",order,"+pipeline_name,+timebucket"
+"                          └── render","",""
+"                               │",pipeline_name,pipeline_name
+"                               │",max,max
+"                               │",min,min
+"                               │",count,count
+"                               │",timebucket,timebucket
+"                               │",sum,sum
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,(pipeline_sn) = (pipeline_sn)
+"                                    │",left cols are key,""
+"                                    ├── scan","",""
+"                                    │",table,pipeline_info@pipeline_name_index
+"                                    │",spans,FULL SCAN
+"                                    └── group","",""
+"                                         │",engine type,time series
+"                                         │",aggregate 0,pipeline_sn
+"                                         │",aggregate 1,timebucket
+"                                         │",aggregate 2,max(measure_value)
+"                                         │",aggregate 3,min(measure_value)
+"                                         │",aggregate 4,count(measure_value)
+"                                         │",aggregate 5,sum(measure_value)
+"                                         │",group by,"pipeline_sn, timebucket"
+"                                         │",addSynchronizer ,true
+"                                         └── render","",""
+"                                              │",engine type,time series
+"                                              │",timebucket,"time_bucket(k_timestamp, '5s')"
+"                                              │",k_timestamp,k_timestamp
+"                                              │",measure_value,measure_value
+"                                              │",pipeline_sn,pipeline_sn
+"                                              └── ts scan","",""
+"",ts-table,t_point
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-01-04 14:30:00 +0000 UTC
+"",spans:toTime,2024-01-04 14:30:30 +0000 UTC
+
+Time: 2.27384ms
+

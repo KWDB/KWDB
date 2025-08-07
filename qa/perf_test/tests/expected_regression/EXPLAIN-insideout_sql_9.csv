@@ -1,0 +1,95 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",station_name,station_name
+" │",measure_type,measure_type
+" │",timebucket,timebucket
+" │",avg_value,sum / sum_int
+" │",max_value,max
+" │",min_value,min
+" │",number_of_values,sum_int
+" └── group","",""
+"      │",aggregate 0,measure_type
+"      │",aggregate 1,station_name
+"      │",aggregate 2,timebucket
+"      │",aggregate 3,sum_int(count)
+"      │",aggregate 4,sum(sum)
+"      │",aggregate 5,max(max)
+"      │",aggregate 6,min(min)
+"      │",aggregate 7,sum_int(count)
+"      │",group by,"measure_type, station_name, timebucket"
+"      │",ordered,"+station_name,+measure_type,+timebucket"
+"      └── render","",""
+"           │",measure_type,measure_type
+"           │",station_name,station_name
+"           │",max,max
+"           │",min,min
+"           │",count,count
+"           │",timebucket,timebucket
+"           │",sum,sum
+"           └── sort","",""
+"                │",order,"+station_name,+measure_type,+timebucket"
+"                └── render","",""
+"                     │",measure_type,measure_type
+"                     │",station_name,station_name
+"                     │",max,max
+"                     │",min,min
+"                     │",count,count
+"                     │",timebucket,timebucket
+"                     │",sum,sum
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,(point_sn) = (point_sn)
+"                          │",right cols are key,""
+"                          ├── group","",""
+"                          │    │",engine type,time series
+"                          │    │",aggregate 0,point_sn
+"                          │    │",aggregate 1,timebucket
+"                          │    │",aggregate 2,measure_type
+"                          │    │",aggregate 3,max(measure_value)
+"                          │    │",aggregate 4,min(measure_value)
+"                          │    │",aggregate 5,count(measure_value)
+"                          │    │",aggregate 6,sum(measure_value)
+"                          │    │",group by,"point_sn, timebucket, measure_type"
+"                          │    │",addSynchronizer ,true
+"                          │    └── render","",""
+"                          │         │",engine type,time series
+"                          │         │",timebucket,"time_bucket(k_timestamp, '10s')"
+"                          │         │",k_timestamp,k_timestamp
+"                          │         │",measure_value,measure_value
+"                          │         │",point_sn,point_sn
+"                          │         │",measure_type,measure_type
+"                          │         └── ts scan","",""
+"                          │",ts-table,t_point
+"                          │",access mode,tagIndexTable
+"                          │",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"                          │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"                          │",ptag filter[0],"point_sn IN ('point_sn_1', 'point_sn_100401', 'point_sn_112501', 'point_sn_2')"
+"                          └── lookup-join","",""
+"                               │",table,workarea_info@primary
+"                               │",type,inner
+"                               │",equality,(work_area_sn) = (work_area_sn)
+"                               │",equality cols are key,""
+"                               │",parallel,""
+"                               │",pred,@10 LIKE '%3'
+"                               └── lookup-join","",""
+"                                    │",table,pipeline_info@primary
+"                                    │",type,inner
+"                                    │",equality,(pipeline_sn) = (pipeline_sn)
+"                                    │",equality cols are key,""
+"                                    │",parallel,""
+"                                    │",pred,@8 LIKE '%7'
+"                                    └── lookup-join","",""
+"                                         │",table,station_info@primary
+"                                         │",type,inner
+"                                         │",equality,(station_sn) = (station_sn)
+"                                         │",equality cols are key,""
+"                                         │",parallel,""
+"                                         └── scan","",""
+"",table,point_info@primary
+"",spans,"/""point_sn_1""-/""point_sn_1""/# /""point_sn_100401""-/""point_sn_100401""/# /""point_sn_112501""-/""point_sn_112501""/# /""point_sn_2""-/""point_sn_2""/#"
+"",parallel,""
+
+Time: 7.115069ms
+

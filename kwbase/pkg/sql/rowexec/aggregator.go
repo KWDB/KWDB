@@ -483,9 +483,6 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 			if gw.groupLast >= 0 {
 				row[gw.groupLast].Datum = newEndTimeDur
 			}
-			if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
-				row[gw.groupWindowTsColID].Datum = newTimeDur
-			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
 			newTime := &tree.DTimestamp{Time: durTime}
@@ -494,9 +491,6 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 			}
 			if gw.groupLast >= 0 {
 				row[gw.groupLast].Datum = newTime
-			}
-			if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
-				row[gw.groupWindowTsColID].Datum = newTimeDur
 			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
@@ -618,9 +612,6 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 	if gw.groupLast >= 0 {
 		row1[gw.groupLast].Datum = newTimeEnd
 	}
-	if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
-		row1[gw.groupWindowTsColID].Datum = newTimeStart
-	}
 
 	for i := 0; i < len(row1); i++ {
 		*row = append(*row, row1[i])
@@ -739,9 +730,6 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 	}
 	if gw.groupLast >= 0 {
 		row1[gw.groupLast].Datum = newTimeEnd
-	}
-	if gw.groupFirst < 0 && gw.groupLast < 0 && gw.groupWindowTsColID >= 0 {
-		row1[gw.groupWindowTsColID].Datum = newTimeStart
 	}
 
 	for i := 0; i < len(row1); i++ {

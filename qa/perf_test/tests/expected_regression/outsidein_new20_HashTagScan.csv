@@ -1,0 +1,9 @@
+SET
+
+Time: 591.614µs
+
+timebucket,adr,avg_value,total_count
+2024-01-04 14:30:00+00:00,"",49.9896495992055,78004290
+
+Time: 41.84356678s
+

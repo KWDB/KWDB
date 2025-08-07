@@ -1,0 +1,39 @@
+SET
+
+Time: 702.025µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+sort,"",""
+" │",order,+station_name
+" └── group","",""
+"      │",aggregate 0,station_name
+"      │",aggregate 1,"corr(measure_type, measure_value)"
+"      │",group by,station_name
+"      └── render","",""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,(station_sn) = (station_sn)
+"                │",left cols are key,""
+"                ├── lookup-join","",""
+"                │    │",table,station_info@primary
+"                │    │",type,inner
+"                │    │",equality,(station_sn) = (station_sn)
+"                │    │",equality cols are key,""
+"                │    │",parallel,""
+"                │    └── lookup-join","",""
+"                │         │",table,station_info@station_work_area_sn_index
+"                │         │",type,inner
+"                │         │",equality,(work_area_sn) = (work_area_sn)
+"                │         └── scan","",""
+"                │",table,workarea_info@workarea_name_index
+"                │",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd"
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashTagScan
+"",filter,measure_value > 80.0
+
+Time: 2.424599ms
+
