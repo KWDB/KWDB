@@ -1,0 +1,76 @@
+SET
+
+Time: 607.395µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",pipeline_name,pipeline_name
+" │",adr,adr
+" │",timebucket,timebucket
+" │",total_records,count
+" │",total_value,sum
+" │",avg_value,avg
+" └── sort","",""
+"      │",order,"+pipeline_name,+timebucket"
+"      └── render","",""
+"           │",avg,sum / sum_int
+"           │",pipeline_name,pipeline_name
+"           │",adr,adr
+"           │",count,sum_int
+"           │",sum,sum
+"           │",timebucket,timebucket
+"           └── group","",""
+"                │",aggregate 0,pipeline_name
+"                │",aggregate 1,adr
+"                │",aggregate 2,timebucket
+"                │",aggregate 3,sum_int(count)
+"                │",aggregate 4,sum(sum)
+"                │",aggregate 5,sum_int(count)
+"                │",aggregate 6,sum(sum)
+"                │",group by,"pipeline_name, adr, timebucket"
+"                └── render","",""
+"                     │",pipeline_name,pipeline_name
+"                     │",adr,adr
+"                     │",count,count
+"                     │",sum,sum
+"                     │",timebucket,timebucket
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,(column26) = (measure_type)
+"                          ├── render","",""
+"                          │    └── scan","",""
+"                          │",table,cd_device_point@primary
+"                          │",spans,FULL SCAN
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(pipeline_sn) = (pipeline_sn)
+"                               │",left cols are key,""
+"                               ├── scan","",""
+"                               │",table,pipeline_info@pipeline_name_index
+"                               │",spans,FULL SCAN
+"                               └── group","",""
+"                                    │",engine type,time series
+"                                    │",aggregate 0,measure_type
+"                                    │",aggregate 1,pipeline_sn
+"                                    │",aggregate 2,timebucket
+"                                    │",aggregate 3,count(measure_value)
+"                                    │",aggregate 4,sum(measure_value)
+"                                    │",group by,"measure_type, pipeline_sn, timebucket"
+"                                    │",addSynchronizer ,true
+"                                    └── render","",""
+"                                         │",engine type,time series
+"                                         │",timebucket,"time_bucket(k_timestamp, '5m')"
+"                                         │",k_timestamp,k_timestamp
+"                                         │",measure_value,measure_value
+"                                         │",pipeline_sn,pipeline_sn
+"                                         │",measure_type,measure_type
+"                                         └── ts scan","",""
+"",ts-table,t_point
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-01-04 14:29:50 +0000 UTC
+"",spans:toTime,2024-01-04 14:30:10 +0000 UTC
+
+Time: 3.131601ms
+

@@ -1,0 +1,100 @@
+SET
+
+Time: 798.889µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+sort,"",""
+" │",order,"+qianyicode,+timebucket,+avg_value"
+" └── append","",""
+"      ├── render","",""
+"      │    │",qianyi_id,qianyi_id
+"      │    │",timebucket,timebucket
+"      │    │",avg,sum / sum_int
+"      │    └── group","",""
+"      │         │",aggregate 0,qianyi_id
+"      │         │",aggregate 1,timebucket
+"      │         │",aggregate 2,sum_int(count)
+"      │         │",aggregate 3,sum(sum)
+"      │         │",group by,"qianyi_id, timebucket"
+"      │         └── render","",""
+"      │              │",qianyi_id,qianyi_id
+"      │              │",timebucket,timebucket
+"      │              │",count,count
+"      │              │",sum,sum
+"      │              └── hash-join","",""
+"      │                   │",type,inner
+"      │                   │",equality,(companyid) = (company_id)
+"      │                   ├── group","",""
+"      │                   │    │",engine type,time series
+"      │                   │    │",aggregate 0,companyid
+"      │                   │    │",aggregate 1,timebucket
+"      │                   │    │",aggregate 2,count(value)
+"      │                   │    │",aggregate 3,sum(value)
+"      │                   │    │",group by,"companyid, timebucket"
+"      │                   │    │",addSynchronizer ,true
+"      │                   │    └── render","",""
+"      │                   │         │",engine type,time series
+"      │                   │         │",timebucket,"time_bucket(""time"", '3600s')"
+"      │                   │         │",time,"""time"""
+"      │                   │         │",value,value
+"      │                   │         │",companyid,companyid
+"      │                   │         │",datatype,datatype
+"      │                   │         │",device,device
+"      │                   │         └── ts scan","",""
+"      │                   │",ts-table,opcdata449600
+"      │                   │",access mode,tableTableMeta
+"      │                   │",spans:fromTime,2024-06-29 00:00:00 +0000 UTC
+"      │                   │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"      │                   │",tag filter[0],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"      │                   │",tag filter[1],datatype = e'\U00006C14\U00004F53'
+"      │                   └── scan","",""
+"      │",table,plat_device_info@primary
+"      │",spans,FULL SCAN
+"      └── batch-lookup-join","",""
+"           │",type,inner
+"           │",equality,"(company_id, device_no) = (companyid, ""tag"")"
+"           ├── hash-join","",""
+"           │    │",type,inner
+"           │    │",equality,"(area_id, company_id) = (id, company_id)"
+"           │    │",right cols are key,""
+"           │    ├── lookup-join","",""
+"           │    │    │",table,plat_device_info@primary
+"           │    │    │",type,inner
+"           │    │    │",equality,(device_info_id) = (id)
+"           │    │    │",equality cols are key,""
+"           │    │    │",parallel,""
+"           │    │    │",pred,@2 = @6
+"           │    │    └── scan","",""
+"           │    │",table,cd_security_device@primary
+"           │    │",spans,FULL SCAN
+"           │    │",filter,category = 5
+"           │    └── lookup-join","",""
+"           │         │",table,plat_risk_analyse_objects@primary
+"           │         │",type,inner
+"           │         │",equality,(risk_id) = (id)
+"           │         │",equality cols are key,""
+"           │         │",parallel,""
+"           │         │",pred,(@5 = 1) AND (@6 = e'\U000056DB\U00007EA7')
+"           │         └── scan","",""
+"           │",table,plat_risk_area@primary
+"           │",spans,FULL SCAN
+"           └── group","",""
+"                │",engine type,time series
+"                │",aggregate 0,qianyi_id
+"                │",aggregate 1,timebucket
+"                │",aggregate 2,avg(value)
+"                │",group by,"qianyi_id, timebucket"
+"                │",addSynchronizer ,true
+"                └── render","",""
+"                     │",engine type,time series
+"                     │",timebucket,"time_bucket(""time"", '3600s')"
+"                     │",value,value
+"                     │",qianyi_id,qianyi_id
+"                     └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+
+Time: 6.308405ms
+

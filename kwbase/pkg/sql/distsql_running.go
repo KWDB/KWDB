@@ -187,7 +187,7 @@ func (dsp *DistSQLPlanner) setupFlows(
 	usePipeline := false
 	for _, f := range flows {
 		// pipeline not support vectorized now.
-		if f.TsInfo.UsePipeline {
+		if f.TsInfo.UseAeGather {
 			usePipeline = true
 			setupReq.EvalContext.Vectorize = int32(sessiondata.VectorizeOff)
 			break

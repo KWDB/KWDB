@@ -531,72 +531,76 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::Compact() {
-  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::COMPACT)) {
-    sleep(1);
+KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum) {
+  auto partition_id = partition->GetPartitionIdentifier();
+  if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
+    LOG_INFO("partition[%d,%ld,%ld] skip compact",
+             std::get<0>(partition_id), std::get<1>(partition_id), std::get<2>(partition_id));
+    return KStatus::SUCCESS;
   }
-  Defer defer([this]() {
-    ResetTsExclusiveStatus();
-  });
-  auto current = version_manager_->Current();
-  auto partitions = current->GetPartitionsToCompact();
-
-  // Prioritize the latest partition
-  using PartitionPtr = std::shared_ptr<const TsPartitionVersion>;
-  std::sort(partitions.begin(), partitions.end(), [](const PartitionPtr& left, const PartitionPtr& right) {
-    return left->GetStartTime() > right->GetStartTime();
-  });
-
-  // Compact partitions
+  partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+  Defer defer{[&]() {
+    partition->ResetStatus();
+  }};
   TsVersionUpdate update;
-  std::atomic_bool success{true};
-  for (size_t idx = 0; idx < partitions.size(); ++idx) {
-    const auto& cur_partition = partitions[idx];
+  // 1. Get all the last segments that need to be compacted.
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+  if (!call_by_vacuum) {
+    last_segments = partition->GetCompactLastSegments();
+  } else {
+    last_segments = partition->GetAllLastSegments();
+  }
+  if (last_segments.empty()) {
+    return KStatus::SUCCESS;
+  }
+  auto entity_segment = partition->GetEntitySegment();
 
-    // 1. Get all the last segments that need to be compacted.
-    auto last_segments = cur_partition->GetCompactLastSegments();
-    auto entity_segment = cur_partition->GetEntitySegment();
+  auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
 
-    auto root_path = this->GetPath() / PartitionDirName(cur_partition->GetPartitionIdentifier());
-    uint64_t new_entity_header_num = version_manager_->NewFileNumber();
-
-    // 2. Build the column block.
-    {
-      TsVersionUpdate::EntitySegmentVersionInfo info{0, 0, 0, 0};
-      if (entity_segment) {
-        info = entity_segment->GetInfo();
-      }
-      info.header_e_file_number = new_entity_header_num;
-      TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                     cur_partition->GetPartitionIdentifier(), entity_segment, info,
-                                     last_segments);
-      KStatus s = builder.Open();
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
-        success = false;
-        break;
-      }
-      s = builder.Compact(&update);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
-        success = false;
-        break;
-      }
+  // 2. Build the column block.
+  {
+    TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
+                                   partition->GetPartitionIdentifier(), entity_segment,
+                                   last_segments);
+    KStatus s = builder.Open();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
+      return s;
     }
-
-    // 3. Set the compacted version.
-    for (auto& last_segment : last_segments) {
-      update.DeleteLastSegment(cur_partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
+    s = builder.Compact(call_by_vacuum, &update);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
+      return s;
     }
   }
 
+  // 3. Set the compacted version.
+  for (auto& last_segment : last_segments) {
+    update.DeleteLastSegment(partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
+  }
+
+  // 4. Update the version.
+  return version_manager_->ApplyUpdate(&update);
+}
+
+KStatus TsVGroup::Compact() {
+  auto current = version_manager_->Current();
+  std::vector<std::shared_ptr<const TsPartitionVersion>> partitions = current->GetPartitionsToCompact();
+  // Compact partitions
+  bool success{true};
+  for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
+    const auto& cur_partition = *it;
+    KStatus s = PartitionCompact(cur_partition);
+    if (s != KStatus::SUCCESS) {
+      success = false;
+      continue;
+    }
+  }
   if (!success) {
     LOG_ERROR("compact failed.");
     return FAIL;
   }
-  // 4. Update the version.
-  KStatus s = version_manager_->ApplyUpdate(&update);
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
@@ -1081,9 +1085,6 @@ const std::vector<KwTsSpan>& ts_spans) {
 
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                                  timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data) {
-  while (!TrySetTsExclusiveStatus(TsExclusiveStatus::WRITE_BATCH)) {
-    sleep(1);
-  }
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1106,20 +1107,18 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
     std::unique_lock lock{builders_mutex_};
     auto it = write_batch_segment_builders_.find(partition_id);
     if (it == write_batch_segment_builders_.end()) {
+      while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
+        sleep(1);
+      }
+      partition = version_manager_->Current()->GetPartition(database_id, p_time);
       auto entity_segment = partition->GetEntitySegment();
 
       auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-      uint64_t new_entity_header_num = version_manager_->NewFileNumber();
-
-      TsVersionUpdate::EntitySegmentVersionInfo info{0, 0, 0, 0};
-      if (entity_segment) {
-        info = entity_segment->GetInfo();
-      }
-      info.header_e_file_number = new_entity_header_num;
-      builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), partition_id,
-                                                         entity_segment, info);
+      builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), version_manager_.get(), partition_id,
+                                                         entity_segment);
       KStatus s = builder->Open();
       if (s != KStatus::SUCCESS) {
+        partition->ResetStatus();
         LOG_ERROR("Open entity segment builder failed.");
         return s;
       }
@@ -1128,7 +1127,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       builder = it->second;
     }
   }
-  KStatus s = builder->WriteBatch(entity_id, table_version, lsn, data);
+  KStatus s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
@@ -1140,30 +1139,43 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  Defer defer([this]() {
-    ResetTsExclusiveStatus();
-  });
   std::unique_lock lock{builders_mutex_};
-  for (auto& kv : write_batch_segment_builders_) {
-    KStatus s = kv.second->WriteBatchFinish(&update);
-    if (s != KStatus::SUCCESS) {
+  {
+    Defer defer([&]() {
+      for (auto& kv : write_batch_segment_builders_) {
+        auto partition = version_manager_->Current()->GetPartition(std::get<0>(kv.first), std::get<1>(kv.first));
+        partition->ResetStatus();
+      }
       write_batch_segment_builders_.clear();
-      LOG_ERROR("Finish entity segment builder failed");
-      return s;
+    });
+    for (auto& kv : write_batch_segment_builders_) {
+      KStatus s = kv.second->WriteBatchFinish(&update);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Finish entity segment builder failed");
+        return s;
+      }
+      kv.second = nullptr;
     }
+    version_manager_->ApplyUpdate(&update);
   }
-  write_batch_segment_builders_.clear();
-  KStatus s = version_manager_->ApplyUpdate(&update);
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::CancelWriteBatchData() {
   std::unique_lock lock{builders_mutex_};
-  for (auto& kv : write_batch_segment_builders_) {
-    kv.second->WriteBatchCancel();
+  {
+    Defer defer([&]() {
+      for (auto& kv : write_batch_segment_builders_) {
+        auto partition = version_manager_->Current()->GetPartition(std::get<0>(kv.first), std::get<1>(kv.first));
+        partition->ResetStatus();
+      }
+      write_batch_segment_builders_.clear();
+    });
+    for (auto& kv : write_batch_segment_builders_) {
+      kv.second->WriteBatchCancel();
+      kv.second = nullptr;
+    }
   }
-  write_batch_segment_builders_.clear();
-  ResetTsExclusiveStatus();
   return KStatus::SUCCESS;
 }
 
@@ -1530,6 +1542,195 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
     if (s == FAIL) {
       return s;
     }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::Vacuum() {
+  KStatus s = KStatus::SUCCESS;
+  auto cur_lsn = wal_manager_->FetchCurrentLSN();
+  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+  auto current = version_manager_->Current();
+  auto partitions = current->GetPartitionsToVacuum();
+
+  for (auto& partition : partitions) {
+    auto partition_id = partition->GetPartitionIdentifier();
+    auto root_path = this->GetPath() / PartitionDirName(partition_id);
+    bool need_vacuum = false;
+    s = partition->NeedVacuumEntitySegment(root_path, need_vacuum);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("NeedVacuumEntitySegment failed.");
+      continue;
+    }
+    if (!need_vacuum) {
+      LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
+      continue;
+    }
+
+    // force compact historical partition
+    s = PartitionCompact(partition, true);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("PartitionCompact failed.");
+      continue;
+    }
+    if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
+      continue;
+    }
+    Defer defer{[&]() {
+      partition->ResetStatus();
+    }};
+
+    partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+    auto entity_segment = partition->GetEntitySegment();
+    if (entity_segment == nullptr) {
+      continue;
+    }
+
+    LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin", vgroup_id_, partition->GetStartTime(),
+                                                              partition->GetEndTime() - 1);
+    auto max_entity_id = entity_segment->GetEntityNum();
+
+    auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
+    vacuumer->Open();
+
+    auto mem_segments = partition->GetAllMemSegments();
+    std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
+    for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
+      TsEntityItem entity_item;
+      bool found = false;
+      s = entity_segment->GetEntityItem(entity_id, entity_item, found);
+      if (s != SUCCESS) {
+        LOG_ERROR("Vacuum failed, GetEntityItem failed")
+        return s;
+      }
+      if (!found || 0 == entity_item.cur_block_id) {
+        TsEntityItem empty_entity_item{entity_id};
+        empty_entity_item.table_id = entity_item.table_id;
+        s = vacuumer->AppendEntityItem(empty_entity_item);
+        if (s != SUCCESS) {
+          LOG_ERROR("Vacuum failed, AppendEntityItem failed")
+          return s;
+        }
+        continue;
+      }
+      std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+      s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
+      if (s != SUCCESS) {
+        return s;
+      }
+      if (tb_schema_mgr->IsDropped()) {
+        TsEntityItem empty_entity_item{entity_id};
+        empty_entity_item.table_id = entity_item.table_id;
+        s = vacuumer->AppendEntityItem(empty_entity_item);
+        if (s != SUCCESS) {
+          LOG_ERROR("Vacuum failed, AppendEntityItem failed")
+          return s;
+        }
+        entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
+        continue;
+      }
+      auto life_time = tb_schema_mgr->GetLifeTime();
+      int64_t start_ts = INT64_MIN;
+      int64_t end_ts = INT64_MAX;
+      if (life_time.ts != 0) {
+        start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+      }
+      KwTsSpan ts_span = {start_ts, end_ts};
+      TsScanFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_,
+                                entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, {ts_span}};
+      TsBlockItemFilterParams block_data_filter;
+      s = partition->getFilter(filter, block_data_filter);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("getFilter failed");
+        return s;
+      }
+
+      std::list<shared_ptr<TsBlockSpan>> block_spans;
+      s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, 0);
+      if (s != SUCCESS) {
+        LOG_ERROR("Vacuum failed, GetBlockSpans failed")
+        return s;
+      }
+      TsEntityItem cur_entity_item = {entity_id};
+      cur_entity_item.table_id = entity_item.table_id;
+      for (auto& block_span : block_spans) {
+        string data;
+        block_span->GetCompressData(data);
+        uint32_t col_count = block_span->convert_->version_conv_->scan_attrs_.size();
+        uint32_t col_offsets_len = (col_count + 1) * sizeof(uint32_t);
+        auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
+        auto block_data_len = col_offsets_len + last_col_tail_offset;
+        auto block_agg_len = data.size() - block_data_len;
+        string block_data = data.substr(0, block_data_len);
+        string block_agg = data.substr(block_data_len, block_agg_len);
+
+        TsEntitySegmentBlockItem blk_item;
+        blk_item.entity_id = entity_item.entity_id;
+        blk_item.table_version = block_span->GetTableVersion();
+        blk_item.n_cols = block_span->convert_->version_conv_->scan_attrs_.size() + 1;
+        blk_item.n_rows = block_span->GetRowNum();
+        blk_item.min_ts = block_span->GetFirstTS();
+        blk_item.max_ts = block_span->GetLastTS();
+        blk_item.block_len = block_data.size();
+        blk_item.agg_len = block_agg.size();
+        s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Vacuum failed, AppendBlock failed")
+          return s;
+        }
+        s = vacuumer->AppendAgg({block_agg.data(), block_agg.size()}, &blk_item.agg_offset);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Vacuum failed, AppendAgg failed")
+          return s;
+        }
+        blk_item.prev_block_id = cur_entity_item.cur_block_id;
+        s = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Vacuum failed, AppendBlockItem failed")
+          return s;
+        }
+        cur_entity_item.cur_block_id = blk_item.block_id;
+        cur_entity_item.row_written += blk_item.n_rows;
+        if (blk_item.max_ts > cur_entity_item.max_ts) {
+          cur_entity_item.max_ts = blk_item.max_ts;
+        }
+        if (blk_item.min_ts < cur_entity_item.min_ts) {
+          cur_entity_item.min_ts = blk_item.min_ts;
+        }
+      }
+      s = vacuumer->AppendEntityItem(cur_entity_item);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, AppendEntityItem failed")
+        return s;
+      }
+      {
+        // check weather mem segment has data for one entity
+        KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
+                                      partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
+        STScanRange scan_range = {partition_ts_span, {0, cur_lsn}};
+        DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
+        TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
+        std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
+        for (auto& mem_segment : mem_segments) {
+          mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, 0);
+        }
+        if (mem_block_spans.empty()) {
+          entity_max_lsn.emplace_back(entity_id, cur_lsn);
+        }
+      }
+    }
+    TsVersionUpdate update;
+    auto info = vacuumer->GetHandleInfo();
+    update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
+    vacuumer.reset();
+    version_manager_->ApplyUpdate(&update);
+
+    s = partition->RmDeleteItems(entity_max_lsn);
+    if (s != KStatus::SUCCESS) {
+      LOG_INFO("delete delitem failed. can ignore this.");
+    }
+    LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) succeeded", vgroup_id_, partition->GetStartTime(),
+                                                                  partition->GetEndTime() - 1);
   }
   return KStatus::SUCCESS;
 }

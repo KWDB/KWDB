@@ -55,10 +55,10 @@ KStatus RelBatchQueue::Add(kwdbContext_p ctx, char *batchData, k_uint32 count) {
     }
   }
   DataChunkPtr data_chunk = std::make_unique<kwdbts::DataChunk>(output_col_info_, output_col_num_, count);
-  if (data_chunk->Initialize() < 0) {
-      data_chunk = nullptr;
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-      Return(KStatus::FAIL);
+  if (!data_chunk->Initialize()) {
+    data_chunk = nullptr;
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+    Return(KStatus::FAIL);
   }
   if (data_chunk->PutData(ctx, batchData, count) != KStatus::SUCCESS) {
     Return(KStatus::FAIL);

@@ -1,0 +1,29 @@
+SET
+
+Time: 669.335µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── limit","",""
+"      │",count,100
+"      └── sort","",""
+"           │",order,"+pipeline_name,+measure_type,+measure_category,+time_category"
+"           └── render","",""
+"                └── batch-lookup-join","",""
+"                     │",type,inner
+"                     │",equality,(pipeline_sn) = (pipeline_sn)
+"                     │",left cols are key,""
+"                     ├── scan","",""
+"                     │",table,pipeline_info@pipeline_name_index
+"                     │",spans,FULL SCAN
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashRelScan
+"",spans:fromTime,2024-01-04 14:34:00 +0000 UTC
+"",spans:toTime,2024-01-04 14:34:12 +0000 UTC
+
+Time: 2.786428ms
+

@@ -1,0 +1,6 @@
+total_records,avg_value,max_value,min_value,device_name,plat_company_name,risk_level,index_name,index_unit,security_device_name,security_device_status,risk_area_desc,tijian_index_name,tijian_index_unit,tijian_item,tijian_content,tijian_check_type
+368448,57.93711238868924,99.93978153485476,3.701374066493135,2#缓冲罐,1#罐区可燃气体报警器,"",温度,℃,1001,0,desc,温度,℃,fake_item_name,fake_content,1
+368448,57.93711238868924,99.93978153485476,3.701374066493135,3#缓冲罐,1#罐区可燃气体报警器,"",温度,℃,1003,0,desc,温度,℃,fake_item_name,fake_content,1
+
+Time: 8.259482986s
+

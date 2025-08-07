@@ -1,0 +1,32 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── limit","",""
+"      │",count,1
+"      └── sort","",""
+"           │",order,"-""time"""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,(companyid) = (companyid)
+"                ├── hash-join","",""
+"                │    │",type,inner
+"                │    │",equality,(companyid) = (company_id)
+"                │    ├── scan","",""
+"                │    │",table,channel_info@primary
+"                │    │",spans,FULL SCAN
+"                │    │",filter,channel_id = 'CH193'
+"                │    └── index-join","",""
+"                │         │",table,plat_tijiancard_item_relation@primary
+"                │         │",key columns,id
+"                │         └── scan","",""
+"                │",table,plat_tijiancard_item_relation@tijian_id_relation
+"                │",spans,"/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""-/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""/PrefixEnd"
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",tag filter[0],channel = 'CH193'
+
+Time: 7.912389ms
+

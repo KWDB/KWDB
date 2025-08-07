@@ -1,0 +1,70 @@
+SET
+
+Time: 545.747µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,"+station_sn,+work_area_sn,+sub_company_sn,+pipeline_sn,+point_sn,+measure_type,+measure_location"
+"      └── filter","",""
+"           │",filter,avg > 50.0
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,"(station_sn, work_area_sn, sub_company_sn, pipeline_sn, point_sn) = (station_sn, work_area_sn, sub_com_sn, pipeline_sn, point_sn)"
+"                │",left cols are key,""
+"                ├── cross-join","",""
+"                │    │",type,cross
+"                │    ├── cross-join","",""
+"                │    │    │",type,cross
+"                │    │    ├── cross-join","",""
+"                │    │    │    │",type,cross
+"                │    │    │    ├── cross-join","",""
+"                │    │    │    │    │",type,cross
+"                │    │    │    │    ├── scan","",""
+"                │    │    │    │    │",table,point_info@point_station_sn_index
+"                │    │    │    │    │",spans,FULL SCAN
+"                │    │    │    │    │",filter,"substring(point_sn, 11, 4) = '1000'"
+"                │    │    │    │    └── scan","",""
+"                │    │    │    │",table,pipeline_info@pipeline_sn_index
+"                │    │    │    │",spans,FULL SCAN
+"                │    │    │    └── scan","",""
+"                │    │    │",table,company_info@primary
+"                │    │    │",spans,"/""sub_com_sn_1""-/""sub_com_sn_1""/# /""sub_com_sn_5""-/""sub_com_sn_5""/#"
+"                │    │    │",parallel,""
+"                │    │    └── scan","",""
+"                │    │",table,workarea_info@workarea_name_index
+"                │    │",spans,FULL SCAN
+"                │    └── scan","",""
+"                │",table,station_info@station_work_area_sn_index
+"                │",spans,FULL SCAN
+"                └── group","",""
+"                     │",engine type,time series
+"                     │",aggregate 0,measure_type
+"                     │",aggregate 1,measure_location
+"                     │",aggregate 2,station_sn
+"                     │",aggregate 3,work_area_sn
+"                     │",aggregate 4,sub_company_sn
+"                     │",aggregate 5,pipeline_sn
+"                     │",aggregate 6,point_sn
+"                     │",aggregate 7,avg(measure_value)
+"                     │",aggregate 8,count_rows()
+"                     │",group by,"measure_type, measure_location, station_sn, work_area_sn, sub_company_sn, pipeline_sn, point_sn"
+"                     │",addSynchronizer ,true
+"                     └── render","",""
+"                          │",engine type,time series
+"                          │",measure_value,measure_value
+"                          │",measure_type,measure_type
+"                          │",measure_location,measure_location
+"                          │",station_sn,station_sn
+"                          │",work_area_sn,work_area_sn
+"                          │",sub_company_sn,sub_company_sn
+"                          │",pipeline_sn,pipeline_sn
+"                          │",point_sn,point_sn
+"                          └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashRelScan
+
+Time: 4.186527ms
+

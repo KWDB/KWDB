@@ -305,8 +305,8 @@ TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID ta
   return kTsSuccess;
 }
 
-TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_version) {
-  if (g_engine_version == 2) {
+TSStatus TSVacuum(TSEngine* engine) {
+  if (g_engine_version == 1) {
     return kTsSuccess;
   }
   bool expected = false;
@@ -315,23 +315,9 @@ TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_versi
     return kTsSuccess;
   }
   Defer defer([&](){ g_is_vacuuming.store(false); });
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
+  auto s = engine->Vacuum();
   if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-  ErrorInfo err_info;
-  std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table, false, err_info, ts_version);
-  if (s != KStatus::SUCCESS) {
-    LOG_INFO("The current node does not have the table[%lu], skip vacuum", table_id);
-    return kTsSuccess;
-  }
-  err_info.clear();
-  s = table->Vacuum(ctx_p, ts_version, err_info);
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("VacuumTsTable Error");
+    return ToTsStatus("TsVacuum Error!");
   }
   return kTsSuccess;
 }

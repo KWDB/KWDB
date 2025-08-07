@@ -212,8 +212,8 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo col_schema,
       return KStatus::FAIL;
     }
   }
-  colblock->reset(
-      new TsColumnBlock(col_schema, info.row_count, std::move(bitmap_guard), std::move(fixlen_guard), std::move(varchar_guard)));
+  colblock->reset(new TsColumnBlock(col_schema, info.row_count, std::move(bitmap_guard),
+                                    std::move(fixlen_guard), std::move(varchar_guard)));
   return SUCCESS;
 }
 }  // namespace kwdbts

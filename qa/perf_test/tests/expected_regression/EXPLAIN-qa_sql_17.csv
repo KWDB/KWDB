@@ -1,0 +1,71 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+root,"",""
+" ├── render","",""
+" │    └── sort","",""
+" │         │",order,"+timebucket,+work_area_sn,+sub_company_name"
+" │         └── render","",""
+" │              └── group","",""
+" │                   │",aggregate 0,work_area_sn
+" │                   │",aggregate 1,sub_company_name
+" │                   │",aggregate 2,timebucket
+" │                   │",aggregate 3,count(k_timestamp)
+" │                   │",aggregate 4,sum(measure_value)
+" │                   │",aggregate 5,avg(measure_value)
+" │                   │",aggregate 6,any_not_null(work_area_name)
+" │                   │",group by,"work_area_sn, sub_company_name, timebucket"
+" │                   └── render","",""
+" │                        └── hash-join","",""
+" │                             │",type,inner
+" │                             │",equality,(station_sn) = (station_sn)
+" │                             │",right cols are key,""
+" │                             ├── scan buffer node","",""
+" │                             │",label,buffer 1 (point_info_data)
+" │                             └── render","",""
+" │                                  └── hash-join","",""
+" │                                       │",type,semi
+" │                                       │",equality,(station_sn) = (station_sn)
+" │                                       │",left cols are key,""
+" │                                       ├── render","",""
+" │                                       │    └── hash-join","",""
+" │                                       │         │",type,inner
+" │                                       │         │",equality,"(work_area_sn, sub_company_sn) = (work_area_sn, sub_company_sn)"
+" │                                       │         │",right cols are key,""
+" │                                       │         ├── scan","",""
+" │                                       │         │",table,station_info@primary
+" │                                       │         │",spans,FULL SCAN
+" │                                       │         └── cross-join","",""
+" │                                       │              │",type,cross
+" │                                       │              ├── scan","",""
+" │                                       │              │",table,workarea_info@workarea_name_index
+" │                                       │              │",spans,FULL SCAN
+" │                                       │              └── scan","",""
+" │                                       │",table,company_info@sub_company_name_index
+" │                                       │",spans,FULL SCAN
+" │                                       └── render","",""
+" │                                            └── scan buffer node","",""
+" │",label,buffer 1 (point_info_data)
+" └── subquery","",""
+"      │",id,@S1
+"      │",original sql,"SELECT t.k_timestamp, t.measure_value, p.station_sn FROM db_pipec.t_point AS t, pipec_r.point_info AS p WHERE (t.point_sn = p.point_sn) AND (t.k_timestamp BETWEEN '2024-01-04 14:30:50' AND '2024-01-04 14:30:59')"
+"      │",exec mode,all rows
+"      └── buffer node","",""
+"           │",label,buffer 1 (point_info_data)
+"           └── render","",""
+"                └── batch-lookup-join","",""
+"                     │",type,inner
+"                     │",equality,(point_sn) = (point_sn)
+"                     │",left cols are key,""
+"                     ├── scan","",""
+"                     │",table,point_info@point_station_sn_index
+"                     │",spans,FULL SCAN
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,t_point
+"",access mode,primaryHashTagScan
+"",spans:fromTime,2024-01-04 14:30:50 +0000 UTC
+"",spans:toTime,2024-01-04 14:30:59 +0000 UTC
+
+Time: 8.510293ms
+

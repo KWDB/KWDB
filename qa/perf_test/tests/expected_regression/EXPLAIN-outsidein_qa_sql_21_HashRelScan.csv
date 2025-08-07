@@ -1,0 +1,39 @@
+SET
+
+Time: 425.077µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,+timebucket
+"      └── render","",""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,"(""tag"", company_id) = (""tag"", companyid)"
+"                ├── scan","",""
+"                │",table,plat_zone_member@primary
+"                │",spans,FULL SCAN
+"                │",filter,contract_email = 'ningmeng0823@hotmail.com'
+"                └── group","",""
+"                     │",engine type,time series
+"                     │",aggregate 0,timebucket
+"                     │",aggregate 1,avg(value)
+"                     │",aggregate 2,min(value)
+"                     │",aggregate 3,max(value)
+"                     │",aggregate 4,sum(value)
+"                     │",group by,timebucket
+"                     │",addSynchronizer ,true
+"                     └── render","",""
+"                          │",engine type,time series
+"                          │",timebucket,"time_bucket(""time"", '10s')"
+"                          │",value,value
+"                          └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",spans:fromTime,2023-05-29 10:10:10.001 +0000 UTC
+"",spans:toTime,2024-05-29 16:10:10 +0000 UTC
+
+Time: 4.680932ms
+

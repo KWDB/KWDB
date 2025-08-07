@@ -1,0 +1,40 @@
+SET
+
+Time: 597.974µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+sort,"",""
+" │",order,"+pipeline_name,+total_value"
+" └── group","",""
+"      │",aggregate 0,pipeline_name
+"      │",aggregate 1,adr
+"      │",aggregate 2,sum(measure_value)
+"      │",group by,"pipeline_name, adr"
+"      └── render","",""
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,(measure_type) = (column26)
+"                ├── batch-lookup-join","",""
+"                │    │",type,inner
+"                │    │",equality,(pipeline_sn) = (pipeline_sn)
+"                │    │",left cols are key,""
+"                │    ├── scan","",""
+"                │    │",table,pipeline_info@pipeline_name_index
+"                │    │",spans,FULL SCAN
+"                │    └── synchronizer","",""
+"                │         └── ts scan","",""
+"                │",ts-table,t_point
+"                │",access mode,hashTagScan
+"                │",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+"                │",spans:toTime,2024-01-05 00:00:00 +0000 UTC
+"                │",filter,(measure_value >= 50.0) AND (measure_value <= 60.0)
+"                └── render","",""
+"                     └── scan","",""
+"",table,cd_device_point@primary
+"",spans,FULL SCAN
+"",filter,index_upper_value > 1.5
+
+Time: 3.560361ms
+
