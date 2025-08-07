@@ -79,7 +79,7 @@ void FieldsToChunk(Field **fields, k_uint32 field_num, k_uint32 row, DataChunkPt
   for (int col = 0; col < field_num; col++) {
     Field* field = fields[col];
 
-    if (field->is_nullable()) {
+    if (field->CheckNull()) {
       chunk->SetNull(row, col);
       continue;
     }

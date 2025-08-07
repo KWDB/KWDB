@@ -713,7 +713,7 @@ k_bool FieldInList::compare(Field **fields) {
     for (k_uint32 j = 0; j < count_; ++j) {
       Field *field = fields[j];
       Field *arg = args[j];
-      if (arg->is_nullable() || field->is_nullable()) {
+      if (arg->CheckNull() || field->CheckNull()) {
         ret = -1;
         continue;
       }
