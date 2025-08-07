@@ -729,6 +729,8 @@ func (b *Builder) buildWithOrdinality(colName string, inScope *scope) (outScope 
 		Ordering: inScope.makeOrderingChoice(),
 		ColID:    col.id,
 	})
+	// ordering is stored by Ordinality, we need not handle orderBy in fromSubquery.
+	inScope.noHandleOrderInFrom = true
 
 	return inScope
 }
@@ -1124,6 +1126,8 @@ func (b *Builder) buildSelectClause(
 		b.addInstanceTablePTag(sel)
 		b.InstanceTabNames = nil
 	}
+
+	b.buildOrderByFromInSope(fromScope, sel, orderBy)
 	b.processWindowDefs(sel, fromScope)
 	b.buildWhere(sel.Where, fromScope)
 

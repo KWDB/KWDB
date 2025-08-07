@@ -1,0 +1,49 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+sort,"",""
+" │",order,"-count,+station_name"
+" └── filter","",""
+"      │",filter,sum_int > 20
+"      └── group","",""
+"           │",aggregate 0,pipeline_name
+"           │",aggregate 1,pipe_start
+"           │",aggregate 2,pipe_end
+"           │",aggregate 3,station_name
+"           │",aggregate 4,sum_int(count)
+"           │",group by,"pipeline_name, pipe_start, pipe_end, station_name"
+"           └── render","",""
+"                │",pipeline_name,pipeline_name
+"                │",pipe_start,pipe_start
+"                │",pipe_end,pipe_end
+"                │",station_name,station_name
+"                │",count,count
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,"(pipeline_sn, station_sn) = (pipeline_sn, station_sn)"
+"                     │",right cols are key,""
+"                     ├── group","",""
+"                     │    │",engine type,time series
+"                     │    │",aggregate 0,pipeline_sn
+"                     │    │",aggregate 1,station_sn
+"                     │    │",aggregate 2,count(measure_value)
+"                     │    │",group by,"pipeline_sn, station_sn"
+"                     │    │",addSynchronizer ,true
+"                     │    └── ts scan","",""
+"                     │",ts-table,t_point
+"                     │",access mode,tableTableMeta
+"                     │",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"                     │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"                     │",filter,measure_value > 2.0
+"                     │",tag filter[0],measure_type = 5
+"                     └── cross-join","",""
+"                          │",type,cross
+"                          ├── scan","",""
+"                          │",table,station_info@station_name_index
+"                          │",spans,FULL SCAN
+"                          └── scan","",""
+"",table,pipeline_info@primary
+"",spans,FULL SCAN
+
+Time: 4.914433ms
+

@@ -1255,6 +1255,26 @@ from
 where subq_0.c1 is not NULL
 limit 122;
 
+-- test_case0019 bugfix-ICED60
+create table ts_table
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+    attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
+primary attributes (attr1);
+insert into ts_table values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-05-31 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts2', 2000, 2000000, 2000000000, 200.11, false, 'test_attr_ts2'), ('2023-05-31 12:00:00', 3000,3000000,300000000000000000,300000000000000000.202,true, 'test_ts3', 3000, 3000000, 3000000000, 300.11, false, 'test_attr_ts3');
+explain select * from (select * from ts_table order by e1 desc) limit 10;
+
+explain select * from (select * from ts_table WITH ORDINALITY order by e1 desc) limit 10;
+
+explain select * from (select * from ts_table order by e1 desc) WITH ORDINALITY limit 10;
+
+explain select e1 from (select * from ts_table order by e1 desc) group by e1 limit 10;
+
+explain select distinct On(e2) e1 from (select * from ts_table order by e1 desc) group by e1 limit 10;
+
+explain select min(e1) from (select * from ts_table order by e2 desc) limit 10;
+
+explain select e1 from (select * from ts_table order by e2 desc limit 10);
+
 -- test_case1000
 use defaultdb;
 drop database test cascade;

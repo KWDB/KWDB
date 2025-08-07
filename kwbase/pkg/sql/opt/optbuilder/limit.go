@@ -25,6 +25,7 @@
 package optbuilder
 
 import (
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
@@ -51,5 +52,11 @@ func (b *Builder) buildLimit(limit *tree.Limit, parentScope, inScope *scope) {
 			limit.Count, types.Int, exprTypeLimit, tree.RejectSpecial, parentScope,
 		)
 		inScope.expr = b.factory.ConstructLimit(input, limit, inScope.makeOrderingChoice())
+	}
+	// ordering is stored by limit or offset if rootExpr are limit or offset, we need not handle orderBy in fromSubquery.
+	// there exists some RBO rule that enables Limit push, eg: PushLimitIntoWindow
+	switch inScope.expr.(type) {
+	case *memo.LimitExpr, *memo.OffsetExpr:
+		inScope.noHandleOrderInFrom = true
 	}
 }

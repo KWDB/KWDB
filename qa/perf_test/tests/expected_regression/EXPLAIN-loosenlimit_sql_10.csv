@@ -1,0 +1,52 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",c3,c3
+" │",avg,avg
+" └── sort","",""
+"      │",order,+c3
+"      └── render","",""
+"           │",avg,sum / sum_int
+"           │",c3,c3
+"           └── group","",""
+"                │",aggregate 0,c3
+"                │",aggregate 1,sum_int(count)
+"                │",aggregate 2,sum(sum)
+"                │",group by,c3
+"                └── render","",""
+"                     │",c3,c3
+"                     │",count,count
+"                     │",sum,sum
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,"(station_sn, measure_type) = (station_sn, c6)"
+"                          ├── group","",""
+"                          │    │",engine type,time series
+"                          │    │",aggregate 0,station_sn
+"                          │    │",aggregate 1,measure_type
+"                          │    │",aggregate 2,count(measure_value)
+"                          │    │",aggregate 3,sum(measure_value)
+"                          │    │",group by,"station_sn, measure_type"
+"                          │    │",addSynchronizer ,true
+"                          │    └── ts scan","",""
+"                          │",ts-table,t_point
+"                          │",access mode,tableTableMeta
+"                          │",filter,measure_value > 80.0
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(work_area_sn) = (work_area_sn)
+"                               ├── scan","",""
+"                               │",table,station_info@station_work_area_sn_index
+"                               │",spans,FULL SCAN
+"                               └── cross-join","",""
+"                                    │",type,cross
+"                                    ├── scan","",""
+"                                    │",table,workarea_info@workarea_name_index
+"                                    │",spans,FULL SCAN
+"                                    └── scan","",""
+"",table,rel_t1@primary
+"",spans,FULL SCAN
+
+Time: 3.726644ms
+

@@ -1,0 +1,73 @@
+SET
+
+Time: 607.32µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",address,address
+" │",time,"""time"""
+" │",datatype,datatype
+" │",lowwarn,lowwarn
+" │",channel,channel
+" │",count,count_rows
+" └── sort","",""
+"      │",order,"+""time"",+lowwarn,+channel"
+"      └── render","",""
+"           │",address,"concat('""', adr, '""')"
+"           │",time,"""time"""
+"           │",channel,channel
+"           │",datatype,any_not_null
+"           │",lowwarn,lowwarn
+"           │",count_rows,count_rows
+"           └── group","",""
+"                │",aggregate 0,adr
+"                │",aggregate 1,time
+"                │",aggregate 2,channel
+"                │",aggregate 3,lowwarn
+"                │",aggregate 4,count_rows()
+"                │",aggregate 5,any_not_null(datatype)
+"                │",group by,"adr, time, channel, lowwarn"
+"                └── render","",""
+"                     │",adr,adr
+"                     │",time,"""time"""
+"                     │",channel,channel
+"                     │",datatype,datatype
+"                     │",lowwarn,lowwarn
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,"(company_id, column151) = (companyid, lowwarn)"
+"                          ├── render","",""
+"                          │    └── hash-join","",""
+"                          │         │",type,inner
+"                          │         │",equality,(company_id) = (company_id)
+"                          │         ├── hash-join","",""
+"                          │         │    │",type,inner
+"                          │         │    │",equality,(company_id) = (company_id)
+"                          │         │    ├── scan","",""
+"                          │         │    │",table,plat_zone_member@primary
+"                          │         │    │",spans,FULL SCAN
+"                          │         │    └── hash-join","",""
+"                          │         │         │",type,inner
+"                          │         │         │",equality,(company_id) = (company_id)
+"                          │         │         ├── scan","",""
+"                          │         │         │",table,cd_device_point@primary
+"                          │         │         │",spans,FULL SCAN
+"                          │         │         └── scan","",""
+"                          │         │",table,plat_risk_analyse_objects@primary
+"                          │         │",spans,FULL SCAN
+"                          │         └── scan","",""
+"                          │",table,plat_tijiancard_item_relation@primary
+"                          │",spans,FULL SCAN
+"                          └── synchronizer","",""
+"                               └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-01-29 23:58:00 +0000 UTC
+"",spans:toTime,2024-01-29 23:59:00 +0000 UTC
+"",tag filter[0],datatype = e'\U00006DB2\U00004F4D'
+"",tag filter[1],channel != 'CH17'
+
+Time: 5.888143ms
+

@@ -1,0 +1,84 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,+timebucket
+"      └── render","",""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,"(company_id, device_no) = (companyid, ""tag"")"
+"                ├── hash-join","",""
+"                │    │",type,inner
+"                │    │",equality,(device_id) = (id)
+"                │    │",right cols are key,""
+"                │    ├── hash-join","",""
+"                │    │    │",type,inner
+"                │    │    │",equality,(index_id) = (id)
+"                │    │    │",right cols are key,""
+"                │    │    ├── scan","",""
+"                │    │    │",table,cd_device_point@primary
+"                │    │    │",spans,FULL SCAN
+"                │    │    └── scan","",""
+"                │    │",table,cd_tijian_item_index@primary
+"                │    │",spans,FULL SCAN
+"                │    └── render","",""
+"                │         └── hash-join","",""
+"                │              │",type,inner
+"                │              │",equality,(id) = (device_info_id)
+"                │              │",left cols are key,""
+"                │              ├── apply-join","",""
+"                │              │    │",type,semi
+"                │              │    │",pred,area_id = id
+"                │              │    └── scan","",""
+"                │              │",table,plat_device_info@primary
+"                │              │",spans,FULL SCAN
+"                │              │",filter,company_id = 449600
+"                │              │",right,"project
+ ├── columns: pra.id:101(int4!null) risk_id:102(int4!null)
+ ├── outer: (81)
+ └── project
+      ├── columns: pra.id:101(int4!null) risk_id:102(int4!null) prab.id:107(int4!null) prab.company_id:108(int4!null)
+      ├── outer: (81)
+      └── inner-join (lookup plat_risk_analyse_objects)
+           ├── columns: pra.id:101(int4!null) risk_id:102(int4!null) prab.id:107(int4!null) prab.company_id:108(int4!null) prab.category:112(int4!null) danger_level:119(varchar!null) risk_type:135(int4!null)
+           ├── key columns: [102] = [107]
+           ├── lookup columns are key
+           ├── outer: (81)
+           ├── scan pra
+           │    └── columns: pra.id:101(int4!null) risk_id:102(int4!null)
+           └── filters
+                ├── eq [type=bool, outer=(81,108), constraints=(/81: (/NULL - ]; /108: (/NULL - ])]
+                │    ├── variable: prab.company_id:108 [type=int4]
+                │    └── variable: pd.company_id:81 [type=int4]
+                ├── eq [type=bool, outer=(112), constraints=(/112: [/1 - /1]; tight)]
+                │    ├── variable: prab.category:112 [type=int4]
+                │    └── const: 1 [type=int]
+                ├── eq [type=bool, outer=(119), constraints=(/119: [/e'\U000056DB\U00007EA7' - /e'\U000056DB\U00007EA7']; tight)]
+                │    ├── variable: danger_level:119 [type=varchar]
+                │    └── const: e'\U000056DB\U00007EA7' [type=string]
+                └── eq [type=bool, outer=(135), constraints=(/135: [/5 - /5]; tight)]
+                     ├── variable: risk_type:135 [type=int4]
+                     └── const: 5 [type=int]
+"
+"                │              └── scan","",""
+"                │",table,cd_security_device@primary
+"                │",spans,FULL SCAN
+"                │",filter,(company_id = 449600) AND (category = 5)
+"                └── group","",""
+"                     │",engine type,time series
+"                     │",aggregate 0,timebucket
+"                     │",aggregate 1,avg(value)
+"                     │",group by,timebucket
+"                     │",addSynchronizer ,true
+"                     └── render","",""
+"                          │",engine type,time series
+"                          │",timebucket,"time_bucket(""time"", '10s')"
+"                          │",value,value
+"                          └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashTagScan
+"",tag filter[0],companyid = 449600
+
+Time: 10.679063ms
+
