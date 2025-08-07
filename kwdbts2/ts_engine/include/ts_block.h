@@ -49,6 +49,14 @@ class TsBlock {
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
 
+  virtual timestamp64 GetFirstTS() = 0;
+
+  virtual timestamp64 GetLastTS() = 0;
+
+  virtual TS_LSN GetFirstLSN() = 0;
+
+  virtual TS_LSN GetLastLSN() = 0;
+
   virtual uint64_t* GetLSNAddr(int row_num) = 0;
 
   virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
@@ -79,7 +87,7 @@ class TsBlockSpan {
   bool has_pre_agg_{false};
 
  public:
-  TSBlkDataTypeConvert convert_;
+  std::unique_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
 
   friend TSBlkDataTypeConvert;
 
@@ -97,6 +105,15 @@ class TsBlockSpan {
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
 
+  void Clear() {
+    assert(block_ != nullptr);
+    block_ = nullptr;
+    entity_id_ = 0;
+    start_row_ = 0;
+    nrow_ = 0;
+    convert_ = nullptr;
+  }
+
   uint32_t GetVGroupID() const;
   TSEntityID GetEntityID() const;
   int GetRowNum() const;
@@ -107,6 +124,8 @@ class TsBlockSpan {
   timestamp64 GetTS(uint32_t row_idx) const;
   timestamp64 GetFirstTS() const;
   timestamp64 GetLastTS() const;
+  TS_LSN GetFirstLSN() const;
+  TS_LSN GetLastLSN() const;
   uint64_t* GetLSNAddr(int row_idx) const;
 
   KStatus GetCompressData(std::string& data);
@@ -114,18 +133,22 @@ class TsBlockSpan {
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
-  bool IsColExist(uint32_t scan_idx);
-  bool IsColNotNull(uint32_t scan_idx);
-  bool IsSameType(uint32_t scan_idx);
-  bool IsVarLenType(uint32_t scan_idx);
-  int32_t GetColSize(uint32_t scan_idx);
-  int32_t GetColType(uint32_t scan_idx);
-  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
+  bool IsColExist(uint32_t scan_idx) { return convert_->IsColExist(scan_idx); }
+  bool IsColNotNull(uint32_t scan_idx) { return convert_->IsColNotNull(scan_idx); }
+  bool IsSameType(uint32_t scan_idx) { return convert_->IsSameType(scan_idx); }
+  bool IsVarLenType(uint32_t scan_idx) { return convert_->IsVarLenType(scan_idx); }
+  int32_t GetColSize(uint32_t scan_idx) { return convert_->GetColSize(scan_idx); }
+  int32_t GetColType(uint32_t scan_idx) { return convert_->GetColType(scan_idx); }
+  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) { return convert_->GetColBitmap(scan_idx, bitmap); }
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true) {
+    return convert_->GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
+  }
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
+    return convert_->GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
+  }
 
   KStatus GetCount(uint32_t scan_idx, uint32_t& count);
   KStatus GetSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
@@ -155,7 +178,5 @@ class TsBlockSpan {
   void TrimBack(int row_num);
 
   void TrimFront(int row_num);
-
-  void Clear();
 };
 }  // namespace kwdbts

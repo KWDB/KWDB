@@ -37,6 +37,7 @@ class TsBitmapView {
   mutable int valid_count_ = -1;
 
   TsBitmapView(std::string_view sv, size_t nrows, int start_row) : sv_(sv), nrows_(nrows), start_row_(start_row) {}
+
  public:
   TsBitmapView(const TsBitmapView &) = default;
   TsBitmapView(TsBitmapView &&) = default;

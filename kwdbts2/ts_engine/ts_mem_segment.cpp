@@ -13,7 +13,6 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <numeric>
 #include <vector>
 
 #include "kwdb_type.h"
@@ -296,7 +295,7 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
   uint32_t cur_version = 1;
   while (true) {
     TSMemSegRowData* begin = new (key + TSMemSegRowData::GetKeyLen())
-        TSMemSegRowData(filter.db_id, filter.table_id, cur_version, filter.entity_id);
+        TSMemSegRowData(filter.db_id_, filter.table_id_, cur_version, filter.entity_id_);
     begin->SetData(INT64_MIN, 0, {nullptr, 0});
     begin->GenKey(key);
     iter.Seek(reinterpret_cast<char*>(&key));
@@ -308,11 +307,11 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
         scan_over = true;
         break;
       }
-      if (cur_row->entity_id > filter.entity_id) {
+      if (cur_row->entity_id > filter.entity_id_) {
         cur_version = cur_row->table_version + 1;
         break;
       }
-      if (cur_row->entity_id < filter.entity_id) {
+      if (cur_row->entity_id < filter.entity_id_) {
         cur_version = cur_row->table_version;
         break;
       }

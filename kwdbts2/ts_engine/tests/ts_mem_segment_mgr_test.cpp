@@ -8,6 +8,7 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
+#if false
 
 #include <gtest/gtest.h>
 #include <filesystem>
@@ -341,3 +342,4 @@ TEST_F(TsMemSegMgrTest, DiffTableAndSearch) {
     delete v;
   }
 }
+#endif

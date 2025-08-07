@@ -294,7 +294,9 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
 
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
-
+  if (update->has_max_lsn_) {
+    new_vgroup_version->max_lsn_ = std::max(new_vgroup_version->max_lsn_, update->max_lsn_);
+  }
 
   if (update->has_new_partition_) {
     for (const auto &p : update->partitions_created_) {
@@ -484,7 +486,7 @@ KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<Kw
 }
 KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
   std::list<STDelRange> del_range_all;
-  auto s = GetDelRange(filter.entity_id, del_range_all);
+  auto s = GetDelRange(filter.entity_id_, del_range_all);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelRange failed.");
     return s;
@@ -492,20 +494,20 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   // filter delitems that insert after scannig.
   std::list<STDelRange> del_range;
   for (STDelRange& d_item : del_range_all) {
-    if (d_item.lsn_span.end <= filter.end_lsn) {
+    if (d_item.lsn_span.end <= filter.end_lsn_) {
       del_range.push_back(d_item);
     }
   }
   KwTsSpan partition_span;
-  partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type);
-  partition_span.end = convertSecondToPrecisionTS(GetEndTime(), filter.table_ts_type) - 1;
+  partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type_);
+  partition_span.end = convertSecondToPrecisionTS(GetEndTime(), filter.table_ts_type_) - 1;
   std::vector<STScanRange> cur_scan_range;
   for (auto& scan : filter.ts_spans_) {
     KwTsSpan cross_part;
     cross_part.begin = std::max(partition_span.begin, scan.begin);
     cross_part.end = std::min(partition_span.end, scan.end);
     if (cross_part.begin <= cross_part.end) {
-      cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn}));
+      cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn_}));
     }
   }
   for (auto& del : del_range) {
@@ -520,14 +522,14 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   });
 
   block_data_filter.spans_ = std::move(cur_scan_range);
-  block_data_filter.db_id = filter.db_id;
-  block_data_filter.entity_id = filter.entity_id;
-  block_data_filter.vgroup_id = filter.vgroup_id;
-  block_data_filter.table_id = filter.table_id;
+  block_data_filter.db_id = filter.db_id_;
+  block_data_filter.entity_id = filter.entity_id_;
+  block_data_filter.vgroup_id = filter.vgroup_id_;
+  block_data_filter.table_id = filter.table_id_;
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionVersion::GetBlockSpan(const TsScanFilterParams& filter,
+KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
 std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
 std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;
@@ -537,19 +539,19 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     return s;
   }
 
-  ts_block_spans->clear();
   // get block span in mem segment
-  for (auto& mem : GetAllMemSegments()) {
-    s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetBlockSpans of mem segment failed.");
-      return s;
+  if (valid_memseg_ != nullptr) {
+    for (auto &mem : *valid_memseg_) {
+      s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetBlockSpans of mem segment failed.");
+        return s;
+      }
     }
   }
   if (!skip_last) {
     // get block span in last segment
-    std::vector<std::shared_ptr<TsLastSegment>> last_segs = GetAllLastSegments();
-    for (auto& last_seg : last_segs) {
+    for (auto& last_seg : last_segments_) {
       s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpans of mem segment failed.");
@@ -559,12 +561,11 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
   }
   if (!skip_entity) {
     // get block span in entity segment
-    auto entity_segment = GetEntitySegment();
-    if (entity_segment == nullptr) {
+    if (entity_segment_ == nullptr) {
       // entity segment not exist
       return KStatus::SUCCESS;
     }
-    s = entity_segment->GetBlockSpans(block_data_filter, *ts_block_spans,
+    s = entity_segment_->GetBlockSpans(block_data_filter, *ts_block_spans,
              tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of mem segment failed.");
@@ -722,6 +723,11 @@ std::string TsVersionUpdate::EncodeToString() const {
     PutVarint64(&result, next_file_number_);
   }
 
+  if (has_max_lsn_) {
+    result.push_back(static_cast<char>(VersionUpdateType::kMaxLSN));
+    PutVarint64(&result, max_lsn_);
+  }
+
   return result;
 }
 
@@ -792,6 +798,15 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
         break;
       }
 
+      case VersionUpdateType::kMaxLSN: {
+        ptr = DecodeVarint64(ptr, end, &this->max_lsn_);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        this->has_max_lsn_ = true;
+        break;
+      }
       default:
         LOG_ERROR("Unknown version update type: %d", static_cast<int>(type));
         return FAIL;
@@ -926,6 +941,11 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     all_updates_.has_next_file_number_ = true;
     all_updates_.next_file_number_ = update.next_file_number_;
   }
+
+  if (update.has_max_lsn_) {
+    all_updates_.has_max_lsn_ = true;
+    all_updates_.max_lsn_ = std::max(all_updates_.max_lsn_, update.max_lsn_);
+  }
   return SUCCESS;
 }
 
@@ -944,6 +964,9 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
 
   update->has_next_file_number_ = all_updates_.has_next_file_number_;
   update->next_file_number_ = all_updates_.next_file_number_;
+
+  update->has_max_lsn_ = all_updates_.has_max_lsn_;
+  update->max_lsn_ = all_updates_.max_lsn_;
 
   update->need_record_ = true;
 }

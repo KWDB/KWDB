@@ -25,7 +25,9 @@ struct TsLastSegmentBlockIndex {
   uint64_t table_id;
   uint32_t table_version, n_entity;
   int64_t min_ts, max_ts;
+  int64_t first_ts, last_ts;
   uint64_t min_lsn, max_lsn;
+  uint64_t first_lsn, last_lsn;
   uint64_t min_entity_id, max_entity_id;
 };
 
@@ -102,14 +104,18 @@ inline void EncodeBlockIndex(std::string* buf, const TsLastSegmentBlockIndex& in
   PutFixed32(buf, index.n_entity);
   PutFixed64(buf, index.min_ts);
   PutFixed64(buf, index.max_ts);
+  PutFixed64(buf, index.first_ts);
+  PutFixed64(buf, index.last_ts);
   PutFixed64(buf, index.min_lsn);
   PutFixed64(buf, index.max_lsn);
+  PutFixed64(buf, index.first_lsn);
+  PutFixed64(buf, index.last_lsn);
   PutFixed64(buf, index.min_entity_id);
   PutFixed64(buf, index.max_entity_id);
 }
 
 inline KStatus DecodeBlockIndex(TSSlice slice, TsLastSegmentBlockIndex* index) {
-  if (slice.len != 80) {
+  if (slice.len != 112) {
     return FAIL;
   }
   GetFixed64(&slice, &index->info_offset);
@@ -122,8 +128,14 @@ inline KStatus DecodeBlockIndex(TSSlice slice, TsLastSegmentBlockIndex* index) {
   index->min_ts = ts;
   GetFixed64(&slice, &ts);
   index->max_ts = ts;
+  GetFixed64(&slice, &ts);
+  index->first_ts = ts;
+  GetFixed64(&slice, &ts);
+  index->last_ts = ts;
   GetFixed64(&slice, &index->min_lsn);
   GetFixed64(&slice, &index->max_lsn);
+  GetFixed64(&slice, &index->first_lsn);
+  GetFixed64(&slice, &index->last_lsn);
   GetFixed64(&slice, &index->min_entity_id);
   GetFixed64(&slice, &index->max_entity_id);
   return SUCCESS;
