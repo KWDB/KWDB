@@ -55,6 +55,8 @@ class EntryBlock {
 
   void reset(uint64_t block_no);
 
+  void setDataLen(uint16_t data_len) { data_len_ = data_len; }
+
   char* encode();
 
   size_t writeBytes(char* log, size_t length, bool is_rest);
