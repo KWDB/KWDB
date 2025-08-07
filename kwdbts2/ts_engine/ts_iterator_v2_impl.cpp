@@ -283,6 +283,8 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
           return ret;
         }
         if (*count > 0) {
+          // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
+          ts_block_spans_.push_back(block_span);
           // Return the result set.
           return KStatus::SUCCESS;
         }
@@ -1616,6 +1618,8 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
     return KStatus::FAIL;
   }
+  // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
+  ts_block_spans_with_data_.push_back(ts_block);
   return KStatus::SUCCESS;
 }
 
