@@ -273,7 +273,10 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         LOG_ERROR("Failed to get next block span for entity(%d).", entity_ids_[cur_entity_index_]);
         return KStatus::FAIL;
       }
-      if (!is_done && (ts == INVALID_TS || !IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts))) {
+      if (!is_done && (ts != INVALID_TS && IsFilteredOut(block_span->GetFirstTS(), block_span->GetLastTS(), ts))) {
+        is_done = true;
+      }
+      if (!is_done) {
         // Found a block span which might contain satisfied rows.
         ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
         if (ret != KStatus::SUCCESS) {
