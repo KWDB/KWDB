@@ -178,13 +178,11 @@ class DiskDataContainer : public DataContainer, public ISortableChunk {
  * 
  * @param start_batch_index The starting index of the batch from which data chunks are merged.
  * @param sorted_count Pointer to the number of already sorted and merged rows.
- * @param with_limit_offset A boolean flag indicating whether to apply limit and offset constraints.
  * @return EEIteratorErrCode Returns EE_OK if data is successfully merged, EE_END_OF_RECORD if there is no more data to merge,
  *         or EE_ERROR if an error occurs during the merge process.
  */
   EEIteratorErrCode mergeMultipleLists(k_uint32 start_batch_index,
-                                       k_int64* sorted_count,
-                                       k_bool with_limit_offset = false);
+                                       k_int64* sorted_count);
 
 /**
  * @brief Performs a divide-and-conquer merge operation on the data chunks in the disk data container.
