@@ -120,7 +120,7 @@ EEIteratorErrCode TimeWindowHelper::Materialize(kwdbContext_p ctx,
   for (k_int32 i = 0; i < rowbatch->Count(); i++) {
     KTimestampTz ts = *static_cast<
         KTimestampTz *>(static_cast<void *>(rowbatch->GetData(
-        0, sizeof(KTimestampTz) + 8,
+        0, sizeof(KTimestampTz),
         roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA,
         roachpb::DataType::TIMESTAMP)));
     ts /= type_scale_;
