@@ -192,11 +192,9 @@ typedef uint32_t    timestamp;
 typedef int64_t    timestamp64;
 typedef uint64_t    TS_LSN;
 
+inline bool isBinaryType(int type) { return (type == BINARY || type == VARBINARY); }
 
-
-bool isBinaryType(int type);    // BINARY or VARBINARY
-
-bool isVarLenType(int type);
+inline bool isVarLenType(int type) { return ((type == VARSTRING) ||  (type == VARBINARY)); }
 
 #define AINFO_INTERNAL              0x00000001  // internal column
 #define AINFO_HAS_DEFAULT           0x00000002  // has default value set
@@ -251,7 +249,9 @@ struct AttributeInfo {
   bool operator==(AttributeInfo& rhs) const;
 };
 
-bool isSameType(const AttributeInfo& a, const AttributeInfo& b);
+inline bool isSameType(const AttributeInfo &a, const AttributeInfo &b) {
+  return (a.type == b.type && a.size == b.size);
+}
 
 inline void * offsetAddr(const void *addr, size_t offset)
 { return (void *)((unsigned char *)addr + offset); }

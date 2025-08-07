@@ -55,9 +55,10 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
     : block_(block),
       entity_id_(entity_id),
       start_row_(start),
-      nrow_(nrow),
-      convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
+      nrow_(nrow) {
   assert(nrow_ >= 1);
+  convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
@@ -67,9 +68,10 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
       start_row_(start),
-      nrow_(nrow),
-      convert_(*this, tbl_schema_mgr, scan_version == 0 ? block->GetTableVersion() : scan_version) {
+      nrow_(nrow) {
   assert(nrow_ >= 1);
+  convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
@@ -160,12 +162,12 @@ uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
 KStatus TsBlockSpan::GetCompressData(std::string& data) {
   assert(nrow_ > 0);
   // compressed data
-  KStatus s = block_->GetCompressDataFromFile(convert_.version_conv_->scan_version_, nrow_, data);
+  KStatus s = block_->GetCompressDataFromFile(convert_->version_conv_->scan_version_, nrow_, data);
   if (s == KStatus::SUCCESS) {
     return s;
   }
   // build compressed data
-  s = convert_.BuildCompressedData(data);
+  s = convert_->BuildCompressedData(data);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -177,56 +179,13 @@ void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
   *max_ts = block_->GetTS(start_row_ + nrow_ - 1);
 }
 
-bool TsBlockSpan::IsColExist(uint32_t scan_idx) {
-  return convert_.IsColExist(scan_idx);
-}
-
-bool TsBlockSpan::IsColNotNull(uint32_t scan_idx) {
-  return convert_.IsColNotNull(scan_idx);
-}
-
-bool TsBlockSpan::IsSameType(uint32_t scan_idx) {
-  return convert_.IsSameType(scan_idx);
-}
-
-int32_t TsBlockSpan::GetColSize(uint32_t scan_idx) {
-  return convert_.GetColSize(scan_idx);
-}
-
-int32_t TsBlockSpan::GetColType(uint32_t scan_idx) {
-  return convert_.GetColType(scan_idx);
-}
-
-bool TsBlockSpan::IsVarLenType(uint32_t scan_idx) {
-  return convert_.IsVarLenType(scan_idx);
-}
-
-KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
-  return convert_.GetColBitmap(scan_idx, bitmap);
-}
-
-// dest type is fixed len datatype.
-KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
-  return convert_.GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
-}
-
-// dest type is varlen datatype.
-KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
-  return convert_.GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
-}
-
 KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
   TsBitmap bitmap;
   auto s = GetColBitmap(scan_idx, bitmap);
   if (s != KStatus::SUCCESS) {
     return s;
   }
-  for (int row_idx = 0; row_idx < nrow_; ++row_idx) {
-    if (bitmap[row_idx] != DataFlags::kValid) {
-      continue;
-    }
-    ++count;
-  }
+  count = bitmap.GetValidCount();
   return KStatus::SUCCESS;
 }
 
@@ -255,29 +214,29 @@ bool TsBlockSpan::HasPreAgg() {
 }
 
 KStatus TsBlockSpan::GetPreCount(uint32_t scan_idx, uint16_t& count) {
-  return convert_.GetPreCount(scan_idx, count);
+  return convert_->GetPreCount(scan_idx, count);
 }
 
 KStatus TsBlockSpan::GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
-  int32_t size = convert_.version_conv_->blk_attrs_[scan_idx].size;
-  return convert_.GetPreSum(scan_idx, size, pre_sum, is_overflow);
+  int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
+  return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
 }
 
 KStatus TsBlockSpan::GetPreMax(uint32_t scan_idx, void* &pre_max) {
-  return convert_.GetPreMax(scan_idx, pre_max);
+  return convert_->GetPreMax(scan_idx, pre_max);
 }
 
 KStatus TsBlockSpan::GetPreMin(uint32_t scan_idx, void* &pre_min) {
-  int32_t size = convert_.version_conv_->blk_attrs_[scan_idx].size;
-  return convert_.GetPreMin(scan_idx, size, pre_min);
+  int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
+  return convert_->GetPreMin(scan_idx, size, pre_min);
 }
 
 KStatus TsBlockSpan::GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
-  return convert_.GetVarPreMax(scan_idx, pre_max);
+  return convert_->GetVarPreMax(scan_idx, pre_max);
 }
 
 KStatus TsBlockSpan::GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
-  return convert_.GetVarPreMin(scan_idx, pre_min);
+  return convert_->GetVarPreMin(scan_idx, pre_min);
 }
 
 KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
@@ -292,29 +251,29 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
   front_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_, row_num,
-                                        convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
+                                        convert_->tbl_schema_mgr_, convert_->version_conv_->scan_version_);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_.SetStartRowIdx(start_row_);
-  convert_.SetRowNum(nrow_);
+  convert_->SetStartRowIdx(start_row_);
+  convert_->SetRowNum(nrow_);
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
   back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num, row_num,
-                                       convert_.tbl_schema_mgr_, convert_.version_conv_->scan_version_);
+                                       convert_->tbl_schema_mgr_, convert_->version_conv_->scan_version_);
   // change current span info
   nrow_ -= row_num;
-  convert_.SetRowNum(nrow_);
+  convert_->SetRowNum(nrow_);
 }
 
 void TsBlockSpan::TrimBack(int row_num) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
   nrow_ -= row_num;
-  convert_.SetRowNum(nrow_);
+  convert_->SetRowNum(nrow_);
 }
 
 void TsBlockSpan::TrimFront(int row_num) {
@@ -322,17 +281,8 @@ void TsBlockSpan::TrimFront(int row_num) {
   assert(block_ != nullptr);
   start_row_ += row_num;
   nrow_ -= row_num;
-  convert_.SetStartRowIdx(start_row_);
-  convert_.SetRowNum(nrow_);
-}
-
-void TsBlockSpan::Clear() {
-  assert(block_ != nullptr);
-  block_ = nullptr;
-  entity_id_ = 0;
-  start_row_ = 0;
-  nrow_ = 0;
-  convert_ = {};
+  convert_->SetStartRowIdx(start_row_);
+  convert_->SetRowNum(nrow_);
 }
 
 }  // namespace kwdbts

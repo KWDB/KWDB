@@ -219,6 +219,8 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   last_ts_ = block_item->max_ts;
   first_lsn_ = block_item->first_lsn;
   last_lsn_ = block_item->last_lsn;
+  min_lsn_ = block_item->min_lsn;
+  max_lsn_ = block_item->max_lsn;
   block_offset_ = block_item->block_offset;
   block_length_ = block_item->block_len;
   agg_offset_ = block_item->agg_offset;
@@ -226,17 +228,6 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   entity_segment_ = block_segment;
   // column blocks
   column_blocks_.resize(block_item->n_cols);
-}
-
-TsEntityBlock::TsEntityBlock(const TsEntityBlock& other) {
-  table_id_ = other.table_id_;
-  table_version_ = other.table_version_;
-  entity_id_ = other.entity_id_;
-  metric_schema_ = other.metric_schema_;
-  block_info_ = other.block_info_;
-  column_blocks_ = other.column_blocks_;
-  n_rows_ = other.n_rows_;
-  n_cols_ = other.n_cols_;
 }
 
 char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
@@ -300,6 +291,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   assert(column_blocks_.size() == n_cols_);
   assert(column_blocks_.size() > col_idx + 1);
   bool is_var_type = col_idx > 0 && isVarLenType(metric_schema[col_idx].type);
+  bool is_not_null = col_idx <= 0 || metric_schema[col_idx].isFlag(AINFO_NOT_NULL);
   const auto& mgr = CompressorManager::GetInstance();
   if (metric_schema_.empty()) {
     metric_schema_ = metric_schema;
@@ -317,7 +309,8 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   RemovePrefix(&data, bitmap_len);
   if (!is_var_type) {
     TsSliceGuard plain;
-    bool ok = mgr.DecompressData(data, &column_blocks_[col_idx + 1].bitmap, n_rows_, &plain);
+    TsBitmap* bitmap = is_not_null ? nullptr : &column_blocks_[col_idx + 1].bitmap;
+    bool ok = mgr.DecompressData(data, bitmap, n_rows_, &plain);
     if (!ok) {
       LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
       return KStatus::FAIL;
@@ -416,62 +409,37 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   }
   timestamp64* ts_col = reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data());
   TS_LSN* lsn_col = reinterpret_cast<TS_LSN*>(column_blocks_[0].buffer.data());
-  int start_idx = 0;
-  bool match_found = false;
   assert(n_rows_ * 8 == column_blocks_[1].buffer.length());
   assert(n_rows_ * 8 == column_blocks_[0].buffer.length());
-  // todo(liangbo) scan all rows, can we scan faster.
-  for (int i = 0; i < n_rows_; i++) {
-    if (IsTsLsnInSpans(ts_col[i], lsn_col[i], spans)) {
-      if (!match_found) {
-        start_idx = i;
-        match_found = true;
-      }
-    } else {
-      if (match_found) {
-        match_found = false;
-        row_spans.push_back({start_idx, i - start_idx});
-      }
-    }
-  }
-  if (match_found) {
-    row_spans.push_back({start_idx, n_rows_ - start_idx});
-  }
-  return KStatus::SUCCESS;
-}
 
-KStatus TsEntityBlock::GetRowSpans(const std::vector<KwTsSpan>& ts_spans,
-                      std::vector<std::pair<int, int>>& row_spans) {
-  if (!HasDataCached(0)) {
-    KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[ts] data load failed");
-      return s;
-    }
-  }
-
-  timestamp64* ts_col = reinterpret_cast<timestamp64*>(column_blocks_[1].buffer.data());
-  timestamp64 max_ts = ts_col[n_rows_ - 1];
-  timestamp64 min_ts = ts_col[0];
-  int start_idx = 0;
-  for (const KwTsSpan& span : ts_spans) {
-    if (span.begin > max_ts || span.end < min_ts) {
+  for (const auto& span : spans) {
+    if (!IsTsLsnSpanCrossSpans({span}, {first_ts_, last_ts_}, {min_lsn_, max_lsn_})) {
       continue;
     }
-    int begin_offset = 0, end_offset = 0;
-    if (span.begin > ts_col[start_idx]) {
-      timestamp64* ts = lower_bound(ts_col + start_idx, ts_col + n_rows_, span.begin);
-      begin_offset = distance(ts_col + start_idx, ts);
+    // binary search to find the start and end index of the time range
+    auto ts_start = std::lower_bound(ts_col, ts_col + n_rows_, span.ts_span.begin);
+    auto ts_end = std::upper_bound(ts_col, ts_col + n_rows_, span.ts_span.end);
+    // lsn_span filter
+    int start_idx = ts_start - ts_col;
+    int end_idx = ts_end - ts_col;
+    bool match_found = false;
+    int span_start = 0;
+    for (int i = start_idx; i < end_idx; i++) {
+      if (lsn_col[i] >= span.lsn_span.begin && lsn_col[i] <= span.lsn_span.end) {
+        if (!match_found) {
+          span_start = i;
+          match_found = true;
+        }
+      } else {
+        if (match_found) {
+          match_found = false;
+          row_spans.push_back({span_start, i - span_start});
+        }
+      }
     }
-    start_idx += begin_offset;
-    if (span.end >= max_ts) {
-      end_offset = n_rows_ - start_idx - 1;
-    } else {
-      timestamp64* ts = upper_bound(ts_col + start_idx, ts_col + n_rows_, span.end);
-      end_offset = distance(ts_col + start_idx, ts) - 1;
+    if (match_found) {
+      row_spans.push_back({span_start, end_idx - span_start});
     }
-    row_spans.push_back({start_idx, end_offset + 1});
-    start_idx += end_offset;
   }
   return KStatus::SUCCESS;
 }
