@@ -440,6 +440,9 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
           return s;
         }
       }
+      if (cur_entity_item_.entity_id == 0) {
+        cur_entity_item_.entity_id = entity_id;
+      }
       s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
@@ -711,6 +714,9 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get entity item failed.")
         return s;
       }
+      if (cur_entity_item_.entity_id == 0) {
+        cur_entity_item_.entity_id = entity_id;
+      }
       s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.")
@@ -849,6 +855,9 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
           return s;
         }
       }
+      if (cur_entity_item_.entity_id == 0) {
+        cur_entity_item_.entity_id = entity_id;
+      }
       s = entity_item_builder_->AppendEntityItem(entity_item);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AppendEntityItem[entity_id=%d] failed", entity_id)
@@ -870,6 +879,9 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
       if (s != KStatus::SUCCESS && is_exist) {
         LOG_ERROR("GetEntityItem[entity_id=%d] failed", entity_id)
         return s;
+      }
+      if (cur_entity_item_.entity_id == 0) {
+        cur_entity_item_.entity_id = entity_id;
       }
       s = entity_item_builder_->AppendEntityItem(entity_item);
       if (s != KStatus::SUCCESS) {
