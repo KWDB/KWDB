@@ -855,8 +855,8 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
           return s;
         }
       }
-      if (cur_entity_item_.entity_id == 0) {
-        cur_entity_item_.entity_id = entity_id;
+      if (entity_item.entity_id == 0) {
+        entity_item.entity_id = entity_id;
       }
       s = entity_item_builder_->AppendEntityItem(entity_item);
       if (s != KStatus::SUCCESS) {
@@ -880,8 +880,8 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
         LOG_ERROR("GetEntityItem[entity_id=%d] failed", entity_id)
         return s;
       }
-      if (cur_entity_item_.entity_id == 0) {
-        cur_entity_item_.entity_id = entity_id;
+      if (entity_item.entity_id == 0) {
+        entity_item.entity_id = entity_id;
       }
       s = entity_item_builder_->AppendEntityItem(entity_item);
       if (s != KStatus::SUCCESS) {
