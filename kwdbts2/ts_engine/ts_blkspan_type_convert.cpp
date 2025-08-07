@@ -42,7 +42,7 @@ TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uin
 KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
   if (tbl_schema_mgr_) {
     const auto blk_version = block_->GetTableVersion();
-    key_ = std::to_string(blk_version) + "_" + std::to_string(scan_version);
+    key_ = (static_cast<uint64_t>(blk_version) << 32) + scan_version;
     auto res = tbl_schema_mgr_->FindVersionConv(key_, &version_conv_);
     if (!res) {
       std::shared_ptr<MMapMetricsTable> blk_metric;
@@ -421,32 +421,6 @@ KStatus TSBlkDataTypeConvert::BuildCompressedData(std::string& data) {
   // append column agg data
   data.append(agg_data);
   return s;
-}
-
-bool TSBlkDataTypeConvert::IsColExist(uint32_t scan_idx) {
-  return version_conv_->blk_cols_extended_[scan_idx] != UINT32_MAX;
-}
-
-bool TSBlkDataTypeConvert::IsSameType(uint32_t scan_idx) {
-  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-  return isSameType(version_conv_->blk_attrs_[blk_col_idx], version_conv_->scan_attrs_[scan_idx]);
-}
-
-bool TSBlkDataTypeConvert::IsVarLenType(uint32_t scan_idx) {
-  return isVarLenType(version_conv_->scan_attrs_[scan_idx].type);
-}
-
-int32_t TSBlkDataTypeConvert::GetColSize(uint32_t scan_idx) {
-  return version_conv_->scan_attrs_[scan_idx].size;
-}
-
-int32_t TSBlkDataTypeConvert::GetColType(uint32_t scan_idx) {
-  return version_conv_->scan_attrs_[scan_idx].type;
-}
-
-bool TSBlkDataTypeConvert::IsColNotNull(uint32_t scan_idx) {
-  auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-  return version_conv_->blk_attrs_[blk_col_idx].isFlag(AINFO_NOT_NULL);
 }
 
 KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {

@@ -217,6 +217,8 @@ class TsEntityBlock : public TsBlock {
   timestamp64 last_ts_ = 0;
   TS_LSN first_lsn_ = 0;
   TS_LSN last_lsn_ = 0;
+  TS_LSN min_lsn_ = 0;
+  TS_LSN max_lsn_ = 0;
 
   std::shared_ptr<TsEntitySegment> entity_segment_ = nullptr;
   uint64_t block_offset_ = 0;
@@ -228,7 +230,7 @@ class TsEntityBlock : public TsBlock {
   TsEntityBlock() = delete;
   TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_item,
                 std::shared_ptr<TsEntitySegment> block_segment);
-  TsEntityBlock(const TsEntityBlock& other);
+  TsEntityBlock(const TsEntityBlock& other) = delete;
   ~TsEntityBlock() {}
 
   size_t GetRowNum() override { return n_rows_; }
@@ -272,7 +274,6 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
 
-  KStatus GetRowSpans(const std::vector<KwTsSpan>& ts_spans, std::vector<std::pair<int, int>>& row_spans);
   KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans);
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
