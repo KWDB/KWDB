@@ -1274,7 +1274,7 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
   ctx_p->ts_engine = engine;
   s = engine->WriteSnapshotSuccess(ctx_p, snapshot_id);
   if (s != KStatus::SUCCESS) {
-      return ToTsStatus("WriteSnapshotBatchData Error!");
+      return ToTsStatus("TSWriteSnapshotSuccess Error!");
   }
   return kTsSuccess;
 }
@@ -1291,7 +1291,7 @@ TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t 
   ctx_p->ts_engine = engine;
   s = engine->WriteSnapshotRollback(ctx_p, snapshot_id);
   if (s != KStatus::SUCCESS) {
-      return ToTsStatus("WriteSnapshotBatchData Error!");
+      return ToTsStatus("TSWriteSnapshotRollback Error!");
   }
   return kTsSuccess;
 }

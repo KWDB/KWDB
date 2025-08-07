@@ -1504,6 +1504,7 @@ KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
       write_batch_data_worker_->Cancel(ctx);
       write_batch_data_worker_ = nullptr;
       RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+      LOG_ERROR("BatchJobFinish write_batch_data_worker_->Finish failed.");
       return KStatus::FAIL;
     }
     LOG_INFO("Finish write batch data, job_id[%lu]", job_id);
@@ -2150,7 +2151,10 @@ KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapsho
     }
   }
   auto s = BatchJobFinish(ctx, snapshot_id);
-  if (s == KStatus::SUCCESS) {
+  if (s != KStatus::SUCCESS) {
+      LOG_ERROR("BatchJobFinish failed.");
+  }
+  {
     snapshot_mutex_.lock();
     snapshots_.erase(snapshot_id);
     snapshot_mutex_.unlock();
@@ -2175,7 +2179,10 @@ KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapsh
     }
   }
   auto s = CancelBatchJob(ctx, snapshot_id);
-  if (s == KStatus::SUCCESS) {
+  if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CancelBatchJob failed.");
+  }
+  {
     snapshot_mutex_.lock();
     snapshots_.erase(snapshot_id);
     snapshot_mutex_.unlock();
