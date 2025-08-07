@@ -61,6 +61,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     opts_.db_path = db_path + "/descdb/";
     engine = new TSEngineV2Impl(opts_);
     s = engine->Init(ctx_);
+    MakeDirectory(opts_.db_path + "/temp_db_");
     if (s != KStatus::SUCCESS) {
       std::cout << "engine init failed." << std::endl;
       exit(1);

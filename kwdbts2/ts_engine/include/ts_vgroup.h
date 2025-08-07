@@ -16,6 +16,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -243,12 +244,13 @@ class TsVGroup {
   KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
+  KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+                                  std::shared_ptr<TsEntitySegmentBuilder>& builder);
+
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data);
+                         timestamp64 p_time, TS_LSN lsn, TSSlice data, std::set<PartitionIdentifier>& partition_ids);
 
-  KStatus FinishWriteBatchData();
-
-  KStatus CancelWriteBatchData();
+  KStatus FinishWriteBatchData(std::set<PartitionIdentifier>& partition_ids);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 

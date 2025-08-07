@@ -50,7 +50,7 @@ const char schema_directory[]= "schema/";
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
                               options_(engine_options), flush_mgr_(vgroups_),
                               read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
-                              write_batch_worker_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
+                              write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
                               insert_tag_lock_(RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
@@ -1433,60 +1433,48 @@ KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uin
 KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
                          TSSlice* data, uint32_t* row_num) {
   std::shared_ptr<TsBatchDataWorker> worker = nullptr;
-  RW_LATCH_S_LOCK(&write_batch_worker_lock_);
-  if (write_batch_data_worker_ != nullptr) {
-    if (write_batch_data_worker_->GetJobId() == job_id) {
-      worker = write_batch_data_worker_;
-    } else {
-      LOG_ERROR("TsWriteBatchDataWorker init failed, there are other jobs writing to the current table[%lu]", table_id);
-      RW_LATCH_UNLOCK(&write_batch_worker_lock_);
-      return KStatus::FAIL;
-    }
+  RW_LATCH_S_LOCK(&write_batch_workers_lock_);
+  auto it = write_batch_data_workers_.find(job_id);
+  if (it != write_batch_data_workers_.end()) {
+    worker = it->second;
   }
-  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   if (worker != nullptr) {
     return worker->Write(ctx, table_id, table_version, data, row_num);
   }
-  RW_LATCH_X_LOCK(&write_batch_worker_lock_);
-  if (write_batch_data_worker_ != nullptr) {
-    if (write_batch_data_worker_->GetJobId() == job_id) {
-      worker = write_batch_data_worker_;
-    } else {
-      LOG_ERROR("TsWriteBatchDataWorker init failed, there are other jobs writing to the current table[%lu]", table_id);
-      RW_LATCH_UNLOCK(&write_batch_worker_lock_);
-      return KStatus::FAIL;
+  RW_LATCH_X_LOCK(&write_batch_workers_lock_);
+  it = write_batch_data_workers_.find(job_id);
+  if (it != write_batch_data_workers_.end()) {
+    worker = it->second;
+  } else {
+    worker = std::make_shared<TsWriteBatchDataWorker>(this, job_id);
+    KStatus s = worker->Init(ctx);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsWriteBatchDataWorker init failed");
+      RW_LATCH_UNLOCK(&write_batch_workers_lock_);
+      return s;
     }
+    write_batch_data_workers_[job_id] = worker;
   }
-  if (worker != nullptr) {
-    RW_LATCH_UNLOCK(&write_batch_worker_lock_);
-    return worker->Write(ctx, table_id, table_version, data, row_num);
-  }
-  worker = std::make_shared<TsWriteBatchDataWorker>(this, job_id);
-  KStatus s = worker->Init(ctx);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsWriteBatchDataWorker init failed");
-    RW_LATCH_UNLOCK(&write_batch_worker_lock_);
-    return s;
-  }
-  write_batch_data_worker_ = worker;
-  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   return worker->Write(ctx, table_id, table_version, data, row_num);
 }
 
 KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
   // write
-  RW_LATCH_X_LOCK(&write_batch_worker_lock_);
-  if (write_batch_data_worker_ != nullptr && write_batch_data_worker_->GetJobId() == job_id) {
-    write_batch_data_worker_->Cancel(ctx);
-    write_batch_data_worker_ = nullptr;
+  RW_LATCH_X_LOCK(&write_batch_workers_lock_);
+  auto write_it = write_batch_data_workers_.find(job_id);
+  if (write_it != write_batch_data_workers_.end()) {
+    write_it->second->Cancel(ctx);
     LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
   }
-  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  write_batch_data_workers_.erase(job_id);
+  RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   // read
   RW_LATCH_X_LOCK(&read_batch_workers_lock_);
-  auto job_it = read_batch_data_workers_.find(job_id);
-  if (job_it != read_batch_data_workers_.end()) {
-    for (auto& kv : job_it->second) {
+  auto read_it = read_batch_data_workers_.find(job_id);
+  if (read_it != read_batch_data_workers_.end()) {
+    for (auto& kv : read_it->second) {
       kv.second->Cancel(ctx);
     }
     LOG_INFO("Cancel read batch data, job_id[%lu]", job_id);
@@ -1498,18 +1486,19 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
 
 KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
   // write
-  RW_LATCH_X_LOCK(&write_batch_worker_lock_);
-  if (write_batch_data_worker_ != nullptr && write_batch_data_worker_->GetJobId() == job_id) {
-    if (write_batch_data_worker_->Finish(ctx) != KStatus::SUCCESS) {
-      write_batch_data_worker_->Cancel(ctx);
-      write_batch_data_worker_ = nullptr;
-      RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  RW_LATCH_X_LOCK(&write_batch_workers_lock_);
+  auto write_it = write_batch_data_workers_.find(job_id);
+  if (write_it != write_batch_data_workers_.end()) {
+    if (write_it->second->Finish(ctx) != KStatus::SUCCESS) {
+      write_it->second->Cancel(ctx);
+      write_batch_data_workers_.erase(job_id);
+      RW_LATCH_UNLOCK(&write_batch_workers_lock_);
       return KStatus::FAIL;
     }
     LOG_INFO("Finish write batch data, job_id[%lu]", job_id);
-    write_batch_data_worker_ = nullptr;
   }
-  RW_LATCH_UNLOCK(&write_batch_worker_lock_);
+  write_batch_data_workers_.erase(job_id);
+  RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   // read
   RW_LATCH_X_LOCK(&read_batch_workers_lock_);
   auto job_it = read_batch_data_workers_.find(job_id);

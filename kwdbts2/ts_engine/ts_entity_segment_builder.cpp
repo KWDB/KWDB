@@ -747,7 +747,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version,
-                                           TS_LSN lsn, TSSlice block_data) {
+                                           TS_LSN lsn, TSSlice block_data, bool& need_rebuild) {
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
@@ -757,6 +757,7 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   });
   if (write_batch_finished_) {
     LOG_WARN("TsEntitySegmentBuilder::WriteBatch skip, builder has already finished.");
+    need_rebuild = true;
     return KStatus::SUCCESS;
   }
   auto it = entity_items_.find(entity_id);

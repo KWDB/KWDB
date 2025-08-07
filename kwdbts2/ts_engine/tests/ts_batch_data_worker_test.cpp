@@ -104,6 +104,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   MakeDirectory(engine_root_path);
   engine_ = new TSEngineV2Impl(opts_);
   s = engine_->Init(ctx_);
+  MakeDirectory(engine_root_path + "/temp_db_");
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   // ConstructRoachpbTable(&pb_meta, table_id);
